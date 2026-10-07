@@ -162,6 +162,8 @@ export interface TriggerRouteContext extends RouteRequestContext {
   ownerEntityId?: string;
   /** Canonical local owner for ownerless legacy trigger compatibility. */
   localOwnerEntityId?: string;
+  /** Host-owned app conversation; never accept a delivery room from request data. */
+  resolvePromptDeliveryRoom: (runtime: IAgentRuntime) => Promise<UUID>;
   executeTriggerTask: (
     runtime: IAgentRuntime,
     task: Task,
@@ -430,11 +432,21 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Unable to compute trigger schedule', 400);
       return true;
     }
-    const roomId = (
-      runtime.getService('AUTONOMY') as {
-        getAutonomousRoomId?(): UUID;
-      } | null
-    )?.getAutonomousRoomId?.();
+    const roomId =
+      trigger.kind === 'prompt'
+        ? await ctx.resolvePromptDeliveryRoom(runtime)
+        : (
+            runtime.getService('AUTONOMY') as {
+              getAutonomousRoomId?(): UUID;
+            } | null
+          )?.getAutonomousRoomId?.();
+    if (
+      trigger.kind === 'prompt' &&
+      (!roomId || !(await runtime.getRoom(roomId))?.source?.trim())
+    ) {
+      error(res, 'Prompt automation delivery conversation is unavailable', 503);
+      return true;
+    }
     const taskId = await runtime.createTask({
       name: TRIGGER_TASK_NAME,
       description: trigger.displayName,

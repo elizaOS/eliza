@@ -337,3 +337,84 @@ describe('partial trigger updates', () => {
     }
   });
 });
+
+describe('trigger enabled boundary', () => {
+  test.each(['POST', 'PUT'] as const)(
+    'rejects non-boolean enabled on %s before normalization',
+    async (method) => {
+      for (const enabled of ['false', 0, null, {}]) {
+        const { context, response, calls } = createHarness(
+          method,
+          method === 'POST' ? '/api/triggers' : '/api/triggers/saved'
+        );
+        const current = {
+          triggerId: 'saved',
+          kind: 'prompt',
+          createdBy: 'api',
+          enabled: true,
+        } as TriggerConfig;
+        context.listTriggerTasks = async () => [
+          { id: 'stored', metadata: { trigger: current } } as Task,
+        ];
+        context.readTriggerConfig = () => current;
+        context.readJsonBody = async () => ({ enabled }) as never;
+        context.normalizeTriggerDraft = () => {
+          throw new Error('Invalid enabled reached normalization');
+        };
+        await handleTriggerRoutes(context);
+        expect(response).toEqual({ body: { error: 'enabled must be a boolean' }, status: 400 });
+        expect(calls).not.toContain('createTask');
+      }
+    }
+  );
+
+  test.each(['POST', 'PUT'] as const)('preserves boolean enabled on %s', async (method) => {
+    for (const enabled of [false, true]) {
+      const { context } = createHarness(
+        method,
+        method === 'POST' ? '/api/triggers' : '/api/triggers/saved'
+      );
+      const current = {
+        triggerId: 'saved',
+        kind: 'prompt',
+        createdBy: 'api',
+        enabled: true,
+      } as TriggerConfig;
+      context.listTriggerTasks = async () => [
+        { id: 'stored', metadata: { trigger: current } } as Task,
+      ];
+      context.readTriggerConfig = () => current;
+      context.readJsonBody = async () =>
+        ({ kind: 'prompt', instructions: 'Return an answer', enabled }) as never;
+      let normalized: boolean | undefined;
+      context.normalizeTriggerDraft = ({ input }) => {
+        normalized = input.enabled;
+        return { error: 'Stop before storage' };
+      };
+      await handleTriggerRoutes(context);
+      expect(normalized).toBe(enabled);
+    }
+  });
+
+  test('refuses a prompt when the host delivery room has no source', async () => {
+    const { context, response, calls } = createHarness('POST', '/api/triggers');
+    context.readJsonBody = async () =>
+      ({
+        kind: 'prompt',
+        instructions: 'Return an answer',
+        displayName: 'Prompt',
+        triggerType: 'cron',
+        cronExpression: '0 12 * * *',
+      }) as never;
+    context.normalizeTriggerDraft = ({ input }) => ({ draft: input as never });
+    context.buildTriggerConfig = ({ draft, triggerId }) =>
+      ({ ...draft, triggerId }) as TriggerConfig;
+    context.runtime.getRoom = async () => null;
+    await handleTriggerRoutes(context);
+    expect(response).toEqual({
+      body: { error: 'Prompt automation delivery conversation is unavailable' },
+      status: 503,
+    });
+    expect(calls).not.toContain('createTask');
+  });
+});
