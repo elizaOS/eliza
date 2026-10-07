@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   parsedTokenAccountBaseUnits,
   sumParsedTokenAccountBaseUnits,
+  withdrawalReceivedBaseUnits,
 } from "./token-account-base-units.ts";
 
 const parsedAccount = (amount: string) => ({
@@ -40,5 +41,11 @@ describe("parsedTokenAccountBaseUnits", () => {
 
   it("returns zero when the account list is empty", () => {
     expect(sumParsedTokenAccountBaseUnits([])).toBe(0n);
+  });
+
+  it("leaves the received amount unknown when either balance read failed", () => {
+    expect(withdrawalReceivedBaseUnits(null, 1_000_000n)).toBeNull();
+    expect(withdrawalReceivedBaseUnits(2_500_000n, null)).toBeNull();
+    expect(withdrawalReceivedBaseUnits(2_500_000n, 1_000_000n)).toBe("1500000");
   });
 });

@@ -25,3 +25,16 @@ export function sumParsedTokenAccountBaseUnits(
   }
   return total;
 }
+
+/**
+ * Received base units are post minus pre. A failed read is null, not zero.
+ * Zero would report a negative amount when the post-read fails, or the
+ * whole post-withdrawal balance when the pre-read fails.
+ */
+export function withdrawalReceivedBaseUnits(
+  post: bigint | null,
+  pre: bigint | null
+): string | null {
+  if (post === null || pre === null) return null;
+  return (post - pre).toString();
+}
