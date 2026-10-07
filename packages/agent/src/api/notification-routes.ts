@@ -8,6 +8,8 @@
  *
  * Routes:
  *
+ *   GET    /api/notifications?nativeTransport=true&afterSequence=&throughSequence=&nativeEpoch=&limit=
+ *     Native keyset pages, oldest-first, with fixed sequence fence and explicit completion.
  *   GET    /api/notifications?unreadOnly=&category=&limit=
  *     List notifications newest-first. Returns `{ notifications, unreadCount }`.
  *
@@ -35,8 +37,11 @@
  */
 import type http from "node:http";
 import {
+  NATIVE_NOTIFICATION_PAGE_LIMIT,
+  type NativeNotificationQuery,
   type NotificationCategory,
   type NotificationInput,
+  NotificationNativeError,
   type NotificationPriority,
   NotificationService,
   type NotificationServiceLifecycleRuntime,
@@ -214,6 +219,83 @@ function parseCategory(raw: string | null): NotificationCategory | undefined {
   }
   return undefined;
 }
+/** Native completion closes sequence gaps, so filtered and ambiguous queries are invalid. */
+function parseNativeQuery(url: URL): NativeNotificationQuery | undefined {
+  const params = url.searchParams;
+  for (const key of [
+    "nativeTransport",
+    "nativeEpoch",
+    "afterSequence",
+    "throughSequence",
+  ]) {
+    if (params.getAll(key).length > 1)
+      throw new NotificationNativeError(
+        "INVALID_NATIVE_NOTIFICATION_CURSOR",
+        "Repeated native query parameter",
+      );
+  }
+  const requested = params.get("nativeTransport");
+  if (requested != null && requested !== "true" && requested !== "false")
+    throw new NotificationNativeError(
+      "INVALID_NATIVE_NOTIFICATION_CURSOR",
+      "Invalid nativeTransport",
+    );
+  if (requested !== "true") {
+    if (
+      ["nativeEpoch", "afterSequence", "throughSequence"].some((key) =>
+        params.has(key),
+      )
+    )
+      throw new NotificationNativeError(
+        "INVALID_NATIVE_NOTIFICATION_CURSOR",
+        "Native cursor requires nativeTransport=true",
+      );
+    return undefined;
+  }
+  if (
+    params.has("unreadOnly") ||
+    params.has("category") ||
+    params.getAll("limit").length > 1
+  )
+    throw new NotificationNativeError(
+      "INVALID_NATIVE_NOTIFICATION_CURSOR",
+      "Native pages cannot use filters or repeated limit",
+    );
+  const query: NativeNotificationQuery = {};
+  for (const key of ["afterSequence", "throughSequence", "limit"] as const) {
+    const raw = params.get(key);
+    if (raw == null) continue;
+    if (!/^(0|[1-9]\d*)$/.test(raw) || !Number.isSafeInteger(Number(raw)))
+      throw new NotificationNativeError(
+        "INVALID_NATIVE_NOTIFICATION_CURSOR",
+        "Native cursors must be safe decimal integers",
+      );
+    query[key] = Number(raw);
+  }
+  if (
+    query.limit != null &&
+    (query.limit < 1 || query.limit > NATIVE_NOTIFICATION_PAGE_LIMIT)
+  )
+    throw new NotificationNativeError(
+      "INVALID_NATIVE_NOTIFICATION_CURSOR",
+      "Native limit must be between 1 and 128",
+    );
+  const epoch = params.get("nativeEpoch");
+  if (epoch != null) {
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        epoch,
+      )
+    )
+      throw new NotificationNativeError(
+        "INVALID_NATIVE_NOTIFICATION_CURSOR",
+        "Invalid nativeEpoch",
+      );
+    query.nativeEpoch = epoch;
+  }
+  return query;
+}
+
 /** Coerce an untrusted request body into a NotificationInput. */
 function parseNotificationInput(body: Record<string, unknown>):
   | {
@@ -279,6 +361,7 @@ export async function handleNotificationRoute(
         url: URL;
         limit: number | undefined;
         unreadOnly: boolean;
+        nativeQuery?: NativeNotificationQuery;
       }
     | undefined;
   if (method === "GET" && pathname === "/api/notifications") {
@@ -300,7 +383,22 @@ export async function handleNotificationRoute(
       helpers.error(res, "limit must be a positive integer", 400);
       return true;
     }
-    listRequest = { url, limit, unreadOnly: requestedUnread === "true" };
+    try {
+      listRequest = {
+        url,
+        limit,
+        unreadOnly: requestedUnread === "true",
+        nativeQuery: parseNativeQuery(url),
+      };
+    } catch (error) {
+      if (!(error instanceof NotificationNativeError)) throw error;
+      helpers.json(
+        res,
+        { error: error.message, code: error.code },
+        error.status,
+      );
+      return true;
+    }
   }
   const service = getService(state);
   if (!service) {
@@ -308,7 +406,20 @@ export async function handleNotificationRoute(
   }
   // ── GET /api/notifications ────────────────────────────────────────
   if (listRequest) {
-    const { url, limit, unreadOnly } = listRequest;
+    const { url, limit, unreadOnly, nativeQuery } = listRequest;
+    if (nativeQuery) {
+      try {
+        helpers.json(res, await service.listNativePage(nativeQuery));
+      } catch (error) {
+        if (!(error instanceof NotificationNativeError)) throw error;
+        helpers.json(
+          res,
+          { error: error.message, code: error.code },
+          error.status,
+        );
+      }
+      return true;
+    }
     const notifications = service.list({
       unreadOnly,
       category: parseCategory(url.searchParams.get("category")),

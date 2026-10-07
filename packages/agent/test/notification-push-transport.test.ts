@@ -9,14 +9,17 @@ import {
   AgentRuntime,
   defaultPriorityForCategory,
   type IAgentRuntime,
+  type NotificationInboxSnapshot,
   type NotificationInput,
   NotificationService,
   type ServiceClass,
   ServiceType,
   type UUID,
 } from "@elizaos/core";
+import { readJsonBody, sendJson, sendJsonError } from "@elizaos/host";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
+import { handleNotificationRoute } from "../src/api/notification-routes.ts";
 import { ApnsProvider } from "../src/services/push/apns-provider.ts";
 import { FcmProvider } from "../src/services/push/fcm-provider.ts";
 import {
@@ -203,8 +206,17 @@ it("boots push before its lazy event bus and carries persisted reminder urgency 
           },
         },
       });
-      expect(await runtime.getCache(`notifications:${agentId}`)).toContainEqual(
-        notification,
+      expect(
+        (
+          await runtime.getCache<NotificationInboxSnapshot>(
+            `notifications:${agentId}`,
+          )
+        )?.notifications,
+      ).toContainEqual(
+        expect.objectContaining({
+          id: notification.id,
+          title: notification.title,
+        }),
       );
       expect(notification.priority).toBe(
         input.priority ??
@@ -371,8 +383,14 @@ it("boots push before its lazy event bus and carries persisted reminder urgency 
     });
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(requests).toHaveLength(beforeUnconfigured);
-    expect(await runtime.getCache(`notifications:${agentId}`)).toContainEqual(
-      unavailable,
+    expect(
+      (
+        await runtime.getCache<NotificationInboxSnapshot>(
+          `notifications:${agentId}`,
+        )
+      )?.notifications,
+    ).toContainEqual(
+      expect.objectContaining({ id: unavailable.id, title: unavailable.title }),
     );
   } finally {
     await push?.stop();
@@ -383,3 +401,177 @@ it("boots push before its lazy event bus and carries persisted reminder urgency 
     await rm(directory, { recursive: true, force: true });
   }
 }, 60_000);
+
+it("serves the native sequence contract through real HTTP, durable migration and concurrent mutations", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "notification-native-page-"));
+  const agentId = randomUUID() as UUID;
+  const runtime = new AgentRuntime({
+    agentId,
+    character: { name: "Native page transport", bio: [] },
+    logLevel: "fatal",
+    enableAutonomy: false,
+  });
+  const receiver = createServer(async (req, res) => {
+    try {
+      const handled = await handleNotificationRoute(
+        req,
+        res,
+        new URL(req.url ?? "/", "http://localhost").pathname,
+        req.method ?? "GET",
+        { runtime },
+        { json: sendJson, error: sendJsonError, readJsonBody },
+      );
+      if (!handled) sendJsonError(res, "Not found", 404);
+    } catch {
+      sendJsonError(res, "Request failed", 500);
+    }
+  });
+  try {
+    runtime.registerDatabaseAdapter(
+      SQLiteDatabaseAdapter.create(join(directory, "agent.sqlite"), agentId),
+    );
+    await runtime.init();
+    await runtime.initialize();
+    await runtime.registerService(NotificationService);
+    const notifier = (await runtime.getServiceLoadPromise(
+      ServiceType.NOTIFICATION,
+    )) as NotificationService;
+    await receiver.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => {
+      if (receiver.listening) resolve();
+      else receiver.once("listening", resolve);
+    });
+    const address = receiver.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing native page receiver");
+    const endpoint = `http://127.0.0.1:${address.port}/api/notifications`;
+    const a = await notifier.notify({
+      title: "Read history",
+      body: "full body",
+      data: { secret: "kept", ownerType: "clock" },
+      priority: "low",
+    });
+    const b = await notifier.notify({ title: "Delete between pages" });
+    const c = await notifier.notify({ title: "Final retained" });
+    await notifier.markRead(a.id);
+    const firstResponse = await fetch(
+      `${endpoint}?nativeTransport=true&limit=1`,
+    );
+    expect(firstResponse.status).toBe(200);
+    const first = await firstResponse.json();
+    expect(first).toMatchObject({
+      serviceStatus: "ready",
+      complete: false,
+      throughSequence: c.nativeSequence,
+      nextSequence: a.nativeSequence,
+    });
+    expect(first.notifications[0]).toMatchObject({
+      id: a.id,
+      nativeEpoch: a.nativeEpoch,
+      nativeSequence: a.nativeSequence,
+      body: "full body",
+      priority: "low",
+      data: { ownerType: "clock" },
+    });
+    expect(first.notifications[0].readAt).not.toBeNull();
+    expect(first.notifications[0]).not.toHaveProperty("data.secret");
+    expect(first.notifications[0]).not.toHaveProperty("source");
+    await notifier.remove(b.id);
+    const beyond = await notifier.notify({ title: "Above fixed fence" });
+    const secondResponse = await fetch(
+      `${endpoint}?nativeTransport=true&nativeEpoch=${first.nativeEpoch}&afterSequence=${first.nextSequence}&throughSequence=${first.throughSequence}&limit=1`,
+    );
+    expect(secondResponse.status).toBe(200);
+    const second = await secondResponse.json();
+    expect(second).toMatchObject({
+      complete: true,
+      nextSequence: first.throughSequence,
+      throughSequence: first.throughSequence,
+    });
+    expect(second.notifications.map((n: { id: string }) => n.id)).toEqual([
+      c.id,
+    ]);
+    expect(beyond.nativeSequence).toBeGreaterThan(second.nextSequence);
+    const standard = await (await fetch(endpoint)).json();
+    expect(standard.notifications[0]).toMatchObject({
+      id: beyond.id,
+      nativeEpoch: beyond.nativeEpoch,
+      nativeSequence: beyond.nativeSequence,
+    });
+    expect(
+      standard.notifications.find((n: { id: string }) => n.id === a.id).data
+        .secret,
+    ).toBe("kept");
+    for (const query of [
+      "nativeTransport=true&limit=129",
+      "nativeTransport=true&limit=0",
+      "nativeTransport=true&limit=1&limit=2",
+      "nativeTransport=true&afterSequence=1e2",
+      "nativeTransport=true&afterSequence=-1",
+      "nativeTransport=true&afterSequence=9007199254740992",
+      "nativeTransport=true&throughSequence=1",
+      "nativeTransport=true&nativeEpoch=not-an-epoch",
+      "nativeTransport=true&category=reminder",
+      "nativeTransport=true&unreadOnly=false",
+      "nativeTransport=true&nativeTransport=true",
+      "afterSequence=0",
+      "nativeTransport=invalid",
+      `nativeTransport=true&nativeEpoch=${first.nativeEpoch}&afterSequence=2&throughSequence=1`,
+      `nativeTransport=true&nativeEpoch=${first.nativeEpoch}&throughSequence=999999`,
+    ])
+      expect((await fetch(`${endpoint}?${query}`)).status).toBe(400);
+    expect(
+      (
+        await fetch(
+          `${endpoint}?nativeTransport=true&nativeEpoch=${randomUUID()}`,
+        )
+      ).status,
+    ).toBe(409);
+    const exhausted = await (
+      await fetch(
+        `${endpoint}?nativeTransport=true&nativeEpoch=${first.nativeEpoch}&afterSequence=${first.throughSequence}&throughSequence=${first.throughSequence}`,
+      )
+    ).json();
+    expect(exhausted).toMatchObject({
+      complete: true,
+      nextSequence: first.throughSequence,
+      notifications: [],
+    });
+    await notifier.clear();
+    await notifier.notify({ title: "Expired retained", expiresAt: 1 });
+    const expired = await (
+      await fetch(`${endpoint}?nativeTransport=true`)
+    ).json();
+    expect(expired.notifications[0].expiresAt).toBe(1);
+    await notifier.clear();
+    await notifier.notify({
+      title: "Too large native body",
+      body: "x".repeat(4097),
+    });
+    const large = await fetch(`${endpoint}?nativeTransport=true`);
+    expect(large.status).toBe(413);
+    expect(await large.json()).toMatchObject({
+      code: "NATIVE_NOTIFICATION_RECORD_TOO_LARGE",
+    });
+    const persisted = await runtime.getCache<NotificationInboxSnapshot>(
+      `notifications:${agentId}`,
+    );
+    expect(persisted?.notifications[0]).not.toHaveProperty("nativeSequence");
+    const restored = (await NotificationService.start(
+      runtime,
+    )) as NotificationService;
+    expect(restored.list()[0].nativeSequence).toBe(
+      notifier.list()[0].nativeSequence,
+    );
+    expect(restored.list()[0].nativeEpoch).toBe(first.nativeEpoch);
+    await restored.stop();
+  } finally {
+    if (receiver.listening)
+      await new Promise<void>((resolve, reject) =>
+        receiver.close((error) => (error ? reject(error) : resolve())),
+      );
+    await runtime.stop();
+    await runtime.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 120_000);
