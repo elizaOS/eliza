@@ -69,7 +69,11 @@ import type {
   SharedReminderOperation,
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
-import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
+import {
+  appendSharedInput,
+  appendSharedTurn,
+  NETWORK_DEFAULT_ROUTING,
+} from "./run-shared-agent-turn";
 import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
 import {
   createMatchingRealtimeSearchRunner,
@@ -793,7 +797,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     ? createNetworkEdgePlugin({
         store: input.execution.network.store,
         authority: { memberId: input.execution.network.memberId },
-        routing: input.execution.network.routing,
+        routing: input.execution.network.routing ?? NETWORK_DEFAULT_ROUTING,
         actionsEnabled,
       })
     : undefined;

@@ -208,7 +208,7 @@ export interface RunSharedAgentTurnInput {
     network?: {
       memberId: string;
       store: NetworkStore;
-      /** "planner" (design A) or "structured" (design B); see plugin-network edge.ts. */
+      /** Routing design; defaults to NETWORK_DEFAULT_ROUTING. */
       routing?: NetworkRouting;
     };
   };
@@ -355,6 +355,15 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  * from `@elizaos/core`'s prompt builder; the Shared runtime receives the
  * already-projected edge character, so this is the renderer on this side.
  */
+/**
+ * Default routing design for Network availability changes when
+ * `execution.network.routing` is not set: "structured" (design B, one
+ * Stage-1 call proposes SET_STATE and deterministic code executes it) or
+ * "planner" (design A, Stage 1 routes to `network` and SET_STATE is a
+ * must-call). See RESULTS.md "Routing design comparison" for the measurements.
+ */
+export const NETWORK_DEFAULT_ROUTING: NetworkRouting = "structured";
+
 type RequiredSharedAction = "REMINDERS" | "TODO" | "GENERATE_MEDIA" | "SET_STATE";
 
 function buildSharedRuntimeSystem(
@@ -452,7 +461,7 @@ function requiredActionForTurn(
   if (
     actionsEnabled &&
     input.execution?.network &&
-    (input.execution.network.routing ?? "planner") === "planner" &&
+    (input.execution.network.routing ?? NETWORK_DEFAULT_ROUTING) === "planner" &&
     isNetworkStateIntent(intentText)
   ) {
     return "SET_STATE";

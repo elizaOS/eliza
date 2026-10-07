@@ -192,12 +192,6 @@ export function createSharedNetworkStore(): NetworkStore {
 }
 
 /**
- * Routing design flag for Network availability changes ("planner" or
- * "structured"; see plugin-network `createNetworkEdgePlugin`).
- */
-export const NETWORK_DEFAULT_ROUTING: NetworkRouting = "planner";
-
-/**
  * Server-owned `execution.network` for a turn. Present only when the hosting
  * boundary already attested a canonical personal identity (`personalShared`)
  * whose server-resolved project is The Network. Eliza agents, Dedicated or
@@ -208,9 +202,9 @@ export function sharedNetworkExecution(
   personalShared: boolean,
   isGroupRoom: boolean,
   storeFactory: () => NetworkStore = createSharedNetworkStore,
-  routing: NetworkRouting = NETWORK_DEFAULT_ROUTING,
-): { memberId: string; store: NetworkStore; routing: NetworkRouting } | undefined {
+  routing?: NetworkRouting,
+): { memberId: string; store: NetworkStore; routing?: NetworkRouting } | undefined {
   if (!personalShared || isGroupRoom) return undefined;
   if (personalSharedProjectScope(agent.project) !== "network") return undefined;
-  return { memberId: agent.user_id, store: storeFactory(), routing };
+  return { memberId: agent.user_id, store: storeFactory(), ...(routing ? { routing } : {}) };
 }

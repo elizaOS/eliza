@@ -4,11 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
-import {
-  createPostgresNetworkStore,
-  NETWORK_DEFAULT_ROUTING,
-  sharedNetworkExecution,
-} from "./member-store";
+import { createPostgresNetworkStore, sharedNetworkExecution } from "./member-store";
 import { createPostgresNetworkMembership } from "./membership";
 
 const USER = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
@@ -215,7 +211,7 @@ describe("sharedNetworkExecution", () => {
   test("only canonical Network DMs get a member store", () => {
     expect(
       sharedNetworkExecution({ user_id: USER, project: "network" }, true, false, factory),
-    ).toEqual({ memberId: USER, store, routing: NETWORK_DEFAULT_ROUTING });
+    ).toEqual({ memberId: USER, store });
     expect(sharedNetworkExecution({ user_id: USER }, true, false, factory)).toBeUndefined();
     expect(
       sharedNetworkExecution({ user_id: USER, project: "eliza-app" }, true, false, factory),
