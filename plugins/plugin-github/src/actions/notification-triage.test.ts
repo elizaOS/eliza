@@ -268,4 +268,44 @@ describe("notificationTriageAction", () => {
     ).toHaveLength(30);
     expect(result.data).toMatchObject({ notificationLimit: null });
   });
+
+  it.each([403, 429])(
+    "reports the reset time when GitHub answers %i with no remaining quota",
+    async (status) => {
+      const rateLimitError = Object.assign(
+        new Error("API rate limit exceeded"),
+        {
+          status,
+          response: {
+            headers: {
+              "x-ratelimit-remaining": "0",
+              "x-ratelimit-reset": "1791374400",
+            },
+          },
+        },
+      );
+      const listNotificationsForAuthenticatedUser = vi
+        .fn()
+        .mockRejectedValueOnce(rateLimitError);
+      const runtime = {
+        getService: () => ({
+          getOctokit: () => ({
+            activity: { listNotificationsForAuthenticatedUser },
+          }),
+        }),
+      } as never;
+
+      const result = await notificationTriageAction.handler(
+        runtime,
+        {} as never,
+        undefined,
+        undefined,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(
+        "GitHub rate limit exhausted; resets at 2026-10-07T12:00:00.000Z",
+      );
+    },
+  );
 });
