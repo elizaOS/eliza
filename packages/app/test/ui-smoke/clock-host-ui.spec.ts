@@ -598,7 +598,7 @@ test("pending UNKNOWN receipt remains reconcilable after proposal refresh reject
   const actual = await diagnostics(page);
   expect(actual.reviewCalls.map((call) => call.state)).toEqual([
     "pending",
-    "done",
+    "reconciliation_required",
   ]);
   expect(actual.reviewCalls.map((call) => call.id)).toEqual([
     "controlled-owned-clock",
@@ -663,7 +663,7 @@ test("saved UNKNOWN receipt waits for verified owner after status read rejection
   const actual = await diagnostics(page);
   expect(actual.reviewCalls.map((call) => call.state)).toEqual([
     "pending",
-    "done",
+    "reconciliation_required",
   ]);
   expect(actual.dispatchCount).toBe(1);
   expect(effects).toEqual([]);
@@ -709,11 +709,11 @@ test("validated unavailable Clock owner clears saved receipt and outcome before 
     ).__clockHostUiBoundary.changeOwner();
   });
   await expect(
-    page.getByText(
-      "No pending Clock requests. Send your request in chat to create one.",
-      { exact: true },
-    ),
+    page.getByRole("heading", { name: "Alarms", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Clock proposals", exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByText(pendingOutcome, { exact: true })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Check saved receipt", exact: true }),
@@ -945,11 +945,11 @@ test("Clock owner scope change aborts an active controlled native review", async
     }),
   ).toHaveCount(0);
   await expect(
-    page.getByText(
-      "No pending Clock requests. Send your request in chat to create one.",
-      { exact: true },
-    ),
+    page.getByRole("heading", { name: "Alarms", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Clock proposals", exact: true }),
+  ).toHaveCount(0);
   expect((await diagnostics(page)).dispatchCount).toBe(0);
   expect(effects).toEqual([]);
   await capture(page, "owner-change-review-cancelled");
