@@ -84,9 +84,11 @@ const SHARED_RUNTIME_TURN_RETRY_DISPOSITION: Record<SharedRuntimeTurnFailureName
   SharedRuntimeUnknownError: false,
 };
 
-interface SharedRuntimeTurnFailureClassification {
+export interface SharedRuntimeTurnFailureClassification {
   failureName: SharedRuntimeTurnFailureName;
   retryable: boolean;
+  /** Numeric upstream status only; provider messages and payloads stay private. */
+  providerStatus?: number;
 }
 
 /** Validate the only failure names allowed to cross the coordinator boundary. */
@@ -127,7 +129,9 @@ function boundedProviderStatus(value: unknown): number | null {
   return value;
 }
 
-function classifySharedRuntimeTurnFailure(error: unknown): SharedRuntimeTurnFailureClassification {
+export function classifySharedRuntimeTurnFailure(
+  error: unknown,
+): SharedRuntimeTurnFailureClassification {
   const chain = errorChain(error);
   for (const current of chain) {
     if (!(current instanceof Error)) continue;
@@ -149,6 +153,32 @@ function classifySharedRuntimeTurnFailure(error: unknown): SharedRuntimeTurnFail
     }
   }
   for (const current of chain) {
+    // The message pipeline normalizes a delivered failure to a terminal
+    // outcome. The Shared adapter brands that outcome before throwing;
+    // preserve its disposition instead of losing it because the original SDK
+    // Error no longer survives on the normalized cause.
+    if (current instanceof ElizaError && current.code === "SHARED_RUNTIME_MESSAGE_FAILED") {
+      const kind = current.context?.failureKind;
+      const transient = current.context?.transient;
+      if (transient === true && (kind === "transient_failure" || kind === "rate_limited")) {
+        return {
+          failureName: "SharedRuntimeProviderUnavailableError",
+          retryable: true,
+        };
+      }
+      if (transient === false && kind === "no_provider") {
+        return {
+          failureName: "SharedRuntimeProviderConfigurationError",
+          retryable: false,
+        };
+      }
+      if (transient === false && (kind === "provider_issue" || kind === "insufficient_credits")) {
+        return {
+          failureName: "SharedRuntimeProviderRejectedError",
+          retryable: false,
+        };
+      }
+    }
     const record =
       (typeof current === "object" && current !== null) || typeof current === "function"
         ? (current as { name?: unknown; statusCode?: unknown })
@@ -179,16 +209,77 @@ function classifySharedRuntimeTurnFailure(error: unknown): SharedRuntimeTurnFail
         ? {
             failureName: "SharedRuntimeProviderUnavailableError",
             retryable: true,
+            providerStatus: status,
           }
         : {
             failureName: "SharedRuntimeProviderRejectedError",
             retryable: false,
+            providerStatus: status,
           };
     }
   }
   return {
     failureName: "SharedRuntimeUnknownError",
     retryable: false,
+  };
+}
+
+/**
+ * Preserve the qualified authorization/transient HTTP failures at core's
+ * boundary without letting its provider-detail extractor see SDK payloads.
+ * Other provider classes retain their existing behavior until qualified.
+ */
+export function projectQualifiedSharedProviderFailure(
+  error: unknown,
+): (ElizaError & { readonly statusCode: 401 | 503 }) | undefined {
+  const { providerStatus } = classifySharedRuntimeTurnFailure(error);
+  if (providerStatus !== 401 && providerStatus !== 503) return undefined;
+  return Object.assign(
+    new ElizaError(
+      providerStatus === 503
+        ? "Shared model provider temporarily unavailable (HTTP 503)."
+        : "Shared model provider rejected the request (HTTP 401).",
+      {
+        code: "SHARED_RUNTIME_PROVIDER_CALL_FAILED",
+        context: { providerStatus },
+        severity: providerStatus === 503 ? "ephemeral" : "fatal",
+      },
+    ),
+    { statusCode: providerStatus } as const,
+  );
+}
+
+export interface SharedModelCompletionDiagnostic {
+  operation: "generate" | "stream";
+  textPresent: boolean;
+  toolCount: number | null;
+  finishClass: "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other" | "unknown";
+}
+
+/** Project completion shape only; provider output and tool contents stay private. */
+export function sharedModelCompletionDiagnostic(
+  operation: "generate" | "stream",
+  text: unknown,
+  toolCount: number,
+  finishReason: unknown,
+): SharedModelCompletionDiagnostic {
+  const finishClasses = new Set([
+    "stop",
+    "length",
+    "content-filter",
+    "tool-calls",
+    "error",
+    "other",
+    "unknown",
+  ]);
+  return {
+    operation,
+    textPresent: typeof text === "string" && text.trim().length > 0,
+    toolCount: Number.isSafeInteger(toolCount) && toolCount >= 0 ? Math.min(toolCount, 64) : null,
+    finishClass:
+      typeof finishReason === "string" && finishClasses.has(finishReason)
+        ? (finishReason as SharedModelCompletionDiagnostic["finishClass"])
+        : "unknown",
   };
 }
 
