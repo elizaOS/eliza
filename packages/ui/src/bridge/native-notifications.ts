@@ -26,6 +26,8 @@ export interface NativeNotificationRequest {
   body?: string;
   /** Server record identity and activation boundary for native-owned receipts. */
   createdAt?: number;
+  nativeEpoch?: string;
+  nativeSequence?: number;
   source?: string;
   readAt?: number | null;
   expiresAt?: number | null;
@@ -502,6 +504,9 @@ export async function showNativeNotification(
           native.owner !== req.expectedOwner ||
           typeof req.createdAt !== "number" ||
           typeof req.expectedBase !== "string" ||
+          typeof req.nativeEpoch !== "string" ||
+          typeof req.nativeSequence !== "number" ||
+          !Number.isSafeInteger(req.nativeSequence) || req.nativeSequence <= 0 ||
           typeof plugin.presentNativeNotification !== "function"
         )
           return "none";
@@ -513,6 +518,8 @@ export async function showNativeNotification(
             title: req.title,
             body: req.body ?? "",
             createdAt: req.createdAt,
+            nativeEpoch: req.nativeEpoch,
+            nativeSequence: req.nativeSequence,
             source: req.source ?? "renderer",
             category: req.category ?? "general",
             priority: req.priority,

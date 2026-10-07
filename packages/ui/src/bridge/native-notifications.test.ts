@@ -76,6 +76,8 @@ describe("one native managed reminder presentation", () => {
       await showNativeNotification({
         ...request,
         createdAt: 1791400000000,
+        nativeEpoch: "12345678-1234-1234-1234-123456789abc",
+        nativeSequence: 42,
         source: "lifeops",
         expectedBase: "http://10.0.0.241:31725",
         expectedOwner: "a".repeat(64),
@@ -88,12 +90,25 @@ describe("one native managed reminder presentation", () => {
         notification: expect.objectContaining({
           id: request.id,
           createdAt: 1791400000000,
+        nativeEpoch: "12345678-1234-1234-1234-123456789abc",
+        nativeSequence: 42,
         }),
       }),
     );
     expect(native.local.schedule).not.toHaveBeenCalled();
     expect(native.push.presentReminderNotification).not.toHaveBeenCalled();
   });
+  it.each([undefined, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    "does not present a native record without a valid durable sequence (%s)",
+    async (nativeSequence) => {
+      native.push.getNativeNotificationDeliveryStatus.mockResolvedValue({ transport: "native", owner: "a".repeat(64) });
+      expect(await showNativeNotification({ ...request, createdAt: 1791400000000,
+        nativeEpoch: "12345678-1234-1234-1234-123456789abc", nativeSequence,
+        expectedBase: "http://10.0.0.241:31725", expectedOwner: "a".repeat(64) })).toBe("none");
+      expect(native.push.presentNativeNotification).not.toHaveBeenCalled();
+      expect(native.local.schedule).not.toHaveBeenCalled();
+    },
+  );
   it("does not fork a second LocalNotifications store after native foreground presentation fails", async () => {
     native.push.getNativeNotificationDeliveryStatus.mockResolvedValue({
       transport: "native",
@@ -106,6 +121,8 @@ describe("one native managed reminder presentation", () => {
       showNativeNotification({
         ...request,
         createdAt: 1791400000000,
+        nativeEpoch: "12345678-1234-1234-1234-123456789abc",
+        nativeSequence: 42,
         expectedBase: "http://10.0.0.241:31725",
         expectedOwner: "a".repeat(64),
       }),
@@ -123,6 +140,8 @@ describe("one native managed reminder presentation", () => {
         ...request,
         body: "Previous account record",
         createdAt: 1791400000000,
+        nativeEpoch: "12345678-1234-1234-1234-123456789abc",
+        nativeSequence: 42,
         expectedBase: "http://10.0.0.241:31725",
         expectedOwner: "a".repeat(64),
       }),
