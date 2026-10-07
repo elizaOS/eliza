@@ -202,7 +202,7 @@ describe("MediaGalleryView", () => {
     );
   });
 
-  it("reads a table with no primary key once", async () => {
+  it("includes media past the first page of a table with no primary key", async () => {
     clientMock.getDatabaseTables.mockResolvedValue({
       tables: [
         {
@@ -211,24 +211,36 @@ describe("MediaGalleryView", () => {
         },
       ],
     });
-    clientMock.getDatabaseRows.mockResolvedValue({
-      table: "memories",
-      rows: [
-        {
-          content: "https://example.test/keyless.png",
-          createdAt: "2026-10-06",
-        },
-      ],
-      columns: ["content", "createdAt"],
-      total: 1000,
-      offset: 0,
-      limit: 500,
-    });
+    clientMock.getDatabaseRows
+      .mockResolvedValueOnce({
+        table: "memories",
+        rows: Array.from({ length: 500 }, () => ({ content: "plain" })),
+        columns: ["content"],
+        total: 501,
+        offset: 0,
+        limit: 500,
+      })
+      .mockResolvedValueOnce({
+        table: "memories",
+        rows: [
+          {
+            content: "https://example.test/keyless.png",
+            createdAt: "2026-10-06",
+          },
+        ],
+        columns: ["content", "createdAt"],
+        total: 501,
+        offset: 500,
+        limit: 500,
+      });
 
     render(<MediaGalleryView />);
 
     await screen.findByRole("heading", { name: "keyless.png" });
-    expect(clientMock.getDatabaseRows).toHaveBeenCalledTimes(1);
+    expect(clientMock.getDatabaseRows).toHaveBeenCalledTimes(2);
+    expect(clientMock.getDatabaseRows.mock.calls[1]?.[1]).not.toHaveProperty(
+      "sort",
+    );
   });
 
   it("stops requesting later pages after unmount", async () => {

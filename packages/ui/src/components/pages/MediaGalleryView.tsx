@@ -343,9 +343,6 @@ export function MediaGalleryView({
               const seen = new Set<string>();
               let rowOffset = 0;
 
-              const primaryKeyCount = (table.columns ?? []).filter(
-                (column) => column.isPrimaryKey,
-              ).length;
               try {
                 while (true) {
                   signal.throwIfAborted();
@@ -363,10 +360,6 @@ export function MediaGalleryView({
                   // An empty page cannot advance. Stop this table and keep the
                   // rows already read so the gallery does not spin.
                   if (rows.length === 0 || rowOffset >= result.total) break;
-                  // No primary key means the rows route orders by ctid, which it
-                  // documents as stable only inside one query. Another OFFSET
-                  // page can repeat or skip rows, so stop after this page.
-                  if (primaryKeyCount === 0) break;
                 }
               } catch (error) {
                 if (signal.aborted) throw error;
