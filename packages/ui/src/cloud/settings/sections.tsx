@@ -8,6 +8,12 @@
  * props. Domain bodies self-load their data, while adapters inject app-owned
  * actions such as the platform-aware Cloud login flow.
  *
+ * Account and Billing, opened from the hosted web shell, leave that shell for
+ * `/cloud/account` and `/cloud/billing`. The settings hash is written with
+ * `replaceState`, which does not update the cloud router, so those sections
+ * would otherwise stay mounted beside the agent composer. Native settings have
+ * no host router and keep the embedded bodies.
+ *
  * Section → source domain:
  *  - {@link CloudAccountSection}       → cloud/account-security (AccountSurface)
  *  - {@link CloudBillingSection}       → cloud/billing (BillingSectionBody + invoices route)
@@ -19,7 +25,8 @@
  *  - {@link CloudPluginGrantsSection}  → cloud/account-security (PermissionsSurface: plugin grants)
  */
 
-import { useCallback } from "react";
+import { type ReactNode, useCallback } from "react";
+import { Navigate, useInRouterContext, useLocation } from "react-router-dom";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { AccountSurface } from "../account-security/AccountSurface";
@@ -32,7 +39,32 @@ import { OrganizationSection } from "../organization/OrganizationSection";
 import { ApplicationsEntry } from "./applications-entry";
 import { CloudSettingsSectionShell } from "./CloudSettingsSectionShell";
 
+function HostedCloudSectionNavigate({ to }: { to: string }): React.JSX.Element {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}`} replace />;
+}
+
+/** Hosted web settings sit inside CloudRouterShell. Native settings do not. */
+function HostedCloudSectionRedirect({
+  to,
+  children,
+}: {
+  to: string;
+  children: ReactNode;
+}): React.JSX.Element {
+  if (!useInRouterContext()) return <>{children}</>;
+  return <HostedCloudSectionNavigate to={to} />;
+}
+
 export function CloudAccountSection(): React.JSX.Element {
+  return (
+    <HostedCloudSectionRedirect to="/cloud/account">
+      <CloudAccountSectionBody />
+    </HostedCloudSectionRedirect>
+  );
+}
+
+function CloudAccountSectionBody(): React.JSX.Element {
   const {
     elizaCloudLoginBusy,
     elizaCloudLoginError,
@@ -79,6 +111,14 @@ export function CloudAccountSection(): React.JSX.Element {
 }
 
 export function CloudBillingSection(): React.JSX.Element {
+  return (
+    <HostedCloudSectionRedirect to="/cloud/billing">
+      <CloudBillingSectionBody />
+    </HostedCloudSectionRedirect>
+  );
+}
+
+function CloudBillingSectionBody(): React.JSX.Element {
   const {
     elizaCloudLoginBusy,
     elizaCloudLoginError,

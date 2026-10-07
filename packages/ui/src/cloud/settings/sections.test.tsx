@@ -12,6 +12,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const appState = vi.hoisted(() => ({
@@ -56,6 +57,11 @@ vi.mock("./CloudSettingsSectionShell", () => ({
 
 import { CloudAccountSection } from "./sections";
 
+function StandaloneAccountDestination(): React.JSX.Element {
+  const location = useLocation();
+  return <div>{`Standalone account${location.search}`}</div>;
+}
+
 describe("CloudAccountSection", () => {
   afterEach(() => {
     cleanup();
@@ -63,6 +69,36 @@ describe("CloudAccountSection", () => {
     appState.handleInteractiveCloudLogin.mockResolvedValue(undefined);
     appState.setActionNotice.mockReset();
     claimCloudLoginWindow.mockReset();
+  });
+
+  it("leaves the hosted agent shell for the standalone account route", async () => {
+    render(
+      <MemoryRouter initialEntries={["/settings?from=launcher"]}>
+        <Routes>
+          <Route
+            path="/settings"
+            element={
+              <>
+                <div>Message Eliza</div>
+                <CloudAccountSection />
+              </>
+            }
+          />
+          <Route
+            path="/cloud/account"
+            element={<StandaloneAccountDestination />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("Standalone account?from=launcher"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Message Eliza")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Sign in through adapter" }),
+    ).toBeNull();
   });
 
   it("uses the app-owned interactive Cloud login flow", () => {
