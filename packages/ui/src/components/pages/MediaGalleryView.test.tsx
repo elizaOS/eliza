@@ -24,7 +24,7 @@ const appMock = vi.hoisted(() => ({
 }));
 const clientMock = vi.hoisted(() => ({
   getDatabaseTables: vi.fn(),
-  executeDatabaseQuery: vi.fn(),
+  getDatabaseRows: vi.fn(),
 }));
 const transferMock = vi.hoisted(() => ({
   canShareFiles: vi.fn(),
@@ -56,16 +56,131 @@ beforeEach(() => {
   clientMock.getDatabaseTables.mockResolvedValue({
     tables: [{ name: "memories" }],
   });
-  clientMock.executeDatabaseQuery.mockResolvedValue({
+  clientMock.getDatabaseRows.mockResolvedValue({
+    table: "memories",
     rows: [
       { content: "https://example.test/photo.png", createdAt: "2026-07-17" },
     ],
+    columns: ["content", "createdAt"],
+    total: 1,
+    offset: 0,
+    limit: 500,
   });
 });
 
 afterEach(cleanup);
 
 describe("MediaGalleryView", () => {
+  it("includes media from candidate tables after the first batch", async () => {
+    clientMock.getDatabaseTables.mockResolvedValue({
+      tables: Array.from({ length: 11 }, (_, index) => ({
+        name: `media_${index}`,
+      })),
+    });
+    clientMock.getDatabaseRows.mockImplementation(async (tableName: string) => {
+      return {
+        table: tableName,
+        rows: [
+          {
+            content: `https://example.test/${tableName}.png`,
+            createdAt: "2026-10-06",
+          },
+        ],
+        columns: ["content", "createdAt"],
+        total: 1,
+        offset: 0,
+        limit: 500,
+      };
+    });
+
+    render(<MediaGalleryView />);
+
+    expect(await screen.findByText("media_10.png")).toBeTruthy();
+    expect(screen.getByText("11 items")).toBeTruthy();
+  });
+
+  it("includes media stored after the first 500 rows", async () => {
+    clientMock.getDatabaseTables.mockResolvedValue({
+      tables: [
+        {
+          name: "memories",
+          columns: [{ name: "id", isPrimaryKey: true }],
+        },
+      ],
+    });
+    clientMock.getDatabaseRows
+      .mockResolvedValueOnce({
+        table: "memories",
+        rows: Array.from({ length: 500 }, (_, index) => ({
+          content: `plain text ${index}`,
+        })),
+        columns: ["content"],
+        total: 501,
+        offset: 0,
+        limit: 500,
+      })
+      .mockResolvedValueOnce({
+        table: "memories",
+        rows: [
+          {
+            content: "https://example.test/after-first-page.png",
+            createdAt: "2026-10-06",
+          },
+        ],
+        columns: ["content", "createdAt"],
+        total: 501,
+        offset: 500,
+        limit: 500,
+      });
+
+    render(<MediaGalleryView />);
+
+    await screen.findByRole("heading", { name: "after-first-page.png" });
+    expect(clientMock.getDatabaseRows).toHaveBeenNthCalledWith(1, "memories", {
+      offset: 0,
+      limit: 500,
+      sort: "id",
+      order: "asc",
+    });
+    expect(clientMock.getDatabaseRows).toHaveBeenNthCalledWith(2, "memories", {
+      offset: 500,
+      limit: 500,
+      sort: "id",
+      order: "asc",
+    });
+  });
+
+  it("keeps media from readable tables when another table scan fails", async () => {
+    clientMock.getDatabaseTables.mockResolvedValue({
+      tables: [{ name: "memories" }, { name: "attachments" }],
+    });
+    clientMock.getDatabaseRows.mockImplementation(async (tableName: string) => {
+      if (tableName === "attachments") {
+        throw new Error("attachments unavailable");
+      }
+      return {
+        table: tableName,
+        rows: [
+          {
+            content: "https://example.test/kept.png",
+            createdAt: "2026-10-06",
+          },
+        ],
+        columns: ["content", "createdAt"],
+        total: 1,
+        offset: 0,
+        limit: 500,
+      };
+    });
+
+    render(<MediaGalleryView />);
+
+    expect(
+      await screen.findByRole("heading", { name: "kept.png" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("announces a download failure and clears it on a successful retry", async () => {
     transferMock.downloadAttachment
       .mockRejectedValueOnce(new Error("Transport unavailable"))
