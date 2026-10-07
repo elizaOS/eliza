@@ -9,8 +9,10 @@ import {
   ChannelType,
   type Memory,
   ModelType,
+  projectDeferredProviders,
   type UUID,
 } from "@elizaos/core";
+import { renderContextObject } from "@elizaos/core/protocol";
 import { expect, test, vi } from "vitest";
 import { viewsAction } from "../../../packages/agent/src/actions/views.ts";
 import { handleApprovalRoute } from "../../../packages/agent/src/api/approval-routes.ts";
@@ -48,6 +50,11 @@ import {
   withDeviceActionTurn,
 } from "../src/services/device-actions/service.ts";
 import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
+import {
+  projectDiscoverableContext,
+  readContextRequests,
+} from "../src/services/message/context-discovery.ts";
+import { stage1ResponseStateProviderNames } from "../src/services/message/provider-state.ts";
 import { runV5MessageRuntimeStage1 } from "../src/services/message.ts";
 
 // Real HTTP, session authentication, registered proposal tool, SQL migrations,
@@ -1663,30 +1670,159 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       const ownedPlanner = await withDeviceActionTurn(
         runtimeState.runtime,
         { ...credentials, capabilities: [ownedCapability, capability] },
-        () =>
-          createV5MessageContextObject({
-            runtime: runtimeState.runtime,
-            message: {
-              ...memory,
-              content: {
-                text: "What alarms do I have?",
-                metadata: { clientDevice: { context: fullSnapshot } },
+        async () => {
+          const message = {
+            ...memory,
+            content: {
+              text: "Remind me to stretch",
+              metadata: {
+                uiTab: "other metadata retained",
+                clientDevice: { installationId: device, context: fullSnapshot },
               },
             },
-            state: { values: {}, data: {}, text: "" },
+          };
+          const originalMessage = JSON.stringify(message);
+          expect(
+            stage1ResponseStateProviderNames(runtimeState.runtime, message, [
+              "OWNER",
+            ]),
+          ).toContain("CurrentElizaOwnedAlarmSnapshot");
+          const state = await runtimeState.runtime.composeState(
+            message,
+            ["CurrentElizaOwnedAlarmSnapshot"],
+            true,
+            true,
+          );
+          expect(
+            runtimeState.runtime.providers.some(
+              (provider) => provider.name === "CurrentElizaOwnedAlarmSnapshot",
+            ),
+          ).toBe(true);
+          const context = await createV5MessageContextObject({
+            runtime: runtimeState.runtime,
+            message,
+            state,
             selectedContexts: ["general"],
             includeTools: true,
             userRoles: ["OWNER"],
             preselectedActions: [proposeDeviceAction],
-          }),
+          });
+          const name = "CurrentElizaOwnedAlarmSnapshot";
+          const source = context.events.find(
+            (event) => event.type === "provider" && event.name === name,
+          );
+          expect(source?.type).toBe("provider");
+          const sourceText =
+            source?.type === "provider" ? (source.text ?? "") : "";
+          const selectedSnapshot = fullSnapshot;
+          expect(
+            JSON.parse(sourceText.split("CurrentElizaOwnedAlarmSnapshot: ")[1]),
+          ).toEqual(selectedSnapshot);
+          expect(sourceText).toContain("Exact label 20");
+          const routing = projectDiscoverableContext(context, state);
+          const requested = readContextRequests(
+            { contextRequests: [name] },
+            routing.available,
+          );
+          expect(requested).toEqual([name]);
+          const phaseContexts = [routing.context];
+          for (const providerPhase of ["planning", "completion"] as const) {
+            const phaseContext = await createV5MessageContextObject({
+              runtime: runtimeState.runtime,
+              message,
+              state,
+              selectedContexts: ["general"],
+              includeTools: false,
+              providerPhase,
+              userRoles: ["OWNER"],
+            });
+            phaseContexts.push(
+              projectDeferredProviders({
+                ...phaseContext,
+                metadata: {
+                  ...phaseContext.metadata,
+                  providerDiscoveryEnabled: true,
+                  loadedContextProviders: [],
+                },
+              }).context,
+            );
+          }
+          for (const projected of phaseContexts) {
+            const text = renderContextObject(projected)
+              .promptSegments.map((segment) => segment.content)
+              .join("\n");
+            expect(text).toContain("Full current Eliza alarm records");
+            expect(text).not.toContain("Exact label 0");
+            expect(text).not.toContain("Exact label 20");
+            expect(text).not.toContain("Update replaces all schedule fields");
+          }
+          const restored = projectDiscoverableContext(
+            context,
+            state,
+            new Set(requested),
+          ).context;
+          expect(
+            restored.events.find(
+              (event) => event.type === "provider" && event.name === name,
+            ),
+          ).toEqual(source);
+          const restoredPlanning = projectDeferredProviders({
+            ...context,
+            metadata: {
+              ...context.metadata,
+              providerDiscoveryEnabled: true,
+              loadedContextProviders: requested,
+            },
+          }).context;
+          expect(
+            restoredPlanning.events.find(
+              (event) => event.type === "provider" && event.name === name,
+            ),
+          ).toEqual(source);
+          const withoutCapability = await withDeviceActionTurn(
+            runtimeState.runtime,
+            { ...credentials, capabilities: [capability] },
+            async () =>
+              runtimeState.runtime.composeState(message, [name], true, true),
+          );
+          expect(withoutCapability.data.providers?.[name]?.text ?? "").toBe("");
+          expect(JSON.stringify(message)).toBe(originalMessage);
+          const projectedMessage = context.events.find(
+            (event) =>
+              event.type === "message" && event.message.id === message.id,
+          );
+          expect(
+            projectedMessage?.type === "message" &&
+              projectedMessage.message.content,
+          ).toEqual({
+            ...message.content,
+            metadata: {
+              ...message.content.metadata,
+              clientDevice: {
+                ...message.content.metadata.clientDevice,
+                context: { providerReference: name },
+              },
+            },
+          });
+          expect(
+            renderContextObject(restored)
+              .promptSegments.map((segment) => segment.content)
+              .join("\n"),
+          ).toContain(JSON.stringify(fullSnapshot));
+          const fallback = await createV5MessageContextObject({
+            runtime: runtimeState.runtime,
+            message,
+            state: { values: {}, data: {}, text: "" },
+            userRoles: ["OWNER"],
+          });
+          expect(
+            renderContextObject(fallback)
+              .promptSegments.map((segment) => segment.content)
+              .join("\n"),
+          ).toContain("Exact label 20");
+          return context;
+        },
       );
-      const ownedSnapshotEvent = ownedPlanner.events.find(
-        (event) => event.id === "current-eliza-owned-alarm-snapshot",
-      );
-      const { view: _view, ...selectedSnapshot } = fullSnapshot;
-      expect(
-        ownedSnapshotEvent?.type === "provider" && ownedSnapshotEvent.data,
-      ).toEqual(selectedSnapshot);
       const ownedTool = ownedPlanner.events.find(
         (event) =>
           event.type === "tool" && event.tool.name === "PROPOSE_DEVICE_ACTION",
