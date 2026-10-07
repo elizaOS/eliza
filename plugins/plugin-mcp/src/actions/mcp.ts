@@ -406,6 +406,7 @@ async function handleReadResource(
         reasoning: parsedSelection?.reasoning,
         resourceMeta,
         contentLength: resourceContent?.length ?? 0,
+        output: resourceContent,
       },
       success: true,
     };
