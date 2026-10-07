@@ -233,9 +233,9 @@ describe("McpService paginated discovery", () => {
 
     it("rejects an endless cursor stream without blocking service initialization", async () => {
       const { runtime, service } = await start("endless", list);
-      const [server] = service.getServers();
-      expect(server.status).toBe("disconnected");
-      expect(server.tools).toBeUndefined();
+      const server = service.getServers().find((entry) => entry.name === "pages");
+      expect(server?.status).toBe("disconnected");
+      expect(server?.tools).toBeUndefined();
       expect(service.getServers().find((entry) => entry.name === "healthy")).toMatchObject({
         status: "connected",
         tools: [expect.objectContaining({ name: "tool-0" })],

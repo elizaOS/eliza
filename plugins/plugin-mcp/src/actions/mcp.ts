@@ -405,6 +405,7 @@ async function handleReadResource(
         uri,
         reasoning: parsedSelection?.reasoning,
         resourceMeta,
+        output: resourceContent,
         contentLength: resourceContent?.length ?? 0,
       },
       success: true,
