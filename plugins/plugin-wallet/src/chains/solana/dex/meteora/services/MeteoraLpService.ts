@@ -11,6 +11,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import {
   type IAgentRuntime,
+  logger,
   type LpPositionDetails,
   type PoolInfo,
   Service,
@@ -282,10 +283,19 @@ export class MeteoraLpService extends Service {
           ];
         }
       } catch (error) {
-        console.error(
-          "[MeteoraLpService] Withdrawal confirmed but token balance read failed:",
-          error
-        );
+        // Diagnostics cannot turn a confirmed withdrawal into a failed receipt.
+        try {
+          logger.error(
+            { error, poolId: params.poolId, transactionId: lastSignature },
+            "Meteora withdrawal confirmed but token balance read failed"
+          );
+          this.runtime?.reportError("meteora.withdrawal.balance", error, {
+            poolId: params.poolId,
+            transactionId: lastSignature,
+          });
+        } catch {
+          // error-policy:J7 retain the confirmed signature if diagnostics fail.
+        }
       }
 
       return {
@@ -294,7 +304,8 @@ export class MeteoraLpService extends Service {
         ...(tokensReceived ? { tokensReceived } : {}),
       };
     } catch (error) {
-      console.error("[MeteoraLpService] Error removing liquidity:", error);
+      logger.error({ error, poolId: params.poolId }, "Meteora withdrawal failed");
+      this.runtime?.reportError("meteora.withdrawal", error, { poolId: params.poolId });
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),

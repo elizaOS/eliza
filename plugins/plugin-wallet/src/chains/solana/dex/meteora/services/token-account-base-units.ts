@@ -4,12 +4,21 @@
  * `info.tokenAmount.amount`. `info.uiAmount` is not a field on that object.
  */
 
-export function parsedTokenAccountBaseUnits(info: unknown): bigint | null {
-  if (typeof info !== "object" || info === null) return null;
+import { ElizaError } from "@elizaos/core";
+
+function invalidTokenAccount(): ElizaError {
+  return new ElizaError("Meteora token account has no valid integer base-unit balance", {
+    code: "METEORA_TOKEN_ACCOUNT_INVALID",
+    severity: "ephemeral",
+  });
+}
+
+export function parsedTokenAccountBaseUnits(info: unknown): bigint {
+  if (typeof info !== "object" || info === null) throw invalidTokenAccount();
   const tokenAmount = (info as { tokenAmount?: unknown }).tokenAmount;
-  if (typeof tokenAmount !== "object" || tokenAmount === null) return null;
+  if (typeof tokenAmount !== "object" || tokenAmount === null) throw invalidTokenAccount();
   const amount = (tokenAmount as { amount?: unknown }).amount;
-  if (typeof amount !== "string" || !/^[0-9]+$/.test(amount)) return null;
+  if (typeof amount !== "string" || !/^[0-9]+$/.test(amount)) throw invalidTokenAccount();
   return BigInt(amount);
 }
 
@@ -20,8 +29,8 @@ export function sumParsedTokenAccountBaseUnits(
 ): bigint {
   let total = 0n;
   for (const account of accounts) {
-    const units = parsedTokenAccountBaseUnits(account.account?.data?.parsed?.info);
-    if (units !== null) total += units;
+    const units = parsedTokenAccountBaseUnits(account?.account?.data?.parsed?.info);
+    total += units;
   }
   return total;
 }

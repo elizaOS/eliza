@@ -39,6 +39,14 @@ describe("parsedTokenAccountBaseUnits", () => {
     );
   });
 
+  it("rejects malformed nonempty account data rather than reporting a partial balance", () => {
+    for (const malformed of [{}, parsedAccount("not-an-integer"), parsedAccount("-1")]) {
+      expect(() => sumParsedTokenAccountBaseUnits([parsedAccount("1000"), malformed])).toThrow(
+        expect.objectContaining({ code: "METEORA_TOKEN_ACCOUNT_INVALID" })
+      );
+    }
+  });
+
   it("returns zero when the account list is empty", () => {
     expect(sumParsedTokenAccountBaseUnits([])).toBe(0n);
   });
