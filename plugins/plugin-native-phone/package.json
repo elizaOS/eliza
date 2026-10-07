@@ -53,7 +53,7 @@
     "build:unlocked": "bun run build:js && bun run build:views && bun run build:types"
   },
   "dependencies": {
-    "@capacitor/barcode-scanner": "^3.0.0",
+    "@capacitor/barcode-scanner": "^3.1.2",
     "@capacitor/core": "8.4.0",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/preferences": "^8.0.1",
