@@ -845,6 +845,38 @@ function parseSolanaTransferLamports(amount: string | undefined): number {
   return lamports.toNumber();
 }
 
+const SOLANA_TOKEN_BASE_UNIT_MAX = new BigNumber("18446744073709551615");
+
+function parseSolanaTokenBaseUnits(
+  amount: string | undefined,
+  decimals: number,
+): bigint {
+  let baseUnits: InstanceType<typeof BigNumber>;
+  try {
+    baseUnits = new BigNumber(amount ?? "0").multipliedBy(
+      new BigNumber(10).pow(decimals),
+    );
+  } catch (cause) {
+    // error-policy:J2 Preserve malformed decimal input as a typed validation failure.
+    throw new ElizaError(
+      "SPL token transfer amount is not a valid decimal value.",
+      { code: "SOLANA_TOKEN_TRANSFER_AMOUNT_INVALID", cause },
+    );
+  }
+  if (
+    !baseUnits.isFinite() ||
+    baseUnits.lte(0) ||
+    !baseUnits.isInteger() ||
+    baseUnits.gt(SOLANA_TOKEN_BASE_UNIT_MAX)
+  ) {
+    throw new ElizaError(
+      "SPL token transfer amount must be a positive finite value exactly representable as an integer number of base units.",
+      { code: "SOLANA_TOKEN_TRANSFER_AMOUNT_INVALID" },
+    );
+  }
+  return BigInt(baseUnits.toFixed(0));
+}
+
 async function executeSolanaTransfer(
   params: WalletRouterParams,
   context: WalletRouterContext,
@@ -853,13 +885,24 @@ async function executeSolanaTransfer(
     throw new Error("recipient is required for Solana transfer.");
   }
   const tokenMint = resolveSolanaMint(params.fromToken);
-  const lamports =
-    tokenMint === SOL_MINT ? parseSolanaTransferLamports(params.amount) : null;
+  let lamports: number | null = null;
+  let tokenBaseUnits: bigint | null = null;
+  let connection: Connection | null = null;
+  if (tokenMint === SOL_MINT) {
+    // Reject an inexact lamport amount before a signer or RPC lookup.
+    lamports = parseSolanaTransferLamports(params.amount);
+  } else {
+    connection = getSolanaConnection(context.runtime);
+    tokenBaseUnits = parseSolanaTokenBaseUnits(
+      params.amount,
+      await getSolanaTokenDecimals(connection, tokenMint),
+    );
+  }
   const { keypair: senderKeypair } = await getWalletKey(context.runtime, true);
   if (!senderKeypair) {
     throw new Error("Solana keypair is not available.");
   }
-  const connection = getSolanaConnection(context.runtime);
+  connection ??= getSolanaConnection(context.runtime);
   const recipientPubkey = new PublicKey(params.recipient);
   const instructions: TransactionInstruction[] = [];
 
@@ -871,15 +914,9 @@ async function executeSolanaTransfer(
         lamports,
       }),
     );
-  } else {
+  } else if (tokenBaseUnits !== null) {
     const mintPubkey = new PublicKey(tokenMint);
-    const decimals = await getSolanaTokenDecimals(connection, tokenMint);
-    const adjustedAmount = BigInt(
-      new BigNumber(params.amount ?? "0")
-        .multipliedBy(new BigNumber(10).pow(decimals))
-        .integerValue()
-        .toFixed(0),
-    );
+    const adjustedAmount = tokenBaseUnits;
     const senderAta = getAssociatedTokenAddressSync(
       mintPubkey,
       senderKeypair.publicKey,
