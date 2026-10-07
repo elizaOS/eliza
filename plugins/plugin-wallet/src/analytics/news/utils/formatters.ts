@@ -6,17 +6,28 @@
  * Format a number as currency (USD)
  */
 export function formatCurrency(value: number, decimals: number = 2): string {
-  if (value >= 1e12) {
-    return `$${(value / 1e12).toFixed(decimals)}T`;
-  } else if (value >= 1e9) {
-    return `$${(value / 1e9).toFixed(decimals)}B`;
-  } else if (value >= 1e6) {
-    return `$${(value / 1e6).toFixed(decimals)}M`;
-  } else if (value >= 1e3) {
-    return `$${(value / 1e3).toFixed(decimals)}K`;
-  } else {
-    return `$${value.toFixed(decimals)}`;
+  // Scale on the magnitude so negative figures (price/market-cap changes) get
+  // the same suffix as positive ones, and promote to the next suffix when
+  // rounding reaches 1000 (999_999 → "$1.00M", not "$1000.00K").
+  const sign = value < 0 ? "-" : "";
+  const magnitude = Math.abs(value);
+  const units = [
+    { size: 1e12, suffix: "T" },
+    { size: 1e9, suffix: "B" },
+    { size: 1e6, suffix: "M" },
+    { size: 1e3, suffix: "K" },
+    { size: 1, suffix: "" },
+  ];
+  for (const [index, unit] of units.entries()) {
+    if (magnitude < unit.size && unit.size !== 1) continue;
+    const larger = units[index - 1];
+    const rounded = (magnitude / unit.size).toFixed(decimals);
+    if (larger && Number(rounded) >= 1000) {
+      return `${sign}$${(magnitude / larger.size).toFixed(decimals)}${larger.suffix}`;
+    }
+    return `${sign}$${rounded}${unit.suffix}`;
   }
+  return `${sign}$${magnitude.toFixed(decimals)}`;
 }
 
 /**
