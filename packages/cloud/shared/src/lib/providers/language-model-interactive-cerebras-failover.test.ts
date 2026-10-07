@@ -7,6 +7,17 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const ORIGINAL_FETCH = globalThis.fetch;
+const ENV_KEYS = [
+  "BITROUTER_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "GROQ_API_KEY",
+  "CEREBRAS_API_KEY",
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_BASE_URL",
+] as const;
+const originalEnvironment = new Map(ENV_KEYS.map((key) => [key, process.env[key]]));
+const actualLogger = await import("../utils/logger");
 
 delete process.env.BITROUTER_API_KEY;
 delete process.env.ANTHROPIC_API_KEY;
@@ -107,6 +118,11 @@ afterEach(() => {
 
 afterAll(() => {
   mock.module("../models", () => actualModels);
+  mock.module("../utils/logger", () => actualLogger);
+  for (const [key, value] of originalEnvironment) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 });
 
 describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
