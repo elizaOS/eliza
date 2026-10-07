@@ -38,7 +38,11 @@ it("returns every tied row once and ignores another schema's primary key", async
     const handler = databaseAction.handler;
     if (!handler) throw new Error("DATABASE handler is missing");
 
-    async function page(offset: number, sortBy?: string): Promise<number[]> {
+    async function page(
+      offset: number,
+      sortBy?: string,
+      tableName = "action_paging_ties",
+    ): Promise<number[]> {
       const result = await handler(
         runtime,
         {} as never,
@@ -46,7 +50,7 @@ it("returns every tied row once and ignores another schema's primary key", async
         {
           parameters: {
             action: "get_table",
-            tableName: "action_paging_ties",
+            tableName,
             limit: 8,
             offset,
             ...(sortBy ? { sortBy, sortDir: "asc" } : {}),
@@ -61,7 +65,7 @@ it("returns every tied row once and ignores another schema's primary key", async
       return (rows ?? []).map((row) => Number(row.id));
     }
 
-    for (const sortBy of ["kind", undefined] as const) {
+    for (const sortBy of ["kind", "item_key", undefined] as const) {
       const seen: number[] = [];
       for (let offset = 0; offset < 40; offset += 8) {
         if (offset === 8) {
@@ -76,6 +80,42 @@ it("returns every tied row once and ignores another schema's primary key", async
       expect(seen).toHaveLength(40);
       expect(new Set(seen).size).toBe(40);
     }
+
+    await db.execute(
+      sql.raw("CREATE TABLE action_paging_nokey (id integer, kind integer)"),
+    );
+    await db.execute(
+      sql.raw(
+        "INSERT INTO action_paging_nokey SELECT n, 1 FROM generate_series(1, 16) AS n",
+      ),
+    );
+    const keyless = [
+      ...(await page(0, "kind", "action_paging_nokey")),
+      ...(await page(8, "kind", "action_paging_nokey")),
+    ];
+    expect(keyless).toHaveLength(16);
+    expect(new Set(keyless).size).toBe(16);
+
+    await db.execute(sql.raw("CREATE SCHEMA hidden_ns"));
+    await db.execute(
+      sql.raw("CREATE TABLE hidden_ns.only_here (id integer PRIMARY KEY)"),
+    );
+    const hidden = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      {
+        parameters: {
+          action: "get_table",
+          tableName: "only_here",
+          limit: 8,
+          offset: 0,
+        },
+      },
+      undefined,
+    );
+    expect(hidden.success).toBe(false);
+    expect(hidden.text).toBe('Table "only_here" not found.');
   } finally {
     await cleanup();
   }
