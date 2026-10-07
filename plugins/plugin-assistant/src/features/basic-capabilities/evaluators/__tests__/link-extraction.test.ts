@@ -236,6 +236,32 @@ describe("linkExtractionEvaluator", () => {
     expect(prepared?.links[0]?.url).toBe("https://a.example.com/page");
   });
 
+  it("keeps a parenthesis that closes an opener and still strips a wrapper", async () => {
+    stubPreviewFetch(
+      makeFetchResponse("<html><title>doc</title><body>x</body></html>"),
+    );
+    const runtime = makeRuntime(async () => "ok summary");
+    const message = makeMessage(
+      [
+        "see https://en.wikipedia.org/wiki/Mercury_(planet).",
+        "query https://example.com/?q=a)b_(c)",
+        "wrapped (https://example.com/docs).",
+        "**[docs](https://example.com/guide)**",
+      ].join(" "),
+    );
+    const context = {
+      ...makeContext(runtime, message),
+      state: { values: {}, data: {}, text: "" } as State,
+    };
+    const prepared = await linkExtractionEvaluator.prepare?.(context);
+    expect(prepared?.links.map((link) => link.url)).toEqual([
+      "https://en.wikipedia.org/wiki/Mercury_(planet)",
+      "https://example.com/?q=a)b_(c)",
+      "https://example.com/docs",
+      "https://example.com/guide",
+    ]);
+  });
+
   it("prepare persists the URL even when fetch fails (no title/summary)", async () => {
     stubPreviewFetchFailure(new Error("network down"));
 

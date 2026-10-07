@@ -80,6 +80,7 @@ import type {
   WalletRouterParams,
 } from "../../types/wallet-router.js";
 import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from "./constants";
+import { parseSolanaTokenBaseUnits, SOLANA_SWAP_AMOUNT_INVALID } from "./exact-base-units";
 import { fetchJupiterJson, resolveJupiterApiBaseUrl } from "./jupiter-api";
 import { getWalletKey } from "./keypairUtils";
 import type {
@@ -636,24 +637,26 @@ export class SolanaService extends Service {
     const tokenAddress = this.normalizeSolanaTokenAddress(params.tokenAddress ?? params.fromToken);
     const amount = this.normalizePositiveAmount(params.amount);
     const recipientPubkey = new PublicKey(params.recipient);
-    const senderKeypair = await this.getWalletKeypair();
     const dryRun = params.dryRun === true || params.mode === "prepare";
     const isSolTransfer = tokenAddress === null;
+    const mintPubkey = isSolTransfer ? null : new PublicKey(tokenAddress);
+    const atomicAmount = this.toAtomicAmount(
+      amount,
+      mintPubkey === null ? 9 : await this.getTokenDecimalsForTransfer(mintPubkey)
+    );
+    const senderKeypair = await this.getWalletKeypair();
 
     const instructions: TransactionInstruction[] = [];
 
-    if (isSolTransfer) {
+    if (mintPubkey === null) {
       instructions.push(
         SystemProgram.transfer({
           fromPubkey: senderKeypair.publicKey,
           toPubkey: recipientPubkey,
-          lamports: this.toAtomicAmount(amount, 9),
+          lamports: atomicAmount,
         })
       );
     } else {
-      const mintPubkey = new PublicKey(tokenAddress);
-      const decimals = await this.getTokenDecimalsForTransfer(mintPubkey);
-      const adjustedAmount = this.toAtomicAmount(amount, decimals);
       const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderKeypair.publicKey);
       const recipientATA = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
 
@@ -670,7 +673,7 @@ export class SolanaService extends Service {
       }
 
       instructions.push(
-        createTransferInstruction(senderATA, recipientATA, senderKeypair.publicKey, adjustedAmount)
+        createTransferInstruction(senderATA, recipientATA, senderKeypair.publicKey, atomicAmount)
       );
     }
 
@@ -836,13 +839,10 @@ export class SolanaService extends Service {
   }
 
   private toAtomicAmount(amount: BigNumber, decimals: number): bigint {
-    const atomic = amount
-      .multipliedBy(new BigNumber(10).pow(decimals))
-      .integerValue(BigNumber.ROUND_FLOOR);
-    if (!atomic.isFinite() || atomic.lte(0)) {
-      throw new Error(`Invalid atomic Solana amount: ${amount.toString()}`);
-    }
-    return BigInt(atomic.toFixed(0));
+    return parseSolanaTokenBaseUnits(amount.toString(), decimals, {
+      code: "SOLANA_SERVICE_TRANSFER_AMOUNT_INVALID",
+      subject: "Solana transfer amount",
+    });
   }
 
   private async getTokenDecimalsForTransfer(mintPubkey: PublicKey): Promise<number> {
@@ -879,7 +879,11 @@ export class SolanaService extends Service {
       );
     }
 
-    const adjustedAmount = params.amount.multipliedBy(new BigNumber(10).pow(decimals));
+    const adjustedAmount = parseSolanaTokenBaseUnits(
+      params.amount.toFixed(),
+      decimals.toNumber(),
+      SOLANA_SWAP_AMOUNT_INVALID
+    ).toString();
     const slippageQuery =
       params.slippageBps !== undefined
         ? `slippageBps=${encodeURIComponent(String(params.slippageBps))}`
@@ -888,7 +892,7 @@ export class SolanaService extends Service {
     const quoteUrl = `${jupiterApiBaseUrl}/quote?inputMint=${encodeURIComponent(
       params.inputTokenCA
     )}&outputMint=${encodeURIComponent(params.outputTokenCA)}&amount=${encodeURIComponent(
-      adjustedAmount.toFixed(0)
+      adjustedAmount
     )}&${slippageQuery}&maxAccounts=64`;
 
     const fetchFn = this.runtime.fetch || globalThis.fetch;

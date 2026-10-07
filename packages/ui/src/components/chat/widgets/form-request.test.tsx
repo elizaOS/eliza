@@ -150,3 +150,45 @@ describe("FormRequest prototype-polluting field names (#14489)", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
   });
 });
+
+describe("FormRequest required checkbox", () => {
+  const form: FormRequestSpec = {
+    id: "consent",
+    submitLabel: "Send",
+    fields: [
+      { name: "agree", type: "checkbox", label: "I agree", required: true },
+      { name: "note", type: "text", label: "Note" },
+    ],
+  };
+
+  it("blocks submit until a required checkbox is checked", () => {
+    const onSubmit = vi.fn();
+    render(<FormRequest form={form} onSubmit={onSubmit} />);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText("I agree is required")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "I agree" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSubmit).toHaveBeenCalledWith("consent", {
+      agree: true,
+      note: "",
+    });
+  });
+
+  it("still submits an optional checkbox unchecked", () => {
+    const onSubmit = vi.fn();
+    render(
+      <FormRequest
+        form={{
+          id: "opt",
+          submitLabel: "Send",
+          fields: [{ name: "extra", type: "checkbox", label: "Extra" }],
+        }}
+        onSubmit={onSubmit}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSubmit).toHaveBeenCalledWith("opt", { extra: false });
+  });
+});

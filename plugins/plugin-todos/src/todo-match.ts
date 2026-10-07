@@ -39,7 +39,12 @@ export function normalizeTodoContent(content: string): string {
 function stem(token: string): string {
   if (token.length > 5 && token.endsWith("ing")) return token.slice(0, -3);
   if (token.length > 4 && token.endsWith("ed")) return token.slice(0, -2);
-  if (token.length > 4 && token.endsWith("es")) return token.slice(0, -2);
+  // "es" is the plural only after a sibilant or "o" (boxes, dishes, watches,
+  // heroes). Stripping it from every longer word turned "notes" into "not"
+  // and "files" into "fil", so a chat command resolved a different todo.
+  if (token.length > 4 && /(?:[sxz]|ch|sh|o)es$/u.test(token)) {
+    return token.slice(0, -2);
+  }
   if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) {
     return token.slice(0, -1);
   }

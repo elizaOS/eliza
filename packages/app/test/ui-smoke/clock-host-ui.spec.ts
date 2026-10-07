@@ -6,7 +6,14 @@ import type {
   ClockAlarmOperation,
   ClockAlarmRecord,
 } from "@elizaos/plugin-assistant/device-clock-review";
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import {
+  test as base,
+  expect,
+  type Locator,
+  type Page,
+} from "@playwright/test";
+import { createServer } from "vite";
+
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import type {
   ClockAlarmStatus,
@@ -24,6 +31,32 @@ const repoRoot = path.resolve(
   "../../../..",
 );
 const bridgeUrl = `/@fs${path.join(repoRoot, "packages/ui/src/bridge/clock-host.ts")}`;
+// This controlled-host contract imports the production bridge source. Serve the
+// whole renderer from the same Vite graph so that import and ClockView share
+// one registry; a dist server cannot serve /@fs or share its bundled singleton.
+const test = base.extend<object, { clockRendererUrl: string }>({
+  clockRendererUrl: [
+    async ({ browserName: _browserName }, use) => {
+      const server = await createServer({
+        root: path.join(repoRoot, "packages/app"),
+        configFile: path.join(repoRoot, "packages/app/vite.config.ts"),
+        server: { host: "127.0.0.1", port: 0, strictPort: false, open: false },
+      });
+      try {
+        await server.listen();
+        const url = server.resolvedUrls?.local[0];
+        if (!url) throw new Error("Clock renderer fixture did not bind a URL");
+        await use(url);
+      } finally {
+        await server.close();
+      }
+    },
+    { scope: "worker" },
+  ],
+  baseURL: async ({ clockRendererUrl }, use) => {
+    await use(clockRendererUrl);
+  },
+});
 test.use({ timezoneId: "America/Los_Angeles" });
 type Scenario =
   | "owned"
@@ -136,7 +169,7 @@ async function openControlledClock(page: Page, scenario: Scenario) {
   });
   await openAppPath(page, "/clock");
   await expect(
-    page.getByRole("heading", { name: "Android alarm", exact: true }),
+    page.getByRole("heading", { name: "Alarms", exact: true }),
   ).toBeVisible();
   // Load the same real bridge module used by ClockView. The controlled host is
   // configured solely from this browser test, without a production test hook.
@@ -565,7 +598,7 @@ test("pending UNKNOWN receipt remains reconcilable after proposal refresh reject
   const actual = await diagnostics(page);
   expect(actual.reviewCalls.map((call) => call.state)).toEqual([
     "pending",
-    "done",
+    "reconciliation_required",
   ]);
   expect(actual.reviewCalls.map((call) => call.id)).toEqual([
     "controlled-owned-clock",
@@ -630,7 +663,7 @@ test("saved UNKNOWN receipt waits for verified owner after status read rejection
   const actual = await diagnostics(page);
   expect(actual.reviewCalls.map((call) => call.state)).toEqual([
     "pending",
-    "done",
+    "reconciliation_required",
   ]);
   expect(actual.dispatchCount).toBe(1);
   expect(effects).toEqual([]);
@@ -676,11 +709,11 @@ test("validated unavailable Clock owner clears saved receipt and outcome before 
     ).__clockHostUiBoundary.changeOwner();
   });
   await expect(
-    page.getByText(
-      "No pending Clock requests. Send your request in chat to create one.",
-      { exact: true },
-    ),
+    page.getByRole("heading", { name: "Alarms", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Clock proposals", exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByText(pendingOutcome, { exact: true })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Check saved receipt", exact: true }),
@@ -740,7 +773,7 @@ test("failed saved receipt reconciliation remains reachable through owned refres
   expect(actual.reviewCalls.map((call) => call.state)).toEqual([
     "pending",
     "reconciliation_required",
-    "done",
+    "reconciliation_required",
   ]);
   expect(actual.dispatchCount).toBe(1);
   expect(effects).toEqual([]);
@@ -869,9 +902,13 @@ test("Clock unmount aborts an active controlled native review", async ({
     }),
   ).toBeDisabled();
   await capture(page, "unmount-review-waiting");
-  await page
-    .getByRole("button", { name: "Manage reminders", exact: true })
-    .click();
+  await page.evaluate(
+    async (url) => {
+      const { navigateBrowserPath } = await import(url);
+      navigateBrowserPath("/automations");
+    },
+    `/@fs${path.join(repoRoot, "packages/ui/src/app-navigate-view.ts")}`,
+  );
   await expect(page).toHaveURL(/\/automations/);
   await expect.poll(async () => (await diagnostics(page)).aborted).toBe(1);
   expect((await diagnostics(page)).dispatchCount).toBe(0);
@@ -908,11 +945,11 @@ test("Clock owner scope change aborts an active controlled native review", async
     }),
   ).toHaveCount(0);
   await expect(
-    page.getByText(
-      "No pending Clock requests. Send your request in chat to create one.",
-      { exact: true },
-    ),
+    page.getByRole("heading", { name: "Alarms", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Clock proposals", exact: true }),
+  ).toHaveCount(0);
   expect((await diagnostics(page)).dispatchCount).toBe(0);
   expect(effects).toEqual([]);
   await capture(page, "owner-change-review-cancelled");

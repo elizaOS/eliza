@@ -140,7 +140,10 @@ export class AgentStateCache {
             source: undefined,
           };
         })(),
-        createdAt: msg.createdAt || Date.now(),
+        createdAt:
+          typeof msg.createdAt === "number" && Number.isFinite(msg.createdAt)
+            ? msg.createdAt
+            : Date.now(),
       })),
       participants: context.participants,
       metadata: context.metadata,

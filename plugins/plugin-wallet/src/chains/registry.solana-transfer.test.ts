@@ -164,3 +164,126 @@ describe("registered native SOL transfer amount", () => {
     },
   );
 });
+
+describe("registered SPL token transfer amount", () => {
+  const sender = Keypair.fromSeed(new Uint8Array(32).fill(1));
+  const recipient = Keypair.fromSeed(new Uint8Array(32).fill(2)).publicKey;
+  const mint = Keypair.fromSeed(new Uint8Array(32).fill(3)).publicKey;
+  const connection = {
+    getLatestBlockhash: vi.fn(async () => ({
+      blockhash: recipient.toBase58(),
+      lastValidBlockHeight: 1,
+    })),
+    sendTransaction: vi.fn(
+      async (_transaction: VersionedTransaction) => "synthetic-signature",
+    ),
+    getParsedAccountInfo: vi.fn(async () => ({
+      value: { data: { parsed: { info: { decimals: 6 } } } },
+    })),
+    getAccountInfo: vi.fn(async () => ({ lamports: 1 })),
+  };
+  let handler: WalletChainHandler;
+  let context: WalletRouterContext;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        throw new Error("Network access is forbidden in transfer tests");
+      }),
+    );
+    vi.mocked(getWalletKey).mockResolvedValue({ keypair: sender });
+    const runtime = {
+      character: { settings: { chains: { evm: [] } } },
+      getSetting: vi.fn(() => null),
+      getService: vi.fn((name: string) =>
+        name === SOLANA_SERVICE_NAME
+          ? { getConnection: () => connection }
+          : null,
+      ),
+    } as unknown as IAgentRuntime;
+    const registered: WalletChainHandler[] = [];
+    registerDefaultWalletChainHandlers(
+      {
+        registerChainHandler: (value: WalletChainHandler) =>
+          registered.push(value),
+      } as unknown as WalletBackendService,
+      runtime,
+    );
+    const solana = registered.find(
+      (value) => value.chainId === "solana-mainnet",
+    );
+    if (!solana) throw new Error("Solana handler was not registered");
+    handler = solana;
+    context = {
+      runtime,
+      walletBackend: null,
+      walletServices: [],
+      tokenDataService: null,
+    };
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  const params = (amount: string | undefined) => ({
+    subaction: "transfer" as const,
+    fromToken: mint.toBase58(),
+    recipient: recipient.toBase58(),
+    amount,
+    mode: "execute" as const,
+    dryRun: false,
+  });
+
+  it.each<[string, bigint]>([
+    ["1.25", 1_250_000n],
+    ["0.000001", 1n],
+    ["2", 2_000_000n],
+  ])(
+    "passes exact 6-decimal base units for %s to the real SDK",
+    async (amount, expected) => {
+      const result = await handler.execute(params(amount), context);
+      expect(connection.sendTransaction).toHaveBeenCalledOnce();
+      const transaction = connection.sendTransaction.mock.calls[0]?.[0];
+      const instruction = transaction?.message.compiledInstructions.at(-1);
+      expect(instruction).toBeDefined();
+      expect(Buffer.from(instruction?.data ?? []).readBigUInt64LE(1)).toBe(
+        expected,
+      );
+      expect(result).toMatchObject({
+        status: "submitted",
+        signature: "synthetic-signature",
+        amount,
+        fromToken: mint.toBase58(),
+      });
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    "1.0000005",
+    "0.0000004",
+    "0.0000005",
+    "0",
+    "-1",
+    "not-a-number",
+    "",
+    "18446744073709.551616",
+  ])(
+    "rejects %s before resolving a signer or submitting a transfer",
+    async (amount) => {
+      await expect(
+        handler.execute(params(amount), context),
+      ).rejects.toMatchObject({
+        code: "SOLANA_TOKEN_TRANSFER_AMOUNT_INVALID",
+      });
+      expect(getWalletKey).not.toHaveBeenCalled();
+      expect(connection.getAccountInfo).not.toHaveBeenCalled();
+      expect(connection.sendTransaction).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+});

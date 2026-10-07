@@ -205,6 +205,60 @@ describe("buildSwapDetails amountMode resolution", () => {
     expect(details.amount).toBe("2"); // 8 * 25 / 100
   });
 
+  // parseFloat(balance).toString() turns half of 0.000001 ETH into "5e-7".
+  // parseUnits rejects that, so the quote never starts. Wei math keeps a
+  // plain decimal and floors an odd remainder.
+  it("resolves a small native half and max to plain decimals", async () => {
+    llmJson({
+      inputToken: NATIVE,
+      outputToken: USDC,
+      amountMode: "half",
+      chain: "base",
+    });
+
+    const half = await buildSwapDetails(
+      {} as State,
+      message,
+      createRuntime(),
+      createWalletProvider({ base: "0.000001" })
+    );
+    expect(half.amount).toBe("0.0000005");
+    expect(half.amount).not.toMatch(/e/i);
+
+    llmJson({
+      inputToken: NATIVE,
+      outputToken: USDC,
+      amountMode: "max",
+      chain: "base",
+    });
+    const max = await buildSwapDetails(
+      {} as State,
+      message,
+      createRuntime(),
+      createWalletProvider({ base: "0.000001" })
+    );
+    expect(max.amount).toBe("0.0000009");
+    expect(max.amount).not.toMatch(/e/i);
+  });
+
+  it("keeps wei that parseFloat drops from a native half", async () => {
+    llmJson({
+      inputToken: NATIVE,
+      outputToken: USDC,
+      amountMode: "half",
+      chain: "base",
+    });
+
+    const details = await buildSwapDetails(
+      {} as State,
+      message,
+      createRuntime(),
+      createWalletProvider({ base: "1.000000000000000002" })
+    );
+
+    expect(details.amount).toBe("0.500000000000000001");
+  });
+
   // Regression for #29930: a relative swap of an ERC-20 must resolve against
   // that token's on-chain balance, not the native gas balance. Here the wallet
   // holds only 2 ETH but 500 USDC (6 decimals); 50% of USDC must be 250, not

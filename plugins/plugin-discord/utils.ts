@@ -164,20 +164,6 @@ export function parseJsonArrayFromText(text: string): JsonValue[] | null {
 	return null;
 }
 
-function trailingParenIsWrapping(clean: string): boolean {
-	let depth = 0;
-	for (let i = clean.length - 1; i >= 0; i--) {
-		const char = clean[i];
-		if (char === ")") {
-			depth++;
-		} else if (char === "(") {
-			depth--;
-			if (depth === 0) return false;
-		}
-	}
-	return depth > 0;
-}
-
 export function cleanUrl(url: string): string {
 	let clean = url;
 
@@ -193,22 +179,25 @@ export function cleanUrl(url: string): string {
 		}
 	}
 
-	let prev = "";
-	while (prev !== clean) {
-		prev = clean;
-		clean = clean.replace(/[\]>.,;!*_]+$/, "");
-		// A trailing ")" is wrapping syntax only when it does not close an
-		// earlier "(". Wikipedia paths such as /wiki/Mercury_(planet) and
-		// queries such as ?q=a)b_(c) keep that closer. A global tally cuts the
-		// query because an earlier unmatched ")" makes closers more numerous.
-		if (clean.endsWith(")") && trailingParenIsWrapping(clean)) {
-			clean = clean.slice(0, -1);
-		}
-		clean = clean.replace(
-			/[（）［］【】｛｝《》〈〉「」『』、。，．；：！？~～]+$/,
-			"",
-		);
+	// Track the last retained character once: unmatched closers and punctuation
+	// are trimmed only at the end, without rescanning long closing suffixes.
+	let depth = 0;
+	let end = 0;
+	for (let i = 0; i < clean.length; i++) {
+		const char = clean[i];
+		if (char === "(") depth++;
+		else if (char === ")") {
+			if (depth === 0) continue;
+			depth--;
+		} else if (
+			/[\]>.,;!*_（）［］【】｛｝《》〈〉「」『』、。，．；：！？~～]/.test(
+				char,
+			)
+		)
+			continue;
+		end = i + 1;
 	}
+	clean = clean.slice(0, end);
 
 	return clean;
 }

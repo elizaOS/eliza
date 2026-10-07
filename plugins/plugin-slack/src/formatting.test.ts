@@ -53,6 +53,19 @@ describe("markdownToSlackMrkdwn", () => {
     expect(markdownToSlackMrkdwn("")).toBe("");
   });
 
+  it("drops the whole opening info string and keeps a one-line fence body", () => {
+    expect(markdownToSlackMrkdwn("```c++\nint x = 1;\n```")).toBe(
+      "```\nint x = 1;\n```",
+    );
+    expect(markdownToSlackMrkdwn("```c#\nvar n = 1;\n```")).toBe(
+      "```\nvar n = 1;\n```",
+    );
+    expect(markdownToSlackMrkdwn("```objective-c\nint x;\n```")).toBe(
+      "```\nint x;\n```",
+    );
+    expect(markdownToSlackMrkdwn("```x```")).toBe("```\nx```");
+  });
+
   it("leaves fenced code bodies exactly as authored", () => {
     // The link/heading/style passes are regex-based and cannot see fence
     // state, so without protection they rewrote code: a `#` comment line
@@ -177,7 +190,7 @@ describe("markdownToSlackMrkdwn", () => {
       "```\nkeep me\n```BOLD*z*",
     );
     expect(markdownToSlackMrkdwn("**a```x```BOLD** tail")).toBe(
-      "*a```\n```BOLD* tail",
+      "*a```\nx```BOLD* tail",
     );
   });
 

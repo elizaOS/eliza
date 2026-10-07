@@ -18,6 +18,7 @@ import { userContextService } from "../eliza/user-context";
 import { getLanguageModel } from "../providers/language-model";
 import { logger } from "../utils/logger";
 import { conversationsService } from "./conversations";
+import { memoryTimelineDate } from "./memory-timeline";
 
 /**
  * Memory service for managing Eliza agent memories and conversation summaries.
@@ -731,7 +732,7 @@ Summary:`;
 
       case "timeline": {
         const timelineData = memories.map((m) => ({
-          date: new Date(m.memory.createdAt || Date.now()),
+          date: memoryTimelineDate(m.memory.createdAt),
           type: m.memory.content.type || "unknown",
         }));
 
