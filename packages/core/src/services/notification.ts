@@ -720,7 +720,11 @@ export class NotificationService extends Service {
 			record.deepLink = n.deepLink;
 		if (n.groupKey != null) record.groupKey = n.groupKey;
 		const data: NonNullable<NativeNotification["data"]> = {};
-		if (n.data?.ownerType === "clock" || n.data?.ownerType === "reminder")
+		if (
+			n.data?.ownerType === "clock" ||
+			n.data?.ownerType === "reminder" ||
+			n.data?.ownerType === "occurrence"
+		)
 			data.ownerType = n.data.ownerType;
 		for (const field of ["conversationId", "messageId"] as const) {
 			const id = n.data?.[field];

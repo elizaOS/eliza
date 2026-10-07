@@ -418,6 +418,28 @@ describe("NotificationService", () => {
 		expect(stored?.at(-1)?.title).toBe("Must not evict");
 	});
 
+	it("preserves reminder channel ownership in native live events and pages without exporting private data", async () => {
+		await service.notify({
+			title: "Reminder",
+			category: "reminder",
+			priority: "high",
+			data: {
+				ownerType: "occurrence",
+				privateContext: "not native presentation data",
+			},
+		});
+		expect(emitted.at(-1)?.data.nativeNotification).toMatchObject({
+			data: { ownerType: "occurrence" },
+		});
+		const page = await service.listNativePage();
+		expect(page.notifications[0].data).toEqual({ ownerType: "occurrence" });
+		await service.notify({
+			title: "Other owner",
+			data: { ownerType: "unapproved" },
+		});
+		expect(emitted.at(-1)?.data.nativeNotification).not.toHaveProperty("data");
+	});
+
 	it("shares durable coordinates across copies, restart, deletion and clear without changing stored records", async () => {
 		const original = await service.notify({
 			title: "Coordinates",
