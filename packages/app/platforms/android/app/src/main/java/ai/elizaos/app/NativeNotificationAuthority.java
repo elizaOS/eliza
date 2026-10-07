@@ -45,9 +45,17 @@ final class NativeNotificationAuthority {
         return base.toString().replaceAll("/+$", "") + path;
     }
 
+    Request pageRequest(JSONObject cursor) throws Exception {
+        return authenticated(url("/api/notifications") + NativeNotificationWire.pagePath(cursor).substring("/api/notifications".length()));
+    }
+
     Request request(String path) throws Exception {
+        return authenticated(url(path));
+    }
+
+    private Request authenticated(String url) throws Exception {
         current();
-        Request.Builder request = new Request.Builder().url(url(path)).get();
+        Request.Builder request = new Request.Builder().url(url).get();
         if (!bearer.isEmpty()) request.header("Authorization", "Bearer " + bearer);
         if (!cookie.isEmpty()) request.header("Cookie", cookie);
         request.header("Accept", "application/json");

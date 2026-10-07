@@ -16,7 +16,8 @@ public final class NativeNotificationTransportTest {
         return new JSONObject().put("id", "ee26d7a4-9d71-4051-a117-906626d91424")
             .put("title", "Agent update").put("body", "Ready")
             .put("category", "agent").put("priority", "normal")
-            .put("source", "native-transport-test").put("createdAt", System.currentTimeMillis());
+            .put("source", "native-transport-test").put("createdAt", System.currentTimeMillis())
+            .put("nativeEpoch", "10000000-0000-0000-0000-000000000001").put("nativeSequence", 1);
     }
     public static void main(String[] args) throws Exception {
         Path root = Path.of(args[0]);
@@ -55,6 +56,22 @@ public final class NativeNotificationTransportTest {
         }
         for (String state : new String[]{"stopped", "owner_changed", "authorization_rejected", "start_denied", "resume_unavailable", "retirement_unavailable", "unavailable", "startup_unavailable", "inbox_unavailable", "delivery_unavailable", "event_backlog"})
             check(!NativeNotificationState.enabled(state, true, true, true, true), "Failure state claimed enabled: " + state);
+        JSONObject cursor = new JSONObject().put("afterSequence", 0);
+        check(NativeNotificationWire.pagePath(cursor).equals("/api/notifications?nativeTransport=true&afterSequence=0&limit=128"), "Closed initial query");
+        cursor.put("nativeEpoch", "10000000-0000-0000-0000-000000000001").put("afterSequence", 1).put("throughSequence", 20);
+        check(NativeNotificationWire.pagePath(cursor).endsWith("&throughSequence=20&limit=128"), "Fixed continuation fence");
+        boolean rejected = false;
+        try { NativeNotificationWire.pagePath(new JSONObject().put("afterSequence", 1)); } catch (IllegalArgumentException invalid) { rejected = true; }
+        check(rejected, "Continuation requires epoch");
+        rejected = false;
+        try { NativeNotificationWire.pagePath(new JSONObject().put("afterSequence", 0).put("nativeEpoch", "../?token=secret")); } catch (IllegalArgumentException invalid) { rejected = true; }
+        check(rejected, "Query builder rejects path/auth expansion");
+        frame.getJSONObject("payload").put("nativeNotification", record().put("title", "Bounded projection"));
+        check(NativeNotificationWire.notification(frame.toString()).getString("title").equals("Bounded projection"), "Native projection wins over arbitrary standard fields");
+        frame.getJSONObject("payload").put("nativeProjectionError", "oversized");
+        rejected = false;
+        try { NativeNotificationWire.notification(frame.toString()); } catch (IllegalArgumentException invalid) { rejected = true; }
+        check(rejected, "Explicit projection failure rejects only live input");
         System.out.println("Native notification wire/state checks passed: " + checks);
     }
 }

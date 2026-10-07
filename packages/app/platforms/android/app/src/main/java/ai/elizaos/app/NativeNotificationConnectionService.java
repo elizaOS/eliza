@@ -27,13 +27,12 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** An app-owned notification connection for Android systems without GMS.
  * The service owns native transport and survives WebView destruction. It does
  * not run an agent or create/read/complete reminders on the server. First
- * online activation requires a successful full baseline; earlier inbox
+ * online activation requires a completed paged baseline; earlier inbox
  * history is not promised as new background delivery. Subsequent offline
  * arrivals recover through the same durable receipt journal. */
 public final class NativeNotificationConnectionService extends Service {
@@ -41,7 +40,7 @@ public final class NativeNotificationConnectionService extends Service {
     private static final String CHANNEL = "eliza_native_connection";
     private static final int NOTICE = 17042;
     private static final String STOP = "ai.elizaos.app.NATIVE_NOTIFICATIONS_STOP";
-    private static final int MAX_BODY = 4 * 1024 * 1024;
+    private static final int MAX_BODY = 262144;
     private static final Object CONTROL = new Object();
     private static volatile String state = "stopped";
     private static volatile String activeOwner;
@@ -140,7 +139,15 @@ public final class NativeNotificationConnectionService extends Service {
                         return accepted;
                     });
                 }
-            }, NativeNotificationProjector::syncDirectory);
+            }, NativeNotificationProjector::syncDirectory, () -> {
+                synchronized (CONTROL) {
+                    owner.current();
+                    if (!context.getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("enabled", false)
+                        || !owner.owner.equals(context.getSharedPreferences(PREFS, MODE_PRIVATE).getString("owner", ""))
+                        || "authorization_rejected".equals(state))
+                        throw new SecurityException("Native notification foreground owner retired");
+                }
+            });
         JSONObject result = shared.acceptLive(notification);
         if (owner.owner.equals(activeOwner)) inboxStatus = shared.status();
         return result;
@@ -247,6 +254,7 @@ public final class NativeNotificationConnectionService extends Service {
             }
             authority = next;
             activeOwner = next.owner;
+            state = "connecting";
             if (inbox == null) inbox = new NativeNotificationInbox(getNoBackupFilesDir().getCanonicalFile().toPath(), next.owner,
                 notification -> {
                     NativeNotificationAuthority current = authority;
@@ -259,10 +267,11 @@ public final class NativeNotificationConnectionService extends Service {
                             return accepted;
                         });
                     }
-                }, NativeNotificationProjector::syncDirectory);
+                }, NativeNotificationProjector::syncDirectory, () -> {
+                    synchronized (CONTROL) { requireCurrent(connection, authority); }
+                });
             inbox.beginBaseline();
             inboxStatus = inbox.status();
-            state = "connecting";
             updateNotice();
             socket = http.newWebSocket(next.request("/ws"), new WebSocketListener() {
                 @Override public void onOpen(WebSocket opened, Response response) {
@@ -274,7 +283,7 @@ public final class NativeNotificationConnectionService extends Service {
                 @Override public void onMessage(WebSocket opened, String text) {
                     if (outstandingFrames.incrementAndGet() > 128) {
                         outstandingFrames.decrementAndGet();
-                        if (overloaded.compareAndSet(false, true)) dispatch(attempt, () -> fail(attempt, "event_backlog"));
+                        if (overloaded.compareAndSet(false, true)) dispatch(attempt, () -> { requireCurrent(attempt, next); fail(attempt, "event_backlog"); });
                         return;
                     }
                     dispatch(attempt, () -> {
@@ -297,12 +306,13 @@ public final class NativeNotificationConnectionService extends Service {
                 }
                 @Override public void onFailure(WebSocket opened, Throwable error, Response response) {
                     dispatch(attempt, () -> {
+                        requireCurrent(attempt, next);
                         if (response != null && (response.code() == 401 || response.code() == 403)) revoke(attempt);
                         else fail(attempt, "disconnected");
                     });
                 }
                 @Override public void onClosed(WebSocket opened, int code, String reason) {
-                    dispatch(attempt, () -> fail(attempt, "disconnected"));
+                    dispatch(attempt, () -> { requireCurrent(attempt, next); fail(attempt, "disconnected"); });
                 }
             });
             worker.schedule(() -> verifyOwner(attempt, next), 20, TimeUnit.SECONDS);
@@ -314,17 +324,27 @@ public final class NativeNotificationConnectionService extends Service {
     }
 
     private void hydrate(long attempt, NativeNotificationAuthority owner) throws Exception {
-        Call request = http.newCall(owner.request("/api/notifications"));
+        requireCurrent(attempt, owner);
+        JSONObject cursor = inbox.pageCursor();
+        Call request = http.newCall(owner.pageRequest(cursor));
         hydration = request;
         request.enqueue(new Callback() {
             @Override public void onFailure(Call call, java.io.IOException error) {
-                dispatch(attempt, () -> fail(attempt, "inbox_unavailable"));
+                dispatch(attempt, () -> { requireCurrent(attempt, owner); fail(attempt, "inbox_unavailable"); });
             }
             @Override public void onResponse(Call call, Response response) {
                 try (Response received = response) {
                     requireCurrent(attempt, owner);
                     if (received.code() == 401 || received.code() == 403) {
-                        dispatch(attempt, () -> revoke(attempt)); return;
+                        dispatch(attempt, () -> { requireCurrent(attempt, owner); revoke(attempt); }); return;
+                    }
+                    if (received.code() == 409 && cursor.has("nativeEpoch")) {
+                        dispatch(attempt, () -> {
+                            requireCurrent(attempt, owner);
+                            inbox.restartEpoch();
+                            hydrate(attempt, owner);
+                        });
+                        return;
                     }
                     if (!received.isSuccessful()) throw new IllegalStateException("Native notification inbox unavailable");
                     ResponseBody body = received.body();
@@ -339,22 +359,22 @@ public final class NativeNotificationConnectionService extends Service {
                     }
                     requireCurrent(attempt, owner);
                     JSONObject result = new JSONObject(bytes.toString(StandardCharsets.UTF_8.name()));
-                    if (!"ready".equals(result.optString("serviceStatus"))) throw new IllegalStateException("Native notification service is not ready");
-                    JSONArray records = result.getJSONArray("notifications");
-                    // HTTP reads never block the serial event queue. Live
-                    // new-notification frames are buffered by the inbox while
-                    // this complete baseline is in flight.
+                    NativeNotificationWire.page(result, cursor);
+                    // HTTP reads never block the serial event queue; every
+                    // page and effect rechecks the same native owner snapshot.
                     dispatch(attempt, () -> {
                         requireCurrent(attempt, owner);
-                        inbox.completeBaseline(records);
+                        boolean complete = inbox.acceptPage(result, cursor);
+                        requireCurrent(attempt, owner);
                         inboxStatus = inbox.status();
+                        if (!complete) { hydrate(attempt, owner); return; }
                         failures = 0;
                         state = "connected";
                         updateNotice();
                         if (hydration == call) hydration = null;
                     });
                 } catch (Exception unavailable) {
-                    dispatch(attempt, () -> fail(attempt, "inbox_unavailable"));
+                    dispatch(attempt, () -> { requireCurrent(attempt, owner); fail(attempt, "inbox_unavailable"); });
                 }
             }
         });
