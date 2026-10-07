@@ -801,14 +801,24 @@ async function handleGetRows(
     sendJsonError(res, `Table "${tableName}" not found`, 404);
     return;
   }
-  // Get column names for this table (for search and sort validation)
+  // Search and sort must use the relation an unqualified FROM resolves.
+  // A same-named table in another schema would otherwise add columns this
+  // read does not have, and the search query would fail.
   const safeTableName = tableName.replace(/'/g, "''");
   const colResult = await executeRawSql(
     runtime,
     `SELECT column_name, data_type
      FROM information_schema.columns
      WHERE table_name = '${safeTableName}'
-       AND table_schema NOT IN ('pg_catalog', 'information_schema')
+       AND table_schema = (
+         SELECT n.nspname
+         FROM pg_catalog.pg_class c
+         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relname = '${safeTableName}'
+           AND c.relkind IN ('r', 'p')
+           AND pg_catalog.pg_table_is_visible(c.oid)
+         LIMIT 1
+       )
      ORDER BY ordinal_position`,
   );
   const columnNames = colResult.rows.map((r) => String(r.column_name));
