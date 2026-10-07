@@ -5,18 +5,23 @@ import {
   registerPlugin,
 } from "@capacitor/core";
 import {
+  CLOCK_ALARMS_CAPABILITY,
   CLOCK_CAPABILITY,
   CLOCK_REPEAT_CAPABILITY,
+  type ClockAlarmOperation,
   type ClockReviewBridge,
   type ClockReviewReply,
   clockCapabilityAvailable,
   clockTimeZone,
   createClockReviewExecutor,
+  validateClockAlarmContext,
   validateClockOperation,
+  validateClockResult,
 } from "@elizaos/plugin-assistant/device-clock-review";
 import {
   type AgentRequestTransport,
   bodyToString,
+  type ClockHost,
   type ClockProposal,
   type ClockStatus,
   configureClockHost,
@@ -33,6 +38,15 @@ interface AgentChunk {
   error?: string;
 }
 interface SlotClockBridge extends ClockReviewBridge {
+  getAlarmStatus(): Promise<unknown>;
+  manageAlarm(input: {
+    operation: ClockAlarmOperation;
+    alarmsRevision: number;
+    expectedOwner: string;
+  }): Promise<unknown>;
+  requestAlarmPermission(input: {
+    permission: "exact" | "notifications" | "fullScreen";
+  }): Promise<unknown>;
   reviewClock(
     input: Parameters<ClockReviewBridge["reviewClock"]>[0],
   ): Promise<ClockReviewReply & { receiptPending?: boolean }>;
@@ -152,6 +166,7 @@ function nativeStatus(raw: unknown): ClockStatus {
   const capabilities = Array.from(value.capabilities, (capability: unknown) => {
     if (
       capability !== CLOCK_CAPABILITY &&
+      capability !== CLOCK_ALARMS_CAPABILITY &&
       capability !== CLOCK_REPEAT_CAPABILITY
     )
       throw new Error("Invalid native Clock capability");
@@ -182,11 +197,21 @@ function nativeStatus(raw: unknown): ClockStatus {
   }
   if (capabilities.length === 0 || value.reason !== null)
     throw new Error("Native Clock capability unavailable");
-  const context = nativeObject(value.context, [
-    "sensitive",
-    "revision",
-    "timeZone",
-  ]);
+  const owned = capabilities.includes(CLOCK_ALARMS_CAPABILITY);
+  const context = nativeObject(
+    value.context,
+    owned
+      ? [
+          "sensitive",
+          "revision",
+          "timeZone",
+          "alarmsStatus",
+          "alarmsObservedAt",
+          "alarmsRevision",
+          "alarms",
+        ]
+      : ["sensitive", "revision", "timeZone"],
+  );
   if (
     context.sensitive !== false ||
     typeof context.revision !== "number" ||
@@ -201,12 +226,78 @@ function nativeStatus(raw: unknown): ClockStatus {
     capabilities,
     scope: nativeDigest(value.scope),
     installationId: nativeIdentifier(value.installationId),
-    context: {
-      sensitive: false,
-      revision: context.revision,
-      timeZone: clockTimeZone(context.timeZone),
-    },
+    context: owned
+      ? validateClockAlarmContext(context)
+      : {
+          sensitive: false,
+          revision: context.revision,
+          timeZone: clockTimeZone(context.timeZone),
+        },
   };
+}
+type AlarmStatus = Awaited<ReturnType<NonNullable<ClockHost["alarmStatus"]>>>;
+function nativeAlarmStatus(raw: unknown): AlarmStatus {
+  const value = nativeObject(raw, [
+    "available",
+    "reason",
+    "owner",
+    "alarmsRevision",
+    "alarmsObservedAt",
+    "timeZone",
+    "alarms",
+    "exactAlarmsAllowed",
+    "notificationsAllowed",
+    "fullScreenAllowed",
+    "alarmSoundMuted",
+    "defaultToneAvailable",
+  ]);
+  for (const field of [
+    "available",
+    "exactAlarmsAllowed",
+    "notificationsAllowed",
+    "fullScreenAllowed",
+    "alarmSoundMuted",
+    "defaultToneAvailable",
+  ])
+    if (typeof value[field] !== "boolean")
+      throw new Error("Invalid native alarm availability");
+  if (
+    typeof value.alarmsObservedAt !== "number" ||
+    !Number.isSafeInteger(value.alarmsObservedAt) ||
+    value.alarmsObservedAt < 1
+  )
+    throw new Error("Invalid native alarm observation time");
+  const timeZone = clockTimeZone(value.timeZone);
+  if (!value.available) {
+    if (
+      value.owner !== null ||
+      value.alarmsRevision !== null ||
+      value.alarms !== null ||
+      typeof value.reason !== "string" ||
+      value.reason.length === 0
+    )
+      throw new Error("Invalid unavailable native alarm inventory");
+    return { ...value, timeZone } as unknown as AlarmStatus;
+  }
+  if (value.reason !== null)
+    throw new Error("Invalid available native alarm inventory");
+  const owner = nativeDigest(value.owner);
+  const snapshot = validateClockAlarmContext({
+    sensitive: false,
+    revision: 0,
+    timeZone,
+    alarmsStatus: "available",
+    alarmsObservedAt: value.alarmsObservedAt,
+    alarmsRevision: value.alarmsRevision,
+    alarms: value.alarms,
+  });
+  return {
+    ...value,
+    owner,
+    timeZone,
+    alarmsRevision: snapshot.alarmsRevision,
+    alarms: snapshot.alarms,
+  } as unknown as AlarmStatus;
 }
 function nativeProposal(raw: unknown): ClockProposal {
   const value = nativeObject(raw, [
@@ -281,6 +372,16 @@ if (bridge) {
     cancelClock: (input) => bridge.cancelClock(input),
   });
   let currentScope: string | null = null;
+  let alarmOwner: string | null = null;
+  let alarmRead = 0;
+  const alarmStatus = async () => {
+    const reading = ++alarmRead;
+    const value = nativeAlarmStatus(await bridge.getAlarmStatus());
+    if (reading !== alarmRead)
+      throw new Error("Native alarm owner read was replaced");
+    alarmOwner = value.owner;
+    return value;
+  };
   const status = async () => {
     const value = nativeStatus(await bridge.getStatus());
     if (currentScope !== null && currentScope !== value.scope)
@@ -289,6 +390,60 @@ if (bridge) {
     return value;
   };
   configureClockHost({
+    alarmStatus,
+    async manageAlarm(operation, alarmsRevision, expectedOwner) {
+      const validated = validateClockOperation(operation);
+      if (validated.type !== "clock_alarm")
+        throw new Error("Owned alarm operation required");
+      const owner = nativeDigest(expectedOwner);
+      if (
+        owner !== alarmOwner ||
+        !Number.isSafeInteger(alarmsRevision) ||
+        alarmsRevision < 0
+      )
+        throw new Error("Refresh the alarm list before changing an alarm");
+      const before = await alarmStatus();
+      if (
+        !before.available ||
+        before.owner !== owner ||
+        before.alarmsRevision !== alarmsRevision
+      )
+        throw new Error("Alarm list changed. Refresh before saving.");
+      const raw = nativeObject(
+        await bridge.manageAlarm({
+          operation: validated,
+          alarmsRevision,
+          expectedOwner: owner,
+        }),
+        ["result", "alarmsRevision"],
+      );
+      if (
+        owner !== alarmOwner ||
+        typeof raw.alarmsRevision !== "number" ||
+        !Number.isSafeInteger(raw.alarmsRevision) ||
+        raw.alarmsRevision < alarmsRevision
+      )
+        throw new Error("Alarm owner or revision changed");
+      const result = raw.result;
+      if (!isObject(result) || typeof result.status !== "string")
+        throw new Error("Invalid native alarm result");
+      const outcome = ["unavailable", "denied", "failed", "unknown"].includes(
+        result.status,
+      )
+        ? result.status === "unknown"
+          ? "unknown"
+          : "failed"
+        : "applied";
+      const checked = validateClockResult(validated, result, outcome);
+      if (checked.kind !== "clock-alarm")
+        throw new Error("Invalid owned alarm receipt");
+      return { result: checked, alarmsRevision: raw.alarmsRevision };
+    },
+    async requestAlarmPermission(permission) {
+      if (!["exact", "notifications", "fullScreen"].includes(permission))
+        throw new Error("Invalid alarm permission");
+      await bridge.requestAlarmPermission({ permission });
+    },
     status,
     async proposals() {
       const result = nativeProposals(await bridge.listProposals());
@@ -336,14 +491,18 @@ if (bridge) {
           );
       };
     },
-    retire: executor.retire,
+    async retire() {
+      ++alarmRead;
+      alarmOwner = null;
+      await executor.retire();
+    },
   });
 }
 
 const transport: AgentRequestTransport = {
   async request(url, init) {
-    if (!clockRequestUnbound(init))
-      throw new Error("Native Clock cannot replace an existing device binding");
+    if (!clockRequestSupported(url, init))
+      throw new Error("Native Clock request is not eligible");
     if (!bridge) throw new Error("Native Clock transport unavailable");
     const status = nativeStatus(await bridge.getStatus());
     if (!status.supported || !status.agentBase)
@@ -472,6 +631,9 @@ const transport: AgentRequestTransport = {
     }
   },
 };
+const CLOCK_AGENT_ROUTE =
+  /^\/api\/(?:chat|conversations(?:\/[-A-Za-z0-9_]+\/messages(?:\/stream)?)?)$/;
+
 export function clockAgentRelativePath(
   url: string,
   base: string,
@@ -485,20 +647,20 @@ export function clockAgentRelativePath(
   )
     return null;
   const path = target.pathname.slice(prefix.length);
-  return path === "/api/chat" ||
-    path === "/api/conversations" ||
-    /^\/api\/conversations\/[-A-Za-z0-9_]+\/(messages(?:\/stream)?|greeting)$/.test(
-      path,
-    )
-    ? path + target.search
-    : null;
+  return CLOCK_AGENT_ROUTE.test(path) ? path + target.search : null;
 }
 export async function nativeClockTransportForUrl(
   url: string,
   init?: RequestInit,
 ): Promise<AgentRequestTransport | null> {
-  if (!bridge || !clockRequestUnbound(init)) return null;
-  const status = nativeStatus(await bridge.getStatus());
+  if (!bridge || !clockRequestSupported(url, init)) return null;
+  let status: ClockStatus;
+  try {
+    status = nativeStatus(await bridge.getStatus());
+  } catch (error) {
+    reportRendererDiagnostic({ scope: "clock-transport-selection", error });
+    return null;
+  }
   return status.supported &&
     status.agentBase &&
     clockAgentRelativePath(url, status.agentBase) !== null
@@ -506,12 +668,48 @@ export async function nativeClockTransportForUrl(
     : null;
 }
 
-/** Prior device authority belongs to its existing transport, even when revoked
- * or malformed. Clock never interprets it, retries it, or substitutes enrollment. */
-function clockRequestUnbound(init: RequestInit = {}): boolean {
-  const headers = new Headers(init.headers);
-  if ([...headers.keys()].some((key) => key.startsWith("x-eliza-device-")))
+/** Match native request admission before enrollment I/O. Prior device authority
+ * and unsupported shapes retain their existing transport without alteration. */
+function clockRequestSupported(url: string, init: RequestInit = {}): boolean {
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    // error-policy:J3 an invalid or relative URL cannot match the native host.
     return false;
+  }
+  const path = target.pathname.slice(target.pathname.lastIndexOf("/api/"));
+  const method = (init.method ?? "GET").toUpperCase();
+  if (
+    target.username ||
+    target.password ||
+    target.hash ||
+    target.pathname.includes("%") ||
+    !CLOCK_AGENT_ROUTE.test(path) ||
+    !(
+      (method === "GET" &&
+        (path === "/api/conversations" || path.endsWith("/messages")) &&
+        init.body == null) ||
+      (method === "POST" && !target.search && init.body != null)
+    )
+  )
+    return false;
+  const headers = new Headers(init.headers);
+  for (const [name, value] of headers) {
+    const credential = ["authorization", "cookie", "x-eliza-csrf"].includes(
+      name,
+    );
+    if (
+      (!credential &&
+        !/^(?:accept|content-type|x-elizaos-client-id|x-elizaos-ui-language|x-eliza-last-activity|x-elizaos-turn-correlation|x-elizaos-turn-attempt)$/.test(
+          name,
+        )) ||
+      value.length > (credential ? 16384 : 256) ||
+      /[\r\n]/.test(value) ||
+      (credential && value.includes("\0"))
+    )
+      return false;
+  }
   if (init.body == null) return true;
   const text = bodyToString(init.body);
   if (typeof text !== "string") return false;

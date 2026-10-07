@@ -1,25 +1,31 @@
-/** Clock prepares exact native alarm requests and exposes the host's owned proposal review. Android Clock owns delivery; dispatch never establishes installation or ringing. */
-import { clockCapabilityAvailable } from "@elizaos/plugin-assistant/device-clock-review";
-import { AlarmClock, ArrowRight } from "lucide-react";
+/** Clock displays native-owned alarms and preserves the agent's reviewed proposal path. */
+import {
+  type ClockAlarmOperation,
+  type ClockAlarmRecord,
+  clockCapabilityAvailable,
+} from "@elizaos/plugin-assistant/device-clock-review";
+import { Plus } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useAgentElement } from "../../agent-surface/useAgentElement";
-import { navigateBrowserPath } from "../../app-navigate-view";
 import {
+  type ClockAlarmStatus,
   type ClockHost,
   type ClockProposal,
   type ClockStatus,
   getClockHost,
   subscribeClockHost,
 } from "../../bridge/clock-host";
-import { dispatchChatPrefill } from "../../events";
 import { useSharedNow } from "../../hooks/useSharedNow";
-import {
-  FramedPage,
-  FramedPageBody,
-  FramedPageHeader,
-} from "../../layouts/framed-page";
+import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
 import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "../ui/dialog";
 import { Input } from "../ui/input";
+import { Switch } from "../ui/switch";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 const DAY_NAMES = [
@@ -32,6 +38,617 @@ const DAY_NAMES = [
   "Saturday",
 ];
 const CLOCK_TIME_FOCUS_CSS = `#clock-alarm-time::selection {background-color:var(--accent-action);color:var(--brand-black);}`;
+function repeatLabel(days: readonly number[]): string {
+  return days.length === 0
+    ? "Once"
+    : days.length === 7
+      ? "Every day"
+      : days.join(",") === "2,3,4,5,6"
+        ? "Weekdays"
+        : days.map((day) => DAY_NAMES[day - 1].slice(0, 3)).join(", ");
+}
+function OwnedAlarms({ host }: { host: ClockHost }) {
+  const [status, setStatus] = useState<ClockAlarmStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<{
+    owner: string;
+    text: string;
+  } | null>(null);
+  const [editing, setEditing] = useState<ClockAlarmRecord | null>(null);
+  const [time, setTime] = useState("09:00");
+  const [label, setLabel] = useState("");
+  const [repeat, setRepeat] = useState("once");
+  const [days, setDays] = useState<ClockAlarmRecord["days"]>([]);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const reads = useRef(0);
+  const owner = useRef<{ host: ClockHost; value: string | null }>({
+    host,
+    value: null,
+  });
+  const reload = useRef<(() => Promise<void>) | null>(null);
+  const inFlight = useRef(false);
+  useEffect(() => {
+    let live = true;
+    ++reads.current;
+    owner.current = { host, value: null };
+    setStatus(null);
+    setEditing(null);
+    setReceipt(null);
+    setBusy(null);
+    setError(null);
+    setActionError(null);
+    inFlight.current = false;
+    const load = async () => {
+      if (!live || document.hidden || !host.alarmStatus) return;
+      const read = ++reads.current;
+      setStatus(null);
+      try {
+        const next = await host.alarmStatus();
+        if (!live || read !== reads.current) return;
+        if (owner.current.value !== next.owner) {
+          setEditing(null);
+          setEditorOpen(false);
+          setReceipt(null);
+          setTime("09:00");
+          setLabel("");
+          setRepeat("once");
+          setDays([]);
+          setActionError(null);
+        }
+        owner.current = { host, value: next.owner };
+        setStatus(next);
+        setError(null);
+      } catch (failure) {
+        // error-policy:J4 A rejected inventory is never represented as no saved alarms.
+        if (!live || read !== reads.current) return;
+        setStatus(null);
+        setError(
+          failure instanceof Error
+            ? failure.message
+            : "The phone's alarm list could not be read",
+        );
+      }
+    };
+    reload.current = load;
+    void load();
+    const unsubscribe = host.subscribe(() => {
+      void load();
+    });
+    const resume = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener("visibilitychange", resume);
+    return () => {
+      live = false;
+      ++reads.current;
+      owner.current = { host, value: null };
+      if (reload.current === load) reload.current = null;
+      unsubscribe();
+      document.removeEventListener("visibilitychange", resume);
+    };
+  }, [host]);
+  const manage = async (operation: ClockAlarmOperation, name: string) => {
+    if (
+      !host.manageAlarm ||
+      !status?.available ||
+      status.owner === null ||
+      status.alarmsRevision === null ||
+      inFlight.current
+    )
+      return;
+    const expected = status.owner;
+    const revision = status.alarmsRevision;
+    inFlight.current = true;
+    setBusy(name);
+    setError(null);
+    setActionError(null);
+    setReceipt(null);
+    try {
+      const applied = await host.manageAlarm(operation, revision, expected);
+      if (owner.current.host !== host || owner.current.value !== expected)
+        return;
+      const result = applied.result;
+      const successful = ![
+        "unavailable",
+        "denied",
+        "failed",
+        "unknown",
+      ].includes(result.status);
+      setReceipt({
+        owner: expected,
+        text: successful
+          ? `Alarm ${result.status}${result.nextAt ? `. Next: ${new Intl.DateTimeFormat(undefined, { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: status.timeZone }).format(result.nextAt)}` : ""}.`
+          : result.status === "denied"
+            ? "Alarm change cancelled. Your saved alarm was not changed."
+            : result.status === "unknown"
+              ? "The alarm change could not be confirmed. Refresh the list before trying again."
+              : `Alarm change ${result.status}. Check the phone's alarm permissions and refresh.`,
+      });
+      if (
+        successful &&
+        (operation.action === "set" || operation.action === "update")
+      ) {
+        setEditing(null);
+        setLabel("");
+        setEditorOpen(false);
+      }
+      if (successful && operation.action === "delete") setEditorOpen(false);
+      await reload.current?.();
+    } catch (failure) {
+      // error-policy:J1 A failed change is reported without retrying or inferring a saved alarm.
+      if (owner.current.host === host && owner.current.value === expected) {
+        setActionError(
+          failure instanceof Error
+            ? failure.message
+            : "The alarm change could not be confirmed",
+        );
+        await reload.current?.();
+      }
+    } finally {
+      if (owner.current.host === host) {
+        inFlight.current = false;
+        setBusy(null);
+      }
+    }
+  };
+  const permission = async (
+    value: "exact" | "notifications" | "fullScreen",
+  ) => {
+    if (!host.requestAlarmPermission || inFlight.current) return;
+    inFlight.current = true;
+    setBusy(value);
+    try {
+      await host.requestAlarmPermission(value);
+      await reload.current?.();
+    } catch (failure) {
+      if (owner.current.host === host)
+        setError(
+          failure instanceof Error
+            ? failure.message
+            : "Android permission settings could not be opened",
+        );
+    } finally {
+      if (owner.current.host === host) {
+        inFlight.current = false;
+        setBusy(null);
+      }
+    }
+  };
+  const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
+  const labelValid =
+    label.length <= 200 &&
+    [...label].every(
+      (character) =>
+        character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127,
+    );
+  const repeatDays: ClockAlarmRecord["days"] =
+    repeat === "daily"
+      ? [1, 2, 3, 4, 5, 6, 7]
+      : repeat === "weekdays"
+        ? [2, 3, 4, 5, 6]
+        : repeat === "custom"
+          ? days
+          : [];
+  const validForm =
+    valid && labelValid && (repeat !== "custom" || days.length > 0);
+  const canSchedule =
+    !!host.manageAlarm &&
+    !!status?.available &&
+    status.exactAlarmsAllowed &&
+    status.notificationsAllowed &&
+    status.defaultToneAvailable;
+  const canSave =
+    !!host.manageAlarm &&
+    !!status?.available &&
+    (status.alarms?.some(
+      (alarm) => alarm.id === editing?.id && !alarm.enabled,
+    ) ||
+      canSchedule);
+  const submit = () => {
+    if (!validForm || !canSave || busy || !status) return;
+    const [hour, minute] = time.split(":").map(Number);
+    const fields = {
+      hour,
+      minute,
+      label,
+      timeZone: status.timeZone,
+      days: repeatDays,
+    };
+    void manage(
+      editing
+        ? {
+            type: "clock_alarm",
+            action: "update",
+            alarmId: editing.id,
+            ...fields,
+          }
+        : { type: "clock_alarm", action: "set", ...fields },
+      "save",
+    );
+  };
+  const timeElement = useAgentElement<HTMLInputElement>({
+    id: "clock-alarm-time",
+    role: "text-input",
+    label: "Alarm time",
+    onFill: (value) => {
+      setTime(value);
+    },
+  });
+  const labelElement = useAgentElement<HTMLInputElement>({
+    id: "clock-alarm-label",
+    role: "text-input",
+    label: "Alarm label",
+    onFill: (value) => {
+      setLabel(value);
+    },
+  });
+  const saveElement = useAgentElement<HTMLButtonElement>({
+    id: "clock-alarm-save",
+    role: "button",
+    label: editing ? "Save alarm changes" : "Create alarm",
+    status: canSave && validForm && !busy ? "ready" : "disabled",
+    onActivate: submit,
+  });
+  const repeatElement = useAgentElement<HTMLSelectElement>({
+    id: "clock-alarm-repeat",
+    role: "select",
+    label: "Repeat",
+    onFill: (value) => {
+      if (["once", "daily", "weekdays", "custom"].includes(value)) {
+        setRepeat(value);
+      }
+    },
+  });
+  // A new host must never paint the previous host's rows or draft before its effect runs.
+  if (owner.current.host !== host)
+    return (
+      <section aria-label="Eliza alarms">
+        <p role="status">Loading this phone’s alarms…</p>
+      </section>
+    );
+  return (
+    <section aria-label="Eliza alarms" className="mx-auto max-w-xl">
+      <div className="mb-8 flex items-center justify-between">
+        <h1 className="text-2xl font-medium">Alarms</h1>
+        <Button
+          variant="ghost"
+          aria-label="Add alarm"
+          disabled={!status?.available || busy !== null}
+          onClick={() => {
+            setEditing(null);
+            setTime("09:00");
+            setLabel("");
+            setRepeat("once");
+            setDays([]);
+            setEditorOpen(true);
+          }}
+        >
+          <Plus className="size-6 text-accent-action" aria-hidden />
+        </Button>
+      </div>
+      {!status && !error && (
+        <p role="status" className="py-8 text-sm text-muted-foreground">
+          Loading…
+        </p>
+      )}
+      {status && !status.available && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {status.reason}
+        </p>
+      )}
+      {(error || actionError) && (
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <p role="alert" className="text-sm text-destructive">
+            {error || actionError}
+          </p>
+          <Button variant="ghost" onClick={() => void reload.current?.()}>
+            Retry
+          </Button>
+        </div>
+      )}
+      {receipt && receipt.owner === status?.owner && (
+        <p role="status" className="sr-only">
+          {receipt.text}
+        </p>
+      )}
+      {status?.available && (
+        <>
+          {(!status.exactAlarmsAllowed ||
+            !status.notificationsAllowed ||
+            !status.defaultToneAvailable) && (
+            <div className="mb-6 flex flex-wrap items-center gap-3 text-sm">
+              {!status.exactAlarmsAllowed && (
+                <Button
+                  variant="outline"
+                  disabled={busy !== null}
+                  onClick={() => void permission("exact")}
+                >
+                  Allow alarms
+                </Button>
+              )}
+              {!status.notificationsAllowed && (
+                <Button
+                  variant="outline"
+                  disabled={busy !== null}
+                  onClick={() => void permission("notifications")}
+                >
+                  Allow notifications
+                </Button>
+              )}
+              {!status.defaultToneAvailable && (
+                <p role="alert">Choose an alarm sound in Android settings.</p>
+              )}
+            </div>
+          )}
+          {status.alarmSoundMuted && (
+            <p role="status" className="mb-4 text-sm text-muted-foreground">
+              Alarm volume is muted.
+            </p>
+          )}
+          {status.alarms?.length === 0 && (
+            <p className="py-12 text-center text-muted-foreground">No alarms</p>
+          )}
+          <ul className="divide-y divide-border">
+            {status.alarms?.map((alarm) => (
+              <li
+                key={alarm.id}
+                aria-label={alarm.label || "Alarm"}
+                className="py-6"
+              >
+                <div className="flex items-center justify-between gap-6">
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-action"
+                    aria-label={`Edit ${alarm.label || "alarm"}`}
+                    disabled={busy !== null}
+                    onClick={() => {
+                      setEditing(alarm);
+                      setTime(
+                        `${String(alarm.hour).padStart(2, "0")}:${String(alarm.minute).padStart(2, "0")}`,
+                      );
+                      setLabel(alarm.label);
+                      setDays(alarm.days);
+                      setRepeat(
+                        alarm.days.length === 0
+                          ? "once"
+                          : alarm.days.length === 7
+                            ? "daily"
+                            : alarm.days.join(",") === "2,3,4,5,6"
+                              ? "weekdays"
+                              : "custom",
+                      );
+                      setEditorOpen(true);
+                    }}
+                  >
+                    <span
+                      className={`block text-4xl font-normal tabular-nums ${alarm.enabled || alarm.scheduleState === "firing" ? "text-txt" : "text-muted-foreground"}`}
+                    >
+                      {String(alarm.hour).padStart(2, "0")}:
+                      {String(alarm.minute).padStart(2, "0")}
+                    </span>
+                    <span className="mt-2 block break-words text-sm text-muted-foreground">
+                      {[alarm.label, repeatLabel(alarm.days)]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  </button>
+                  <Switch
+                    aria-label={`${alarm.enabled ? "Disable" : "Enable"} ${alarm.label || "alarm"}`}
+                    checked={alarm.enabled}
+                    disabled={busy !== null || (!alarm.enabled && !canSchedule)}
+                    className="data-[state=checked]:bg-accent-action"
+                    onCheckedChange={(enabled) =>
+                      void manage(
+                        {
+                          type: "clock_alarm",
+                          action: "enable",
+                          alarmId: alarm.id,
+                          enabled,
+                        },
+                        alarm.id,
+                      )
+                    }
+                  />
+                </div>
+                {alarm.scheduleState === "firing" && (
+                  <div className="mt-4 flex gap-3">
+                    <Button
+                      className="flex-1 bg-accent-action text-brand-black hover:bg-accent-action-hover"
+                      disabled={busy !== null}
+                      onClick={() =>
+                        void manage(
+                          {
+                            type: "clock_alarm",
+                            action: "dismiss",
+                            alarmId: alarm.id,
+                          },
+                          alarm.id,
+                        )
+                      }
+                    >
+                      Stop
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      disabled={busy !== null}
+                      onClick={() =>
+                        void manage(
+                          {
+                            type: "clock_alarm",
+                            action: "snooze",
+                            alarmId: alarm.id,
+                            minutes: 5,
+                          },
+                          alarm.id,
+                        )
+                      }
+                    >
+                      Snooze
+                    </Button>
+                  </div>
+                )}
+                {alarm.scheduleState === "snoozed" && alarm.nextAt && (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Snoozed until{" "}
+                    {new Intl.DateTimeFormat(undefined, {
+                      hour: "numeric",
+                      minute: "2-digit",
+                      timeZone: status.timeZone,
+                    }).format(alarm.nextAt)}
+                  </p>
+                )}
+                {["permission_required", "schedule_unknown"].includes(
+                  alarm.scheduleState,
+                ) && (
+                  <p role="status" className="mt-2 text-sm text-destructive">
+                    {alarm.scheduleState === "permission_required"
+                      ? "Alarm permission required"
+                      : "Schedule could not be confirmed"}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <Dialog
+        open={editorOpen}
+        onOpenChange={(open) => {
+          if (!busy) setEditorOpen(open);
+        }}
+      >
+        <DialogContent
+          className="max-w-sm overflow-y-auto max-sm:bottom-[calc(max(var(--eliza-chat-clearance,0px),var(--safe-area-bottom,0px))+3rem)] max-sm:max-h-[calc(100dvh_-_max(var(--eliza-chat-clearance,0px),var(--safe-area-bottom,0px))_-_4rem)]"
+          showCloseButton={false}
+        >
+          <DialogTitle className="text-lg font-medium">
+            {editing ? "Edit alarm" : "New alarm"}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Set the time, repeat days and label.
+          </DialogDescription>
+          <form
+            className="space-y-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
+            }}
+          >
+            <label htmlFor="clock-alarm-time" className="block">
+              <span className="sr-only">Alarm time</span>
+              <Input
+                id="clock-alarm-time"
+                type="time"
+                value={time}
+                required
+                ref={timeElement.ref}
+                {...timeElement.agentProps}
+                className="h-20 text-center text-4xl tabular-nums"
+                onChange={(event) => setTime(event.target.value)}
+              />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm">Repeat</span>
+              <select
+                id="clock-alarm-repeat"
+                value={repeat}
+                ref={repeatElement.ref}
+                {...repeatElement.agentProps}
+                className="h-11 w-full rounded-sm border border-border bg-bg px-3 text-base"
+                onChange={(event) => setRepeat(event.target.value)}
+              >
+                <option value="once">Once</option>
+                <option value="daily">Every day</option>
+                <option value="weekdays">Weekdays</option>
+                <option value="custom">Selected days</option>
+              </select>
+            </label>
+            {repeat === "custom" && (
+              <fieldset
+                className="flex justify-between gap-1"
+                aria-label="Repeat days"
+              >
+                {([1, 2, 3, 4, 5, 6, 7] as const).map((dayNumber) => (
+                  <button
+                    key={dayNumber}
+                    type="button"
+                    aria-label={DAY_NAMES[dayNumber - 1]}
+                    aria-pressed={days.includes(dayNumber)}
+                    className={`size-10 rounded-full text-sm ${days.includes(dayNumber) ? "bg-accent-action text-brand-black" : "bg-muted text-txt"}`}
+                    onClick={() =>
+                      setDays((current) =>
+                        current.includes(dayNumber)
+                          ? current.filter((value) => value !== dayNumber)
+                          : [...current, dayNumber].sort((a, b) => a - b),
+                      )
+                    }
+                  >
+                    {DAY_NAMES[dayNumber - 1].slice(0, 1)}
+                  </button>
+                ))}
+              </fieldset>
+            )}
+            <label htmlFor="clock-alarm-label" className="block space-y-2">
+              <span className="text-sm">Label</span>
+              <Input
+                id="clock-alarm-label"
+                value={label}
+                maxLength={200}
+                placeholder="Alarm"
+                ref={labelElement.ref}
+                {...labelElement.agentProps}
+                onChange={(event) => setLabel(event.target.value)}
+              />
+            </label>
+            <div className="flex justify-between gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={busy !== null}
+                onClick={() => setEditorOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!canSave || !validForm || busy !== null}
+                ref={saveElement.ref}
+                {...saveElement.agentProps}
+                aria-label="Save"
+                className="bg-accent-action text-brand-black hover:bg-accent-action-hover"
+              >
+                {busy === "save" ? "Saving…" : "Save"}
+              </Button>
+            </div>
+            {editing && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full text-destructive"
+                disabled={busy !== null}
+                onClick={() =>
+                  void manage(
+                    {
+                      type: "clock_alarm",
+                      action: "delete",
+                      alarmId: editing.id,
+                    },
+                    "delete",
+                  )
+                }
+              >
+                Delete alarm
+              </Button>
+            )}
+          </form>
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
+}
 function ClockControls() {
   const now = useSharedNow();
   const host = useSyncExternalStore(
@@ -39,6 +656,7 @@ function ClockControls() {
     getClockHost,
     () => null,
   );
+  const ownedMode = typeof host?.alarmStatus === "function";
   const [native, setNative] = useState<ClockStatus | null>(null);
   const [proposals, setProposals] = useState<ClockProposal[]>([]);
   const [scope, setScope] = useState<string | null>(null);
@@ -182,11 +800,14 @@ function ClockControls() {
         pending: result.receiptPending
           ? { ...proposal, state: "reconciliation_required" }
           : null,
-        text: result.receiptPending
-          ? `Clock result: ${result.handoff.status}; server receipt remains pending. Check the saved receipt again to retry settlement without another dispatch. No installed or ringing alarm is confirmed.`
-          : result.handoff.status === "opened"
-            ? "Android Clock opened. Check the installed alarm there; ringing is not confirmed."
-            : `Clock result: ${result.handoff.status}. No installed or ringing alarm is confirmed.`,
+        text:
+          result.handoff.kind === "clock-alarm"
+            ? `Alarm ${result.handoff.status} on this phone.${result.receiptPending ? " Server receipt remains pending. Check the saved receipt to settle it without another alarm change." : ""} Sound follows the phone's alarm settings.`
+            : result.receiptPending
+              ? `Clock result: ${result.handoff.status}; server receipt remains pending. Check the saved receipt again to retry settlement without another dispatch. No installed or ringing alarm is confirmed.`
+              : result.handoff.status === "opened"
+                ? "Android Clock opened. Check the installed alarm there; ringing is not confirmed."
+                : `Clock result: ${result.handoff.status}. No installed or ringing alarm is confirmed.`,
       });
       // Keep a lost acknowledgement reachable without re-offering dispatch.
       // Settled requests leave the actionable list until a foreground refresh.
@@ -211,71 +832,10 @@ function ClockControls() {
         setReviewing(null);
     }
   };
-  const [time, setTime] = useState("");
-  const [label, setLabel] = useState("");
-  const [repeat, setRepeat] = useState("once");
-  const [days, setDays] = useState<number[]>([]);
-  const [drafted, setDrafted] = useState(false);
-  const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
-  const labelValid =
-    label.length <= 200 &&
-    [...label].every((character) => {
-      const code = character.charCodeAt(0);
-      return code >= 32 && code !== 127;
-    });
-  const repeatValid = repeat !== "custom" || days.length > 0;
-  const prepare = () => {
-    if (!valid || !labelValid || !repeatValid) return;
-    // Cost: one local composer event, no automatic model request or native effect.
-    dispatchChatPrefill({
-      text: `Propose an Android Clock alarm for ${time} ${repeat === "daily" ? "every day" : repeat === "weekdays" ? "every weekday (Monday through Friday)" : repeat === "custom" ? `every ${days.map((day) => DAY_NAMES[day - 1]).join(", ")}` : "once"} in my phone's current timezone${label ? ` with label ${JSON.stringify(label)}` : ""}. Preserve the repeat days and ask me to review before dispatch.`,
-    });
-    setDrafted(true);
-  };
-  const timeElement = useAgentElement<HTMLInputElement>({
-    id: "clock-alarm-time",
-    role: "text-input",
-    label: "Alarm time",
-    onFill: (value) => {
-      setTime(value);
-      setDrafted(false);
-    },
-  });
-  const labelElement = useAgentElement<HTMLInputElement>({
-    id: "clock-alarm-label",
-    role: "text-input",
-    label: "Alarm label",
-    onFill: (value) => {
-      setLabel(value);
-      setDrafted(false);
-    },
-  });
-  const requestElement = useAgentElement<HTMLButtonElement>({
-    id: "clock-alarm-request",
-    role: "button",
-    label: "Prepare alarm request",
-    status: valid && labelValid && repeatValid ? "ready" : "disabled",
-    onActivate: prepare,
-  });
-  const repeatElement = useAgentElement<HTMLSelectElement>({
-    id: "clock-alarm-repeat",
-    role: "select",
-    label: "Repeat",
-    onFill: (value) => {
-      if (["once", "daily", "weekdays", "custom"].includes(value)) {
-        setRepeat(value);
-        setDrafted(false);
-      }
-    },
-  });
   const reviewable = proposals.filter((p) =>
-    [
-      "pending",
-      "approved",
-      "executing",
-      "done",
-      "reconciliation_required",
-    ].includes(p.state),
+    ["pending", "approved", "executing", "reconciliation_required"].includes(
+      p.state,
+    ),
   );
   if (outcome?.pending && !reviewable.some((p) => p.id === outcome.pending?.id))
     reviewable.push(outcome.pending);
@@ -286,185 +846,18 @@ function ClockControls() {
       data-chat-clearance-aware="true"
     >
       <style>{CLOCK_TIME_FOCUS_CSS}</style>
-      <FramedPageHeader
-        actions={
-          <Button
-            variant="outline"
-            onClick={() => navigateBrowserPath("/automations")}
-          >
-            Manage reminders
-          </Button>
-        }
-      />
-      <FramedPageBody className="space-y-8">
-        <h1 className="text-xl font-medium">Clock</h1>
-        <section
-          aria-label="Local time"
-          className="space-y-2 border-b border-border pb-6"
-        >
-          <p className="text-sm text-muted-foreground">Time on this device</p>
-          <p className="text-4xl font-medium tabular-nums">
-            {now === 0
-              ? "—"
-              : new Intl.DateTimeFormat(undefined, {
-                  hour: "numeric",
-                  minute: "2-digit",
-                }).format(now)}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {Intl.DateTimeFormat().resolvedOptions().timeZone}
-          </p>
-        </section>
-        <section
-          aria-labelledby="clock-alarm-heading"
-          className="max-w-lg space-y-5"
-        >
-          <div className="space-y-2">
-            <h2
-              id="clock-alarm-heading"
-              className="flex items-center gap-2 text-lg font-medium"
-            >
-              <AlarmClock className="size-5" aria-hidden />
-              Android alarm
-            </h2>
+      <FramedPageBody className="space-y-6">
+        {ownedMode && host ? (
+          <OwnedAlarms host={host} />
+        ) : (
+          <div className="mx-auto max-w-xl">
+            <h1 className="mb-8 text-2xl font-medium">Alarms</h1>
             <p className="text-sm text-muted-foreground">
-              Prepare a request for a compatible Android phone. Send it in chat,
-              then review the proposal before any native handoff.
-            </p>
-            <p className="text-sm font-medium">
-              {native?.supported
-                ? "Native Clock requests are available. Every request needs approval on this phone."
-                : host && !native && !nativeError && !refreshError
-                  ? "Checking native Clock support…"
-                  : nativeError || refreshError
-                    ? "Clock support could not be checked."
-                    : `Alarm delivery is unavailable here${native?.reason ? `: ${native.reason}` : "."} Preparing a request does not install an alarm.`}
+              Open Clock on your Android phone to manage alarms.
             </p>
           </div>
-          <form
-            className="space-y-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              prepare();
-            }}
-          >
-            <div className="space-y-2">
-              <label htmlFor="clock-alarm-time" className="text-sm font-medium">
-                Alarm time
-              </label>
-              <Input
-                id="clock-alarm-time"
-                type="text"
-                placeholder="HH:MM"
-                pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
-                aria-describedby="clock-alarm-time-hint"
-                required
-                value={time}
-                ref={timeElement.ref}
-                {...timeElement.agentProps}
-                onChange={(event) => {
-                  setTime(event.target.value);
-                  setDrafted(false);
-                }}
-              />
-              <p
-                id="clock-alarm-time-hint"
-                className="text-sm text-muted-foreground"
-              >
-                24-hour time (HH:MM). Uses the phone’s current timezone after it
-                is checked.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <label
-                htmlFor="clock-alarm-repeat"
-                className="text-sm font-medium"
-              >
-                Repeat
-              </label>
-              <select
-                id="clock-alarm-repeat"
-                value={repeat}
-                ref={repeatElement.ref}
-                {...repeatElement.agentProps}
-                className="h-11 w-full rounded-sm border border-border bg-bg px-3 text-sm"
-                onChange={(event) => {
-                  setRepeat(event.target.value);
-                  setDrafted(false);
-                }}
-              >
-                <option value="once">Once</option>
-                <option value="daily">Every day</option>
-                <option value="weekdays">Weekdays (Monday–Friday)</option>
-                <option value="custom">Selected days</option>
-              </select>
-              {repeat === "custom" && (
-                <fieldset className="flex flex-wrap gap-x-4 gap-y-2">
-                  <legend className="sr-only">Repeat days</legend>
-                  {DAY_NAMES.map((name, index) => (
-                    <label
-                      key={name}
-                      className="flex min-h-11 items-center gap-2 text-sm"
-                    >
-                      <input
-                        type="checkbox"
-                        className="accent-[var(--accent-action)]"
-                        checked={days.includes(index + 1)}
-                        onChange={(event) => {
-                          setDays((previous) =>
-                            event.target.checked
-                              ? [...previous, index + 1].sort((a, b) => a - b)
-                              : previous.filter((day) => day !== index + 1),
-                          );
-                          setDrafted(false);
-                        }}
-                      />
-                      {name}
-                    </label>
-                  ))}
-                </fieldset>
-              )}
-            </div>
-            <div className="space-y-2">
-              <label
-                htmlFor="clock-alarm-label"
-                className="text-sm font-medium"
-              >
-                Alarm label{" "}
-                <span className="font-normal text-muted-foreground">
-                  (optional)
-                </span>
-              </label>
-              <Input
-                id="clock-alarm-label"
-                maxLength={200}
-                value={label}
-                ref={labelElement.ref}
-                {...labelElement.agentProps}
-                onChange={(event) => {
-                  setLabel(event.target.value);
-                  setDrafted(false);
-                }}
-              />
-            </div>
-            <Button
-              type="submit"
-              variant="selection"
-              disabled={!valid || !labelValid || !repeatValid}
-              ref={requestElement.ref}
-              {...requestElement.agentProps}
-            >
-              Prepare alarm request
-              <ArrowRight className="ml-2 size-4" aria-hidden />
-            </Button>
-            {drafted && (
-              <p role="status" className="text-sm">
-                Request ready in chat. No alarm has been installed.
-              </p>
-            )}
-          </form>
-        </section>
-        {nativeError && (
+        )}
+        {nativeError && (reviewable.length > 0 || outcome?.pending) && (
           <div className="space-y-2">
             <p role="alert" className="text-sm text-destructive">
               {nativeError}
@@ -476,15 +869,18 @@ function ClockControls() {
                   void reloadRequests.current?.();
                 }}
               >
-                Retry Clock support
+                {ownedMode ? "Retry agent requests" : "Retry Clock support"}
               </Button>
             )}
           </div>
         )}
-        {refreshError && (
+        {refreshError && (reviewable.length > 0 || outcome?.pending) && (
           <div className="space-y-2">
             <p role="alert" className="text-sm text-destructive">
-              Clock requests could not be refreshed. {refreshError}
+              {ownedMode
+                ? "Agent alarm requests could not be refreshed."
+                : "Clock requests could not be refreshed."}{" "}
+              {refreshError}
             </p>
             {host && (
               <Button
@@ -493,30 +889,21 @@ function ClockControls() {
                   void reloadRequests.current?.();
                 }}
               >
-                Refresh Clock requests
+                {ownedMode
+                  ? "Refresh agent requests"
+                  : "Refresh Clock requests"}
               </Button>
             )}
           </div>
         )}
         {outcome && (
-          <p role="status" className="text-sm">
+          <p role="status" className="sr-only">
             {outcome.text}
           </p>
         )}
-        {(native?.supported || outcome?.pending) && (
+        {reviewable.length > 0 && (
           <section aria-label="Clock proposals" className="max-w-lg space-y-3">
             <h2 className="text-base font-medium">Clock requests</h2>
-            {!refreshError && (
-              <Button
-                variant="outline"
-                disabled={reviewing !== null}
-                onClick={() => {
-                  void reloadRequests.current?.();
-                }}
-              >
-                Refresh Clock requests
-              </Button>
-            )}
             {reviewable.map((proposal) => {
               const freshReview = ["pending", "approved"].includes(
                 proposal.state,
@@ -570,31 +957,8 @@ function ClockControls() {
                 </div>
               );
             })}
-            {reviewable.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No pending Clock requests. Send your request in chat to create
-                one.
-              </p>
-            )}
           </section>
         )}
-        <section
-          aria-labelledby="clock-alarm-status"
-          className="max-w-lg space-y-3 border-t border-border pt-6"
-        >
-          <h2 id="clock-alarm-status" className="text-base font-medium">
-            Check alarms on your phone
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Android Clock owns the alarm list and ringing. Opening Clock
-            confirms the handoff only. Check the repeat days, time, enabled
-            state and sound there.
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Eliza reminders use the runtime and push notifications. They are
-            managed separately.
-          </p>
-        </section>
       </FramedPageBody>
     </FramedPage>
   );

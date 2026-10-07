@@ -2,9 +2,14 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type {
+  ClockAlarmOperation,
+  ClockAlarmRecord,
+} from "@elizaos/plugin-assistant/device-clock-review";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import type {
+  ClockAlarmStatus,
   ClockHost,
   ClockProposal,
 } from "../../../ui/src/bridge/clock-host";
@@ -19,6 +24,7 @@ const repoRoot = path.resolve(
   "../../../..",
 );
 const bridgeUrl = `/@fs${path.join(repoRoot, "packages/ui/src/bridge/clock-host.ts")}`;
+test.use({ timezoneId: "America/Los_Angeles" });
 type Scenario =
   | "owned"
   | "receipt"
@@ -910,4 +916,409 @@ test("Clock owner scope change aborts an active controlled native review", async
   expect((await diagnostics(page)).dispatchCount).toBe(0);
   expect(effects).toEqual([]);
   await capture(page, "owner-change-review-cancelled");
+});
+
+interface OwnedBoundary {
+  calls(): { operation: ClockAlarmOperation; revision: number }[];
+  failInventory(): void;
+  recoverInventory(): void;
+  replaceOwner(): void;
+  deferRead(): void;
+  resolveRead(): void;
+}
+async function openOwnedClock(page: Page, permissions = true) {
+  await seedAppStorage(page);
+  await installDefaultAppRoutes(page);
+  await openAppPath(page, "/clock");
+  await expect(
+    page.getByRole("heading", { name: "Alarms", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(
+    async ({ url, permissions }) => {
+      const module = await import(url);
+      const listeners = new Set<() => void>();
+      let owner = "a".repeat(64);
+      let revision = 3;
+      const grants = {
+        exact: permissions,
+        notifications: permissions,
+        fullScreen: permissions,
+      };
+      let fail = false;
+      let deferred = false;
+      let resolveDeferred: ((value: ClockAlarmStatus) => void) | null = null;
+      const calls: { operation: ClockAlarmOperation; revision: number }[] = [];
+      const nextOccurrence = (
+        hour: number,
+        minute: number,
+        days: readonly number[],
+      ) => {
+        const next = new Date();
+        next.setHours(hour, minute, 0, 0);
+        for (let offset = 0; offset <= 7; offset++) {
+          if (
+            next.getTime() > Date.now() &&
+            (days.length === 0 || days.includes(next.getDay() + 1))
+          )
+            return next.getTime();
+          next.setDate(next.getDate() + 1);
+        }
+        throw new Error("Controlled recurrence fixture has no next date");
+      };
+      let alarms: ClockAlarmRecord[] = [
+        {
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          hour: 9,
+          minute: 0,
+          label: "Morning routine",
+          timeZone: "America/Los_Angeles",
+          days: [2, 3, 4, 5, 6],
+          enabled: true,
+          nextAt: nextOccurrence(9, 0, [2, 3, 4, 5, 6]),
+          scheduleState: "scheduled",
+          generation: 1,
+          lastOutcome: "",
+        },
+      ];
+      const snapshot = (): ClockAlarmStatus => ({
+        available: true,
+        reason: null,
+        owner,
+        alarmsRevision: revision,
+        alarmsObservedAt: Date.now(),
+        timeZone: "America/Los_Angeles",
+        alarms: structuredClone(alarms),
+        exactAlarmsAllowed: grants.exact,
+        notificationsAllowed: grants.notifications,
+        fullScreenAllowed: grants.fullScreen,
+        alarmSoundMuted: false,
+        defaultToneAvailable: true,
+      });
+      const notify = () => {
+        for (const listener of listeners) listener();
+      };
+      const host: ClockHost = {
+        // An unavailable agent never hides the independent native alarm inventory.
+        status: async () => {
+          throw new Error("Controlled agent offline");
+        },
+        proposals: async () => {
+          throw new Error("Controlled agent offline");
+        },
+        review: async () => {
+          throw new Error("No proposal in owned alarm fixture");
+        },
+        retire: async () => {},
+        subscribe(listener) {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
+        async alarmStatus() {
+          if (fail) throw new Error("Controlled native inventory read failed");
+          const observed = snapshot();
+          if (deferred) {
+            deferred = false;
+            return new Promise((resolve) => {
+              resolveDeferred = resolve;
+            }).then(() => observed);
+          }
+          return observed;
+        },
+        async manageAlarm(operation, alarmsRevision) {
+          calls.push({
+            operation: structuredClone(operation),
+            revision: alarmsRevision,
+          });
+          if (alarmsRevision !== revision)
+            throw new Error("Stale controlled alarm revision");
+          revision++;
+          const id =
+            "alarmId" in operation
+              ? operation.alarmId
+              : "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+          const selected = alarms.find((alarm) => alarm.id === id);
+          let nextAt =
+            operation.action === "set" || operation.action === "update"
+              ? nextOccurrence(operation.hour, operation.minute, operation.days)
+              : selected
+                ? nextOccurrence(selected.hour, selected.minute, selected.days)
+                : null;
+          if (operation.action === "set" || operation.action === "update") {
+            const enabled =
+              operation.action === "set" || selected?.enabled === true;
+            if (!enabled) nextAt = null;
+            const record: ClockAlarmRecord = {
+              hour: operation.hour,
+              minute: operation.minute,
+              label: operation.label,
+              timeZone: operation.timeZone,
+              days: operation.days,
+              id,
+              enabled,
+              nextAt,
+              scheduleState: enabled ? "scheduled" : "disabled",
+              generation: 2,
+              lastOutcome: "",
+            };
+            alarms =
+              operation.action === "set"
+                ? [...alarms, record]
+                : alarms.map((alarm) => (alarm.id === id ? record : alarm));
+            return {
+              result: {
+                kind: "clock-alarm",
+                action: operation.action,
+                status: operation.action === "set" ? "scheduled" : "updated",
+                alarmId: id,
+                nextAt,
+              },
+              alarmsRevision: revision,
+            };
+          }
+          if (operation.action === "enable") {
+            alarms = alarms.map((alarm) =>
+              alarm.id === id
+                ? {
+                    ...alarm,
+                    enabled: operation.enabled,
+                    nextAt: operation.enabled ? nextAt : null,
+                    scheduleState: operation.enabled ? "scheduled" : "disabled",
+                  }
+                : alarm,
+            );
+            return {
+              result: {
+                kind: "clock-alarm",
+                action: "enable",
+                status: operation.enabled ? "enabled" : "disabled",
+                alarmId: id,
+                nextAt: operation.enabled ? nextAt : null,
+              },
+              alarmsRevision: revision,
+            };
+          }
+          if (operation.action === "delete") {
+            alarms = alarms.filter((alarm) => alarm.id !== id);
+            return {
+              result: {
+                kind: "clock-alarm",
+                action: "delete",
+                status: "deleted",
+                alarmId: id,
+              },
+              alarmsRevision: revision,
+            };
+          }
+          throw new Error("Unexpected controlled alarm operation");
+        },
+        async requestAlarmPermission(permission) {
+          grants[permission] = true;
+        },
+      };
+      module.configureClockHost(host);
+      (
+        window as typeof window & { __ownedClockBoundary: OwnedBoundary }
+      ).__ownedClockBoundary = {
+        calls: () => structuredClone(calls),
+        failInventory() {
+          fail = true;
+          notify();
+        },
+        recoverInventory() {
+          fail = false;
+          notify();
+        },
+        deferRead() {
+          deferred = true;
+          notify();
+        },
+        resolveRead() {
+          resolveDeferred?.(snapshot());
+        },
+        replaceOwner() {
+          owner = "b".repeat(64);
+          alarms = [
+            {
+              ...alarms[0],
+              id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+              label: "New owner alarm",
+            },
+          ];
+          notify();
+        },
+      };
+    },
+    { url: bridgeUrl, permissions },
+  );
+  await expect(
+    page.getByRole("listitem", { name: "Morning routine", exact: true }),
+  ).toBeVisible();
+}
+async function ownedCalls(page: Page) {
+  return page.evaluate(() =>
+    (
+      window as typeof window & { __ownedClockBoundary: OwnedBoundary }
+    ).__ownedClockBoundary.calls(),
+  );
+}
+for (const viewport of [
+  { name: "desktop", width: 1280, height: 900 },
+  { name: "mobile", width: 393, height: 852 },
+]) {
+  test(`owned alarms local controls and overview ${viewport.name}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await openOwnedClock(page);
+    await expect(page.getByText("Time on this device")).toHaveCount(0);
+    await expect(page.getByText("Manage reminders")).toHaveCount(0);
+    await expect(page.locator("#clock-alarm-time")).toHaveCount(0);
+    await page.getByRole("button", { name: "Add alarm", exact: true }).click();
+    await page.locator("#clock-alarm-label").fill("朝の目覚まし — Work days");
+    await page.getByLabel("Repeat", { exact: true }).selectOption("daily");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    const row = page.getByRole("listitem", {
+      name: "朝の目覚まし — Work days",
+      exact: true,
+    });
+    await expect(row).toBeVisible();
+    expect((await ownedCalls(page))[0]).toMatchObject({
+      revision: 3,
+      operation: {
+        type: "clock_alarm",
+        action: "set",
+        hour: 9,
+        minute: 0,
+        days: [1, 2, 3, 4, 5, 6, 7],
+      },
+    });
+    await row
+      .getByRole("button", {
+        name: "Edit 朝の目覚まし — Work days",
+        exact: true,
+      })
+      .click();
+    await page.getByLabel("Alarm time", { exact: true }).fill("09:30");
+    await page.getByLabel("Repeat", { exact: true }).selectOption("custom");
+    for (const day of ["Sunday", "Tuesday", "Thursday", "Saturday"])
+      await page.getByRole("button", { name: day, exact: true }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(row.getByText("09:30", { exact: true })).toBeVisible();
+    expect((await ownedCalls(page))[1]).toMatchObject({
+      revision: 4,
+      operation: {
+        action: "update",
+        alarmId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        days: [2, 4, 6],
+      },
+    });
+    const directory = testOutputPath("owned-native-alarms", "minimal-renderer");
+    await mkdir(directory, { recursive: true });
+    await page
+      .getByRole("heading", { name: "Alarms", exact: true })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: `${directory}/${viewport.name}-overview.png`,
+      fullPage: true,
+    });
+    await row
+      .getByRole("button", {
+        name: "Edit 朝の目覚まし — Work days",
+        exact: true,
+      })
+      .click();
+    await page.screenshot({
+      path: `${directory}/${viewport.name}-editor.png`,
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await row.getByRole("switch").click();
+    await expect(row.getByRole("switch")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    await row
+      .getByRole("button", {
+        name: "Edit 朝の目覚まし — Work days",
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole("button", { name: "Delete alarm", exact: true })
+      .click();
+    await expect(row).toHaveCount(0);
+    expect(
+      (await ownedCalls(page)).map((call) => call.operation.action),
+    ).toEqual(["set", "update", "enable", "delete"]);
+  });
+}
+test("owned alarms permissions, failed inventory and old owner reads are explicit", async ({
+  page,
+}) => {
+  await openOwnedClock(page, false);
+  const row = page.getByRole("listitem", {
+    name: "Morning routine",
+    exact: true,
+  });
+  await row.getByRole("switch").click();
+  await expect(row.getByRole("switch")).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  await row
+    .getByRole("button", { name: "Edit Morning routine", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Save", exact: true }),
+  ).toBeEnabled();
+  await page.getByLabel("Alarm time", { exact: true }).fill("09:05");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(row.getByText("09:05", { exact: true })).toBeVisible();
+  await expect(row.getByRole("switch")).toBeDisabled();
+  await page.getByRole("button", { name: "Allow alarms", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Allow notifications", exact: true })
+    .click();
+  await expect(row.getByRole("switch")).toBeEnabled();
+  await page.evaluate(() =>
+    (
+      window as typeof window & { __ownedClockBoundary: OwnedBoundary }
+    ).__ownedClockBoundary.failInventory(),
+  );
+  await expect(
+    page.getByText("Controlled native inventory read failed", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("listitem", { name: "Morning routine", exact: true }),
+  ).toHaveCount(0);
+  await page.evaluate(() =>
+    (
+      window as typeof window & { __ownedClockBoundary: OwnedBoundary }
+    ).__ownedClockBoundary.recoverInventory(),
+  );
+  await expect(row).toBeVisible();
+  await row
+    .getByRole("button", { name: "Edit Morning routine", exact: true })
+    .click();
+  await page.evaluate(() => {
+    const b = (
+      window as typeof window & { __ownedClockBoundary: OwnedBoundary }
+    ).__ownedClockBoundary;
+    b.deferRead();
+    b.replaceOwner();
+  });
+  await expect(
+    page.getByRole("listitem", { name: "New owner alarm", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() =>
+    (
+      window as typeof window & { __ownedClockBoundary: OwnedBoundary }
+    ).__ownedClockBoundary.resolveRead(),
+  );
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("listitem", { name: "Morning routine", exact: true }),
+  ).toHaveCount(0);
 });

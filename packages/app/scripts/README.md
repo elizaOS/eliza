@@ -37,3 +37,18 @@ explicit recovery. Companion `updates` must declare local APK paths and SHA-256
 pins of the same package; only those exact bytes may be cleaned after an
 instrumented update. Device-owner and network changes remain explicit caller
 policy and must be restored by the cleanup callback.
+
+
+For process-death qualification, an explicit single-method scenario can call
+`context.interruptPhase(name, {args, markerPath, timeoutMs})` from
+`collectVariant` after successful setup instrumentation. The app must write a
+private JSON marker with the harness-generated `interruptionRunId` extra as
+`runId`, main PID and `/proc` start time
+as `startTimeTicks` (a decimal string). The runner validates package/user UID,
+process identity, live lease and installed APK bytes before force-stopping only
+that owned package. It requires all observed UID processes to exit and a matching
+started-but-crashed instrumentation result. Timeout, stale marker, changed process
+or lost custody fails; a crash alone never passes. Call a separate successful
+`instrumentPhase` to verify product recovery before returning. Its record names
+the interruption it recovers; cleanup cannot satisfy this requirement. This API
+is not a device-acceptance claim and does not retry interrupted user effects.

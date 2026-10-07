@@ -69,6 +69,26 @@ describe("intentStatesRecurrence", () => {
     expect(intentStatesRecurrence("backup runs nightly")).toBe(true);
   });
 
+  it("accepts spelled-out counts the same as digits", () => {
+    // "every 2 days" and "3 times a day" already open the gate; the same
+    // cadence written with number words must too.
+    expect(intentStatesRecurrence("team sync every two weeks on monday")).toBe(
+      true,
+    );
+    expect(intentStatesRecurrence("stretch every three hours")).toBe(true);
+    expect(intentStatesRecurrence("check the oven every fifteen minutes")).toBe(
+      true,
+    );
+    expect(intentStatesRecurrence("take my meds three times a day")).toBe(true);
+    expect(intentStatesRecurrence("yoga two times a week")).toBe(true);
+    expect(intentStatesRecurrence("invite two members to the launch")).toBe(
+      false,
+    );
+    expect(intentStatesRecurrence("I called him three times today")).toBe(
+      false,
+    );
+  });
+
   it("accepts explicit recurrence in the shipped locales", () => {
     expect(intentStatesRecurrence("reunión cada lunes a las 10")).toBe(true);
     expect(intentStatesRecurrence("gimnasio todos los martes")).toBe(true);
@@ -82,6 +102,7 @@ describe("intentStatesRecurrence", () => {
     expect(intentStatesRecurrence("gimnasio los martes a las 10")).toBe(true);
     expect(intentStatesRecurrence("una vez a la semana yoga")).toBe(true);
     expect(intentStatesRecurrence("toda segunda tem reunião")).toBe(true);
+    expect(intentStatesRecurrence("tomar remédio cada manhã")).toBe(true);
     expect(intentStatesRecurrence("周一到周五提醒我吃药")).toBe(true);
     expect(intentStatesRecurrence("毎週月曜日の午前10時にスタンドアップ")).toBe(
       true,
@@ -162,6 +183,21 @@ describe("buildCreateEventRequest recurrence authority", () => {
     });
 
     expect(built.request.recurrence).toEqual(plannerRecurrence);
+  });
+
+  it("keeps an interval RRULE when the user spells out the interval", () => {
+    const biweekly = ["RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO"];
+    const built = buildCreateEventRequest({
+      details: { title: "team sync", recurrence: biweekly },
+      extractedDetails: {},
+      explicitTitle: "team sync",
+      inferredTitle: "team sync",
+      authorizingUserTexts: [
+        "schedule team sync every two weeks on monday at 10am",
+      ],
+    });
+
+    expect(built.request.recurrence).toEqual(biweekly);
   });
 
   it("does not let planner or assistant text open the gate", () => {

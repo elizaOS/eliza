@@ -31,7 +31,7 @@ import {
 import { proposeDeviceAction } from "../../../../plugins/plugin-assistant/src/services/device-actions/action.ts";
 import { deviceRequestCredential } from "../../../agent/src/api/device-action-routes.ts";
 import { rememberCsrfTokenForUrl } from "../../../ui/src/api/auth/csrf-cookie.ts";
-import { ElizaClient } from "../../../ui/src/api/client-base.ts";
+import { ElizaClient } from "../../../ui/src/api/client.ts";
 import { requestViaAgentTransport } from "../../../ui/src/api/csrf-client.ts";
 import { getClockHost } from "../../../ui/src/bridge/clock-host.ts";
 import { createMachineSession } from "../../src/api/auth/sessions.ts";
@@ -51,6 +51,9 @@ const native = vi.hoisted(() => ({
   http: vi.fn(),
   cancel: vi.fn(async () => ({ cancelled: true })),
   list: vi.fn(),
+  alarms: vi.fn(),
+  manage: vi.fn(),
+  permission: vi.fn(),
   review: vi.fn(async () => ({
     result: { kind: "clock-handoff", action: "set", status: "opened" },
     receiptPending: false,
@@ -66,6 +69,9 @@ vi.mock("@capacitor/core", async (original) => ({
   CapacitorHttp: { request: native.http },
   registerPlugin: () => ({
     getStatus: native.status,
+    getAlarmStatus: native.alarms,
+    manageAlarm: native.manage,
+    requestAlarmPermission: native.permission,
     requestAgent: native.request,
     cancelAgentRequest: native.cancel,
     listProposals: native.list,
@@ -136,6 +142,7 @@ describe("Clock preserves existing agent device routing", () => {
     sourceRevision: revision,
   };
   const requests: Array<{
+    url: string;
     headers: Record<string, string | string[] | undefined>;
     body: string;
   }> = [];
@@ -207,7 +214,11 @@ describe("Clock preserves existing agent device routing", () => {
     server = createServer(async (request, response) => {
       let body = "";
       for await (const part of request) body += part;
-      requests.push({ headers: { ...request.headers }, body });
+      requests.push({
+        url: request.url ?? "",
+        headers: { ...request.headers },
+        body,
+      });
       const send = (value: unknown, status = 200) => {
         response.writeHead(status, { "content-type": "application/json" });
         response.end(JSON.stringify(value));
@@ -219,6 +230,34 @@ describe("Clock preserves existing agent device routing", () => {
           allowCookieAuth: false,
           allowBearerAuth: true,
         });
+        if (
+          authorization.ok &&
+          request.url?.startsWith("/api/conversations/id/greeting")
+        ) {
+          send({
+            text: "Hello from the existing transport",
+            agentName: "Eliza",
+            generated: true,
+          });
+          return;
+        }
+        if (
+          authorization.ok &&
+          request.url === "/api/conversations/id/messages/stream"
+        ) {
+          response.writeHead(200, { "content-type": "text/event-stream" });
+          response.end(
+            'data: {"type":"done","fullText":"Cloud reply","agentName":"Eliza"}\n\n',
+          );
+          return;
+        }
+        if (
+          authorization.ok &&
+          ["/api/status", "/api/conversations"].includes(request.url ?? "")
+        ) {
+          send({ state: "running", conversations: [] });
+          return;
+        }
         const credential = deviceRequestCredential(request, {
           ...authorization,
           role: authorization.ok ? authorization.role : "NONE",
@@ -271,19 +310,16 @@ describe("Clock preserves existing agent device routing", () => {
     if (!address || typeof address === "string")
       throw Error("Missing fixture listener");
     native.base = `http://127.0.0.1:${address.port}`;
-    vi.stubGlobal("window", Object.assign(new EventTarget(), { localStorage }));
+    vi.stubGlobal(
+      "window",
+      Object.assign(new EventTarget(), {
+        localStorage,
+        location: new URL("https://localhost"),
+      }),
+    );
     client = new ElizaClient(native.base, bearer);
     localStorage.setItem("eliza:mobile-runtime-mode", "remote-mac");
     rememberCsrfTokenForUrl(native.base, csrf);
-    native.status.mockImplementation(async () => ({
-      supported: true,
-      agentBase: native.base,
-      reason: null,
-      capabilities: clock.capabilities,
-      scope: native.scope,
-      installationId: clock.installationId,
-      context: { sensitive: false, revision: 1, timeZone: "UTC" },
-    }));
     native.http.mockImplementation(
       async (input: {
         url: string;
@@ -409,7 +445,16 @@ describe("Clock preserves existing agent device routing", () => {
     client.setToken(bearer);
     native.http.mockClear();
     native.request.mockClear();
-    native.status.mockClear();
+    native.status.mockReset();
+    native.status.mockImplementation(async () => ({
+      supported: true,
+      agentBase: native.base,
+      reason: null,
+      capabilities: clock.capabilities,
+      scope: native.scope,
+      installationId: clock.installationId,
+      context: { sensitive: false, revision: 1, timeZone: "UTC" },
+    }));
     native.review.mockClear();
     requests.length = 0;
     operationKey = randomUUID();
@@ -535,6 +580,96 @@ describe("Clock preserves existing agent device routing", () => {
     expect(native.http).toHaveBeenCalledOnce();
     expect(native.request).not.toHaveBeenCalled();
     expect(native.status).not.toHaveBeenCalled();
+  });
+  it.each([undefined, "fr"])(
+    "keeps the real bodyless greeting on the existing authenticated transport (%s)",
+    async (lang) => {
+      const reply = await client.requestGreeting("id", lang);
+      expect(reply.text).toBe("Hello from the existing transport");
+      expect(requests[0].url).toBe(
+        `/api/conversations/id/greeting${lang ? `?lang=${lang}` : ""}`,
+      );
+      expect(requests[0].body).toBe("");
+      expect(requests[0].headers.authorization).toBe(`Bearer ${bearer}`);
+      expect(native.http).toHaveBeenCalledOnce();
+      expect(native.request).not.toHaveBeenCalled();
+      expect(native.status).not.toHaveBeenCalled();
+    },
+  );
+  it("keeps the real dedicated Cloud stream and trace header on its existing authenticated transport", async () => {
+    const base = "https://fixture.cloud.eliza.app";
+    const pairedStatus = await native.status();
+    native.status.mockClear();
+    native.status.mockResolvedValue({ ...pairedStatus, agentBase: base });
+    const originalFetch = globalThis.fetch;
+    const wire = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        return originalFetch(
+          url.startsWith(base) ? native.base + url.slice(base.length) : input,
+          init,
+        );
+      });
+    try {
+      const cloud = new ElizaClient(base, bearer);
+      const reply = await cloud.sendConversationMessageStream(
+        "id",
+        "Cloud message",
+        () => {},
+      );
+      expect(reply.text).toBe("Cloud reply");
+      expect(requests).toHaveLength(1);
+      expect(requests[0].url).toBe("/api/conversations/id/messages/stream");
+      expect(requests[0].headers["x-eliza-trace-id"]).toEqual(
+        expect.any(String),
+      );
+      expect(requests[0].headers.authorization).toBe(`Bearer ${bearer}`);
+      expect(JSON.parse(requests[0].body).text).toBe("Cloud message");
+      expect(native.request).not.toHaveBeenCalled();
+      expect(native.status).not.toHaveBeenCalled();
+    } finally {
+      wire.mockRestore();
+      native.status.mockResolvedValue(pairedStatus);
+    }
+  });
+  it("serves an unrelated authenticated request without consulting a rejected Clock worker", async () => {
+    await native.status.withImplementation(
+      async () => {
+        throw Error("Native Clock worker unavailable");
+      },
+      async () => {
+        expect(await client.fetch("/api/status")).toEqual({
+          state: "running",
+          conversations: [],
+        });
+        expect(native.status).not.toHaveBeenCalled();
+        expect(native.request).not.toHaveBeenCalled();
+        expect(native.http).toHaveBeenCalledOnce();
+      },
+    );
+  });
+  it("falls back before dispatch when an eligible request cannot read Clock status", async () => {
+    await native.status.withImplementation(
+      async () => {
+        throw Error("Native Clock worker unavailable");
+      },
+      async () => {
+        expect(await client.fetch("/api/conversations")).toEqual({
+          state: "running",
+          conversations: [],
+        });
+        expect(native.status).toHaveBeenCalledOnce();
+        expect(native.request).not.toHaveBeenCalled();
+        expect(native.http).toHaveBeenCalledOnce();
+        expect(requests[0].headers.authorization).toBe(`Bearer ${bearer}`);
+      },
+    );
   });
   it("creates an actual agent Clock proposal for an unbound authenticated turn and retains private review access", async () => {
     operation = {
@@ -701,5 +836,97 @@ describe("Clock preserves existing agent device routing", () => {
     await rejected;
     expect(native.http).not.toHaveBeenCalled();
     expect(requests).toHaveLength(0);
+  });
+  it("reads owned alarms independently and rejects false empty or malformed snapshots", async () => {
+    const status = {
+      available: true,
+      reason: null,
+      owner: "e".repeat(64),
+      alarmsRevision: 4,
+      alarmsObservedAt: Date.now(),
+      timeZone: "UTC",
+      alarms: [],
+      exactAlarmsAllowed: true,
+      notificationsAllowed: true,
+      fullScreenAllowed: false,
+      alarmSoundMuted: false,
+      defaultToneAvailable: true,
+    };
+    native.status.mockRejectedValueOnce(new Error("Agent offline"));
+    native.alarms.mockResolvedValue(status);
+    const host = getClockHost();
+    expect(await host?.alarmStatus?.()).toEqual(status);
+    native.alarms.mockResolvedValueOnce({
+      ...status,
+      available: false,
+      reason: "Owner unavailable",
+      owner: null,
+      alarmsRevision: null,
+    });
+    await expect(host?.alarmStatus?.()).rejects.toThrow(
+      "Invalid unavailable native alarm inventory",
+    );
+    native.alarms.mockResolvedValueOnce({ ...status, alarmsRevision: -1 });
+    await expect(host?.alarmStatus?.()).rejects.toThrow("Invalid Clock number");
+  });
+  it("binds local alarm review to the explicit owner and revision and validates its actual receipt", async () => {
+    const owner = "e".repeat(64);
+    const status = {
+      available: true,
+      reason: null,
+      owner,
+      alarmsRevision: 4,
+      alarmsObservedAt: Date.now(),
+      timeZone: "UTC",
+      alarms: [],
+      exactAlarmsAllowed: true,
+      notificationsAllowed: true,
+      fullScreenAllowed: true,
+      alarmSoundMuted: false,
+      defaultToneAvailable: true,
+    };
+    native.alarms.mockResolvedValue(status);
+    native.manage.mockReset();
+    const host = getClockHost();
+    await host?.alarmStatus?.();
+    const operation = {
+      type: "clock_alarm" as const,
+      action: "set" as const,
+      hour: 9,
+      minute: 0,
+      label: "Morning",
+      timeZone: "UTC",
+      days: [2, 3, 4, 5, 6] as (1 | 2 | 3 | 4 | 5 | 6 | 7)[],
+    };
+    const result = {
+      kind: "clock-alarm",
+      action: "set",
+      status: "scheduled",
+      alarmId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      nextAt: Date.now() + 3_600_000,
+    };
+    native.manage.mockResolvedValue({ result, alarmsRevision: 5 });
+    expect(await host?.manageAlarm?.(operation, 4, owner)).toEqual({
+      result,
+      alarmsRevision: 5,
+    });
+    expect(native.manage).toHaveBeenCalledWith({
+      operation,
+      alarmsRevision: 4,
+      expectedOwner: owner,
+    });
+    native.manage.mockClear();
+    native.alarms.mockResolvedValue({ ...status, owner: "f".repeat(64) });
+    await host?.alarmStatus?.();
+    await expect(host?.manageAlarm?.(operation, 4, owner)).rejects.toThrow(
+      "Refresh the alarm list",
+    );
+    expect(native.manage).not.toHaveBeenCalled();
+    native.alarms.mockResolvedValue(status);
+    await host?.alarmStatus?.();
+    await expect(host?.manageAlarm?.(operation, 3, owner)).rejects.toThrow(
+      "Alarm list changed",
+    );
+    expect(native.manage).not.toHaveBeenCalled();
   });
 });

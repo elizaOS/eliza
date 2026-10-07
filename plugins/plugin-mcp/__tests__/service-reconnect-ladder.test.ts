@@ -25,8 +25,8 @@ vi.mock("@modelcontextprotocol/sdk/client/index.js", () => {
         throw new Error("MCP handshake failed");
       }
     }
-    getServerCapabilities(): Record<string, never> {
-      return {};
+    getServerCapabilities(): { tools: Record<string, never> } {
+      return { tools: {} };
     }
     async listTools(): Promise<{ tools: Array<{ name: string; description: string }> }> {
       return { tools: handshake.tools };

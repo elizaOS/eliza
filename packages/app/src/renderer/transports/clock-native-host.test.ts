@@ -106,7 +106,7 @@ describe("native Clock renderer boundary", () => {
     fixture.cancelClock.mockClear();
     fixture.request.mockClear();
   });
-  it("rejects malformed status through the registered host and transport resolver", async () => {
+  it("rejects malformed host status and leaves transport selection on its existing path", async () => {
     const { context: _context, ...missingContext } = fixture.status;
     for (const raw of [
       null,
@@ -158,8 +158,9 @@ describe("native Clock renderer boundary", () => {
       await expect(
         nativeClockTransportForUrl(
           "https://agent.example/api/v1/eliza/agents/a/api/chat",
+          { method: "POST", body: "{}" },
         ),
-      ).rejects.toThrow();
+      ).resolves.toBeNull();
     }
     expect(fixture.request).not.toHaveBeenCalled();
     expect(await host().status()).toEqual(fixture.status);
@@ -324,7 +325,10 @@ describe("native Clock renderer boundary", () => {
     );
     const url =
       "https://agent.example/api/v1/eliza/agents/a/api/conversations/id/messages/stream";
-    const transport = await nativeClockTransportForUrl(url);
+    const transport = await nativeClockTransportForUrl(url, {
+      method: "POST",
+      body: "{}",
+    });
     expect(transport).not.toBeNull();
     if (!transport) throw new Error("Missing native transport");
     const response = await transport.request(url, {
@@ -361,7 +365,10 @@ describe("native Clock renderer boundary", () => {
     );
     const url =
       "https://agent.example/api/v1/eliza/agents/a/api/conversations/id/messages/stream";
-    const transport = await nativeClockTransportForUrl(url);
+    const transport = await nativeClockTransportForUrl(url, {
+      method: "POST",
+      body: "{}",
+    });
     if (!transport) throw new Error("Missing transport");
     const response = await transport.request(url, {
       method: "POST",
@@ -373,7 +380,13 @@ describe("native Clock renderer boundary", () => {
     );
     expect(fixture.remove).toHaveBeenCalledTimes(1);
   });
-  it("keeps ordinary transport available when native Clock support is absent", async () => {
+  it("keeps ordinary transport available for unsupported URLs and absent Clock support", async () => {
+    for (const url of ["/api/chat", "http://["]) {
+      expect(
+        await nativeClockTransportForUrl(url, { method: "POST", body: "{}" }),
+      ).toBeNull();
+    }
+    expect(fixture.getStatus).not.toHaveBeenCalled();
     fixture.getStatus.mockResolvedValueOnce({
       supported: false,
       agentBase: null,
@@ -386,6 +399,7 @@ describe("native Clock renderer boundary", () => {
     expect(
       await nativeClockTransportForUrl(
         "https://agent.example/api/v1/eliza/agents/a/api/chat",
+        { method: "POST", body: "{}" },
       ),
     ).toBeNull();
   });
@@ -401,7 +415,10 @@ describe("native Clock renderer boundary", () => {
       });
       const url =
         "https://agent.example/api/v1/eliza/agents/a/api/conversations/id/messages/stream";
-      const transport = await nativeClockTransportForUrl(url);
+      const transport = await nativeClockTransportForUrl(url, {
+        method: "POST",
+        body: "{}",
+      });
       if (!transport) throw new Error("Missing transport");
       const response = await transport.request(url, {
         method: "POST",
@@ -424,7 +441,10 @@ describe("native Clock renderer boundary", () => {
     });
     const url =
       "https://agent.example/api/v1/eliza/agents/a/api/conversations/id/messages/stream";
-    const transport = await nativeClockTransportForUrl(url);
+    const transport = await nativeClockTransportForUrl(url, {
+      method: "POST",
+      body: "{}",
+    });
     if (!transport) throw new Error("Missing transport");
     const response = await transport.request(url, {
       method: "POST",

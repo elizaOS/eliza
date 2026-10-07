@@ -1325,9 +1325,23 @@ export class RemindersDomain {
         );
       }
     }
-    const handoff =
+    const handoff: AutonomyNotificationDelivery | undefined =
       args.ownerType === "occurrence" && args.subjectType === "owner"
-        ? notificationDelivery
+        ? (notificationDelivery ?? {
+            // The host supplies this target only after committing the chat
+            // message. Without a notifier, a route with no conversation must
+            // still reject rather than fabricate delivery acceptance.
+            publish: async (target?: {
+              conversationId: string;
+              messageId: string;
+            }) => {
+              if (!target)
+                throw new ElizaError(
+                  "In-app reminder has no accepting conversation or notification surface.",
+                  { code: "LIFEOPS_REMINDER_NO_DELIVERY_SURFACE" },
+                );
+            },
+          })
         : undefined;
     this.ctx.emitAssistantEvent(
       args.presentation?.chatText ?? chatText,
@@ -1342,11 +1356,7 @@ export class RemindersDomain {
     );
     try {
       if (handoff?.routed) await handoff.routed;
-      else if (notificationDelivery) await notificationDelivery.publish();
-      else if (args.ownerType === "occurrence" && args.subjectType === "owner")
-        throw Error(
-          "In-app reminder has no accepting conversation or notification surface.",
-        );
+      else await (handoff ?? notificationDelivery)?.publish();
     } catch (error) {
       this.ctx.runtime.reportError(
         "lifeops:reminder:notification-delivery",

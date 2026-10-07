@@ -555,7 +555,7 @@ function buildRecurrenceScopeClarification(args: {
   event: LifeOpsCalendarEvent;
 }): string {
   const description =
-    describeRecurrence(recurrenceLinesFrom(args.event)) ??
+    describeRecurrence(recurrenceLinesFrom(args.event), args.event.timezone) ??
     "on a repeating schedule";
   const verb = args.action === "update" ? "change" : "delete";
   return `"${args.event.title}" repeats ${description}. should i ${verb} just this occurrence, this and every following occurrence, or the whole series?`;
@@ -4053,7 +4053,8 @@ function formatUpdateEventTargetContext(
     ...(recurring
       ? [
           `recurrenceDescription: ${
-            describeRecurrence(recurrenceLinesFrom(event)) ?? "(unknown rule)"
+            describeRecurrence(recurrenceLinesFrom(event), event.timezone) ??
+            "(unknown rule)"
           }`,
         ]
       : []),
@@ -6168,6 +6169,7 @@ const calendarAction: CalendarHandlerAction = {
                 event: targetEvent,
                 recurrenceDescription: describeRecurrence(
                   recurrenceLinesFrom(targetEvent),
+                  targetEvent.timezone,
                 ),
               },
             ),
@@ -6593,6 +6595,7 @@ const calendarAction: CalendarHandlerAction = {
                 event: targetEvent,
                 recurrenceDescription: describeRecurrence(
                   recurrenceLinesFrom(targetEvent),
+                  targetEvent.timezone,
                 ),
               },
             ),
