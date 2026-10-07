@@ -85,6 +85,7 @@ it.each([true, false])(
   "renders only an admitted in-app reminder (sleeping=%s)",
   async (sleeping) => {
     const createReminderAttempt = vi.fn(async () => undefined);
+    const updateReminderAttemptOutcome = vi.fn(async () => undefined);
     const runtime = {
       sendMessageToTarget: vi.fn(async () => {
         throw new Error("No external dispatch expected");
@@ -96,7 +97,7 @@ it.each([true, false])(
       {
         agentId: () => "agent",
         runtime,
-        repository: { createReminderAttempt },
+        repository: { createReminderAttempt, updateReminderAttemptOutcome },
       } as never,
       makeDeps(),
     );
@@ -136,6 +137,9 @@ it.each([true, false])(
     );
     expect(runtime.useModel).toHaveBeenCalledTimes(sleeping ? 0 : 1);
     expect(createReminderAttempt).toHaveBeenCalledWith(attempt);
+    expect(updateReminderAttemptOutcome).toHaveBeenCalledTimes(
+      sleeping ? 0 : 1,
+    );
     expect(audit).toHaveBeenCalledTimes(2);
     expect(emit).toHaveBeenCalledTimes(sleeping ? 0 : 1);
     expect(runtime.sendMessageToTarget).not.toHaveBeenCalled();
