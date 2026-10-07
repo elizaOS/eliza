@@ -614,7 +614,7 @@ function buildZoomSharedMeetingArtifact(input: {
   const nativeMeetingId = String(
     input.meeting.uuid ?? input.meeting.id ?? input.requestedMeetingId,
   );
-  const platformParticipants = input.participants.map(mapParticipant);
+  const platformParticipants = mergeParticipants(input.participants);
   const participantByName = new Map(
     platformParticipants
       .filter((participant) => participant.displayName)
@@ -635,6 +635,7 @@ function buildZoomSharedMeetingArtifact(input: {
     sourceStreams.map((stream) => [stream.mediaRefId, stream]),
   );
   const transcriptSpans: MeetingArtifactTranscriptSpan[] = [];
+  const speakerLabels = new Map<string, string>();
   for (const file of input.files.filter(
     (candidate) => candidate.mimeType === "text/vtt",
   )) {
@@ -647,6 +648,12 @@ function buildZoomSharedMeetingArtifact(input: {
       const speakerId = cue.speakerLabel
         ? `zoom-speaker:${stableLabel(cue.speakerLabel)}`
         : undefined;
+      if (speakerId && cue.speakerLabel && !speakerLabels.has(speakerId)) {
+        speakerLabels.set(
+          speakerId,
+          participant?.displayName ?? cue.speakerLabel,
+        );
+      }
       transcriptSpans.push({
         id: `${stream.id}:${cue.id}`,
         startMs: cue.startMs,
@@ -658,16 +665,6 @@ function buildZoomSharedMeetingArtifact(input: {
         sourceStreamId: stream.id,
       });
     }
-  }
-  const speakerLabels = new Map<string, string>();
-  for (const span of transcriptSpans) {
-    if (!span.speakerId) continue;
-    const cueLabel = span.platformParticipantId
-      ? platformParticipants.find(
-          (row) => row.id === span.platformParticipantId,
-        )?.displayName
-      : span.speakerId.replace(/^zoom-speaker:/, "").replace(/-/g, " ");
-    speakerLabels.set(span.speakerId, cueLabel ?? span.speakerId);
   }
   const artifact: MeetingArtifact = {
     schemaVersion: MEETING_ARTIFACT_SCHEMA_VERSION,
@@ -692,26 +689,26 @@ function buildZoomSharedMeetingArtifact(input: {
     media: input.files.map((file) => file.media),
     sourceStreams,
     platformParticipants,
-    diarizedSpeakers: [...speakerLabels].map(([id, displayName]) => ({
-      id,
-      sourceStreamIds: [
+    diarizedSpeakers: [...speakerLabels].map(([id, displayName]) => {
+      const spans = transcriptSpans.filter((span) => span.speakerId === id);
+      const platformParticipantIds = [
         ...new Set(
-          transcriptSpans
-            .filter((span) => span.speakerId === id)
-            .map((span) => span.sourceStreamId),
-        ),
-      ],
-      platformParticipantIds: [
-        ...new Set(
-          transcriptSpans
-            .filter((span) => span.speakerId === id)
+          spans
             .map((span) => span.platformParticipantId)
             .filter((value): value is string => Boolean(value)),
         ),
-      ],
-      name: { displayName, provenance: "platform", confidence: 1 },
-      status: "active",
-    })),
+      ];
+      return {
+        id,
+        sourceStreamIds: [...new Set(spans.map((span) => span.sourceStreamId))],
+        // A VTT speaker missing from the roster has no participant to cite.
+        ...(platformParticipantIds.length > 0
+          ? { platformParticipantIds }
+          : {}),
+        name: { displayName, provenance: "platform", confidence: 1 },
+        status: "active",
+      };
+    }),
     entityBindings: [],
     transcriptSpans,
     notes: [],
@@ -732,14 +729,41 @@ function buildZoomSharedMeetingArtifact(input: {
   return artifact;
 }
 
+/**
+ * Zoom returns one roster row per join, so a signed-in participant who rejoins
+ * repeats `id`. Collapse those rows into one participant that spans every join.
+ */
+function mergeParticipants(
+  participants: readonly ZoomParticipantResponse[],
+): MeetingArtifactPlatformParticipant[] {
+  const byId = new Map<string, MeetingArtifactPlatformParticipant>();
+  participants.forEach((participant, index) => {
+    const row = mapParticipant(participant, index);
+    const existing = byId.get(row.id);
+    if (!existing) {
+      byId.set(row.id, row);
+      return;
+    }
+    existing.displayName ??= row.displayName;
+    existing.joinedAtMs = boundMs(
+      existing.joinedAtMs,
+      row.joinedAtMs,
+      Math.min,
+    );
+    existing.leftAtMs = boundMs(existing.leftAtMs, row.leftAtMs, Math.max);
+  });
+  return [...byId.values()];
+}
+
 function mapParticipant(
   participant: ZoomParticipantResponse,
   index: number,
 ): MeetingArtifactPlatformParticipant {
+  // Zoom sends `id: ""` for guests who joined without signing in.
   const id =
-    participant.id ??
-    participant.user_id ??
-    participant.user_email ??
+    nonBlank(participant.id) ??
+    nonBlank(participant.user_id) ??
+    nonBlank(participant.user_email) ??
     `zoom-participant-${index + 1}`;
   return {
     id,
@@ -747,6 +771,20 @@ function mapParticipant(
     joinedAtMs: epochMs(participant.join_time),
     leftAtMs: epochMs(participant.leave_time),
   };
+}
+
+function nonBlank(value: string | undefined): string | undefined {
+  return value?.trim() ? value : undefined;
+}
+
+function boundMs(
+  current: number | undefined,
+  next: number | undefined,
+  pick: (a: number, b: number) => number,
+): number | undefined {
+  if (current === undefined) return next;
+  if (next === undefined) return current;
+  return pick(current, next);
 }
 
 function epochMs(value: string | undefined): number | undefined {
