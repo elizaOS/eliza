@@ -45,7 +45,7 @@ export function inspectRateLimit(err: unknown): RateLimitDetails {
   const headers = e.response?.headers;
   const remaining = headerNumber(headers, "x-ratelimit-remaining");
   const resetSeconds = headerNumber(headers, "x-ratelimit-reset");
-  const isRateLimited = e.status === 403 && remaining === 0;
+  const isRateLimited = (e.status === 403 || e.status === 429) && remaining === 0;
   return {
     isRateLimited,
     remaining,
