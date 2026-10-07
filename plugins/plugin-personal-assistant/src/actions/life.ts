@@ -6095,6 +6095,7 @@ async function runLifeOperationHandlerInner(
           text: `Which timezone should I use for ${requestedTime} on "${target.definition.title}"?`,
         };
       }
+      const cadence = normalizeCadenceDetail(detailObject(details, "cadence"));
       const request: UpdateLifeOpsDefinitionRequest = {
         ownership,
         title:
@@ -6102,12 +6103,12 @@ async function runLifeOperationHandlerInner(
         timezone: requestedTimeZone ?? undefined,
         description:
           target.definition.metadata.ownerSurface === "OWNER_REMINDERS" &&
-          target.definition.cadence.kind === "once" &&
+          (cadence ?? target.definition.cadence).kind === "once" &&
           typeof details?.description === "string" &&
           details.description.trim().length > 0
             ? details.description
             : detailString(details, "description"),
-        cadence: normalizeCadenceDetail(detailObject(details, "cadence")),
+        cadence,
         priority: detailNumber(details, "priority"),
         // detailObject returns Record<string,unknown>; cast at validated boundary.
         windowPolicy: detailObject(

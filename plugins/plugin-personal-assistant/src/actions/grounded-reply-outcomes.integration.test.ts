@@ -282,6 +282,78 @@ describe("grounded reply outcomes — real PGlite", () => {
     );
     expect(afterUpdate.definition.cadence).toEqual(saved.definition.cadence);
     expect(afterUpdate.definition.title).toBe(saved.definition.title);
+    const recurring = await service.createDefinition({
+      title: "Recurring reminder conversion",
+      description: "Recurring context",
+      kind: "habit",
+      cadence: { kind: "daily", windows: ["morning"] },
+      timezone: "UTC",
+      metadata: { ownerSurface: "OWNER_REMINDERS" },
+      reminderPlan: {
+        steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
+      },
+    });
+    const convertedBody = "\n  Exact converted one-off body  \n";
+    const convertedCadence = {
+      kind: "once" as const,
+      dueAt: new Date(Date.now() + 120_000).toISOString(),
+    };
+    const convertMessage = message(
+      "Make this reminder once with the exact body.",
+    );
+    const converted = await runWithActionRoutingContext(
+      {
+        actionName: "OWNER_REMINDERS_UPDATE",
+        modelClass: undefined,
+        messageId: convertMessage.id,
+        replyOwner: "planner",
+      },
+      () =>
+        runLifeOperationHandler(runtime, convertMessage, undefined, {
+          parameters: {
+            action: "update",
+            target: recurring.definition.id,
+            details: {
+              description: convertedBody,
+              cadence: convertedCadence,
+            },
+          },
+        }),
+    );
+    expect(converted.success).toBe(true);
+    const convertedRecord = await service.getDefinition(
+      recurring.definition.id,
+    );
+    expect(convertedRecord.definition.description).toBe(convertedBody);
+    expect(convertedRecord.definition.cadence).toEqual(convertedCadence);
+    expect(convertedRecord.definition.title).toBe(recurring.definition.title);
+    const recurringMessage = message("Make this reminder recurring again.");
+    const recurringAgain = await runWithActionRoutingContext(
+      {
+        actionName: "OWNER_REMINDERS_UPDATE",
+        modelClass: undefined,
+        messageId: recurringMessage.id,
+        replyOwner: "planner",
+      },
+      () =>
+        runLifeOperationHandler(runtime, recurringMessage, undefined, {
+          parameters: {
+            action: "update",
+            target: recurring.definition.id,
+            details: {
+              description: convertedBody,
+              cadence: { kind: "daily", windows: ["morning"] },
+            },
+          },
+        }),
+    );
+    expect(recurringAgain.success).toBe(true);
+    const recurringRecord = await service.getDefinition(
+      recurring.definition.id,
+    );
+    expect(recurringRecord.definition.description).toBe(convertedBody.trim());
+    expect(recurringRecord.definition.cadence.kind).toBe("daily");
+    expect(useModel).not.toHaveBeenCalled();
     for (const [result, recordKey] of [
       [created, "created"],
       [updated, "updated"],

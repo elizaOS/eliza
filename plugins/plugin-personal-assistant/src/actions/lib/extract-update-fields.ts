@@ -312,7 +312,7 @@ export async function extractUpdateFieldsWithLlm(args: {
       if (!parsedObject) return null;
       const fields = buildUpdateFields(parsedObject);
       if (
-        currentCadenceKind === "once" &&
+        (fields.cadenceKind ?? currentCadenceKind) === "once" &&
         typeof parsedObject.description === "string" &&
         parsedObject.description.trim().length > 0
       )

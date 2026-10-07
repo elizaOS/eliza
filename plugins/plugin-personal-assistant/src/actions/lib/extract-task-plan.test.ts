@@ -418,11 +418,18 @@ describe("extractTaskCreatePlanWithLlm requestKind trust", () => {
 
 // The same parsed update reaches contextual definition normalization: once
 // bodies retain bytes; ordinary recurring descriptions keep normalized text.
-it.each(["once", "daily"])(
-  "keeps update description whitespace only for the once extraction path (%s)",
-  async (currentCadenceKind) => {
+it.each<[string, string | null, string]>([
+  ["once", null, "\n  Updated exact alert.  \n"],
+  ["daily", null, "Updated exact alert."],
+  ["daily", "once", "\n  Updated exact alert.  \n"],
+  ["once", "daily", "Updated exact alert."],
+])(
+  "uses the effective update cadence for description bytes (%s -> %s)",
+  async (currentCadenceKind, cadenceKind, description) => {
     const body = "\n  Updated exact alert.  \n";
-    const runtime = makeRuntime(() => JSON.stringify({ description: body }));
+    const runtime = makeRuntime(() =>
+      JSON.stringify({ description: body, cadenceKind }),
+    );
     const update = await extractUpdateFieldsWithLlm({
       runtime,
       intent: `Change the alert to ${body}`,
@@ -430,9 +437,7 @@ it.each(["once", "daily"])(
       currentCadenceKind,
       currentWindows: [],
     });
-    expect(update.description).toBe(
-      currentCadenceKind === "once" ? body : body.trim(),
-    );
+    expect(update.description).toBe(description);
     expect(runtime.useModel).toHaveBeenCalledTimes(1);
   },
 );
