@@ -55,6 +55,9 @@ for (const [schema, key, item] of [
   if (key === "tools" ? !capabilities.tools : !capabilities.resources) continue;
   server.setRequestHandler(schema, async (request) => {
     const cursor = request.params?.cursor;
+    if (mode === "slow-list" && key === "tools" && cursor === undefined) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
     requests.push({ list: key, cursor: cursor ?? null });
     if (key === failingList && mode === "sticky-empty") return { [key]: [item(0)], nextCursor: "" };
     if (key === failingList && mode === "endless")

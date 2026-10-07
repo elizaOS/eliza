@@ -530,7 +530,8 @@ export class McpService extends Service {
     }
     const discovered = await this.fetchAllPages(serverName, "tools/list", async (cursor) => {
       const response = await connection.client.listTools(
-        cursor === undefined ? undefined : { cursor }
+        cursor === undefined ? undefined : { cursor },
+        { timeout: this.connectionRequestTimeout(connection) }
       );
       return { items: response?.tools ?? [], nextCursor: response?.nextCursor };
     });
@@ -573,7 +574,8 @@ export class McpService extends Service {
     }
     return this.fetchAllPages(serverName, "resources/list", async (cursor) => {
       const response = await connection.client.listResources(
-        cursor === undefined ? undefined : { cursor }
+        cursor === undefined ? undefined : { cursor },
+        { timeout: this.connectionRequestTimeout(connection) }
       );
       return { items: response?.resources ?? [], nextCursor: response?.nextCursor };
     });
@@ -585,7 +587,8 @@ export class McpService extends Service {
     }
     return this.fetchAllPages(serverName, "resources/templates/list", async (cursor) => {
       const response = await connection.client.listResourceTemplates(
-        cursor === undefined ? undefined : { cursor }
+        cursor === undefined ? undefined : { cursor },
+        { timeout: this.connectionRequestTimeout(connection) }
       );
       return { items: response?.resourceTemplates ?? [], nextCursor: response?.nextCursor };
     });
