@@ -464,6 +464,7 @@ const worker = {
             model: "local/shared-runtime-probe",
           },
           history,
+          memory,
           message: url.pathname.includes("empty")
             ? "shared empty output fixture shared-private-provider-sentinel"
             : url.pathname.includes("terminal")
@@ -488,7 +489,7 @@ const worker = {
               parts,
             });
           }
-          const result = await runSharedAgentTurn({ ...input, memory });
+          const result = await runSharedAgentTurn(input);
           return Response.json({
             success: true,
             history: result.history,

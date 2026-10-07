@@ -1209,14 +1209,10 @@ describe("Shared Eliza runtime in Workerd", () => {
       if (retryable) {
         expect(modelRequests.length - requestsBefore).toBeGreaterThan(1);
       } else {
-        // 557 preserves four plain-text failure-reply slots after the single
-        // terminal primary invocation. Those recovery calls are not turn retries.
+        // The message service short-circuits terminal provider rejection.
+        // It must not ask the same unauthorized provider to write an apology.
         expect(modelRequestKinds.slice(requestsBefore)).toEqual([
           "primary-generation",
-          "core-failure-reply",
-          "core-failure-reply",
-          "core-failure-reply",
-          "core-failure-reply",
         ]);
       }
     },
@@ -1224,11 +1220,21 @@ describe("Shared Eliza runtime in Workerd", () => {
   );
 
   test.each([
-    ["buffered", "/synthetic-empty-turn", "SHARED_RUNTIME_TURN_FAILED"],
-    ["streamed", "/synthetic-empty-stream", "REPLY_GROUNDING_FAILED"],
+    [
+      "buffered",
+      "/synthetic-empty-turn",
+      "SHARED_RUNTIME_TURN_FAILED",
+      "SHARED_RUNTIME_MESSAGE_FAILED",
+    ],
+    [
+      "streamed",
+      "/synthetic-empty-stream",
+      "REPLY_GROUNDING_FAILED",
+      "REPLY_GROUNDING_FAILED",
+    ],
   ])(
     "rejects %s HTTP200 empty output as a failure without successful history or finish",
-    async (_mode, path, code) => {
+    async (_mode, path, code, rootFailureCode) => {
       const requestsBefore = modelRequests.length;
       const response = await miniflare.dispatchFetch(
         `https://runtime.test${path}`,
@@ -1251,13 +1257,19 @@ describe("Shared Eliza runtime in Workerd", () => {
           { role: "assistant", content: "A retained successful reply" },
         ],
         persistedPairs: [],
-        rootFailureCode: "REPLY_GROUNDING_FAILED",
+        // Buffered generateText rejects the missing required tool before core
+        // reply grounding. Streamed output reaches grounding and fails there.
+        // Both failures must retain accepted history and reject a success commit.
+        rootFailureCode,
       });
       expect(payload.parts.some((part) => part.type === "finish")).toBe(false);
       expect(
         payload.parts.map((part) => part.text ?? "").join(""),
       ).not.toContain("Something went wrong on my end. Please try again.");
       expect(modelRequests.length - requestsBefore).toBeGreaterThan(0);
+      expect(modelRequests[requestsBefore]).toMatchObject({
+        tool_choice: "required",
+      });
     },
     120_000,
   );

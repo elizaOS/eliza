@@ -50,6 +50,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { orgKey } from "@elizaos/auth/kms";
 import type {
   AgentBackupFileEntry,
   AgentBackupFileSet,
@@ -61,7 +62,6 @@ import {
   CANONICAL_JSON_UNBOUNDED,
   canonicalJsonString,
 } from "@elizaos/core/protocol";
-import { orgKey } from "@elizaos/core/security/kms";
 import { and, desc, eq, gt, isNotNull, isNull, lt, or, type SQL, sql } from "drizzle-orm";
 import {
   decryptAgentBackupStateData,
