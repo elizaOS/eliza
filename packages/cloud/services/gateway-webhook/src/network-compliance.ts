@@ -48,7 +48,7 @@ export const NETWORK_KEYWORD_COPY = {
     "You're unsubscribed from The Network and won't get more messages here. Reply START to resume.",
   optIn:
     "You're back on The Network. Reply STOP anytime to opt out, HELP for help.",
-  help: "The Network: invite-only messages about people, plans, and events you asked for. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out.",
+  help: "The Network: invite-only messages about people, plans, and events you asked for. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out. Help: help@ntwrk.love",
 } as const;
 
 export function normalizeKeyword(text: string): string {
