@@ -12,6 +12,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const appState = vi.hoisted(() => ({
@@ -63,6 +64,11 @@ vi.mock("./CloudSettingsSectionShell", () => ({
 
 import { CloudBillingSection } from "./sections";
 
+function StandaloneBillingDestination(): React.JSX.Element {
+  const location = useLocation();
+  return <div>{`Standalone billing${location.search}`}</div>;
+}
+
 describe("CloudBillingSection", () => {
   afterEach(() => {
     cleanup();
@@ -71,6 +77,36 @@ describe("CloudBillingSection", () => {
     appState.handleInteractiveCloudLogin.mockResolvedValue(undefined);
     appState.setActionNotice.mockReset();
     claimCloudLoginWindow.mockReset();
+  });
+
+  it("leaves the hosted agent shell for the standalone billing route", async () => {
+    render(
+      <MemoryRouter initialEntries={["/settings?from=launcher"]}>
+        <Routes>
+          <Route
+            path="/settings"
+            element={
+              <>
+                <div>Message Eliza</div>
+                <CloudBillingSection />
+              </>
+            }
+          />
+          <Route
+            path="/cloud/billing"
+            element={<StandaloneBillingDestination />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("Standalone billing?from=launcher"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Message Eliza")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Sign in through billing adapter" }),
+    ).toBeNull();
   });
 
   it("claims a browser window before starting the app-owned login flow", () => {
