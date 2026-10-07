@@ -22,6 +22,19 @@ describe("formatCurrency", () => {
     expect(formatCurrency(4.5e3)).toBe("$4.50K");
     expect(formatCurrency(12.3)).toBe("$12.30");
   });
+
+  it("keeps the suffix for negative values", () => {
+    expect(formatCurrency(-5_000_000)).toBe("$-5.00M");
+    expect(formatCurrency(-1_500)).toBe("$-1.50K");
+    expect(formatCurrency(-2.5e9)).toBe("$-2.50B");
+  });
+
+  it("promotes the tier when rounding crosses a boundary", () => {
+    expect(formatCurrency(999_999)).toBe("$1.00M");
+    expect(formatCurrency(999.999)).toBe("$1.00K");
+    expect(formatCurrency(-999_999)).toBe("$-1.00M");
+    expect(formatCurrency(999.994)).toBe("$999.99");
+  });
 });
 
 describe("formatPercentage", () => {
