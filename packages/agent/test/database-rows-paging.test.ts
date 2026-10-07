@@ -62,6 +62,57 @@ it("returns every row exactly once when paging a sort with ties", async () => {
   }
 }, 120_000);
 
+it("returns every composite-key row exactly once across pages", async () => {
+  const { runtime, cleanup } = await createRealTestRuntime({
+    characterName: "DbViewerComposite",
+  });
+  const server = http.createServer((req, res) => {
+    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    void handleDatabaseRoute(req, res, runtime, pathname);
+  });
+  try {
+    const db = runtime.adapter.db as {
+      execute(query: unknown): Promise<unknown>;
+    };
+    await db.execute(
+      sql.raw(
+        "CREATE TABLE paging_composite (room_id integer, id integer, kind text, PRIMARY KEY (room_id, id))",
+      ),
+    );
+    await db.execute(
+      sql.raw(
+        `INSERT INTO paging_composite
+         SELECT n % 4, n, CASE WHEN n % 3 = 0 THEN 'a' ELSE 'b' END
+         FROM generate_series(1, 80) AS n`,
+      ),
+    );
+    await db.execute(
+      sql.raw("UPDATE paging_composite SET kind = kind WHERE id % 5 = 0"),
+    );
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const seen: string[] = [];
+    for (let offset = 0; offset < 80; offset += 25) {
+      const response = await fetch(
+        `http://127.0.0.1:${port}/api/database/tables/paging_composite/rows?limit=25&offset=${offset}&sort=kind`,
+      );
+      const body = (await response.json()) as {
+        rows: Array<{ room_id: number; id: number }>;
+      };
+      seen.push(
+        ...body.rows.map((row) => `${Number(row.room_id)}:${Number(row.id)}`),
+      );
+    }
+    expect(seen).toHaveLength(80);
+    expect(new Set(seen).size).toBe(80);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await cleanup();
+  }
+}, 120_000);
+
 it("pages the visible same-named table when another schema has a different primary key", async () => {
   const { runtime, cleanup } = await createRealTestRuntime({
     characterName: "DbViewerSchema",
