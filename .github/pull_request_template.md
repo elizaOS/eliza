@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> **All [contribution rules](https://github.com/elizaOS/eliza/blob/develop/README.md#contributing) are required.**
+> **All [contribution rules](https://github.com/elizaOS/eliza/blob/develop/CONTRIBUTING.md) are required.**
 > Stay within the approved MVP and PRD. Prove a useful improvement. Prefer removal,
 > simpler code, and reuse. Do not submit unnecessary tests, defensive code,
 > validation, or truncation. Maintainers will close unnecessary work and apply
