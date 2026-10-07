@@ -767,6 +767,12 @@ export class NotificationService extends Service {
 				"Notification inbox is not durably available",
 				503,
 			);
+		if (query.nativeEpoch != null && query.nativeEpoch !== this.nativeEpoch)
+			throw new NotificationNativeError(
+				"NATIVE_NOTIFICATION_EPOCH_CHANGED",
+				"Notification inbox epoch changed",
+				409,
+			);
 		const after = query.afterSequence ?? 0,
 			through = query.throughSequence ?? this.nativeSequence;
 		const limit = query.limit ?? NATIVE_NOTIFICATION_PAGE_LIMIT;
@@ -786,12 +792,6 @@ export class NotificationService extends Service {
 				"Invalid native notification cursor or limit",
 			);
 		}
-		if (query.nativeEpoch != null && query.nativeEpoch !== this.nativeEpoch)
-			throw new NotificationNativeError(
-				"NATIVE_NOTIFICATION_EPOCH_CHANGED",
-				"Notification inbox epoch changed",
-				409,
-			);
 		const page: NativeNotificationPage = {
 			notifications: [],
 			nativeEpoch: this.nativeEpoch,

@@ -457,6 +457,25 @@ describe("NotificationService", () => {
 		await restarted.stop();
 	});
 
+	it("reports a changed epoch before checking its older cursor against a lower counter", async () => {
+		const current = await service.listNativePage();
+		const oldCursor = {
+			nativeEpoch: "10000000-0000-0000-0000-000000000001",
+			afterSequence: current.throughSequence + 100,
+			throughSequence: current.throughSequence + 100,
+		};
+		await expect(service.listNativePage(oldCursor)).rejects.toMatchObject({
+			code: "NATIVE_NOTIFICATION_EPOCH_CHANGED",
+			status: 409,
+		});
+		await expect(
+			service.listNativePage({
+				...oldCursor,
+				nativeEpoch: current.nativeEpoch,
+			}),
+		).rejects.toMatchObject({ code: "INVALID_NATIVE_NOTIFICATION_CURSOR" });
+	});
+
 	it("pages a fixed append fence including read, low and expired rows despite deleted gaps", async () => {
 		const a = await service.notify({ title: "Read", priority: "low" });
 		const b = await service.notify({ title: "Deleted" });
