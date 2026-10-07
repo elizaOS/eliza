@@ -29,7 +29,7 @@ import {
   stableStringify,
   type UUID,
 } from "@elizaos/core";
-import type { NetworkStore } from "@elizaos/plugin-network";
+import type { NetworkRouting, NetworkStore } from "@elizaos/plugin-network";
 import {
   isSharedGroupReminderDelivery,
   type ScheduledTaskRunner,
@@ -207,6 +207,8 @@ export interface RunSharedAgentTurnInput {
     network?: {
       memberId: string;
       store: NetworkStore;
+      /** "planner" or "structured" (design B); see plugin-network edge.ts. */
+      routing?: NetworkRouting;
     };
   };
 }

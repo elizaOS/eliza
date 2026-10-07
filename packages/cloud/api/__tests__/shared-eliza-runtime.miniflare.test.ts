@@ -4,7 +4,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { appendFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,6 +40,7 @@ describe("Shared Eliza runtime in Workerd", () => {
   let networkPlannerRequests = 0;
   const networkRequestBodies: string[] = [];
   const relayRequestBodies: string[] = [];
+  const structuredProbeBodies: string[] = [];
   let reminderPlannerRequests = 0;
   let authenticatedImagePlannerRequests = 0;
   let untrustedImagePlannerRequests = 0;
@@ -61,6 +62,8 @@ describe("Shared Eliza runtime in Workerd", () => {
     status: number;
     tool?: string;
     contexts?: unknown;
+    networkAction?: unknown;
+    retried?: boolean;
   }> = [];
 
   beforeAll(async () => {
@@ -118,17 +121,47 @@ describe("Shared Eliza runtime in Workerd", () => {
           JSON.stringify(body).includes("network-live-probe")
         ) {
           const started = performance.now();
-          const live = await fetch(`${networkLive.url}/chat/completions`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${networkLive.key}`,
-            },
-            body: JSON.stringify({ ...body, model: networkLive.model }),
-          });
-          const text = await live.text();
+          // One retry for a transient network error (transport reset,
+          // timeout, 429/5xx); a second failure is a failed model call (502),
+          // so the turn is recorded as failed instead of crashing the harness.
+          const send = async () => {
+            const response = await fetch(
+              `${networkLive.url}/chat/completions`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${networkLive.key}`,
+                },
+                body: JSON.stringify({ ...body, model: networkLive.model }),
+                signal: AbortSignal.timeout(60_000),
+              },
+            );
+            const responseText = await response.text();
+            if (response.status === 429 || response.status >= 500) {
+              throw new Error(`transient ${response.status}`);
+            }
+            return { status: response.status, text: responseText };
+          };
+          let live: { status: number; text: string };
+          let retried = false;
+          try {
+            live = await send();
+          } catch {
+            retried = true;
+            try {
+              live = await send();
+            } catch {
+              live = {
+                status: 502,
+                text: JSON.stringify({ error: "live model transport failed" }),
+              };
+            }
+          }
+          const text = live.text;
           let tool: string | undefined;
           let contexts: unknown;
+          let networkAction: unknown;
           try {
             const call = (
               JSON.parse(text) as {
@@ -143,8 +176,14 @@ describe("Shared Eliza runtime in Workerd", () => {
             ).choices?.[0]?.message?.tool_calls?.[0]?.function;
             tool = call?.name ?? "text";
             if (call?.name === "HANDLE_RESPONSE" && call.arguments) {
-              contexts = (JSON.parse(call.arguments) as { contexts?: unknown })
-                .contexts;
+              const args = JSON.parse(call.arguments) as {
+                contexts?: unknown;
+                networkAction?: { action?: unknown; state?: unknown };
+              };
+              contexts = args.contexts;
+              if (args.networkAction) {
+                networkAction = `${String(args.networkAction.action)}${args.networkAction.state ? `/${String(args.networkAction.state)}` : ""}`;
+              }
             }
           } catch {
             tool = "unparsed";
@@ -154,6 +193,8 @@ describe("Shared Eliza runtime in Workerd", () => {
             status: live.status,
             tool,
             contexts,
+            ...(networkAction ? { networkAction } : {}),
+            ...(retried ? { retried } : {}),
           });
           return new Response(text, {
             status: live.status,
@@ -163,6 +204,58 @@ describe("Shared Eliza runtime in Workerd", () => {
         modelRequests.push(body);
         // SPIKE (The Network): deterministic SET_STATE turn.
         const networkSerialized = JSON.stringify(body);
+        // Design B probe: answer Stage 1 with a networkAction proposal, and
+        // record whether the field was declared in the HANDLE_RESPONSE tool.
+        if (networkSerialized.includes("structured probe: slammed")) {
+          structuredProbeBodies.push(networkSerialized);
+          return Response.json({
+            id: `chatcmpl-structured-${structuredProbeBodies.length}`,
+            object: "chat.completion",
+            created: 0,
+            model: "shared-runtime-probe",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "structured-handle-response",
+                      type: "function",
+                      function: {
+                        name: "HANDLE_RESPONSE",
+                        arguments: JSON.stringify({
+                          shouldRespond: "RESPOND",
+                          contexts: ["network"],
+                          intents: [],
+                          candidateActionNames: [],
+                          replyText: "Got it, holding new intros until Friday.",
+                          replyEffectStatus: "applied",
+                          facts: [],
+                          relationships: [],
+                          addressedTo: [],
+                          networkAction: {
+                            action: "SET_STATE",
+                            state: "busy",
+                            until: "2099-01-02",
+                            evidence: "slammed until friday, hold my intros",
+                          },
+                        }),
+                      },
+                    },
+                  ],
+                },
+                finish_reason: "tool_calls",
+              },
+            ],
+            usage: {
+              prompt_tokens: 40,
+              completion_tokens: 20,
+              total_tokens: 60,
+            },
+          });
+        }
         // Capture every model request for the RELAY_MESSAGE phrasing; the
         // default simple reply below answers it.
         if (networkSerialized.includes("text Sam I'm in")) {
@@ -1071,6 +1164,9 @@ describe("Shared Eliza runtime in Workerd", () => {
         buildDirectory,
       ],
       cwd: apiDirectory,
+      // Wrangler's exit otherwise waits on its metrics POSTs, which stall for
+      // minutes on a flaky or offline network.
+      env: { ...process.env, WRANGLER_SEND_METRICS: "false" },
       stderr: "pipe",
       stdout: "pipe",
     });
@@ -1261,6 +1357,44 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(
       (JSON.parse(elizaBody) as { networkExecution: boolean }).networkExecution,
     ).toBe(false);
+  }, 120_000);
+
+  test("design B: one Stage-1 call proposes SET_STATE, code executes it, and the planner is skipped", async () => {
+    structuredProbeBodies.length = 0;
+    await networkDb.query(
+      `UPDATE network.members SET state = 'open', paused_until = NULL`,
+    );
+    const eventsBefore = (
+      await networkDb.query(`SELECT 1 FROM network.member_events`)
+    ).rows.length;
+    const response = await miniflare.dispatchFetch(
+      `https://runtime.test/network-pg-turn?routing=structured&i=900&message=${encodeURIComponent(
+        "structured probe: slammed until friday, hold my intros",
+      )}`,
+    );
+    const body = await response.text();
+    expect(response.status, body).toBe(200);
+    const payload = JSON.parse(body) as {
+      result: { reply: string; degraded: boolean };
+    };
+    // The networkAction field is declared on the same HANDLE_RESPONSE call.
+    expect(structuredProbeBodies[0]).toContain("networkAction");
+    // Stage 1 can route to the registered `network` context.
+    expect(structuredProbeBodies[0]).toContain(
+      "- network: Network availability",
+    );
+    expect(structuredProbeBodies).toHaveLength(1);
+    expect(payload.result.reply).toBe(
+      "Got it, holding new intros until Friday.",
+    );
+    const member = await networkDb.query<{ state: string }>(
+      `SELECT state FROM network.members`,
+    );
+    expect(member.rows[0]?.state).toBe("busy");
+    expect(
+      (await networkDb.query(`SELECT 1 FROM network.member_events`)).rows
+        .length,
+    ).toBe(eventsBefore + 1);
   }, 120_000);
 
   test("Network relay phrasing reaches the model without a capability wall; Eliza keeps the wall", async () => {
@@ -1729,100 +1863,216 @@ describe("Shared Eliza runtime in Workerd", () => {
   }, 300_000);
 
   test.skipIf(!(networkLive.url && networkLive.model && networkLive.key))(
-    "LIVE: Network SET_STATE turn latency against a real OpenAI-compatible model",
+    "LIVE: Network routing designs (planner vs structured) against a real model",
     async () => {
-      const messages = [
-        "pause my network intros until oct 20, work is insane",
-        "I'm traveling to New York until November 3",
-        "I'm back, open to intros again",
-        "super busy this week, hold off on new intros",
-        "taking a break from the network until december",
-        "in Austin until the 25th",
-        "ok I'm free now, send me intros",
-        "can you pause everything for two weeks",
-        "busy with a launch until friday",
-        "I'll be in London from next monday until the 15th",
-        "back from London, open again",
-        "please hold intros, family stuff, until the end of the month",
-        "I'm open for intros",
-        "traveling to Tokyo until oct 30",
-        "slammed at work, mark me busy",
-        "pause me until january 5",
-        "I'm available again",
-        "heading to Lisbon until the 12th",
-        "busy until next tuesday",
-        "resume my intros please",
+      // 20 availability changes (pause, travel, quiet/busy, resume) and 10
+      // non-state controls, several of them near-misses on purpose.
+      const cases: Array<{ text: string; expect: string | null }> = [
+        {
+          text: "pause my network intros until oct 20, work is insane",
+          expect: "paused",
+        },
+        {
+          text: "can you put everything on hold for two weeks",
+          expect: "paused",
+        },
+        {
+          text: "taking a break from the network until december",
+          expect: "paused",
+        },
+        {
+          text: "pls dont send me anyone for a while, need some me time",
+          expect: "paused",
+        },
+        { text: "stop the intros until after new years", expect: "paused" },
+        {
+          text: "I'm traveling to New York until November 3",
+          expect: "traveling",
+        },
+        { text: "in austin till the 25th", expect: "traveling" },
+        {
+          text: "heading to Lisbon for a couple weeks, back on the 12th",
+          expect: "traveling",
+        },
+        {
+          text: "I'll be in London from next monday until the 15th",
+          expect: "traveling",
+        },
+        { text: "out of town for work all next week", expect: "traveling" },
+        {
+          text: "super busy this week, hold off on new intros",
+          expect: "busy",
+        },
+        {
+          text: "slammed with a launch until friday, fewer messages pls",
+          expect: "busy",
+        },
+        {
+          text: "work is crazy rn, only ping me if it's really good",
+          expect: "busy",
+        },
+        {
+          text: "can you go easy on the intros for a bit, swamped",
+          expect: "busy",
+        },
+        { text: "busy until next tuesday", expect: "busy" },
+        { text: "I'm back, open to intros again", expect: "open" },
+        { text: "ok I'm free now, send me intros", expect: "open" },
+        { text: "unpause me", expect: "open" },
+        { text: "back from London, turn the intros back on", expect: "open" },
+        { text: "resume my intros please", expect: "open" },
+        { text: "thanks, that last intro was great", expect: null },
+        { text: "who do you think I should meet this week?", expect: null },
+        {
+          text: "how does the network decide who to introduce me to?",
+          expect: null,
+        },
+        {
+          text: "my gym membership is paused lol, any climbing partners around?",
+          expect: null,
+        },
+        { text: "I'm back from the gym, so tired", expect: null },
+        {
+          text: 'my friend said "pause all your intros" but I\'m good, keep them coming',
+          expect: null,
+        },
+        {
+          text: "Sam is traveling to Tokyo until the 30th, could you tell him to ping me when he's back?",
+          expect: null,
+        },
+        { text: "any good coffee spots near the Mission?", expect: null },
+        { text: "I work in climate tech and love bouldering", expect: null },
+        { text: "hey", expect: null },
       ];
-      const turns: Array<{
-        wallMs: number;
-        roundTripMs: number;
-        modelCalls: number;
-        setStateCalled: boolean;
-        degraded: boolean;
-        state: string;
-        reply?: string;
-        calls: typeof networkLiveCalls;
-      }> = [];
-      for (const [index, message] of messages.entries()) {
-        networkLiveCalls.length = 0;
-        const eventsBefore = (
-          await networkDb.query(`SELECT 1 FROM network.member_events`)
-        ).rows.length;
-        const started = performance.now();
-        const response = await miniflare.dispatchFetch(
-          `https://runtime.test/network-pg-turn?live=1&i=${index}&message=${encodeURIComponent(message)}`,
-        );
-        const roundTripMs = performance.now() - started;
-        const body = await response.text();
-        expect(response.status, body).toBe(200);
-        const payload = JSON.parse(body) as {
-          result: {
-            degraded: boolean;
-            actionResults?: Array<{ data?: { actionName?: string } }>;
-          };
-          wallMs: number;
-        };
-        const member = await networkDb.query<{ state: string }>(
-          `SELECT state FROM network.members`,
-        );
-        turns.push({
-          wallMs: payload.wallMs,
-          roundTripMs: Math.round(roundTripMs),
-          modelCalls: networkLiveCalls.length,
-          // A committed SET_STATE writes exactly one member_events row.
-          setStateCalled:
-            (await networkDb.query(`SELECT 1 FROM network.member_events`)).rows
-              .length > eventsBefore,
-          degraded: payload.result.degraded,
-          state: member.rows[0]?.state ?? "",
-          reply: (payload.result as { reply?: string }).reply?.slice(0, 120),
-          calls: networkLiveCalls.map((call) => ({ ...call })),
-        });
-      }
+      const designs = (
+        process.env.NETWORK_LIVE_DESIGNS ?? "planner,structured"
+      ).split(",");
+      const runs = Number(process.env.NETWORK_LIVE_RUNS ?? "2");
+      const firstRun = Number(process.env.NETWORK_LIVE_FIRST_RUN ?? "1");
+      // Optional JSONL sink so a long run survives a crash part-way through.
+      const outPath = process.env.NETWORK_LIVE_OUT;
       const sorted = (values: number[]) => [...values].sort((a, b) => a - b);
       const percentile = (values: number[], p: number) =>
-        sorted(values)[
-          Math.min(values.length - 1, Math.ceil((p / 100) * values.length) - 1)
-        ];
-      const walls = turns.map((turn) => turn.wallMs);
-      const calls = turns.map((turn) => turn.modelCalls);
-      console.info(
-        `NETWORK_LIVE_LATENCY ${JSON.stringify({
-          model: networkLive.model,
-          turns: turns.length,
-          p50Ms: percentile(walls, 50),
-          p95Ms: percentile(walls, 95),
-          maxMs: Math.max(...walls),
-          modelCallsP50: percentile(calls, 50),
-          modelCallsMax: Math.max(...calls),
-          modelCallsMean: calls.reduce((a, b) => a + b, 0) / calls.length,
-          setStateTurns: turns.filter((turn) => turn.setStateCalled).length,
-          degradedTurns: turns.filter((turn) => turn.degraded).length,
-          perTurn: turns,
-        })}`,
-      );
-      expect(turns.every((turn) => !turn.degraded)).toBe(true);
+        values.length
+          ? sorted(values)[
+              Math.min(
+                values.length - 1,
+                Math.ceil((p / 100) * values.length) - 1,
+              )
+            ]
+          : null;
+      let turnIndex = 0;
+      const summaries: Record<string, unknown>[] = [];
+      for (const design of designs) {
+        for (let run = firstRun; run < firstRun + runs; run++) {
+          const turns: Array<{
+            text: string;
+            expect: string | null;
+            wallMs: number;
+            modelCalls: number;
+            committed: boolean;
+            state: string;
+            error?: string;
+            reply?: string;
+            calls: string[];
+          }> = [];
+          for (const testCase of cases) {
+            await networkDb.query(
+              `UPDATE network.members SET state = $1, paused_until = NULL`,
+              [testCase.expect === "open" ? "paused" : "open"],
+            );
+            networkLiveCalls.length = 0;
+            const before = (
+              await networkDb.query(`SELECT 1 FROM network.member_events`)
+            ).rows.length;
+            turnIndex += 1;
+            let payload: {
+              result?: { reply?: string };
+              error?: string;
+              wallMs: number;
+            };
+            const turnStarted = performance.now();
+            try {
+              const response = await miniflare.dispatchFetch(
+                `https://runtime.test/network-pg-turn?live=1&routing=${design}&i=${turnIndex}&message=${encodeURIComponent(testCase.text)}`,
+              );
+              const body = await response.text();
+              payload =
+                response.status === 200
+                  ? (JSON.parse(body) as typeof payload)
+                  : {
+                      error: `worker ${response.status}`,
+                      wallMs: Math.round(performance.now() - turnStarted),
+                    };
+            } catch (error) {
+              // A transport timeout is a failed turn, not a harness crash.
+              payload = {
+                error: error instanceof Error ? error.name : "dispatch failed",
+                wallMs: Math.round(performance.now() - turnStarted),
+              };
+            }
+            const after = (
+              await networkDb.query(`SELECT 1 FROM network.member_events`)
+            ).rows.length;
+            const member = await networkDb.query<{ state: string }>(
+              `SELECT state FROM network.members`,
+            );
+            turns.push({
+              text: testCase.text,
+              expect: testCase.expect,
+              wallMs: payload.wallMs,
+              modelCalls: networkLiveCalls.length,
+              committed: after > before,
+              state: member.rows[0]?.state ?? "",
+              ...(payload.error
+                ? { error: payload.error }
+                : networkLiveCalls.some((call) => call.status === 502)
+                  ? { error: "model transport failed after one retry" }
+                  : {}),
+              reply: payload.result?.reply?.slice(0, 140),
+              calls: networkLiveCalls.map(
+                (call) =>
+                  `${call.tool}${call.contexts ? `:${JSON.stringify(call.contexts)}` : ""}${call.networkAction ? `:${String(call.networkAction)}` : ""}${call.retried ? ":retried" : ""}${call.status !== 200 ? `:${call.status}` : ""}`,
+              ),
+            });
+            if (outPath) {
+              await appendFile(
+                outPath,
+                `${JSON.stringify({ design, run, ...turns[turns.length - 1] })}\n`,
+              );
+            }
+          }
+          const stateTurns = turns.filter((turn) => turn.expect !== null);
+          const controls = turns.filter((turn) => turn.expect === null);
+          const walls = turns.map((turn) => turn.wallMs);
+          const stateWalls = stateTurns.map((turn) => turn.wallMs);
+          const calls = turns.map((turn) => turn.modelCalls);
+          const summary = {
+            design,
+            run,
+            commitRate: `${stateTurns.filter((turn) => turn.committed).length}/${stateTurns.length}`,
+            correctState: `${stateTurns.filter((turn) => turn.committed && turn.state === turn.expect).length}/${stateTurns.length}`,
+            falseCommits: `${controls.filter((turn) => turn.committed).length}/${controls.length}`,
+            failedTurns: turns.filter((turn) => turn.error).length,
+            callsMean:
+              Math.round(
+                (calls.reduce((a, b) => a + b, 0) / calls.length) * 100,
+              ) / 100,
+            callsP50: percentile(calls, 50),
+            callsMax: Math.max(...calls),
+            p50Ms: percentile(walls, 50),
+            p95Ms: percentile(walls, 95),
+            stateP50Ms: percentile(stateWalls, 50),
+            stateP95Ms: percentile(stateWalls, 95),
+          };
+          summaries.push(summary);
+          console.info(
+            `NETWORK_LIVE_DESIGN ${JSON.stringify({ ...summary, turns })}`,
+          );
+        }
+      }
+      console.info(`NETWORK_LIVE_SUMMARY ${JSON.stringify(summaries)}`);
     },
-    1_200_000,
+    3_600_000,
   );
 });

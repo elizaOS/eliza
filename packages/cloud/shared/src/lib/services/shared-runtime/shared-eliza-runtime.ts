@@ -793,6 +793,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     ? createNetworkEdgePlugin({
         store: input.execution.network.store,
         authority: { memberId: input.execution.network.memberId },
+        routing: input.execution.network.routing,
         actionsEnabled,
       })
     : undefined;

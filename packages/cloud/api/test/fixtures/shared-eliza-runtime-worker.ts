@@ -503,30 +503,56 @@ const worker = {
           isCanonicalPersonalSharedAgent(agent),
           false,
           () => createPostgresNetworkStore(db),
+          url.searchParams.get("routing") === "structured"
+            ? "structured"
+            : "planner",
         );
         const started = Date.now();
-        const result = await runSharedAgentTurn({
-          character: {
-            name: "The Network",
-            // The marker routes live-mode model calls to the real endpoint.
-            system: `You are The Network, a warm, brief connector.${live ? " (network-live-probe)" : ""}`,
-            model: "local/shared-runtime-probe",
-          },
-          history: [],
-          message:
-            url.searchParams.get("message") ??
-            "swamped at work and I will be in Austin next week, pause my network intros until oct 20",
-          messageIds: {
-            user: `70000000-0000-5000-8000-${(0xa3 + turnIndex * 2).toString(16).padStart(12, "0")}`,
-            assistant: `70000000-0000-5000-8000-${(0xa4 + turnIndex * 2).toString(16).padStart(12, "0")}`,
-          },
-          execution: {
-            channel: { type: ChannelType.DM, source: "twilio" },
-            agentKey: agent.id,
-            roomKey: agent.id,
-            ...(network ? { network } : {}),
-          },
-        });
+        const runTurn = () =>
+          runSharedAgentTurn({
+            character: {
+              name: "The Network",
+              // The marker routes live-mode model calls to the real endpoint.
+              system: `You are The Network, a warm, brief connector.${live ? " (network-live-probe)" : ""}`,
+              model: "local/shared-runtime-probe",
+            },
+            history: [],
+            message:
+              url.searchParams.get("message") ??
+              "swamped at work and I will be in Austin next week, pause my network intros until oct 20",
+            messageIds: {
+              user: `70000000-0000-5000-8000-${(0xa3 + turnIndex * 2).toString(16).padStart(12, "0")}`,
+              assistant: `70000000-0000-5000-8000-${(0xa4 + turnIndex * 2).toString(16).padStart(12, "0")}`,
+            },
+            execution: {
+              channel: { type: ChannelType.DM, source: "twilio" },
+              agentKey: agent.id,
+              roomKey: agent.id,
+              ...(network ? { network } : {}),
+            },
+          });
+        if (live) {
+          // Measurement mode: a failed turn (e.g. a required SET_STATE the
+          // planner never called) is a data point, not a harness failure.
+          try {
+            const result = await runTurn();
+            return Response.json({
+              result,
+              wallMs: Date.now() - started,
+              networkExecution: Boolean(network),
+            });
+          } catch (error) {
+            return Response.json({
+              error:
+                error instanceof Error
+                  ? error.message.slice(0, 200)
+                  : "turn failed",
+              wallMs: Date.now() - started,
+              networkExecution: Boolean(network),
+            });
+          }
+        }
+        const result = await runTurn();
         return Response.json({
           result,
           wallMs: Date.now() - started,
