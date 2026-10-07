@@ -292,6 +292,7 @@ function request(
   body: unknown,
   authorization = "Bearer test-secret",
   traceId = "11111111-1111-4111-8111-111111111111",
+  signal?: AbortSignal,
 ) {
   return app.request(
     "/",
@@ -303,6 +304,7 @@ function request(
         "x-eliza-trace-id": traceId,
       },
       body: JSON.stringify(body),
+      ...(signal ? { signal } : {}),
     },
     {
       INTERNAL_SECRET: "test-secret",
@@ -554,7 +556,108 @@ describe("personal Shared messaging deliveries", () => {
       "hello",
       undefined,
       expect.stringMatching(/^[0-9a-f]{32}$/),
+      expect.any(AbortSignal),
     );
+  });
+
+  test("carries caller cancellation through the real route, adapter and coordinator without RPC authority fields", async () => {
+    const controller = new AbortController();
+    const started = Promise.withResolvers<AbortSignal>();
+    let stopped = false;
+    sharedRestMessageSend.mockImplementationOnce(dispatchSharedRestMessageSend);
+    sharedBridgeFetch.mockImplementationOnce(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const signal = init?.signal;
+        if (!signal)
+          throw new Error("Expected a bounded caller/coordinator signal");
+        started.resolve(signal);
+        return await new Promise<Response>((_resolve, reject) => {
+          const stop = () => {
+            stopped = true;
+            reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+          };
+          if (signal.aborted) stop();
+          else signal.addEventListener("abort", stop, { once: true });
+        });
+      },
+    );
+    const trace = "33333333333343338333333333333333";
+    const pending = request(
+      valid,
+      "Bearer test-secret",
+      trace,
+      controller.signal,
+    );
+    pending.catch(() => undefined);
+    const signal = await started.promise;
+    expect(signal.aborted).toBe(false);
+    controller.abort(new DOMException("caller cancelled", "AbortError"));
+    const response = await pending;
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(stopped).toBe(true);
+    expect(signal.aborted).toBe(true);
+    expect(sharedBridgeFetch).toHaveBeenCalledTimes(1);
+    const call = sharedBridgeFetch.mock.calls[0];
+    if (!call) throw new Error("No coordinator fetch was made");
+    const payload = (await new Request(
+      call[0],
+      call[1],
+    ).json()) as SharedDispatchRequest & Record<string, unknown>;
+    expect(payload).toMatchObject({
+      operation: "personal-bridge",
+      traceId: trace,
+      rpc: {
+        id: valid.messageId,
+        method: "message.send",
+        params: { text: valid.message, clientMessageId: valid.messageId },
+      },
+      channel: { type: "DM", source: "telegram" },
+    });
+    expect(payload).not.toHaveProperty("abortSignal");
+    expect(payload).not.toHaveProperty("signal");
+    expect(payload.rpc.params).not.toHaveProperty("abortSignal");
+    expect(payload.rpc.params).not.toHaveProperty("signal");
+    const args = sharedRestMessageSend.mock.calls[0];
+    if (!args) throw new Error("No real route dispatch");
+    expect(args[7]).toBe("platform");
+    expect(args[11]).toBe(trace);
+    expect(args[12]?.aborted).toBe(true);
+  });
+
+  test("caller cancellation during prewarm reaches an already-aborted coordinator signal", async () => {
+    const controller = new AbortController();
+    const warming = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    prewarmPersonalSharedAgentTurnCaches.mockImplementationOnce(async () => {
+      entered.resolve();
+      await warming.promise;
+    });
+    sharedRestMessageSend.mockImplementationOnce(dispatchSharedRestMessageSend);
+    let coordinatorWork = 0;
+    sharedBridgeFetch.mockImplementationOnce(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (!init?.signal?.aborted) coordinatorWork += 1;
+        init?.signal?.throwIfAborted();
+        throw new Error("Cancelled prewarm must not run coordinator work");
+      },
+    );
+    const pending = request(
+      valid,
+      "Bearer test-secret",
+      "44444444444444448444444444444444",
+      controller.signal,
+    );
+    pending.catch(() => undefined);
+    await entered.promise;
+    controller.abort(
+      new DOMException("caller cancelled before dispatch", "AbortError"),
+    );
+    warming.resolve();
+    const response = await pending;
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(coordinatorWork).toBe(0);
+    expect(sharedBridgeFetch).toHaveBeenCalledTimes(1);
+    expect(sharedRestMessageSend.mock.calls[0]?.[12]?.aborted).toBe(true);
   });
 
   test("carries the trusted request trace through the real Shared dispatch", async () => {
@@ -961,6 +1064,7 @@ describe("personal Shared messaging deliveries", () => {
         "please verify it\nremember the red bicycle",
         undefined,
         expect.stringMatching(/^[0-9a-f]{32}$/),
+        expect.any(AbortSignal),
       );
       await expect(response.json()).resolves.toMatchObject({
         data: { reply: "hello from Eliza" },
@@ -1356,6 +1460,7 @@ describe("personal Shared messaging deliveries", () => {
       validGroup.message,
       { type: "GROUP", source: "telegram" },
       expect.stringMatching(/^[0-9a-f]{32}$/),
+      expect.any(AbortSignal),
     );
   });
 
@@ -1722,6 +1827,7 @@ describe("personal Shared messaging deliveries", () => {
       "hello from Messages",
       undefined,
       expect.stringMatching(/^[0-9a-f]{32}$/),
+      expect.any(AbortSignal),
     );
   });
 
@@ -1899,6 +2005,7 @@ describe("personal Shared messaging deliveries", () => {
       "continue our conversation",
       undefined,
       expect.stringMatching(/^[0-9a-f]{32}$/),
+      expect.any(AbortSignal),
     );
   });
 

@@ -2088,9 +2088,13 @@ describe("SharedRuntimeChatService", () => {
     };
     const h = harness([]);
     const claims = memoryTurnClaims();
-    await expect(new SharedRuntimeChatService().bridge(agent, keyedRpc, {
-      ...h, turnClaims: claims.store, abortSignal: controller.signal,
-    })).rejects.toBe(reason);
+    await expect(
+      new SharedRuntimeChatService().bridge(agent, keyedRpc, {
+        ...h,
+        turnClaims: claims.store,
+        abortSignal: controller.signal,
+      }),
+    ).rejects.toBe(reason);
     await Promise.all(h.background);
     expect(providerCalls).toBe(0);
     expect(h.history()).toEqual([]);
@@ -2107,7 +2111,9 @@ describe("SharedRuntimeChatService", () => {
     const reason = new DOMException("owned during-provider cancellation", "AbortError");
     let providerCalls = 0;
     let markProviderStarted = () => {};
-    const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve; });
+    const providerStarted = new Promise<void>((resolve) => {
+      markProviderStarted = resolve;
+    });
     turnProviderOperation = async (input) => {
       expect(input.abortSignal).toBe(controller.signal);
       input.abortSignal?.throwIfAborted();
@@ -2124,7 +2130,9 @@ describe("SharedRuntimeChatService", () => {
     const h = harness([]);
     const claims = memoryTurnClaims();
     const pending = service.bridge(agent, keyedRpc, {
-      ...h, turnClaims: claims.store, abortSignal: controller.signal,
+      ...h,
+      turnClaims: claims.store,
+      abortSignal: controller.signal,
     });
     await providerStarted;
     controller.abort(reason);
@@ -2139,7 +2147,9 @@ describe("SharedRuntimeChatService", () => {
 
     turnProviderOperation = null;
     const retried = await service.bridge(agent, keyedRpc, {
-      ...h, turnClaims: claims.store, abortSignal: new AbortController().signal,
+      ...h,
+      turnClaims: claims.store,
+      abortSignal: new AbortController().signal,
     });
     await Promise.all(h.background);
     expect(retried.result?.text).toBe("hello back");
@@ -2164,7 +2174,10 @@ describe("SharedRuntimeChatService", () => {
     controller.abort(new DOMException("owned late cancellation", "AbortError"));
     const replay = await service.bridge(agent, keyedRpc, options);
     await Promise.all(h.background);
-    expect(replay.result).toEqual({ ...first.result, timing: expect.objectContaining({ replayed: true, callCount: 0 }) });
+    expect(replay.result).toEqual({
+      ...first.result,
+      timing: expect.objectContaining({ replayed: true, callCount: 0 }),
+    });
     expect(h.history()).toEqual(committedHistory);
     expect(claims.claims.get("client-key-1")?.result).toEqual(first.result);
     expect(turnCalls).toBe(1);

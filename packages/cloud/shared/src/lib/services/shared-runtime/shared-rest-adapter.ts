@@ -581,6 +581,7 @@ export async function sharedRestMessageSend(
   trustedUserUtterance?: string,
   trustedChannel?: SharedRuntimeChannel,
   traceId?: string,
+  abortSignal?: AbortSignal,
 ): Promise<{
   text: string;
   agentName: string;
@@ -606,6 +607,7 @@ export async function sharedRestMessageSend(
     executionCtx,
     namespace,
     ...(traceId ? { traceId } : {}),
+    ...(abortSignal ? { abortSignal } : {}),
     ...(funding === "platform" ? { agentKind: "personal" as const } : {}),
     ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
     channel: trustedChannel ?? {

@@ -228,6 +228,10 @@ export interface SharedModelCompletionDiagnostic {
   operation: "generate" | "stream";
   textPresent: boolean;
   toolCount: number | null;
+  /** SDK count only: its zero can mean an absent provider detail, never proof of disabled reasoning. */
+  sdkReasoningTokens?: number | null;
+  /** This adapter does not read or retain raw response bodies to attest provider-detail presence. */
+  providerReasoningDetailPresent?: boolean | null;
   finishClass: "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other" | "unknown";
 }
 
@@ -237,6 +241,7 @@ export function sharedModelCompletionDiagnostic(
   text: unknown,
   toolCount: number,
   finishReason: unknown,
+  sdkUsage?: unknown,
 ): SharedModelCompletionDiagnostic {
   const finishClasses = new Set([
     "stop",
@@ -247,8 +252,21 @@ export function sharedModelCompletionDiagnostic(
     "other",
     "unknown",
   ]);
+  const reasoningTokens = diagnosticProperty(sdkUsage, "reasoningTokens");
   return {
     operation,
+    ...(sdkUsage !== undefined
+      ? {
+          sdkReasoningTokens:
+            typeof reasoningTokens === "number" &&
+            Number.isSafeInteger(reasoningTokens) &&
+            reasoningTokens >= 0 &&
+            reasoningTokens <= 4_000_000
+              ? reasoningTokens
+              : null,
+          providerReasoningDetailPresent: null,
+        }
+      : {}),
     textPresent: typeof text === "string" && text.trim().length > 0,
     toolCount: Number.isSafeInteger(toolCount) && toolCount >= 0 ? Math.min(toolCount, 64) : null,
     finishClass:
@@ -713,8 +731,26 @@ export function parseSharedRuntimeFailureDiagnostic(
             c.toolCount > 64))
       )
         return undefined;
+      if (
+        (c.sdkReasoningTokens !== undefined &&
+          c.sdkReasoningTokens !== null &&
+          (typeof c.sdkReasoningTokens !== "number" ||
+            !Number.isSafeInteger(c.sdkReasoningTokens) ||
+            c.sdkReasoningTokens < 0 ||
+            c.sdkReasoningTokens > 4_000_000)) ||
+        (c.providerReasoningDetailPresent !== undefined &&
+          c.providerReasoningDetailPresent !== null &&
+          typeof c.providerReasoningDetailPresent !== "boolean")
+      )
+        return undefined;
       lastModelCompletion = {
         operation: c.operation,
+        ...(c.sdkReasoningTokens !== undefined
+          ? { sdkReasoningTokens: c.sdkReasoningTokens as number | null }
+          : {}),
+        ...(c.providerReasoningDetailPresent !== undefined
+          ? { providerReasoningDetailPresent: c.providerReasoningDetailPresent as boolean | null }
+          : {}),
         textPresent: c.textPresent,
         toolCount: c.toolCount as number | null,
         finishClass: c.finishClass as SharedModelCompletionDiagnostic["finishClass"],

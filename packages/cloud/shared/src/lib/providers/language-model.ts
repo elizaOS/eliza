@@ -676,6 +676,7 @@ function withCerebrasInteractiveFailover(
         notifyProviderSelected(onProviderSelected, { provider: "cerebras", fallback: false });
         return result;
       } catch (error) {
+        if (params.abortSignal?.aborted) throw error;
         if (!isRetryableAiSdkError(error)) throw error;
         // A native primary does not need a fallback mapping until it fails.
         const fallbackModel = getOpenRouterLanguageModel(
@@ -699,6 +700,7 @@ function withCerebrasInteractiveFailover(
         notifyProviderSelected(onProviderSelected, { provider: "cerebras", fallback: false });
         return result;
       } catch (error) {
+        if (params.abortSignal?.aborted) throw error;
         if (!isRetryableAiSdkError(error)) throw error;
         // A native primary does not need a fallback mapping until it fails.
         const fallbackModel = getOpenRouterLanguageModel(
@@ -756,13 +758,43 @@ function notifyProviderSelected(
 export function getInteractiveCerebrasLanguageModel(
   model: string,
   onProviderSelected?: (selection: InteractiveLanguageModelSelection) => void,
+  coreProviderOptions?: Record<string, unknown>,
 ) {
   if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
-    return withCerebrasInteractiveFailover(
-      withRateLimitFailFast(getCerebrasClient().chat(normalizeCerebrasModelId(model))),
+    const modelId = normalizeCerebrasModelId(model);
+    const interactive = withCerebrasInteractiveFailover(
+      withRateLimitFailFast(getCerebrasClient().chat(modelId)),
       model,
       onProviderSelected,
     );
+    let thinkingOff = false;
+    try {
+      const eliza = coreProviderOptions?.eliza;
+      thinkingOff =
+        modelId === "qwen-3.8-27b" &&
+        eliza !== null &&
+        typeof eliza === "object" &&
+        !Array.isArray(eliza) &&
+        (eliza as Record<string, unknown>).thinking === "off";
+    } catch {
+      // error-policy:J7 an unreadable optional Core hint preserves existing provider behavior.
+    }
+    if (!thinkingOff) return interactive;
+    // Both existing chat clients serialize this option to supported reasoning_effort:none.
+    // Consume only the Core control hint; restoring cache affinity remains separate work.
+    return wrapLanguageModel({
+      model: interactive,
+      middleware: {
+        specificationVersion: "v3",
+        transformParams: async ({ params }) => ({
+          ...params,
+          providerOptions: {
+            ...params.providerOptions,
+            openai: { ...params.providerOptions?.openai, reasoningEffort: "none" },
+          },
+        }),
+      },
+    });
   }
   return getLanguageModel(model, undefined, onProviderSelected);
 }

@@ -7,6 +7,7 @@ import {
   parseSharedRuntimeFailureDiagnostic,
   recordSharedRuntimeFailureDiagnostic,
   SharedRuntimeTurnError,
+  sharedModelCompletionDiagnostic,
   sharedModelFailureDiagnostic,
 } from "./shared-runtime-errors";
 
@@ -806,6 +807,68 @@ describe("Fixed diagnostic producer and recorder version", () => {
       );
       expect(wrapped.failureDiagnostic).toBeUndefined();
       expect(wrapped.retryable).toBe(true);
+    }
+  });
+});
+
+describe("closed SDK reasoning diagnostics are not provider-presence proof", () => {
+  test("retains an SDK zero with unknown provider detail, and legacy calls unchanged", () => {
+    const legacy = sharedModelCompletionDiagnostic("generate", "ready", 0, "stop");
+    expect(legacy).not.toHaveProperty("sdkReasoningTokens");
+    const value = sharedModelCompletionDiagnostic("generate", "ready", 0, "stop", {
+      reasoningTokens: 0,
+    });
+    expect(value).toMatchObject({ sdkReasoningTokens: 0, providerReasoningDetailPresent: null });
+  });
+  test("roundtrips a bounded count without copying raw SDK metadata", () => {
+    const completion = sharedModelCompletionDiagnostic("stream", "ready", 1, "tool-calls", {
+      reasoningTokens: 900,
+      raw: "PRIVATE_RAW",
+    });
+    const parsed = parseSharedRuntimeFailureDiagnostic({
+      modelInvocationStarted: true,
+      failureKind: "unknown",
+      terminalFailurePresent: false,
+      terminalMode: "unknown",
+      lastModelCompletion: completion,
+    });
+    expect(parsed?.lastModelCompletion).toEqual(completion);
+    expect(JSON.stringify(parsed)).not.toContain("PRIVATE_");
+  });
+  test("invalid and poisoned SDK counts are a diagnostic miss", () => {
+    for (const reasoningTokens of [-1, 4_000_001, Number.NaN, Infinity, "PRIVATE_COUNT"]) {
+      expect(
+        sharedModelCompletionDiagnostic("generate", "ready", 0, "stop", { reasoningTokens })
+          .sdkReasoningTokens,
+      ).toBeNull();
+    }
+    const value = Object.defineProperty({}, "reasoningTokens", {
+      get() {
+        throw new Error("PRIVATE_GETTER");
+      },
+    });
+    expect(
+      sharedModelCompletionDiagnostic("generate", "ready", 0, "stop", value).sdkReasoningTokens,
+    ).toBeNull();
+  });
+  test("transport rejects invalid count/presence authority", () => {
+    const completion = sharedModelCompletionDiagnostic("generate", "ready", 0, "stop", {
+      reasoningTokens: 0,
+    });
+    for (const invalid of [
+      { ...completion, sdkReasoningTokens: -1 },
+      { ...completion, sdkReasoningTokens: 4_000_001 },
+      { ...completion, providerReasoningDetailPresent: "PRIVATE_TRUE" },
+    ]) {
+      expect(
+        parseSharedRuntimeFailureDiagnostic({
+          modelInvocationStarted: true,
+          failureKind: "unknown",
+          terminalFailurePresent: false,
+          terminalMode: "unknown",
+          lastModelCompletion: invalid,
+        }),
+      ).toBeUndefined();
     }
   });
 });

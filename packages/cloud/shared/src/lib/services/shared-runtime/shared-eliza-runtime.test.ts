@@ -2939,3 +2939,68 @@ describe("Shared Eliza Workerd runtime", () => {
     },
   );
 });
+
+describe("genuine Shared caller cancellation dispatch boundary", () => {
+  const input = (signal: AbortSignal, onProviderDispatch: () => Promise<void>) => ({
+    character: { name: "Shared Eliza", system: "Be useful.", model: "qwen-3.8-27b" },
+    history: [],
+    message: "do not finish this cancelled turn",
+    model: "qwen-3.8-27b",
+    abortSignal: signal,
+    onProviderDispatch,
+    execution: {
+      channel: { type: ChannelType.DM, source: "shared-runtime" },
+      agentKey: "personal:cancel-boundary",
+      roomKey: "cancel-boundary",
+    },
+  });
+  test("a preaborted genuine turn does not mark dispatch or contact a provider", async () => {
+    const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
+    const controller = new AbortController();
+    controller.abort(new DOMException("caller cancelled", "AbortError"));
+    let calls = 0;
+    let dispatches = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      throw new Error("Preaborted turn must not contact a provider");
+    }) as typeof fetch;
+    await runSharedElizaRuntimeTurn(
+      input(controller.signal, async () => {
+        dispatches += 1;
+      }),
+    ).catch(() => undefined);
+    expect(dispatches).toBe(0);
+    expect(calls).toBe(0);
+  });
+  test("cancellation racing a genuine provider error has one dispatch and no fallback", async () => {
+    const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
+    const originalRouterKey = process.env.OPENROUTER_API_KEY;
+    process.env.OPENROUTER_API_KEY = "cancel-boundary-router-key";
+    const controller = new AbortController();
+    let dispatches = 0;
+    const hosts: string[] = [];
+    globalThis.fetch = (async (url) => {
+      const host = new URL(String(url)).hostname;
+      hosts.push(host);
+      if (host !== "api.cerebras.ai")
+        throw new Error("Cancelled genuine turn must not start fallback");
+      controller.abort(new DOMException("caller cancelled", "AbortError"));
+      return Response.json(
+        { error: { message: "fixture response races cancellation" } },
+        { status: 503 },
+      );
+    }) as typeof fetch;
+    try {
+      await runSharedElizaRuntimeTurn(
+        input(controller.signal, async () => {
+          dispatches += 1;
+        }),
+      ).catch(() => undefined);
+      expect(dispatches).toBe(1);
+      expect(hosts).toEqual(["api.cerebras.ai"]);
+    } finally {
+      if (originalRouterKey === undefined) delete process.env.OPENROUTER_API_KEY;
+      else process.env.OPENROUTER_API_KEY = originalRouterKey;
+    }
+  });
+});
