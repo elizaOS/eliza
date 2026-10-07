@@ -330,6 +330,14 @@ describe("PermissionCard", () => {
     expect(result?.display).toBe(display);
     expect(result?.payload.permission).toBe("reminders");
   });
+  it("keeps braces inside a permission reason and prose after the JSON", () => {
+    const text =
+      'Please allow this.\n{"action":"permission_request","permission":"reminders","reason":"add } to {list}","feature":"lifeops.reminders.create"}\nThanks.';
+    const result = parsePermissionRequestFromText(text);
+    expect(result?.payload.reason).toBe("add } to {list}");
+    expect(result?.payload.feature).toBe("lifeops.reminders.create");
+    expect(result?.display).toBe("Please allow this.\n\nThanks.");
+  });
   it("parsePermissionRequestFromText returns null for non-permission actions", () => {
     expect(
       parsePermissionRequestFromText(
