@@ -171,6 +171,9 @@ const settingsKnownKeys = new Set([
 	"defaultFrequencyPenalty",
 	"defaultPresencePenalty",
 	"extra",
+	// Runtime secret lookups read `settings.secrets` in place, not `extra`.
+	// Plugin secret stores keep object entries here, so no value rule is added.
+	"secrets",
 ]);
 
 export const settingsSchema = z
