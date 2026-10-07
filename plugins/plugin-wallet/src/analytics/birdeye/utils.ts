@@ -322,14 +322,23 @@ export const extractLimit = (text: string): number => {
 
 export const formatValue = (value?: number): string => {
   if (!value) return "N/A";
-  if (value && value >= 1_000_000_000) {
-    return `$${(value / 1_000_000_000).toFixed(2)}B`;
-  }
-  if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(2)}M`;
-  }
-  if (value >= 1_000) {
-    return `$${(value / 1_000).toFixed(2)}K`;
+  // Largest unit first. A value just under a boundary can ROUND across it
+  // (999_999.999 / 1_000 renders "1000.00"), so when the rounded magnitude
+  // reaches 1000 the value is promoted to the next-larger suffix instead.
+  const units = [
+    { size: 1_000_000_000, suffix: "B" },
+    { size: 1_000_000, suffix: "M" },
+    { size: 1_000, suffix: "K" },
+    { size: 1, suffix: "" },
+  ];
+  for (const [index, unit] of units.entries()) {
+    if (value < unit.size && unit.size !== 1) continue;
+    const rounded = (value / unit.size).toFixed(2);
+    const larger = units[index - 1];
+    if (larger && Number(rounded) >= 1_000) {
+      return `$${(value / larger.size).toFixed(2)}${larger.suffix}`;
+    }
+    return `$${rounded}${unit.suffix}`;
   }
   return `$${value.toFixed(2)}`;
 };

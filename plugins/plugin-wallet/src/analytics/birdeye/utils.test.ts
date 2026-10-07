@@ -22,6 +22,14 @@ describe("formatValue", () => {
     expect(formatValue(2_500_000)).toBe("$2.50M");
     expect(formatValue(3_000_000_000)).toBe("$3.00B");
   });
+
+  it("promotes to the next suffix when rounding reaches 1000", () => {
+    expect(formatValue(999.999)).toBe("$1.00K");
+    expect(formatValue(999_999)).toBe("$1.00M");
+    expect(formatValue(999_999_999)).toBe("$1.00B");
+    expect(formatValue(999_994)).toBe("$999.99K");
+    expect(formatValue(999.99)).toBe("$999.99");
+  });
 });
 
 describe("formatPercentChange", () => {
