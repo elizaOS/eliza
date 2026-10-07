@@ -137,7 +137,14 @@ function isImessagePhone(value: string): boolean {
 }
 
 function buildWhatsAppLink(room: Record<string, unknown>): string | null {
-  const raw = str(room.phoneNumber) || str(room.jid)?.replace(/@.*$/, "");
+  const jid = str(room.jid);
+  if (jid?.includes("@") && !/^[0-9]+@s\.whatsapp\.net$/i.test(jid)) {
+    return null;
+  }
+  const jidPhone = jid?.includes("@")
+    ? jid.slice(0, jid.indexOf("@"))
+    : jid;
+  const raw = str(room.phoneNumber) || jidPhone;
   if (raw) {
     const digits = raw.replace(/\D/g, "");
     if (digits.length > 0) {
