@@ -83,9 +83,8 @@ function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
 		columns: ["requestSourceEventId", entry.field],
 		receiptColumns: entry.columns,
 		...(entry.scope === undefined ? {} : { scope: entry.scope }),
-		rows,
 	};
-	let content = JSON.stringify(table);
+	let content = JSON.stringify({ ...table, rows });
 	const receiptIndex = entry.columns.indexOf("receipt");
 	const navigation = entry.field === "navigation";
 	const allowedFields = new Set(
@@ -189,7 +188,7 @@ function encodeReceiptTable(entry: ReceiptEntry, rows: ReceiptEntry["row"][]) {
 					? "receipt=[shapeIndex,values]; receiptShapes gives exact property order. Reconstruct the original receipt string with JSON.stringify(Object.fromEntries(columns paired with values)). Only canonical JSON strings are encoded; every value is exact."
 					: "receipt=[shapeIndex,values]; receiptShapes gives property order. Pair columns with values to reconstruct the complete original receipt object. Every value is exact.") +
 				(packNested && receiptShapes.some((shape) => shape.some(Array.isArray))
-					? " A [fieldName,childColumns] shape entry pairs the corresponding child value array with those columns to reconstruct that complete nested object in property order."
+					? " A string shape entry copies its corresponding value unchanged, including arrays and objects. A [fieldName,childColumns] shape entry pairs the corresponding child value array with those columns to reconstruct that complete nested object in property order."
 					: ""),
 			receiptShapes,
 			rows: rows.map(([requestSourceEventId, receipts]) => [
