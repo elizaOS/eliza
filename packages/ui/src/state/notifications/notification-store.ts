@@ -205,6 +205,7 @@ function upsert(
 async function deliver(notification: AgentNotification): Promise<void> {
   if (notification.priority === "low") return;
   const deliveryAuthorityEpoch = authorityEpoch;
+  const deliveryBase = client.getBaseUrl();
   // FCM remains independent of WebSocket/JS liveness. Once this Android
   // authority confirms presentation for this category, it owns the OS projection;
   // the arrival was already committed to the durable in-app center by ingest().
@@ -222,6 +223,11 @@ async function deliver(notification: AgentNotification): Promise<void> {
       id: notification.id,
       title: notification.title,
       body: notification.body,
+      createdAt: notification.createdAt,
+      source: notification.source,
+      readAt: notification.readAt,
+      expiresAt: notification.expiresAt,
+      expectedBase: deliveryBase,
       deepLink: notification.deepLink,
       data: notification.data,
       priority: notification.priority,
