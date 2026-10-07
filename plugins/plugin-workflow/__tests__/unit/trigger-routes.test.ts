@@ -409,6 +409,7 @@ describe('trigger enabled boundary', () => {
     context.normalizeTriggerDraft = ({ input }) => ({ draft: input as never });
     context.buildTriggerConfig = ({ draft, triggerId }) =>
       ({ ...draft, triggerId }) as TriggerConfig;
+    context.buildTriggerMetadata = ({ trigger }) => ({ trigger });
     context.runtime.getRoom = async () => null;
     await handleTriggerRoutes(context);
     expect(response).toEqual({

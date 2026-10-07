@@ -179,9 +179,7 @@ describe("TokenLogo real Avatar image loading", () => {
     }
     const imageSpy = vi
       .spyOn(window, "Image")
-      .mockImplementation(
-        () => new ProbeImage() as unknown as HTMLImageElement,
-      );
+      .mockImplementation(ProbeImage as unknown as typeof window.Image);
     const preferred = "https://example.com/preferred.png";
     const changed = "https://example.com/changed.png";
     const fallback = getNativeLogoUrl("ethereum");
