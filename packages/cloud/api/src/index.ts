@@ -85,6 +85,8 @@ let cliSessionThinAppPromise: Promise<Hono<AppEnv>> | undefined;
 let webhookAppPromise: Promise<Hono<AppEnv>> | undefined;
 /** Lazy authenticated Discord shell that avoids the generated application router. */
 let discordGatewayAppPromise: Promise<Hono<AppEnv>> | undefined;
+/** Personal messaging avoids unrelated application router initialization. */
+let personalSharedAppPromise: Promise<Hono<AppEnv>> | undefined;
 
 const CRYPTO_PAYMENT_CONFIRM_PATH_RE =
   /^\/api\/crypto\/payments\/[^/]+\/confirm\/?$/;
@@ -1052,6 +1054,43 @@ export function getHostedFrontendServeRewrite(
   return rewritten;
 }
 
+/** Cost: no new I/O; reuse the original route and authorities in a smaller shell. */
+export function isPersonalSharedMessagePath(pathname: string): boolean {
+  return /^\/api\/internal\/eliza-app\/personal-shared\/messages\/?$/.test(pathname);
+}
+
+async function dispatchPersonalShared(
+  request: Request,
+  env: AppEnv["Bindings"],
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  if (!isPersonalSharedMessagePath(new URL(request.url).pathname)) return null;
+  const startedAt = performance.now();
+  const cold = personalSharedAppPromise === undefined;
+  const traceId = resolveElizaTraceId(request.headers);
+  const headers = new Headers(request.headers);
+  headers.set(ELIZA_TRACE_ID_HEADER, traceId);
+  personalSharedAppPromise ??= import("./personal-shared-app").then((module) =>
+    module.createPersonalSharedApp(),
+  ).catch((error) => {
+    personalSharedAppPromise = undefined;
+    throw error;
+  });
+  const app = await personalSharedAppPromise;
+  const response = await app.fetch(new Request(request, { headers }), env, ctx);
+  const responseHeaders = new Headers(response.headers);
+  setHttpTelemetryHeaders(responseHeaders, traceId, [
+    { name: "personal_shared_entry", durationMs: performance.now() - startedAt },
+    { name: "personal_shared_isolate", durationMs: 0, description: cold ? "cold" : "warm" },
+  ]);
+  responseHeaders.set("X-Eliza-Personal-Shared-Path", "thin");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: responseHeaders,
+  });
+}
+
 const scheduled = makeCronHandler(async (request, env, ctx) =>
   dispatchFullApp(request, env, ctx),
 );
@@ -1106,6 +1145,8 @@ export default {
       if (stewardThinResponse) return stewardThinResponse;
       const inferenceResponse = await dispatchInference(apiRequest, env, ctx);
       if (inferenceResponse) return inferenceResponse;
+      const personalSharedResponse = await dispatchPersonalShared(apiRequest, env, ctx);
+      if (personalSharedResponse) return personalSharedResponse;
       return dispatchFullApp(apiRequest, env, ctx);
     }
 
@@ -1182,6 +1223,8 @@ export default {
       return dispatchFullApp(rewrittenRequest, env, ctx);
     }
 
+    const personalSharedResponse = await dispatchPersonalShared(request, env, ctx);
+    if (personalSharedResponse) return personalSharedResponse;
     return dispatchFullApp(request, env, ctx);
   },
 
