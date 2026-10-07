@@ -350,6 +350,7 @@ function blooioGroupSendTail(messageId: string, trustedDelivery: unknown) {
     trustedDelivery,
     validBlooioGroup.message,
     { type: "GROUP", source: "blooio" },
+    expect.stringMatching(/^[0-9a-f]{32}$/),
   ] as const;
 }
 
@@ -451,6 +452,7 @@ describe("adversarial Personal Shared group routing", () => {
       },
       validBlooioGroup.message,
       { type: "GROUP", source: "blooio" },
+      expect.stringMatching(/^[0-9a-f]{32}$/),
     );
   });
 
@@ -611,6 +613,7 @@ describe("adversarial Personal Shared group routing", () => {
       expect.anything(),
       forged,
       { type: "GROUP", source: "telegram" },
+      expect.stringMatching(/^[0-9a-f]{32}$/),
     );
   });
 

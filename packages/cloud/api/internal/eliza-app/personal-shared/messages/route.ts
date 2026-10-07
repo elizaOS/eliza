@@ -1924,6 +1924,7 @@ app.post("/", async (c) => {
           groupTrustedDelivery,
           capabilityText,
           { type: ChannelType.GROUP, source: parsed.data.platform },
+          c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers),
         )
       : await sharedRestMessageSend(
           agent,
@@ -1936,6 +1937,8 @@ app.post("/", async (c) => {
           "platform",
           trustedDelivery,
           capabilityText,
+          undefined,
+          c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers),
         );
     // The same values ship on `Server-Timing` below; a second uncorrelated
     // per-turn log on the hot path would only duplicate them.

@@ -311,6 +311,7 @@ describe("personal Shared group reminder destinations", () => {
       },
       ownerBlooioGroupTurn.message,
       { type: "GROUP", source: "blooio" },
+      expect.stringMatching(/^[0-9a-f]{32}$/),
     );
     // The response's delivery authority and the stored reminder destination
     // must describe the same binding generation.

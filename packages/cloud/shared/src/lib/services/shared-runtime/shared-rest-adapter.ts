@@ -580,6 +580,7 @@ export async function sharedRestMessageSend(
   trustedDelivery?: SharedReminderDelivery,
   trustedUserUtterance?: string,
   trustedChannel?: SharedRuntimeChannel,
+  traceId?: string,
 ): Promise<{
   text: string;
   agentName: string;
@@ -604,6 +605,7 @@ export async function sharedRestMessageSend(
   const response = await coordinateSharedBridge(agent, rpc, {
     executionCtx,
     namespace,
+    ...(traceId ? { traceId } : {}),
     ...(funding === "platform" ? { agentKind: "personal" as const } : {}),
     ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
     channel: trustedChannel ?? {

@@ -22,7 +22,6 @@ const resolvePersonalDelivery = mock(async () => ({
   isNew: personalDeliveryIsNew,
   resolution: "single-query-repeat" as const,
 }));
-const sharedRestMessageSend = mock(async () => ({ text: "hello from Eliza" }));
 const prewarmPersonalSharedAgentTurnCaches = mock(async () => undefined);
 const runOnboardingChat = mock(async (_input: OnboardingChatInput) => ({
   loginUrl:
@@ -139,8 +138,20 @@ const recordGroupDeliveryReceipts = mock(async () => ({
   inserted: 0,
 }));
 const hasGroupDeliveryReceipt = mock(async () => false);
+const sharedBridgeFetch = mock(
+  async (input: RequestInfo | URL, init?: RequestInit) => {
+    const body = (await new Request(input, init).json()) as {
+      rpc: { id: string };
+    };
+    return Response.json({
+      jsonrpc: "2.0",
+      id: body.rpc.id,
+      result: { text: "hello from Eliza" },
+    });
+  },
+);
 const namespace = {
-  getByName: mock(() => ({ fetch: mock(async () => new Response()) })),
+  getByName: mock(() => ({ fetch: sharedBridgeFetch })),
 };
 const runtimeWaitUntil = mock((_promise: Promise<unknown>) => undefined);
 const runtimeExecutionCtx = { waitUntil: runtimeWaitUntil };
@@ -153,8 +164,17 @@ mock.module("@/lib/services/eliza-app", () => ({
 // The real serializer, not a re-implementation: mocking it meant the header
 // this route exists to emit was never actually produced by the code under
 // test, so the whole route-layer claim went unexercised.
-const { sharedTurnServerTiming } = await import(
-  "@/lib/services/shared-runtime/shared-rest-adapter"
+const {
+  sharedRestMessageSend: dispatchSharedRestMessageSend,
+  sharedTurnServerTiming,
+} = await import("@/lib/services/shared-runtime/shared-rest-adapter");
+const { coordinateSharedBridge: dispatchSharedBridge } = await import(
+  "@/lib/services/shared-runtime/conversation-coordinator"
+);
+const sharedRestMessageSend = mock(
+  async (..._args: Parameters<typeof dispatchSharedRestMessageSend>) => ({
+    text: "hello from Eliza",
+  }),
 );
 mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
   sharedRestMessageSend,
@@ -186,6 +206,7 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
   elizaSandboxService: { bridge, importCanonicalConversation },
 }));
 mock.module("@/lib/services/shared-runtime/conversation-coordinator", () => ({
+  coordinateSharedBridge: dispatchSharedBridge,
   coordinateSharedHistory,
 }));
 // In-memory stand-in for the participant identity registry: ordinals are
@@ -375,6 +396,7 @@ describe("personal Shared messaging deliveries", () => {
     resolvePersonalDelivery.mockClear();
     findActivePersonalDedicatedTarget.mockClear();
     sharedRestMessageSend.mockClear();
+    sharedBridgeFetch.mockClear();
     prewarmPersonalSharedAgentTurnCaches.mockClear();
     runtimeWaitUntil.mockClear();
     runOnboardingChat.mockClear();
@@ -525,7 +547,90 @@ describe("personal Shared messaging deliveries", () => {
         chatId: "123456789",
       },
       "hello",
+      undefined,
+      expect.stringMatching(/^[0-9a-f]{32}$/),
     );
+  });
+
+  test("carries the trusted request trace through the real Shared dispatch", async () => {
+    const traceId = "22222222222242228222222222222222";
+    sharedRestMessageSend.mockImplementationOnce(dispatchSharedRestMessageSend);
+
+    const response = await request(valid, "Bearer test-secret", traceId);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: { reply: "hello from Eliza" },
+    });
+    expect(sharedBridgeFetch).toHaveBeenCalledTimes(1);
+    const call = sharedBridgeFetch.mock.calls[0];
+    if (!call) throw new Error("Shared dispatch did not reach the coordinator");
+    const payload = await new Request(call[0], call[1]).json();
+    expect(payload).toMatchObject({
+      operation: "personal-bridge",
+      traceId,
+      rpc: {
+        id: valid.messageId,
+        method: "message.send",
+        params: {
+          text: valid.message,
+          clientMessageId: valid.messageId,
+        },
+      },
+    });
+    expect(payload.rpc.params).not.toHaveProperty("traceId");
+  });
+
+  test("keeps uncorrelated Shared callers and fresh message IDs unchanged", async () => {
+    expect((await request(valid)).status).toBe(200);
+    const call = sharedRestMessageSend.mock.calls[0];
+    if (!call) throw new Error("Shared route did not dispatch a turn");
+
+    await dispatchSharedRestMessageSend(
+      call[0],
+      call[1],
+      "no trace",
+      "Eliza",
+      runtimeExecutionCtx,
+      namespace,
+    );
+    await dispatchSharedRestMessageSend(
+      call[0],
+      call[1],
+      "no trace",
+      "Eliza",
+      runtimeExecutionCtx,
+      namespace,
+    );
+
+    expect(sharedBridgeFetch).toHaveBeenCalledTimes(2);
+    const payloads = await Promise.all(
+      sharedBridgeFetch.mock.calls.map(([input, init]) =>
+        new Request(input, init).json(),
+      ),
+    );
+    for (const payload of payloads) {
+      expect(payload).not.toHaveProperty("traceId");
+      expect(payload.rpc.params).toEqual({ text: "no trace", roomId: call[1] });
+      expect(payload.rpc.id).toMatch(/^[0-9a-f-]{36}$/);
+    }
+    expect(payloads[0].rpc.id).not.toBe(payloads[1].rpc.id);
+  });
+
+  test("replaces an invalid caller trace before the real Shared dispatch", async () => {
+    const untrustedTrace = "caller-private-text";
+    sharedRestMessageSend.mockImplementationOnce(dispatchSharedRestMessageSend);
+
+    const response = await request(valid, "Bearer test-secret", untrustedTrace);
+
+    expect(response.status).toBe(200);
+    expect(sharedBridgeFetch).toHaveBeenCalledTimes(1);
+    const call = sharedBridgeFetch.mock.calls[0];
+    if (!call) throw new Error("Shared dispatch did not reach the coordinator");
+    const payload = await new Request(call[0], call[1]).json();
+    expect(payload.traceId).toMatch(/^[0-9a-f]{32}$/);
+    expect(JSON.stringify(payload)).not.toContain(untrustedTrace);
   });
 
   test("reuses one Personal Shared identity across Telegram and Blooio DMs", async () => {
@@ -842,6 +947,8 @@ describe("personal Shared messaging deliveries", () => {
           chatId: "123456789",
         },
         "please verify it\nremember the red bicycle",
+        undefined,
+        expect.stringMatching(/^[0-9a-f]{32}$/),
       );
       await expect(response.json()).resolves.toMatchObject({
         data: { reply: "hello from Eliza" },
@@ -1236,6 +1343,7 @@ describe("personal Shared messaging deliveries", () => {
       },
       validGroup.message,
       { type: "GROUP", source: "telegram" },
+      expect.stringMatching(/^[0-9a-f]{32}$/),
     );
   });
 
@@ -1600,6 +1708,8 @@ describe("personal Shared messaging deliveries", () => {
         phoneNumber: "+15551234567",
       },
       "hello from Messages",
+      undefined,
+      expect.stringMatching(/^[0-9a-f]{32}$/),
     );
   });
 
@@ -1775,6 +1885,8 @@ describe("personal Shared messaging deliveries", () => {
         discordUserId: "123456789012345678",
       },
       "continue our conversation",
+      undefined,
+      expect.stringMatching(/^[0-9a-f]{32}$/),
     );
   });
 
