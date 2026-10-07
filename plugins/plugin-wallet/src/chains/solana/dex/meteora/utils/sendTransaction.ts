@@ -33,10 +33,27 @@ export function calculatePrioritizationFee(
   return sorted[Math.max(0, index)] ?? 0;
 }
 
+/** Fee payer first, then any other required signers, without duplicates. */
+export function collectSigners(
+  feePayer: Keypair,
+  extraSigners: readonly Keypair[] = []
+): Keypair[] {
+  const signers = [feePayer];
+  const seen = new Set([feePayer.publicKey.toBase58()]);
+  for (const signer of extraSigners) {
+    const key = signer.publicKey.toBase58();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    signers.push(signer);
+  }
+  return signers;
+}
+
 export async function sendTransaction(
   connection: Connection,
   instructions: TransactionInstruction[],
-  wallet: Keypair
+  wallet: Keypair,
+  extraSigners: readonly Keypair[] = []
 ): Promise<string> {
   const latestBlockhash = await connection.getLatestBlockhash();
 
@@ -46,8 +63,9 @@ export async function sendTransaction(
     instructions,
   }).compileToV0Message();
 
+  const signers = collectSigners(wallet, extraSigners);
   const simulatedTx = new VersionedTransaction(messageV0);
-  simulatedTx.sign([wallet]);
+  simulatedTx.sign(signers);
   const simulation = await connection.simulateTransaction(simulatedTx);
   const computeUnits = simulation.value.unitsConsumed || 200_000;
   const safeComputeUnits = Math.ceil(Math.max(computeUnits * 1.3, computeUnits + 100_000));
@@ -69,7 +87,7 @@ export async function sendTransaction(
   }).compileToV0Message();
 
   const transaction = new VersionedTransaction(finalMessage);
-  transaction.sign([wallet]);
+  transaction.sign(signers);
 
   const timeoutMs = 90000;
   const startTime = Date.now();

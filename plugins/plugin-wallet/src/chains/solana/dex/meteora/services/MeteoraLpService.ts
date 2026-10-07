@@ -162,10 +162,13 @@ export class MeteoraLpService extends Service {
         },
       });
 
+      // initializePosition marks the new position account as a signer.
+      // The official SDK example signs with [user, positionKeypair].
       const signature = await sendTransaction(
         this.connection,
         createPositionTx.instructions,
-        params.userVault
+        params.userVault,
+        [newPosition]
       );
 
       // Wait for the transaction to be confirmed to ensure the position is created.
