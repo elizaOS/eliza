@@ -1969,6 +1969,8 @@ describe("Shared Eliza runtime in Workerd", () => {
       ).split(",");
       const runs = Number(process.env.NETWORK_LIVE_RUNS ?? "2");
       const firstRun = Number(process.env.NETWORK_LIVE_FIRST_RUN ?? "1");
+      // Resume a run that died part-way: skip the first N cases.
+      const skipCases = Number(process.env.NETWORK_LIVE_SKIP_CASES ?? "0");
       // Optional JSONL sink so a long run survives a crash part-way through.
       const outPath = process.env.NETWORK_LIVE_OUT;
       const sorted = (values: number[]) => [...values].sort((a, b) => a - b);
@@ -1996,7 +1998,7 @@ describe("Shared Eliza runtime in Workerd", () => {
             reply?: string;
             calls: string[];
           }> = [];
-          for (const testCase of cases) {
+          for (const testCase of cases.slice(skipCases)) {
             await networkDb.query(
               `UPDATE network.members SET state = $1, paused_until = NULL`,
               [testCase.expect === "open" ? "paused" : "open"],
