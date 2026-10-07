@@ -447,9 +447,11 @@ export async function handleBugReportRoutes(
 
       const issueData = (await issueRes.json()) as { html_url?: string };
       const url = issueData.html_url;
+      const expectedUrlPrefix =
+        `https://github.com/${bugReportRepo}/issues/`.toLowerCase();
       if (
         typeof url !== "string" ||
-        !url.startsWith(`https://github.com/${bugReportRepo}/issues/`)
+        !url.toLowerCase().startsWith(expectedUrlPrefix)
       ) {
         error(res, "Unexpected response from GitHub API", 502);
         return true;
