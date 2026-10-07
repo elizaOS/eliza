@@ -664,16 +664,28 @@ async function runHydrationAttempt(generation: number): Promise<void> {
     );
     const hydrationStatus =
       res.serviceStatus === "disabled" ? "disabled" : "ready";
+    let unreadCount = res.unreadCount;
+    if (liveEventRevision !== liveRevisionAtStart)
+      unreadCount = state.unreadCount;
+    else if (clearMutationRevision > mutationAtStart)
+      unreadCount = countUnread(notifications);
+    else {
+      const serverRows = new Map(res.notifications.map((n) => [n.id, n]));
+      const currentRows = new Map(notifications.map((n) => [n.id, n]));
+      for (const [id, revision] of notificationMutationRevisions) {
+        if (revision <= mutationAtStart) continue;
+        const before = serverRows.get(id),
+          after = currentRows.get(id);
+        unreadCount +=
+          countUnread(after ? [after] : []) -
+          countUnread(before ? [before] : []);
+      }
+      unreadCount = Math.max(0, unreadCount);
+    }
     hydrationReadinessDeadlineAt = 0;
     setState({
       notifications,
-      unreadCount:
-        liveEventRevision === liveRevisionAtStart &&
-        mutationRevision === mutationAtStart
-          ? res.unreadCount
-          : liveEventRevision !== liveRevisionAtStart
-            ? state.unreadCount
-            : countUnread(notifications),
+      unreadCount,
       hydrated: true,
       hydrationStatus,
       hydrationError: null,
@@ -872,6 +884,7 @@ export async function seedDevNotificationsIfEmpty(): Promise<void> {
 interface MutationSnapshot {
   authorityKey: string | null;
   authorityEpoch: number;
+  unreadCount: number;
   originals: Map<string, AgentNotification>;
   revisions: Map<string, number>;
 }
@@ -891,6 +904,7 @@ function snapshotForMutation(ids: readonly string[]): MutationSnapshot {
   return {
     authorityKey: currentAuthorityKey,
     authorityEpoch,
+    unreadCount: state.unreadCount,
     originals,
     revisions,
   };
@@ -942,7 +956,16 @@ function revertMutation(
       }
     }
     restored.sort(compareNotificationsByRecency);
-    setState({ notifications: restored, unreadCount: countUnread(restored) });
+    const unreadCount =
+      op === "clearNotifications" || op === "markAllNotificationsRead"
+        ? snapshot.unreadCount
+        : Math.max(
+            0,
+            state.unreadCount +
+              countUnread(restored) -
+              countUnread(state.notifications),
+          );
+    setState({ notifications: restored, unreadCount });
   }
   logger.error({ err }, `[notification-store] ${op} failed; reverted`);
 }
@@ -953,7 +976,14 @@ export async function markNotificationRead(id: string): Promise<void> {
   const notifications = state.notifications.map((n) =>
     n.id === id && !n.readAt ? { ...n, readAt: now } : n,
   );
-  setState({ notifications, unreadCount: countUnread(notifications) });
+  setState({
+    notifications,
+    unreadCount: Math.max(
+      0,
+      state.unreadCount -
+        (countUnread(state.notifications) - countUnread(notifications)),
+    ),
+  });
   try {
     await client.markNotificationRead(id);
   } catch (err) {
@@ -978,7 +1008,14 @@ export async function markAllNotificationsRead(): Promise<void> {
 export async function removeNotification(id: string): Promise<void> {
   const snapshot = snapshotForMutation([id]);
   const notifications = state.notifications.filter((n) => n.id !== id);
-  setState({ notifications, unreadCount: countUnread(notifications) });
+  setState({
+    notifications,
+    unreadCount: Math.max(
+      0,
+      state.unreadCount -
+        (countUnread(state.notifications) - countUnread(notifications)),
+    ),
+  });
   if (ephemeralNotificationIds.delete(id)) return;
   try {
     await client.removeNotification(id);
@@ -995,7 +1032,14 @@ export async function removeNotifications(
   const idSet = new Set(ids);
   const snapshot = snapshotForMutation(ids);
   const notifications = state.notifications.filter((n) => !idSet.has(n.id));
-  setState({ notifications, unreadCount: countUnread(notifications) });
+  setState({
+    notifications,
+    unreadCount: Math.max(
+      0,
+      state.unreadCount -
+        (countUnread(state.notifications) - countUnread(notifications)),
+    ),
+  });
   const ephemeralIds = ids.filter((id) => ephemeralNotificationIds.delete(id));
   const ephemeralIdSet = new Set(ephemeralIds);
   const persistedIds = ids.filter((id) => !ephemeralIdSet.has(id));
@@ -1019,7 +1063,9 @@ export async function removeNotifications(
 
 export async function clearNotifications(): Promise<void> {
   const snapshot = snapshotForMutation(state.notifications.map((n) => n.id));
-  clearMutationRevision = ++mutationRevision;
+  const previousClearRevision = clearMutationRevision;
+  const ownClearRevision = ++mutationRevision;
+  clearMutationRevision = ownClearRevision;
   const previousEphemeralIds = [...ephemeralNotificationIds];
   setState({ notifications: [], unreadCount: 0 });
   ephemeralNotificationIds.clear();
@@ -1030,6 +1076,8 @@ export async function clearNotifications(): Promise<void> {
       snapshot.authorityKey === currentAuthorityKey &&
       snapshot.authorityEpoch === authorityEpoch
     ) {
+      if (clearMutationRevision === ownClearRevision)
+        clearMutationRevision = previousClearRevision;
       for (const id of previousEphemeralIds) ephemeralNotificationIds.add(id);
     }
     revertMutation(snapshot, "clearNotifications", err);

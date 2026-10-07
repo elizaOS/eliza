@@ -21,6 +21,8 @@ vi.mock("../../api/client", () => ({
     getBaseUrl: () => "http://127.0.0.1",
     onBaseUrlChange: () => () => {},
     clearNotifications: fixture.clear,
+    markNotificationRead: async () => ({}),
+    removeNotification: async () => ({}),
     rotateConnection: vi.fn(),
     onWsEvent: (name: string, callback: (event: never) => void) => {
       fixture.events.set(name, callback);
@@ -45,6 +47,8 @@ import {
   __resetNotificationStoreForTests,
   clearNotifications,
   initNotifications,
+  markNotificationRead,
+  removeNotification,
   retryNotificationHydration,
 } from "./notification-store";
 
@@ -182,7 +186,7 @@ it("preserves the authoritative global unread count beyond the latest-300 render
 it("a failed concurrent clear rolls back original rows before an older hydration response settles", async () => {
   fixture.list.mockResolvedValueOnce({
     notifications: [row(1)],
-    unreadCount: 1,
+    unreadCount: 1000,
   });
   initNotifications();
   await vi.waitFor(() =>
@@ -198,7 +202,37 @@ it("a failed concurrent clear rolls back original rows before an older hydration
   const refresh = retryNotificationHydration();
   fixture.clear.mockRejectedValueOnce(new Error("Storage unavailable"));
   await clearNotifications();
-  finish({ notifications: [row(1)], unreadCount: 1 });
+  expect(__getStateForTests().unreadCount).toBe(1000);
+  finish({ notifications: [row(1), row(2)], unreadCount: 1001 });
   await refresh;
-  expect(__getStateForTests().notifications).toEqual([row(1)]);
+  expect(__getStateForTests().notifications).toEqual([row(2), row(1)]);
+  expect(__getStateForTests().unreadCount).toBe(1001);
 });
+
+it.each(["read", "remove"])(
+  "a concurrent local %s preserves the global unread count beyond the rendered page",
+  async (op) => {
+    fixture.list.mockResolvedValueOnce({
+      notifications: [row(1)],
+      unreadCount: 1000,
+    });
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(__getStateForTests().hydrationStatus).toBe("ready"),
+    );
+    let finish!: (value: unknown) => void;
+    fixture.list.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const refresh = retryNotificationHydration();
+    if (op === "read") await markNotificationRead(id(1));
+    else await removeNotification(id(1));
+    expect(__getStateForTests().unreadCount).toBe(999);
+    finish({ notifications: [row(1)], unreadCount: 1000 });
+    await refresh;
+    expect(__getStateForTests().unreadCount).toBe(999);
+  },
+);

@@ -303,6 +303,70 @@ describe("NotificationService", () => {
 		expect(service.list()).toEqual([]);
 	});
 
+	it("keeps committed reads when observer lookup and diagnostics throw", async () => {
+		const record = await service.notify({ title: "Lookup boundary" });
+		const lookup = vi.spyOn(runtime, "getService").mockImplementation(() => {
+			throw new Error("Observer lookup failed");
+		});
+		const diagnostic = vi
+			.spyOn(runtime, "reportError")
+			.mockImplementation(() => {
+				throw new Error("Diagnostic failed");
+			});
+		try {
+			await expect(service.markRead(record.id)).resolves.toBe(true);
+			expect(service.list().find((n) => n.id === record.id)?.readAt).toBeTypeOf(
+				"number",
+			);
+		} finally {
+			lookup.mockRestore();
+			diagnostic.mockRestore();
+		}
+	});
+
+	it("keeps committed reads when native projection unexpectedly throws", async () => {
+		const record = await service.notify({ title: "Projection boundary" });
+		Object.defineProperty(service, "projectNative", {
+			configurable: true,
+			value: () => {
+				throw new TypeError("Unexpected projection failure");
+			},
+		});
+		try {
+			await expect(service.markRead(record.id)).resolves.toBe(true);
+		} finally {
+			Reflect.deleteProperty(service, "projectNative");
+		}
+		expect(service.list().find((n) => n.id === record.id)?.readAt).toBeTypeOf(
+			"number",
+		);
+	});
+
+	it("copies deleted records without asking for new native coordinates", async () => {
+		const record = await service.notify({
+			title: "Deleted coordinate boundary",
+		});
+		emitted.length = 0;
+		Object.defineProperty(service, "withNativeCoordinates", {
+			configurable: true,
+			value: () => {
+				throw new Error("Deleted record cannot acquire coordinates");
+			},
+		});
+		try {
+			await expect(service.remove(record.id)).resolves.toBe(true);
+		} finally {
+			Reflect.deleteProperty(service, "withNativeCoordinates");
+		}
+		expect(emitted).toHaveLength(1);
+		expect(emitted[0].data).toMatchObject({
+			type: "notification_update",
+			removed: true,
+			notification: { id: record.id },
+		});
+		expect(emitted[0].data.nativeNotification).toBeUndefined();
+	});
+
 	it("keeps durable success when a live listener throws", async () => {
 		const eventService = runtime.getService(
 			ServiceType.AGENT_EVENT,

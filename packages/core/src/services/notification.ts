@@ -639,31 +639,38 @@ export class NotificationService extends Service {
 		type: NotificationEventData["type"] = "notification",
 		removed = false,
 	): void {
-		const bus = this.runtime.getService(ServiceType.AGENT_EVENT);
-		if (!isEventBus(bus)) {
-			return; // No live bus (headless/test) — inbox API still serves it.
-		}
-		const data: NotificationEventData = {
-			type,
-			notification: this.withNativeCoordinates(notification),
-			unreadCount: this.getUnreadCount(),
-			...(removed ? { removed: true } : {}),
-		};
 		try {
-			if (!removed) data.nativeNotification = this.projectNative(notification);
-		} catch (error) {
-			if (!(error instanceof NotificationNativeError)) throw error;
-			data.nativeProjectionError = {
-				code: error.code,
-				notificationId: notification.id,
-				nativeEpoch: this.nativeEpoch,
-				nativeSequence: this.nativeSequences[notification.id],
+			const bus = this.runtime.getService(ServiceType.AGENT_EVENT);
+			if (!isEventBus(bus)) {
+				return; // No live bus (headless/test) — inbox API still serves it.
+			}
+			const data: NotificationEventData = {
+				type,
+				notification: removed
+					? { ...notification }
+					: this.withNativeCoordinates(notification),
+				unreadCount: this.getUnreadCount(),
+				...(removed ? { removed: true } : {}),
 			};
-			this.runtime.reportError("NotificationService.nativeProjection", error, {
-				notificationId: notification.id,
-			});
-		}
-		try {
+			try {
+				if (!removed)
+					data.nativeNotification = this.projectNative(notification);
+			} catch (error) {
+				if (!(error instanceof NotificationNativeError)) throw error;
+				data.nativeProjectionError = {
+					code: error.code,
+					notificationId: notification.id,
+					nativeEpoch: this.nativeEpoch,
+					nativeSequence: this.nativeSequences[notification.id],
+				};
+				this.runtime.reportError(
+					"NotificationService.nativeProjection",
+					error,
+					{
+						notificationId: notification.id,
+					},
+				);
+			}
 			bus.emit({
 				runId: notification.id,
 				stream: NOTIFICATION_STREAM,
@@ -671,15 +678,19 @@ export class NotificationService extends Service {
 				agentId: notification.agentId,
 			});
 		} catch (error) {
-			// error-policy:J7 durable notification success must not be reversed by
-			// a diagnostic/live-fanout observer failure.
-			this.runtime.reportError("NotificationService.broadcast", error, {
-				notificationId: notification.id,
-			});
-			logger.warn(
-				{ error, notificationId: notification.id },
-				"[NotificationService] live fan-out failed after durable persistence",
-			);
+			// error-policy:J7 every fan-out stage is observational after the
+			// durable mutation, including lookup, construction and diagnostics.
+			try {
+				this.runtime.reportError("NotificationService.broadcast", error, {
+					notificationId: notification.id,
+				});
+				logger.warn(
+					{ error, notificationId: notification.id },
+					"[NotificationService] live fan-out failed after durable persistence",
+				);
+			} catch {
+				// error-policy:J7 a broken diagnostic observer cannot reverse a committed write.
+			}
 		}
 	}
 
