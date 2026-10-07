@@ -28,11 +28,11 @@
         "@elizaos/core": "workspace:*"
     },
     "devDependencies": {
-        "@biomejs/biome": "2.5.14",
+        "@biomejs/biome": "2.5.15",
         "tsup": "^8.5.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.2"
+        "vitest": "^5.0.3"
     },
     "scripts": {
         "test": "vitest run --config ./vitest.config.ts",

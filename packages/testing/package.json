@@ -86,7 +86,7 @@
   },
   "devDependencies": {
     "vite": "^8.3.0",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "@types/bun": "1.4.2",

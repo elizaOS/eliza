@@ -43,12 +43,12 @@
 	},
 	"devDependencies": {
 		"vite": "^8.3.0",
-		"@biomejs/biome": "2.5.14",
+		"@biomejs/biome": "2.5.15",
 		"@types/bun": "1.4.2",
 		"rcedit": "5.0.2",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^5.0.2"
+		"vitest": "^5.0.3"
 	},
 	"publishConfig": {
 		"access": "public"

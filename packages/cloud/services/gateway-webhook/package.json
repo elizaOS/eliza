@@ -30,7 +30,7 @@
     "@elizaos/cloud-sdk": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.5.15",
     "@elizaos/cloud-shared": "workspace:*",
     "@types/hashring": "^3.2.5",
     "@types/node": "22.19.17",
