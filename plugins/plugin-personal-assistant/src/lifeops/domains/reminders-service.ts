@@ -308,14 +308,35 @@ function foregroundRequestHandling(
     if (
       !isRecord(outcome) ||
       outcome.userMessageId !== memory.id ||
-      !Array.isArray(outcome.actionResults) ||
-      outcome.actionResults.length !== 1
+      !Array.isArray(outcome.actionResults)
     )
       return undefined;
-    const result = outcome.actionResults[0];
+    let result: Record<string, unknown> | undefined;
+    for (const actionResult of outcome.actionResults) {
+      if (!isRecord(actionResult)) return undefined;
+      // Discovery loads the existing tool catalog without performing domain
+      // work. Its successful receipt-free host summary may accompany the one
+      // certified create; failed discovery and every other action stay open
+      // to semantic review rather than granting creation-only ownership.
+      if (
+        actionResult.actionName === "DISCOVER_ACTIONS" &&
+        actionResult.success === true &&
+        actionResult.error === undefined &&
+        actionResult.values === undefined &&
+        (actionResult.effectReceipts === undefined ||
+          (Array.isArray(actionResult.effectReceipts) &&
+            actionResult.effectReceipts.length === 0))
+      )
+        continue;
+      if (
+        result !== undefined ||
+        actionResult.actionName !== "OWNER_REMINDERS_CREATE"
+      )
+        return undefined;
+      result = actionResult;
+    }
     if (
-      !isRecord(result) ||
-      result.success !== true ||
+      result?.success !== true ||
       result.actionName !== "OWNER_REMINDERS_CREATE" ||
       !isRecord(result.values)
     )
@@ -806,11 +827,15 @@ export function readLadderRungTitle(
 
 export function buildReminderBody(args: {
   title: string;
+  body?: string | null;
   derivedTarget?: Record<string, unknown> | null;
 }): string {
   // Timing and delivery identity remain on the saved occurrence and receipts.
   // The alert itself is the owner's message, including the current ladder rung.
-  return readLadderRungTitle(args.derivedTarget) ?? args.title;
+  return (
+    readLadderRungTitle(args.derivedTarget) ??
+    (args.body?.trim() ? args.body : args.title)
+  );
 }
 
 // Stretch cadence + walk-out / weekend / late-evening rules live as
@@ -1317,7 +1342,11 @@ export class RemindersDomain {
     );
     try {
       if (handoff?.routed) await handoff.routed;
-      else await notificationDelivery?.publish();
+      else if (notificationDelivery) await notificationDelivery.publish();
+      else if (args.ownerType === "occurrence" && args.subjectType === "owner")
+        throw Error(
+          "In-app reminder has no accepting conversation or notification surface.",
+        );
     } catch (error) {
       this.ctx.runtime.reportError(
         "lifeops:reminder:notification-delivery",
@@ -1402,11 +1431,11 @@ export class RemindersDomain {
       "",
       "Allowed decisions:",
       "- explicit_resolution: the reply clearly completes, acknowledges, skips, or snoozes this reminder",
-      "- needs_clarification: the owner intends to act but the snooze/meaning is underspecified",
+      "- needs_clarification: the owner clearly intends to act on this specific reminder, but its snooze timing or requested resolution is underspecified",
       "- unrelated: the reply is about something else",
       "- abstain: ambiguous, context-heavy, or not confidently bound to this reminder",
       "",
-      "Use abstain when the reply is ambiguous, context-heavy, or you cannot confidently bind it to the reminder.",
+      "A clearly separate new task or native alarm request is unrelated; not resolving this reminder does not itself require clarification. Use abstain when the reply is ambiguous, context-heavy, or you cannot confidently bind it to this specific reminder.",
       "Only resolve standalone replies like done/yes/later when the context says standalone resolution is allowed.",
       "For snoozed, set snoozeMinutes to a positive integer or snoozePreset to 15m, 30m, 1h, tonight, or tomorrow_morning; otherwise ask for clarification.",
       "",
@@ -4211,7 +4240,7 @@ export class RemindersDomain {
     timezone: string;
     definition:
       | (Pick<LifeOpsTaskDefinition, "kind" | "metadata"> &
-          Partial<Pick<LifeOpsTaskDefinition, "cadence">>)
+          Partial<Pick<LifeOpsTaskDefinition, "cadence" | "description">>)
       | null;
     reviewAttempt?: LifeOpsReminderAttempt | null;
   }): Promise<LifeOpsReminderAttempt | null> {
@@ -4336,6 +4365,13 @@ export class RemindersDomain {
     if (!previousAttempt) {
       return null;
     }
+    if (
+      previousAttempt.channel === "in_app" &&
+      previousAttempt.outcome === "blocked_connector" &&
+      previousAttempt.deliveryMetadata.reason ===
+        "runtime_send_acceptance_unknown"
+    )
+      return null;
     const escalationProfile = readReminderEscalationProfile(args.definition);
     const enforcementState = buildReminderEnforcementState(
       args.now,
@@ -4814,7 +4850,7 @@ export class RemindersDomain {
     timezone: string;
     definition:
       | (Pick<LifeOpsTaskDefinition, "kind" | "metadata"> &
-          Partial<Pick<LifeOpsTaskDefinition, "cadence">>)
+          Partial<Pick<LifeOpsTaskDefinition, "cadence" | "description">>)
       | null;
     derivedTarget?: Record<string, unknown> | null;
     bodyOverride?: string;
@@ -4915,6 +4951,7 @@ export class RemindersDomain {
       reminderBody = exactReminder
         ? buildReminderBody({
             title: args.title,
+            body: args.definition?.description,
             derivedTarget: args.derivedTarget,
           })
         : (args.bodyOverride ??
@@ -5125,6 +5162,13 @@ export class RemindersDomain {
       }
     }
 
+    const awaitInAppAcceptance =
+      outcome === "delivered" &&
+      args.channel === "in_app" &&
+      args.ownerType === "occurrence" &&
+      args.subjectType === "owner";
+    // Persist the owner in-app claim before any handoff. Unknown acceptance
+    // stays non-delivered and cannot authorize a retry after process restart.
     const attempt = createLifeOpsReminderAttempt({
       agentId: this.ctx.agentId(),
       planId: args.plan.id,
@@ -5135,11 +5179,53 @@ export class RemindersDomain {
       stepIndex: args.stepIndex,
       scheduledFor: args.scheduledFor,
       attemptedAt,
-      outcome,
+      outcome: awaitInAppAcceptance ? "blocked_connector" : outcome,
       connectorRef,
-      deliveryMetadata,
+      deliveryMetadata: awaitInAppAcceptance
+        ? {
+            ...deliveryMetadata,
+            reason: "runtime_send_acceptance_unknown",
+            error:
+              "In-app handoff acceptance is pending. Do not retry blindly.",
+          }
+        : deliveryMetadata,
     });
     await this.ctx.repository.createReminderAttempt(attempt);
+    let deliveryError: unknown;
+    if (awaitInAppAcceptance) {
+      try {
+        await this.emitInAppReminderNudge({
+          text: reminderBody,
+          presentation,
+          ownerType: args.ownerType,
+          ownerId: args.ownerId,
+          subjectType: args.subjectType,
+          scheduledFor: args.scheduledFor,
+          dueAt: args.dueAt,
+        });
+        Object.assign(attempt.deliveryMetadata, { reason: null, error: null });
+        await this.ctx.repository.updateReminderAttemptOutcome(
+          attempt.id,
+          "delivered",
+          attempt.deliveryMetadata,
+        );
+        attempt.outcome = "delivered";
+      } catch (error) {
+        deliveryError = error ?? Error("In-app delivery acceptance unknown");
+        outcome = "blocked_connector";
+        attempt.outcome = outcome;
+        Object.assign(attempt.deliveryMetadata, {
+          reason: "runtime_send_acceptance_unknown",
+          error: `${lifeOpsErrorMessage(deliveryError)} Acceptance is unknown; do not retry blindly.`,
+        });
+        await this.ctx.repository.updateReminderAttemptOutcome(
+          attempt.id,
+          outcome,
+          attempt.deliveryMetadata,
+        );
+      }
+      Object.assign(deliveryMetadata, attempt.deliveryMetadata);
+    }
     await this.recordReminderAudit(
       outcome === "delivered" ? "reminder_delivered" : "reminder_blocked",
       args.ownerType,
@@ -5184,7 +5270,12 @@ export class RemindersDomain {
         },
       );
     }
-    if (outcome === "delivered" && args.channel === "in_app") {
+    if (deliveryError !== undefined) throw deliveryError;
+    if (
+      outcome === "delivered" &&
+      args.channel === "in_app" &&
+      !awaitInAppAcceptance
+    ) {
       await this.emitInAppReminderNudge({
         text: reminderBody,
         presentation,
@@ -5797,9 +5888,16 @@ export class RemindersDomain {
       [...plansByEventId.values()],
     );
 
-    const deliveredAttempts = new Set(
+    const consumedAttempts = new Set(
       existingAttempts
-        .filter((attempt) => isDeliveredReminderOutcome(attempt.outcome))
+        .filter(
+          (attempt) =>
+            isDeliveredReminderOutcome(attempt.outcome) ||
+            (attempt.channel === "in_app" &&
+              attempt.outcome === "blocked_connector" &&
+              attempt.deliveryMetadata.reason ===
+                "runtime_send_acceptance_unknown"),
+        )
         .map((attempt) =>
           attemptKey(attempt.planId, attempt.stepIndex, attempt.scheduledFor),
         ),
@@ -5849,7 +5947,7 @@ export class RemindersDomain {
           occurrence.state === "completed",
       );
       if (
-        deliveredAttempts.has(key) ||
+        consumedAttempts.has(key) ||
         (acknowledged && blockedAckAttempts.has(key))
       ) {
         continue;
@@ -5893,7 +5991,7 @@ export class RemindersDomain {
       });
       dueAttempts.push(attempt);
       if (isDeliveredReminderOutcome(attempt.outcome)) {
-        deliveredAttempts.add(key);
+        consumedAttempts.add(key);
       }
     }
 
@@ -5927,7 +6025,7 @@ export class RemindersDomain {
       );
       const acknowledged = Boolean(event.metadata.reminderAcknowledgedAt);
       if (
-        deliveredAttempts.has(key) ||
+        consumedAttempts.has(key) ||
         (acknowledged && blockedAckAttempts.has(key))
       ) {
         continue;
@@ -5962,7 +6060,7 @@ export class RemindersDomain {
       });
       dueAttempts.push(attempt);
       if (isDeliveredReminderOutcome(attempt.outcome)) {
-        deliveredAttempts.add(key);
+        consumedAttempts.add(key);
       }
     }
 

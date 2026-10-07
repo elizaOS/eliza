@@ -470,3 +470,44 @@ it("does not restart a reminder read or update counts after an unmounted mutatio
   expect(mocks.fetch).toHaveBeenCalledTimes(2);
   expect(counts).toHaveBeenCalledTimes(countCalls);
 });
+
+it("edits an exact one-shot alert body without renaming its title or losing UTF lines", async () => {
+  const body =
+    "Clock scope reminder QA, verification cdfaacf9.\nRésumé — café ☕!";
+  const updatedBody =
+    "Updated cdfaacf9 — café ☕; exact punctuation.\nSecond line stays.";
+  const exact = {
+    ...row,
+    definition: {
+      ...row.definition,
+      description: body,
+      metadata: { ownerSurface: "OWNER_REMINDERS" },
+    },
+  };
+  mocks.fetch.mockImplementation(
+    async (_url, init) =>
+      new Response(
+        JSON.stringify(init.method === "GET" ? { reminders: [exact] } : {}),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+  );
+  render(<RemindersFeed />);
+  await screen.findByText("Call dentist");
+  fireEvent.click(screen.getByRole("button", { name: "Call dentist" }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit message" }));
+  const input = screen.getByLabelText("Reminder message");
+  expect(input).toHaveProperty("value", body);
+  fireEvent.change(input, { target: { value: updatedBody } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(
+      mocks.fetch.mock.calls.some(([, init]) => init.method === "PUT"),
+    ).toBe(true),
+  );
+  const call = mocks.fetch.mock.calls.find(([, init]) => init.method === "PUT");
+  if (!call) throw Error("Missing body edit");
+  expect(JSON.parse(call[1].body)).toEqual({ description: updatedBody });
+  expect(
+    mocks.fetch.mock.calls.some(([, init]) => init.method === "POST"),
+  ).toBe(false);
+});

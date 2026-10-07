@@ -22,6 +22,7 @@ const plan = {
   mode: "create",
   requestKind: "reminder",
   title: "QA",
+  description: null,
   cadenceKind: "once",
   dueInMinutes: 2,
   dueDate: null,
@@ -42,6 +43,19 @@ it.each(["in_app_only", "apple_reminders"])(
     ).toBe(nativeProjection);
   },
 );
+it("requires a complete native alert-body decision and preserves explicit text", () => {
+  const body =
+    "Clock scope reminder QA, verification cdfaacf9.\nKeep this exact second line.";
+  expect(
+    parseNativeTaskCreatePlan({ ...plan, description: body })?.description,
+  ).toBe(body);
+  expect(
+    parseNativeTaskCreatePlan({ ...plan, description: null })?.description,
+  ).toBeNull();
+  const { description: _description, ...missing } = plan;
+  expect(parseNativeTaskCreatePlan(missing)).toBeNull();
+  expect(parseNativeTaskCreatePlan({ ...plan, description: 17 })).toBeNull();
+});
 it("uses extraction for an unknown timed destination and rejects invalid projection", () => {
   const omitted = { ...plan, nativeProjection: undefined };
   expect(parseNativeTaskCreatePlan(omitted)).toBeNull();
@@ -352,12 +366,26 @@ it.each([
 
 it.each([
   {
-    name: "Travel",
+    name: "Travel missing alert-body decision",
     input: {
       mode: "create",
       requestKind: "reminder",
       nativeProjection: "in_app_only",
       title: "Check travel pouch",
+      cadenceKind: "once",
+      dueInMinutes: 2,
+      multiStep: false,
+    },
+    accepted: false,
+  },
+  {
+    name: "Travel explicit title-only decision",
+    input: {
+      mode: "create",
+      requestKind: "reminder",
+      nativeProjection: "in_app_only",
+      title: "Check travel pouch",
+      description: null,
       cadenceKind: "once",
       dueInMinutes: 2,
       multiStep: false,
@@ -388,7 +416,7 @@ it.each([
     accepted: false,
   },
 ])(
-  "preserves saved $name parser behavior after schema simplification",
+  "keeps saved destinations while requiring a complete native body decision: $name",
   ({ input, accepted }) => {
     if (accepted)
       expect(parseNativeTaskCreatePlan(input)).toEqual(
@@ -402,13 +430,15 @@ it("keeps null unknown rather than a destination guess and retains timed extract
   const unknown = { ...plan, nativeProjection: null };
   expect(buildTaskCreatePlan(unknown)?.nativeProjection).toBeNull();
   expect(parseNativeTaskCreatePlan(unknown)).toBeNull();
-  expect(taskCreatePlanGuidance(true)).toContain("use null for mode=create");
-  expect(taskCreatePlanGuidance(false)).toContain("Otherwise omit it.");
+  expect(taskCreatePlanGuidance(true)).toContain(
+    "use null for an unknown destination",
+  );
+  expect(taskCreatePlanGuidance(false)).toContain("do not omit the decision");
 });
 
 it("guides current app/conversation delivery without changing unknown or permission authority", () => {
   const guidance = taskCreatePlanGuidance(true);
-  expect(guidance).toContain("delivery in the current app or conversation");
+  expect(guidance).toContain("selects Eliza, the current app or conversation");
   expect(guidance).toContain(
     "explicitly requests Apple Reminders, including alongside app delivery",
   );

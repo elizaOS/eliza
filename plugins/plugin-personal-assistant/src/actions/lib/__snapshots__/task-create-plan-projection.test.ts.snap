@@ -2,6 +2,6 @@
 
 exports[`keeps the optional native contract closed and discriminated through provider conversion 1`] = `
 {
-  "nativePlanProviderSchemaBytes": 12614,
+  "nativePlanProviderSchemaBytes": 13753,
 }
 `;
