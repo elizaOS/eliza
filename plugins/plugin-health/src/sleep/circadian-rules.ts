@@ -177,8 +177,7 @@ const RULES: readonly Rule[] = [
       (s) =>
         s.source === "imessage_outbound" ||
         (s.source === "connector_activity" &&
-          (s.metadata.eventType === "MESSAGE_RECEIVED" ||
-            s.metadata.direction === "outbound_by_owner")),
+          s.metadata.direction === "outbound_by_owner"),
     );
     if (!hit || hit.ageMs > 10 * 60000) return null;
     return {
