@@ -846,10 +846,22 @@ function parseSolanaTransferLamports(amount: string | undefined): number {
 }
 
 const SOLANA_TOKEN_BASE_UNIT_MAX = new BigNumber("18446744073709551615");
+const SOLANA_TOKEN_TRANSFER_AMOUNT_INVALID = {
+  code: "SOLANA_TOKEN_TRANSFER_AMOUNT_INVALID",
+  subject: "SPL token transfer amount",
+} as const;
+const SOLANA_SWAP_AMOUNT_INVALID = {
+  code: "SOLANA_SWAP_AMOUNT_INVALID",
+  subject: "Solana swap input amount",
+} as const;
 
 function parseSolanaTokenBaseUnits(
   amount: string | undefined,
   decimals: number,
+  invalid: {
+    code: string;
+    subject: string;
+  } = SOLANA_TOKEN_TRANSFER_AMOUNT_INVALID,
 ): bigint {
   let baseUnits: InstanceType<typeof BigNumber>;
   try {
@@ -858,10 +870,10 @@ function parseSolanaTokenBaseUnits(
     );
   } catch (cause) {
     // error-policy:J2 Preserve malformed decimal input as a typed validation failure.
-    throw new ElizaError(
-      "SPL token transfer amount is not a valid decimal value.",
-      { code: "SOLANA_TOKEN_TRANSFER_AMOUNT_INVALID", cause },
-    );
+    throw new ElizaError(`${invalid.subject} is not a valid decimal value.`, {
+      code: invalid.code,
+      cause,
+    });
   }
   if (
     !baseUnits.isFinite() ||
@@ -870,8 +882,8 @@ function parseSolanaTokenBaseUnits(
     baseUnits.gt(SOLANA_TOKEN_BASE_UNIT_MAX)
   ) {
     throw new ElizaError(
-      "SPL token transfer amount must be a positive finite value exactly representable as an integer number of base units.",
-      { code: "SOLANA_TOKEN_TRANSFER_AMOUNT_INVALID" },
+      `${invalid.subject} must be a positive finite value exactly representable as an integer number of base units.`,
+      { code: invalid.code },
     );
   }
   return BigInt(baseUnits.toFixed(0));
@@ -997,10 +1009,13 @@ async function fetchJupiterSwapTransaction(
   const inputMint = resolveSolanaMint(params.fromToken);
   const outputMint = resolveSolanaMint(params.toToken);
   const decimals = await getSolanaTokenDecimals(connection, inputMint);
-  const adjustedAmount = new BigNumber(params.amount ?? "0")
-    .multipliedBy(new BigNumber(10).pow(decimals))
-    .integerValue()
-    .toFixed(0);
+  // Reject a fractional base unit before the quote so Jupiter cannot be asked
+  // for more tokens than the user named. integerValue() half-up did that.
+  const adjustedAmount = parseSolanaTokenBaseUnits(
+    params.amount,
+    decimals,
+    SOLANA_SWAP_AMOUNT_INVALID,
+  ).toString();
 
   const quoteParams = new URLSearchParams({
     inputMint,
