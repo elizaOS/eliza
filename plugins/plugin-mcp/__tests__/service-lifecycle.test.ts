@@ -44,6 +44,29 @@ describe("McpService lifecycle", () => {
     expect(internals.connectionStates.has("bad-close")).toBe(false);
   });
 
+  it("does not delete a replacement while the old transport is closing", async () => {
+    const service = new McpService();
+    const internals = service as unknown as {
+      connections: Map<string, object>;
+      connectionStates: Map<string, object>;
+    };
+    const closing = Promise.withResolvers<void>();
+    internals.connections.set("pages", {
+      transport: { close: () => closing.promise },
+      client: { close: vi.fn(async () => {}) },
+    });
+    internals.connectionStates.set("pages", {});
+    const deletion = service.deleteConnection("pages");
+    const replacement = { server: { status: "connecting" } };
+    const replacementState = { reconnectAttempts: 2 };
+    internals.connections.set("pages", replacement);
+    internals.connectionStates.set("pages", replacementState);
+    closing.resolve();
+    await deletion;
+    expect(internals.connections.get("pages")).toBe(replacement);
+    expect(internals.connectionStates.get("pages")).toBe(replacementState);
+  });
+
   it("handles corrupted config JSON in restartConnection by setting error status without throwing", async () => {
     const service = new McpService();
     const internals = service as unknown as {

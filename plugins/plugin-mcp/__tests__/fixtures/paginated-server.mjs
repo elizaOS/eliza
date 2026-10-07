@@ -55,6 +55,12 @@ for (const [schema, key, item] of [
   if (key === "tools" ? !capabilities.tools : !capabilities.resources) continue;
   server.setRequestHandler(schema, async (request) => {
     const cursor = request.params?.cursor;
+    if (mode === "crash-list" && key === "tools" && cursor === undefined) {
+      process.exit(1);
+    }
+    if (mode === "slow-list" && key === "tools" && cursor === undefined) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
     requests.push({ list: key, cursor: cursor ?? null });
     if (key === failingList && mode === "sticky-empty") return { [key]: [item(0)], nextCursor: "" };
     if (key === failingList && mode === "endless")
@@ -98,15 +104,35 @@ if (capabilities.tools) {
   });
 }
 if (capabilities.resources) {
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => ({
-    contents: [
-      {
-        uri: request.params.uri,
-        text: capabilityMode
-          ? JSON.stringify({ resource: request.params.uri, requests })
-          : "last-page resource",
-      },
-    ],
-  }));
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    if (mode === "slow-read") await new Promise((resolve) => setTimeout(resolve, 400));
+    if (mode === "resource-error")
+      throw new McpError(ErrorCode.InvalidParams, "Resource unavailable");
+    if (mode === "resource-multi") {
+      return {
+        contents: [
+          { uri: request.params.uri, mimeType: "text/plain", text: "完整资料\n".repeat(1000) },
+          {
+            uri: "fixture:///appendix",
+            mimeType: "text/plain",
+            text: "\n最后一项：成都，批次7312。",
+          },
+        ],
+      };
+    }
+    return {
+      contents: [
+        {
+          uri: request.params.uri,
+          text:
+            mode === "resource-empty"
+              ? ""
+              : capabilityMode
+                ? JSON.stringify({ resource: request.params.uri, requests })
+                : "last-page resource",
+        },
+      ],
+    };
+  });
 }
 await server.connect(new StdioServerTransport());

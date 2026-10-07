@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -14,18 +14,30 @@ import {
 import { runIsolatedAndroidTest } from "./isolated-android-test.mjs";
 import { runIsolatedAndroidUserTest } from "./isolated-android-user-test.mjs";
 
+// The fake instrumentation and custody commands read concurrently. Publish a
+// complete document atomically; this does not serialize read-modify-write pairs.
+function publishFixtureState(file, state) {
+  const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(state), {
+    flag: "wx",
+    mode: 0o600,
+  });
+  try {
+    fs.renameSync(temporary, file);
+  } finally {
+    fs.rmSync(temporary, { force: true });
+  }
+}
+
 function fixture(t, mode = "") {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "isolated-android-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const state = path.join(root, "state.json"),
     log = path.join(root, "commands.jsonl");
-  fs.writeFileSync(
-    state,
-    JSON.stringify({
-      packages: mode === "existing" ? ["org.example.consumer"] : [],
-      home: "stock/.Home",
-    }),
-  );
+  publishFixtureState(state, {
+    packages: mode === "existing" ? ["org.example.consumer"] : [],
+    home: "stock/.Home",
+  });
   fs.writeFileSync(log, "");
   const fixturePackage = mode.startsWith("calendar-")
     ? "example.calendar.consumer"
@@ -35,34 +47,36 @@ function fixture(t, mode = "") {
   fs.writeFileSync(
     adb,
     `#!/usr/bin/env node
+const {randomUUID}=require('node:crypto');
+${publishFixtureState.toString()}
 const fs=require('node:fs');const args=process.argv.slice(4);const file=${JSON.stringify(state)};const state=JSON.parse(fs.readFileSync(file));const mode=${JSON.stringify(mode)};
 fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(args)+'\\n');
 if(args.includes('get-current-user'))console.log(state.foreground||0);
-if(args.includes('create-user')){state.userExists=true;fs.writeFileSync(file,JSON.stringify(state));console.log('Success: created user id 10');}
-if(args.includes('switch-user')){state.foreground=Number(args.at(-1));fs.writeFileSync(file,JSON.stringify(state));}
+if(args.includes('create-user')){state.userExists=true;publishFixtureState(file,state);console.log('Success: created user id 10');}
+if(args.includes('switch-user')){state.foreground=Number(args.at(-1));publishFixtureState(file,state);}
 if(args.includes('get-started-user-state'))console.log('RUNNING_UNLOCKED');
 if(args.includes('set-home-activity'))console.log('Success');
 if(args.includes('is-user-stopped'))console.log('true');
 if(args.slice(0,4).join(' ')==='shell pm list users')console.log('UserInfo{0:Owner:13}'+(state.userExists?' UserInfo{10:Fixture:10}':''));
 if(args.slice(0,4).join(' ')==='shell dumpsys activity activities')console.log('topResumedActivity=ActivityRecord u'+(state.foreground||0)+' org.stock.home/.Home');
-if(args.includes('remove-user')){state.userExists=false;fs.writeFileSync(file,JSON.stringify(state));console.log('Success');}
+if(args.includes('remove-user')){state.userExists=false;publishFixtureState(file,state);console.log('Success');}
 
 if(args[0]==='emu')console.log('owned-test-fixture\\nOK');
 if(args.includes('ro.kernel.qemu'))console.log('1');
 if(args.includes('ro.product.cpu.abi'))console.log('x86_64');
 if(args.includes('getenforce'))console.log(mode==='permissive'?'Permissive':'Enforcing');
-if(args.includes('packages')&&mode==='appeared'){state.reads=(state.reads||0)+1;if(state.reads===2)state.packages.push('org.example.consumer');fs.writeFileSync(file,JSON.stringify(state));}
+if(args.includes('packages')&&mode==='appeared'){state.reads=(state.reads||0)+1;if(state.reads===2)state.packages.push('org.example.consumer');publishFixtureState(file,state);}
 if(args.includes('packages')&&!args.includes('--uid'))console.log(state.packages.map(p=>'package:'+p).join('\\n'));
 if(args.includes('resolve-activity'))console.log(args.includes('-p')?'org.stock.home/.Home':state.home);
-if(args[0]==='install'){const id=args.at(-1).includes('companion.apk')?'org.example.companion':args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages=[...new Set([...state.packages,id])];(state.files??={})[id]=file+'.'+id+'.apk';fs.copyFileSync(args.at(-1),state.files[id]);fs.writeFileSync(file,JSON.stringify(state));if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);console.log('Success');}
+if(args[0]==='install'){const id=args.at(-1).includes('companion.apk')?'org.example.companion':args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages=[...new Set([...state.packages,id])];(state.files??={})[id]=file+'.'+id+'.apk';fs.copyFileSync(args.at(-1),state.files[id]);publishFixtureState(file,state);if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);console.log('Success');}
 if(args.slice(0,3).join(' ')==='shell pm path')console.log('package:/data/'+args.at(-1)+'.apk');
 if(args[0]==='pull'){const id=args[1].slice('/data/'.length,-4);fs.copyFileSync(state.files[id],args[2]);}
 
 if(args.includes('force-stop')&&((mode==='companion-stop-failure'&&args.at(-1)==='org.example.companion')||(mode.endsWith('stop-failure-test')&&args.at(-1).endsWith('.test'))||(mode.endsWith('stop-failure-app')&&!args.at(-1).endsWith('.test'))))process.exit(1);
-if(args[0]==='uninstall'){if(mode==='cleanup-failure')process.exit(1);state.packages=state.packages.filter(p=>p!==args[1]);fs.writeFileSync(file,JSON.stringify(state));}
+if(args[0]==='uninstall'){if(mode==='cleanup-failure')process.exit(1);state.packages=state.packages.filter(p=>p!==args[1]);publishFixtureState(file,state);}
 if(mode.startsWith('interruption')) {
  if(args.includes('--uid'))console.log('package:org.example.consumer');
- if(args.includes('force-stop')){state.stopped=true;fs.writeFileSync(file,JSON.stringify(state));}
+ if(args.includes('force-stop')){state.stopped=true;publishFixtureState(file,state);}
  if(args.includes('ps'))console.log('UID PID NAME'+String.fromCharCode(10)+(state.armed&&!state.stopped?'u0_a123 312 org.example.consumer'+String.fromCharCode(10)+'u0_a123 313 bun':''));
  if(args.includes('run-as')){
   if(args.at(-1)==='-u')console.log('10123');
@@ -74,7 +88,7 @@ if(mode.startsWith('interruption')) {
   else if(args.at(-1)==='/proc/312/cmdline')process.stdout.write('org.example.consumer'+String.fromCharCode(0));
  }
  if(args.includes('instrument')&&args.includes('interrupt')){
-  state.armed=true;state.stopped=false;state.interruptionRunId=args[args.indexOf('interruptionRunId')+1];fs.writeFileSync(file,JSON.stringify(state));
+  state.armed=true;state.stopped=false;state.interruptionRunId=args[args.indexOf('interruptionRunId')+1];publishFixtureState(file,state);
   console.log(['INSTRUMENTATION_STATUS: class=org.example.consumer.Probe','INSTRUMENTATION_STATUS: test=probe','INSTRUMENTATION_STATUS: numtests=1','INSTRUMENTATION_STATUS_CODE: 1'].join(String.fromCharCode(10)));
   const timer=setInterval(()=>{if(JSON.parse(fs.readFileSync(file)).stopped){clearInterval(timer);console.log('INSTRUMENTATION_RESULT: shortMsg=Process crashed.'+String.fromCharCode(10)+'INSTRUMENTATION_CODE: 0');}},10);return;
  }
@@ -93,7 +107,7 @@ if(args.includes('instrument')){
   for(const item of cases){const [cls,method]=item.split('#');for(const code of [1,0])console.log(['INSTRUMENTATION_STATUS: class='+cls,'INSTRUMENTATION_STATUS: test='+method,'INSTRUMENTATION_STATUS: numtests='+cases.length,'INSTRUMENTATION_STATUS_CODE: '+code].join(String.fromCharCode(10)));}
   console.log('OK ('+cases.length+' tests)'+String.fromCharCode(10)+'INSTRUMENTATION_CODE: -1');return;
  }
- if(mode==='home-change'){state.home='other/.Home';fs.writeFileSync(file,JSON.stringify(state));}
+ if(mode==='home-change'){state.home='other/.Home';publishFixtureState(file,state);}
  console.log('INSTRUMENTATION_STATUS: class=org.example.consumer.Probe\\nINSTRUMENTATION_STATUS: test=probe\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: 1');
  if(mode!=='partial')console.log('INSTRUMENTATION_STATUS: class=org.example.consumer.Probe\\nINSTRUMENTATION_STATUS: test=probe\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: 0');
  console.log('OK (1 test)\\nINSTRUMENTATION_CODE: -1');
@@ -701,7 +715,7 @@ test("changed installed code preserves both packages for explicit recovery", asy
       beforeUpgrade: () => {
         const state = JSON.parse(fs.readFileSync(f.state));
         state.files["org.example.consumer"] = f.options.variants[0].upgrade.apk;
-        fs.writeFileSync(f.state, JSON.stringify(state));
+        publishFixtureState(f.state, state);
       },
     }),
     /changed before replacement/,
@@ -791,7 +805,7 @@ for (const kind of ["pin", "identity", "duplicate", "existing"])
     if (kind === "existing") {
       const state = JSON.parse(fs.readFileSync(f.state));
       state.packages.push(companion.packageName);
-      fs.writeFileSync(f.state, JSON.stringify(state));
+      publishFixtureState(f.state, state);
     }
     await assert.rejects(runIsolatedAndroidTest(f.options));
     assert.ok(
@@ -974,7 +988,7 @@ test("packages appearing during scenario admission remain unowned", async (t) =>
       preflightVariant: () => {
         const state = JSON.parse(fs.readFileSync(f.state));
         state.packages.push(f.options.packageName);
-        fs.writeFileSync(f.state, JSON.stringify(state));
+        publishFixtureState(f.state, state);
       },
     }),
     /appeared during scenario preflight/,

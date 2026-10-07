@@ -6,6 +6,7 @@
  * connection internals.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { describe, expect, it, vi } from "vitest";
 import { McpService } from "../src/service";
 import type { McpConnection, McpServerConfig } from "../src/types";
@@ -15,6 +16,7 @@ type ResilienceInternals = {
   connections: Map<string, McpConnection>;
   connectionStates: Map<string, unknown>;
   initializeConnection: (name: string, config: McpServerConfig) => Promise<void>;
+  buildStdioClientTransport: (...args: unknown[]) => Promise<McpConnection["transport"]>;
   updateServerConnections: (configs: Record<string, McpServerConfig>) => Promise<void>;
   setupTransportHandlers: (name: string, connection: McpConnection, state: unknown) => void;
 };
@@ -75,20 +77,30 @@ describe("per-server connection containment", () => {
 
   it("marks a partially-initialized server disconnected with its error surfaced", async () => {
     const service = makeService();
-    service.initializeConnection = vi.fn(async (name: string, config: McpServerConfig) => {
-      service.connections.set(name, {
-        server: { name, status: "connecting", config: JSON.stringify(config), error: "" },
-        client: {},
-        transport: {},
-      } as unknown as McpConnection);
-      throw new Error("handshake failed mid-connect");
-    });
-
-    await service.updateServerConnections({ a: STDIO_A });
-
-    const partial = service.connections.get("a");
-    expect(partial?.server.status).toBe("disconnected");
-    expect(partial?.server.error).toContain("handshake failed mid-connect");
+    const transportClose = vi.fn(async () => {});
+    service.buildStdioClientTransport = vi.fn(
+      async () =>
+        ({
+          close: transportClose,
+        }) as unknown as McpConnection["transport"]
+    );
+    const connect = vi
+      .spyOn(Client.prototype, "connect")
+      .mockRejectedValue(new Error("handshake failed mid-connect"));
+    try {
+      await service.updateServerConnections({ a: STDIO_A });
+      const partial = service.connections.get("a");
+      expect(partial?.server.status).toBe("disconnected");
+      expect(partial?.server.error).toContain("handshake failed mid-connect");
+      expect(transportClose).toHaveBeenCalledOnce();
+      expect(service.runtime.reportError).toHaveBeenCalledWith(
+        "mcp.connect",
+        expect.objectContaining({ message: "handshake failed mid-connect" }),
+        { serverName: "a" }
+      );
+    } finally {
+      connect.mockRestore();
+    }
   });
 
   it("still rejects the whole update on an unsafe config (security stays fail-closed)", async () => {

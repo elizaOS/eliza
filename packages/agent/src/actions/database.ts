@@ -351,10 +351,20 @@ async function opGetTable(
   }
 
   const safe = tableName.replace(/'/g, "''");
+  const visibleSchema = `(
+         SELECT n.nspname
+         FROM pg_catalog.pg_class c
+         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relname = '${safe}'
+           AND c.relkind IN ('r', 'p')
+           AND pg_catalog.pg_table_is_visible(c.oid)
+         LIMIT 1
+       )`;
   const exists = await executeRawSql(
     runtime,
     `SELECT 1 FROM information_schema.tables
      WHERE table_name = '${safe}'
+       AND table_schema = ${visibleSchema}
        AND table_schema NOT IN ('pg_catalog', 'information_schema')
        AND table_type = 'BASE TABLE'
      LIMIT 1`,
@@ -377,15 +387,43 @@ async function opGetTable(
       runtime,
       `SELECT column_name FROM information_schema.columns
        WHERE table_name = '${safe}'
-         AND table_schema NOT IN ('pg_catalog', 'information_schema')`,
+         AND table_schema = ${visibleSchema}`,
     );
     if (cols.rows.some((r) => String(r.column_name) === params.sortBy)) {
       validSort = params.sortBy;
     }
   }
-  const orderClause = validSort
-    ? `ORDER BY ${quoteIdent(validSort)} ${sortDir}`
-    : "";
+  // OFFSET pages are separate queries. A sort column with ties, or no sort,
+  // lets rows trade places between pages. The primary key makes the order
+  // total. The probe uses the same relation an unqualified FROM resolves: a
+  // same-named table in another schema would otherwise add columns this read
+  // does not have. A table with no primary key falls back to its physical row id.
+  const pkResult = await executeRawSql(
+    runtime,
+    `SELECT kcu.column_name
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.key_column_usage kcu
+       ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+      AND tc.table_name = kcu.table_name
+     WHERE tc.constraint_type = 'PRIMARY KEY'
+       AND tc.table_name = '${safe}'
+       AND tc.table_schema = ${visibleSchema}
+     ORDER BY kcu.ordinal_position`,
+  );
+  const primaryKey: string[] = [];
+  for (const row of pkResult.rows) {
+    const name = String(row.column_name ?? "");
+    if (name.length > 0 && !primaryKey.includes(name)) primaryKey.push(name);
+  }
+  const tieBreak = primaryKey.length
+    ? primaryKey.map((column) => quoteIdent(column))
+    : ["tableoid", "ctid"];
+  const orderTerms = [
+    ...(validSort ? [quoteIdent(validSort)] : []),
+    ...tieBreak.filter((term) => !validSort || term !== quoteIdent(validSort)),
+  ].map((term) => `${term} ${sortDir}`);
+  const orderClause = `ORDER BY ${orderTerms.join(", ")}`;
 
   const countResult = await executeRawSql(
     runtime,
