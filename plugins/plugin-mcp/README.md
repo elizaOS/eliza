@@ -3,6 +3,10 @@
 elizaOS plugin that connects Eliza agents to external MCP (Model Context Protocol)
 servers, exposing their tools and resources as agent capabilities.
 
+Discovery requests only the tools and resources that the server declares. Servers
+that provide resources without tools can connect and serve agent context. Stdio
+health checks use protocol `ping` with the configured timeout, not `tools/list`.
+
 Configure servers under `settings.mcp.servers` using `McpSettings` from `@elizaos/plugin-mcp`. Validate every server before connecting; remote requests use the core SSRF guard and stdio processes inherit only permitted environment values.
 
 Discovery follows every tool, resource, and resource-template page before exposing

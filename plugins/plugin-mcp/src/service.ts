@@ -273,7 +273,7 @@ export class McpService extends Service {
     this.setupTransportHandlers(name, connection, state);
     await client.connect(transport);
     const capabilities = client.getServerCapabilities();
-    const tools = await this.fetchToolsList(name);
+    const tools = capabilities?.tools ? await this.fetchToolsList(name) : [];
     const resources = capabilities?.resources ? await this.fetchResourcesList(name) : [];
     const resourceTemplates = capabilities?.resources
       ? await this.fetchResourceTemplatesList(name)
@@ -356,12 +356,7 @@ export class McpService extends Service {
   private async sendPing(name: string): Promise<void> {
     const connection = this.connections.get(name);
     if (!connection) throw new Error(`No connection for ping: ${name}`);
-    await Promise.race([
-      connection.client.listTools(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Ping timeout")), this.pingConfig.timeoutMs)
-      ),
-    ]);
+    await connection.client.ping({ timeout: this.pingConfig.timeoutMs });
     const state = this.connectionStates.get(name);
     if (state) state.consecutivePingFailures = 0;
   }
