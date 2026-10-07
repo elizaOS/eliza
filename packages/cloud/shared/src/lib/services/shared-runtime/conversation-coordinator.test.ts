@@ -7,6 +7,9 @@
 
 import { describe, expect, mock, test } from "bun:test";
 import { ChannelType } from "@elizaos/core/edge";
+import { isSensitiveKeyName, redactLogArgs } from "@elizaos/core/security/redact";
+import { logger } from "../../utils/logger";
+import { SharedRuntimeTurnError } from "./shared-runtime-errors";
 
 const directBridge = mock(() => {
   throw new Error("direct bridge must not run");
@@ -266,6 +269,7 @@ describe("shared conversation coordinator", () => {
     };
     const executionCtx = { waitUntil() {} };
     const diagnostic = {
+      diagnosticSchemaVersion: 2,
       modelInvocationStarted: true,
       processingSuccess: null,
       didRespond: true,
@@ -280,27 +284,37 @@ describe("shared conversation coordinator", () => {
         finishClass: "stop",
       },
       modelFailure: {
+        diagnosticSchemaVersion: 2,
         operation: "generate",
         errorName: "AI_APICallError",
         failureName: "SharedRuntimeProviderRejectedError",
         retryable: false,
         providerStatus: 400,
+        providerError: {
+          category: "tool_generation",
+          type: "unknown",
+          code: "tool_use_failed",
+          parameterClass: "unknown",
+          source: "response_body",
+          shape: "detail_string",
+          dataState: "absent",
+          responseBodyState: "json",
+        },
       },
     };
+    // Exact serving DO response statement; pinned source-slice receipt qualifies this boundary.
+    const serializeFailure = new Function(
+      "error",
+      "Response",
+      'return Response.json(\n          {\n            success: false,\n            error: "Shared runtime turn failed.",\n            code: "shared_runtime_turn_failed",\n            failureName: error.failureName,\n            retryable: error.retryable,\n            ...(error.failureDiagnostic\n              ? { failureDiagnostic: error.failureDiagnostic }\n              : {}),\n          },\n          { status: error.retryable ? 503 : 500 },\n        );',
+    ) as (error: SharedRuntimeTurnError, ResponseConstructor: typeof Response) => Response;
+    const boundaryError = SharedRuntimeTurnError.fromClassification(
+      "SharedRuntimeProviderUnavailableError",
+      true,
+      { ...diagnostic, providerBody: "PRIVATE_PAYLOAD" },
+    );
     const namespace = {
-      getByName: () => ({
-        fetch: async () =>
-          Response.json(
-            {
-              error: "Shared runtime turn failed.",
-              code: "shared_runtime_turn_failed",
-              failureName: "SharedRuntimeProviderUnavailableError",
-              retryable: true,
-              failureDiagnostic: { ...diagnostic, providerBody: "PRIVATE_PAYLOAD" },
-            },
-            { status: 503 },
-          ),
-      }),
+      getByName: () => ({ fetch: async () => serializeFailure(boundaryError, Response) }),
     };
 
     const failure = await coordinateSharedBridge(agent, rpc, { namespace, executionCtx }).then(
@@ -315,6 +329,34 @@ describe("shared conversation coordinator", () => {
       failureDiagnostic: diagnostic,
     });
     expect(JSON.stringify(failure)).not.toContain("PRIVATE_PAYLOAD");
+    expect(isSensitiveKeyName("providerError")).toBe(false);
+    const entryLog = {
+      errorName: "SharedRuntimeTurnError",
+      failureDiagnostic: (failure as { failureDiagnostic: unknown }).failureDiagnostic,
+      retryable: true,
+    };
+    const redacted = redactLogArgs(["[personal-shared-messaging] delivery failed", entryLog]);
+    expect(
+      JSON.parse(JSON.stringify(redacted))[1].failureDiagnostic.modelFailure.providerError,
+    ).toEqual(diagnostic.modelFailure.providerError);
+    const original = console.error;
+    let sink: unknown[] = [];
+    try {
+      console.error = (...args: unknown[]) => {
+        sink = args;
+      };
+      logger.error("[personal-shared-messaging] delivery failed", entryLog);
+    } finally {
+      console.error = original;
+    }
+    expect(
+      JSON.parse(JSON.stringify(sink))[1].failureDiagnostic.modelFailure.providerError,
+    ).toEqual(diagnostic.modelFailure.providerError);
+    expect(JSON.stringify(sink)).not.toContain("PRIVATE_PAYLOAD");
+    expect(JSON.parse(JSON.stringify(sink))[1].failureDiagnostic.diagnosticSchemaVersion).toBe(2);
+    expect(
+      JSON.parse(JSON.stringify(sink))[1].failureDiagnostic.modelFailure.diagnosticSchemaVersion,
+    ).toBe(2);
   });
 
   test("fails closed when turn failure metadata is forged or inconsistent", async () => {

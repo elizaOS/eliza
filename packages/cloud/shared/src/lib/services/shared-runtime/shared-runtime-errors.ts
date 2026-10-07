@@ -260,12 +260,14 @@ export function sharedModelCompletionDiagnostic(
 
 export interface SharedModelFailureDiagnostic extends SharedRuntimeTurnFailureClassification {
   operation: "resolve" | "generate" | "stream";
+  diagnosticSchemaVersion?: 2;
   errorName: string;
   diagnosticCode?: string;
   providerError?: SharedProviderErrorDiagnostic;
 }
 
 export interface SharedRuntimeFailureDiagnostic {
+  diagnosticSchemaVersion?: 2;
   modelInvocationStarted: boolean;
   processingSuccess?: boolean | null;
   didRespond?: boolean | null;
@@ -370,7 +372,36 @@ export interface SharedProviderErrorDiagnostic {
   type: string;
   code: string;
   parameterClass: string;
+  source?: string;
+  shape?: string;
+  dataState?: string;
+  responseBodyState?: string;
 }
+
+const DIAGNOSTIC_ACCESSOR_MISS = Symbol("diagnostic-accessor-miss");
+const PROVIDER_ERROR_SOURCES = new Set(["data", "response_body", "sdk_message", "none"]);
+const PROVIDER_ERROR_SHAPES = new Set([
+  "standard_error",
+  "error_string",
+  "detail_string",
+  "validation_array",
+  "top_message",
+  "other_json",
+  "string_value",
+  "plain_text",
+  "sdk_message",
+  "none",
+]);
+const PROVIDER_DATA_STATES = new Set(["absent", "object", "string", "other", "unreadable"]);
+const PROVIDER_BODY_STATES = new Set([
+  "absent",
+  "empty",
+  "oversized",
+  "non_json",
+  "json",
+  "other",
+  "unreadable",
+]);
 
 function diagnosticProperty(value: unknown, key: string): unknown {
   try {
@@ -379,7 +410,7 @@ function diagnosticProperty(value: unknown, key: string): unknown {
       : undefined;
   } catch {
     // error-policy:J7 hostile SDK metadata is a field miss, never a new failure.
-    return undefined;
+    return DIAGNOSTIC_ACCESSOR_MISS;
   }
 }
 
@@ -393,7 +424,127 @@ function providerParameterClass(value: unknown): string {
     : "unknown";
 }
 
-/** Inspect bounded provider metadata in RAM; emit only closed categories. */
+function providerErrorFields(
+  detail: unknown,
+  messageOverride?: unknown,
+): SharedProviderErrorDiagnostic {
+  const rawType = diagnosticProperty(detail, "type");
+  const rawCode = diagnosticProperty(detail, "code");
+  const rawMessage = messageOverride ?? diagnosticProperty(detail, "message");
+  const type =
+    typeof rawType === "string" && PROVIDER_ERROR_TYPES.has(rawType) ? rawType : "unknown";
+  const code =
+    typeof rawCode === "string" && PROVIDER_ERROR_CODES.has(rawCode) ? rawCode : "unknown";
+  let parameterClass = providerParameterClass(diagnosticProperty(detail, "param"));
+  const loc = diagnosticProperty(detail, "loc");
+  if (parameterClass === "unknown" && Array.isArray(loc)) {
+    const length = diagnosticProperty(loc, "length");
+    const count =
+      typeof length === "number" && Number.isSafeInteger(length) && length >= 0
+        ? Math.min(length, 8)
+        : 0;
+    for (let index = 0; index < count; index++) {
+      const part = diagnosticProperty(loc, String(index));
+      const candidate = providerParameterClass(part);
+      if (candidate !== "unknown") {
+        parameterClass = candidate;
+        break;
+      }
+    }
+  }
+  const message = typeof rawMessage === "string" && rawMessage.length <= 4096 ? rawMessage : "";
+  let category = "unknown";
+  if (
+    code === "tool_use_failed" ||
+    code === "failed_generation" ||
+    /failed to (generate|parse) (a )?tool.?call/i.test(message)
+  )
+    category = "tool_generation";
+  else if (
+    /duplicate.{0,80}tool.?call.{0,30}id|tool.?call.{0,30}id.{0,80}(duplicate|unique)/i.test(
+      message,
+    )
+  )
+    category = "duplicate_tool_call_id";
+  else if (
+    /orphan.{0,50}tool|tool.{0,60}(immediately following|corresponding tool|missing.{0,20}response|must follow|must be followed)|tool_call_id.{0,80}(not found|prior assistant|matching|response)/i.test(
+      message,
+    )
+  )
+    category = "tool_message_pairing";
+  else if (
+    code === "invalid_tool_choice" ||
+    /tool_choice.{0,100}(tools|invalid|unsupported|required)|tools.{0,100}tool_choice/i.test(
+      message,
+    )
+  )
+    category = "tool_choice";
+  else if (
+    code === "invalid_tool_schema" ||
+    /additionalProperties|minLength|maxLength|invalid.{0,30}schema|schema.{0,30}(unsupported|invalid)|pattern.{0,50}(supported|allowed)/i.test(
+      message,
+    )
+  )
+    category = "schema";
+  else if (
+    code === "context_length_exceeded" ||
+    /context.{0,30}(length|window).{0,50}(exceed|limit|maximum)/i.test(message)
+  )
+    category = "context_limit";
+  else if (
+    code === "unsupported_parameter" ||
+    /unsupported.{0,30}parameter|parameter.{0,30}(not supported|not allowed)/i.test(message)
+  )
+    category = "unsupported_parameter";
+  else if (type !== "unknown" || code === "invalid_request_error" || code === "invalid_parameter")
+    category = "invalid_request";
+  return { category, type, code, parameterClass };
+}
+
+function providerEnvelope(value: unknown): {
+  fields: SharedProviderErrorDiagnostic;
+  shape: string;
+} {
+  if (typeof value === "string")
+    return { fields: providerErrorFields(undefined, value), shape: "string_value" };
+  if (value === null || typeof value !== "object")
+    return { fields: providerErrorFields(undefined), shape: "other_json" };
+  const error = diagnosticProperty(value, "error");
+  if (error !== null && typeof error === "object" && !Array.isArray(error)) {
+    return { fields: providerErrorFields(error), shape: "standard_error" };
+  }
+  if (typeof error === "string")
+    return { fields: providerErrorFields(value, error), shape: "error_string" };
+  const detail = diagnosticProperty(value, "detail");
+  if (typeof detail === "string")
+    return { fields: providerErrorFields(value, detail), shape: "detail_string" };
+  const validation = Array.isArray(detail) ? detail : Array.isArray(value) ? value : undefined;
+  if (validation) {
+    let fields = providerErrorFields(undefined);
+    const length = diagnosticProperty(validation, "length");
+    const count =
+      typeof length === "number" && Number.isSafeInteger(length) && length >= 0
+        ? Math.min(length, 8)
+        : 0;
+    for (let index = 0; index < count; index++) {
+      const item = diagnosticProperty(validation, String(index));
+      const candidate = providerErrorFields(item, diagnosticProperty(item, "msg"));
+      if (candidate.category !== "unknown") {
+        fields = candidate;
+        break;
+      }
+      if (fields.parameterClass === "unknown" && candidate.parameterClass !== "unknown")
+        fields = candidate;
+    }
+    return { fields, shape: "validation_array" };
+  }
+  if (typeof diagnosticProperty(value, "message") === "string") {
+    return { fields: providerErrorFields(value), shape: "top_message" };
+  }
+  return { fields: providerErrorFields(value), shape: "other_json" };
+}
+
+/** Every matched SDK error emits shape states; bounded payload inspection stays in RAM. */
 function providerErrorDiagnostic(error: unknown): SharedProviderErrorDiagnostic | undefined {
   const pending = [error];
   const seen = new Set<unknown>();
@@ -403,75 +554,72 @@ function providerErrorDiagnostic(error: unknown): SharedProviderErrorDiagnostic 
     seen.add(current);
     pending.push(diagnosticProperty(current, "lastError"), diagnosticProperty(current, "cause"));
     if (diagnosticProperty(current, "name") !== "AI_APICallError") continue;
-    let body = diagnosticProperty(current, "data");
-    let detail = diagnosticProperty(body, "error");
-    if (detail === null || typeof detail !== "object") {
-      const raw = diagnosticProperty(current, "responseBody");
-      if (typeof raw !== "string" || raw.length > 32768) continue;
+    const data = diagnosticProperty(current, "data");
+    const raw = diagnosticProperty(current, "responseBody");
+    const dataState =
+      data === DIAGNOSTIC_ACCESSOR_MISS
+        ? "unreadable"
+        : data == null
+          ? "absent"
+          : typeof data === "object"
+            ? "object"
+            : typeof data === "string"
+              ? "string"
+              : "other";
+    let responseBodyState =
+      raw === DIAGNOSTIC_ACCESSOR_MISS
+        ? "unreadable"
+        : raw == null
+          ? "absent"
+          : typeof raw !== "string"
+            ? "other"
+            : raw.length === 0
+              ? "empty"
+              : raw.length > 32768
+                ? "oversized"
+                : "non_json";
+    const projections: Array<{
+      fields: SharedProviderErrorDiagnostic;
+      shape: string;
+      source: string;
+    }> = [];
+    if (dataState === "object" || dataState === "string")
+      projections.push({ ...providerEnvelope(data), source: "data" });
+    if (typeof raw === "string" && raw.length > 0 && raw.length <= 32768) {
       try {
-        body = JSON.parse(raw);
-        detail = diagnosticProperty(body, "error");
+        projections.push({ ...providerEnvelope(JSON.parse(raw)), source: "response_body" });
+        responseBodyState = "json";
       } catch {
-        // error-policy:J7 malformed provider JSON is a diagnostic miss.
-        continue;
+        // error-policy:J7 non-JSON provider bodies are inspected only for closed patterns.
+        projections.push({
+          fields: providerErrorFields(undefined, raw),
+          shape: "plain_text",
+          source: "response_body",
+        });
       }
     }
-    if (detail === null || typeof detail !== "object") continue;
-    const rawType = diagnosticProperty(detail, "type");
-    const rawCode = diagnosticProperty(detail, "code");
-    const rawMessage = diagnosticProperty(detail, "message");
-    const type =
-      typeof rawType === "string" && PROVIDER_ERROR_TYPES.has(rawType) ? rawType : "unknown";
-    const code =
-      typeof rawCode === "string" && PROVIDER_ERROR_CODES.has(rawCode) ? rawCode : "unknown";
-    const parameterClass = providerParameterClass(diagnosticProperty(detail, "param"));
-    const message = typeof rawMessage === "string" && rawMessage.length <= 4096 ? rawMessage : "";
-    let category = "unknown";
-    if (
-      code === "tool_use_failed" ||
-      code === "failed_generation" ||
-      /failed to (generate|parse) (a )?tool.?call/i.test(message)
-    )
-      category = "tool_generation";
-    else if (
-      /duplicate.{0,80}tool.?call.{0,30}id|tool.?call.{0,30}id.{0,80}(duplicate|unique)/i.test(
-        message,
-      )
-    )
-      category = "duplicate_tool_call_id";
-    else if (
-      /orphan.{0,50}tool|tool.{0,60}(immediately following|corresponding tool|missing.{0,20}response|must follow|must be followed)|tool_call_id.{0,80}(not found|prior assistant|matching|response)/i.test(
-        message,
-      )
-    )
-      category = "tool_message_pairing";
-    else if (
-      code === "invalid_tool_choice" ||
-      /tool_choice.{0,100}(tools|invalid|unsupported|required)|tools.{0,100}tool_choice/i.test(
-        message,
-      )
-    )
-      category = "tool_choice";
-    else if (
-      code === "invalid_tool_schema" ||
-      /additionalProperties|minLength|maxLength|invalid.{0,30}schema|schema.{0,30}(unsupported|invalid)|pattern.{0,50}(supported|allowed)/i.test(
-        message,
-      )
-    )
-      category = "schema";
-    else if (
-      code === "context_length_exceeded" ||
-      /context.{0,30}(length|window).{0,50}(exceed|limit|maximum)/i.test(message)
-    )
-      category = "context_limit";
-    else if (
-      code === "unsupported_parameter" ||
-      /unsupported.{0,30}parameter|parameter.{0,30}(not supported|not allowed)/i.test(message)
-    )
-      category = "unsupported_parameter";
-    else if (type !== "unknown" || code === "invalid_request_error" || code === "invalid_parameter")
-      category = "invalid_request";
-    return { category, type, code, parameterClass };
+    const sdkMessage = diagnosticProperty(current, "message");
+    if (typeof sdkMessage === "string" && sdkMessage.length <= 4096)
+      projections.push({
+        fields: providerErrorFields(undefined, sdkMessage),
+        shape: "sdk_message",
+        source: "sdk_message",
+      });
+    const selected =
+      projections.find(
+        (candidate) =>
+          candidate.fields.category !== "unknown" &&
+          candidate.fields.category !== "invalid_request",
+      ) ??
+      projections.find((candidate) => candidate.fields.category !== "unknown") ??
+      projections[0];
+    return {
+      ...(selected?.fields ?? providerErrorFields(undefined)),
+      source: selected?.source ?? "none",
+      shape: selected?.shape ?? "none",
+      dataState,
+      responseBodyState,
+    };
   }
   return undefined;
 }
@@ -490,7 +638,25 @@ function parseProviderErrorDiagnostic(value: unknown): SharedProviderErrorDiagno
     !PROVIDER_ERROR_PARAMETERS.has(v.parameterClass)
   )
     return undefined;
-  return { category: v.category, type: v.type, code: v.code, parameterClass: v.parameterClass };
+  const states: Record<string, unknown> = {};
+  for (const [key, allowed] of [
+    ["source", PROVIDER_ERROR_SOURCES],
+    ["shape", PROVIDER_ERROR_SHAPES],
+    ["dataState", PROVIDER_DATA_STATES],
+    ["responseBodyState", PROVIDER_BODY_STATES],
+  ] as const) {
+    if (v[key] !== undefined) {
+      if (typeof v[key] !== "string" || !allowed.has(v[key] as string)) return undefined;
+      states[key] = v[key];
+    }
+  }
+  return {
+    category: v.category,
+    type: v.type,
+    code: v.code,
+    parameterClass: v.parameterClass,
+    ...states,
+  };
 }
 
 /** Safe numeric/classification projection; never carries SDK messages, headers or payloads. */
@@ -503,6 +669,7 @@ export function sharedModelFailureDiagnostic(
   const providerError = providerErrorDiagnostic(error);
   return {
     operation,
+    diagnosticSchemaVersion: 2,
     errorName: MODEL_FAILURE_NAMES.has(name) ? name : "UnknownError",
     ...(code && MODEL_FAILURE_CODES.has(code) ? { diagnosticCode: code } : {}),
     ...classifySharedRuntimeTurnFailure(error),
@@ -518,6 +685,7 @@ export function parseSharedRuntimeFailureDiagnostic(
     if (!value || typeof value !== "object") return undefined;
     const v = value as Record<string, unknown>;
     if (
+      (v.diagnosticSchemaVersion !== undefined && v.diagnosticSchemaVersion !== 2) ||
       typeof v.modelInvocationStarted !== "boolean" ||
       typeof v.terminalFailurePresent !== "boolean" ||
       typeof v.terminalMode !== "string" ||
@@ -560,6 +728,7 @@ export function parseSharedRuntimeFailureDiagnostic(
       const providerError =
         m.providerError === undefined ? undefined : parseProviderErrorDiagnostic(m.providerError);
       if (
+        (m.diagnosticSchemaVersion !== undefined && m.diagnosticSchemaVersion !== 2) ||
         typeof m.operation !== "string" ||
         !MODEL_OPERATIONS.has(m.operation) ||
         typeof m.errorName !== "string" ||
@@ -575,6 +744,7 @@ export function parseSharedRuntimeFailureDiagnostic(
         return undefined;
       modelFailure = {
         operation: m.operation as SharedModelFailureDiagnostic["operation"],
+        ...(m.diagnosticSchemaVersion !== undefined ? { diagnosticSchemaVersion: 2 as const } : {}),
         errorName: m.errorName,
         failureName,
         retryable: m.retryable,
@@ -584,6 +754,7 @@ export function parseSharedRuntimeFailureDiagnostic(
       };
     }
     return {
+      ...(v.diagnosticSchemaVersion !== undefined ? { diagnosticSchemaVersion: 2 as const } : {}),
       modelInvocationStarted: v.modelInvocationStarted,
       ...(v.processingSuccess !== undefined
         ? { processingSuccess: v.processingSuccess as boolean | null }
@@ -615,7 +786,7 @@ export function recordSharedRuntimeFailureDiagnostic(
       typeof value === "function" ? value() : value,
     );
     if (diagnostic && typeof error === "object" && error !== null)
-      runtimeFailureDiagnostics.set(error, diagnostic);
+      runtimeFailureDiagnostics.set(error, { ...diagnostic, diagnosticSchemaVersion: 2 });
   } catch {
     // error-policy:J7 diagnostic projection can never replace the original failure.
   }
