@@ -2,9 +2,9 @@
 import { fileURLToPath } from "node:url";
 import type { AgentRuntime } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { McpService } from "../src/service";
-import type { ConnectionState, PingConfig } from "../src/types";
+import { DEFAULT_PING_CONFIG } from "../src/types";
 
 const runtimes: AgentRuntime[] = [];
 const fixture = fileURLToPath(new URL("./fixtures/paginated-server.mjs", import.meta.url));
@@ -39,87 +39,127 @@ async function start(mode: string, failingList = "") {
   return { runtime, service };
 }
 
-describe("McpService paginated discovery", () => {
-  it("keeps a resources-only peer readable through repeated protocol heartbeats", async () => {
-    const { runtime, service } = await start("resources-only");
-    expect(service.getServers()[0]).toMatchObject({
-      status: "connected",
-      tools: [],
-      resources: [{ uri: "fixture:///0" }, { uri: "fixture:///2" }],
-      resourceTemplates: [{ name: "template-0" }, { name: "template-2" }],
-    });
-    const heartbeat = service as unknown as {
-      pingConfig: PingConfig;
-      startPingMonitoring(name: string): void;
-      connectionStates: Map<string, ConnectionState>;
-    };
-    heartbeat.pingConfig = {
-      enabled: true,
-      intervalMs: 30,
-      timeoutMs: 1000,
-      failuresBeforeDisconnect: 2,
-    };
-    heartbeat.startPingMonitoring("pages");
-    let requests: { method?: string; list?: string; cursor?: string | null }[] = [];
-    await expect
-      .poll(async () => {
-        const result = await service.readResource("pages", "fixture:///2");
-        const content = result.contents[0];
-        if (!("text" in content)) throw new Error("Expected resource readback");
-        requests = JSON.parse(content.text);
-        return requests.filter((request) => request.method === "ping").length;
-      })
-      .toBeGreaterThanOrEqual(3);
-    expect(requests.filter((request) => request.list)).toEqual(
-      lists
-        .filter((list) => list !== "tools")
-        .flatMap((list) => [
-          { list, cursor: null },
-          { list, cursor: "" },
-          { list, cursor: "page B/+=" },
-        ])
-    );
-    expect(heartbeat.connectionStates.get("pages")).toMatchObject({
-      status: "connected",
-      consecutivePingFailures: 0,
-      reconnectAttempts: 0,
-    });
-    expect(service.getProviderData().data.mcp.pages.resources["fixture:///2"]).toBeDefined();
-    expect(runtime.getRecentReportedErrors()).toEqual([]);
-    console.info("Resources-only MCP heartbeat receipt:", JSON.stringify(requests));
-  });
+async function receipt(service: McpService, mode: string) {
+  const result =
+    mode === "tools-only"
+      ? (await service.callTool("pages", "tool-2")).content[0]
+      : (await service.readResource("pages", "fixture:///2")).contents[0];
+  if (!("text" in result) || typeof result.text !== "string") throw new Error("Expected receipt");
+  return JSON.parse(result.text) as { requests: Array<{ list: string; cursor: string | null }> };
+}
 
-  it.each(["error", "timeout"])(
-    "disconnects a resources-only peer after repeated ping %s",
-    async (failure) => {
-      const { service } = await start(`resources-only-ping-${failure}`);
+async function enableFastHealthChecks(service: McpService, failure?: string) {
+  // Change only timer policy; public restart runs the real connection and ping path.
+  Object.assign(service, {
+    pingConfig: {
+      ...DEFAULT_PING_CONFIG,
+      intervalMs: failure === "ping-error" ? 1100 : failure ? 200 : 50,
+      timeoutMs: failure === "ping-timeout" ? 100 : 1000,
+    },
+  });
+  await service.restartConnection("pages");
+}
+
+describe("McpService declared capabilities and health", () => {
+  it.each(["resources-only", "tools-only", "no-capabilities"])(
+    "connects a %s peer without requesting unsupported lists",
+    async (mode) => {
+      const { runtime, service } = await start(mode);
+      const [server] = service.getServers();
+      expect(server.status).toBe("connected");
+      expect(server.tools?.map((tool) => tool.name)).toEqual(
+        mode === "tools-only" ? ["tool-0", "tool-2"] : []
+      );
+      expect(server.resources?.map((resource) => resource.uri)).toEqual(
+        mode === "resources-only" ? ["fixture:///0", "fixture:///2"] : []
+      );
+      expect(server.resourceTemplates?.map((template) => template.name)).toEqual(
+        mode === "resources-only" ? ["template-0", "template-2"] : []
+      );
+      expect(Object.keys(service.getProviderData().data.mcp.pages.resources)).toEqual(
+        mode === "resources-only" ? ["fixture:///0", "fixture:///2"] : []
+      );
+      if (mode !== "no-capabilities") {
+        const readback = await receipt(service, mode);
+        const advertised = mode === "tools-only" ? ["tools"] : ["resources", "resourceTemplates"];
+        expect(readback.requests).toEqual(
+          advertised.flatMap((list) => [
+            { list, cursor: null },
+            { list, cursor: "" },
+            { list, cursor: "page B/+=" },
+          ])
+        );
+        console.info("MCP capability discovery receipt:", JSON.stringify({ mode, ...readback }));
+      }
+      expect(runtime.getRecentReportedErrors()).toEqual([]);
+    }
+  );
+
+  it.each(["resources-only", "tools-only"])(
+    "keeps a %s peer usable across periodic protocol pings",
+    async (mode) => {
+      const { runtime, service } = await start(mode);
+      await enableFastHealthChecks(service);
+      let readback: Awaited<ReturnType<typeof receipt>> | undefined;
+      await vi.waitFor(
+        async () => {
+          readback = await receipt(service, mode);
+          expect(
+            readback.requests.filter((request) => request.list === "ping").length
+          ).toBeGreaterThanOrEqual(3);
+        },
+        { timeout: 5000 }
+      );
       expect(service.getServers()[0].status).toBe("connected");
-      const heartbeat = service as unknown as {
-        pingConfig: PingConfig;
-        startPingMonitoring(name: string): void;
-        connectionStates: Map<string, ConnectionState>;
-      };
-      heartbeat.pingConfig = {
-        enabled: true,
-        intervalMs: failure === "error" ? 1100 : 200,
-        timeoutMs: failure === "error" ? 1000 : 100,
-        failuresBeforeDisconnect: 2,
-      };
-      heartbeat.startPingMonitoring("pages");
-      await expect
-        .poll(() => heartbeat.connectionStates.get("pages")?.status, { timeout: 5000 })
-        .toBe("disconnected");
-      const state = heartbeat.connectionStates.get("pages");
-      expect(state?.consecutivePingFailures).toBe(2);
-      expect(state?.lastError?.message).toContain(
-        failure === "error" ? "fixture ping failed" : "Request timed out"
+      const lists = mode === "tools-only" ? ["tools"] : ["resources", "resourceTemplates"];
+      expect(readback?.requests.filter((request) => request.list !== "ping")).toHaveLength(
+        lists.length * 3
+      );
+      expect(runtime.getRecentReportedErrors()).toEqual([]);
+      console.info("MCP capability health receipt:", JSON.stringify({ mode, ...readback }));
+    }
+  );
+
+  it.each(["ping-error", "ping-timeout"])(
+    "schedules reconnect for a resources-only peer after repeated %s failures",
+    async (failure) => {
+      const { service } = await start("resources-only", failure);
+      await enableFastHealthChecks(service, failure);
+      // The public server projection does not expose reconnect counters.
+      const states = (
+        service as unknown as {
+          connectionStates: Map<
+            string,
+            {
+              status: string;
+              consecutivePingFailures: number;
+              reconnectTimeout?: unknown;
+              lastError?: Error;
+            }
+          >;
+        }
+      ).connectionStates;
+      await vi.waitFor(
+        () => {
+          expect(states.get("pages")).toMatchObject({
+            status: "disconnected",
+            consecutivePingFailures: 3,
+          });
+          expect(states.get("pages")?.reconnectTimeout).toBeDefined();
+        },
+        { timeout: 5000 }
+      );
+      expect(states.get("pages")?.lastError?.message).toContain(
+        failure === "ping-error" ? "ping unavailable" : "Request timed out"
       );
       await service.stop();
-      expect(heartbeat.connectionStates.size).toBe(0);
+      expect(states.size).toBe(0);
     },
     15000
   );
+});
 
+describe("McpService paginated discovery", () => {
   it("publishes every page, crosses an empty page, and executes a last-page capability", async () => {
     const { runtime, service } = await start("pages");
     const [server] = service.getServers();
