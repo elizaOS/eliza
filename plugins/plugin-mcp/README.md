@@ -14,6 +14,10 @@ If a text block parses as the same JSON data, it is used without adding a
 second copy. Its whitespace, formatting, and key order are retained.
 JSON embedded in prose remains ordinary text.
 
+Successful resource reads return the complete processed content in
+`ActionResult.data.output`, so later planner steps can use the resource data.
+The existing analysis response and resource memory remain available.
+
 Configure servers under `settings.mcp.servers` using `McpSettings` from `@elizaos/plugin-mcp`. Validate every server before connecting; remote requests use the core SSRF guard and stdio processes inherit only permitted environment values.
 
 Discovery follows every tool, resource, and resource-template page before exposing

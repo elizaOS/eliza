@@ -98,15 +98,34 @@ if (capabilities.tools) {
   });
 }
 if (capabilities.resources) {
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => ({
-    contents: [
-      {
-        uri: request.params.uri,
-        text: capabilityMode
-          ? JSON.stringify({ resource: request.params.uri, requests })
-          : "last-page resource",
-      },
-    ],
-  }));
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    if (mode === "resource-error")
+      throw new McpError(ErrorCode.InvalidParams, "Resource unavailable");
+    if (mode === "resource-multi") {
+      return {
+        contents: [
+          { uri: request.params.uri, mimeType: "text/plain", text: "完整资料\n".repeat(1000) },
+          {
+            uri: "fixture:///appendix",
+            mimeType: "text/plain",
+            text: "\n最后一项：成都，批次7312。",
+          },
+        ],
+      };
+    }
+    return {
+      contents: [
+        {
+          uri: request.params.uri,
+          text:
+            mode === "resource-empty"
+              ? ""
+              : capabilityMode
+                ? JSON.stringify({ resource: request.params.uri, requests })
+                : "last-page resource",
+        },
+      ],
+    };
+  });
 }
 await server.connect(new StdioServerTransport());
