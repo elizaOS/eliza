@@ -30,7 +30,6 @@ import {
 interface TableIntrospection {
   resolvedSchema: string;
   columns: string[];
-  primaryKey: string[];
   expiresAt: number;
 }
 interface DatabaseRowsCompatRouteDeps {
@@ -83,13 +82,11 @@ function rememberTableIntrospection(
   key: string,
   resolvedSchema: string,
   columns: string[],
-  primaryKey: string[],
   nowMs: number,
 ): void {
   cache.set(key, {
     resolvedSchema,
     columns,
-    primaryKey,
     expiresAt: nowMs + TABLE_INTROSPECTION_TTL_MS,
   });
   if (cache.size > TABLE_INTROSPECTION_CACHE_LIMIT) {
@@ -159,12 +156,10 @@ export async function handleDatabaseRowsCompatRoute(
   const cachedIntrospection = tableIntrospectionCache.get(introspectionKey);
   let resolvedSchema: string;
   let columns: string[];
-  let primaryKey: string[];
   if (cachedIntrospection && cachedIntrospection.expiresAt > nowMs) {
     recordCacheHit("db-rows-introspection");
     resolvedSchema = cachedIntrospection.resolvedSchema;
     columns = cachedIntrospection.columns;
-    primaryKey = cachedIntrospection.primaryKey;
   } else {
     recordCacheMiss("db-rows-introspection");
     resolvedSchema = schemaParam;
@@ -198,30 +193,13 @@ export async function handleDatabaseRowsCompatRoute(
     }
     const columnResult = await executeRawSql(
       runtime,
-      `SELECT c.column_name,
-              EXISTS (
-                SELECT 1 FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                  ON tc.constraint_name = kcu.constraint_name
-                 AND tc.table_schema = kcu.table_schema
-                 AND tc.table_name = kcu.table_name
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                  AND tc.table_schema = c.table_schema
-                  AND tc.table_name = c.table_name
-                  AND kcu.column_name = c.column_name
-              ) AS is_primary_key
-         FROM information_schema.columns c
-        WHERE c.table_name = ${sqlLiteral(tableName)}
-          AND c.table_schema = ${sqlLiteral(resolvedSchema)}
-        ORDER BY c.ordinal_position`,
+      `SELECT column_name
+         FROM information_schema.columns
+        WHERE table_name = ${sqlLiteral(tableName)}
+          AND table_schema = ${sqlLiteral(resolvedSchema)}
+        ORDER BY ordinal_position`,
     );
     columns = columnResult.rows
-      .map((row) => row.column_name)
-      .filter((value): value is string => typeof value === "string");
-    primaryKey = columnResult.rows
-      .filter(
-        (row) => row.is_primary_key === true || row.is_primary_key === "t",
-      )
       .map((row) => row.column_name)
       .filter((value): value is string => typeof value === "string");
     if (columns.length === 0) {
@@ -239,7 +217,6 @@ export async function handleDatabaseRowsCompatRoute(
       introspectionKey,
       resolvedSchema,
       columns,
-      primaryKey,
       nowMs,
     );
   }
@@ -265,19 +242,10 @@ export async function handleDatabaseRowsCompatRoute(
   }
   const whereClause =
     filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
-  // OFFSET pages are separate queries. A sort column with ties, or no sort,
-  // lets rows trade places between pages. The primary key makes the order
-  // total. A table with no primary key falls back to its physical row id.
-  const validSort =
-    sortColumn && columns.includes(sortColumn) ? sortColumn : "";
-  const tieBreak = primaryKey.length
-    ? primaryKey.map((column) => quoteIdent(column))
-    : ["tableoid", "ctid"];
-  const orderTerms = [
-    ...(validSort ? [quoteIdent(validSort)] : []),
-    ...tieBreak.filter((term) => !validSort || term !== quoteIdent(validSort)),
-  ].map((term) => `${term} ${order}`);
-  const orderBy = `ORDER BY ${orderTerms.join(", ")}`;
+  const orderBy =
+    sortColumn && columns.includes(sortColumn)
+      ? `ORDER BY ${quoteIdent(sortColumn)} ${order}`
+      : "";
   const qualifiedTable = `${quoteIdent(resolvedSchema)}.${quoteIdent(tableName)}`;
   const countResult = await executeRawSql(
     runtime,
