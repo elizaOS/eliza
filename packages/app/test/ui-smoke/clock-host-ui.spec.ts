@@ -773,7 +773,7 @@ test("failed saved receipt reconciliation remains reachable through owned refres
   expect(actual.reviewCalls.map((call) => call.state)).toEqual([
     "pending",
     "reconciliation_required",
-    "done",
+    "reconciliation_required",
   ]);
   expect(actual.dispatchCount).toBe(1);
   expect(effects).toEqual([]);
