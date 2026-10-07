@@ -303,99 +303,114 @@ export function MediaGalleryView({
   );
   useRegisterViewChatBinding(chatBinding);
 
-  const loadMedia = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      // Discover tables
-      const { tables: rawTables } = await client.getDatabaseTables();
-      const tables = Array.isArray(rawTables) ? rawTables : [];
-      const allMedia: MediaItem[] = [];
+  const loadMedia = useCallback(
+    async (signal: AbortSignal) => {
+      setLoading(true);
+      setError("");
+      try {
+        // Discover tables
+        const { tables: rawTables } = await client.getDatabaseTables();
+        const tables = Array.isArray(rawTables) ? rawTables : [];
+        const allMedia: MediaItem[] = [];
 
-      // Scan tables likely to contain media: memories, messages, media, attachments, files
-      const mediaTables = tables.filter((table) => {
-        const n = table.name.toLowerCase();
-        return (
-          n.includes("memor") ||
-          n.includes("message") ||
-          n.includes("media") ||
-          n.includes("attach") ||
-          n.includes("file") ||
-          n.includes("asset") ||
-          n.includes("document")
-        );
-      });
+        // Scan tables likely to contain media: memories, messages, media, attachments, files
+        const mediaTables = tables.filter((table) => {
+          const n = table.name.toLowerCase();
+          return (
+            n.includes("memor") ||
+            n.includes("message") ||
+            n.includes("media") ||
+            n.includes("attach") ||
+            n.includes("file") ||
+            n.includes("asset") ||
+            n.includes("document")
+          );
+        });
 
-      // If no likely tables are found, scan every table for media values.
-      const tablesToScan = mediaTables.length > 0 ? mediaTables : tables;
+        // If no likely tables are found, scan every table for media values.
+        const tablesToScan = mediaTables.length > 0 ? mediaTables : tables;
 
-      // Scan the candidate tables concurrently — they are independent queries,
-      // and the sequential loop made the gallery wait on up to 10 round-trips.
-      // Keep concurrency bounded while covering every candidate table. A
-      // fixed first-ten slice silently hid media in later plugin tables.
-      for (let offset = 0; offset < tablesToScan.length; offset += 10) {
-        const scanResults = await Promise.all(
-          tablesToScan.slice(offset, offset + 10).map(async (table) => {
-            const tableName = table.name;
-            const sort = mediaScanSortColumn(table);
-            const items: MediaItem[] = [];
-            const seen = new Set<string>();
-            let rowOffset = 0;
+        // Scan the candidate tables concurrently — they are independent queries,
+        // and the sequential loop made the gallery wait on up to 10 round-trips.
+        // Keep concurrency bounded while covering every candidate table. A
+        // fixed first-ten slice silently hid media in later plugin tables.
+        for (let offset = 0; offset < tablesToScan.length; offset += 10) {
+          const scanResults = await Promise.all(
+            tablesToScan.slice(offset, offset + 10).map(async (table) => {
+              const tableName = table.name;
+              const sort = mediaScanSortColumn(table);
+              const items: MediaItem[] = [];
+              const seen = new Set<string>();
+              let rowOffset = 0;
 
-            try {
-              while (true) {
-                const result = await client.getDatabaseRows(tableName, {
-                  offset: rowOffset,
-                  limit: MEDIA_SCAN_PAGE_SIZE,
-                  ...(sort ? { sort, order: "asc" as const } : {}),
-                });
-                const rows = Array.isArray(result.rows) ? result.rows : [];
-                items.push(...extractMediaFromRows(rows, tableName, seen));
-                rowOffset += rows.length;
+              const primaryKeyCount = (table.columns ?? []).filter(
+                (column) => column.isPrimaryKey,
+              ).length;
+              try {
+                while (true) {
+                  signal.throwIfAborted();
+                  const result = await client.getDatabaseRows(tableName, {
+                    offset: rowOffset,
+                    limit: MEDIA_SCAN_PAGE_SIZE,
+                    ...(sort ? { sort, order: "asc" as const } : {}),
+                    signal,
+                  });
+                  signal.throwIfAborted();
+                  const rows = Array.isArray(result.rows) ? result.rows : [];
+                  items.push(...extractMediaFromRows(rows, tableName, seen));
+                  rowOffset += rows.length;
 
-                // An empty page cannot advance. Stop this table and keep the
-                // rows already read so the gallery does not spin.
-                if (rows.length === 0 || rowOffset >= result.total) break;
+                  // An empty page cannot advance. Stop this table and keep the
+                  // rows already read so the gallery does not spin.
+                  if (rows.length === 0 || rowOffset >= result.total) break;
+                  // No primary key means the rows route orders by ctid, which it
+                  // documents as stable only inside one query. Another OFFSET
+                  // page can repeat or skip rows, so stop after this page.
+                  if (primaryKeyCount === 0) break;
+                }
+              } catch (error) {
+                if (signal.aborted) throw error;
+                // One unreadable table must not hide media from the others.
               }
-            } catch {
-              // One unreadable table must not hide media from the others.
-            }
 
-            return items;
+              return items;
+            }),
+          );
+          for (const items of scanResults) allMedia.push(...items);
+        }
+
+        // Sort by date descending
+        allMedia.sort((a, b) => {
+          if (!a.createdAt && !b.createdAt) return 0;
+          if (!a.createdAt) return 1;
+          if (!b.createdAt) return -1;
+          return b.createdAt.localeCompare(a.createdAt);
+        });
+
+        if (signal.aborted || !mountedRef.current) return;
+        setMedia(allMedia);
+      } catch (err) {
+        if (signal.aborted || !mountedRef.current) return;
+        setError(
+          t("mediagalleryview.LoadFailed", {
+            message: err instanceof Error ? err.message : "error",
+            defaultValue: "Failed to load media: {{message}}",
           }),
         );
-        for (const items of scanResults) allMedia.push(...items);
       }
-
-      // Sort by date descending
-      allMedia.sort((a, b) => {
-        if (!a.createdAt && !b.createdAt) return 0;
-        if (!a.createdAt) return 1;
-        if (!b.createdAt) return -1;
-        return b.createdAt.localeCompare(a.createdAt);
-      });
-
-      if (!mountedRef.current) return;
-      setMedia(allMedia);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        t("mediagalleryview.LoadFailed", {
-          message: err instanceof Error ? err.message : "error",
-          defaultValue: "Failed to load media: {{message}}",
-        }),
-      );
-    }
-    if (mountedRef.current) {
+      if (signal.aborted || !mountedRef.current) return;
       setLoading(false);
-    }
-  }, [t]);
+    },
+    [t],
+  );
 
   useEffect(() => {
+    const controller = new AbortController();
     mountedRef.current = true;
-    void loadMedia();
+    void loadMedia(controller.signal);
     return () => {
       mountedRef.current = false;
+      controller.abort();
     };
   }, [loadMedia]);
 

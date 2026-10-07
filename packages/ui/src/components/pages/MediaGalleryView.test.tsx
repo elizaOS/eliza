@@ -136,18 +136,28 @@ describe("MediaGalleryView", () => {
     render(<MediaGalleryView />);
 
     await screen.findByRole("heading", { name: "after-first-page.png" });
-    expect(clientMock.getDatabaseRows).toHaveBeenNthCalledWith(1, "memories", {
-      offset: 0,
-      limit: 500,
-      sort: "id",
-      order: "asc",
-    });
-    expect(clientMock.getDatabaseRows).toHaveBeenNthCalledWith(2, "memories", {
-      offset: 500,
-      limit: 500,
-      sort: "id",
-      order: "asc",
-    });
+    expect(clientMock.getDatabaseRows).toHaveBeenNthCalledWith(
+      1,
+      "memories",
+      expect.objectContaining({
+        offset: 0,
+        limit: 500,
+        sort: "id",
+        order: "asc",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(clientMock.getDatabaseRows).toHaveBeenNthCalledWith(
+      2,
+      "memories",
+      expect.objectContaining({
+        offset: 500,
+        limit: 500,
+        sort: "id",
+        order: "asc",
+        signal: expect.any(AbortSignal),
+      }),
+    );
   });
 
   it("does not sort a composite primary key by its first column only", async () => {
@@ -179,10 +189,80 @@ describe("MediaGalleryView", () => {
     render(<MediaGalleryView />);
 
     await screen.findByRole("heading", { name: "composite.png" });
-    expect(clientMock.getDatabaseRows).toHaveBeenCalledWith("memories", {
+    expect(clientMock.getDatabaseRows).toHaveBeenCalledWith(
+      "memories",
+      expect.objectContaining({
+        offset: 0,
+        limit: 500,
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(clientMock.getDatabaseRows.mock.calls[0]?.[1]).not.toHaveProperty(
+      "sort",
+    );
+  });
+
+  it("reads a table with no primary key once", async () => {
+    clientMock.getDatabaseTables.mockResolvedValue({
+      tables: [
+        {
+          name: "memories",
+          columns: [{ name: "content", isPrimaryKey: false }],
+        },
+      ],
+    });
+    clientMock.getDatabaseRows.mockResolvedValue({
+      table: "memories",
+      rows: [
+        {
+          content: "https://example.test/keyless.png",
+          createdAt: "2026-10-06",
+        },
+      ],
+      columns: ["content", "createdAt"],
+      total: 1000,
       offset: 0,
       limit: 500,
     });
+
+    render(<MediaGalleryView />);
+
+    await screen.findByRole("heading", { name: "keyless.png" });
+    expect(clientMock.getDatabaseRows).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops requesting later pages after unmount", async () => {
+    let release: (value: unknown) => void = () => {};
+    clientMock.getDatabaseTables.mockResolvedValue({
+      tables: [
+        {
+          name: "memories",
+          columns: [{ name: "id", isPrimaryKey: true }],
+        },
+      ],
+    });
+    clientMock.getDatabaseRows.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    const view = render(<MediaGalleryView />);
+    await waitFor(() => {
+      expect(clientMock.getDatabaseRows).toHaveBeenCalledTimes(1);
+    });
+    view.unmount();
+    release({
+      table: "memories",
+      rows: Array.from({ length: 500 }, () => ({ content: "plain" })),
+      columns: ["content"],
+      total: 1000,
+      offset: 0,
+      limit: 500,
+    });
+    await Promise.resolve();
+    expect(clientMock.getDatabaseRows).toHaveBeenCalledTimes(1);
   });
 
   it("keeps media from readable tables when another table scan fails", async () => {

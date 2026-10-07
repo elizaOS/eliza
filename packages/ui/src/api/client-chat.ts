@@ -960,6 +960,7 @@ declare module "./client-base.js" {
         sort?: string;
         order?: "asc" | "desc";
         search?: string;
+        signal?: AbortSignal;
       },
     ): Promise<TableRowsResponse>;
     insertDatabaseRow(
@@ -2165,6 +2166,7 @@ ElizaClient.prototype.getDatabaseRows = async function (
   const qs = params.toString();
   return this.fetch(
     `/api/database/tables/${encodeURIComponent(table)}/rows${qs ? `?${qs}` : ""}`,
+    opts?.signal ? { signal: opts.signal } : undefined,
   );
 };
 ElizaClient.prototype.insertDatabaseRow = async function (
