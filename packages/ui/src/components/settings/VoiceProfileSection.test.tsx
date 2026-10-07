@@ -18,7 +18,10 @@ import {
   type VoiceProfile,
   VoiceProfilesClient,
 } from "../../api/client-voice-profiles";
-import { VoiceProfileSection } from "./VoiceProfileSection";
+import {
+  VoiceProfileSection,
+  voiceSampleRecordedDate,
+} from "./VoiceProfileSection";
 
 // Radix Select drives selection through pointer capture and scrolls the
 // active item into view; jsdom implements neither, so stub them once.
@@ -67,6 +70,30 @@ function makeClient(overrides?: Partial<VoiceProfilesClient>) {
   // shallow-replace only requested methods.
   return Object.assign(base, overrides);
 }
+
+describe("voiceSampleRecordedDate", () => {
+  it("uses the viewer calendar day instead of the UTC day", () => {
+    const eveningInLosAngeles = "2026-10-07T03:30:00.000Z";
+    expect(new Date(eveningInLosAngeles).toISOString().slice(0, 10)).toBe(
+      "2026-10-07",
+    );
+    expect(
+      voiceSampleRecordedDate(eveningInLosAngeles, "America/Los_Angeles"),
+    ).toBe("2026-10-06");
+
+    const eveningInBangkok = "2026-10-07T20:30:00.000Z";
+    expect(new Date(eveningInBangkok).toISOString().slice(0, 10)).toBe(
+      "2026-10-07",
+    );
+    expect(voiceSampleRecordedDate(eveningInBangkok, "Asia/Bangkok")).toBe(
+      "2026-10-08",
+    );
+  });
+
+  it("omits a date when the instant is not parseable", () => {
+    expect(voiceSampleRecordedDate("not-a-date")).toBeNull();
+  });
+});
 
 describe("VoiceProfileSection", () => {
   it("renders OWNER pinned at top + Crown badge", () => {
