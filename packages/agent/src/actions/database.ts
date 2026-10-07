@@ -351,11 +351,20 @@ async function opGetTable(
   }
 
   const safe = tableName.replace(/'/g, "''");
+  const visibleSchema = `(
+         SELECT n.nspname
+         FROM pg_catalog.pg_class c
+         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relname = '${safe}'
+           AND c.relkind IN ('r', 'p')
+           AND pg_catalog.pg_table_is_visible(c.oid)
+         LIMIT 1
+       )`;
   const exists = await executeRawSql(
     runtime,
     `SELECT 1 FROM information_schema.tables
      WHERE table_name = '${safe}'
-       AND table_schema NOT IN ('pg_catalog', 'information_schema')
+       AND table_schema = ${visibleSchema}
        AND table_type = 'BASE TABLE'
      LIMIT 1`,
   );
@@ -371,15 +380,6 @@ async function opGetTable(
   const offset = parseOptionalNonNegativeInteger(params.offset, "offset") ?? 0;
   const sortDir = params.sortDir === "desc" ? "DESC" : "ASC";
 
-  const visibleSchema = `(
-         SELECT n.nspname
-         FROM pg_catalog.pg_class c
-         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-         WHERE c.relname = '${safe}'
-           AND c.relkind IN ('r', 'p')
-           AND pg_catalog.pg_table_is_visible(c.oid)
-         LIMIT 1
-       )`;
   let validSort = "";
   if (params.sortBy) {
     const cols = await executeRawSql(
