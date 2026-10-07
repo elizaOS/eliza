@@ -33,6 +33,10 @@ final class ClockReviewDialog implements AutoCloseable, Application.ActivityLife
         void completed(ClockConsentCoordinator.Result result, String reviewToken);
         void failed(Exception error);
     }
+    interface NativeExecution {
+        ClockHandoff.Effect dispatch(ClockConsentCoordinator.Identity identity, ClockHandoff.Request request,
+                                        ClockHandoff.ApprovedConsent consent) throws Exception;
+    }
     interface ClaimedPreparation {
         /** Start asynchronous authenticated server approval/claim after this native gesture. */
         void prepare(Completion completion);
@@ -49,14 +53,20 @@ final class ClockReviewDialog implements AutoCloseable, Application.ActivityLife
     private final Activity activity;
     private final ClockConsentCoordinator coordinator;
     private final OwnerFence owner;
+    private final NativeExecution execution;
     private final Map<String, Pending> pending = new LinkedHashMap<>();
     private final Map<String, ClockConsentCoordinator.Identity> active = new LinkedHashMap<>();
     private boolean retired;
 
     ClockReviewDialog(Activity activity, ClockConsentCoordinator coordinator, OwnerFence owner) {
+        this(activity, coordinator, owner, (identity, request, consent) ->
+                new ClockHandoff.Effect(ClockHandoff.dispatch(activity, request, consent), null));
+    }
+    ClockReviewDialog(Activity activity, ClockConsentCoordinator coordinator, OwnerFence owner, NativeExecution execution) {
         this.activity = Objects.requireNonNull(activity);
         this.coordinator = Objects.requireNonNull(coordinator);
         this.owner = Objects.requireNonNull(owner);
+        this.execution = Objects.requireNonNull(execution);
         current();
         activity.getApplication().registerActivityLifecycleCallbacks(this);
     }
@@ -87,7 +97,7 @@ final class ClockReviewDialog implements AutoCloseable, Application.ActivityLife
                 review.dialog = new AlertDialog.Builder(activity)
                         .setTitle("Review Clock request")
                         .setMessage(description(state.request))
-                        .setPositiveButton("Open Clock", (dialog, which) -> approve(review, state.request))
+                        .setPositiveButton(positiveLabel(request), (dialog, which) -> approve(review, state.request))
                         .setNegativeButton("Cancel", (dialog, which) -> cancel(review))
                         .setOnCancelListener(dialog -> cancel(review))
                         .create();
@@ -115,7 +125,7 @@ final class ClockReviewDialog implements AutoCloseable, Application.ActivityLife
             pending.put(key, review); active.put(key, identity);
             review.dialog = new AlertDialog.Builder(activity).setTitle("Review Clock request")
                     .setMessage(description(request) + "\n\n" + scopeDescription)
-                    .setPositiveButton("Open Clock", (dialog, which) -> {
+                    .setPositiveButton(positiveLabel(request), (dialog, which) -> {
                         try {
                             current(); request.requireCurrentTimeZone(ZoneId.systemDefault().getId());
                             preparation.prepare(new ClaimedPreparation.Completion() {
@@ -178,12 +188,19 @@ final class ClockReviewDialog implements AutoCloseable, Application.ActivityLife
         ClockConsentCoordinator.Result result;
         try {
             current();
-            result = coordinator.confirmClock(identity, token, (request, consent) -> {
-                current();
-                dispatchFence.run();
-                return ClockHandoff.dispatch(activity, request, reviewed -> {
-                    current(); dispatchFence.run(); consent.consume(reviewed);
-                });
+            result = coordinator.confirmClock(identity, token, new ClockConsentCoordinator.Dispatcher() {
+                private String receipt;
+                @Override public ClockHandoff.Outcome dispatch(ClockHandoff.Request request, ClockHandoff.ApprovedConsent consent) {
+                    current(); dispatchFence.run();
+                    try {
+                        ClockHandoff.Effect effect = execution.dispatch(identity, request, reviewed -> {
+                            current(); dispatchFence.run(); consent.consume(reviewed);
+                        });
+                        receipt = effect.receipt; return effect.outcome;
+                    } catch (RuntimeException error) { throw error; }
+                    catch (Exception error) { throw new IllegalStateException("Native alarm effect failed", error); }
+                }
+                @Override public String receipt() { return receipt; }
             });
             active.remove(key(identity));
             current();
@@ -252,6 +269,7 @@ final class ClockReviewDialog implements AutoCloseable, Application.ActivityLife
         return identity.scope + ":" + identity.proposalId + ":" + identity.operationId;
     }
     static String description(ClockHandoff.Request request) {
+        if (request.owned) return ownedDescription(request);
         switch (request.action) {
             case SET:
                 String repeat = "Once (no repeat days)";
@@ -269,6 +287,44 @@ final class ClockReviewDialog implements AutoCloseable, Application.ActivityLife
                     + " minutes. No specific alarm is selected; this may affect all ringing alarms. Clock may use its default duration or show a chooser, and may act immediately. No second confirmation is guaranteed.";
             default: throw new IllegalArgumentException("Unsupported Clock request");
         }
+    }
+    static String positiveLabel(ClockHandoff.Request request) {
+        if (!request.owned) return "Open Clock";
+        switch (request.action) {
+            case SET: return "Save alarm";
+            case UPDATE: return "Save changes";
+            case DELETE: return "Delete alarm";
+            case ENABLE: return request.enabled ? "Enable alarm" : "Disable alarm";
+            case DISMISS: return "Stop alarm";
+            case SNOOZE: return "Snooze alarm";
+            case SHOW: return "Show alarms";
+            default: throw new IllegalArgumentException("Unsupported alarm action");
+        }
+    }
+    private static String ownedDescription(ClockHandoff.Request request) {
+        switch (request.action) {
+            case SET:
+            case UPDATE:
+                String consequence = request.action == ClockHandoff.Action.SET
+                        ? "Eliza schedules and rings this alarm on this phone."
+                        : "Replace this alarm's time, repeat days and label. Keep its enabled or disabled state. Stop its current ringing or snoozed occurrence.";
+                return String.format(Locale.ROOT, "%s for %02d:%02d\nRepeat: %s\nLabel: %s\nTimezone: %s\n\n%s",
+                        request.action == ClockHandoff.Action.SET ? "Set alarm" : "Update alarm", request.hour, request.minute,
+                        repeatDescription(request.days), request.label.isEmpty() ? "Alarm" : request.label, request.timeZone, consequence);
+            case SHOW: return "Show your Eliza alarms on this phone.";
+            case DELETE: return "Delete this Eliza alarm and cancel its scheduled and ringing occurrences.";
+            case ENABLE: return request.enabled ? "Enable this Eliza alarm." : "Disable this Eliza alarm and stop its current occurrence.";
+            case DISMISS: return "Stop this ringing Eliza alarm. Its next repeating occurrence stays scheduled.";
+            case SNOOZE: return "Snooze this ringing Eliza alarm for " + request.snoozeMinutes + " minutes.";
+            default: throw new IllegalArgumentException("Unsupported alarm action");
+        }
+    }
+    static String repeatDescription(java.util.List<Integer> days) {
+        if (days == null || days.isEmpty()) return "Once";
+        String[] names = {"", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+        ArrayList<String> selected = new ArrayList<>();
+        for (int day : days) selected.add(names[day]);
+        return String.join(", ", selected) + " (every week)";
     }
     private void cancelAfterFailure(ClockConsentCoordinator.Identity identity, Exception failure) {
         try { coordinator.cancelClock(identity); active.remove(key(identity)); }

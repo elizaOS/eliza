@@ -64,6 +64,7 @@ export function deviceRequestCredential(
           "maps.selected-read.v1",
           "clock.handoff.v1",
           "clock.handoff.v2",
+          "clock.alarms.v1",
         ].includes(value),
     )
   )
@@ -130,6 +131,7 @@ export async function handleDeviceActionRoutes(
             "maps.selected-read.v1",
             "clock.handoff.v1",
             "clock.handoff.v2",
+            "clock.alarms.v1",
           ],
         },
       });

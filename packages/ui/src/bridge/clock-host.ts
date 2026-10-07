@@ -1,5 +1,9 @@
 /** Shares the host's native Clock boundary with the request view without exporting credentials or scheduling alarms in the renderer. */
 import type {
+  ClockAlarmContext,
+  ClockAlarmOperation,
+  ClockAlarmRecord,
+  ClockAlarmResult,
   ClockOperation,
   ClockResult,
 } from "@elizaos/plugin-assistant/device-clock-review";
@@ -11,7 +15,24 @@ export interface ClockStatus {
   capabilities: string[];
   scope: string | null;
   installationId: string | null;
-  context: { sensitive: false; revision: number; timeZone: string } | null;
+  context:
+    | ClockAlarmContext
+    | { sensitive: false; revision: number; timeZone: string }
+    | null;
+}
+export interface ClockAlarmStatus {
+  available: boolean;
+  reason: string | null;
+  owner: string | null;
+  alarmsRevision: number | null;
+  alarmsObservedAt: number;
+  timeZone: string;
+  alarms: ClockAlarmRecord[] | null;
+  exactAlarmsAllowed: boolean;
+  notificationsAllowed: boolean;
+  fullScreenAllowed: boolean;
+  alarmSoundMuted: boolean;
+  defaultToneAvailable: boolean;
 }
 export interface ClockProposal {
   id: string;
@@ -21,6 +42,15 @@ export interface ClockProposal {
   operation: ClockOperation;
 }
 export interface ClockHost {
+  alarmStatus?(): Promise<ClockAlarmStatus>;
+  manageAlarm?(
+    operation: ClockAlarmOperation,
+    alarmsRevision: number,
+    owner: string,
+  ): Promise<{ result: ClockAlarmResult; alarmsRevision: number }>;
+  requestAlarmPermission?(
+    permission: "exact" | "notifications" | "fullScreen",
+  ): Promise<void>;
   status(): Promise<ClockStatus>;
   proposals(): Promise<{ scope: string; proposals: ClockProposal[] }>;
   review(

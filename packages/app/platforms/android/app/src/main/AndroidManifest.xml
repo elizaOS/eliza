@@ -2,11 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
     <queries>
-        <!-- Only external Clock handlers own alarm effects; Eliza is not an alarm receiver. -->
-        <intent><action android:name="android.intent.action.SET_ALARM" /></intent>
-        <intent><action android:name="android.intent.action.SHOW_ALARMS" /></intent>
-        <intent><action android:name="android.intent.action.DISMISS_ALARM" /></intent>
-        <intent><action android:name="android.intent.action.SNOOZE_ALARM" /></intent>
         <package android:name="${elizaChromiumPackageName}" />
         <package android:name="com.x8bit.bitwarden" />
         <package android:name="com.onepassword.android" />
@@ -29,6 +24,8 @@
         android:required="false" />
 
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:name=".ElizaApplication"
@@ -44,6 +41,21 @@
             android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"
             tools:node="remove" />
         <receiver android:name=".ReminderNotificationDismissReceiver" android:exported="false" />
+        <receiver android:name=".ElizaAlarmReceiver" android:exported="false" android:directBootAware="true">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <service android:name=".ElizaAlarmRingingService" android:exported="false"
+            android:directBootAware="true" android:foregroundServiceType="mediaPlayback" />
+        <activity android:name=".ElizaAlarmRingingActivity" android:exported="false"
+            android:directBootAware="true" android:showWhenLocked="true" android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
         <service android:name=".ElizaReminderMessagingService" android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
@@ -488,7 +500,6 @@
         </activity>
     </application>
 
-    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- MODIFY_AUDIO_SETTINGS: communication-mode routing + speakerphone for the

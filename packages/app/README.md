@@ -14,37 +14,44 @@ Concurrent worktrees should use `bun run --cwd packages/app dev:shared`. UI chan
 require `bun run --cwd packages/app audit:app` and inspection of affected desktop/mobile
 captures.
 
-## Clock requests and reviewed Android handoffs
+## Eliza alarms
 
-`/clock` displays this device's time and prepares an alarm request in the existing
-chat composer. It performs no native effect. Android Clock owns alarms; server
-reminders and FCM notifications remain separate. Timers and stopwatch are not
-implemented by this surface.
+`/clock` lists this owner's alarms from native Android storage. It provides local
+creation, editing, enable/disable and deletion after a native review gesture.
+The view also prepares chat requests for the agent. Server reminders and FCM
+notifications remain separate. Timers and stopwatch are outside this surface.
 
-`ClockReviewDialog`, `ClockConsentCoordinator`, and `ClockHandoff` provide the
-native review, durable one-use consent/receipt, and external-Clock dispatch
-components. The host must bind the existing authenticated device execution claim,
-its exact operation/digest/attempt, and the current native owner before registering
-`reviewClock`/`confirmClock`/`cancelClock` for the existing
-`@elizaos/plugin-assistant/device-clock-review` coordinator. Renderer arguments
-cannot mint approvals. Do not advertise `clock.handoff.v1` until that wiring is
-qualified. Await native retirement before replacing the owner. An `opened` receipt
-proves activity dispatch only; unknown dispatch is never automatically replayed.
+Android hosts advertise `clock.alarms.v1`. The existing assistant device-action
+service accepts exact `clock_alarm` proposals for set, update, enable, delete,
+dismiss, snooze and show. Agent reads use the complete authenticated current
+alarm snapshot; proposals bind its native store revision. Native consent checks
+the current profile, owner, exact operation, execution claim and revision before
+any effect. The durable journal retains the actual native result. An unknown
+result never permits automatic replay. Older clients retain the legacy
+`clock.handoff.v1/v2` protocol; this Android host does not dispatch those requests.
 
-Direct Android chat uses Clock's private enrollment only when the request has no
-existing device-binding headers or `metadata.clientDevice`. Bound requests retain
-their established transport, capabilities and selected context, including revoked
-bindings; Clock cannot replace them with a new enrollment. Such clients need Clock
-support in their own authoritative executor before their chat can propose Clock
-actions. Native Clock listing/review remains independently available. Optional
-caller Authorization, Cookie and CSRF headers must match the native stored session;
-native credentials are always the authority and never replaced by caller values.
+`ElizaAlarms` persists definitions and occurrence tokens in device-protected
+storage and schedules exact `AlarmManager.setAlarmClock` events. The system
+receiver restores confirmed schedules after boot, app replacement, clock/timezone
+changes or restored exact-alarm access. Weekly schedules follow the phone's local
+wall clock and preserve selected Calendar days (Sunday=1 through Saturday=7).
+Ringing uses a native foreground service and lock-screen controls with scoped Stop
+and Snooze. Delivery requires no WebView, model, Mac connection or network request.
+Overlapping occurrences remain queued; stale controls cannot affect a successor.
+The app preserves the user's alarm volume and DND settings.
 
-Android requires `com.android.alarm.permission.SET_ALARM` for mutating Clock
-intents, plus a compatible external handler. The app excludes its own launcher
-from resolution and does not receive alarm/timer intents. No app-owned alarm
-scheduler or exact-alarm permission is added. Native JVM tests qualify validation,
-consent and durability; Android dialog/launch/ringing need separate device tests.
+Exact-alarm access and notification access are required to schedule a new wake-up
+alarm. Full-screen access controls the lock-screen presentation; an alarm
+notification remains available when Android does not allow a full-screen intent.
+The Clock view reads these permissions and opens the platform's permission UI.
+After initial authenticated enrollment, cached native ownership permits local
+Clock reads and controls offline. A known rejected session retires that cache;
+existing scheduled alarms remain intact. Credentials never cross the bridge.
+
+Bound chat requests retain their established device executor and selected context;
+Clock enrollment does not replace existing binding headers or caller credentials.
+Native source compilation and contract tests do not prove installed-device ringing.
+A new APK must be built from the changed native sources and tested on the device.
 
 ## Development
 

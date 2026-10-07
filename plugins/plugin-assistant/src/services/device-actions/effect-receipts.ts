@@ -153,6 +153,7 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
     case "calendar_update":
     case "calendar_delete":
     case "clock_handoff":
+    case "clock_alarm":
     case "create_note":
     case "create_reminder":
     case "reminder_create":

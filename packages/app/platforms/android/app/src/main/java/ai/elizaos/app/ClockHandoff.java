@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Objects;
 
 final class ClockHandoff {
-    enum Action { SET, SHOW, DISMISS, SNOOZE }
+    enum Action { SET, SHOW, DISMISS, SNOOZE, UPDATE, DELETE, ENABLE }
 
     static final class Request {
         final Action action;
@@ -27,9 +27,18 @@ final class ClockHandoff {
         final String label, timeZone;
         /** null preserves legacy omitted repeat; explicit empty means one-off. Calendar days are 1..7. */
         final List<Integer> days;
+        final boolean owned;
+        final String alarmId;
+        final boolean enabled;
 
         private Request(Action action, int hour, int minute, int snoozeMinutes,
                         String label, String timeZone, List<Integer> days) {
+            this(action, hour, minute, snoozeMinutes, label, timeZone, days, false, null, false);
+        }
+
+        private Request(Action action, int hour, int minute, int snoozeMinutes,
+                        String label, String timeZone, List<Integer> days,
+                        boolean owned, String alarmId, boolean enabled) {
             this.action = Objects.requireNonNull(action);
             this.hour = hour;
             this.minute = minute;
@@ -37,6 +46,9 @@ final class ClockHandoff {
             this.label = label;
             this.timeZone = timeZone;
             this.days = days;
+            this.owned = owned;
+            this.alarmId = alarmId;
+            this.enabled = enabled;
         }
 
         static Request set(int hour, int minute, String label, String timeZone) {
@@ -76,8 +88,32 @@ final class ClockHandoff {
         static Request show() { return new Request(Action.SHOW, 0, 0, 0, null, null, null); }
         static Request dismiss() { return new Request(Action.DISMISS, 0, 0, 0, null, null, null); }
 
+        static Request owned(Request request, String alarmId, boolean enabled) {
+            if (alarmId != null && !alarmId.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))
+                throw new IllegalArgumentException("Invalid owned alarm identifier");
+            if (request.action != Action.SET && request.action != Action.SHOW && alarmId == null)
+                throw new IllegalArgumentException("An owned alarm must be selected");
+            if ((request.action == Action.SET || request.action == Action.UPDATE) && request.days == null)
+                throw new IllegalArgumentException("Owned alarms require explicit repeat days");
+            return new Request(request.action, request.hour, request.minute, request.snoozeMinutes,
+                    request.label, request.timeZone, request.days, true, alarmId, enabled);
+        }
+
+        static Request update(int hour, int minute, String label, String timeZone, List<Integer> days, String alarmId) {
+            Request valid = set(hour, minute, label, timeZone, days);
+            return owned(new Request(Action.UPDATE, valid.hour, valid.minute, 0, valid.label, valid.timeZone, valid.days), alarmId, false);
+        }
+
+        static Request delete(String alarmId) {
+            return owned(new Request(Action.DELETE, 0, 0, 0, null, null, null), alarmId, false);
+        }
+
+        static Request enable(String alarmId, boolean enabled) {
+            return owned(new Request(Action.ENABLE, 0, 0, 0, null, null, null), alarmId, enabled);
+        }
+
         void requireCurrentTimeZone(String observed) {
-            if (action == Action.SET && !timeZone.equals(observed))
+            if ((action == Action.SET || action == Action.UPDATE) && !timeZone.equals(observed))
                 throw new IllegalStateException("Phone timezone changed; review again");
         }
     }
@@ -88,7 +124,12 @@ final class ClockHandoff {
         void consume(Request request);
     }
 
-    enum Outcome { OPENED, UNAVAILABLE }
+    enum Outcome { OPENED, UNAVAILABLE, APPLIED }
+    static final class Effect {
+        final Outcome outcome;
+        final String receipt;
+        Effect(Outcome outcome, String receipt) { this.outcome = outcome; this.receipt = receipt; }
+    }
 
     /** Cost: one package-manager query, one consent consume, at most one activity launch.
      * Call only on the foreground Activity thread after the native review gesture. */
@@ -96,6 +137,7 @@ final class ClockHandoff {
         Objects.requireNonNull(activity);
         Objects.requireNonNull(request);
         Objects.requireNonNull(consent);
+        if (request.owned) throw new SecurityException("Owned alarms cannot use an external Clock handler");
         request.requireCurrentTimeZone(ZoneId.systemDefault().getId());
         Intent intent = intentFor(request);
         PackageManager manager = activity.getPackageManager();

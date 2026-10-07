@@ -9,8 +9,10 @@ import {
   ChannelType,
   type Memory,
   ModelType,
+  projectDeferredProviders,
   type UUID,
 } from "@elizaos/core";
+import { renderContextObject } from "@elizaos/core/protocol";
 import { expect, test, vi } from "vitest";
 import { viewsAction } from "../../../packages/agent/src/actions/views.ts";
 import { handleApprovalRoute } from "../../../packages/agent/src/api/approval-routes.ts";
@@ -48,6 +50,11 @@ import {
   withDeviceActionTurn,
 } from "../src/services/device-actions/service.ts";
 import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
+import {
+  projectDiscoverableContext,
+  readContextRequests,
+} from "../src/services/message/context-discovery.ts";
+import { stage1ResponseStateProviderNames } from "../src/services/message/provider-state.ts";
 import { runV5MessageRuntimeStage1 } from "../src/services/message.ts";
 
 // Real HTTP, session authentication, registered proposal tool, SQL migrations,
@@ -1016,6 +1023,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "reminders.local-record.v2",
           "reminders.create.v1",
           "clock.handoff.v2",
+          "clock.alarms.v1",
         ].sort(),
       );
       expect(enrolled.body.capabilities).toContain("clock.handoff.v1");
@@ -1573,8 +1581,457 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         ).toBe(409);
       }
       expect(repeatDigests.size).toBe(3);
+      const ownedCapability = "clock.alarms.v1";
+      const alarmId = randomUUID();
+      const ownedFields = {
+        hour: 9,
+        minute: 0,
+        label: "Eliza alarm fixture",
+        timeZone: "UTC",
+        days: [2, 3, 4, 5, 6],
+      };
+      const ownedContext = {
+        ...observation,
+        alarmsStatus: "available",
+        alarmsObservedAt: Date.now(),
+        alarmsRevision: 12,
+        alarms: [
+          {
+            id: alarmId,
+            ...ownedFields,
+            enabled: true,
+            nextAt: Date.now() + 60_000,
+            scheduleState: "scheduled",
+            generation: 1,
+            lastOutcome: "",
+          },
+        ],
+      };
+      const ownedRequest = (path: string, body?: unknown) =>
+        request(path, body, "a", deviceKey, ownedCapability);
+      const ownedSet = { type: "clock_alarm", action: "set", ...ownedFields };
+      for (const context of [
+        undefined,
+        { ...ownedContext, alarmsStatus: "stale" },
+        { ...ownedContext, alarmsStatus: "unavailable" },
+        { ...ownedContext, alarmsRevision: -1 },
+        {
+          ...ownedContext,
+          alarms: [ownedContext.alarms[0], ownedContext.alarms[0]],
+        },
+      ])
+        expect(
+          (
+            await proposeOverHttp(
+              ownedSet,
+              context,
+              randomUUID(),
+              ownedCapability,
+            )
+          ).status,
+        ).toBe(409);
+      for (const operation of [
+        { ...ownedSet, days: undefined },
+        { ...ownedSet, days: [2, 2] },
+        { type: "clock_alarm", action: "delete", alarmId: randomUUID() },
+        { type: "clock_alarm", action: "dismiss" },
+        { type: "clock_alarm", action: "snooze", alarmId, minutes: 61 },
+        { type: "clock_alarm", action: "enable", alarmId, enabled: "true" },
+        { type: "clock_handoff", action: "show" },
+      ])
+        expect(
+          (
+            await proposeOverHttp(
+              operation,
+              ownedContext,
+              randomUUID(),
+              ownedCapability,
+            )
+          ).status,
+        ).toBe(409);
+      expect(
+        (
+          await proposeOverHttp(
+            ownedSet,
+            ownedContext,
+            randomUUID(),
+            repeatCapability,
+          )
+        ).status,
+      ).toBe(409);
+      const fullSnapshot = {
+        ...ownedContext,
+        alarms: Array.from({ length: 21 }, (_, index) => ({
+          ...ownedContext.alarms[0],
+          id: randomUUID(),
+          label: `Exact label ${index}`,
+        })),
+      };
+      const ownedPlanner = await withDeviceActionTurn(
+        runtimeState.runtime,
+        { ...credentials, capabilities: [ownedCapability, capability] },
+        async () => {
+          const message = {
+            ...memory,
+            content: {
+              text: "Remind me to stretch",
+              metadata: {
+                uiTab: "other metadata retained",
+                clientDevice: { installationId: device, context: fullSnapshot },
+              },
+            },
+          };
+          const originalMessage = JSON.stringify(message);
+          expect(
+            stage1ResponseStateProviderNames(runtimeState.runtime, message, [
+              "OWNER",
+            ]),
+          ).toContain("CurrentElizaOwnedAlarmSnapshot");
+          const state = await runtimeState.runtime.composeState(
+            message,
+            ["CurrentElizaOwnedAlarmSnapshot"],
+            true,
+            true,
+          );
+          expect(
+            runtimeState.runtime.providers.some(
+              (provider) => provider.name === "CurrentElizaOwnedAlarmSnapshot",
+            ),
+          ).toBe(true);
+          const context = await createV5MessageContextObject({
+            runtime: runtimeState.runtime,
+            message,
+            state,
+            selectedContexts: ["general"],
+            includeTools: true,
+            userRoles: ["OWNER"],
+            preselectedActions: [proposeDeviceAction],
+          });
+          const name = "CurrentElizaOwnedAlarmSnapshot";
+          const source = context.events.find(
+            (event) => event.type === "provider" && event.name === name,
+          );
+          expect(source?.type).toBe("provider");
+          const sourceText =
+            source?.type === "provider" ? (source.text ?? "") : "";
+          const selectedSnapshot = fullSnapshot;
+          expect(
+            JSON.parse(sourceText.split("CurrentElizaOwnedAlarmSnapshot: ")[1]),
+          ).toEqual(selectedSnapshot);
+          expect(sourceText).toContain("Exact label 20");
+          const routing = projectDiscoverableContext(context, state);
+          const requested = readContextRequests(
+            { contextRequests: [name] },
+            routing.available,
+          );
+          expect(requested).toEqual([name]);
+          const phaseContexts = [routing.context];
+          for (const providerPhase of ["planning", "completion"] as const) {
+            const phaseContext = await createV5MessageContextObject({
+              runtime: runtimeState.runtime,
+              message,
+              state,
+              selectedContexts: ["general"],
+              includeTools: false,
+              providerPhase,
+              userRoles: ["OWNER"],
+            });
+            phaseContexts.push(
+              projectDeferredProviders({
+                ...phaseContext,
+                metadata: {
+                  ...phaseContext.metadata,
+                  providerDiscoveryEnabled: true,
+                  loadedContextProviders: [],
+                },
+              }).context,
+            );
+          }
+          for (const projected of phaseContexts) {
+            const text = renderContextObject(projected)
+              .promptSegments.map((segment) => segment.content)
+              .join("\n");
+            expect(text).toContain("Full current Eliza alarm records");
+            expect(text).not.toContain("Exact label 0");
+            expect(text).not.toContain("Exact label 20");
+            expect(text).not.toContain("Update replaces all schedule fields");
+          }
+          const restored = projectDiscoverableContext(
+            context,
+            state,
+            new Set(requested),
+          ).context;
+          expect(
+            restored.events.find(
+              (event) => event.type === "provider" && event.name === name,
+            ),
+          ).toEqual(source);
+          const restoredPlanning = projectDeferredProviders({
+            ...context,
+            metadata: {
+              ...context.metadata,
+              providerDiscoveryEnabled: true,
+              loadedContextProviders: requested,
+            },
+          }).context;
+          expect(
+            restoredPlanning.events.find(
+              (event) => event.type === "provider" && event.name === name,
+            ),
+          ).toEqual(source);
+          const withoutCapability = await withDeviceActionTurn(
+            runtimeState.runtime,
+            { ...credentials, capabilities: [capability] },
+            async () =>
+              runtimeState.runtime.composeState(message, [name], true, true),
+          );
+          expect(withoutCapability.data.providers?.[name]?.text ?? "").toBe("");
+          expect(JSON.stringify(message)).toBe(originalMessage);
+          const projectedMessage = context.events.find(
+            (event) =>
+              event.type === "message" && event.message.id === message.id,
+          );
+          expect(
+            projectedMessage?.type === "message" &&
+              projectedMessage.message.content,
+          ).toEqual({
+            ...message.content,
+            metadata: {
+              ...message.content.metadata,
+              clientDevice: {
+                ...message.content.metadata.clientDevice,
+                context: { providerReference: name },
+              },
+            },
+          });
+          expect(
+            renderContextObject(restored)
+              .promptSegments.map((segment) => segment.content)
+              .join("\n"),
+          ).toContain(JSON.stringify(fullSnapshot));
+          const fallback = await createV5MessageContextObject({
+            runtime: runtimeState.runtime,
+            message,
+            state: { values: {}, data: {}, text: "" },
+            userRoles: ["OWNER"],
+          });
+          expect(
+            renderContextObject(fallback)
+              .promptSegments.map((segment) => segment.content)
+              .join("\n"),
+          ).toContain("Exact label 20");
+          return context;
+        },
+      );
+      const ownedTool = ownedPlanner.events.find(
+        (event) =>
+          event.type === "tool" && event.tool.name === "PROPOSE_DEVICE_ACTION",
+      );
+      expect(
+        ownedTool?.type === "tool" &&
+          ownedTool.tool.parameters?.properties?.operation.anyOf.every(
+            (branch) => branch.properties?.type.enum?.[0] === "clock_alarm",
+          ),
+      ).toBe(true);
+      const ownedCases = [
+        ...[[], [1, 2, 3, 4, 5, 6, 7], [2, 3, 4, 5, 6], [2, 4, 6]].map(
+          (days) => ({ operation: { ...ownedSet, days }, status: "scheduled" }),
+        ),
+        {
+          operation: {
+            type: "clock_alarm",
+            action: "update",
+            alarmId,
+            ...ownedFields,
+          },
+          status: "updated",
+        },
+        {
+          operation: { type: "clock_alarm", action: "delete", alarmId },
+          status: "deleted",
+        },
+        {
+          operation: {
+            type: "clock_alarm",
+            action: "enable",
+            alarmId,
+            enabled: true,
+          },
+          status: "enabled",
+        },
+        {
+          operation: {
+            type: "clock_alarm",
+            action: "enable",
+            alarmId,
+            enabled: false,
+          },
+          status: "disabled",
+        },
+        {
+          operation: { type: "clock_alarm", action: "dismiss", alarmId },
+          status: "dismissed",
+        },
+        {
+          operation: {
+            type: "clock_alarm",
+            action: "snooze",
+            alarmId,
+            minutes: 10,
+          },
+          status: "snoozed",
+        },
+        { operation: { type: "clock_alarm", action: "show" }, status: "shown" },
+      ];
+      for (const { operation, status } of ownedCases) {
+        const key = randomUUID();
+        const currentContext =
+          operation.action === "update"
+            ? {
+                ...ownedContext,
+                alarms: [
+                  {
+                    ...ownedContext.alarms[0],
+                    enabled: false,
+                    nextAt: null,
+                    scheduleState: "disabled",
+                  },
+                ],
+              }
+            : ownedContext;
+        const proposed = await proposeOverHttp(
+          operation,
+          currentContext,
+          key,
+          ownedCapability,
+        );
+        expect(proposed.status).toBe(200);
+        expect(proposed.body.metadata.clientDevice.context).toEqual(
+          currentContext,
+        );
+        const id = proposed.body.action.data.proposalId;
+        const pending = (await ownedRequest("/proposals")).body.proposals.find(
+          (item: any) => item.id === id,
+        );
+        expect(pending.payload.clockContextRevision).toBe(12);
+        expect(pending.payload.operation).toEqual(operation);
+        expect(
+          (
+            await ownedRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await clockRequest(`/proposals/${id}/decision`, {
+              digest: pending.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await ownedRequest(`/proposals/${id}/decision`, {
+              digest: pending.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        const claimed = await ownedRequest(`/proposals/${id}/claim`, {
+          digest: pending.digest,
+        });
+        expect(claimed.status).toBe(200);
+        expect(
+          (
+            await ownedRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        const operationId = randomUUID();
+        const result = {
+          kind: "clock-alarm",
+          action: operation.action,
+          status,
+          ...(operation.action === "show"
+            ? {}
+            : { alarmId: operation.action === "set" ? operationId : alarmId }),
+          ...(["show", "delete"].includes(operation.action)
+            ? {}
+            : {
+                nextAt:
+                  status === "disabled" || status === "updated"
+                    ? null
+                    : Date.now() + 60_000,
+              }),
+        };
+        const receipt = {
+          digest: pending.digest,
+          attemptId: claimed.body.proposal.execution.attemptId,
+          receipt: { outcome: "applied", operationId, result },
+        };
+        expect(
+          (
+            await ownedRequest(`/proposals/${id}/receipt`, {
+              ...receipt,
+              receipt: {
+                ...receipt.receipt,
+                result: { ...result, status: "opened" },
+              },
+            })
+          ).status,
+        ).toBe(409);
+        if (operation.action !== "show")
+          expect(
+            (
+              await ownedRequest(`/proposals/${id}/receipt`, {
+                ...receipt,
+                receipt: {
+                  ...receipt.receipt,
+                  result: { ...result, alarmId: randomUUID() },
+                },
+              })
+            ).status,
+          ).toBe(409);
+        if (["scheduled", "enabled", "snoozed"].includes(status))
+          expect(
+            (
+              await ownedRequest(`/proposals/${id}/receipt`, {
+                ...receipt,
+                receipt: {
+                  ...receipt.receipt,
+                  result: { ...result, nextAt: null },
+                },
+              })
+            ).status,
+          ).toBe(409);
+        const recorded = await ownedRequest(
+          `/proposals/${id}/receipt`,
+          receipt,
+        );
+        expect(recorded.status).toBe(200);
+        expect(recorded.body.proposal.execution.providerReceipt.result).toEqual(
+          result,
+        );
+        const historical = await proposeOverHttp(
+          operation,
+          undefined,
+          key,
+          ownedCapability,
+        );
+        expect(historical.status).toBe(200);
+        expect(historical.body.action.data).toMatchObject({
+          proposalId: id,
+          executed: false,
+          result,
+        });
+        expect(historical.body.action.text).toContain(
+          "not a current alarm read",
+        );
+      }
       console.info(
-        "Clock HTTP/PGlite: v1 and explicit one-off/daily/weekdays v2 lifecycles; capability loss, malformed days, immutable replay, opened-only receipts PASS",
+        "Clock HTTP/PGlite: legacy handoffs plus owned alarm lifecycle, complete snapshots, revision binding, targeted receipts, capability loss and immutable replay PASS",
       );
     }
     {

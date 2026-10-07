@@ -2,9 +2,10 @@ package ai.elizaos.app;
 
 import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore;
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
-import android.provider.AlarmClock;
+import android.app.AlertDialog;
+import android.net.Uri;
+import android.os.Build;
+import android.provider.Settings;
 import android.webkit.CookieManager;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -38,16 +39,21 @@ public final class SlotClockPlugin extends Plugin {
     private final Map<PluginCall, ClockAgentRequests.Entry> queuedAgentCalls = new ConcurrentHashMap<>();
     private volatile boolean foreground = true;
     private final ClockOwnerRetirement retirement = new ClockOwnerRetirement();
+    private AlertDialog localAlarmDialog;
+    private PluginCall localAlarmCall;
+    private final Runnable alarmChanged = () -> notifyListeners("proposalsChanged", new JSObject());
     private interface Work { void run(Session session) throws Exception; }
     private final class Session {
         final ClockHostClient client;
         final JSONObject context;
         final String scope, owner;
         final Map<String, ClockConsentCoordinator.ApprovedEntry> admitted = new ConcurrentHashMap<>();
+        final Map<String, ClockHostClient.Proposal> claims = new ConcurrentHashMap<>();
         final ClockConsentCoordinator coordinator;
         ClockReviewDialog dialog;
         Session(ClockHostClient client, JSONObject context) throws Exception {
             this.client = client; this.context = context; scope = ClockHostClient.text(context, "scope"); owner = client.owner(context);
+            ClockOwnedAlarms.remember(getContext(), client, context);
             coordinator = ClockReviewDialog.coordinator(getActivity(), owner, identity -> {
                 // No credential-lock acquisition under the journal lock: confirmation fences the
                 // entire dispatch with withSnapshot, and stale preparation can never launch.
@@ -71,22 +77,27 @@ public final class SlotClockPlugin extends Plugin {
                     try { check(); } catch (Exception error) { throw new SecurityException("Native Clock owner changed", error); }
                 }
                 @Override public void retirementFailed(Exception error) { retirement.failed(); }
+            }, (identity, request, consent) -> {
+                check();
+                ClockHostClient.Proposal proposal = claims.get(identity.proposalId);
+                if (proposal == null || !ClockHostClient.sameRequest(proposal.request, request))
+                    throw new SecurityException("Owned alarm claim unavailable");
+                return ClockOwnedAlarms.execute(getActivity(), ClockOwnedAlarms.owner(getContext(), client), identity,
+                        request, alarmRevision(proposal.raw.getJSONObject("payload"), "clockContextRevision"), consent);
             });
         }
         void admit(ClockHostClient.Proposal proposal) throws Exception {
-            check(); admitted.put(proposal.id, ClockHostClient.admitted(context, proposal, owner));
+            check(); admitted.put(proposal.id, ClockHostClient.admitted(context, proposal, owner)); claims.put(proposal.id, proposal);
         }
     }
-    @Override public void load() { store = new NativeSecureStore(getContext()); }
+    @Override public void load() {
+        store = new NativeSecureStore(getContext());
+        ElizaAlarmRingingService.observe(alarmChanged);
+        refreshAlarmPermission();
+    }
 
     private boolean supported() {
-        PackageManager manager = getContext().getPackageManager();
-        if (manager.checkPermission("com.android.alarm.permission.SET_ALARM", getContext().getPackageName()) != PackageManager.PERMISSION_GRANTED) return false;
-        for (ResolveInfo candidate : manager.queryIntentActivities(new Intent(AlarmClock.ACTION_SET_ALARM), PackageManager.MATCH_DEFAULT_ONLY)) {
-            if (candidate.activityInfo != null && candidate.activityInfo.enabled && candidate.activityInfo.exported
-                    && !getContext().getPackageName().equals(candidate.activityInfo.packageName)) return true;
-        }
-        return false;
+        return getContext().getSystemService(android.content.Context.ALARM_SERVICE) instanceof android.app.AlarmManager;
     }
     private void enqueue(PluginCall call, Runnable operation) {
         try { workers.execute(operation); }
@@ -112,14 +123,23 @@ public final class SlotClockPlugin extends Plugin {
                 }
                 if ("requestAgent".equals(call.getMethodName())) throw new SecurityException("Native chat owner retired before admission");
                 store.ensureClockDevice();
-                ClockHostClient client = new ClockHostClient(store, store.snapshot(), url -> CookieManager.getInstance().getCookie(url), ZoneId.systemDefault().getId());
+                ClockHostClient client = new ClockHostClient(store, store.snapshot(), url -> CookieManager.getInstance().getCookie(url),
+                        ZoneId.systemDefault().getId(), new ClockHostClient.AlarmMetadata() {
+                            @Override public JSONObject context(ClockHostClient selected) throws Exception {
+                                return ClockOwnedAlarms.metadata(getContext(), selected);
+                            }
+                            @Override public void rejected(ClockHostClient selected) { ClockOwnedAlarms.revoke(getContext(), selected); }
+                        });
                 if ("requestAgent".equals(call.getMethodName())) expectedOrigin(call, client);
                 JSONObject context = client.context(true);
                 getActivity().runOnUiThread(() -> {
                     try {
                         client.current();
                         if (!foreground || retirement.isBlocked()) throw new SecurityException("Native Clock retired during enrollment");
-                        if (active == null) { active = new Session(client, context); active.openDialog(); }
+                        if (active == null) {
+                            active = new Session(client, context); active.openDialog();
+                            notifyListeners("proposalsChanged", new JSObject());
+                        }
                         withSession(call, work);
                     } catch (Exception error) {
                         // error-policy:J1 no credential or raw HTTP diagnostic reaches JavaScript.
@@ -145,7 +165,7 @@ public final class SlotClockPlugin extends Plugin {
         withSession(call, session -> {
             session.check();
             JSONObject value = new JSONObject().put("supported", true).put("reason", JSONObject.NULL)
-                    .put("capabilities", new JSONArray(ClockHostClient.CAPABILITIES.split(",")))
+                    .put("capabilities", new JSONArray(session.client.capabilities().split(",")))
                     .put("scope", session.scope).put("installationId", session.client.device.getInstallationId()).put("context", session.client.metadataContext());
             value.put("agentBase", session.client.base.toString().replaceAll("/+$", ""));
             call.resolve(js(value));
@@ -187,7 +207,8 @@ public final class SlotClockPlugin extends Plugin {
             getActivity().runOnUiThread(() -> {
                 try {
                     session.check();
-                    String scope = "Agent: " + ClockHostClient.text(session.context, "agentId") + "\nOwner: "
+                    String scope = requested.owned ? "Managed by Eliza on this phone." + targetDescription(session.client, requested)
+                            : "Agent: " + ClockHostClient.text(session.context, "agentId") + "\nOwner: "
                             + ClockHostClient.text(session.context, "subjectUserId") + "\nDevice enrollment: "
                             + ClockHostClient.text(session.context, "enrollmentId") + "\nScope: " + session.scope;
                     session.dialog.reviewPending(identity, requested, scope, completion -> enqueue(call, () -> {
@@ -219,9 +240,13 @@ public final class SlotClockPlugin extends Plugin {
         };
     }
     private static void complete(PluginCall call, ClockHandoff.Request request, ClockConsentCoordinator.Result outcome, String token) {
+        complete(call, request, outcome, token, null, null);
+    }
+    private static void complete(PluginCall call, ClockHandoff.Request request, ClockConsentCoordinator.Result outcome, String token,
+                                 String effectReceipt, String operationId) {
         try {
             JSONObject reply = new JSONObject();
-            if (outcome != null) reply.put("result", ClockHostReceipts.result(request, outcome)).put("receiptPending", false);
+            if (outcome != null) reply.put("result", ClockHostReceipts.result(request, outcome, effectReceipt, operationId)).put("receiptPending", false);
             if (token != null) reply.put("reviewToken", token);
             call.resolve(js(reply));
         } catch (Exception error) { call.reject("Native Clock response unavailable"); }
@@ -255,6 +280,12 @@ public final class SlotClockPlugin extends Plugin {
     }
     private void postReceipt(PluginCall call, Session session, ClockHostClient.Proposal proposal,
                              ClockConsentCoordinator.Identity identity, ClockConsentCoordinator.Result outcome) {
+        final String nativeReceipt;
+        try {
+            // Capture the bound, committed receipt while native effect authority is current.
+            // Its authenticated publication may finish after this Activity retires.
+            nativeReceipt = outcome == ClockConsentCoordinator.Result.APPLIED ? session.coordinator.effectReceipt(identity) : null;
+        } catch (Exception error) { call.reject("Saved native alarm receipt could not be verified"); return; }
         enqueue(call, () -> {
             try {
                 // Activity pause ends effect authority, but authenticated publication of an already
@@ -263,13 +294,151 @@ public final class SlotClockPlugin extends Plugin {
                 ClockHostClient.Proposal fresh = session.client.require(session.context, proposal.id);
                 ClockHostClient.sameProposal(proposal, fresh);
                 if (proposal.attemptId == null || !proposal.attemptId.equals(fresh.attemptId)) throw new SecurityException("Clock receipt attempt changed");
-                session.client.transition(session.context, fresh, "receipt", ClockHostReceipts.body(fresh, identity, outcome));
-                complete(call, proposal.request, outcome, null);
+                session.client.transition(session.context, fresh, "receipt", ClockHostReceipts.body(fresh, identity, outcome, nativeReceipt));
+                complete(call, proposal.request, outcome, null, nativeReceipt, identity.operationId);
+                notifyListeners("proposalsChanged", new JSObject());
             } catch (Exception error) {
                 // error-policy:J2 the journal governs retries: a lost HTTP acknowledgement never redispatches.
-                try { call.resolve(js(new JSONObject().put("result", ClockHostReceipts.result(proposal.request, outcome)).put("receiptPending", true))); }
+                try { call.resolve(js(new JSONObject().put("result", ClockHostReceipts.result(proposal.request, outcome,
+                        nativeReceipt,
+                        identity.operationId)).put("receiptPending", true))); }
                 catch (Exception encoding) { call.reject("Persisted native Clock receipt unavailable"); }
             }
+        });
+    }
+    private static long alarmRevision(JSONObject value, String field) throws Exception {
+        Object raw = value.get(field);
+        if (!(raw instanceof Integer || raw instanceof Long)) throw new IllegalArgumentException("Invalid native alarm revision");
+        long revision = ((Number) raw).longValue();
+        if (revision < 0 || revision > 9007199254740991L) throw new IllegalArgumentException("Invalid native alarm revision");
+        return revision;
+    }
+    private ClockHostClient localClient() throws Exception {
+        return new ClockHostClient(store, store.snapshot(), url -> CookieManager.getInstance().getCookie(url), ZoneId.systemDefault().getId());
+    }
+    private String targetDescription(ClockHostClient client, ClockHandoff.Request request) throws Exception {
+        if (request.alarmId == null) return "";
+        ElizaAlarms.Alarm alarm = ElizaAlarms.find(getContext(), request.alarmId, ClockOwnedAlarms.owner(getContext(), client));
+        return String.format(java.util.Locale.ROOT, "\n\nSelected alarm: %s\nTime: %02d:%02d\nRepeat: %s\nState: %s",
+                alarm.label.isEmpty() ? "Alarm" : alarm.label, alarm.hour, alarm.minute,
+                ClockReviewDialog.repeatDescription(alarm.days), alarm.enabled ? "Enabled" : "Disabled");
+    }
+    @PluginMethod public void getAlarmStatus(PluginCall call) {
+        enqueue(call, () -> {
+            try {
+                ClockHostClient client = localClient();
+                JSONObject state = store.withSnapshot(client.snapshot, () -> ClockOwnedAlarms.status(getContext(), client));
+                client.current(); call.resolve(js(state));
+            } catch (SecurityException error) {
+                // error-policy:J1 an unverified owner is unavailable, never an empty alarm inventory.
+                try { call.resolve(js(ClockOwnedAlarms.unavailable(getContext()))); }
+                catch (Exception unavailable) { call.reject("Native alarm owner could not be checked"); }
+            } catch (Exception error) { call.reject("Native alarm inventory could not be read"); }
+        });
+    }
+    @PluginMethod public void manageAlarm(PluginCall call) {
+        enqueue(call, () -> {
+            try {
+                ClockHostClient.exact(call.getData(), "operation", "alarmsRevision", "expectedOwner");
+                ClockHandoff.Request request = ClockHostClient.decode(call.getData().getJSONObject("operation"));
+                if (!request.owned || request.action == ClockHandoff.Action.SHOW)
+                    throw new IllegalArgumentException("Local alarm operation unavailable");
+                long revision = alarmRevision(call.getData(), "alarmsRevision");
+                ClockHostClient client = localClient();
+                String owner = ClockOwnedAlarms.owner(getContext(), client);
+                if (!owner.equals(ClockHostClient.digest(ClockHostClient.text(call.getData(), "expectedOwner"))))
+                    throw new SecurityException("Alarm inventory owner changed");
+                String id = java.util.UUID.randomUUID().toString();
+                ClockConsentCoordinator.Identity identity = new ClockConsentCoordinator.Identity(owner, id, id);
+                String description = ClockReviewDialog.description(request) + targetDescription(client, request);
+                client.current();
+                store.withSnapshot(client.snapshot, () -> ElizaAlarms.withRevision(getContext(), revision, () -> null));
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        if (!foreground || localAlarmCall != null) throw new SecurityException("Another alarm review is active");
+                        client.current();
+                        if (!owner.equals(ClockOwnedAlarms.owner(getContext(), client)))
+                            throw new SecurityException("Alarm inventory owner changed");
+                        localAlarmCall = call;
+                        localAlarmDialog = new AlertDialog.Builder(getActivity()).setTitle("Review alarm").setMessage(description)
+                                .setPositiveButton(ClockReviewDialog.positiveLabel(request), (dialog, which) -> {
+                                    if (localAlarmCall != call) return;
+                                    localAlarmCall = null; localAlarmDialog = null;
+                                    boolean[] consumed = {false};
+                                    try {
+                                        if (!foreground) throw new SecurityException("Alarm owner is not foreground");
+                                        client.current();
+                                        ClockHandoff.Effect effect = store.withSnapshot(client.snapshot, () -> {
+                                            if (!owner.equals(ClockOwnedAlarms.owner(getContext(), client)))
+                                                throw new SecurityException("Reviewed alarm owner changed");
+                                            return ClockOwnedAlarms.execute(getActivity(), owner, identity,
+                                                        request, revision, reviewed -> {
+                                                            if (consumed[0] || !foreground || !ClockHostClient.sameRequest(request, reviewed))
+                                                                throw new SecurityException("Native alarm consent changed");
+                                                            try {
+                                                                if (!owner.equals(ClockOwnedAlarms.owner(getContext(), client)))
+                                                                    throw new SecurityException("Native alarm owner changed");
+                                                            }
+                                                            catch (Exception changed) { throw new SecurityException("Native alarm owner changed", changed); }
+                                                            consumed[0] = true;
+                                                        });
+                                        });
+                                        client.current();
+                                        ClockConsentCoordinator.Result outcome = effect.outcome == ClockHandoff.Outcome.APPLIED
+                                                ? ClockConsentCoordinator.Result.APPLIED : ClockConsentCoordinator.Result.UNAVAILABLE;
+                                        call.resolve(js(new JSONObject().put("result", ClockHostReceipts.result(request, outcome, effect.receipt, id))
+                                                .put("alarmsRevision", ElizaAlarms.revision(getContext()))));
+                                        notifyListeners("proposalsChanged", new JSObject());
+                                    } catch (Exception error) {
+                                        // error-policy:J1 a lost/partial native effect is not replayed or presented as successful.
+                                        try {
+                                            client.current();
+                                            if (!owner.equals(ClockOwnedAlarms.owner(getContext(), client)))
+                                                throw new SecurityException("Alarm result owner changed");
+                                            if (!consumed[0]) { call.reject("Alarm changed or could not be saved; refresh the list"); return; }
+                                            call.resolve(js(new JSONObject().put("result", ClockHostReceipts.result(request, ClockConsentCoordinator.Result.UNKNOWN))
+                                                    .put("alarmsRevision", ElizaAlarms.revision(getContext()))));
+                                            notifyListeners("proposalsChanged", new JSObject());
+                                        } catch (Exception ownerChanged) { call.reject("Alarm result could not be verified; refresh the list"); }
+                                    }
+                                }).setNegativeButton("Cancel", (dialog, which) -> cancelLocalAlarm())
+                                .setOnCancelListener(dialog -> cancelLocalAlarm()).create();
+                        localAlarmDialog.show();
+                    } catch (Exception error) {
+                        if (localAlarmCall == call) cancelLocalAlarm();
+                        call.reject("Native alarm review could not be opened");
+                    }
+                });
+            } catch (Exception error) { call.reject("Alarm inventory or owner changed; refresh the list"); }
+        });
+    }
+    private void cancelLocalAlarm() {
+        PluginCall call = localAlarmCall; AlertDialog dialog = localAlarmDialog;
+        localAlarmCall = null; localAlarmDialog = null;
+        if (dialog != null) dialog.dismiss();
+        if (call != null) call.reject("Alarm review cancelled");
+    }
+    @PluginMethod public void requestAlarmPermission(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            try {
+                if (!foreground || localAlarmCall != null) throw new SecurityException("Alarm permission owner unavailable");
+                ClockHostClient.exact(call.getData(), "permission");
+                String permission = ClockHostClient.text(call.getData(), "permission");
+                Intent intent;
+                if ("exact".equals(permission) && Build.VERSION.SDK_INT >= 31)
+                    intent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).setData(Uri.parse("package:" + getContext().getPackageName()));
+                else if ("fullScreen".equals(permission) && Build.VERSION.SDK_INT >= 34)
+                    intent = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).setData(Uri.parse("package:" + getContext().getPackageName()));
+                else if ("notifications".equals(permission)) {
+                    if (Build.VERSION.SDK_INT >= 33 && getContext().checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        getActivity().requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 0xC10C);
+                        call.resolve(); return;
+                    }
+                    intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName());
+                } else throw new IllegalArgumentException("Unsupported alarm permission");
+                getActivity().startActivity(intent); call.resolve();
+            } catch (Exception error) { call.reject("Alarm permission settings could not be opened"); }
         });
     }
     @PluginMethod public void cancelClock(PluginCall call) {
@@ -404,7 +573,14 @@ public final class SlotClockPlugin extends Plugin {
             else { JSObject reply = new JSObject(); reply.put("retired", true); call.resolve(reply); }
         });
     }
-    @Override protected void handleOnPause() { foreground = false; retire(); }
-    @Override protected void handleOnResume() { if (retirement.isBlocked()) retire(); foreground = true; }
-    @Override protected void handleOnDestroy() { foreground = false; retire(); workers.shutdownNow(); }
+    @Override protected void handleOnPause() { foreground = false; cancelLocalAlarm(); retire(); }
+    private void refreshAlarmPermission() {
+        try { ElizaAlarms.refreshPermissionState(getContext()); }
+        catch (RuntimeException error) {
+            // error-policy:J1 inventory reads still fail explicitly; lifecycle cannot fabricate a repaired store.
+            android.util.Log.e("ElizaClock", "Alarm permission state could not be read", error);
+        }
+    }
+    @Override protected void handleOnResume() { if (retirement.isBlocked()) retire(); foreground = true; refreshAlarmPermission(); }
+    @Override protected void handleOnDestroy() { foreground = false; cancelLocalAlarm(); retire(); ElizaAlarmRingingService.unobserve(alarmChanged); workers.shutdownNow(); }
 }

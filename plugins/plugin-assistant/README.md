@@ -143,6 +143,18 @@ remain inline; stored receipts are unchanged.
 
 Run `bun run --cwd plugins/plugin-assistant test:clock-review-export` for source and packed-consumer checks. This uses a controlled host adapter and does not qualify Android Clock behavior.
 
+`clock.alarms.v1` adds Eliza-owned native alarms through `clock_alarm`: set,
+update, delete, enable, dismiss, snooze and show. It never opens an external Clock
+app. Set and update require exact time, label, phone timezone and repeat days;
+targeted changes require the current alarm UUID. The full authenticated phone
+snapshot supplies current alarms and explicit schedule/permission states. A
+stale or unavailable snapshot cannot prove the list is empty. Approval binds
+the durable store's `alarmsRevision` as `clockContextRevision`; native dispatch
+must recheck it. Applied typed receipts report actual saved or scheduled changes,
+not proof that a future alarm will ring. Historical receipt retrieval performs
+no new effect. Older `clock.handoff.v1/v2` clients retain their external handoff;
+owned-alarm clients receive only the owned operation schemas.
+
 ## Authenticated device scope
 
 Device enrollment retains the authenticated subject for approval review, claims and receipts. The host may separately bind a verified local OWNER enrollment to the canonical workflow owner; external identities and USER/ADMIN subjects keep their own scope. Request JSON cannot choose that owner. Nullable `workflow_owner_id` preserves legacy enrollment fallback.
