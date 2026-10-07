@@ -5368,11 +5368,16 @@ async function runLifeOperationHandlerInner(
               : deferredDefinitionDraft?.request.idempotencyKey,
           cadence: leadShaped.cadence,
           description:
-            explicitDescription ??
-            llmDescription ??
-            (editingDeferredDefinitionDraft
-              ? deferredDefinitionDraft.request.description
-              : undefined),
+            ownerSurfaceActionName === "OWNER_REMINDERS" &&
+            leadShaped.cadence.kind === "once" &&
+            typeof details?.description === "string" &&
+            details.description.trim().length > 0
+              ? details.description
+              : (explicitDescription ??
+                llmDescription ??
+                (editingDeferredDefinitionDraft
+                  ? deferredDefinitionDraft.request.description
+                  : undefined)),
           goalRef:
             detailString(details, "goalId") ??
             detailString(details, "goalTitle") ??
@@ -6090,13 +6095,20 @@ async function runLifeOperationHandlerInner(
           text: `Which timezone should I use for ${requestedTime} on "${target.definition.title}"?`,
         };
       }
+      const cadence = normalizeCadenceDetail(detailObject(details, "cadence"));
       const request: UpdateLifeOpsDefinitionRequest = {
         ownership,
         title:
           params.title !== target.definition.title ? params.title : undefined,
         timezone: requestedTimeZone ?? undefined,
-        description: detailString(details, "description"),
-        cadence: normalizeCadenceDetail(detailObject(details, "cadence")),
+        description:
+          target.definition.metadata.ownerSurface === "OWNER_REMINDERS" &&
+          (cadence ?? target.definition.cadence).kind === "once" &&
+          typeof details?.description === "string" &&
+          details.description.trim().length > 0
+            ? details.description
+            : detailString(details, "description"),
+        cadence,
         priority: detailNumber(details, "priority"),
         // detailObject returns Record<string,unknown>; cast at validated boundary.
         windowPolicy: detailObject(
