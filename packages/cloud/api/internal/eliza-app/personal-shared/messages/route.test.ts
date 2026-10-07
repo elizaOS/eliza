@@ -138,11 +138,16 @@ const recordGroupDeliveryReceipts = mock(async () => ({
   inserted: 0,
 }));
 const hasGroupDeliveryReceipt = mock(async () => false);
+type SharedDispatchRequest = {
+  rpc: { id: string; params: Record<string, unknown> };
+  traceId?: string;
+};
 const sharedBridgeFetch = mock(
   async (input: RequestInfo | URL, init?: RequestInit) => {
-    const body = (await new Request(input, init).json()) as {
-      rpc: { id: string };
-    };
+    const body = (await new Request(
+      input,
+      init,
+    ).json()) as SharedDispatchRequest;
     return Response.json({
       jsonrpc: "2.0",
       id: body.rpc.id,
@@ -566,7 +571,10 @@ describe("personal Shared messaging deliveries", () => {
     expect(sharedBridgeFetch).toHaveBeenCalledTimes(1);
     const call = sharedBridgeFetch.mock.calls[0];
     if (!call) throw new Error("Shared dispatch did not reach the coordinator");
-    const payload = await new Request(call[0], call[1]).json();
+    const payload = (await new Request(
+      call[0],
+      call[1],
+    ).json()) as SharedDispatchRequest;
     expect(payload).toMatchObject({
       operation: "personal-bridge",
       traceId,
@@ -606,8 +614,9 @@ describe("personal Shared messaging deliveries", () => {
 
     expect(sharedBridgeFetch).toHaveBeenCalledTimes(2);
     const payloads = await Promise.all(
-      sharedBridgeFetch.mock.calls.map(([input, init]) =>
-        new Request(input, init).json(),
+      sharedBridgeFetch.mock.calls.map(
+        ([input, init]) =>
+          new Request(input, init).json() as Promise<SharedDispatchRequest>,
       ),
     );
     for (const payload of payloads) {
@@ -628,7 +637,10 @@ describe("personal Shared messaging deliveries", () => {
     expect(sharedBridgeFetch).toHaveBeenCalledTimes(1);
     const call = sharedBridgeFetch.mock.calls[0];
     if (!call) throw new Error("Shared dispatch did not reach the coordinator");
-    const payload = await new Request(call[0], call[1]).json();
+    const payload = (await new Request(
+      call[0],
+      call[1],
+    ).json()) as SharedDispatchRequest;
     expect(payload.traceId).toMatch(/^[0-9a-f]{32}$/);
     expect(JSON.stringify(payload)).not.toContain(untrustedTrace);
   });
