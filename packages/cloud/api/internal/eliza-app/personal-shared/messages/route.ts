@@ -1984,6 +1984,9 @@ app.post("/", async (c) => {
       stage,
       errorName,
       ...(failureCauseName ? { failureCauseName } : {}),
+      ...(error instanceof SharedRuntimeTurnError && error.failureDiagnostic
+        ? { failureDiagnostic: error.failureDiagnostic }
+        : {}),
       retryable,
       ...(error instanceof PersonalDeliveryAccountResolutionError
         ? { projectionFailure: error.projectionFailure }

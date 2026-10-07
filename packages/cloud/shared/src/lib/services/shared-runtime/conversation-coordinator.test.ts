@@ -265,6 +265,28 @@ describe("shared conversation coordinator", () => {
       params: { text: "hi", roomId: "room-1" },
     };
     const executionCtx = { waitUntil() {} };
+    const diagnostic = {
+      modelInvocationStarted: true,
+      processingSuccess: null,
+      didRespond: true,
+      responseErrorPresent: false,
+      failureKind: "transient_failure",
+      terminalFailurePresent: true,
+      terminalMode: "simple",
+      lastModelCompletion: {
+        operation: "generate",
+        textPresent: true,
+        toolCount: 0,
+        finishClass: "stop",
+      },
+      modelFailure: {
+        operation: "generate",
+        errorName: "AI_APICallError",
+        failureName: "SharedRuntimeProviderRejectedError",
+        retryable: false,
+        providerStatus: 400,
+      },
+    };
     const namespace = {
       getByName: () => ({
         fetch: async () =>
@@ -274,20 +296,25 @@ describe("shared conversation coordinator", () => {
               code: "shared_runtime_turn_failed",
               failureName: "SharedRuntimeProviderUnavailableError",
               retryable: true,
+              failureDiagnostic: { ...diagnostic, providerBody: "PRIVATE_PAYLOAD" },
             },
             { status: 503 },
           ),
       }),
     };
 
-    await expect(
-      coordinateSharedBridge(agent, rpc, { namespace, executionCtx }),
-    ).rejects.toMatchObject({
+    const failure = await coordinateSharedBridge(agent, rpc, { namespace, executionCtx }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(failure).toMatchObject({
       name: "SharedRuntimeTurnError",
       message: "Shared runtime turn failed.",
       failureName: "SharedRuntimeProviderUnavailableError",
       retryable: true,
+      failureDiagnostic: diagnostic,
     });
+    expect(JSON.stringify(failure)).not.toContain("PRIVATE_PAYLOAD");
   });
 
   test("fails closed when turn failure metadata is forged or inconsistent", async () => {
