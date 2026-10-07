@@ -322,16 +322,32 @@ export const extractLimit = (text: string): number => {
 
 export const formatValue = (value?: number): string => {
   if (!value) return "N/A";
-  if (value && value >= 1_000_000_000) {
-    return `$${(value / 1_000_000_000).toFixed(2)}B`;
+  const tiers: Array<{ threshold: number; suffix: string }> = [
+    { threshold: 1_000_000_000, suffix: "B" },
+    { threshold: 1_000_000, suffix: "M" },
+    { threshold: 1_000, suffix: "K" },
+  ];
+  for (let i = 0; i < tiers.length; i++) {
+    const { threshold, suffix } = tiers[i];
+    if (value >= threshold) {
+      const scaled = value / threshold;
+      const rounded = Math.round(scaled * 100) / 100;
+      if (rounded >= 1000 && i > 0) {
+        // Two-decimal rounding crossed into the next tier up (for example
+        // 999999 rounds to 1000.00K). Promote one tier so the suffix stays true.
+        const upper = tiers[i - 1];
+        const promoted = Math.round((value / upper.threshold) * 100) / 100;
+        return `$${promoted.toFixed(2)}${upper.suffix}`;
+      }
+      return `$${rounded.toFixed(2)}${suffix}`;
+    }
   }
-  if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(2)}M`;
+  const rounded = Math.round(value * 100) / 100;
+  if (rounded >= 1000) {
+    // Two-decimal rounding crossed into the K tier (for example 999.999).
+    return `$${(rounded / 1000).toFixed(2)}K`;
   }
-  if (value >= 1_000) {
-    return `$${(value / 1_000).toFixed(2)}K`;
-  }
-  return `$${value.toFixed(2)}`;
+  return `$${rounded.toFixed(2)}`;
 };
 
 export const formatPercentChange = (change?: number): string => {
