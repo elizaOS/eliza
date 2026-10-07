@@ -213,6 +213,13 @@ it.each(["unrelated", "abstain"] as const)(
       now: f.now,
     });
     expect(judge).toHaveBeenCalledTimes(1);
+    const respondedAt = new Date(f.message.createdAt ?? 0).toISOString();
+    expect(judge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({ respondedAt }),
+      }),
+    );
+    expect(first.respondedAt).toBe(respondedAt);
     const restarted = new LifeOpsService(fixture.runtime);
     const replayJudge = vi
       .spyOn(
@@ -229,6 +236,9 @@ it.each(["unrelated", "abstain"] as const)(
     const [persisted] = await restarted.repository.listReminderAttempts(
       fixture.runtime.agentId,
       { ownerType: "occurrence", ownerId: f.occurrence.id },
+    );
+    expect(persisted.deliveryMetadata.reminderReviewRespondedAt).toBe(
+      respondedAt,
     );
     const repeated = await restarted.reviewOwnerResponseAfterReminderAttempt({
       subjectType: "owner",

@@ -32,7 +32,7 @@ import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 const EVALUATOR_NAME = "linkExtraction";
 const EVALUATOR_SOURCE = "link_extraction_evaluator";
 const MEMORY_TABLE = "links";
-const URL_REGEX = /https?:\/\/[^\s<>"'`)]+/gi;
+const URL_REGEX = /https?:\/\/[^\s<>"'`\]]+/gi;
 const SUMMARY_FETCH_TIMEOUT_MS = 5_000;
 
 interface LinkRecord {
@@ -94,11 +94,18 @@ function extractUrls(text: string): string[] {
 }
 
 function stripTrailingPunctuation(url: string): string {
-  let result = url;
-  while (result.length > 0 && /[.,;:!?\])}>]/.test(result.slice(-1))) {
-    result = result.slice(0, -1);
+  let depth = 0;
+  let end = 0;
+  for (let i = 0; i < url.length; i++) {
+    const char = url[i];
+    if (char === "(") depth++;
+    else if (char === ")") {
+      if (depth === 0) continue;
+      depth--;
+    } else if (/[.,;:!?\]}>*_]/u.test(char)) continue;
+    end = i + 1;
   }
-  return result;
+  return url.slice(0, end);
 }
 
 function hasUrl(message: Memory): boolean {

@@ -976,6 +976,15 @@ interface StepIndexRow {
   isActive: boolean;
 }
 
+/** A recorded trajectory time of epoch is real. `value || Date.now()` replaced it. */
+function recordedTrajectoryTime(
+  value: number | null | undefined,
+  now: number,
+): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return now;
+}
+
 // ============================================================================
 // Trajectories Service
 // ============================================================================
@@ -1684,7 +1693,7 @@ export class TrajectoriesService extends Service {
     stepNumber: number,
     envState: EnvironmentState,
   ): TrajectoryStep {
-    const timestamp = envState.timestamp || Date.now();
+    const timestamp = recordedTrajectoryTime(envState.timestamp, Date.now());
     return {
       stepId: stepId as `${string}-${string}-${string}-${string}-${string}`,
       stepNumber,
@@ -3576,7 +3585,8 @@ export class TrajectoriesService extends Service {
       typeof metadata.source === "string" ? metadata.source : "chat";
     const normalizedDurationMs = status === "active" ? null : timing.durationMs;
     const updatedAtMs =
-      normalizedEndTime ?? (trajectory.startTime || Date.now());
+      normalizedEndTime ??
+      recordedTrajectoryTime(trajectory.startTime, Date.now());
 
     return {
       id: trajectory.trajectoryId,

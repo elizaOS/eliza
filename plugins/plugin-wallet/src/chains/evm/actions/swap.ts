@@ -890,13 +890,30 @@ function resolveRelativeTokenAmount(
 }
 
 /**
+ * Chain native balances are `formatUnits(wei, 18)`. Reverse that exactly.
+ * `parseFloat` then `Number#toString` turns 0.000001 ETH / 2 into `"5e-7"`,
+ * which `parseUnits` rejects, so the relative swap never gets a quote.
+ */
+const NATIVE_BALANCE_DECIMALS = 18;
+
+function nativeBalanceToWei(balance: string): bigint {
+  try {
+    return parseUnits(balance, NATIVE_BALANCE_DECIMALS);
+  } catch (error) {
+    throw new EVMError(
+      EVMErrorCode.INVALID_PARAMS,
+      "Cannot resolve a relative swap amount: native balance is not an exact 18-decimal value.",
+      error instanceof Error ? error : undefined
+    );
+  }
+}
+
+/**
  * Resolve a relative native-asset swap size ("half"/"max"/"percent") into an
  * absolute, human-readable amount string from the supplied native balance.
- * `max` keeps a 10% gas reserve (0.9 * balance).
- * Native balances are gas-token scale, so the float basis here is unchanged
- * from before; ERC-20 inputs take the exact-integer path in
- * `resolveRelativeTokenAmount` instead. Throws INVALID_PARAMS when the balance
- * is unknown or a percentage is out of the 1-100 range.
+ * `max` keeps a 10% gas reserve. Arithmetic stays in wei and floors, so the
+ * quote cannot ask for more than that share. Throws INVALID_PARAMS when the
+ * balance is unknown, not an exact decimal, or a percentage is outside 1-100.
  */
 function resolveRelativeAmount(
   mode: Exclude<AmountMode, "absolute">,
@@ -909,21 +926,11 @@ function resolveRelativeAmount(
       `Cannot resolve a relative swap amount: unknown balance for the selected chain.`
     );
   }
-  const balanceNum = parseFloat(balance);
-  if (mode === "half") {
-    return (balanceNum / 2).toString();
-  }
+  const raw = nativeBalanceToWei(balance);
   if (mode === "max") {
-    return (balanceNum * 0.9).toString();
+    return formatUnits((raw * 9n) / 10n, NATIVE_BALANCE_DECIMALS);
   }
-  const percent = Number(rawPercent);
-  if (!Number.isFinite(percent) || percent < 1 || percent > 100) {
-    throw new EVMError(
-      EVMErrorCode.INVALID_PARAMS,
-      `Swap percentage must be between 1 and 100, received: ${String(rawPercent)}`
-    );
-  }
-  return ((balanceNum * percent) / 100).toString();
+  return resolveRelativeTokenAmount(mode, rawPercent, raw, NATIVE_BALANCE_DECIMALS);
 }
 export const swapAction = {
   name: spec.name,
