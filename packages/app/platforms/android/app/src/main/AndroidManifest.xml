@@ -219,12 +219,12 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <service android:name="ai.elizaos.app.NativeNotificationConnectionService"
+        <service android:name=".NativeNotificationConnectionService"
             android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="remote-agent-notification-delivery-without-google-play-services" />
         </service>
-        <receiver android:name="ai.elizaos.app.NativeNotificationConnectionReceiver" android:exported="false">
+        <receiver android:name=".NativeNotificationConnectionReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
