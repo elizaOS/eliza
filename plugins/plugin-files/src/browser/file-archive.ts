@@ -6,7 +6,9 @@ export function fileArchive(
     central: BlobPart[] = [];
   let offset = 0,
     centralSize = 0;
-  if (files.length > 65535) throw Error("Choose fewer files.");
+  // 0xffff is the ZIP64 sentinel in the EOCD entry-count fields. This writer
+  // does not emit ZIP64 records, so that count cannot be represented safely.
+  if (files.length >= 0xffff) throw Error("Choose fewer than 65,535 files.");
   const paths = new Set<string>();
   for (const file of files) {
     const path = file.path.endsWith("/") ? file.path.slice(0, -1) : file.path;
