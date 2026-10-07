@@ -637,6 +637,7 @@ export class NotificationService extends Service {
 	private broadcast(
 		notification: AgentNotification,
 		type: NotificationEventData["type"] = "notification",
+		removed = false,
 	): void {
 		const bus = this.runtime.getService(ServiceType.AGENT_EVENT);
 		if (!isEventBus(bus)) {
@@ -646,9 +647,10 @@ export class NotificationService extends Service {
 			type,
 			notification: this.withNativeCoordinates(notification),
 			unreadCount: this.getUnreadCount(),
+			...(removed ? { removed: true } : {}),
 		};
 		try {
-			data.nativeNotification = this.projectNative(notification);
+			if (!removed) data.nativeNotification = this.projectNative(notification);
 		} catch (error) {
 			if (!(error instanceof NotificationNativeError)) throw error;
 			data.nativeProjectionError = {
@@ -920,14 +922,16 @@ export class NotificationService extends Service {
 		if (!notification || notification.readAt) {
 			return false;
 		}
+		const updated = { ...notification, readAt: Date.now() };
 		this.notifications = this.notifications.map((entry) =>
-			entry.id === id ? { ...entry, readAt: Date.now() } : entry,
+			entry.id === id ? updated : entry,
 		);
 		try {
 			await this.persist();
 		} catch (error) {
 			return this.failAfterMutationPersistence(error);
 		}
+		this.broadcast(updated, "notification_update");
 		return true;
 	}
 
@@ -978,12 +982,15 @@ export class NotificationService extends Service {
 	}
 
 	private async markAllReadSerialized(): Promise<number> {
+		const updated: AgentNotification[] = [];
 		let changed = 0;
 		const now = Date.now();
 		this.notifications = this.notifications.map((entry) => {
 			if (entry.readAt) return entry;
 			changed++;
-			return { ...entry, readAt: now };
+			const notification = { ...entry, readAt: now };
+			updated.push(notification);
+			return notification;
 		});
 		if (changed > 0) {
 			try {
@@ -992,6 +999,8 @@ export class NotificationService extends Service {
 				return this.failAfterMutationPersistence(error);
 			}
 		}
+		for (const notification of updated)
+			this.broadcast(notification, "notification_update");
 		return changed;
 	}
 
@@ -1001,6 +1010,7 @@ export class NotificationService extends Service {
 	}
 
 	private async removeSerialized(id: string): Promise<boolean> {
+		const notification = this.notifications.find((entry) => entry.id === id);
 		const before = this.notifications.length;
 		this.notifications = this.notifications.filter((n) => n.id !== id);
 		const removed = this.notifications.length !== before;
@@ -1010,6 +1020,8 @@ export class NotificationService extends Service {
 			} catch (error) {
 				return this.failAfterMutationPersistence(error);
 			}
+			if (notification)
+				this.broadcast(notification, "notification_update", true);
 		}
 		return removed;
 	}
@@ -1017,12 +1029,15 @@ export class NotificationService extends Service {
 	/** Clear the entire inbox. */
 	async clear(): Promise<void> {
 		return this.enqueueWrite(async () => {
+			const removed = this.notifications;
 			this.notifications = [];
 			try {
 				await this.persist();
 			} catch (error) {
 				return this.failAfterMutationPersistence(error);
 			}
+			for (const notification of removed)
+				this.broadcast(notification, "notification_update", true);
 		});
 	}
 }

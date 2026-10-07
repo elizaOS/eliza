@@ -87,8 +87,8 @@ describe("NotificationService", () => {
 	});
 
 	beforeEach(async () => {
-		emitted.length = 0;
 		await service.clear();
+		emitted.length = 0;
 	});
 
 	it("creates, stores, and returns a stamped notification", async () => {
@@ -177,6 +177,101 @@ describe("NotificationService", () => {
 		expect((event.data.notification as AgentNotification).title).toBe("Ping");
 		expect(event.data.unreadCount).toBe(1);
 	});
+
+	it("fans out durable single read and deletion without a new alert", async () => {
+		const record = await service.notify({ title: "Shared inbox record" });
+		emitted.length = 0;
+		expect(await service.markRead(record.id)).toBe(true);
+		expect(emitted).toHaveLength(1);
+		expect(emitted[0].data).toMatchObject({
+			type: "notification_update",
+			unreadCount: 0,
+		});
+		expect(
+			(emitted[0].data.notification as AgentNotification).readAt,
+		).toBeTypeOf("number");
+		expect(emitted[0].data.removed).toBeUndefined();
+		expect(await service.markRead(record.id)).toBe(false);
+		expect(emitted).toHaveLength(1);
+		expect(await service.remove(record.id)).toBe(true);
+		expect(emitted).toHaveLength(2);
+		expect(emitted[1].data).toMatchObject({
+			type: "notification_update",
+			removed: true,
+			unreadCount: 0,
+			notification: { id: record.id },
+		});
+		expect(await service.remove(record.id)).toBe(false);
+		expect(emitted).toHaveLength(2);
+	});
+
+	it.each(["markRead", "remove"] as const)(
+		"does not fan out %s before durable commit",
+		async (operation) => {
+			const record = await service.notify({ title: "Durability boundary" });
+			emitted.length = 0;
+			const original = runtime.setCache.bind(runtime);
+			runtime.setCache = async () => {
+				throw new Error("Rejected inbox mutation");
+			};
+			try {
+				await expect(service[operation](record.id)).rejects.toThrow(
+					"Rejected inbox mutation",
+				);
+				expect(emitted).toEqual([]);
+			} finally {
+				runtime.setCache = original;
+			}
+		},
+	);
+
+	it("fans out bulk read and clear only as committed updates", async () => {
+		const first = await service.notify({ title: "First" });
+		const second = await service.notify({ title: "Second" });
+		emitted.length = 0;
+		expect(await service.markAllRead()).toBe(2);
+		expect(emitted).toHaveLength(2);
+		for (const event of emitted) {
+			expect(event.data.type).toBe("notification_update");
+			expect(event.data.unreadCount).toBe(0);
+			expect(event.data.removed).toBeUndefined();
+		}
+		emitted.length = 0;
+		await service.clear();
+		expect(
+			emitted
+				.map((event) => (event.data.notification as AgentNotification).id)
+				.sort(),
+		).toEqual([first.id, second.id].sort());
+		for (const event of emitted) {
+			expect(event.data).toMatchObject({
+				type: "notification_update",
+				removed: true,
+				unreadCount: 0,
+			});
+			expect(event.data.nativeNotification).toBeUndefined();
+		}
+	});
+
+	it.each(["markAllRead", "clear"] as const)(
+		"does not fan out %s before durable bulk commit",
+		async (operation) => {
+			await service.notify({ title: "Bulk durability boundary" });
+			emitted.length = 0;
+			const original = runtime.setCache.bind(runtime);
+			runtime.setCache = async () => {
+				throw new Error("Rejected bulk mutation");
+			};
+			try {
+				await expect(service[operation]()).rejects.toThrow(
+					"Rejected bulk mutation",
+				);
+				expect(emitted).toEqual([]);
+			} finally {
+				runtime.setCache = original;
+			}
+		},
+	);
 
 	it("does not broadcast success when durable persistence rejects", async () => {
 		const originalSetCache = runtime.setCache.bind(runtime);
