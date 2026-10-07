@@ -280,7 +280,15 @@ public final class NativeNotificationConnectionService extends Service {
                     dispatch(attempt, () -> {
                         try {
                             requireCurrent(attempt, next);
-                            JSONObject notification = NativeNotificationWire.notification(text);
+                            JSONObject notification;
+                            try {
+                                notification = NativeNotificationWire.notification(text);
+                            } catch (org.json.JSONException | IllegalArgumentException invalidFrame) {
+                                // Reject only this untrusted event. Authentication,
+                                // journal and platform failures still fail the connection.
+                                android.util.Log.w("ElizaNotifications", "Ignored invalid notification frame");
+                                return;
+                            }
                             if (notification == null) return;
                             inbox.acceptLive(notification);
                             inboxStatus = inbox.status();

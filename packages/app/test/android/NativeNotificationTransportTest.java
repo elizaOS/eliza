@@ -36,8 +36,16 @@ public final class NativeNotificationTransportTest {
         frame.put("type", "heartbeat_event");
         check(NativeNotificationWire.notification(frame.toString()) == null, "Heartbeat is not a new notification");
         boolean malformed = false;
-        try { NativeNotificationWire.notification("{"); } catch (Exception invalid) { malformed = true; }
-        check(malformed, "Malformed frame cannot fabricate an empty successful inbox");
+        try { NativeNotificationWire.notification("{"); } catch (org.json.JSONException invalid) { malformed = true; }
+        check(malformed, "Malformed live frame must be rejected at the input boundary");
+        frame.put("type", "agent_event").put("stream", "notification");
+        frame.getJSONObject("payload").put("type", "notification");
+        frame.getJSONObject("payload").getJSONObject("notification").put("category", "future_unsupported");
+        boolean unsupported = false;
+        try { NativeNotificationWire.notification(frame.toString()); } catch (IllegalArgumentException invalid) { unsupported = true; }
+        check(unsupported, "Unknown category must reject only its live input");
+        frame.getJSONObject("payload").getJSONObject("notification").put("category", "agent");
+        check(NativeNotificationWire.notification(frame.toString()) != null, "A valid next event remains independently readable");
         for (String state : new String[]{"connected", "connecting", "disconnected"}) {
             check(NativeNotificationState.enabled(state, true, true, true, true), "Healthy active ownership unavailable");
             check(!NativeNotificationState.enabled(state, true, true, true, false), "First online activation must be complete before delivery is enabled");

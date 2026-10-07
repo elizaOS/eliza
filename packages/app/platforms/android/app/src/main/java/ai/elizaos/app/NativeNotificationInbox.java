@@ -96,12 +96,22 @@ final class NativeNotificationInbox {
                             .put("expiresAt", item.get("expiresAt"));
                 }
                 if (initial && !buffered.has(id)) remember(state, id, "baseline");
-                else if (!buffered.has(id)) deliver.add(item);
+                else if (!buffered.has(id)) {
+                    if (ignored(item)) remember(state, id, "ignored");
+                    else deliver.add(item);
+                }
             }
             for (java.util.Iterator<String> keys = buffered.keys(); keys.hasNext();) {
-                String id = keys.next(); if (!seen.has(id)) deliver.add(buffered.getJSONObject(id));
+                String id = keys.next();
+                if (!seen.has(id)) {
+                    JSONObject item = buffered.getJSONObject(id);
+                    if (ignored(item)) remember(state, id, "ignored");
+                    else deliver.add(item);
+                }
             }
-            if (deliver.size() > MAX_BUFFERED) throw new IOException("Native notification catch-up exceeds bounded delivery budget");
+            // MAX_BUFFERED bounds pre-activation live arrivals, not a full
+            // authoritative catch-up. The receipt/response limits still bound
+            // this list, and each platform effect commits its marker first.
             if (seen.length() + deliver.size() > MAX_SEEN) throw new IOException("Native notification receipt capacity exhausted");
             deliver.sort(Comparator.comparingLong(item -> item.optLong("createdAt")));
             state.put("initialized", true).put("baselineReady", true).put("buffered", new JSONObject());
@@ -130,9 +140,7 @@ final class NativeNotificationInbox {
     private void project(JSONObject state, JSONObject item) throws Exception {
         String id = item.getString("id");
         if (state.getJSONObject("seen").has(id)) return;
-        long now = System.currentTimeMillis();
-        if ("low".equals(item.getString("priority")) || !item.isNull("readAt")
-                || (!item.isNull("expiresAt") && item.getLong("expiresAt") <= now)) {
+        if (ignored(item)) {
             remember(state, id, "ignored"); save(state); return;
         }
         remember(state, id, "dispatched"); save(state);
@@ -143,6 +151,11 @@ final class NativeNotificationInbox {
             state.getJSONObject("seen").put(id, "unknown"); save(state); throw error;
         }
         state.getJSONObject("seen").put(id, accepted ? "accepted" : "unknown"); save(state);
+    }
+
+    private static boolean ignored(JSONObject item) throws Exception {
+        return "low".equals(item.getString("priority")) || !item.isNull("readAt")
+                || (!item.isNull("expiresAt") && item.getLong("expiresAt") <= System.currentTimeMillis());
     }
 
     private void remember(JSONObject state, String id, String phase) throws Exception {

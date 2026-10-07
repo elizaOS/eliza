@@ -102,6 +102,20 @@ public final class NativeNotificationInboxTest {
         check(readEffects.get() == 0); check(readRace.status().getInt("acceptedCount") == 0);
         // All supported explicit categories pass the same exact record contract.
         for (String category : new String[]{"reminder", "task", "workflow", "agent", "approval", "message", "health", "system", "general"}) check(NativeNotificationInbox.checked(record(A).put("category", category)).getString("category").equals(category));
+        // An initialized reconnect is not the pre-activation 128-frame buffer.
+        Path catchupRoot = Files.createTempDirectory("native-notification-catchup-").toRealPath();
+        AtomicInteger catchupEffects = new AtomicInteger();
+        var catchup = inbox(catchupRoot, OWNER, catchupEffects);
+        catchup.completeBaseline(new JSONArray());
+        JSONArray missed = new JSONArray();
+        for (int i = 0; i < 129; i++) missed.put(record(String.format("30000000-0000-0000-0000-%012d", i)).put("priority", "low"));
+        catchup.completeBaseline(missed);
+        check(catchupEffects.get() == 0); check(catchup.status().getInt("seenCount") == 129);
+        for (int i = 0; i < 129; i++) missed.put(record(String.format("40000000-0000-0000-0000-%012d", i)));
+        catchup.completeBaseline(missed);
+        check(catchupEffects.get() == 129); check(catchup.status().getBoolean("baselineReady"));
+        catchup.beginBaseline(); catchup.completeBaseline(missed);
+        check(catchupEffects.get() == 129);
         System.out.println("Native notification inbox passed: " + checks + " checks; no Android/network effects");
     }
 }
