@@ -166,27 +166,42 @@ describe("X402Client payment attempt callbacks", () => {
     }
   });
 
-  it("tells the callback when a transfer was attempted", async () => {
-    agentTransferToken.mockRejectedValueOnce(new Error("receipt timeout"));
-    const fetchSpy = mockSeller();
-    try {
-      const onPaymentFailed = vi.fn();
-      const client = new X402Client(createWallet(), {
-        onBeforePayment: () => true,
-        onPaymentFailed,
+  it.each([1, 2])(
+    "keeps payment correlation when transfer %i has an unknown outcome",
+    async (failedTransfer) => {
+      let calls = 0;
+      agentTransferToken.mockImplementation(async () => {
+        if (++calls === failedTransfer) throw new Error("receipt timeout");
+        return TX_HASH;
       });
+      const fetchSpy = mockSeller();
+      try {
+        const onPaymentFailed = vi.fn();
+        let approvedPaymentId: string | undefined;
+        const client = new X402Client(createWallet(), {
+          onBeforePayment: (_req, _url, { paymentId }) => {
+            approvedPaymentId = paymentId;
+            return true;
+          },
+          onPaymentFailed,
+        });
 
-      await expect(client.fetch(`https://${SERVICE}/r`)).rejects.toThrow(
-        "receipt timeout",
-      );
+        await expect(client.fetch(`https://${SERVICE}/r`)).rejects.toThrow(
+          "receipt timeout",
+        );
 
-      expect(onPaymentFailed.mock.calls[0][3]).toMatchObject({
-        transferAttempted: true,
-      });
-    } finally {
-      fetchSpy.mockRestore();
-    }
-  });
+        expect(onPaymentFailed).toHaveBeenCalledOnce();
+        expect(onPaymentFailed.mock.calls[0][3]).toEqual({
+          paymentId: approvedPaymentId,
+          transferAttempted: true,
+        });
+        expect(agentTransferToken).toHaveBeenCalledTimes(failedTransfer);
+        expect(client.getTransactionLog()).toEqual([]);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    },
+  );
 
   it("does not report a payment that onBeforePayment declined", async () => {
     const fetchSpy = mockSeller();

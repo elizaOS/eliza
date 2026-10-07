@@ -66,6 +66,7 @@ describe("X402Client fee leg asset resolution (#22381)", () => {
       client as unknown as {
         executePayment: (
           req: X402PaymentRequirements,
+          protocolFee: bigint,
           markTransferAttempted: () => void,
         ) => Promise<{ txHash: string; token: string }>;
       }
@@ -74,6 +75,7 @@ describe("X402Client fee leg asset resolution (#22381)", () => {
     const markTransferAttempted = vi.fn();
     const result = await executePayment(
       symbolRequirement(),
+      (1_000_000n * 77n) / 10000n,
       markTransferAttempted,
     );
     expect(markTransferAttempted).toHaveBeenCalledOnce();

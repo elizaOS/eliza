@@ -109,9 +109,30 @@ export interface X402ClientConfig {
   onBeforePayment?: (
     req: X402PaymentRequirements,
     url: string,
+    attempt: X402PaymentAttempt,
   ) => Promise<boolean> | boolean;
   /** Callback after payment */
-  onPaymentComplete?: (log: X402TransactionLog) => void;
+  onPaymentComplete?: (
+    log: X402TransactionLog,
+    attempt: X402PaymentAttempt,
+  ) => void;
+  /**
+   * Callback when a payment that `onBeforePayment` approved does not complete.
+   * With the same `paymentId`, an external budget can release what it held in
+   * `onBeforePayment`. `transferAttempted` means a transfer was submitted and
+   * may still land, so a cautious budget keeps its hold.
+   */
+  onPaymentFailed?: (
+    req: X402PaymentRequirements,
+    url: string,
+    error: unknown,
+    attempt: X402PaymentAttempt & { transferAttempted: boolean },
+  ) => void;
+}
+
+/** Identifies one payment attempt across the payment callbacks. */
+export interface X402PaymentAttempt {
+  paymentId: string;
 }
 
 // ─── Well-known Assets ───

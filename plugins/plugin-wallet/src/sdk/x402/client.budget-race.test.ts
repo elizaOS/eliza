@@ -27,6 +27,7 @@ const TX_HASH =
   "0x0000000000000000000000000000000000000000000000000000000000000abc";
 const SERVICE = "api.example.com";
 const ONE_USDC = 1_000_000n;
+const CHARGED_USDC = ONE_USDC + (ONE_USDC * 77n) / 10000n;
 
 function createWallet(): AgentWallet {
   return {
@@ -75,7 +76,11 @@ function mockSeller() {
 function fiveDollarServiceCap() {
   return {
     serviceBudgets: [
-      { service: SERVICE, maxPerRequest: ONE_USDC, dailyLimit: 5n * ONE_USDC },
+      {
+        service: SERVICE,
+        maxPerRequest: CHARGED_USDC,
+        dailyLimit: 5n * ONE_USDC,
+      },
     ],
   };
 }
@@ -112,15 +117,56 @@ describe("X402Client budget under concurrent payments (#33927)", () => {
           r.status === "rejected" &&
           r.reason instanceof X402BudgetExceededError,
       );
-      expect(paid).toHaveLength(5);
-      expect(blocked).toHaveLength(5);
+      expect(paid).toHaveLength(4);
+      expect(blocked).toHaveLength(6);
       expect(client.getDailySpendSummary().byService[SERVICE]).toBe(
-        5n * ONE_USDC,
+        4n * CHARGED_USDC,
       );
     } finally {
       fetchSpy.mockRestore();
     }
   });
+
+  it("rejects a principal-only service budget before any transfer", async () => {
+    const fetchSpy = mockSeller();
+    try {
+      const client = new X402Client(createWallet(), {
+        serviceBudgets: [
+          { service: SERVICE, maxPerRequest: ONE_USDC, dailyLimit: ONE_USDC },
+        ],
+      });
+      await expect(
+        client.fetch(`https://${SERVICE}/resource`),
+      ).rejects.toBeInstanceOf(X402BudgetExceededError);
+      expect(agentTransferToken).not.toHaveBeenCalled();
+      expect(client.getTransactionLog()).toEqual([]);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it.each(["perTxLimit", "remainingInPeriod"] as const)(
+    "rejects when the fee exceeds on-chain %s",
+    async (limit) => {
+      checkBudget.mockResolvedValue({
+        token: USDC_BASE,
+        perTxLimit: CHARGED_USDC,
+        remainingInPeriod: CHARGED_USDC,
+        [limit]: ONE_USDC,
+      });
+      const fetchSpy = mockSeller();
+      try {
+        const client = new X402Client(createWallet());
+        await expect(
+          client.fetch(`https://${SERVICE}/resource`),
+        ).rejects.toThrow("including protocol fee");
+        expect(agentTransferToken).not.toHaveBeenCalled();
+        expect(client.getTransactionLog()).toEqual([]);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    },
+  );
 
   it("frees the held amount when pre-transfer budget lookup fails", async () => {
     checkBudget.mockRejectedValueOnce(new Error("budget unavailable"));
@@ -128,7 +174,11 @@ describe("X402Client budget under concurrent payments (#33927)", () => {
     try {
       const client = new X402Client(createWallet(), {
         serviceBudgets: [
-          { service: SERVICE, maxPerRequest: ONE_USDC, dailyLimit: ONE_USDC },
+          {
+            service: SERVICE,
+            maxPerRequest: CHARGED_USDC,
+            dailyLimit: CHARGED_USDC,
+          },
         ],
       });
 
@@ -139,7 +189,9 @@ describe("X402Client budget under concurrent payments (#33927)", () => {
       // No transfer was attempted, so the next request may use the budget
       const response = await client.fetch(`https://${SERVICE}/resource`);
       expect(response.status).toBe(200);
-      expect(client.getDailySpendSummary().byService[SERVICE]).toBe(ONE_USDC);
+      expect(client.getDailySpendSummary().byService[SERVICE]).toBe(
+        CHARGED_USDC,
+      );
     } finally {
       fetchSpy.mockRestore();
     }
@@ -157,7 +209,7 @@ describe("X402Client budget under concurrent payments (#33927)", () => {
       const fetchSpy = mockSeller();
       try {
         const client = new X402Client(createWallet(), {
-          globalDailyLimit: ONE_USDC,
+          globalDailyLimit: CHARGED_USDC,
         });
         await expect(
           client.fetch(`https://${SERVICE}/resource`),
@@ -179,7 +231,11 @@ describe("X402Client budget under concurrent payments (#33927)", () => {
       let approve = false;
       const client = new X402Client(createWallet(), {
         serviceBudgets: [
-          { service: SERVICE, maxPerRequest: ONE_USDC, dailyLimit: ONE_USDC },
+          {
+            service: SERVICE,
+            maxPerRequest: CHARGED_USDC,
+            dailyLimit: CHARGED_USDC,
+          },
         ],
         onBeforePayment: async () => approve,
       });
