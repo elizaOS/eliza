@@ -2205,6 +2205,9 @@ export class SharedRuntimeConversation {
             code: "shared_runtime_turn_failed",
             failureName: error.failureName,
             retryable: error.retryable,
+            ...(error.failureDiagnostic
+              ? { failureDiagnostic: error.failureDiagnostic }
+              : {}),
           },
           { status: error.retryable ? 503 : 500 },
         );

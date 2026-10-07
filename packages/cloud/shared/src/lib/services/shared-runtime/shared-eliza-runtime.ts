@@ -81,10 +81,12 @@ import {
   SHARED_RUNTIME_CAPABILITIES_PROVIDER,
 } from "./shared-runtime-capabilities";
 import {
-  classifySharedRuntimeTurnFailure,
   projectQualifiedSharedProviderFailure,
+  recordSharedRuntimeFailureDiagnostic,
   type SharedModelCompletionDiagnostic,
+  type SharedModelFailureDiagnostic,
   sharedModelCompletionDiagnostic,
+  sharedModelFailureDiagnostic,
 } from "./shared-runtime-errors";
 import {
   insertSharedRuntimeGroundingMessages,
@@ -607,6 +609,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   let providerDispatched = false;
   let modelInvocationStarted = false;
   let lastModelCompletion: SharedModelCompletionDiagnostic | null = null;
+  let firstModelFailure: SharedModelFailureDiagnostic | undefined;
   const inferenceTelemetry: { summary?: InferenceTurnSummary } = {};
   let usage: SharedAgentTurnUsage | undefined;
   const groundingObservedAt = Date.now();
@@ -633,38 +636,19 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       // provider failure. Neither messages, stacks, headers, request values nor
       // response bodies cross this logging boundary.
       try {
-        const name = error instanceof Error ? error.name : "UnknownError";
-        const knownNames = new Set([
-          "Error",
-          "TypeError",
-          "ElizaError",
-          "ProviderConfigurationError",
-          "AbortError",
-          "TimeoutError",
-          "AI_APICallError",
-          "AI_RetryError",
-          "AI_TypeValidationError",
-          "AI_NoSuchToolError",
-          "AI_InvalidToolInputError",
-          "AI_InvalidPromptError",
-          "AI_InvalidResponseDataError",
-          "AI_NoOutputGeneratedError",
-          "AI_UnsupportedFunctionalityError",
-          "AI_UnsupportedModelVersionError",
-        ]);
-        const knownCodes = new Set([
-          "MODEL_OUTPUT_INCOMPLETE",
-          "PROVIDER_FALLBACK_REFUSED",
-          "OPENROUTER_FALLBACK_UNAVAILABLE",
-        ]);
-        const diagnosticCode =
-          error instanceof ElizaError && knownCodes.has(error.code) ? error.code : undefined;
+        const diagnostic = sharedModelFailureDiagnostic(error, operation);
+        firstModelFailure ??= diagnostic;
+        recordSharedRuntimeFailureDiagnostic(error, {
+          modelInvocationStarted,
+          failureKind: "unknown",
+          terminalFailurePresent: false,
+          terminalMode: "unknown",
+          lastModelCompletion,
+          modelFailure: firstModelFailure,
+        });
         logger.error("[shared-eliza-runtime] model call failed", {
           traceId: input.traceId ?? null,
-          operation,
-          errorName: knownNames.has(name) ? name : "UnknownError",
-          ...(diagnosticCode ? { diagnosticCode } : {}),
-          ...classifySharedRuntimeTurnFailure(error),
+          ...diagnostic,
         });
       } catch {
         // The same original error remains the runtime outcome even if a
@@ -1193,12 +1177,32 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         // error-policy:J7 even failed content-free diagnostics preserve the
         // original terminal failure and never permit a successful commit.
       }
-      throw new ElizaError("Eliza Shared runtime message processing failed.", {
+      const terminalError = new ElizaError("Eliza Shared runtime message processing failed.", {
         code: "SHARED_RUNTIME_MESSAGE_FAILED",
         context: { failureKind: failure.kind, transient: failure.transient },
         cause: failure,
         severity: failure.transient ? "ephemeral" : "fatal",
       });
+      recordSharedRuntimeFailureDiagnostic(terminalError, () => {
+        const didRespond = result.didRespond;
+        return {
+          modelInvocationStarted,
+          didRespond: typeof didRespond === "boolean" ? didRespond : null,
+          responseErrorPresent: Boolean(result.responseContent?.error),
+          failureKind: failure.kind,
+          terminalFailurePresent: Boolean(terminalFailure),
+          terminalMode:
+            result.mode === "simple" ||
+            result.mode === "actions" ||
+            result.mode === "blocked" ||
+            result.mode === "none"
+              ? result.mode
+              : "unknown",
+          lastModelCompletion,
+          ...(firstModelFailure ? { modelFailure: firstModelFailure } : {}),
+        };
+      });
+      throw terminalError;
     }
     const reply = delivered.at(-1)?.trim() || result?.responseContent?.text?.trim() || "";
     // A verified action may own the response and deliver it through the
