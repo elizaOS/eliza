@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { ElizaError } from "@elizaos/core";
+import { APICallError } from "ai";
 import {
   parseSharedRuntimeFailureDiagnostic,
   recordSharedRuntimeFailureDiagnostic,
@@ -319,5 +320,246 @@ describe("Shared failure diagnostic boundary", () => {
       didRespond: false,
       responseErrorPresent: true,
     });
+  });
+});
+
+describe("Closed provider error diagnostics", () => {
+  const sdkError = (detail: unknown, responseBody?: string) =>
+    new APICallError({
+      message: "PRIVATE_SDK_MESSAGE",
+      url: "https://fixture.invalid/chat/completions",
+      requestBodyValues: { prompt: "PRIVATE_PROMPT" },
+      statusCode: 400,
+      responseHeaders: { "x-fixture": "PRIVATE_HEADER" },
+      data: detail === undefined ? undefined : { error: detail },
+      responseBody,
+      isRetryable: false,
+    });
+  const safeDiagnostic = (error: unknown) => ({
+    modelInvocationStarted: true,
+    failureKind: "transient_failure",
+    terminalFailurePresent: false,
+    terminalMode: "simple" as const,
+    lastModelCompletion: null,
+    modelFailure: sharedModelFailureDiagnostic(error, "generate"),
+  });
+  test.each([
+    [
+      "duplicate tool_call.id values are rejected",
+      "messages[4].tool_calls[0].id",
+      "duplicate_tool_call_id",
+      "messages",
+    ],
+    [
+      "tool messages must follow the prior assistant tool call",
+      "messages.4",
+      "tool_message_pairing",
+      "messages",
+    ],
+    [
+      "tool_choice cannot be set unless tools is provided",
+      "tool_choice",
+      "tool_choice",
+      "tool_choice",
+    ],
+    ["minLength is unsupported in schema", "tools[0].function.parameters", "schema", "tools"],
+    ["maximum context window length exceeds limit", "messages", "context_limit", "messages"],
+    ["unsupported parameter", "temperature", "unsupported_parameter", "generation"],
+  ])("projects only a closed category for %s", (message, param, category, parameterClass) => {
+    const error = sdkError({
+      message: message + " PRIVATE_BODY",
+      type: "invalid_request_error",
+      param,
+      code: null,
+    });
+    const result = sharedModelFailureDiagnostic(error, "generate");
+    expect(result.providerError).toEqual({
+      category,
+      parameterClass,
+      type: "invalid_request_error",
+      code: "unknown",
+    });
+    expect(result.failureName).toBe("SharedRuntimeProviderRejectedError");
+    expect(result.retryable).toBe(false);
+    expect(JSON.stringify(result)).not.toContain("PRIVATE_");
+  });
+  test("closed tool generation codes do not expose failed generated content", () => {
+    for (const code of ["tool_use_failed", "failed_generation"]) {
+      const error = sdkError({ code, message: "PRIVATE_BODY", failed_generation: "PRIVATE_TOOL" });
+      const result = sharedModelFailureDiagnostic(error, "generate");
+      expect(result.providerError).toEqual({
+        category: "tool_generation",
+        type: "unknown",
+        code,
+        parameterClass: "unknown",
+      });
+      expect(result.retryable).toBe(false);
+      expect(JSON.stringify(result)).not.toContain("PRIVATE_");
+    }
+  });
+  test("explicit failed tool generation patterns produce only closed categories", () => {
+    for (const operation of ["generate", "parse"]) {
+      const error = sdkError({ message: `Failed to ${operation} tool call: PRIVATE_TOOL` });
+      const result = sharedModelFailureDiagnostic(error, "generate");
+      expect(result.providerError?.category).toBe("tool_generation");
+      expect(result.providerError?.code).toBe("unknown");
+      expect(JSON.stringify(result)).not.toContain("PRIVATE_");
+    }
+  });
+  test("reads SDK responseBody only in RAM when parsed data is absent", () => {
+    const body = JSON.stringify({
+      error: {
+        message: "PRIVATE_BODY",
+        type: "PRIVATE_TYPE",
+        code: "invalid_tool_schema",
+        param: "response_format.json_schema.schema.PRIVATE_FIELD",
+      },
+    });
+    const error = sdkError(undefined, body);
+    const result = sharedModelFailureDiagnostic(error, "generate");
+    expect(result.providerError).toEqual({
+      category: "schema",
+      type: "unknown",
+      code: "invalid_tool_schema",
+      parameterClass: "response_format",
+    });
+    expect(error.responseBody).toBe(body);
+    expect(error.requestBodyValues).toEqual({ prompt: "PRIVATE_PROMPT" });
+    expect(JSON.stringify(result)).not.toContain("PRIVATE_");
+  });
+  test("bounds malformed, oversized and non-object response bodies", () => {
+    for (const body of [
+      "PRIVATE_NON_JSON",
+      "null",
+      "[]",
+      JSON.stringify({ error: "PRIVATE_DETAIL" }),
+      "x".repeat(32769),
+    ]) {
+      const error = sdkError(undefined, body);
+      expect(sharedModelFailureDiagnostic(error, "generate").providerError).toBeUndefined();
+      expect(error.responseBody).toBe(body);
+    }
+  });
+  test("unknown private values become closed unknown categories", () => {
+    const result = sharedModelFailureDiagnostic(
+      sdkError({
+        message: "PRIVATE_BODY",
+        type: "PRIVATE_TYPE",
+        code: "PRIVATE_CODE",
+        param: "PRIVATE_PARAM",
+      }),
+      "generate",
+    );
+    expect(result.providerError).toEqual({
+      category: "unknown",
+      type: "unknown",
+      code: "unknown",
+      parameterClass: "unknown",
+    });
+    expect(JSON.stringify(result)).not.toContain("PRIVATE_");
+  });
+  test("poisoned SDK data and nested accessors preserve original error identity and disposition", () => {
+    const error = sdkError(
+      undefined,
+      JSON.stringify({
+        error: {
+          type: "invalid_request_error",
+          code: "invalid_tool_choice",
+          param: "tool_choice",
+          message: "PRIVATE_BODY",
+        },
+      }),
+    );
+    Object.defineProperty(error, "data", {
+      get() {
+        throw new Error("PRIVATE_POISON");
+      },
+    });
+    const result = sharedModelFailureDiagnostic(error, "generate");
+    expect(result.providerError?.category).toBe("tool_choice");
+    const wrapper = new SharedRuntimeTurnError("failed", error);
+    expect(wrapper.cause).toBe(error);
+    expect(wrapper.retryable).toBe(false);
+    const detail = {
+      type: "invalid_request_error",
+      get message() {
+        throw new Error("PRIVATE_POISON");
+      },
+      get param() {
+        throw new Error("PRIVATE_POISON");
+      },
+    };
+    expect(sharedModelFailureDiagnostic(sdkError(detail), "generate").providerError).toEqual({
+      category: "invalid_request",
+      type: "invalid_request_error",
+      code: "unknown",
+      parameterClass: "unknown",
+    });
+    const allPoisoned = sdkError(undefined);
+    Object.defineProperty(allPoisoned, "responseBody", {
+      get() {
+        throw new Error("PRIVATE_POISON");
+      },
+    });
+    expect(sharedModelFailureDiagnostic(allPoisoned, "generate").providerError).toBeUndefined();
+  });
+  test("closed categories survive WeakMap, coordinator JSON and rehydration without payloads", () => {
+    const original = sdkError({
+      type: "invalid_request_error",
+      code: "invalid_tool_schema",
+      param: "tools",
+      message: "PRIVATE_BODY",
+    });
+    const diagnostic = safeDiagnostic(original);
+    const terminal = new Error("PRIVATE_TERMINAL");
+    recordSharedRuntimeFailureDiagnostic(terminal, diagnostic);
+    const wrapper = new SharedRuntimeTurnError("failed", terminal, {
+      failureName: "SharedRuntimeProviderUnavailableError",
+      retryable: true,
+    });
+    expect(wrapper.cause).toBe(terminal);
+    const transport = JSON.parse(JSON.stringify(wrapper.failureDiagnostic));
+    const hydrated = SharedRuntimeTurnError.fromClassification(
+      wrapper.failureName,
+      wrapper.retryable,
+      transport,
+    );
+    expect(hydrated.failureDiagnostic).toEqual(diagnostic);
+    expect(hydrated.retryable).toBe(true);
+    expect(JSON.stringify(hydrated.failureDiagnostic)).not.toContain("PRIVATE_");
+  });
+  test("transport validators strip extra payloads and reject arbitrary category injection", () => {
+    const diagnostic = safeDiagnostic(
+      sdkError({ type: "invalid_request_error", message: "PRIVATE_BODY" }),
+    );
+    const input = JSON.parse(JSON.stringify(diagnostic));
+    input.modelFailure.providerError.body = "PRIVATE_BODY";
+    expect(parseSharedRuntimeFailureDiagnostic(input)).toEqual(diagnostic);
+    for (const key of ["category", "type", "code", "parameterClass"]) {
+      const poisoned = JSON.parse(JSON.stringify(diagnostic));
+      poisoned.modelFailure.providerError[key] = "PRIVATE_INJECTION";
+      expect(parseSharedRuntimeFailureDiagnostic(poisoned)).toBeUndefined();
+    }
+    Object.defineProperty(input.modelFailure.providerError, "category", {
+      get() {
+        throw new Error("PRIVATE_POISON");
+      },
+    });
+    expect(parseSharedRuntimeFailureDiagnostic(input)).toBeUndefined();
+  });
+  test("nested retry errors retain the first SDK category without mutating either error", () => {
+    const error = sdkError({
+      type: "invalid_request_error",
+      message: "duplicate tool_call.id",
+      param: "messages",
+    });
+    const envelope = Object.assign(new Error("PRIVATE_RETRY"), {
+      name: "AI_RetryError",
+      lastError: error,
+    });
+    const result = sharedModelFailureDiagnostic(envelope, "generate");
+    expect(result.providerError?.category).toBe("duplicate_tool_call_id");
+    expect(result.retryable).toBe(false);
+    expect(envelope.lastError).toBe(error);
   });
 });
