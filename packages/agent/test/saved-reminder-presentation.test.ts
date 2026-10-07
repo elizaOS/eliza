@@ -17,6 +17,7 @@ import { createRealTestRuntime } from "../../app/test/helpers/real-runtime.ts";
 import { ensureOwnerConversation } from "../src/api/conversation-routes.ts";
 import { maybeRouteAutonomyEventToConversation } from "../src/api/server-autonomy-helpers.ts";
 import type { ServerState } from "../src/api/server-types.ts";
+import { AUTONOMY_NOTIFICATION_DELIVERY } from "../src/runtime/agent-event-service.ts";
 
 it("delivers saved facts through chat voice boundary and notification store without models", async () => {
   const host = await createRealTestRuntime({
@@ -59,7 +60,7 @@ it("delivers saved facts through chat voice boundary and notification store with
   const pending: Promise<void>[] = [];
   let canonicalChat: string | undefined;
   const requestedBody =
-    "Clock scope reminder QA, verification cdfaacf9.\nRésumé — café ☕; exact punctuation!";
+    "\n  Clock scope reminder QA, verification cdfaacf9.\nRésumé — café ☕; exact punctuation!  \n";
   const nativeEvents: Record<string, unknown>[] = [];
   try {
     await LifeOpsRepository.bootstrapSchema(runtime);
@@ -104,7 +105,9 @@ it("delivers saved facts through chat voice boundary and notification store with
       return result;
     };
     const notify = notifier.notify.bind(notifier);
+    const publishedBodies: string[] = [];
     notifier.notify = async (input) => {
+      if (typeof input.body === "string") publishedBodies.push(input.body);
       const messageId = input.data?.messageId;
       if (typeof messageId === "string") {
         expect(committedSources.has(messageId)).toBe(true);
@@ -151,6 +154,9 @@ it("delivers saved facts through chat voice boundary and notification store with
     const body = notices[0]?.body;
     if (typeof body !== "string") throw new Error("Missing notification body");
     expect(body).toBe(requestedBody);
+    expect(
+      publishedBodies.filter((text) => text === requestedBody),
+    ).toHaveLength(1);
     const nativeBodyEvents = nativeEvents.filter(
       (data) =>
         data.type === "notification" &&
@@ -304,18 +310,38 @@ it("delivers saved facts through chat voice boundary and notification store with
     expect(fallback[0].deepLink).toBe("/chat");
     state.conversations = previousConversations;
 
-    modelResponse = "A normal voiced message";
+    modelResponse = "\n  A normal voiced message  \n";
+    await maybeRouteAutonomyEventToConversation(state, {
+      runId: randomUUID(),
+      seq: 1,
+      stream: "assistant",
+      ts: Date.now(),
+      data: { text: "\n  Ordinary autonomy message  \n", source: "autonomy" },
+    });
+    const ordinaryMessages = await runtime.getMemories({
+      roomId: conv.roomId,
+      tableName: "messages",
+    });
     expect(
-      (
-        await ensureAgentVoice(
-          runtime,
-          { text: "Ordinary autonomy message" },
-          { source: "autonomy" },
-        )
-      ).text,
+      ordinaryMessages.find((m) => m.content.source === "autonomy")?.content
+        .text,
     ).toBe("A normal voiced message");
     expect(modelCalls).toBe(1);
     modelCalls = 0;
+    await maybeRouteAutonomyEventToConversation(state, {
+      runId: randomUUID(),
+      seq: 1,
+      stream: "assistant",
+      ts: Date.now(),
+      data: { text: "\n  Ephemeral relay  \n", source: "coordinator" },
+    });
+    expect(broadcasts.at(-1)).toMatchObject({
+      message: { text: "Ephemeral relay" },
+    });
+    expect(
+      await runtime.getMemories({ roomId: conv.roomId, tableName: "messages" }),
+    ).toHaveLength(ordinaryMessages.length);
+    expect(modelCalls).toBe(0);
 
     const marker = createReminderPresentation(body, body, "Reminder");
     await expect(
@@ -338,6 +364,53 @@ it("delivers saved facts through chat voice boundary and notification store with
         { source: "reminder" },
       ),
     ).rejects.toThrow("Untrusted");
+    const messageCount = (
+      await runtime.getMemories({ roomId: conv.roomId, tableName: "messages" })
+    ).length;
+    const notificationCount = notifications.list().length;
+    const broadcastCount = broadcasts.length;
+    let forgedPublications = 0;
+    for (const data of [
+      { text: body, reminderPresentation: JSON.parse(JSON.stringify(marker)) },
+      { text: body.trim(), reminderPresentation: marker },
+      { text: `${body}altered`, reminderPresentation: marker },
+      {
+        text: body,
+        reminderPresentation: { ...marker, chatText: `${body}altered` },
+      },
+    ]) {
+      const handoff = {
+        publish: async () => {
+          forgedPublications++;
+          return notifications.notify({
+            title: "Rejected presentation",
+            body,
+            category: "reminder",
+            source: "lifeops",
+          });
+        },
+      };
+      await expect(
+        maybeRouteAutonomyEventToConversation(state, {
+          runId: randomUUID(),
+          seq: 1,
+          stream: "assistant",
+          ts: Date.now(),
+          data: {
+            ...data,
+            source: "reminder",
+            [AUTONOMY_NOTIFICATION_DELIVERY]: handoff,
+          },
+        }),
+      ).rejects.toThrow(/Untrusted|mismatched/);
+    }
+    expect(forgedPublications).toBe(0);
+    expect(
+      await runtime.getMemories({ roomId: conv.roomId, tableName: "messages" }),
+    ).toHaveLength(messageCount);
+    expect(notifications.list()).toHaveLength(notificationCount);
+    expect(broadcasts).toHaveLength(broadcastCount);
+    expect(modelCalls).toBe(0);
   } finally {
     await Promise.allSettled(pending);
     await host.cleanup();
