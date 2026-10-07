@@ -32,6 +32,7 @@ import { runtimeFactory } from "../../eliza/runtime-factory";
 import { userContextService } from "../../eliza/user-context";
 import { logger } from "../../utils/logger";
 import { charactersService } from "../characters";
+import { agentReplyTimestamp } from "./reply-timestamp";
 import { roomsService } from "./rooms";
 
 // Cache key helper for agent info
@@ -320,7 +321,7 @@ class AgentsService {
         messageId: agentMessage.id!,
         content: agentMessage.content.text as string,
         roomId,
-        timestamp: new Date(agentMessage.createdAt || Date.now()),
+        timestamp: agentReplyTimestamp(agentMessage.createdAt),
         usage: {
           inputTokens: Math.ceil(message.length / 4),
           outputTokens: Math.ceil(((agentMessage.content.text as string) || "").length / 4),
