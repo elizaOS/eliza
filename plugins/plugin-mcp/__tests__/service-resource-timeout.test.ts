@@ -88,6 +88,22 @@ describe("McpService resource read timeout", () => {
     expect(service.getServers()[0]?.error).toMatch(/timed out/i);
   });
 
+  it("reconnects when a stdio server exits during tool discovery", async () => {
+    const starts: number[] = [];
+    const originalStart = StdioClientTransport.prototype.start;
+    vi.spyOn(StdioClientTransport.prototype, "start").mockImplementation(async function (
+      this: StdioClientTransport
+    ) {
+      await originalStart.call(this);
+      starts.push(this.pid ?? -1);
+    });
+    const service = await start(5000, "crash-list");
+    expect(service.getServers()[0]).toMatchObject({ status: "disconnected" });
+    expect(starts).toHaveLength(1);
+    await vi.waitFor(() => expect(starts).toHaveLength(2), { timeout: 5000, interval: 50 });
+    expect(service.getServers()[0]?.name).toBe("pages");
+  });
+
   it("finishes tool discovery when the list returns inside the configured timeout", async () => {
     const service = await start(2000, "slow-list");
     const [server] = service.getServers();

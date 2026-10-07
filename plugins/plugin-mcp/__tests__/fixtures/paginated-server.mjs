@@ -55,6 +55,9 @@ for (const [schema, key, item] of [
   if (key === "tools" ? !capabilities.tools : !capabilities.resources) continue;
   server.setRequestHandler(schema, async (request) => {
     const cursor = request.params?.cursor;
+    if (mode === "crash-list" && key === "tools" && cursor === undefined) {
+      process.exit(1);
+    }
     if (mode === "slow-list" && key === "tools" && cursor === undefined) {
       await new Promise((resolve) => setTimeout(resolve, 400));
     }
