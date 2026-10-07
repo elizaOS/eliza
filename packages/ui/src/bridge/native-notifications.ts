@@ -31,6 +31,8 @@ export interface NativeNotificationRequest {
   expiresAt?: number | null;
   /** Captured producer authority, not a URL chosen by notification content. */
   expectedBase?: string;
+  /** Native fingerprint captured with the producer's registration authority. */
+  expectedOwner?: string;
   /** App route / URL to open on tap. */
   deepLink?: string;
   /** Canonical, read-only chat destination from the notification producer. */
@@ -496,14 +498,15 @@ export async function showNativeNotification(
         // second LocalNotifications receipt store. Both arrival paths share
         // the native inbox, including first-activation buffering.
         if (
-          !native.owner ||
+          !req.expectedOwner ||
+          native.owner !== req.expectedOwner ||
           typeof req.createdAt !== "number" ||
           typeof req.expectedBase !== "string" ||
           typeof plugin.presentNativeNotification !== "function"
         )
           return "none";
         const result = await plugin.presentNativeNotification({
-          expectedOwner: native.owner,
+          expectedOwner: req.expectedOwner,
           expectedBase: req.expectedBase,
           notification: {
             id: req.id,

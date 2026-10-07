@@ -78,6 +78,7 @@ describe("one native managed reminder presentation", () => {
         createdAt: 1791400000000,
         source: "lifeops",
         expectedBase: "http://10.0.0.241:31725",
+        expectedOwner: "a".repeat(64),
       }),
     ).toBe("none");
     expect(native.push.presentNativeNotification).toHaveBeenCalledWith(
@@ -106,8 +107,27 @@ describe("one native managed reminder presentation", () => {
         ...request,
         createdAt: 1791400000000,
         expectedBase: "http://10.0.0.241:31725",
+        expectedOwner: "a".repeat(64),
       }),
     ).rejects.toThrow("Native owner changed");
+    expect(native.local.schedule).not.toHaveBeenCalled();
+  });
+  it("rejects an old record after a same-base account switch instead of binding it to the new native owner", async () => {
+    native.push.getNativeNotificationDeliveryStatus.mockResolvedValue({
+      transport: "native",
+      owner: "b".repeat(64),
+      enabled: true,
+    });
+    expect(
+      await showNativeNotification({
+        ...request,
+        body: "Previous account record",
+        createdAt: 1791400000000,
+        expectedBase: "http://10.0.0.241:31725",
+        expectedOwner: "a".repeat(64),
+      }),
+    ).toBe("none");
+    expect(native.push.presentNativeNotification).not.toHaveBeenCalled();
     expect(native.local.schedule).not.toHaveBeenCalled();
   });
   it.each(["occurrence", "calendar_event"])(

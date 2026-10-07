@@ -124,10 +124,23 @@ interface RegisteredPushToken {
 let registeredToken: RegisteredPushToken | null = null;
 let nativeDelivery: {
   key: string;
+  owner: string;
   epoch: number;
   getPlugin: PushRegistrationDeps["getPlugin"];
   captureAuthority: PushRegistrationDeps["captureAuthority"];
 } | null = null;
+
+/** Capture before any delivery await. A later lookup cannot authorize an old
+ * record for a newly selected account on the same server URL. */
+export function captureNativeNotificationOwner(): string | null {
+  return nativeDelivery &&
+    nativeDelivery.epoch === authorityEpoch &&
+    nativeDelivery.key === activeAuthorityKey &&
+    nativeDelivery.key ===
+      (nativeDelivery.captureAuthority?.() ?? { key: "default" }).key
+    ? nativeDelivery.owner
+    : null;
+}
 let pendingRevocations: RegisteredPushToken[] = [];
 
 const TOKEN_POST_RETRY_DELAYS_MS = [0, 250, 1_000] as const;
@@ -378,6 +391,8 @@ async function startPushRegistration(
   ) {
     const native = await plugin.getNativeNotificationDeliveryStatus();
     if (native.transport === "native") {
+      if (!native.owner || !/^[a-f0-9]{64}$/.test(native.owner))
+        throw new Error("Native notification owner unavailable");
       const authority = activeAuthorityKey;
       const epoch = authorityEpoch;
       await plugin.register();
@@ -387,6 +402,7 @@ async function startPushRegistration(
         throw new Error("Native notification authority unavailable");
       nativeDelivery = {
         key: authority,
+        owner: native.owner,
         epoch,
         getPlugin: deps.getPlugin,
         captureAuthority: deps.captureAuthority,
@@ -484,6 +500,7 @@ export async function hasAndroidPushDelivery(
           document.visibilityState === "hidden";
         return (
           native.transport === "native" &&
+          native.owner === nativeDelivery.owner &&
           native.enabled &&
           native.notificationsAllowed &&
           (!background || native.backgroundReliable)
