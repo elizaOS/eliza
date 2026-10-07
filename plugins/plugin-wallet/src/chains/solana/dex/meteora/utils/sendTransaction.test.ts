@@ -3,6 +3,7 @@ import {
   Keypair,
   SystemProgram,
   TransactionMessage,
+  TransactionInstruction,
   VersionedTransaction,
 } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
@@ -58,12 +59,16 @@ describe("sendTransaction", () => {
     const payer = Keypair.generate();
     const position = Keypair.generate();
     const sent: VersionedTransaction[] = [];
+    const simulated: VersionedTransaction[] = [];
     const connection = {
       getLatestBlockhash: async () => ({
         blockhash: Keypair.generate().publicKey.toBase58(),
         lastValidBlockHeight: 1,
       }),
-      simulateTransaction: async () => ({ value: { unitsConsumed: 200_000 } }),
+      simulateTransaction: async (transaction: VersionedTransaction) => {
+        simulated.push(transaction);
+        return { value: { err: null, unitsConsumed: 200_000 } };
+      },
       getRecentPrioritizationFees: async () => [{ prioritizationFee: 1 }],
       sendTransaction: async (transaction: VersionedTransaction) => {
         sent.push(transaction);
@@ -72,10 +77,19 @@ describe("sendTransaction", () => {
       getSignatureStatuses: async () => ({ value: [{ err: null }] }),
     };
 
+    const heap = ComputeBudgetProgram.requestHeapFrame({ bytes: 64 * 1024 });
+    const dataBudget = new TransactionInstruction({
+      programId: ComputeBudgetProgram.programId,
+      keys: [],
+      data: Buffer.from([4, 0, 0, 16, 0]),
+    });
     await sendTransaction(
       connection as never,
       [
         ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 99 }),
+        heap,
+        dataBudget,
         SystemProgram.createAccount({
           fromPubkey: payer.publicKey,
           newAccountPubkey: position.publicKey,
@@ -88,8 +102,64 @@ describe("sendTransaction", () => {
       [position]
     );
 
+    expect(simulated).toHaveLength(1);
+    const budgets = (tx: VersionedTransaction) =>
+      TransactionMessage.decompile(tx.message).instructions.filter((instruction) =>
+        instruction.programId.equals(ComputeBudgetProgram.programId)
+      );
+    expect(budgets(simulated[0]).map((instruction) => [...instruction.data])).toEqual([
+      [...ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }).data],
+      [...ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 99 }).data],
+      [...heap.data],
+      [...dataBudget.data],
+    ]);
+    expect(simulated[0].signatures[1].some((byte) => byte !== 0)).toBe(true);
     expect(sent).toHaveLength(1);
+    expect(budgets(sent[0]).map((instruction) => [...instruction.data])).toEqual([
+      [...ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }).data],
+      [...ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 }).data],
+      [...heap.data],
+      [...dataBudget.data],
+    ]);
     expect(setComputeUnitLimitCount(sent[0])).toBe(1);
     expect(sent[0].signatures[1].some((byte) => byte !== 0)).toBe(true);
   });
+});
+
+it("rejects a failed simulation before fees or broadcast", async () => {
+  const payer = Keypair.generate();
+  let sent = 0,
+    feeReads = 0;
+  const connection = {
+    getLatestBlockhash: async () => ({ blockhash: Keypair.generate().publicKey.toBase58() }),
+    simulateTransaction: async () => ({
+      value: {
+        err: { InstructionError: [0, "ComputationalBudgetExceeded"] },
+        unitsConsumed: 200_000,
+      },
+    }),
+    getRecentPrioritizationFees: async () => {
+      feeReads++;
+      return [];
+    },
+    sendTransaction: async () => {
+      sent++;
+      return "unexpected";
+    },
+  };
+  await expect(
+    sendTransaction(
+      connection as never,
+      [
+        SystemProgram.transfer({
+          fromPubkey: payer.publicKey,
+          toPubkey: Keypair.generate().publicKey,
+          lamports: 0,
+        }),
+      ],
+      payer
+    )
+  ).rejects.toMatchObject({ code: "METEORA_SIMULATION_FAILED" });
+  expect(sent).toBe(0);
+  expect(feeReads).toBe(0);
 });
