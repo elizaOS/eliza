@@ -223,3 +223,209 @@ describe("VideoService.getTranscript empty-caption degradation", () => {
     expect(result.text).toBe("hello there");
   });
 });
+
+describe("VideoService.getTranscript manual subtitle format selection", () => {
+  // yt-dlp's YouTube extractor lists every manual subtitle language as these
+  // variants, in this order; only SRT and WebVTT are line-based cue formats.
+  const youtubeVariants = (formats: string[]) =>
+    formats.map((ext) => ({
+      ext,
+      url: `https://www.youtube.com/api/timedtext?v=abc&lang=en&fmt=${ext}`,
+    }));
+  const json3 = JSON.stringify(
+    {
+      wireMagic: "pb3",
+      events: [
+        { tStartMs: 1000, dDurationMs: 3000, segs: [{ utf8: "hello there" }] },
+      ],
+    },
+    null,
+    2,
+  );
+  const bodies: Record<string, string> = {
+    json3,
+    srv1: '<?xml version="1.0" encoding="utf-8" ?><transcript><text start="1" dur="3">hello there</text></transcript>',
+    srt: ["1", "00:00:01,000 --> 00:00:04,000", "hello there", ""].join("\n"),
+    vtt: [
+      "WEBVTT",
+      "Kind: captions",
+      "Language: en",
+      "",
+      "00:00:01.000 --> 00:00:04.000",
+      "hello there",
+      "",
+      "00:00:04.000 --> 00:00:06.000 align:start position:0%",
+      "general kenobi",
+      "",
+    ].join("\n"),
+  };
+
+  function serviceWithManualSubtitles(formats: string[]) {
+    const { service } = createServiceWithYtDlp({
+      title: "YouTube Manual Subs",
+      channel: "chan",
+      description: "desc",
+      subtitles: { en: youtubeVariants(formats) },
+    });
+    const downloadSRT = vi
+      .spyOn(
+        service as unknown as { downloadSRT: (u: string) => Promise<string> },
+        "downloadSRT",
+      )
+      .mockImplementation(
+        async (url: string) =>
+          bodies[new URL(url).searchParams.get("fmt") ?? ""] ?? "",
+      );
+    return { service, downloadSRT };
+  }
+
+  it.each(["json3", "srv1", "ttml"])(
+    "skips unsupported manual %s subtitles and uses available automatic captions",
+    async (ext) => {
+      const { service } = createServiceWithYtDlp({
+        title: "Unsupported manual format",
+        subtitles: { en: youtubeVariants([ext]) },
+        automatic_captions: {
+          en: [{ url: "https://caption.example/auto.json" }],
+        },
+      });
+      const downloadSRT = vi.spyOn(
+        service as unknown as { downloadSRT: (url: string) => Promise<string> },
+        "downloadSRT",
+      );
+      const downloadCaption = vi
+        .spyOn(
+          service as unknown as {
+            downloadCaption: (url: string) => Promise<string>;
+          },
+          "downloadCaption",
+        )
+        .mockResolvedValue(json3);
+      const result = await service.processVideo(
+        "https://youtu.be/unsupported-manual",
+        createRuntime(),
+      );
+      expect(result.text).toBe("hello there");
+      expect(downloadSRT).not.toHaveBeenCalled();
+      expect(downloadCaption).toHaveBeenCalledWith(
+        "https://caption.example/auto.json",
+      );
+    },
+  );
+
+  it("finds extensionless SRT after a known unsupported manual variant", async () => {
+    const { service } = createServiceWithYtDlp({
+      title: "Extensionless manual format",
+      subtitles: {
+        en: [
+          ...youtubeVariants(["json3"]),
+          { url: "https://caption.example/manual" },
+        ],
+      },
+    });
+    const downloadSRT = vi
+      .spyOn(
+        service as unknown as { downloadSRT: (url: string) => Promise<string> },
+        "downloadSRT",
+      )
+      .mockResolvedValue(bodies.srt);
+    const result = await service.processVideo(
+      "https://youtu.be/extensionless-manual",
+      createRuntime(),
+    );
+    expect(result.text).toBe("hello there");
+    expect(downloadSRT).toHaveBeenCalledExactlyOnceWith(
+      "https://caption.example/manual",
+    );
+  });
+
+  it.each(["", "WEBVTT\n\nNOTE captions unavailable"])(
+    "continues to automatic captions when manual cues are empty (%s)",
+    async (body) => {
+      const { service } = createServiceWithYtDlp({
+        title: "Empty manual cues",
+        subtitles: { en: youtubeVariants(["srt"]) },
+        automatic_captions: {
+          en: [{ url: "https://caption.example/auto.json" }],
+        },
+      });
+      vi.spyOn(
+        service as unknown as { downloadSRT: (url: string) => Promise<string> },
+        "downloadSRT",
+      ).mockResolvedValue(body);
+      const downloadCaption = vi
+        .spyOn(
+          service as unknown as {
+            downloadCaption: (url: string) => Promise<string>;
+          },
+          "downloadCaption",
+        )
+        .mockResolvedValue(json3);
+      const result = await service.processVideo(
+        "https://youtu.be/empty-manual",
+        createRuntime(),
+      );
+      expect(result.text).toBe("hello there");
+      expect(downloadCaption).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("falls back to audio when manual cues are empty and no automatic captions exist", async () => {
+    const { service, downloadSRT } = serviceWithManualSubtitles(["srt"]);
+    downloadSRT.mockResolvedValue("");
+    const transcribeAudio = vi
+      .spyOn(service, "transcribeAudio")
+      .mockResolvedValue("audio evidence");
+    const runtime = createRuntime();
+    const result = await service.processVideo(
+      "https://youtu.be/empty-manual-audio",
+      runtime,
+    );
+    expect(result.text).toBe("audio evidence");
+    expect(transcribeAudio).toHaveBeenCalledExactlyOnceWith(
+      "https://youtu.be/empty-manual-audio",
+      runtime,
+    );
+  });
+
+  it("uses the SRT variant instead of yt-dlp's leading json3 variant", async () => {
+    const { service, downloadSRT } = serviceWithManualSubtitles([
+      "json3",
+      "srv1",
+      "srv2",
+      "srv3",
+      "ttml",
+      "srt",
+      "vtt",
+    ]);
+
+    const result = await service.processVideo(
+      "https://www.youtube.com/watch?v=manual-srt",
+      createRuntime(),
+    );
+
+    expect(result.text).toBe("hello there");
+    expect(downloadSRT).toHaveBeenCalledTimes(1);
+    expect(downloadSRT).toHaveBeenCalledWith(
+      "https://www.youtube.com/api/timedtext?v=abc&lang=en&fmt=srt",
+    );
+  });
+
+  it("falls back to the WebVTT variant and keeps cues that have no identifier", async () => {
+    const { service, downloadSRT } = serviceWithManualSubtitles([
+      "json3",
+      "srv1",
+      "vtt",
+    ]);
+
+    const result = await service.processVideo(
+      "https://www.youtube.com/watch?v=manual-vtt",
+      createRuntime(),
+    );
+
+    expect(result.text).toBe("hello there general kenobi");
+    expect(downloadSRT).toHaveBeenCalledWith(
+      "https://www.youtube.com/api/timedtext?v=abc&lang=en&fmt=vtt",
+    );
+  });
+});

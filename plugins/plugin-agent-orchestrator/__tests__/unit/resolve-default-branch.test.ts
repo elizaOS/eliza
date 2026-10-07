@@ -35,6 +35,32 @@ afterEach(() => {
 });
 
 describe("resolveDefaultBranch", () => {
+  it("isolates credentials while coalescing concurrent reads in one scope", async () => {
+    const callbacks: Array<
+      (err: Error | null, stdout: string, stderr: string) => void
+    > = [];
+    execFileMock.mockImplementation((_file, _args, _opts, cb) =>
+      callbacks.push(cb),
+    );
+    const url = "https://github.com/o/private";
+    const first = resolveDefaultBranch(url, "test-token-one");
+    const duplicate = resolveDefaultBranch(url, "test-token-one");
+    const second = resolveDefaultBranch(url, "test-token-two");
+    const anonymous = resolveDefaultBranch(url);
+    expect(first).toBe(duplicate);
+    expect(execFileMock).toHaveBeenCalledTimes(3);
+    callbacks[0]?.(null, "ref: refs/heads/one\tHEAD\n", "");
+    callbacks[1]?.(null, "ref: refs/heads/two\tHEAD\n", "");
+    callbacks[2]?.(null, "ref: refs/heads/public\tHEAD\n", "");
+    await expect(
+      Promise.all([first, duplicate, second, anonymous]),
+    ).resolves.toEqual(["one", "one", "two", "public"]);
+    await expect(resolveDefaultBranch(url, "test-token-two")).resolves.toBe(
+      "two",
+    );
+    expect(execFileMock).toHaveBeenCalledTimes(3);
+  });
+
   it("parses the symref HEAD line into the branch name", async () => {
     mockGit(null, "ref: refs/heads/develop\tHEAD\nabc123\tHEAD\n");
     await expect(resolveDefaultBranch("https://github.com/o/r")).resolves.toBe(

@@ -149,57 +149,34 @@ patches/         dependency patches applied during installation
 ```
 
 Every maintained package or plugin should explain its public surface, scripts,
-configuration, and local constraints in its own `README.md` and paired
-`AGENTS.md`. Read the nearest package guide before making changes.
+configuration, and local constraints in its own `README.md`. Read that README
+before making changes. The root [AGENTS.md](AGENTS.md) is the only repository
+agent guide; do not add nested `AGENTS.md` files.
 
 ## Contributing
 
 > [!IMPORTANT]
-> **Read this before you open an issue or pull request. These rules are required.**
-> Work must support the approved minimum viable product (MVP) and product
-> requirements document (PRD). Maintainers will close unnecessary work. Contributors
-> who submit unnecessary work will be subject to penalties set by maintainers.
+> **The [contribution rules](CONTRIBUTING.md) are required for all issues and PRs.**
+> Stay within the approved minimum viable product (MVP) and product requirements
+> document (PRD). Maintainers will close unnecessary work and apply contributor
+> penalties.
 
-### Issue scope
-
-Report a real bug or a missing requirement in the approved MVP. Link the relevant
-PRD section and MVP plan item. Show the problem, its effect on users, and the
-expected result. Follow this guide and the owning package's guide.
-
-Do not submit work for minor points with no useful effect. Do not add unnecessary
-tests, defensive code, validation, or truncation. Do not expand the MVP through
-an issue or pull request. For a new feature, first discuss it with human
-maintainers. Maintainers must approve it and add it to the PRD and MVP plan
-before an implementation issue or pull request is opened. If the requirement is
-unclear or you cannot find the approved plan, ask maintainers before you start.
-
-### Pull request requirements
-
-- **Prove a useful improvement.** Show a failure before the fix and a successful
-  result after it, a gain in accuracy or another relevant score, or a demonstrated
-  improvement to an approved capability. State the test conditions and results.
-- **Make the code simpler.** Remove unnecessary code. Combine duplicate types and
-  functions. Use existing work. Add a type or code only when the approved task
-  needs it. Explain why existing code cannot meet that need.
-- **Explain the choice.** Show what you researched, the alternatives you examined,
-  and why the selected implementation is the best fit. Keep the explanation
-  proportional to the change.
-- **Test the real behavior.** Run the relevant end-to-end flow and provide the
-  commands, setup, results, and evidence for the reviewed commit. Use existing
-  tests first. Avoid new unit tests, tests that only check mocks, and tests that
-  repeat the implementation. A test count or a passing mock is not proof that
-  the product works. Run the required package checks and repository checks.
-  For documentation-only changes, check the text and links; do not add artificial
-  runtime tests. State any failed or blocked checks.
-- **For every UI change, upload an MP4 walkthrough to the PR.** Explain the change
-  in the video and show the complete user flow working. Include video evidence
-  of the changed behavior, desktop and mobile before-and-after screenshots,
-  the app visual audit, and detailed steps for a reviewer to test the change.
-  Screenshots alone do not meet the video requirement.
-- **Write every issue and PR in ASD-STE100 Simplified Technical English.** Use
-  short, direct sentences and consistent terms. Explain necessary technical
-  terms. A non-technical reader must be able to understand the problem, change,
-  and test steps.
+- Contributors must write and submit issues by hand on GitHub. Agents must not
+  draft or create issues. See [the human-only issue rule](CONTRIBUTING.md#human-only-issue-creation).
+- Report real bugs or missing approved MVP requirements. Link the PRD and MVP
+  plan. New features need human maintainer discussion and approval, then updates
+  to both plans before implementation issues or PRs are opened.
+- Prove a useful improvement with before-and-after behavior or relevant scores.
+  Prefer cleanup, removal, reuse, and combined types and functions. Add new types
+  or code only when necessary. Explain the research, alternatives, and choice.
+- Do not add unnecessary tests, defensive code, validation, or truncation.
+  Provide real end-to-end test results. Use existing tests first. Avoid new unit
+  tests, mock-only proof, and tests that repeat the implementation.
+- Every UI PR needs an uploaded MP4 explainer and walkthrough, video evidence of
+  the changed flow, desktop and mobile screenshots, the app visual audit, and
+  detailed steps to test the change.
+- Write issues and PRs in ASD-STE100 Simplified Technical English. Use short,
+  direct sentences and explain technical terms for a non-technical reader.
 
 elizaOS focuses on its first-party runtime, applications, and maintained integrations.
 We no longer accept third-party plugins or registry items, including new listings,
@@ -207,7 +184,7 @@ listing updates, and registry submission tooling. Related issues and pull reques
 will be closed as out of scope.
 
 Submit changes through a pull request against `develop`; follow
-[AGENTS.md](AGENTS.md) and the owning package's guide. Include verification of
+[AGENTS.md](AGENTS.md) and the owning package's README. Include verification of
 the changed behavior.
 
 Report vulnerabilities privately through
