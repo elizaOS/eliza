@@ -22,6 +22,18 @@ describe("cleanUrl", () => {
 		);
 	});
 
+	it("keeps a trailing parenthesis that closes a later opener after an earlier closer", () => {
+		expect(cleanUrl("https://example.com/?q=a)b_(c)")).toBe(
+			"https://example.com/?q=a)b_(c)",
+		);
+		expect(cleanUrl("https://example.com/a(b)c)")).toBe(
+			"https://example.com/a(b)c",
+		);
+		expect(cleanUrl("https://en.wikipedia.org/wiki/Foo_(bar_(baz))")).toBe(
+			"https://en.wikipedia.org/wiki/Foo_(bar_(baz))",
+		);
+	});
+
 	it("still strips wrapping parentheses and trailing punctuation", () => {
 		expect(cleanUrl("https://example.com/docs)")).toBe(
 			"https://example.com/docs",
