@@ -1056,7 +1056,9 @@ export function getHostedFrontendServeRewrite(
 
 /** Cost: no new I/O; reuse the original route and authorities in a smaller shell. */
 export function isPersonalSharedMessagePath(pathname: string): boolean {
-  return /^\/api\/internal\/eliza-app\/personal-shared\/messages\/?$/.test(pathname);
+  return /^\/api\/internal\/eliza-app\/personal-shared\/messages\/?$/.test(
+    pathname,
+  );
 }
 
 async function dispatchPersonalShared(
@@ -1070,18 +1072,25 @@ async function dispatchPersonalShared(
   const traceId = resolveElizaTraceId(request.headers);
   const headers = new Headers(request.headers);
   headers.set(ELIZA_TRACE_ID_HEADER, traceId);
-  personalSharedAppPromise ??= import("./personal-shared-app").then((module) =>
-    module.createPersonalSharedApp(),
-  ).catch((error) => {
-    personalSharedAppPromise = undefined;
-    throw error;
-  });
+  personalSharedAppPromise ??= import("./personal-shared-app")
+    .then((module) => module.createPersonalSharedApp())
+    .catch((error) => {
+      personalSharedAppPromise = undefined;
+      throw error;
+    });
   const app = await personalSharedAppPromise;
   const response = await app.fetch(new Request(request, { headers }), env, ctx);
   const responseHeaders = new Headers(response.headers);
   setHttpTelemetryHeaders(responseHeaders, traceId, [
-    { name: "personal_shared_entry", durationMs: performance.now() - startedAt },
-    { name: "personal_shared_isolate", durationMs: 0, description: cold ? "cold" : "warm" },
+    {
+      name: "personal_shared_entry",
+      durationMs: performance.now() - startedAt,
+    },
+    {
+      name: "personal_shared_isolate",
+      durationMs: 0,
+      description: cold ? "cold" : "warm",
+    },
   ]);
   responseHeaders.set("X-Eliza-Personal-Shared-Path", "thin");
   return new Response(response.body, {
@@ -1145,7 +1154,11 @@ export default {
       if (stewardThinResponse) return stewardThinResponse;
       const inferenceResponse = await dispatchInference(apiRequest, env, ctx);
       if (inferenceResponse) return inferenceResponse;
-      const personalSharedResponse = await dispatchPersonalShared(apiRequest, env, ctx);
+      const personalSharedResponse = await dispatchPersonalShared(
+        apiRequest,
+        env,
+        ctx,
+      );
       if (personalSharedResponse) return personalSharedResponse;
       return dispatchFullApp(apiRequest, env, ctx);
     }
@@ -1223,7 +1236,11 @@ export default {
       return dispatchFullApp(rewrittenRequest, env, ctx);
     }
 
-    const personalSharedResponse = await dispatchPersonalShared(request, env, ctx);
+    const personalSharedResponse = await dispatchPersonalShared(
+      request,
+      env,
+      ctx,
+    );
     if (personalSharedResponse) return personalSharedResponse;
     return dispatchFullApp(request, env, ctx);
   },

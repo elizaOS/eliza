@@ -78,7 +78,10 @@ export function createPersonalSharedApp(): Hono<AppEnv> {
     ),
   );
 
-  app.route("/api/internal/eliza-app/personal-shared/messages", personalSharedMessages);
+  app.route(
+    "/api/internal/eliza-app/personal-shared/messages",
+    personalSharedMessages,
+  );
 
   app.notFound((c) =>
     c.json(
