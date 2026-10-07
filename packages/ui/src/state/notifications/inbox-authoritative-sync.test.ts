@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 const fixture = vi.hoisted(() => ({
   list: vi.fn(),
   clear: vi.fn(async () => ({})),
+  readAll: vi.fn(async () => ({})),
   events: new Map<string, (event: never) => void>(),
   auth: {
     phase: "authenticated",
@@ -21,6 +22,7 @@ vi.mock("../../api/client", () => ({
     getBaseUrl: () => "http://127.0.0.1",
     onBaseUrlChange: () => () => {},
     clearNotifications: fixture.clear,
+    markAllNotificationsRead: fixture.readAll,
     markNotificationRead: async () => ({}),
     removeNotification: async () => ({}),
     rotateConnection: vi.fn(),
@@ -47,6 +49,7 @@ import {
   __resetNotificationStoreForTests,
   clearNotifications,
   initNotifications,
+  markAllNotificationsRead,
   markNotificationRead,
   removeNotification,
   retryNotificationHydration,
@@ -79,6 +82,7 @@ afterEach(() => {
   fixture.events.clear();
   fixture.list.mockReset();
   fixture.clear.mockReset().mockResolvedValue({});
+  fixture.readAll.mockReset().mockResolvedValue({});
 });
 it("healthy resume refreshes authoritative rows and does not resurrect deleted cache or old read state", async () => {
   fixture.list.mockResolvedValueOnce({
@@ -236,3 +240,93 @@ it.each(["read", "remove"])(
     expect(__getStateForTests().unreadCount).toBe(999);
   },
 );
+
+async function readyGlobalInbox() {
+  fixture.list.mockResolvedValueOnce({
+    notifications: [row(1)],
+    unreadCount: 1000,
+  });
+  initNotifications();
+  await vi.waitFor(() =>
+    expect(__getStateForTests().hydrationStatus).toBe("ready"),
+  );
+}
+it("a newer empty successful clear fences an older failed clear rollback", async () => {
+  await readyGlobalInbox();
+  let reject!: (error: Error) => void;
+  fixture.clear.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, fail) => {
+        reject = fail;
+      }),
+  );
+  const first = clearNotifications();
+  await clearNotifications();
+  reject(new Error("First clear failed"));
+  await first;
+  expect(__getStateForTests().notifications).toEqual([]);
+  expect(__getStateForTests().unreadCount).toBe(0);
+});
+it.each(["clear", "readAll"])(
+  "failed %s keeps newer authoritative live global count",
+  async (op) => {
+    await readyGlobalInbox();
+    let reject!: (error: Error) => void;
+    const write = op === "clear" ? fixture.clear : fixture.readAll;
+    write.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    const pending =
+      op === "clear" ? clearNotifications() : markAllNotificationsRead();
+    fixture.events.get("agent_event")?.({
+      stream: "notification",
+      payload: {
+        type: "notification",
+        notification: row(2),
+        unreadCount: 1001,
+      },
+    } as never);
+    reject(new Error("Bulk write failed"));
+    await pending;
+    expect(__getStateForTests().notifications).toEqual([row(2), row(1)]);
+    expect(__getStateForTests().unreadCount).toBe(1001);
+  },
+);
+it("all-read during stale hydration applies to the global inbox and unseen snapshot rows", async () => {
+  await readyGlobalInbox();
+  let finish!: (value: unknown) => void;
+  fixture.list.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const refresh = retryNotificationHydration();
+  await markAllNotificationsRead();
+  finish({ notifications: [row(1), row(2)], unreadCount: 1000 });
+  await refresh;
+  expect(__getStateForTests().unreadCount).toBe(0);
+  expect(
+    __getStateForTests().notifications.every((n) => Boolean(n.readAt)),
+  ).toBe(true);
+});
+it("failed all-read removes its hydration fence and restores global total", async () => {
+  await readyGlobalInbox();
+  let finish!: (value: unknown) => void;
+  fixture.list.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const refresh = retryNotificationHydration();
+  fixture.readAll.mockRejectedValueOnce(new Error("Read failed"));
+  await markAllNotificationsRead();
+  expect(__getStateForTests().unreadCount).toBe(1000);
+  finish({ notifications: [row(1), row(2)], unreadCount: 1001 });
+  await refresh;
+  expect(__getStateForTests().unreadCount).toBe(1001);
+});
