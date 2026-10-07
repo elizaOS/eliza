@@ -2941,34 +2941,52 @@ describe("Shared Eliza Workerd runtime", () => {
 });
 
 describe("genuine Shared caller cancellation dispatch boundary", () => {
-  const input = (signal: AbortSignal, onProviderDispatch: () => Promise<void>) => ({
-    character: { name: "Shared Eliza", system: "Be useful.", model: "qwen-3.8-27b" },
-    history: [],
-    message: "do not finish this cancelled turn",
-    model: "qwen-3.8-27b",
-    abortSignal: signal,
-    onProviderDispatch,
-    execution: {
-      channel: { type: ChannelType.DM, source: "shared-runtime" },
-      agentKey: "personal:cancel-boundary",
-      roomKey: "cancel-boundary",
-    },
-  });
+  const input = (
+    signal: AbortSignal,
+    onProviderDispatch: () => Promise<void>,
+    onRuntimeTiming: (receipt: SharedRuntimeTimingReceipt) => void,
+  ) =>
+    ({
+      character: { name: "Shared Eliza", system: "Be useful.", model: "qwen-3.8-27b" },
+      history: [],
+      message: "do not finish this cancelled turn",
+      agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+      model: "qwen-3.8-27b",
+      abortSignal: signal,
+      onProviderDispatch,
+      onRuntimeTiming,
+      execution: {
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
+        agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+        roomKey: "cancel-boundary",
+      },
+    }) satisfies Parameters<typeof import("./shared-eliza-runtime").runSharedElizaRuntimeTurn>[0];
   test("a preaborted genuine turn does not mark dispatch or contact a provider", async () => {
     const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
     const controller = new AbortController();
-    controller.abort(new DOMException("caller cancelled", "AbortError"));
+    const reason = new DOMException("caller cancelled", "AbortError");
+    controller.abort(reason);
+    const timingOutcomes: string[] = [];
     let calls = 0;
     let dispatches = 0;
     globalThis.fetch = (async () => {
       calls += 1;
       throw new Error("Preaborted turn must not contact a provider");
     }) as typeof fetch;
-    await runSharedElizaRuntimeTurn(
-      input(controller.signal, async () => {
-        dispatches += 1;
-      }),
-    ).catch(() => undefined);
+    await expect(
+      runSharedElizaRuntimeTurn(
+        input(
+          controller.signal,
+          async () => {
+            dispatches += 1;
+          },
+          (receipt) => timingOutcomes.push(receipt.outcome),
+        ),
+      ),
+    ).rejects.toThrow();
+    expect(controller.signal.reason).toBe(reason);
+    expect(timingOutcomes).toEqual(["aborted"]);
+    expect(controller.signal.aborted).toBe(true);
     expect(dispatches).toBe(0);
     expect(calls).toBe(0);
   });
@@ -2978,24 +2996,35 @@ describe("genuine Shared caller cancellation dispatch boundary", () => {
     process.env.OPENROUTER_API_KEY = "cancel-boundary-router-key";
     const controller = new AbortController();
     let dispatches = 0;
+    const timingOutcomes: string[] = [];
+    const reason = new DOMException("caller cancelled", "AbortError");
     const hosts: string[] = [];
     globalThis.fetch = (async (url) => {
       const host = new URL(String(url)).hostname;
       hosts.push(host);
       if (host !== "api.cerebras.ai")
         throw new Error("Cancelled genuine turn must not start fallback");
-      controller.abort(new DOMException("caller cancelled", "AbortError"));
+      controller.abort(reason);
       return Response.json(
         { error: { message: "fixture response races cancellation" } },
         { status: 503 },
       );
     }) as typeof fetch;
     try {
-      await runSharedElizaRuntimeTurn(
-        input(controller.signal, async () => {
-          dispatches += 1;
-        }),
-      ).catch(() => undefined);
+      await expect(
+        runSharedElizaRuntimeTurn(
+          input(
+            controller.signal,
+            async () => {
+              dispatches += 1;
+            },
+            (receipt) => timingOutcomes.push(receipt.outcome),
+          ),
+        ),
+      ).rejects.toThrow();
+      expect(controller.signal.reason).toBe(reason);
+      expect(timingOutcomes).toEqual(["aborted"]);
+      expect(controller.signal.aborted).toBe(true);
       expect(dispatches).toBe(1);
       expect(hosts).toEqual(["api.cerebras.ai"]);
     } finally {
