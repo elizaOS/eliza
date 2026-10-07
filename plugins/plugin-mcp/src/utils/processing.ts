@@ -4,6 +4,7 @@
  * the model to synthesize a user-facing reply, persists the exchange as memory,
  * and invokes the callback. Also sends the initial acknowledgement.
  */
+import { isDeepStrictEqual } from "node:util";
 import {
   type Content,
   ContentType,
@@ -105,9 +106,15 @@ export function processToolResult(
   }
   if (result.structuredContent !== undefined) {
     const serialized = JSON.stringify(result.structuredContent);
-    const hasTextCopy = result.content.some(
-      (content) => content.type === "text" && content.text.trim() === serialized
-    );
+    const hasTextCopy = result.content.some((content) => {
+      if (content.type !== "text") return false;
+      try {
+        return isDeepStrictEqual(JSON.parse(content.text), result.structuredContent);
+      } catch {
+        // error-policy:J3 text blocks need not be JSON; keep their text and add the result.
+        return false;
+      }
+    });
     if (!hasTextCopy) {
       toolOutput += `${toolOutput ? "\n\n" : ""}Structured result:\n${serialized}`;
     }

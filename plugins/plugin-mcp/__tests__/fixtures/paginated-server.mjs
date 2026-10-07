@@ -81,7 +81,7 @@ if (capabilities.tools) {
       if (mode === "result-mixed" || mode === "result-text")
         content.push({ type: "text", text: "Text summary from the tool" });
       if (mode === "result-echo" || mode === "result-echo-spaced") {
-        const json = JSON.stringify(request.params.arguments);
+        const json = JSON.stringify(request.params.arguments, null, mode === "result-echo" ? 0 : 2);
         content.push({ type: "text", text: mode === "result-echo" ? json : ` \n${json}\n ` });
       }
       if (mode === "result-mixed")

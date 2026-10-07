@@ -174,12 +174,14 @@ describe("call_tool result through real stdio and SQLite", () => {
       const output = result.data?.output as string;
       if (mode === "text") {
         expect(output).toBe("Text summary from the tool");
+      } else if (mode.startsWith("echo")) {
+        expect(JSON.parse(output)).toEqual(payload);
       } else {
         expect(output).toContain(JSON.stringify(payload));
       }
       expect(prompts[0]).toContain(output);
       if (mode.startsWith("echo")) {
-        const serialized = JSON.stringify(payload);
+        const serialized = JSON.stringify(payload, null, mode === "echo" ? 0 : 2);
         expect(output.split(serialized)).toHaveLength(2);
         expect(prompts[0].split(serialized)).toHaveLength(2);
         if (mode === "echo-spaced") expect(output).toBe(` \n${serialized}\n `);
