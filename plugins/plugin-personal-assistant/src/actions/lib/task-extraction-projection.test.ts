@@ -20,6 +20,7 @@ import { extractTaskCreatePlanWithLlm } from "./extract-task-plan";
 const create = JSON.stringify({
   mode: "create",
   requestKind: "reminder",
+  nativeProjection: "in_app_only",
   title: "saved title",
   cadenceKind: "once",
   dueInMinutes: 2,
@@ -152,6 +153,12 @@ async function run(mode: string, outputs: string[]) {
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     useModel: vi.fn(
       async (_type: unknown, params: { prompt: string; system?: string }) => {
+        expect(_type).toBe("TEXT_LARGE");
+        expect(params).toHaveProperty("responseFormat", {
+          type: "json_object",
+        });
+        expect(`${params.system ?? ""}\n${params.prompt}`).toMatch(/json/i);
+        expect(params).not.toHaveProperty("responseSchema");
         prompts.push(params.prompt);
         systems.push(params.system);
         expect(effects).toBe(0);
@@ -289,6 +296,23 @@ describe("task extractor reviewed action handoff", () => {
     expect(r.prompts[1]).toContain("Standing constraint: no native grants");
     expect(r.effects).toBe(1);
     expect(r.systems).toEqual([r.expectedSystem, r.expectedSystem]);
+  });
+  it("repairs an omitted destination before a planned create effect", async () => {
+    const { nativeProjection: _projection, ...omitted } = JSON.parse(create);
+    const r = await run("selected", [JSON.stringify(omitted), create]);
+    expect(r.prompts).toHaveLength(2);
+    expect(r.effects).toBe(1);
+    expect(r.systems).toEqual([r.expectedSystem, r.expectedSystem]);
+  });
+  it("does not execute an unresolved destination after context restoration", async () => {
+    const { nativeProjection: _projection, ...omitted } = JSON.parse(create);
+    const r = await run("selected", [
+      '{"restoreContext":true}',
+      JSON.stringify(omitted),
+    ]);
+    expect(r.prompts).toHaveLength(2);
+    expect(r.effects).toBe(0);
+    expect(r.result.success).toBe(false);
   });
 });
 
