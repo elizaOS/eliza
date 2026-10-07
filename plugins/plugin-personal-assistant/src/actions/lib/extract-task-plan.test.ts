@@ -16,6 +16,7 @@ import {
   textExplicitlyLeavesScheduleUnspecified,
   textStatesExplicitSchedule,
 } from "./extract-task-plan.js";
+import { extractUpdateFieldsWithLlm } from "./extract-update-fields.js";
 
 function makeRuntime(respond: (prompt: string) => string): IAgentRuntime {
   return {
@@ -36,6 +37,7 @@ const BASE_PLAN_JSON = {
   mode: "create",
   response: null,
   requestKind: null,
+  nativeProjection: null,
   title: "Call mom",
   description: null,
   cadenceKind: "once",
@@ -102,6 +104,59 @@ describe("textStatesExplicitSchedule", () => {
 });
 
 describe("extractTaskCreatePlanWithLlm datetime fields", () => {
+  it.each(["in_app_only", "apple_reminders", null])(
+    "keeps an explicit destination decision %s without a repair call",
+    async (nativeProjection) => {
+      const body = "\n  Requested exact alert.  \n";
+      const runtime = makeRuntime(() =>
+        JSON.stringify({
+          ...BASE_PLAN_JSON,
+          requestKind: "reminder",
+          dueInMinutes: 20,
+          description: body,
+          nativeProjection,
+        }),
+      );
+      const plan = await extractTaskCreatePlanWithLlm({
+        runtime,
+        intent: "Remind me in twenty minutes",
+        state: undefined,
+      });
+      expect(plan.nativeProjection).toBe(nativeProjection);
+      expect(plan.description).toBe(body);
+      expect(runtime.useModel).toHaveBeenCalledTimes(1);
+    },
+  );
+  it.each([true, false])(
+    "does not silently accept an omitted destination (repair succeeds=%s)",
+    async (repairSucceeds) => {
+      const { nativeProjection: _projection, ...withoutProjection } =
+        BASE_PLAN_JSON;
+      let calls = 0;
+      const runtime = makeRuntime(() => {
+        calls++;
+        return JSON.stringify({
+          ...withoutProjection,
+          requestKind: "reminder",
+          dueInMinutes: 20,
+          ...(calls === 2 && repairSucceeds
+            ? { nativeProjection: "in_app_only" }
+            : {}),
+        });
+      });
+      const plan = await extractTaskCreatePlanWithLlm({
+        runtime,
+        intent: "Remind me here in twenty minutes",
+        state: undefined,
+      });
+      expect(runtime.useModel).toHaveBeenCalledTimes(2);
+      expect(plan).toMatchObject(
+        repairSucceeds
+          ? { mode: "create", nativeProjection: "in_app_only" }
+          : { mode: "respond", title: null },
+      );
+    },
+  );
   it.each([false, true])(
     "requests JSON-only task plans for legacy history (repair=%s)",
     async (repair) => {
@@ -360,3 +415,50 @@ describe("extractTaskCreatePlanWithLlm requestKind trust", () => {
     );
   });
 });
+
+// The same parsed update reaches contextual definition normalization: once
+// bodies retain bytes; ordinary recurring descriptions keep normalized text.
+it.each<[string, string | null, string]>([
+  ["once", null, "\n  Updated exact alert.  \n"],
+  ["daily", null, "Updated exact alert."],
+  ["daily", "once", "\n  Updated exact alert.  \n"],
+  ["once", "daily", "Updated exact alert."],
+])(
+  "uses the effective update cadence for description bytes (%s -> %s)",
+  async (currentCadenceKind, cadenceKind, description) => {
+    const body = "\n  Updated exact alert.  \n";
+    const runtime = makeRuntime(() =>
+      JSON.stringify({ description: body, cadenceKind }),
+    );
+    const update = await extractUpdateFieldsWithLlm({
+      runtime,
+      intent: `Change the alert to ${body}`,
+      currentTitle: "Reminder",
+      currentCadenceKind,
+      currentWindows: [],
+    });
+    expect(update.description).toBe(description);
+    expect(runtime.useModel).toHaveBeenCalledTimes(1);
+  },
+);
+
+it.each([
+  { requestKind: "unspecified", cadenceKind: "once" },
+  { requestKind: "reminder", cadenceKind: "daily" },
+])(
+  "keeps ordinary description normalization for $requestKind/$cadenceKind",
+  async (shape) => {
+    const runtime = makeRuntime(() =>
+      JSON.stringify({
+        ...BASE_PLAN_JSON,
+        ...shape,
+        description: "\n  Ordinary context  \n",
+      }),
+    );
+    const plan = await extractTaskCreatePlanWithLlm({
+      runtime,
+      intent: "Track my ordinary activity",
+    });
+    expect(plan.description).toBe("Ordinary context");
+  },
+);
