@@ -5,10 +5,7 @@
  */
 
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import {
-  type TwitterBrokerCredentials,
-  twitterAutomationService,
-} from "@/lib/services/twitter-automation";
+import type { TwitterBrokerCredentials } from "@/lib/services/twitter-automation";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -82,13 +79,13 @@ function publicCredentialResponse(
 
 export class TwitterOAuthRefreshCoordinator {
   private readonly env: AppEnv["Bindings"];
-  private readonly broker: TwitterCredentialBroker;
+  private readonly broker: TwitterCredentialBroker | undefined;
   private operationQueue: Promise<void> = Promise.resolve();
 
   constructor(
     _state: DurableObjectState,
     env: AppEnv["Bindings"],
-    broker: TwitterCredentialBroker = twitterAutomationService,
+    broker: TwitterCredentialBroker | undefined = undefined,
   ) {
     this.env = env;
     this.broker = broker;
@@ -124,8 +121,14 @@ export class TwitterOAuthRefreshCoordinator {
             { status: 400 },
           );
         }
+        // Cost: initialize the existing broker after validation, inside the same serialized queue.
+        const broker =
+          this.broker === undefined
+            ? (await import("@/lib/services/twitter-automation"))
+                .twitterAutomationService
+            : this.broker;
         const credentials = await runWithCloudBindingsAsync(this.env, () =>
-          this.broker.getBrokerCredentials(
+          broker.getBrokerCredentials(
             body.organizationId,
             body.userId,
             body.connectionRole,

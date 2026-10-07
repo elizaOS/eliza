@@ -4,7 +4,9 @@
  * so persisted capability state never depends on a caller-supplied mapping.
  */
 
-import { ElizaError, stringToUuid, type UUID } from "@elizaos/core/edge";
+import { ElizaError } from "@elizaos/core/errors";
+import type { UUID } from "@elizaos/core/types/primitives";
+import { stringToUuid } from "@elizaos/core/utils";
 
 export interface SharedTodoSourceScope {
   sourceAgentId: string;
