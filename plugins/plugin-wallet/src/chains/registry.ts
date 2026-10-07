@@ -68,6 +68,10 @@ import type { SupportedChain, Transaction } from "./evm/types";
 import BigNumber from "./solana/bn";
 import { SOLANA_SERVICE_NAME } from "./solana/constants";
 import {
+  parseSolanaTokenBaseUnits,
+  SOLANA_SWAP_AMOUNT_INVALID,
+} from "./solana/exact-base-units.js";
+import {
   fetchJupiterJson,
   resolveJupiterApiBaseUrl,
 } from "./solana/jupiter-api";
@@ -843,50 +847,6 @@ function parseSolanaTransferLamports(amount: string | undefined): number {
     );
   }
   return lamports.toNumber();
-}
-
-const SOLANA_TOKEN_BASE_UNIT_MAX = new BigNumber("18446744073709551615");
-const SOLANA_TOKEN_TRANSFER_AMOUNT_INVALID = {
-  code: "SOLANA_TOKEN_TRANSFER_AMOUNT_INVALID",
-  subject: "SPL token transfer amount",
-} as const;
-const SOLANA_SWAP_AMOUNT_INVALID = {
-  code: "SOLANA_SWAP_AMOUNT_INVALID",
-  subject: "Solana swap input amount",
-} as const;
-
-function parseSolanaTokenBaseUnits(
-  amount: string | undefined,
-  decimals: number,
-  invalid: {
-    code: string;
-    subject: string;
-  } = SOLANA_TOKEN_TRANSFER_AMOUNT_INVALID,
-): bigint {
-  let baseUnits: InstanceType<typeof BigNumber>;
-  try {
-    baseUnits = new BigNumber(amount ?? "0").multipliedBy(
-      new BigNumber(10).pow(decimals),
-    );
-  } catch (cause) {
-    // error-policy:J2 Preserve malformed decimal input as a typed validation failure.
-    throw new ElizaError(`${invalid.subject} is not a valid decimal value.`, {
-      code: invalid.code,
-      cause,
-    });
-  }
-  if (
-    !baseUnits.isFinite() ||
-    baseUnits.lte(0) ||
-    !baseUnits.isInteger() ||
-    baseUnits.gt(SOLANA_TOKEN_BASE_UNIT_MAX)
-  ) {
-    throw new ElizaError(
-      `${invalid.subject} must be a positive finite value exactly representable as an integer number of base units.`,
-      { code: invalid.code },
-    );
-  }
-  return BigInt(baseUnits.toFixed(0));
 }
 
 async function executeSolanaTransfer(

@@ -80,6 +80,7 @@ import type {
   WalletRouterParams,
 } from "../../types/wallet-router.js";
 import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from "./constants";
+import { parseSolanaTokenBaseUnits, SOLANA_SWAP_AMOUNT_INVALID } from "./exact-base-units";
 import { fetchJupiterJson, resolveJupiterApiBaseUrl } from "./jupiter-api";
 import { getWalletKey } from "./keypairUtils";
 import type {
@@ -879,7 +880,11 @@ export class SolanaService extends Service {
       );
     }
 
-    const adjustedAmount = params.amount.multipliedBy(new BigNumber(10).pow(decimals));
+    const adjustedAmount = parseSolanaTokenBaseUnits(
+      params.amount.toFixed(),
+      decimals.toNumber(),
+      SOLANA_SWAP_AMOUNT_INVALID
+    ).toString();
     const slippageQuery =
       params.slippageBps !== undefined
         ? `slippageBps=${encodeURIComponent(String(params.slippageBps))}`
@@ -888,7 +893,7 @@ export class SolanaService extends Service {
     const quoteUrl = `${jupiterApiBaseUrl}/quote?inputMint=${encodeURIComponent(
       params.inputTokenCA
     )}&outputMint=${encodeURIComponent(params.outputTokenCA)}&amount=${encodeURIComponent(
-      adjustedAmount.toFixed(0)
+      adjustedAmount
     )}&${slippageQuery}&maxAccounts=64`;
 
     const fetchFn = this.runtime.fetch || globalThis.fetch;
