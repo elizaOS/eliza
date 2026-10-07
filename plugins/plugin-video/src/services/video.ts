@@ -39,6 +39,7 @@ const DIRECT_MEDIA_MAX_BYTES = 256 * 1024 * 1024;
 /** Minimal yt-dlp JSON shape used by this service (fields vary by extractor). */
 interface YtDlpSubtitleTrack {
   url: string;
+  ext?: string;
 }
 
 interface YtDlpJson {
@@ -65,6 +66,23 @@ interface CaptionEvent {
 
 interface CaptionJson {
   events?: CaptionEvent[];
+}
+
+/**
+ * Pick the manual subtitle variant `parseSRT` can read. yt-dlp lists YouTube
+ * subtitles as json3, srv1-3, ttml, srt, vtt (in that order), so the first
+ * usable url is json3, not SRT. Prefer SRT, then WebVTT, then a URL-bearing
+ * variant without `ext`; known unsupported formats cannot use this parser.
+ */
+function manualSubtitleUrl(
+  tracks: YtDlpSubtitleTrack[] | undefined,
+): string | undefined {
+  if (!Array.isArray(tracks)) return undefined;
+  for (const ext of ["srt", "vtt"]) {
+    const track = tracks.find((t) => t?.url && t.ext === ext);
+    if (track) return track.url;
+  }
+  return tracks.find((t) => t?.url && !t.ext)?.url;
 }
 
 function loggableError(error: unknown): string {
@@ -574,18 +592,17 @@ export class VideoService extends IVideoService {
     elizaLogger.log("Getting transcript");
     try {
       // Check for manual subtitles. yt-dlp maps each language to an array of
-      // format variants (vtt, srv1, srv3, json3, ttml) that may be
-      // present-but-empty or individually missing a url; scan for the first
+      // format variants (json3, srv1-3, ttml, srt, vtt) that may be
+      // present-but-empty or individually missing a url; pick an SRT/WebVTT
       // variant that carries a usable url so a malformed leading entry does not
       // discard the recoverable ones behind it, and an entirely unusable
       // listing degrades to the next grounded source instead of throwing.
-      const manualUrl = videoInfo.subtitles?.en?.find(
-        (track) => track?.url,
-      )?.url;
+      const manualUrl = manualSubtitleUrl(videoInfo.subtitles?.en);
       if (manualUrl) {
         elizaLogger.log("Manual subtitles found");
         const srtContent = await this.downloadSRT(manualUrl);
-        return this.parseSRT(srtContent);
+        const transcript = this.parseSRT(srtContent);
+        if (transcript.trim()) return transcript;
       }
 
       // Check for automatic captions (same first-usable-variant scan).
@@ -662,18 +679,26 @@ export class VideoService extends IVideoService {
     if (!srtContent || typeof srtContent !== "string") {
       return "";
     }
-    const normalized = srtContent.replace(/\r\n/g, "\n");
-    return normalized
-      .split("\n\n")
-      .map((block) =>
-        block
+    // Cues are separated by blank (or whitespace-only) lines. Cue text follows
+    // the `-->` timing line; the identifier before it is optional in WebVTT,
+    // and blocks without a timing line (WEBVTT header, NOTE, STYLE) carry no
+    // transcript text.
+    return srtContent
+      .replace(/\r\n?/g, "\n")
+      .split(/\n[ \t]*\n/)
+      .map((block) => {
+        const lines = block
           .split("\n")
           .map((line) => line.trim())
-          .filter((line) => line.length > 0)
-          .slice(2)
-          .join(" "),
-      )
-      .filter((text) => text.trim().length > 0)
+          .filter((line) => line.length > 0);
+        if (
+          /^(?:NOTE|WEBVTT)(?:[ \t]|$)|^(?:STYLE|REGION)$/.test(lines[0] ?? "")
+        )
+          return "";
+        const timing = lines.findIndex((line) => line.includes("-->"));
+        return timing === -1 ? "" : lines.slice(timing + 1).join(" ");
+      })
+      .filter((text) => text.length > 0)
       .join(" ");
   }
 

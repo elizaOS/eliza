@@ -138,10 +138,52 @@ describe("formatCalendarEventTimeRange", () => {
     expect(
       formatCalendarEventTimeRange({ ...event, timezone: "invalid/zone" }),
     ).toBe("timezone unavailable");
-    expect(formatCalendarEventTimeRange({ ...event, isAllDay: true })).toBe(
-      "all day",
-    );
   });
+
+  it.each([
+    ["2026-10-07", "2026-10-08", "Oct 7, 2026, all day"],
+    [
+      "2026-10-07T00:00:00.000Z",
+      "2026-10-10T00:00:00.000Z",
+      "Oct 7, 2026 – Oct 9, 2026, all day",
+    ],
+    ["2026-11-01", "2026-11-03", "Nov 1, 2026 – Nov 2, 2026, all day"],
+    ["2026-12-31", "2027-01-02", "Dec 31, 2026 – Jan 1, 2027, all day"],
+  ])(
+    "preserves civil all-day range %s through exclusive %s",
+    (startAt, endAt, expected) => {
+      for (const timezone of [
+        "America/Los_Angeles",
+        "Asia/Kolkata",
+        "America/New_York",
+        "invalid/zone",
+      ]) {
+        expect(
+          formatCalendarEventTimeRange({
+            startAt,
+            endAt,
+            timezone,
+            isAllDay: true,
+          }),
+        ).toBe(expected);
+      }
+    },
+  );
+
+  it.each([
+    ["invalid", "2026-10-08", "all day (date unavailable)"],
+    ["2026-10-07", "invalid", "all day (date unavailable)"],
+    ["2026-02-30", "2026-03-03", "all day (date unavailable)"],
+    ["2026-10-07", "2026-10-07", "all day (date range unavailable)"],
+    ["2026-10-08", "2026-10-07", "all day (date range unavailable)"],
+  ])(
+    "does not invent an all-day date for %s through %s",
+    (startAt, endAt, expected) => {
+      expect(
+        formatCalendarEventTimeRange({ startAt, endAt, isAllDay: true }),
+      ).toBe(expected);
+    },
+  );
 
   it.each([
     ["invalid", "invalid", "time unavailable"],

@@ -67,33 +67,26 @@ export function splitKeywordDoc(value: string | undefined): string[] {
 
 function compileKeywordTerm(term: string) {
 	const normalizedTerm = normalizeKeywordMatchText(term);
+	// Word-boundary terms test the normalized text: NFKC forms still match, a
+	// collapsed whitespace run lets multi-word terms span line breaks, and an
+	// emoji or accented letter elsewhere in the text keeps the boundaries.
 	const pattern = usesAsciiWordBoundaries(normalizedTerm)
-		? new RegExp(
-				`\\b${escapePattern(normalizedTerm).replace(/\\ /g, "\\s+")}\\b`,
-				"i",
-			)
+		? new RegExp(`\\b${escapePattern(normalizedTerm)}\\b`, "i")
 		: null;
 
-	return (text: string, normalizedText: string, hasNonAsciiText: boolean) => {
+	return (normalizedText: string) => {
 		if (!normalizedText || !normalizedTerm) {
 			return false;
 		}
 		if (pattern) {
-			return (
-				pattern.test(text) ||
-				(hasNonAsciiText && normalizedText.includes(normalizedTerm))
-			);
+			return pattern.test(normalizedText);
 		}
 		return normalizedText.includes(normalizedTerm);
 	};
 }
 
 export function textIncludesKeywordTerm(text: string, term: string): boolean {
-	return compileKeywordTerm(term)(
-		text,
-		normalizeKeywordMatchText(text),
-		/\P{ASCII}/u.test(text),
-	);
+	return compileKeywordTerm(term)(normalizeKeywordMatchText(text));
 }
 
 /**
@@ -104,11 +97,7 @@ export function textIncludesKeywordTerm(text: string, term: string): boolean {
  */
 export interface PreparedKeywordTerm {
 	term: string;
-	matches: (
-		text: string,
-		normalizedText: string,
-		hasNonAsciiText: boolean,
-	) => boolean;
+	matches: (normalizedText: string) => boolean;
 }
 
 /**
@@ -148,10 +137,9 @@ export function collectPreparedKeywordTermMatches(
 		if (remaining.length === 0) break;
 		const normalizedText = normalizeKeywordMatchText(text);
 		if (!normalizedText) continue;
-		const hasNonAsciiText = /\P{ASCII}/u.test(text);
 		const unmatched: PreparedKeywordTerm[] = [];
 		for (const entry of remaining) {
-			if (entry.matches(text, normalizedText, hasNonAsciiText)) {
+			if (entry.matches(normalizedText)) {
 				matches.add(entry.term);
 			} else {
 				unmatched.push(entry);
@@ -223,9 +211,8 @@ export function hasPreparedKeywordTermMatch(
 	for (const text of texts) {
 		const normalizedText = normalizeKeywordMatchText(text);
 		if (!normalizedText) continue;
-		const hasNonAsciiText = /\P{ASCII}/u.test(text);
 		for (const entry of prepared) {
-			if (entry.matches(text, normalizedText, hasNonAsciiText)) return true;
+			if (entry.matches(normalizedText)) return true;
 		}
 	}
 	return false;
