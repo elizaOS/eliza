@@ -1170,12 +1170,26 @@ describe("Shared Eliza runtime in Workerd", () => {
       stderr: "pipe",
       stdout: "pipe",
     });
-    const [bundleExitCode, bundleStderr] = await Promise.all([
+    // Wrangler can linger after "--dry-run: exiting now" on a flaky network
+    // (update check); the bundle is complete at that line, so stop it there.
+    const bundleStdout = (async () => {
+      let text = "";
+      const decoder = new TextDecoder();
+      for await (const chunk of bundle.stdout) {
+        text += decoder.decode(chunk, { stream: true });
+        if (text.includes("--dry-run: exiting now")) {
+          bundle.kill();
+          return true;
+        }
+      }
+      return false;
+    })();
+    const [bundleExitCode, bundleStderr, bundleDone] = await Promise.all([
       bundle.exited,
       new Response(bundle.stderr).text(),
-      new Response(bundle.stdout).text(),
+      bundleStdout,
     ]);
-    if (bundleExitCode !== 0) {
+    if (!bundleDone && bundleExitCode !== 0) {
       throw new Error(`Failed to bundle Shared Eliza runtime: ${bundleStderr}`);
     }
 
