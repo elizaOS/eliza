@@ -17,6 +17,8 @@ import type {
   StoredAgentSandboxBackup,
 } from "../../db/schemas/agent-sandboxes";
 import { agentSandboxBackups, agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import { organizations } from "../../db/schemas/organizations";
+import { users } from "../../db/schemas/users";
 import * as store from "../storage/object-store";
 import { logger } from "../utils/logger";
 import {
@@ -126,10 +128,11 @@ suite("persisted legacy backup verification and deletion retention", () => {
     }
     client = new Client({ connectionString: postgres.dsn });
     await client.connect();
+
     // Types and defaults come from the real schema: the actual producer uses
     // SQL DEFAULT, including full backup_kind. Unrelated table constraints are
     // absent; the exact recovery/catalog CHECK DDL is applied below.
-    for (const table of [agentSandboxes, agentSandboxBackups]) {
+    for (const table of [organizations, users, agentSandboxes, agentSandboxBackups]) {
       const config = getTableConfig(table);
       const columns = config.columns.map(
         (column) =>
@@ -137,6 +140,9 @@ suite("persisted legacy backup verification and deletion retention", () => {
       );
       await client.query(`CREATE TABLE "${config.name}" (${columns.join(",")})`);
     }
+    // Real lazy schema setup also seeds its warm-pool owner and adds tenant FKs.
+    await client.query("INSERT INTO organizations (id) VALUES ($1), ($2)", [ORG, OTHER_ORG]);
+    await client.query("INSERT INTO users (id, organization_id) VALUES ($1, $2)", [USER, ORG]);
     const migration = await readFile(
       new URL("../../db/migrations/0222_agent_backup_catalog_identity_checks.sql", import.meta.url),
       "utf8",
@@ -147,7 +153,7 @@ suite("persisted legacy backup verification and deletion retention", () => {
   });
 
   beforeEach(async () => {
-    await client.query("TRUNCATE agent_sandbox_backups, agent_sandboxes");
+    await client.query("TRUNCATE agent_sandbox_backups, agent_sandboxes CASCADE");
     resetKmsClientForTests();
     resetBackupVerificationSamplerForTests();
     await client.query(
@@ -341,7 +347,7 @@ suite("persisted legacy backup verification and deletion retention", () => {
   test("preserves native microseconds and rejects a same-millisecond timestamp mutation", async () => {
     const first = await persisted();
     await client.query(
-      "UPDATE agent_sandbox_backups SET created_at='2026-01-01 00:00:01.123456' WHERE id=$1",
+      "UPDATE agent_sandbox_backups SET created_at='2026-01-01 00:00:01.123456+00' WHERE id=$1",
       [first.id],
     );
     const row = (await agentSandboxesRepository.getStoredBackupById(first.id))!;
@@ -349,7 +355,7 @@ suite("persisted legacy backup verification and deletion retention", () => {
     expect(source.backupCreatedAtNative).toContain(".123456");
     expect((await verifyBackupRestorability(row)).ok).toBe(true);
     await client.query(
-      "UPDATE agent_sandbox_backups SET created_at='2026-01-01 00:00:01.123457' WHERE id=$1",
+      "UPDATE agent_sandbox_backups SET created_at='2026-01-01 00:00:01.123457+00' WHERE id=$1",
       [row.id],
     );
     expect(
@@ -373,7 +379,7 @@ suite("persisted legacy backup verification and deletion retention", () => {
       [AGENT],
     );
     await client.query(
-      "UPDATE agent_sandbox_backups SET created_at='2026-01-01 00:00:00.999000' WHERE id=$1",
+      "UPDATE agent_sandbox_backups SET created_at='2026-01-01 00:00:00.999000+00' WHERE id=$1",
       [first.id],
     );
     const row = (await agentSandboxesRepository.getStoredBackupById(first.id))!;
