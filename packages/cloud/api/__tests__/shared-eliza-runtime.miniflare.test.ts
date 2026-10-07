@@ -239,7 +239,7 @@ describe("Shared Eliza runtime in Workerd", () => {
                             action: "SET_STATE",
                             state: "busy",
                             until: "2099-01-02",
-                            evidence: "slammed until friday, hold my intros",
+                            evidence: "slammed, hold my intros",
                           },
                         }),
                       },
@@ -1389,7 +1389,9 @@ describe("Shared Eliza runtime in Workerd", () => {
     ).rows.length;
     const response = await miniflare.dispatchFetch(
       `https://runtime.test/network-pg-turn?routing=structured&i=900&message=${encodeURIComponent(
-        "structured probe: slammed until friday, hold my intros",
+        // No date in the member's words, so the proposed until (2099-01-02) is used;
+        // stated dates would be resolved in code and override it (plugin dates.ts).
+        "structured probe: slammed, hold my intros",
       )}`,
     );
     const body = await response.text();
