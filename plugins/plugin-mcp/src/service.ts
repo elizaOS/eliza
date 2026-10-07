@@ -273,7 +273,7 @@ export class McpService extends Service {
     this.setupTransportHandlers(name, connection, state);
     await client.connect(transport);
     const capabilities = client.getServerCapabilities();
-    const tools = await this.fetchToolsList(name);
+    const tools = capabilities?.tools ? await this.fetchToolsList(name) : [];
     const resources = capabilities?.resources ? await this.fetchResourcesList(name) : [];
     const resourceTemplates = capabilities?.resources
       ? await this.fetchResourceTemplatesList(name)
