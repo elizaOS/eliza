@@ -1016,6 +1016,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "reminders.local-record.v2",
           "reminders.create.v1",
           "clock.handoff.v2",
+          "clock.alarms.v1",
         ].sort(),
       );
       expect(enrolled.body.capabilities).toContain("clock.handoff.v1");
@@ -1573,8 +1574,328 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         ).toBe(409);
       }
       expect(repeatDigests.size).toBe(3);
+      const ownedCapability = "clock.alarms.v1";
+      const alarmId = randomUUID();
+      const ownedFields = {
+        hour: 9,
+        minute: 0,
+        label: "Eliza alarm fixture",
+        timeZone: "UTC",
+        days: [2, 3, 4, 5, 6],
+      };
+      const ownedContext = {
+        ...observation,
+        alarmsStatus: "available",
+        alarmsObservedAt: Date.now(),
+        alarmsRevision: 12,
+        alarms: [
+          {
+            id: alarmId,
+            ...ownedFields,
+            enabled: true,
+            nextAt: Date.now() + 60_000,
+            scheduleState: "scheduled",
+            generation: 1,
+            lastOutcome: "",
+          },
+        ],
+      };
+      const ownedRequest = (path: string, body?: unknown) =>
+        request(path, body, "a", deviceKey, ownedCapability);
+      const ownedSet = { type: "clock_alarm", action: "set", ...ownedFields };
+      for (const context of [
+        undefined,
+        { ...ownedContext, alarmsStatus: "stale" },
+        { ...ownedContext, alarmsStatus: "unavailable" },
+        { ...ownedContext, alarmsRevision: -1 },
+        {
+          ...ownedContext,
+          alarms: [ownedContext.alarms[0], ownedContext.alarms[0]],
+        },
+      ])
+        expect(
+          (
+            await proposeOverHttp(
+              ownedSet,
+              context,
+              randomUUID(),
+              ownedCapability,
+            )
+          ).status,
+        ).toBe(409);
+      for (const operation of [
+        { ...ownedSet, days: undefined },
+        { ...ownedSet, days: [2, 2] },
+        { type: "clock_alarm", action: "delete", alarmId: randomUUID() },
+        { type: "clock_alarm", action: "dismiss" },
+        { type: "clock_alarm", action: "snooze", alarmId, minutes: 61 },
+        { type: "clock_alarm", action: "enable", alarmId, enabled: "true" },
+        { type: "clock_handoff", action: "show" },
+      ])
+        expect(
+          (
+            await proposeOverHttp(
+              operation,
+              ownedContext,
+              randomUUID(),
+              ownedCapability,
+            )
+          ).status,
+        ).toBe(409);
+      expect(
+        (
+          await proposeOverHttp(
+            ownedSet,
+            ownedContext,
+            randomUUID(),
+            repeatCapability,
+          )
+        ).status,
+      ).toBe(409);
+      const fullSnapshot = {
+        ...ownedContext,
+        alarms: Array.from({ length: 21 }, (_, index) => ({
+          ...ownedContext.alarms[0],
+          id: randomUUID(),
+          label: `Exact label ${index}`,
+        })),
+      };
+      const ownedPlanner = await withDeviceActionTurn(
+        runtimeState.runtime,
+        { ...credentials, capabilities: [ownedCapability, capability] },
+        () =>
+          createV5MessageContextObject({
+            runtime: runtimeState.runtime,
+            message: {
+              ...memory,
+              content: {
+                text: "What alarms do I have?",
+                metadata: { clientDevice: { context: fullSnapshot } },
+              },
+            },
+            state: { values: {}, data: {}, text: "" },
+            selectedContexts: ["general"],
+            includeTools: true,
+            userRoles: ["OWNER"],
+            preselectedActions: [proposeDeviceAction],
+          }),
+      );
+      const ownedSnapshotEvent = ownedPlanner.events.find(
+        (event) => event.id === "current-eliza-owned-alarm-snapshot",
+      );
+      const { view: _view, ...selectedSnapshot } = fullSnapshot;
+      expect(
+        ownedSnapshotEvent?.type === "provider" && ownedSnapshotEvent.data,
+      ).toEqual(selectedSnapshot);
+      const ownedTool = ownedPlanner.events.find(
+        (event) =>
+          event.type === "tool" && event.tool.name === "PROPOSE_DEVICE_ACTION",
+      );
+      expect(
+        ownedTool?.type === "tool" &&
+          ownedTool.tool.parameters?.properties?.operation.anyOf.every(
+            (branch) => branch.properties?.type.enum?.[0] === "clock_alarm",
+          ),
+      ).toBe(true);
+      const ownedCases = [
+        ...[[], [1, 2, 3, 4, 5, 6, 7], [2, 3, 4, 5, 6], [2, 4, 6]].map(
+          (days) => ({ operation: { ...ownedSet, days }, status: "scheduled" }),
+        ),
+        {
+          operation: {
+            type: "clock_alarm",
+            action: "update",
+            alarmId,
+            ...ownedFields,
+          },
+          status: "updated",
+        },
+        {
+          operation: { type: "clock_alarm", action: "delete", alarmId },
+          status: "deleted",
+        },
+        {
+          operation: {
+            type: "clock_alarm",
+            action: "enable",
+            alarmId,
+            enabled: true,
+          },
+          status: "enabled",
+        },
+        {
+          operation: {
+            type: "clock_alarm",
+            action: "enable",
+            alarmId,
+            enabled: false,
+          },
+          status: "disabled",
+        },
+        {
+          operation: { type: "clock_alarm", action: "dismiss", alarmId },
+          status: "dismissed",
+        },
+        {
+          operation: {
+            type: "clock_alarm",
+            action: "snooze",
+            alarmId,
+            minutes: 10,
+          },
+          status: "snoozed",
+        },
+        { operation: { type: "clock_alarm", action: "show" }, status: "shown" },
+      ];
+      for (const { operation, status } of ownedCases) {
+        const key = randomUUID();
+        const currentContext =
+          operation.action === "update"
+            ? {
+                ...ownedContext,
+                alarms: [
+                  {
+                    ...ownedContext.alarms[0],
+                    enabled: false,
+                    nextAt: null,
+                    scheduleState: "disabled",
+                  },
+                ],
+              }
+            : ownedContext;
+        const proposed = await proposeOverHttp(
+          operation,
+          currentContext,
+          key,
+          ownedCapability,
+        );
+        expect(proposed.status).toBe(200);
+        expect(proposed.body.metadata.clientDevice.context).toEqual(
+          currentContext,
+        );
+        const id = proposed.body.action.data.proposalId;
+        const pending = (await ownedRequest("/proposals")).body.proposals.find(
+          (item: any) => item.id === id,
+        );
+        expect(pending.payload.clockContextRevision).toBe(12);
+        expect(pending.payload.operation).toEqual(operation);
+        expect(
+          (
+            await ownedRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await clockRequest(`/proposals/${id}/decision`, {
+              digest: pending.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await ownedRequest(`/proposals/${id}/decision`, {
+              digest: pending.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        const claimed = await ownedRequest(`/proposals/${id}/claim`, {
+          digest: pending.digest,
+        });
+        expect(claimed.status).toBe(200);
+        expect(
+          (
+            await ownedRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        const operationId = randomUUID();
+        const result = {
+          kind: "clock-alarm",
+          action: operation.action,
+          status,
+          ...(operation.action === "show"
+            ? {}
+            : { alarmId: operation.action === "set" ? operationId : alarmId }),
+          ...(["show", "delete"].includes(operation.action)
+            ? {}
+            : {
+                nextAt:
+                  status === "disabled" || status === "updated"
+                    ? null
+                    : Date.now() + 60_000,
+              }),
+        };
+        const receipt = {
+          digest: pending.digest,
+          attemptId: claimed.body.proposal.execution.attemptId,
+          receipt: { outcome: "applied", operationId, result },
+        };
+        expect(
+          (
+            await ownedRequest(`/proposals/${id}/receipt`, {
+              ...receipt,
+              receipt: {
+                ...receipt.receipt,
+                result: { ...result, status: "opened" },
+              },
+            })
+          ).status,
+        ).toBe(409);
+        if (operation.action !== "show")
+          expect(
+            (
+              await ownedRequest(`/proposals/${id}/receipt`, {
+                ...receipt,
+                receipt: {
+                  ...receipt.receipt,
+                  result: { ...result, alarmId: randomUUID() },
+                },
+              })
+            ).status,
+          ).toBe(409);
+        if (["scheduled", "enabled", "snoozed"].includes(status))
+          expect(
+            (
+              await ownedRequest(`/proposals/${id}/receipt`, {
+                ...receipt,
+                receipt: {
+                  ...receipt.receipt,
+                  result: { ...result, nextAt: null },
+                },
+              })
+            ).status,
+          ).toBe(409);
+        const recorded = await ownedRequest(
+          `/proposals/${id}/receipt`,
+          receipt,
+        );
+        expect(recorded.status).toBe(200);
+        expect(recorded.body.proposal.execution.providerReceipt.result).toEqual(
+          result,
+        );
+        const historical = await proposeOverHttp(
+          operation,
+          undefined,
+          key,
+          ownedCapability,
+        );
+        expect(historical.status).toBe(200);
+        expect(historical.body.action.data).toMatchObject({
+          proposalId: id,
+          executed: false,
+          result,
+        });
+        expect(historical.body.action.text).toContain(
+          "not a current alarm read",
+        );
+      }
       console.info(
-        "Clock HTTP/PGlite: v1 and explicit one-off/daily/weekdays v2 lifecycles; capability loss, malformed days, immutable replay, opened-only receipts PASS",
+        "Clock HTTP/PGlite: legacy handoffs plus owned alarm lifecycle, complete snapshots, revision binding, targeted receipts, capability loss and immutable replay PASS",
       );
     }
     {

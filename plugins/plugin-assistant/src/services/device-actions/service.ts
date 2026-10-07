@@ -19,6 +19,7 @@ import {
 } from "./calendar-contract.ts";
 import {
   assertClockObservation,
+  CLOCK_ALARMS_CAPABILITY,
   CLOCK_CAPABILITY,
   CLOCK_REPEAT_CAPABILITY,
   clockCapabilityAvailable,
@@ -194,6 +195,7 @@ export class DeviceActionService {
           REMINDER_CREATE_CAPABILITY,
           CLOCK_CAPABILITY,
           CLOCK_REPEAT_CAPABILITY,
+          CLOCK_ALARMS_CAPABILITY,
           MAPS_CAPABILITY,
         ],
       };
@@ -377,6 +379,7 @@ export class DeviceActionService {
     if (
       ![
         "clock_handoff",
+        "clock_alarm",
         "create_note",
         "maps_read_selected",
         "notes_read_selected",
@@ -424,14 +427,32 @@ export class DeviceActionService {
       );
       if (isClockOperation(validated)) {
         const receipt = existing?.execution?.providerReceipt;
+        const priorPayload = existing
+          ? validateDevicePayload(existing.payload)
+          : undefined;
         const historical =
           existing?.state === "done" &&
-          stableStringify(existing.payload) === stableStringify(payload) &&
+          priorPayload?.installationId === payload.installationId &&
+          priorPayload?.enrollmentId === payload.enrollmentId &&
+          stableStringify(priorPayload.operation) ===
+            stableStringify(payload.operation) &&
           receipt?.outcome === "applied";
         try {
-          if (historical)
-            validateClockResult(validated, receipt.result, "applied");
-          else assertClockObservation(validated, observation);
+          if (historical) {
+            validateClockResult(
+              validated,
+              receipt.result,
+              "applied",
+              typeof receipt.operationId === "string"
+                ? receipt.operationId
+                : undefined,
+            );
+            if (validated.type === "clock_alarm")
+              payload.clockContextRevision = priorPayload.clockContextRevision;
+          } else {
+            const context = assertClockObservation(validated, observation);
+            if (context) payload.clockContextRevision = context.alarmsRevision;
+          }
         } catch {
           throw new DeviceActionError(
             "Clock observation unavailable or changed",
@@ -869,6 +890,9 @@ export class DeviceActionService {
                 payload.operation,
                 value.result,
                 receipt.outcome,
+                typeof receipt.operationId === "string"
+                  ? receipt.operationId
+                  : undefined,
               ),
             };
         } catch {
@@ -1028,6 +1052,9 @@ export class DeviceActionService {
                 payload.operation,
                 value.result,
                 receipt.outcome,
+                typeof receipt.operationId === "string"
+                  ? receipt.operationId
+                  : undefined,
               ),
             };
         } catch {

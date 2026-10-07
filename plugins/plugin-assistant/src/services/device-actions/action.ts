@@ -4,6 +4,7 @@ import {
   validateCalendarResult,
 } from "./calendar-contract.ts";
 import {
+  CLOCK_ALARMS_CAPABILITY,
   CLOCK_DAYS,
   CLOCK_REPEAT_CAPABILITY,
   isClockOperation,
@@ -304,6 +305,60 @@ const clockSchemas: ActionParameterSchema[] = [
     },
   },
 ];
+const clockAlarmFields = {
+  hour: { type: "integer", minimum: 0, maximum: 23 },
+  minute: { type: "integer", minimum: 0, maximum: 59 },
+  label: { type: "string", maxLength: 200 },
+  timeZone: { type: "string", maxLength: 100 },
+  days: {
+    type: "array",
+    items: { type: "integer", enum: [...CLOCK_DAYS] },
+    description:
+      "Exact unique days: [] one-off, [1,2,3,4,5,6,7] daily, [2,3,4,5,6] weekdays; Sunday=1 through Saturday=7. Preserve requested days.",
+  },
+};
+const clockAlarmSchemas: ActionParameterSchema[] = [
+  "set",
+  "update",
+  "delete",
+  "enable",
+  "dismiss",
+  "snooze",
+  "show",
+].map((action) => {
+  const targeted = action !== "set" && action !== "show";
+  const fields = action === "set" || action === "update";
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "type",
+      "action",
+      ...(targeted ? ["alarmId"] : []),
+      ...(fields ? Object.keys(clockAlarmFields) : []),
+      ...(action === "enable" ? ["enabled"] : []),
+      ...(action === "snooze" ? ["minutes"] : []),
+    ],
+    properties: {
+      type: { type: "string", enum: ["clock_alarm"] },
+      action: { type: "string", enum: [action] },
+      ...(targeted
+        ? {
+            alarmId: {
+              type: "string",
+              description:
+                "Exact UUID from this turn's current authenticated Eliza alarm snapshot.",
+            },
+          }
+        : {}),
+      ...(fields ? clockAlarmFields : {}),
+      ...(action === "enable" ? { enabled: { type: "boolean" } } : {}),
+      ...(action === "snooze"
+        ? { minutes: { type: "integer", minimum: 1, maximum: 60 } }
+        : {}),
+    },
+  };
+});
 /** Native tool output is a durable proposal, never a native effect or approval. */
 const selectedUpdateSchema = reminderSchemas.find(
   (schema) =>
@@ -333,11 +388,15 @@ const reminderCreateSchema: ActionParameterSchema = {
 };
 const CLOCK_PROPOSAL_GUIDANCE =
   "Clock handoff requires clock.handoff.v1 or clock.handoff.v2. Set requires the current phone clientDevice.context.timeZone, integer hour/minute, and label. Explicit days requires clock.handoff.v2: [] is one-off, [1,2,3,4,5,6,7] daily, [2,3,4,5,6] weekdays; other weekly patterns use exact unique integers Sunday=1 through Saturday=7. Preserve requested repeat days exactly. A v1 phone supports only a one-off set without days; never silently drop recurrence or replace an unsupported alarm pattern with a reminder. Never invent the phone timezone or substitute an approximate reminder for an alarm. Only show is navigation-only. After explicit owner approval, set/dismiss/snooze may change alarms immediately: dismiss can disable the active one-shot alarm or suppress a repeating occurrence, and targetless snooze can affect all ringing alarms. Clock may use its default snooze duration or show a chooser. Never promise a second confirmation in Clock, target one selected alarm using this targetless contract, or claim an opened receipt proves creation, dismissal, snoozing or ringing. The owner must see and approve the actual scope before any native request. This tool does not perform the operation. Do not report the proposal as completed.";
+const CLOCK_ALARM_GUIDANCE =
+  "Eliza-owned alarms require clock.alarms.v1 and operation.type=clock_alarm. Use set, update, delete, enable, dismiss, snooze or show. Set/update requires exact hour,minute,label,timeZone,days; [] is one-off, [1,2,3,4,5,6,7] daily, [2,3,4,5,6] weekdays. Targeted operations require an exact alarmId from the fresh authenticated full Eliza alarm snapshot. Update replaces all schedule fields. Enable requires enabled boolean. Snooze requires minutes 1..60 and affects that selected firing alarm only. Show opens Eliza Clock. These operations never launch an external Clock app. The native store revision stays bound to approval. List/query uses only the current full snapshot; stale/unavailable is not an empty alarm list. External Clock alarms are outside this store. Scheduling permission/failure states are not success. Applied typed results establish the reported store/schedule change, not a future audible ring. The owner separately approves each proposal; do not report a pending proposal as complete.";
 
 export const proposeDeviceAction: Action = {
   name: "PROPOSE_DEVICE_ACTION",
   description:
     "Create reviewed no-alert, lead or recurring reminders only with reminder_create and reminders.create.v1. The legacy create_reminder supports only title and dueAt and always requests an alert; never discard requested timing. reminder_create.fields requires title, body and schedule; schedule requires at, dueAt, alertMinutes (null means no alert), recurrence (null or exact repeat). at=dueAt-(alertMinutes??0)*60000; recurrence leadMinutes matches. No-alert creates pending, not delivered. Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Preserve target.timingVersion=2 when supplied by the phone. TimingVersion 2 targets and schedules with dueAt plus alertMinutes require reminders.local-record.v2. Supply both timing fields together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts require at=dueAt-alertMinutes*60000 and matching recurrence leadMinutes. No-alert tasks cannot be snoozed; only an explicitly reviewed schedule edit enables an alert. Cancel stops all future repeats; snooze is ten minutes. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve." +
+    " " +
+    CLOCK_ALARM_GUIDANCE +
     " " +
     CLOCK_PROPOSAL_GUIDANCE,
   contexts: ["general"],
@@ -351,6 +410,7 @@ export const proposeDeviceAction: Action = {
       schema: {
         anyOf: [
           ...clockSchemas,
+          ...clockAlarmSchemas,
           {
             type: "object",
             additionalProperties: false,
@@ -464,13 +524,19 @@ export const proposeDeviceAction: Action = {
         payload.operation,
         receipt.result,
         "applied",
+        typeof receipt.operationId === "string"
+          ? receipt.operationId
+          : undefined,
       );
       return {
         success: true,
         transcriptVisibility: "internal",
         modelReplyRequired: true,
         effectReceipts: deviceActionEffectReceipts(outcome),
-        text: "Retrieved the historical approved Clock handoff receipt. Opened records dispatch of the approved Clock request, not proof of its final alarm state. The request may already have changed an alarm; check Clock before requesting another. It does not establish creation, snoozing, dismissal or ringing. No new dispatch occurred.",
+        text:
+          payload.operation.type === "clock_alarm"
+            ? "Retrieved the historical approved Eliza alarm receipt. This reports the saved alarm change at that execution; it is not a current alarm read or proof of a future audible ring. No new dispatch occurred."
+            : "Retrieved the historical approved Clock handoff receipt. Opened records dispatch of the approved Clock request, not proof of its final alarm state. The request may already have changed an alarm; check Clock before requesting another. It does not establish creation, snoozing, dismissal or ringing. No new dispatch occurred.",
         data: {
           proposalId: request.id,
           state: request.state,
@@ -565,22 +631,27 @@ export function deviceActionForCapabilities(
   action: Action,
   capabilities?: readonly string[],
 ): Action {
-  if (action.name !== "PROPOSE_DEVICE_ACTION" || capabilities === undefined)
-    return action;
+  if (action.name !== "PROPOSE_DEVICE_ACTION") return action;
   return {
     ...action,
     description: deviceOperationSupportedByCapabilities(
       "open_view",
       capabilities,
     )
-      ? action.description
-      : `This connection supports only the Clock handoff operations in this schema. Current app navigation uses its registered view tools, not a native phone proposal. ${CLOCK_PROPOSAL_GUIDANCE}`,
+      ? capabilities?.includes(CLOCK_ALARMS_CAPABILITY)
+        ? action.description.replace(CLOCK_PROPOSAL_GUIDANCE, "")
+        : action.description.replace(CLOCK_ALARM_GUIDANCE, "")
+      : capabilities?.includes(CLOCK_ALARMS_CAPABILITY)
+        ? `This connection supports only the Eliza-owned Clock alarm operations in this schema. ${CLOCK_ALARM_GUIDANCE}`
+        : `This connection supports only the Clock handoff operations in this schema. Current app navigation uses its registered view tools, not a native phone proposal. ${CLOCK_PROPOSAL_GUIDANCE}`,
     parameters: action.parameters?.map((parameter) => {
       if (parameter.name !== "operation") return parameter;
       const schema = structuredClone(parameter.schema);
       schema.anyOf = schema.anyOf?.filter((branch) => {
         if (
           branch.properties?.days &&
+          branch.properties?.type?.enum?.includes("clock_handoff") &&
+          capabilities !== undefined &&
           !capabilities?.includes(CLOCK_REPEAT_CAPABILITY)
         )
           return false;
@@ -588,7 +659,9 @@ export function deviceActionForCapabilities(
         return types?.every(
           (type) =>
             typeof type === "string" &&
-            deviceOperationSupportedByCapabilities(type, capabilities),
+            (capabilities === undefined
+              ? type !== "clock_alarm"
+              : deviceOperationSupportedByCapabilities(type, capabilities)),
         );
       });
       return { ...parameter, schema };
