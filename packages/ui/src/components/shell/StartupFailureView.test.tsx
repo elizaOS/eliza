@@ -2,7 +2,7 @@
 // @vitest-environment jsdom
 //
 // StartupFailureView recovery affordances per failure reason (e.g. an
-// unreachable saved backend offers a first-run reset). Real component in jsdom;
+// unreachable saved backend retains its connection and offers Retry). Real component in jsdom;
 // branding, bug-report, platform reload, and translation are mocked.
 
 import {
@@ -18,9 +18,13 @@ import { StartupFailureView } from "./StartupFailureView";
 const mocks = vi.hoisted(() => ({
   startFreshFirstRunReload: vi.fn(),
   waitForCloudAgentRunning: vi.fn(),
+  repointBaseUrl: vi.fn(),
+  setToken: vi.fn(),
 }));
 
-vi.mock("../../api/client", () => ({ client: {} }));
+vi.mock("../../api/client", () => ({
+  client: { repointBaseUrl: mocks.repointBaseUrl, setToken: mocks.setToken },
+}));
 vi.mock("../../api/client-cloud", () => ({
   waitForCloudAgentRunning: mocks.waitForCloudAgentRunning,
 }));
@@ -52,9 +56,132 @@ afterEach(() => {
   cleanup();
   mocks.startFreshFirstRunReload.mockClear();
   mocks.waitForCloudAgentRunning.mockReset();
+  mocks.repointBaseUrl.mockClear();
+  mocks.setToken.mockClear();
 });
 
 describe("StartupFailureView", () => {
+  it.each(["backend-unreachable", "backend-timeout"] as const)(
+    "opens existing connection settings during %s without clearing saved authority",
+    (reason) => {
+      localStorage.clear();
+      const oldProfile = {
+        id: "saved-mac",
+        kind: "remote",
+        label: "Saved Mac",
+        apiBase: "http://10.0.0.241:31725",
+        accessToken: "old-host-only-token",
+        createdAt: "2026-10-01T00:00:00Z",
+      };
+      localStorage.setItem(
+        "elizaos:agent-profiles",
+        JSON.stringify({
+          version: 1,
+          activeProfileId: oldProfile.id,
+          profiles: [oldProfile],
+        }),
+      );
+      localStorage.setItem(
+        "eliza:chat:activeConversationId",
+        "original-conversation",
+      );
+      localStorage.setItem("pairing-history", "keep-original-pairing");
+      const before = { ...localStorage };
+      const retry = vi.fn();
+      render(
+        <StartupFailureView
+          error={{
+            reason,
+            phase: "starting-backend",
+            message: "Saved Mac is unavailable",
+          }}
+          onRetry={retry}
+        />,
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Connection settings" }),
+      );
+      expect(screen.getByTestId("runtime-saved-mac-active")).toBeTruthy();
+      expect(screen.getByTestId("add-remote-url")).toBeTruthy();
+      expect(
+        (screen.getByTestId("add-remote-token") as HTMLInputElement).value,
+      ).toBe("");
+      expect({ ...localStorage }).toEqual(before);
+      expect(mocks.repointBaseUrl).not.toHaveBeenCalled();
+      expect(mocks.startFreshFirstRunReload).not.toHaveBeenCalled();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Connection settings" }),
+      );
+      expect(screen.queryByTestId("my-runtimes")).toBeNull();
+      expect({ ...localStorage }).toEqual(before);
+      fireEvent.click(screen.getByRole("button", { name: "Retry connection" }));
+      expect(retry).toHaveBeenCalledOnce();
+      localStorage.clear();
+    },
+  );
+
+  it("connects a new trusted URL without forwarding the saved host token or wiping history", () => {
+    localStorage.clear();
+    const oldProfile = {
+      id: "saved-mac",
+      kind: "remote",
+      label: "Saved Mac",
+      apiBase: "http://10.0.0.241:31725",
+      accessToken: "old-host-only-token",
+      createdAt: "2026-10-01T00:00:00Z",
+    };
+    localStorage.setItem(
+      "elizaos:agent-profiles",
+      JSON.stringify({
+        version: 1,
+        activeProfileId: oldProfile.id,
+        profiles: [oldProfile],
+      }),
+    );
+    localStorage.setItem(
+      "eliza:chat:activeConversationId",
+      "original-conversation",
+    );
+    localStorage.setItem("pairing-history", "keep-original-pairing");
+    render(
+      <StartupFailureView
+        error={{
+          reason: "backend-unreachable",
+          phase: "starting-backend",
+          message: "Saved Mac is unavailable",
+        }}
+        onRetry={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Connection settings" }),
+    );
+    fireEvent.change(screen.getByTestId("add-remote-label"), {
+      target: { value: "Replacement Mac" },
+    });
+    fireEvent.change(screen.getByTestId("add-remote-url"), {
+      target: { value: "http://10.0.0.242:31725" },
+    });
+    fireEvent.click(screen.getByTestId("add-remote-submit"));
+    const registry = JSON.parse(
+      localStorage.getItem("elizaos:agent-profiles")!,
+    );
+    expect(registry.profiles[0]).toEqual(oldProfile);
+    expect(registry.profiles[1].accessToken).toBeUndefined();
+    expect(mocks.repointBaseUrl).toHaveBeenCalledWith(
+      "http://10.0.0.242:31725",
+      null,
+    );
+    expect(localStorage.getItem("eliza:chat:activeConversationId")).toBe(
+      "original-conversation",
+    );
+    expect(localStorage.getItem("pairing-history")).toBe(
+      "keep-original-pairing",
+    );
+    expect(mocks.startFreshFirstRunReload).not.toHaveBeenCalled();
+    localStorage.clear();
+  });
+
   it("starts only on demand, prevents duplicate starts and retries the saved connection after readiness", async () => {
     let finish!: () => void;
     mocks.waitForCloudAgentRunning.mockImplementation(
@@ -130,25 +257,32 @@ describe("StartupFailureView", () => {
     expect(mocks.startFreshFirstRunReload).not.toHaveBeenCalled();
   });
 
-  it("offers one first-run reset for unreachable saved backends", () => {
-    render(
-      <StartupFailureView
-        error={{
-          reason: "backend-unreachable",
-          message:
-            "Previously configured backend is unreachable. Check your connection or reset.",
-          phase: "starting-backend",
-        }}
-        onRetry={vi.fn()}
-      />,
-    );
+  it.each(["backend-unreachable", "backend-timeout"] as const)(
+    "keeps %s recovery on Retry without a first-run reset",
+    (reason) => {
+      const retry = vi.fn();
+      render(
+        <StartupFailureView
+          error={{
+            reason,
+            message:
+              "Previously configured backend is unreachable. Check your connection and retry.",
+            phase: "starting-backend",
+          }}
+          onRetry={retry}
+        />,
+      );
 
-    const startOver = screen.getByTestId("startup-start-over");
-    expect(startOver.textContent).toContain("Start over");
-    expect(screen.queryByTestId("startup-use-cloud")).toBeNull();
+      expect(screen.queryByTestId("startup-start-over")).toBeNull();
+      expect(screen.queryByTestId("startup-use-cloud")).toBeNull();
+      expect(
+        screen.getByText(/Your connection settings are kept/),
+      ).toBeTruthy();
 
-    fireEvent.click(startOver);
+      fireEvent.click(screen.getByRole("button", { name: "Retry connection" }));
 
-    expect(mocks.startFreshFirstRunReload).toHaveBeenCalledTimes(1);
-  });
+      expect(retry).toHaveBeenCalledTimes(1);
+      expect(mocks.startFreshFirstRunReload).not.toHaveBeenCalled();
+    },
+  );
 });

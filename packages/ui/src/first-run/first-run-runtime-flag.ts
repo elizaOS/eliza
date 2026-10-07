@@ -11,10 +11,12 @@
  * production build can enable the chooser with
  * `VITE_ELIZA_ENABLE_RUNTIME_CHOOSER=1`, and tests or a running shell can flip
  * the localStorage override without a rebuild (explicit "1"/"0" beats the
- * build default).
+ * build default). A saved remote-Mac runtime also retains the chooser so a
+ * returning user can reconnect if its connection record was lost.
  */
 
 import { isAndroidCloudBuild } from "../platform/android-runtime";
+import { readPersistedMobileRuntimeMode } from "./mobile-runtime-mode";
 
 /** localStorage override: "1" enables the chooser, "0" disables, unset defers to the build default. */
 export const RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY =
@@ -96,8 +98,7 @@ export function resolveRuntimeChooserEnabled({
  * first-run. The explicit `bun run dev:local` lane opts into the chooser so
  * developers can choose local without changing the Cloud-first default.
  * Production and test builds opt in via the Vite flag or the localStorage
- * override; Android local sideloads no longer special-case the production
- * default.
+ * override; a persisted remote-Mac mode retains that existing setup choice.
  */
 export function isRuntimeChooserEnabled(isCloudOnlyBuild = false): boolean {
   return resolveRuntimeChooserEnabled({
@@ -105,6 +106,10 @@ export function isRuntimeChooserEnabled(isCloudOnlyBuild = false): boolean {
     isCloudLockedAndroid: isAndroidCloudBuild(),
     override: readOverride(),
     isViteDev: readDevMode(),
-    isBuildEnabled: readBuildDefault(),
+    // A previously chosen remote host remains an available setup path when
+    // its connection record is lost. The Cloud/store locks and explicit
+    // chooser override above still own their existing precedence.
+    isBuildEnabled:
+      readBuildDefault() || readPersistedMobileRuntimeMode() === "remote-mac",
   });
 }
