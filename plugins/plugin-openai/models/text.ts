@@ -3416,6 +3416,12 @@ async function generateTextAtEndpoint(
       : { maxOutputTokens: params.maxTokens }),
     ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
     ...(params.topP !== undefined ? { topP: params.topP } : {}),
+    ...(params.stopSequences !== undefined
+      ? { stopSequences: deepToWellFormedUnicode(params.stopSequences) }
+      : {}),
+    ...(params.frequencyPenalty !== undefined ? { frequencyPenalty: params.frequencyPenalty } : {}),
+    ...(params.presencePenalty !== undefined ? { presencePenalty: params.presencePenalty } : {}),
+    ...(params.seed !== undefined ? { seed: params.seed } : {}),
     experimental_telemetry: telemetryConfig,
     ...(sanitizedTools ? { tools: sanitizedTools } : {}),
     ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
