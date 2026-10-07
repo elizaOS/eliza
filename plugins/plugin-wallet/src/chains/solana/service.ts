@@ -636,24 +636,26 @@ export class SolanaService extends Service {
     const tokenAddress = this.normalizeSolanaTokenAddress(params.tokenAddress ?? params.fromToken);
     const amount = this.normalizePositiveAmount(params.amount);
     const recipientPubkey = new PublicKey(params.recipient);
-    const senderKeypair = await this.getWalletKeypair();
     const dryRun = params.dryRun === true || params.mode === "prepare";
     const isSolTransfer = tokenAddress === null;
+    const mintPubkey = isSolTransfer ? null : new PublicKey(tokenAddress);
+    const atomicAmount = this.toAtomicAmount(
+      amount,
+      mintPubkey === null ? 9 : await this.getTokenDecimalsForTransfer(mintPubkey)
+    );
+    const senderKeypair = await this.getWalletKeypair();
 
     const instructions: TransactionInstruction[] = [];
 
-    if (isSolTransfer) {
+    if (mintPubkey === null) {
       instructions.push(
         SystemProgram.transfer({
           fromPubkey: senderKeypair.publicKey,
           toPubkey: recipientPubkey,
-          lamports: this.toAtomicAmount(amount, 9),
+          lamports: atomicAmount,
         })
       );
     } else {
-      const mintPubkey = new PublicKey(tokenAddress);
-      const decimals = await this.getTokenDecimalsForTransfer(mintPubkey);
-      const adjustedAmount = this.toAtomicAmount(amount, decimals);
       const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderKeypair.publicKey);
       const recipientATA = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
 
@@ -670,7 +672,7 @@ export class SolanaService extends Service {
       }
 
       instructions.push(
-        createTransferInstruction(senderATA, recipientATA, senderKeypair.publicKey, adjustedAmount)
+        createTransferInstruction(senderATA, recipientATA, senderKeypair.publicKey, atomicAmount)
       );
     }
 
@@ -836,11 +838,19 @@ export class SolanaService extends Service {
   }
 
   private toAtomicAmount(amount: BigNumber, decimals: number): bigint {
-    const atomic = amount
-      .multipliedBy(new BigNumber(10).pow(decimals))
-      .integerValue(BigNumber.ROUND_FLOOR);
-    if (!atomic.isFinite() || atomic.lte(0)) {
-      throw new Error(`Invalid atomic Solana amount: ${amount.toString()}`);
+    const atomic = amount.multipliedBy(new BigNumber(10).pow(decimals));
+    // A fractional base unit used to be floored, so the transfer sent less
+    // than the caller named. Reject it instead of changing the amount.
+    if (
+      !atomic.isFinite() ||
+      atomic.lte(0) ||
+      !atomic.isInteger() ||
+      atomic.gt("18446744073709551615")
+    ) {
+      throw new ElizaError(
+        "Solana transfer amount must be a positive finite value exactly representable as an integer number of base units.",
+        { code: "SOLANA_SERVICE_TRANSFER_AMOUNT_INVALID" }
+      );
     }
     return BigInt(atomic.toFixed(0));
   }
