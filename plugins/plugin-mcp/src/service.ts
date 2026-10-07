@@ -530,7 +530,8 @@ export class McpService extends Service {
     }
     const discovered = await this.fetchAllPages(serverName, "tools/list", async (cursor) => {
       const response = await connection.client.listTools(
-        cursor === undefined ? undefined : { cursor }
+        cursor === undefined ? undefined : { cursor },
+        { timeout: this.connectionRequestTimeout(connection) }
       );
       return { items: response?.tools ?? [], nextCursor: response?.nextCursor };
     });
@@ -573,7 +574,8 @@ export class McpService extends Service {
     }
     return this.fetchAllPages(serverName, "resources/list", async (cursor) => {
       const response = await connection.client.listResources(
-        cursor === undefined ? undefined : { cursor }
+        cursor === undefined ? undefined : { cursor },
+        { timeout: this.connectionRequestTimeout(connection) }
       );
       return { items: response?.resources ?? [], nextCursor: response?.nextCursor };
     });
@@ -585,7 +587,8 @@ export class McpService extends Service {
     }
     return this.fetchAllPages(serverName, "resources/templates/list", async (cursor) => {
       const response = await connection.client.listResourceTemplates(
-        cursor === undefined ? undefined : { cursor }
+        cursor === undefined ? undefined : { cursor },
+        { timeout: this.connectionRequestTimeout(connection) }
       );
       return { items: response?.resourceTemplates ?? [], nextCursor: response?.nextCursor };
     });
@@ -614,11 +617,7 @@ export class McpService extends Service {
     if (connection.server.disabled) {
       throw new Error(`Server "${serverName}" is disabled`);
     }
-    const config = JSON.parse(connection.server.config) as McpServerConfig;
-    const timeout =
-      config.type === "stdio"
-        ? (config.timeoutInMillis ?? DEFAULT_MCP_TIMEOUT_MS)
-        : (config.timeout ?? DEFAULT_MCP_TIMEOUT_MS);
+    const timeout = this.connectionRequestTimeout(connection);
     const result = await connection.client.callTool(
       {
         name: toolName,
@@ -640,7 +639,16 @@ export class McpService extends Service {
     if (connection.server.disabled) {
       throw new Error(`Server "${serverName}" is disabled`);
     }
-    return await connection.client.readResource({ uri });
+    return await connection.client.readResource(
+      { uri },
+      { timeout: this.connectionRequestTimeout(connection) }
+    );
+  }
+  private connectionRequestTimeout(connection: McpConnection): number {
+    const config = JSON.parse(connection.server.config) as McpServerConfig;
+    return config.type === "stdio"
+      ? (config.timeoutInMillis ?? DEFAULT_MCP_TIMEOUT_MS)
+      : (config.timeout ?? DEFAULT_MCP_TIMEOUT_MS);
   }
   public async restartConnection(serverName: string): Promise<void> {
     const connection = this.connections.get(serverName);

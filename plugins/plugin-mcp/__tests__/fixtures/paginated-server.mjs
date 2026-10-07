@@ -55,6 +55,9 @@ for (const [schema, key, item] of [
   if (key === "tools" ? !capabilities.tools : !capabilities.resources) continue;
   server.setRequestHandler(schema, async (request) => {
     const cursor = request.params?.cursor;
+    if (mode === "slow-list" && key === "tools" && cursor === undefined) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
     requests.push({ list: key, cursor: cursor ?? null });
     if (key === failingList && mode === "sticky-empty") return { [key]: [item(0)], nextCursor: "" };
     if (key === failingList && mode === "endless")
@@ -98,15 +101,18 @@ if (capabilities.tools) {
   });
 }
 if (capabilities.resources) {
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => ({
-    contents: [
-      {
-        uri: request.params.uri,
-        text: capabilityMode
-          ? JSON.stringify({ resource: request.params.uri, requests })
-          : "last-page resource",
-      },
-    ],
-  }));
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    if (mode === "slow-read") await new Promise((resolve) => setTimeout(resolve, 400));
+    return {
+      contents: [
+        {
+          uri: request.params.uri,
+          text: capabilityMode
+            ? JSON.stringify({ resource: request.params.uri, requests })
+            : "last-page resource",
+        },
+      ],
+    };
+  });
 }
 await server.connect(new StdioServerTransport());
