@@ -80,15 +80,18 @@ if (capabilities.tools) {
   }));
 }
 if (capabilities.resources) {
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => ({
-    contents: [
-      {
-        uri: request.params.uri,
-        text: capabilityMode
-          ? JSON.stringify({ resource: request.params.uri, requests })
-          : "last-page resource",
-      },
-    ],
-  }));
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    if (mode === "slow-read") await new Promise((resolve) => setTimeout(resolve, 400));
+    return {
+      contents: [
+        {
+          uri: request.params.uri,
+          text: capabilityMode
+            ? JSON.stringify({ resource: request.params.uri, requests })
+            : "last-page resource",
+        },
+      ],
+    };
+  });
 }
 await server.connect(new StdioServerTransport());
