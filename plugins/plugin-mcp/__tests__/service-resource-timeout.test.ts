@@ -1,4 +1,5 @@
 /** Proves resource reads use the configured MCP request timeout over real stdio. */
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { AgentRuntime } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
@@ -7,6 +8,17 @@ import { McpService } from "../src/service";
 
 const runtimes: AgentRuntime[] = [];
 const fixture = fileURLToPath(new URL("./fixtures/paginated-server.mjs", import.meta.url));
+
+function fixturePids(): string[] {
+  try {
+    return execFileSync("pgrep", ["-f", "paginated-server.mjs"], { encoding: "utf8" })
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
 
 afterEach(async () => {
   for (const runtime of runtimes.splice(0)) await runtime.stop();
@@ -54,10 +66,12 @@ describe("McpService resource read timeout", () => {
   });
 
   it("disconnects when tool discovery exceeds the configured timeout", async () => {
+    const before = new Set(fixturePids());
     const service = await start(80, "slow-list");
     const [server] = service.getServers();
     expect(server?.status).toBe("disconnected");
     expect(server?.error ?? "").toMatch(/timed out/i);
+    expect(fixturePids().filter((pid) => !before.has(pid))).toEqual([]);
   });
 
   it("finishes tool discovery when the list returns inside the configured timeout", async () => {

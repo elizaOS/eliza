@@ -220,6 +220,11 @@ export class McpService extends Service {
         if (partial && partial.server.status !== "connected") {
           partial.server.status = "disconnected";
           this.appendErrorMessage(partial, error instanceof Error ? error.message : String(error));
+          // The disconnected entry stays so the operator can see the error.
+          // Close the client and transport here: onclose would otherwise start
+          // the reconnect ladder, and leaving a timed-out stdio child running
+          // keeps that process alive until the whole service stops.
+          await this.releaseFailedConnection(name, partial);
         }
         this.runtime.reportError("mcp.connect", error, { serverName: name });
       }
@@ -407,6 +412,32 @@ export class McpService extends Service {
         this.handleDisconnection(name, err);
       }
     }, delay);
+  }
+  private async releaseFailedConnection(name: string, connection: McpConnection): Promise<void> {
+    const state = this.connectionStates.get(name);
+    if (state?.pingInterval) clearInterval(state.pingInterval);
+    if (state?.reconnectTimeout) {
+      clearTimeout(state.reconnectTimeout);
+      state.reconnectTimeout = undefined;
+    }
+    connection.transport.onerror = async () => {};
+    connection.transport.onclose = async () => {};
+    const closeResults = await Promise.allSettled([
+      connection.transport.close(),
+      connection.client.close(),
+    ]);
+    if (state?.reconnectTimeout) {
+      clearTimeout(state.reconnectTimeout);
+      state.reconnectTimeout = undefined;
+    }
+    for (const result of closeResults) {
+      if (result.status === "rejected") {
+        logger.warn(
+          { error: result.reason, serverName: name },
+          `Failed to close MCP connection resource for "${name}"`
+        );
+      }
+    }
   }
   async deleteConnection(name: string): Promise<void> {
     const connection = this.connections.get(name);
