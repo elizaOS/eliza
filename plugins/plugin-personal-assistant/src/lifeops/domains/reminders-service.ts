@@ -833,7 +833,8 @@ export function buildReminderBody(args: {
   // Timing and delivery identity remain on the saved occurrence and receipts.
   // The alert itself is the owner's message, including the current ladder rung.
   return (
-    readLadderRungTitle(args.derivedTarget) ?? (args.body?.trim() || args.title)
+    readLadderRungTitle(args.derivedTarget) ??
+    (args.body?.trim() ? args.body : args.title)
   );
 }
 

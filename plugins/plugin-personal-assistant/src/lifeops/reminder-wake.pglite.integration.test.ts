@@ -345,9 +345,9 @@ it("native owner creation and a current body edit deliver exact UTF text once th
   const service = new LifeOpsService(runtime);
   const title = "Clock scope reminder QA";
   const originalBody =
-    "Clock scope reminder QA, verification cdfaacf9.\nRésumé — café ☕; keep punctuation!";
+    "\n  Clock scope reminder QA, verification cdfaacf9.\nRésumé — café ☕; keep punctuation!  \n";
   const currentBody =
-    "Edited verification cdfaacf9.\nRésumé — café ☕; exact current body!";
+    "\n  Edited verification cdfaacf9.\nRésumé — café ☕; exact current body!  \n";
   const owner = service.ownerEntityId() as UUID;
   if (!(await runtime.getEntityById(owner)))
     await runtime.createEntity({
@@ -384,6 +384,40 @@ it("native owner creation and a current body edit deliver exact UTF text once th
   };
   try {
     await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
+    const ordinary = await service.createDefinition({
+      title: "  Ordinary task title  ",
+      description: "\n  Ordinary task context  \n",
+      kind: "task",
+      cadence: { kind: "unscheduled" },
+      timezone: "UTC",
+      metadata: { ownerSurface: "OWNER_TODOS" },
+    });
+    expect(ordinary.definition.title).toBe("Ordinary task title");
+    expect(ordinary.definition.description).toBe("Ordinary task context");
+    const ordinaryOnce = await service.createDefinition({
+      title: "  Ordinary habit title  ",
+      description: originalBody,
+      kind: "habit",
+      cadence: {
+        kind: "once",
+        dueAt: new Date(Date.now() + 3_600_000).toISOString(),
+      },
+      timezone: "UTC",
+      metadata: { ownerSurface: "OWNER_ROUTINES" },
+      reminderPlan: {
+        steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
+      },
+    });
+    expect(ordinaryOnce.definition.title).toBe("Ordinary habit title");
+    expect(ordinaryOnce.definition.description).toBe(originalBody.trim());
+    const ordinaryEdited = await service.updateDefinition(
+      ordinaryOnce.definition.id,
+      { description: currentBody },
+    );
+    expect(ordinaryEdited.definition.description).toBe(currentBody.trim());
+    expect(ordinaryEdited.definition.cadence).toEqual(
+      ordinaryOnce.definition.cadence,
+    );
     const created = await executePlannedToolCall(
       runtime,
       {

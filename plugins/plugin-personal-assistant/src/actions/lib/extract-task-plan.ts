@@ -417,21 +417,30 @@ export function buildTaskCreatePlan(
   if (!mode) {
     return null;
   }
+  const requestKind = validateRequestKind(parsed.requestKind);
+  const cadenceKind = validateCadenceKind(parsed.cadenceKind);
   return {
     mode,
     response:
       mode === "respond"
         ? (validateResponse(parsed.response) ?? DEFAULT_CREATE_PLAN_RESPONSE)
         : null,
-    requestKind: validateRequestKind(parsed.requestKind),
+    requestKind,
     nativeProjection:
       parsed.nativeProjection === "in_app_only" ||
       parsed.nativeProjection === "apple_reminders"
         ? parsed.nativeProjection
         : null,
     title: validateTitle(parsed.title),
-    description: validateTitle(parsed.description),
-    cadenceKind: validateCadenceKind(parsed.cadenceKind),
+    description:
+      mode === "create" &&
+      requestKind === "reminder" &&
+      cadenceKind === "once" &&
+      typeof parsed.description === "string" &&
+      parsed.description.trim().length > 0
+        ? parsed.description
+        : validateTitle(parsed.description),
+    cadenceKind,
     windows: validateWindows(parsed.windows),
     weekdays: validateWeekdays(parsed.weekdays),
     timeOfDay: validateTimeOfDay(parsed.timeOfDay),

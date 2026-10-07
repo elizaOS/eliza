@@ -236,7 +236,7 @@ describe("grounded reply outcomes — real PGlite", () => {
               requestKind: "reminder",
               nativeProjection: "in_app_only",
               title: "Notification grounding fixture",
-              description: "The exact saved alert body.",
+              description: "\n  The exact saved alert body.  \n",
               cadenceKind: "once",
               dueInMinutes: 2,
               timeZone: "UTC",
@@ -250,6 +250,9 @@ describe("grounded reply outcomes — real PGlite", () => {
     const definitionId = created.effectReceipts?.[0]?.resource.id;
     if (!definitionId) throw new Error("Missing real create receipt");
     const saved = await service.getDefinition(definitionId);
+    expect(saved.definition.description).toBe(
+      "\n  The exact saved alert body.  \n",
+    );
     const updateMessage = message(
       "In two minutes, remind me here with the exact requested alert body.",
     );
@@ -266,7 +269,7 @@ describe("grounded reply outcomes — real PGlite", () => {
             action: "update",
             target: definitionId,
             details: {
-              description: "Updated fixture note",
+              description: "\n  Updated fixture note  \n",
             },
           },
         }),
@@ -274,6 +277,9 @@ describe("grounded reply outcomes — real PGlite", () => {
     expect(updated.success).toBe(true);
     expect(useModel).not.toHaveBeenCalled();
     const afterUpdate = await service.getDefinition(definitionId);
+    expect(afterUpdate.definition.description).toBe(
+      "\n  Updated fixture note  \n",
+    );
     expect(afterUpdate.definition.cadence).toEqual(saved.definition.cadence);
     expect(afterUpdate.definition.title).toBe(saved.definition.title);
     for (const [result, recordKey] of [
@@ -338,8 +344,8 @@ describe("grounded reply outcomes — real PGlite", () => {
       expect(grounding.context[recordKey]).toMatchObject({
         description:
           recordKey === "created"
-            ? "The exact saved alert body."
-            : "Updated fixture note",
+            ? "\n  The exact saved alert body.  \n"
+            : "\n  Updated fixture note  \n",
         notificationChannels: ["in_app"],
         nativeProjection: "in_app_only",
         nativeAppleReminderId: null,
