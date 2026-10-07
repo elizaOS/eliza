@@ -537,8 +537,9 @@ async function runPlannerLoopIterations(
         type: "instruction",
         source: "planner-loop",
         createdAt: Date.now(),
-        content:
-          "The tool result in this turn is already settled and complete. Write the final user-facing reply in the agent's natural voice from that result. Do not describe the work as starting, opening now, pending, or still in progress. If the result provides a link object, include it as a Markdown link using its label and href. Include internal IDs or raw tool data only when explicitly requested and safe to disclose; never expose secrets or internal reasoning.",
+        content: hasAwaitingDeviceExecutionMarker(postToolReplySeed.result)
+          ? "The durable request is still pending on the external device. Write an honest partial reply; do not claim it applied or ask for manual confirmation without a native request. Do not call or repeat any tool."
+          : "The tool result in this turn is already settled and complete. Write the final user-facing reply in the agent's natural voice from that result. Do not describe the work as starting, opening now, pending, or still in progress. If the result provides a link object, include it as a Markdown link using its label and href. Include internal IDs or raw tool data only when explicitly requested and safe to disclose; never expose secrets or internal reasoning.",
       }
     : undefined;
   const trajectoryContext = postToolReplyEvent
@@ -843,23 +844,47 @@ async function runPlannerLoopIterations(
     iteration: number,
     source: "evaluator" | "terminal" = "evaluator",
   ): EvaluatorOutput | null => {
+    const latestResult = [...trajectory.archivedSteps, ...trajectory.steps]
+      .reverse()
+      .find((step) => step.toolCall && step.result)?.result;
+    if (hasAwaitingDeviceExecutionMarker(latestResult)) {
+      // A model's claimed completion or continuation cannot settle this effect.
+      // Preserve an explicit typed partial reply; otherwise use the producer's
+      // separate, authoritative pending projection, never its internal text.
+      let partialReply =
+        evaluator.success === false &&
+        evaluator.requestFullyCovered === false &&
+        evaluator.replyEffectStatus === "non_applied"
+          ? userSafeRescueReply(evaluator.messageToUser, trajectory)
+          : undefined;
+      if (
+        partialReply &&
+        (parseInteractionBlocks(partialReply).blocks.length > 0 ||
+          (latestResult?.transcriptVisibility === "internal" &&
+            partialReply === getNonEmptyString(latestResult.text)))
+      )
+        partialReply = undefined;
+      return {
+        ...evaluator,
+        decision: "FINISH",
+        success: false,
+        requestFullyCovered: false,
+        replyEffectStatus: "non_applied",
+        messageToUser:
+          partialReply ?? getNonEmptyString(latestResult?.userFacingText),
+      };
+    }
     if (
       lastPlannerExplicitCompleted !== false ||
       evaluator.decision !== "FINISH" ||
       evaluator.success !== true
-    ) {
+    )
       return null;
-    }
-    const latestResult = [...trajectory.archivedSteps, ...trajectory.steps]
-      .reverse()
-      .find((step) => step.toolCall && step.result)?.result;
     // A failed operation or a user-owned prerequisite may legitimately stop
     // the chain. Do not turn confirmation/input pauses into automatic retries.
     if (
       latestResult &&
-      (latestResult.success === false ||
-        hasAwaitingUserInputMarker(latestResult) ||
-        hasRequiresConfirmationMarker(latestResult))
+      (latestResult.success === false || hasExecutionPrerequisite(latestResult))
     ) {
       return { ...evaluator, success: false };
     }
@@ -1801,11 +1826,7 @@ async function runPlannerLoopIterations(
         const latest = [...trajectory.archivedSteps, ...trajectory.steps]
           .reverse()
           .find((step) => step.toolCall && step.result)?.result;
-        if (
-          !latest ||
-          (!hasAwaitingUserInputMarker(latest) &&
-            !hasRequiresConfirmationMarker(latest))
-        ) {
+        if (!latest || !hasExecutionPrerequisite(latest)) {
           assertTrajectoryLimit({
             kind: "terminal_only_continuations",
             max: config.maxTerminalOnlyContinuations,
@@ -2657,7 +2678,10 @@ async function runPlannerLoopIterations(
         terminalFailure: latestResult.replyFailure,
       };
     }
-    if (latestResult?.continueChain === false) {
+    if (
+      latestResult?.continueChain === false &&
+      !hasAwaitingDeviceExecutionMarker(latestResult)
+    ) {
       // `suppressPlannerReply` from terminal actions blanks finalMessage so a
       // same-turn hallucinated `messageToUser` cannot leak past the transient
       // filter (which only masks it on the *next* turn).
@@ -2692,8 +2716,7 @@ async function runPlannerLoopIterations(
       !discoveryWasRequested &&
       latestResult?.success === false &&
       latestResult.data?.readOnlyOperation === true &&
-      !hasAwaitingUserInputMarker(latestResult) &&
-      !hasRequiresConfirmationMarker(latestResult)
+      !hasExecutionPrerequisite(latestResult)
     ) {
       // An unavailable schema name has no domain effect to evaluate. Feed
       // the recorded error back to the planner so it can select an admitted
@@ -2707,8 +2730,7 @@ async function runPlannerLoopIterations(
       latestResult.data?.acceptance === "rejected" &&
       latestResult.data?.executionStatus === "not_started" &&
       !latestResult.effectReceipts?.length &&
-      !hasAwaitingUserInputMarker(latestResult) &&
-      !hasRequiresConfirmationMarker(latestResult)
+      !hasExecutionPrerequisite(latestResult)
     ) {
       // A typed pre-execution rejection is safe to repair, not proof that an
       // effect ran. Preserve the error and require the model to choose fresh
@@ -2720,11 +2742,11 @@ async function runPlannerLoopIterations(
     // A queued call may depend on the preceding result. A failed prerequisite
     // invalidates the remainder of the batch; let the model repair it using the
     // complete recorded result instead of running dependent effects blindly.
-    const awaitingUser =
-      !!latestResult &&
-      (hasAwaitingUserInputMarker(latestResult) ||
-        hasRequiresConfirmationMarker(latestResult));
-    if (codingDrainQueue && !awaitingUser) {
+    const pendingPrerequisite = hasExecutionPrerequisite(latestResult);
+    const awaitingDeviceExecution =
+      hasAwaitingDeviceExecutionMarker(latestResult);
+    if (awaitingDeviceExecution) trajectory.plannedQueue.length = 0;
+    if (codingDrainQueue && !pendingPrerequisite) {
       if (latestResult?.success !== true) {
         trajectory.plannedQueue.length = 0;
       }
@@ -2732,9 +2754,9 @@ async function runPlannerLoopIterations(
       // results and chooses further work or a verified terminal response.
       continue;
     }
-    // Human prerequisites go through settlement below, never automatic retry
+    // Execution prerequisites go through settlement below, never automatic retry
     // or another queued action, even when the adapter reports success=true.
-    if (codingDrainQueue && awaitingUser) {
+    if (codingDrainQueue && pendingPrerequisite) {
       trajectory.plannedQueue.length = 0;
     }
 
@@ -2825,6 +2847,7 @@ async function runPlannerLoopIterations(
     const needsModelReply =
       latestResult?.success === true &&
       latestResult.modelReplyRequired === true &&
+      !awaitingDeviceExecution &&
       !requiresIntentEvaluation &&
       trajectory.plannedQueue.length === 0 &&
       failures.length === 0 &&
@@ -2972,6 +2995,8 @@ async function runPlannerLoopIterations(
       iteration,
       redactDiagnosticText,
     );
+    if (awaitingDeviceExecution) return finishWithEvaluator(evaluator);
+
     // A malformed evaluator reply cannot complete explicitly pending work.
     // A retryable boundary failure also permits replanning from the complete
     // outcome; the model must choose safe recovery rather than having the loop
@@ -6480,10 +6505,7 @@ function latestUnresolvedFailedNonTerminalToolStep(
     }
     // Input/confirmation pauses are deliberate partial completions, not failed
     // operations. Their interaction payload remains the terminal authority.
-    if (
-      hasAwaitingUserInputMarker(step.result) ||
-      hasRequiresConfirmationMarker(step.result)
-    ) {
+    if (hasExecutionPrerequisite(step.result)) {
       continue;
     }
     // A tool-declared read-only failure (FILE ls/read/grep/glob miss) leaves
@@ -8900,6 +8922,29 @@ function hasNoopMarker(result: PlannerToolResult): boolean {
   return plannerResultValues(result)?.noop === true;
 }
 
+/** External device settlement is independent of human-input/confirmation licenses. */
+function hasAwaitingDeviceExecutionMarker(
+  result: PlannerToolResult | undefined,
+): boolean {
+  return (
+    result?.data?.awaitingDeviceExecution === true ||
+    (result !== undefined &&
+      plannerResultValues(result)?.awaitingDeviceExecution === true)
+  );
+}
+
+/** A prerequisite blocks execution/settled-success, never grants text or approval authority. */
+function hasExecutionPrerequisite(
+  result: PlannerToolResult | undefined,
+): boolean {
+  return (
+    result !== undefined &&
+    (hasAwaitingUserInputMarker(result) ||
+      hasRequiresConfirmationMarker(result) ||
+      hasAwaitingDeviceExecutionMarker(result))
+  );
+}
+
 function hasAwaitingUserInputMarker(result: PlannerToolResult): boolean {
   const data = result.data;
   if (!data) return false;
@@ -9662,6 +9707,7 @@ function trySubPlannerVerdictGate(args: {
   const result = latestStep?.result;
   const verdict = result?.subPlannerEvaluation;
   if (!latestStep?.toolCall || !result || !verdict) return null;
+  if (hasAwaitingDeviceExecutionMarker(result)) return null;
   if (result.success !== true || verdict.success !== true) return null;
   if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return null;
   const message = verdict.messageToUser?.trim();
@@ -9693,8 +9739,7 @@ function isSettledInternalSuccess(
     result.success === true &&
     result.transcriptVisibility === "internal" &&
     result.turnComplete !== false &&
-    !hasAwaitingUserInputMarker(result) &&
-    !hasRequiresConfirmationMarker(result)
+    !hasExecutionPrerequisite(result)
   );
 }
 
@@ -9743,8 +9788,7 @@ function hasDeliveredQueuedNavigation(
     result?.success !== true ||
     result.transcriptVisibility !== "internal" ||
     result.modelReplyRequired !== true ||
-    hasAwaitingUserInputMarker(result) ||
-    hasRequiresConfirmationMarker(result) ||
+    hasExecutionPrerequisite(result) ||
     (result.effectReceipts?.length ?? 0) > 0
   )
     return false;
@@ -9801,8 +9845,7 @@ function selectQueueAutoAdvance(args: {
       result?.success === true &&
       result.verifiedUserFacing === true &&
       result.turnComplete === true &&
-      !hasAwaitingUserInputMarker(result) &&
-      !hasRequiresConfirmationMarker(result);
+      !hasExecutionPrerequisite(result);
     if (!isSettledInternalSuccess(result) && !verifiedSettledResult)
       return null;
     if (!result) return null;
@@ -9837,8 +9880,7 @@ function canReplanPendingCommittedMutation(args: {
     result.success !== true ||
     result.failureProvenance ||
     result.replyFailure ||
-    hasAwaitingUserInputMarker(result) ||
-    hasRequiresConfirmationMarker(result)
+    hasExecutionPrerequisite(result)
   )
     return false;
   const verifiedVisible =
@@ -9871,6 +9913,7 @@ function tryGateEvaluator(args: {
 }): GatedEvaluatorDecision | null {
   const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
   const latestResult = latestStep?.result;
+  if (hasAwaitingDeviceExecutionMarker(latestResult)) return null;
   if (latestResult?.success !== true) {
     return tryGateVerifiedFailure(latestResult, args);
   }
@@ -9924,10 +9967,7 @@ function tryGateVerifiedFailure(
   if (latestResult?.success !== false) return null;
   if (latestResult.turnComplete !== true) return null;
   if (latestResult.verifiedUserFacing !== true) return null;
-  if (
-    hasAwaitingUserInputMarker(latestResult) ||
-    hasRequiresConfirmationMarker(latestResult)
-  ) {
+  if (hasExecutionPrerequisite(latestResult)) {
     return null;
   }
   const message = latestResult.userFacingText?.trim();

@@ -1075,6 +1075,10 @@ export interface ActionResult {
 	/**
 	 * Data payload containing action-specific results.
 	 * Accepts any JSON-serializable object values including domain types.
+	 * `awaitingDeviceExecution: true` means a durable request still awaits an
+	 * external device outcome. Enqueue success is not request fulfillment or an
+	 * applied effect. It blocks dependent execution without licensing human-input
+	 * widgets or confirmation prose. `approvalRequired` remains independent.
 	 */
 	data?: ProviderDataRecord;
 

@@ -314,3 +314,209 @@ describe("settled navigation reply recovery", () => {
     ).toBe(true);
   });
 });
+
+describe("pending device settlement", () => {
+  it.each([
+    {
+      mode: "final",
+      decision: "FINISH",
+      coding: false,
+      batch: false,
+      wrapped: false,
+      child: false,
+    },
+    {
+      mode: "more_work_pending",
+      decision: "CONTINUE",
+      coding: false,
+      batch: false,
+      wrapped: false,
+      child: false,
+    },
+    {
+      mode: "final",
+      decision: "NEXT_RECOMMENDED",
+      coding: false,
+      batch: true,
+      wrapped: false,
+      child: false,
+    },
+    {
+      mode: "final",
+      decision: "NEXT_RECOMMENDED",
+      coding: true,
+      batch: true,
+      wrapped: false,
+      child: false,
+    },
+    {
+      mode: "final",
+      decision: "FINISH",
+      coding: false,
+      batch: false,
+      wrapped: false,
+      child: true,
+    },
+    {
+      mode: "more_work_pending",
+      decision: "CONTINUE",
+      coding: false,
+      batch: false,
+      wrapped: true,
+      child: false,
+    },
+  ] as const)(
+    "settles once without replay, dependent execution or success: %j",
+    async (scenario) => {
+      const pendingReply =
+        "Your alarm control request is queued for the phone.";
+      const marker = {
+        awaitingDeviceExecution: true,
+        approvalRequired: true,
+        executed: false,
+      };
+      const plan = vi.fn(async () => ({
+        text: "",
+        toolCalls: [
+          {
+            id: "device",
+            name: "DEVICE_CONTROL",
+            arguments: { eliza_turn_scope: scenario.mode },
+          },
+          ...(scenario.batch
+            ? [
+                {
+                  id: "dependent",
+                  name: "DEPENDENT",
+                  arguments: { eliza_turn_scope: "final" },
+                },
+              ]
+            : []),
+        ],
+        messageToUser: "The requested work is complete.",
+      }));
+      const execute = vi.fn(async (call: { name: string }) => {
+        if (call.name !== "DEVICE_CONTROL")
+          throw Error("A dependent operation ran before native settlement");
+        return {
+          success: true,
+          transcriptVisibility: "internal" as const,
+          text: "Opaque native request queued; no effect applied.",
+          userFacingText: pendingReply,
+          data: scenario.wrapped ? { values: marker } : marker,
+          ...(scenario.child
+            ? {
+                subPlannerEvaluation: {
+                  decision: "FINISH" as const,
+                  success: true,
+                  messageToUser: "The requested work is complete.",
+                },
+              }
+            : {}),
+        };
+      });
+      const evaluate = vi.fn(async () => ({
+        decision: scenario.decision,
+        success: true,
+        recommendedToolCallId: "dependent",
+        messageToUser: pendingReply,
+      }));
+      const result = await runPlannerLoop({
+        codingMode: scenario.coding,
+        context,
+        tools: ["DEVICE_CONTROL", "DEPENDENT"].map((name) => ({
+          name,
+          description: name,
+          parameters: { type: "object", properties: {} },
+        })),
+        runtime: { useModel: plan },
+        executeToolCall: execute,
+        evaluate,
+        config: { maxIterations: 2, maxToolCalls: 2 },
+      });
+      expect(plan).toHaveBeenCalledTimes(1);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      expect(result.evaluator).toMatchObject({
+        decision: "FINISH",
+        success: false,
+        requestFullyCovered: false,
+      });
+      expect(result.finalMessage).toBe(pendingReply);
+      expect(result.trajectory.plannedQueue).toHaveLength(0);
+      expect(
+        result.trajectory.steps.flatMap(
+          (step) => step.result?.effectReceipts ?? [],
+        ),
+      ).toEqual([]);
+    },
+  );
+});
+
+describe("pending device reply authority", () => {
+  it.each([
+    "Stopped the alarm.",
+    "Snoozed the alarm for five minutes.",
+    "Opaque native request queued; no effect applied.",
+  ])(
+    "does not relay unsupported completion or raw diagnostics: %s",
+    async (claimedText) => {
+      const pendingText =
+        "Your alarm control request is queued for your phone. It isn’t confirmed yet.";
+      const plan = vi.fn(async () => ({
+        text: "",
+        toolCalls: [
+          {
+            id: "control",
+            name: "DEVICE_CONTROL",
+            arguments: { eliza_turn_scope: "final" },
+          },
+        ],
+      }));
+      const execute = vi.fn(async () => ({
+        success: true,
+        transcriptVisibility: "internal" as const,
+        modelReplyRequired: true,
+        text: "Opaque native request queued; no effect applied.",
+        userFacingText: pendingText,
+        data: {
+          awaitingDeviceExecution: true,
+          approvalRequired: true,
+          executed: false,
+        },
+      }));
+      const raw = claimedText.startsWith("Opaque");
+      const evaluate = vi.fn(async () => ({
+        decision: "FINISH" as const,
+        success: !raw,
+        requestFullyCovered: !raw,
+        replyEffectStatus: raw
+          ? ("non_applied" as const)
+          : ("applied" as const),
+        messageToUser: claimedText,
+      }));
+      const result = await runPlannerLoop({
+        context,
+        tools: [{ name: "DEVICE_CONTROL" }],
+        runtime: { useModel: plan },
+        executeToolCall: execute,
+        evaluate,
+      });
+      expect(plan).toHaveBeenCalledTimes(1);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      expect(result.evaluator).toMatchObject({
+        decision: "FINISH",
+        success: false,
+        requestFullyCovered: false,
+        replyEffectStatus: "non_applied",
+      });
+      expect(result.finalMessage).toBe(pendingText);
+      expect(
+        result.trajectory.steps.flatMap(
+          (step) => step.result?.effectReceipts ?? [],
+        ),
+      ).toEqual([]);
+    },
+  );
+});

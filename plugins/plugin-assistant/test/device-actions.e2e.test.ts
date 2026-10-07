@@ -1915,11 +1915,18 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           state: "pending",
           executed: false,
           approvalRequired: true,
-          awaitingUserInput: true,
         });
-        expect(proposed.body.action.data).not.toHaveProperty(
-          "awaitingDeviceExecution",
-        );
+        if (operation.action === "dismiss" || operation.action === "snooze") {
+          expect(proposed.body.action.data.awaitingDeviceExecution).toBe(true);
+          expect(proposed.body.action.data).not.toHaveProperty(
+            "awaitingUserInput",
+          );
+        } else {
+          expect(proposed.body.action.data.awaitingUserInput).toBe(true);
+          expect(proposed.body.action.data).not.toHaveProperty(
+            "awaitingDeviceExecution",
+          );
+        }
         expect(proposed.body.action.text).toContain(
           "This tool has performed no device operation.",
         );
@@ -3631,3 +3638,160 @@ test("Clock-only enrollment scopes actual planner discovery and preserves pendin
     await fixture.cleanup();
   }
 });
+
+test.each([
+  { action: "dismiss", scope: "final", verdict: "FINISH" },
+  { action: "snooze", scope: "more_work_pending", verdict: "CONTINUE" },
+])(
+  "owned ringing pipeline settles pending device work once: %j",
+  async ({ action, scope, verdict }) => {
+    const fixture = await createRealTestRuntime({
+      characterName: "PendingDevicePipeline",
+      withLLM: false,
+    });
+    const runtime = fixture.runtime;
+    const credential = {
+      subjectUserId: runtime.agentId,
+      installationId: randomUUID(),
+      deviceKey: "c".repeat(64),
+      capabilities: ["clock.alarms.v1"],
+    };
+    const service = new DeviceActionService(runtime);
+    const alarmId = randomUUID();
+    const pendingText = "Your alarm control request is queued for the phone.";
+    const operation =
+      action === "snooze"
+        ? { type: "clock_alarm", action, alarmId, minutes: 5 }
+        : { type: "clock_alarm", action, alarmId };
+    const outputs: unknown[] = [
+      stage1Response({
+        contexts: ["general"],
+        intents: ["Control my current alarm"],
+        candidateActionNames: ["PROPOSE_DEVICE_ACTION"],
+        extra: { replyEffectStatus: "none" },
+      }),
+      {
+        text: "",
+        toolCalls: [
+          {
+            id: "control",
+            name: "PROPOSE_DEVICE_ACTION",
+            arguments: {
+              operation,
+              operationKey: "owned-pending-control",
+              reason: "Requested ringing control",
+              eliza_turn_scope: scope,
+            },
+          },
+        ],
+      },
+      JSON.stringify({
+        decision: verdict,
+        success: false,
+        requestFullyCovered: false,
+        messageToUser: pendingText,
+        replyEffectStatus: "non_applied",
+        thought:
+          "The request is durable but the device has not returned a completion receipt.",
+      }),
+    ];
+    const calls: string[] = [];
+    const model = vi
+      .spyOn(runtime, "useModel")
+      .mockImplementation(async (type) => {
+        calls.push(type);
+        if (!outputs.length)
+          throw Error("Pending device request caused another model call");
+        return outputs.shift() as never;
+      });
+    try {
+      await service.register(credential, "Owned ringing pipeline");
+      runtime.registerAction(proposeDeviceAction);
+      const worldId = randomUUID() as UUID;
+      const roomId = randomUUID() as UUID;
+      await runtime.createWorld({
+        id: worldId,
+        name: "Pending device",
+        agentId: runtime.agentId,
+        metadata: { ownership: { ownerId: runtime.agentId } },
+      });
+      await runtime.createRoom({
+        id: roomId,
+        worldId,
+        name: "Pending device",
+        source: "client_chat",
+        type: ChannelType.DM,
+      });
+      const message: Memory = {
+        id: randomUUID(),
+        roomId,
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        content: {
+          text: "Control my current alarm.",
+          source: "client_chat",
+          channelType: ChannelType.DM,
+          metadata: {
+            clientDevice: {
+              context: {
+                sensitive: false,
+                revision: 1,
+                timeZone: "UTC",
+                alarmsStatus: "available",
+                alarmsObservedAt: Date.now(),
+                alarmsRevision: 12,
+                alarms: [
+                  {
+                    id: alarmId,
+                    hour: 9,
+                    minute: 0,
+                    label: "Current alarm",
+                    timeZone: "UTC",
+                    days: [],
+                    enabled: true,
+                    nextAt: Date.now() + 60000,
+                    scheduleState: "scheduled",
+                    generation: 1,
+                    lastOutcome: "",
+                  },
+                ],
+              },
+            },
+          },
+        },
+      };
+      const result = await withDeviceActionTurn(runtime, credential, () =>
+        runV5MessageRuntimeStage1({
+          runtime,
+          message,
+          state: {
+            values: { availableContexts: "general" },
+            data: {},
+            text: "",
+          },
+          responseId: randomUUID() as UUID,
+        }),
+      );
+      expect(outputs).toHaveLength(0);
+      expect(result.kind).toBe("planned_reply");
+      if (result.kind === "planned_reply") {
+        expect(result.result.requestFulfilled).toBe(false);
+        expect(result.result.responseContent?.text).toBe(pendingText);
+        expect(result.result.responseContent?.transcriptVisibility).not.toBe(
+          "internal",
+        );
+      }
+      expect(
+        calls.filter((type) => type === ModelType.ACTION_PLANNER),
+      ).toHaveLength(1);
+      const proposals = await service.list(credential);
+      expect(proposals).toHaveLength(1);
+      expect(proposals[0].state).toBe("pending");
+      expect(proposals[0].execution).toBeNull();
+    } finally {
+      model.mockRestore();
+      await fixture.cleanup();
+    }
+  },
+  120000,
+);
