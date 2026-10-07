@@ -4,10 +4,9 @@ import {
   type ClockAlarmRecord,
   clockCapabilityAvailable,
 } from "@elizaos/plugin-assistant/device-clock-review";
-import { AlarmClock, ArrowRight } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useAgentElement } from "../../agent-surface/useAgentElement";
-import { navigateBrowserPath } from "../../app-navigate-view";
 import {
   type ClockAlarmStatus,
   type ClockHost,
@@ -16,14 +15,15 @@ import {
   getClockHost,
   subscribeClockHost,
 } from "../../bridge/clock-host";
-import { dispatchChatPrefill } from "../../events";
 import { useSharedNow } from "../../hooks/useSharedNow";
-import {
-  FramedPage,
-  FramedPageBody,
-  FramedPageHeader,
-} from "../../layouts/framed-page";
+import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
 import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -61,7 +61,7 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
   const [label, setLabel] = useState("");
   const [repeat, setRepeat] = useState("once");
   const [days, setDays] = useState<ClockAlarmRecord["days"]>([]);
-  const [drafted, setDrafted] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const reads = useRef(0);
   const owner = useRef<{ host: ClockHost; value: string | null }>({
     host,
@@ -89,6 +89,7 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
         if (!live || read !== reads.current) return;
         if (owner.current.value !== next.owner) {
           setEditing(null);
+          setEditorOpen(false);
           setReceipt(null);
           setTime("09:00");
           setLabel("");
@@ -171,7 +172,9 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
       ) {
         setEditing(null);
         setLabel("");
+        setEditorOpen(false);
       }
+      if (successful && operation.action === "delete") setEditorOpen(false);
       await reload.current?.();
     } catch (failure) {
       // error-policy:J1 A failed change is reported without retrying or inferring a saved alarm.
@@ -265,20 +268,12 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
       "save",
     );
   };
-  const askAgent = () => {
-    if (!validForm) return;
-    dispatchChatPrefill({
-      text: `${editing ? `Update my Eliza alarm ${JSON.stringify(editing.id)}` : "Create an Eliza alarm"} for ${time} ${repeatDays.length ? `every ${repeatDays.map((day) => DAY_NAMES[day - 1]).join(", ")}` : "once"}${label ? ` labeled ${JSON.stringify(label)}` : ""} in my phone's current timezone. Ask me to review the change on this phone.`,
-    });
-    setDrafted(true);
-  };
   const timeElement = useAgentElement<HTMLInputElement>({
     id: "clock-alarm-time",
     role: "text-input",
     label: "Alarm time",
     onFill: (value) => {
       setTime(value);
-      setDrafted(false);
     },
   });
   const labelElement = useAgentElement<HTMLInputElement>({
@@ -287,7 +282,6 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
     label: "Alarm label",
     onFill: (value) => {
       setLabel(value);
-      setDrafted(false);
     },
   });
   const saveElement = useAgentElement<HTMLButtonElement>({
@@ -304,7 +298,6 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
     onFill: (value) => {
       if (["once", "daily", "weekdays", "custom"].includes(value)) {
         setRepeat(value);
-        setDrafted(false);
       }
     },
   });
@@ -316,48 +309,47 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
       </section>
     );
   return (
-    <section aria-label="Eliza alarms" className="space-y-6">
-      <div className="space-y-2">
-        <h2 className="flex items-center gap-2 text-lg font-medium">
-          <AlarmClock className="size-5" aria-hidden />
-          Your alarms
-        </h2>
-        <p className="max-w-prose text-sm text-muted-foreground">
-          Saved on this phone and managed by Eliza. You can also ask your agent
-          to create, change or list them.
-        </p>
+    <section aria-label="Eliza alarms" className="mx-auto max-w-xl">
+      <div className="mb-8 flex items-center justify-between">
+        <h1 className="text-2xl font-medium">Alarms</h1>
+        <Button
+          variant="ghost"
+          aria-label="Add alarm"
+          disabled={!status?.available || busy !== null}
+          onClick={() => {
+            setEditing(null);
+            setTime("09:00");
+            setLabel("");
+            setRepeat("once");
+            setDays([]);
+            setEditorOpen(true);
+          }}
+        >
+          <Plus className="size-6 text-accent-action" aria-hidden />
+        </Button>
       </div>
       {!status && !error && (
-        <p role="status" className="text-sm">
-          Loading this phone’s alarms…
+        <p role="status" className="py-8 text-sm text-muted-foreground">
+          Loading…
         </p>
       )}
       {status && !status.available && (
-        <p role="status" className="text-sm">
-          Alarms are unavailable. {status.reason}
+        <p role="status" className="text-sm text-muted-foreground">
+          {status.reason}
         </p>
       )}
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+      {(error || actionError) && (
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <p role="alert" className="text-sm text-destructive">
+            {error || actionError}
+          </p>
+          <Button variant="ghost" onClick={() => void reload.current?.()}>
+            Retry
+          </Button>
+        </div>
       )}
-      {actionError && (
-        <p role="alert" className="text-sm text-destructive">
-          {actionError}
-        </p>
-      )}
-      <Button
-        variant="outline"
-        disabled={busy !== null}
-        onClick={() => {
-          void reload.current?.();
-        }}
-      >
-        Refresh alarms
-      </Button>
       {receipt && receipt.owner === status?.owner && (
-        <p role="status" className="text-sm">
+        <p role="status" className="sr-only">
           {receipt.text}
         </p>
       )}
@@ -365,569 +357,295 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
         <>
           {(!status.exactAlarmsAllowed ||
             !status.notificationsAllowed ||
-            !status.fullScreenAllowed ||
-            status.alarmSoundMuted ||
             !status.defaultToneAvailable) && (
-            <section
-              className="space-y-3 border-y border-border py-4"
-              aria-label="Alarm permissions"
-            >
+            <div className="mb-6 flex flex-wrap items-center gap-3 text-sm">
               {!status.exactAlarmsAllowed && (
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-sm">
-                    Allow exact alarms to ring at the saved time.
-                  </p>
-                  <Button
-                    variant="outline"
-                    disabled={busy !== null}
-                    onClick={() => {
-                      void permission("exact");
-                    }}
-                  >
-                    Allow exact alarms
-                  </Button>
-                </div>
+                <Button
+                  variant="outline"
+                  disabled={busy !== null}
+                  onClick={() => void permission("exact")}
+                >
+                  Allow alarms
+                </Button>
               )}
               {!status.notificationsAllowed && (
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-sm">
-                    Allow notifications for Stop and Snooze controls.
-                  </p>
-                  <Button
-                    variant="outline"
-                    disabled={busy !== null}
-                    onClick={() => {
-                      void permission("notifications");
-                    }}
-                  >
-                    Allow alarm notifications
-                  </Button>
-                </div>
-              )}
-              {!status.fullScreenAllowed && (
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-sm">
-                    Lock-screen view is off. Alarm controls appear in the
-                    notification.
-                  </p>
-                  <Button
-                    variant="outline"
-                    disabled={busy !== null}
-                    onClick={() => {
-                      void permission("fullScreen");
-                    }}
-                  >
-                    Allow lock-screen view
-                  </Button>
-                </div>
-              )}
-              {status.alarmSoundMuted && (
-                <p className="text-sm">
-                  The Android alarm volume is muted. Change it in Android
-                  settings to hear your alarms.
-                </p>
+                <Button
+                  variant="outline"
+                  disabled={busy !== null}
+                  onClick={() => void permission("notifications")}
+                >
+                  Allow notifications
+                </Button>
               )}
               {!status.defaultToneAvailable && (
-                <p className="text-sm">
-                  No default alarm sound is selected in Android settings.
-                </p>
+                <p role="alert">Choose an alarm sound in Android settings.</p>
               )}
-            </section>
+            </div>
           )}
-          <div className="grid items-start gap-8 lg:grid-cols-2">
-            <section className="min-w-0 space-y-4" aria-label="Saved alarms">
-              {status.alarms?.length === 0 && (
-                <p className="py-4 text-muted-foreground">
-                  No Eliza alarms yet. Create one below or ask your agent.
-                </p>
-              )}
-              {status.alarms?.map((alarm) => (
-                <article
-                  key={alarm.id}
-                  className="space-y-3 border-b border-border py-4"
-                  aria-label={alarm.label || "Unlabeled alarm"}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="text-3xl font-medium tabular-nums">
-                        {String(alarm.hour).padStart(2, "0")}:
-                        {String(alarm.minute).padStart(2, "0")}
-                      </p>
-                      <h3 className="break-words font-medium [overflow-wrap:anywhere]">
-                        {alarm.label || "Alarm"}
-                      </h3>
-                      <p className="text-sm text-muted-foreground">
-                        {repeatLabel(alarm.days)}
-                      </p>
-                    </div>
-                    <Switch
-                      aria-label={`${alarm.enabled ? "Disable" : "Enable"} ${alarm.label || "alarm"}`}
-                      checked={alarm.enabled}
-                      className="data-[state=checked]:bg-accent-action"
-                      disabled={
-                        busy !== null || (!alarm.enabled && !canSchedule)
-                      }
-                      onCheckedChange={(enabled) => {
-                        void manage(
-                          {
-                            type: "clock_alarm",
-                            action: "enable",
-                            alarmId: alarm.id,
-                            enabled,
-                          },
-                          alarm.id,
-                        );
-                      }}
-                    />
-                  </div>
-                  <p className="text-sm">
-                    {alarm.scheduleState === "disabled"
-                      ? "Disabled"
-                      : alarm.scheduleState === "permission_required"
-                        ? "Exact alarm access needed"
-                        : alarm.scheduleState === "schedule_unknown"
-                          ? "Schedule needs checking"
-                          : alarm.scheduleState === "firing"
-                            ? "Alarm active"
-                            : alarm.nextAt
-                              ? `${alarm.scheduleState === "snoozed" ? "Snoozed until" : "Next"}: ${new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: alarm.timeZone }).format(alarm.nextAt)}`
-                              : "No next occurrence recorded"}
-                  </p>
-                  {alarm.lastOutcome && (
-                    <p className="text-sm text-muted-foreground">
-                      Last result: {alarm.lastOutcome.replaceAll("_", " ")}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      disabled={busy !== null}
-                      onClick={() => {
-                        setEditing(alarm);
-                        setTime(
-                          `${String(alarm.hour).padStart(2, "0")}:${String(alarm.minute).padStart(2, "0")}`,
-                        );
-                        setLabel(alarm.label);
-                        setRepeat(
-                          alarm.days.length === 0
-                            ? "once"
-                            : alarm.days.length === 7
-                              ? "daily"
-                              : alarm.days.join(",") === "2,3,4,5,6"
-                                ? "weekdays"
-                                : "custom",
-                        );
-                        setDays(alarm.days);
-                        setDrafted(false);
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      disabled={busy !== null}
-                      onClick={() => {
-                        void manage(
-                          {
-                            type: "clock_alarm",
-                            action: "delete",
-                            alarmId: alarm.id,
-                          },
-                          alarm.id,
-                        );
-                      }}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </article>
-              ))}
-              <p className="text-sm text-muted-foreground">
-                A saved schedule confirms when an alarm is due. Sound follows
-                this phone’s alarm volume and Android settings.
-              </p>
-            </section>
-            <form
-              className="min-w-0 space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                submit();
-              }}
-            >
-              <h3 className="text-base font-medium">
-                {editing ? "Edit alarm" : "Create an alarm"}
-              </h3>
-              <div className="space-y-2">
-                <label
-                  htmlFor="clock-alarm-time"
-                  className="text-sm font-medium"
-                >
-                  Alarm time
-                </label>
-                <Input
-                  id="clock-alarm-time"
-                  type="time"
-                  required
-                  value={time}
-                  ref={timeElement.ref}
-                  {...timeElement.agentProps}
-                  onChange={(event) => {
-                    setTime(event.target.value);
-                    setDrafted(false);
-                  }}
-                  className="h-11 text-base"
-                />
-                <p className="text-sm text-muted-foreground">
-                  {status.timeZone}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <label
-                  htmlFor="clock-alarm-repeat"
-                  className="text-sm font-medium"
-                >
-                  Repeat
-                </label>
-                <select
-                  id="clock-alarm-repeat"
-                  value={repeat}
-                  ref={repeatElement.ref}
-                  {...repeatElement.agentProps}
-                  className="h-11 w-full rounded-sm border border-border bg-bg px-3 text-base"
-                  onChange={(event) => {
-                    setRepeat(event.target.value);
-                    setDrafted(false);
-                  }}
-                >
-                  <option value="once">Once</option>
-                  <option value="daily">Every day</option>
-                  <option value="weekdays">Weekdays (Monday–Friday)</option>
-                  <option value="custom">Selected days</option>
-                </select>
-                {repeat === "custom" && (
-                  <fieldset className="flex flex-wrap gap-x-4 gap-y-2">
-                    <legend className="sr-only">Repeat days</legend>
-                    {DAY_NAMES.map((name, index) => (
-                      <label
-                        key={name}
-                        className="flex min-h-11 items-center gap-2 text-sm"
-                      >
-                        <input
-                          type="checkbox"
-                          className="accent-[var(--accent-action)]"
-                          checked={days.includes(
-                            (index + 1) as ClockAlarmRecord["days"][number],
-                          )}
-                          onChange={(event) => {
-                            const day = (index +
-                              1) as ClockAlarmRecord["days"][number];
-                            setDays((previous) =>
-                              event.target.checked
-                                ? [...previous, day].sort((a, b) => a - b)
-                                : previous.filter((item) => item !== day),
-                            );
-                            setDrafted(false);
-                          }}
-                        />
-                        {name}
-                      </label>
-                    ))}
-                  </fieldset>
-                )}
-              </div>
-              <div className="space-y-2">
-                <label
-                  htmlFor="clock-alarm-label"
-                  className="text-sm font-medium"
-                >
-                  Alarm label{" "}
-                  <span className="font-normal text-muted-foreground">
-                    (optional)
-                  </span>
-                </label>
-                <Input
-                  id="clock-alarm-label"
-                  maxLength={200}
-                  value={label}
-                  ref={labelElement.ref}
-                  {...labelElement.agentProps}
-                  className="h-11 text-base"
-                  onChange={(event) => {
-                    setLabel(event.target.value);
-                    setDrafted(false);
-                  }}
-                />
-              </div>
-              {!labelValid && (
-                <p role="alert" className="text-sm text-destructive">
-                  Use a label of up to 200 characters without line breaks.
-                </p>
-              )}
-              {repeat === "custom" && days.length === 0 && (
-                <p className="text-sm">Choose at least one repeat day.</p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="submit"
-                  variant="accentDarkHover"
-                  disabled={!canSave || !validForm || busy !== null}
-                  ref={saveElement.ref}
-                  {...saveElement.agentProps}
-                >
-                  {busy === "save"
-                    ? "Waiting for phone approval…"
-                    : editing
-                      ? "Save alarm changes"
-                      : "Create alarm"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!validForm || busy !== null}
-                  onClick={askAgent}
-                >
-                  Ask my agent
-                </Button>
-                {editing && (
-                  <Button
+          {status.alarmSoundMuted && (
+            <p role="status" className="mb-4 text-sm text-muted-foreground">
+              Alarm volume is muted.
+            </p>
+          )}
+          {status.alarms?.length === 0 && (
+            <p className="py-12 text-center text-muted-foreground">No alarms</p>
+          )}
+          <ul className="divide-y divide-border">
+            {status.alarms?.map((alarm) => (
+              <li
+                key={alarm.id}
+                aria-label={alarm.label || "Alarm"}
+                className="py-6"
+              >
+                <div className="flex items-center justify-between gap-6">
+                  <button
                     type="button"
-                    variant="ghost"
+                    className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-action"
+                    aria-label={`Edit ${alarm.label || "alarm"}`}
                     disabled={busy !== null}
                     onClick={() => {
-                      setEditing(null);
-                      setLabel("");
+                      setEditing(alarm);
+                      setTime(
+                        `${String(alarm.hour).padStart(2, "0")}:${String(alarm.minute).padStart(2, "0")}`,
+                      );
+                      setLabel(alarm.label);
+                      setDays(alarm.days);
+                      setRepeat(
+                        alarm.days.length === 0
+                          ? "once"
+                          : alarm.days.length === 7
+                            ? "daily"
+                            : alarm.days.join(",") === "2,3,4,5,6"
+                              ? "weekdays"
+                              : "custom",
+                      );
+                      setEditorOpen(true);
                     }}
                   >
-                    Cancel edit
-                  </Button>
+                    <span
+                      className={`block text-4xl font-normal tabular-nums ${alarm.enabled || alarm.scheduleState === "firing" ? "text-txt" : "text-muted-foreground"}`}
+                    >
+                      {String(alarm.hour).padStart(2, "0")}:
+                      {String(alarm.minute).padStart(2, "0")}
+                    </span>
+                    <span className="mt-2 block break-words text-sm text-muted-foreground">
+                      {[alarm.label, repeatLabel(alarm.days)]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  </button>
+                  <Switch
+                    aria-label={`${alarm.enabled ? "Disable" : "Enable"} ${alarm.label || "alarm"}`}
+                    checked={alarm.enabled}
+                    disabled={busy !== null || (!alarm.enabled && !canSchedule)}
+                    className="data-[state=checked]:bg-accent-action"
+                    onCheckedChange={(enabled) =>
+                      void manage(
+                        {
+                          type: "clock_alarm",
+                          action: "enable",
+                          alarmId: alarm.id,
+                          enabled,
+                        },
+                        alarm.id,
+                      )
+                    }
+                  />
+                </div>
+                {alarm.scheduleState === "firing" && (
+                  <div className="mt-4 flex gap-3">
+                    <Button
+                      className="flex-1 bg-accent-action text-brand-black hover:bg-accent-action-hover"
+                      disabled={busy !== null}
+                      onClick={() =>
+                        void manage(
+                          {
+                            type: "clock_alarm",
+                            action: "dismiss",
+                            alarmId: alarm.id,
+                          },
+                          alarm.id,
+                        )
+                      }
+                    >
+                      Stop
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      disabled={busy !== null}
+                      onClick={() =>
+                        void manage(
+                          {
+                            type: "clock_alarm",
+                            action: "snooze",
+                            alarmId: alarm.id,
+                            minutes: 5,
+                          },
+                          alarm.id,
+                        )
+                      }
+                    >
+                      Snooze
+                    </Button>
+                  </div>
                 )}
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Review the exact change in the phone dialog before it is saved.
-              </p>
-              {drafted && (
-                <p role="status" className="text-sm">
-                  Request ready in chat. Send it when you’re ready.
-                </p>
-              )}
-            </form>
-          </div>
+                {alarm.scheduleState === "snoozed" && alarm.nextAt && (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Snoozed until{" "}
+                    {new Intl.DateTimeFormat(undefined, {
+                      hour: "numeric",
+                      minute: "2-digit",
+                      timeZone: status.timeZone,
+                    }).format(alarm.nextAt)}
+                  </p>
+                )}
+                {["permission_required", "schedule_unknown"].includes(
+                  alarm.scheduleState,
+                ) && (
+                  <p role="status" className="mt-2 text-sm text-destructive">
+                    {alarm.scheduleState === "permission_required"
+                      ? "Alarm permission required"
+                      : "Schedule could not be confirmed"}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
         </>
       )}
-    </section>
-  );
-}
-function LegacyAlarmForm({
-  native,
-  host,
-  nativeError,
-  refreshError,
-}: {
-  native: ClockStatus | null;
-  host: ClockHost | null;
-  nativeError: string | null;
-  refreshError: string | null;
-}) {
-  const [time, setTime] = useState("");
-  const [label, setLabel] = useState("");
-  const [repeat, setRepeat] = useState("once");
-  const [days, setDays] = useState<number[]>([]);
-  const [drafted, setDrafted] = useState(false);
-  const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
-  const labelValid =
-    label.length <= 200 &&
-    [...label].every((character) => {
-      const code = character.charCodeAt(0);
-      return code >= 32 && code !== 127;
-    });
-  const repeatValid = repeat !== "custom" || days.length > 0;
-  const prepare = () => {
-    if (!valid || !labelValid || !repeatValid) return;
-    // Cost: one local composer event, no automatic model request or native effect.
-    dispatchChatPrefill({
-      text: `Propose an Android Clock alarm for ${time} ${repeat === "daily" ? "every day" : repeat === "weekdays" ? "every weekday (Monday through Friday)" : repeat === "custom" ? `every ${days.map((day) => DAY_NAMES[day - 1]).join(", ")}` : "once"} in my phone's current timezone${label ? ` with label ${JSON.stringify(label)}` : ""}. Preserve the repeat days and ask me to review before dispatch.`,
-    });
-    setDrafted(true);
-  };
-  const timeElement = useAgentElement<HTMLInputElement>({
-    id: "clock-alarm-time",
-    role: "text-input",
-    label: "Alarm time",
-    onFill: (value) => {
-      setTime(value);
-      setDrafted(false);
-    },
-  });
-  const labelElement = useAgentElement<HTMLInputElement>({
-    id: "clock-alarm-label",
-    role: "text-input",
-    label: "Alarm label",
-    onFill: (value) => {
-      setLabel(value);
-      setDrafted(false);
-    },
-  });
-  const requestElement = useAgentElement<HTMLButtonElement>({
-    id: "clock-alarm-request",
-    role: "button",
-    label: "Prepare alarm request",
-    status: valid && labelValid && repeatValid ? "ready" : "disabled",
-    onActivate: prepare,
-  });
-  const repeatElement = useAgentElement<HTMLSelectElement>({
-    id: "clock-alarm-repeat",
-    role: "select",
-    label: "Repeat",
-    onFill: (value) => {
-      if (["once", "daily", "weekdays", "custom"].includes(value)) {
-        setRepeat(value);
-        setDrafted(false);
-      }
-    },
-  });
-  return (
-    <section
-      aria-labelledby="clock-alarm-heading"
-      className="max-w-lg space-y-5"
-    >
-      <div className="space-y-2">
-        <h2
-          id="clock-alarm-heading"
-          className="flex items-center gap-2 text-lg font-medium"
-        >
-          <AlarmClock className="size-5" aria-hidden />
-          Android alarm
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Prepare a request for a compatible Android phone. Send it in chat,
-          then review the proposal before any native handoff.
-        </p>
-        <p className="text-sm font-medium">
-          {native?.supported
-            ? "Native Clock requests are available. Every request needs approval on this phone."
-            : host && !native && !nativeError && !refreshError
-              ? "Checking native Clock support…"
-              : nativeError || refreshError
-                ? "Clock support could not be checked."
-                : `Alarm delivery is unavailable here${native?.reason ? `: ${native.reason}` : "."} Preparing a request does not install an alarm.`}
-        </p>
-      </div>
-      <form
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          prepare();
+      <Dialog
+        open={editorOpen}
+        onOpenChange={(open) => {
+          if (!busy) setEditorOpen(open);
         }}
       >
-        <div className="space-y-2">
-          <label htmlFor="clock-alarm-time" className="text-sm font-medium">
-            Alarm time
-          </label>
-          <Input
-            id="clock-alarm-time"
-            type="text"
-            placeholder="HH:MM"
-            pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
-            aria-describedby="clock-alarm-time-hint"
-            required
-            value={time}
-            ref={timeElement.ref}
-            {...timeElement.agentProps}
-            onChange={(event) => {
-              setTime(event.target.value);
-              setDrafted(false);
-            }}
-          />
-          <p
-            id="clock-alarm-time-hint"
-            className="text-sm text-muted-foreground"
-          >
-            24-hour time (HH:MM). Uses the phone’s current timezone after it is
-            checked.
-          </p>
-        </div>
-        <div className="space-y-2">
-          <label htmlFor="clock-alarm-repeat" className="text-sm font-medium">
-            Repeat
-          </label>
-          <select
-            id="clock-alarm-repeat"
-            value={repeat}
-            ref={repeatElement.ref}
-            {...repeatElement.agentProps}
-            className="h-11 w-full rounded-sm border border-border bg-bg px-3 text-sm"
-            onChange={(event) => {
-              setRepeat(event.target.value);
-              setDrafted(false);
-            }}
-          >
-            <option value="once">Once</option>
-            <option value="daily">Every day</option>
-            <option value="weekdays">Weekdays (Monday–Friday)</option>
-            <option value="custom">Selected days</option>
-          </select>
-          {repeat === "custom" && (
-            <fieldset className="flex flex-wrap gap-x-4 gap-y-2">
-              <legend className="sr-only">Repeat days</legend>
-              {DAY_NAMES.map((name, index) => (
-                <label
-                  key={name}
-                  className="flex min-h-11 items-center gap-2 text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    className="accent-[var(--accent-action)]"
-                    checked={days.includes(index + 1)}
-                    onChange={(event) => {
-                      setDays((previous) =>
-                        event.target.checked
-                          ? [...previous, index + 1].sort((a, b) => a - b)
-                          : previous.filter((day) => day !== index + 1),
-                      );
-                      setDrafted(false);
-                    }}
-                  />
-                  {name}
-                </label>
-              ))}
-            </fieldset>
-          )}
-        </div>
-        <div className="space-y-2">
-          <label htmlFor="clock-alarm-label" className="text-sm font-medium">
-            Alarm label{" "}
-            <span className="font-normal text-muted-foreground">
-              (optional)
-            </span>
-          </label>
-          <Input
-            id="clock-alarm-label"
-            maxLength={200}
-            value={label}
-            ref={labelElement.ref}
-            {...labelElement.agentProps}
-            onChange={(event) => {
-              setLabel(event.target.value);
-              setDrafted(false);
-            }}
-          />
-        </div>
-        <Button
-          type="submit"
-          variant="selection"
-          disabled={!valid || !labelValid || !repeatValid}
-          ref={requestElement.ref}
-          {...requestElement.agentProps}
+        <DialogContent
+          className="max-w-sm overflow-y-auto max-sm:bottom-[calc(max(var(--eliza-chat-clearance,0px),var(--safe-area-bottom,0px))+3rem)] max-sm:max-h-[calc(100dvh_-_max(var(--eliza-chat-clearance,0px),var(--safe-area-bottom,0px))_-_4rem)]"
+          showCloseButton={false}
         >
-          Prepare alarm request
-          <ArrowRight className="ml-2 size-4" aria-hidden />
-        </Button>
-        {drafted && (
-          <p role="status" className="text-sm">
-            Request ready in chat. No alarm has been installed.
-          </p>
-        )}
-      </form>
+          <DialogTitle className="text-lg font-medium">
+            {editing ? "Edit alarm" : "New alarm"}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Set the time, repeat days and label.
+          </DialogDescription>
+          <form
+            className="space-y-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
+            }}
+          >
+            <label htmlFor="clock-alarm-time" className="block">
+              <span className="sr-only">Alarm time</span>
+              <Input
+                id="clock-alarm-time"
+                type="time"
+                value={time}
+                required
+                ref={timeElement.ref}
+                {...timeElement.agentProps}
+                className="h-20 text-center text-4xl tabular-nums"
+                onChange={(event) => setTime(event.target.value)}
+              />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm">Repeat</span>
+              <select
+                id="clock-alarm-repeat"
+                value={repeat}
+                ref={repeatElement.ref}
+                {...repeatElement.agentProps}
+                className="h-11 w-full rounded-sm border border-border bg-bg px-3 text-base"
+                onChange={(event) => setRepeat(event.target.value)}
+              >
+                <option value="once">Once</option>
+                <option value="daily">Every day</option>
+                <option value="weekdays">Weekdays</option>
+                <option value="custom">Selected days</option>
+              </select>
+            </label>
+            {repeat === "custom" && (
+              <fieldset
+                className="flex justify-between gap-1"
+                aria-label="Repeat days"
+              >
+                {([1, 2, 3, 4, 5, 6, 7] as const).map((dayNumber) => (
+                  <button
+                    key={dayNumber}
+                    type="button"
+                    aria-label={DAY_NAMES[dayNumber - 1]}
+                    aria-pressed={days.includes(dayNumber)}
+                    className={`size-10 rounded-full text-sm ${days.includes(dayNumber) ? "bg-accent-action text-brand-black" : "bg-muted text-txt"}`}
+                    onClick={() =>
+                      setDays((current) =>
+                        current.includes(dayNumber)
+                          ? current.filter((value) => value !== dayNumber)
+                          : [...current, dayNumber].sort((a, b) => a - b),
+                      )
+                    }
+                  >
+                    {DAY_NAMES[dayNumber - 1].slice(0, 1)}
+                  </button>
+                ))}
+              </fieldset>
+            )}
+            <label htmlFor="clock-alarm-label" className="block space-y-2">
+              <span className="text-sm">Label</span>
+              <Input
+                id="clock-alarm-label"
+                value={label}
+                maxLength={200}
+                placeholder="Alarm"
+                ref={labelElement.ref}
+                {...labelElement.agentProps}
+                onChange={(event) => setLabel(event.target.value)}
+              />
+            </label>
+            <div className="flex justify-between gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={busy !== null}
+                onClick={() => setEditorOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!canSave || !validForm || busy !== null}
+                ref={saveElement.ref}
+                {...saveElement.agentProps}
+                aria-label="Save"
+                className="bg-accent-action text-brand-black hover:bg-accent-action-hover"
+              >
+                {busy === "save" ? "Saving…" : "Save"}
+              </Button>
+            </div>
+            {editing && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full text-destructive"
+                disabled={busy !== null}
+                onClick={() =>
+                  void manage(
+                    {
+                      type: "clock_alarm",
+                      action: "delete",
+                      alarmId: editing.id,
+                    },
+                    "delete",
+                  )
+                }
+              >
+                Delete alarm
+              </Button>
+            )}
+          </form>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
@@ -1115,13 +833,9 @@ function ClockControls() {
     }
   };
   const reviewable = proposals.filter((p) =>
-    [
-      "pending",
-      "approved",
-      "executing",
-      "done",
-      "reconciliation_required",
-    ].includes(p.state),
+    ["pending", "approved", "executing", "reconciliation_required"].includes(
+      p.state,
+    ),
   );
   if (outcome?.pending && !reviewable.some((p) => p.id === outcome.pending?.id))
     reviewable.push(outcome.pending);
@@ -1132,45 +846,18 @@ function ClockControls() {
       data-chat-clearance-aware="true"
     >
       <style>{CLOCK_TIME_FOCUS_CSS}</style>
-      <FramedPageHeader
-        actions={
-          <Button
-            variant="outline"
-            onClick={() => navigateBrowserPath("/automations")}
-          >
-            Manage reminders
-          </Button>
-        }
-      />
-      <FramedPageBody className="space-y-8">
-        <h1 className="text-xl font-medium">Clock</h1>
-        <section
-          aria-label="Local time"
-          className="space-y-2 border-b border-border pb-6"
-        >
-          <p className="text-sm text-muted-foreground">Time on this device</p>
-          <p className="text-4xl font-medium tabular-nums">
-            {now === 0
-              ? "—"
-              : new Intl.DateTimeFormat(undefined, {
-                  hour: "numeric",
-                  minute: "2-digit",
-                }).format(now)}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {Intl.DateTimeFormat().resolvedOptions().timeZone}
-          </p>
-        </section>
-        {ownedMode && host && <OwnedAlarms host={host} />}
-        {!ownedMode && (
-          <LegacyAlarmForm
-            native={native}
-            host={host}
-            nativeError={nativeError}
-            refreshError={refreshError}
-          />
+      <FramedPageBody className="space-y-6">
+        {ownedMode && host ? (
+          <OwnedAlarms host={host} />
+        ) : (
+          <div className="mx-auto max-w-xl">
+            <h1 className="mb-8 text-2xl font-medium">Alarms</h1>
+            <p className="text-sm text-muted-foreground">
+              Open Clock on your Android phone to manage alarms.
+            </p>
+          </div>
         )}
-        {nativeError && (
+        {nativeError && (reviewable.length > 0 || outcome?.pending) && (
           <div className="space-y-2">
             <p role="alert" className="text-sm text-destructive">
               {nativeError}
@@ -1187,7 +874,7 @@ function ClockControls() {
             )}
           </div>
         )}
-        {refreshError && (
+        {refreshError && (reviewable.length > 0 || outcome?.pending) && (
           <div className="space-y-2">
             <p role="alert" className="text-sm text-destructive">
               {ownedMode
@@ -1210,24 +897,13 @@ function ClockControls() {
           </div>
         )}
         {outcome && (
-          <p role="status" className="text-sm">
+          <p role="status" className="sr-only">
             {outcome.text}
           </p>
         )}
-        {(native?.supported || outcome?.pending) && (
+        {reviewable.length > 0 && (
           <section aria-label="Clock proposals" className="max-w-lg space-y-3">
             <h2 className="text-base font-medium">Clock requests</h2>
-            {!refreshError && (
-              <Button
-                variant="outline"
-                disabled={reviewing !== null}
-                onClick={() => {
-                  void reloadRequests.current?.();
-                }}
-              >
-                Refresh Clock requests
-              </Button>
-            )}
             {reviewable.map((proposal) => {
               const freshReview = ["pending", "approved"].includes(
                 proposal.state,
@@ -1281,31 +957,6 @@ function ClockControls() {
                 </div>
               );
             })}
-            {reviewable.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No pending Clock requests. Send your request in chat to create
-                one.
-              </p>
-            )}
-          </section>
-        )}
-        {!ownedMode && (
-          <section
-            aria-labelledby="clock-alarm-status"
-            className="max-w-lg space-y-3 border-t border-border pt-6"
-          >
-            <h2 id="clock-alarm-status" className="text-base font-medium">
-              Check alarms on your phone
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Android Clock owns the alarm list and ringing. Opening Clock
-              confirms the handoff only. Check the repeat days, time, enabled
-              state and sound there.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Eliza reminders use the runtime and push notifications. They are
-              managed separately.
-            </p>
           </section>
         )}
       </FramedPageBody>
