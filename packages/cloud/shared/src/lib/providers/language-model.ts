@@ -210,6 +210,7 @@ function getOpenRouterLanguageModel(model: string) {
 }
 
 const CEREBRAS_OPENROUTER_FALLBACK_MODELS: Readonly<Record<string, string>> = {
+  "qwen-3.8-27b": "qwen/qwen3.8-27b",
   "gemma-4-31b": "google/gemma-4-31b-it",
   "gpt-oss-120b": "openai/gpt-oss-120b",
   "zai-glm-4.7": "z-ai/glm-4.7",
