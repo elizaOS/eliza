@@ -29,9 +29,14 @@ vi.mock("../../layouts/framed-page", () => ({
 vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: undefined, agentProps: {} }),
 }));
-vi.mock("../../hooks/useSharedNow", () => ({ useSharedNow: () => Date.now() }));
+const sharedNow = vi.hoisted(() => vi.fn(() => Date.now()));
+vi.mock("../../hooks/useSharedNow", () => ({
+  useSharedNow: () => sharedNow(),
+}));
 
 beforeEach(() => {
+  sharedNow.mockReset();
+  sharedNow.mockReturnValue(Date.now());
   vi.spyOn(document, "hidden", "get").mockReturnValue(false);
 });
 
@@ -127,3 +132,48 @@ it.each(["denied", "failed", "unknown"] as const)(
     expect(host.manageAlarm).toHaveBeenCalledOnce();
   },
 );
+
+it("keeps a future request unexpired on the deterministic first clock", async () => {
+  sharedNow.mockReturnValue(0);
+  const host = hostFixture();
+  host.proposals = async () => ({
+    scope: "owner",
+    proposals: [
+      {
+        id: "future",
+        digest: "digest",
+        state: "pending",
+        expiresAt: "2026-12-01T00:00:00.000Z",
+        operation: { type: "clock_handoff", action: "dismiss" },
+      },
+    ],
+  });
+  configureClockHost(host);
+  render(<ClockView />);
+  expect(await screen.findByText("dismiss")).toBeTruthy();
+  expect(
+    screen.queryByText("Request expired. Send a new request in chat."),
+  ).toBeNull();
+});
+
+it("marks an epoch deadline expired when the first clock is epoch", async () => {
+  sharedNow.mockReturnValue(0);
+  const host = hostFixture();
+  host.proposals = async () => ({
+    scope: "owner",
+    proposals: [
+      {
+        id: "epoch",
+        digest: "digest",
+        state: "pending",
+        expiresAt: "1970-01-01T00:00:00.000Z",
+        operation: { type: "clock_handoff", action: "dismiss" },
+      },
+    ],
+  });
+  configureClockHost(host);
+  render(<ClockView />);
+  expect(
+    await screen.findByText("Request expired. Send a new request in chat."),
+  ).toBeTruthy();
+});

@@ -936,9 +936,9 @@ function ClockControls() {
               const freshReview = ["pending", "approved"].includes(
                 proposal.state,
               );
+              const deadlineMs = Date.parse(proposal.expiresAt);
               const expired =
-                freshReview &&
-                Date.parse(proposal.expiresAt) <= (now || Date.now());
+                freshReview && Number.isFinite(deadlineMs) && deadlineMs <= now;
               const supported = clockCapabilityAvailable(
                 proposal.operation,
                 native?.capabilities,
