@@ -8,14 +8,16 @@ import {
   ListResourceTemplatesRequestSchema,
   ListToolsRequestSchema,
   McpError,
+  PingRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
 const [mode, failingList] = process.argv.slice(2);
 const requests = [];
+const resourcesOnly = mode.startsWith("resources-only");
 const server = new Server(
   { name: "paginated-discovery-fixture", version: "1.0.0" },
-  { capabilities: { tools: {}, resources: {} } }
+  { capabilities: resourcesOnly ? { resources: {} } : { tools: {}, resources: {} } }
 );
 
 for (const [schema, key, item] of [
@@ -38,6 +40,7 @@ for (const [schema, key, item] of [
     }),
   ],
 ]) {
+  if (resourcesOnly && key === "tools") continue;
   server.setRequestHandler(schema, async (request) => {
     const cursor = request.params?.cursor;
     requests.push({ list: key, cursor: cursor ?? null });
@@ -59,10 +62,23 @@ for (const [schema, key, item] of [
   });
 }
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => ({
-  content: [{ type: "text", text: JSON.stringify({ tool: request.params.name, requests }) }],
-}));
+if (!resourcesOnly)
+  server.setRequestHandler(CallToolRequestSchema, async (request) => ({
+    content: [{ type: "text", text: JSON.stringify({ tool: request.params.name, requests }) }],
+  }));
+server.setRequestHandler(PingRequestSchema, async () => {
+  requests.push({ method: "ping" });
+  if (mode === "resources-only-ping-error")
+    throw new McpError(ErrorCode.InternalError, "fixture ping failed");
+  if (mode === "resources-only-ping-timeout") return new Promise(() => {});
+  return {};
+});
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => ({
-  contents: [{ uri: request.params.uri, text: "last-page resource" }],
+  contents: [
+    {
+      uri: request.params.uri,
+      text: resourcesOnly ? JSON.stringify(requests) : "last-page resource",
+    },
+  ],
 }));
 await server.connect(new StdioServerTransport());

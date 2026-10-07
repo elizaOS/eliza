@@ -4,6 +4,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import { McpService } from "../src/service";
+import type { ConnectionState, PingConfig } from "../src/types";
 
 const runtimes: AgentRuntime[] = [];
 const fixture = fileURLToPath(new URL("./fixtures/paginated-server.mjs", import.meta.url));
@@ -39,6 +40,86 @@ async function start(mode: string, failingList = "") {
 }
 
 describe("McpService paginated discovery", () => {
+  it("keeps a resources-only peer readable through repeated protocol heartbeats", async () => {
+    const { runtime, service } = await start("resources-only");
+    expect(service.getServers()[0]).toMatchObject({
+      status: "connected",
+      tools: [],
+      resources: [{ uri: "fixture:///0" }, { uri: "fixture:///2" }],
+      resourceTemplates: [{ name: "template-0" }, { name: "template-2" }],
+    });
+    const heartbeat = service as unknown as {
+      pingConfig: PingConfig;
+      startPingMonitoring(name: string): void;
+      connectionStates: Map<string, ConnectionState>;
+    };
+    heartbeat.pingConfig = {
+      enabled: true,
+      intervalMs: 30,
+      timeoutMs: 1000,
+      failuresBeforeDisconnect: 2,
+    };
+    heartbeat.startPingMonitoring("pages");
+    let requests: { method?: string; list?: string; cursor?: string | null }[] = [];
+    await expect
+      .poll(async () => {
+        const result = await service.readResource("pages", "fixture:///2");
+        const content = result.contents[0];
+        if (!("text" in content)) throw new Error("Expected resource readback");
+        requests = JSON.parse(content.text);
+        return requests.filter((request) => request.method === "ping").length;
+      })
+      .toBeGreaterThanOrEqual(3);
+    expect(requests.filter((request) => request.list)).toEqual(
+      lists
+        .filter((list) => list !== "tools")
+        .flatMap((list) => [
+          { list, cursor: null },
+          { list, cursor: "" },
+          { list, cursor: "page B/+=" },
+        ])
+    );
+    expect(heartbeat.connectionStates.get("pages")).toMatchObject({
+      status: "connected",
+      consecutivePingFailures: 0,
+      reconnectAttempts: 0,
+    });
+    expect(service.getProviderData().data.mcp.pages.resources["fixture:///2"]).toBeDefined();
+    expect(runtime.getRecentReportedErrors()).toEqual([]);
+    console.info("Resources-only MCP heartbeat receipt:", JSON.stringify(requests));
+  });
+
+  it.each(["error", "timeout"])(
+    "disconnects a resources-only peer after repeated ping %s",
+    async (failure) => {
+      const { service } = await start(`resources-only-ping-${failure}`);
+      expect(service.getServers()[0].status).toBe("connected");
+      const heartbeat = service as unknown as {
+        pingConfig: PingConfig;
+        startPingMonitoring(name: string): void;
+        connectionStates: Map<string, ConnectionState>;
+      };
+      heartbeat.pingConfig = {
+        enabled: true,
+        intervalMs: failure === "error" ? 1100 : 200,
+        timeoutMs: failure === "error" ? 1000 : 100,
+        failuresBeforeDisconnect: 2,
+      };
+      heartbeat.startPingMonitoring("pages");
+      await expect
+        .poll(() => heartbeat.connectionStates.get("pages")?.status, { timeout: 5000 })
+        .toBe("disconnected");
+      const state = heartbeat.connectionStates.get("pages");
+      expect(state?.consecutivePingFailures).toBe(2);
+      expect(state?.lastError?.message).toContain(
+        failure === "error" ? "fixture ping failed" : "Request timed out"
+      );
+      await service.stop();
+      expect(heartbeat.connectionStates.size).toBe(0);
+    },
+    15000
+  );
+
   it("publishes every page, crosses an empty page, and executes a last-page capability", async () => {
     const { runtime, service } = await start("pages");
     const [server] = service.getServers();
