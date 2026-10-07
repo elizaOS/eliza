@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
 import { z } from "zod";
@@ -24,11 +24,15 @@ function modelSystemContent(requests: Array<Record<string, unknown>>): string {
     .join("\n\n");
 }
 
+const PRIVATE_PROVIDER_SENTINEL = "shared-private-provider-sentinel";
+
 describe("Shared Eliza runtime in Workerd", () => {
   let buildDirectory: string;
   let miniflare: Miniflare;
   let modelServer: ReturnType<typeof Bun.serve>;
   const modelRequests: Array<Record<string, unknown>> = [];
+  const modelRequestKinds: Array<"primary-generation" | "core-failure-reply"> =
+    [];
   const outboundRequests: string[] = [];
   let searchPlannerRequests = 0;
   let todoPlannerRequests = 0;
@@ -49,6 +53,97 @@ describe("Shared Eliza runtime in Workerd", () => {
       async fetch(request) {
         const body = (await request.json()) as Record<string, unknown>;
         modelRequests.push(body);
+        // A fixed prompt marker distinguishes failure replies without retaining content.
+        modelRequestKinds.push(
+          JSON.stringify(body.messages).includes(
+            "Clearly say you could not complete this request. Do not imply the requested action happened or is still running.",
+          )
+            ? "core-failure-reply"
+            : "primary-generation",
+        );
+        if (JSON.stringify(body).includes("shared empty output fixture")) {
+          const base = {
+            id: "chatcmpl-empty-fixture",
+            created: 0,
+            model: "shared-runtime-probe",
+          };
+          const usage = {
+            prompt_tokens: 7,
+            completion_tokens: 0,
+            total_tokens: 7,
+          };
+          if (body.stream === true) {
+            const chunks = [
+              {
+                ...base,
+                object: "chat.completion.chunk",
+                choices: [
+                  {
+                    index: 0,
+                    delta: { role: "assistant", content: "" },
+                    finish_reason: null,
+                  },
+                ],
+              },
+              {
+                ...base,
+                object: "chat.completion.chunk",
+                choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+                usage,
+              },
+            ];
+            return new Response(
+              chunks
+                .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+                .join("") + "data: [DONE]\n\n",
+              {
+                headers: { "Content-Type": "text/event-stream" },
+              },
+            );
+          }
+          return Response.json({
+            ...base,
+            object: "chat.completion",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "" },
+                finish_reason: "stop",
+              },
+            ],
+            usage,
+          });
+        }
+
+        if (
+          JSON.stringify(body).includes(
+            "shared synthetic terminal failure fixture",
+          )
+        ) {
+          return Response.json(
+            {
+              error: { message: "The fixture provider rejected authorization" },
+              privateProviderDetail: PRIVATE_PROVIDER_SENTINEL,
+            },
+            {
+              status: 401,
+              headers: { "X-Private-Provider": PRIVATE_PROVIDER_SENTINEL },
+            },
+          );
+        }
+        if (JSON.stringify(body).includes("shared synthetic failure fixture")) {
+          return Response.json(
+            {
+              error: { message: "The fixture model is unavailable" },
+              privateProviderDetail: PRIVATE_PROVIDER_SENTINEL,
+            },
+            {
+              status: 503,
+              headers: { "X-Private-Provider": PRIVATE_PROVIDER_SENTINEL },
+            },
+          );
+        }
+
         const reviewPrompt = z
           .array(
             z
@@ -833,6 +928,7 @@ describe("Shared Eliza runtime in Workerd", () => {
       JSON.stringify({
         name: "shared-eliza-runtime-test",
         main: entrypoint,
+        tsconfig: relative(buildDirectory, join(apiDirectory, "tsconfig.json")),
         compatibility_date: workerConfig.compatibility_date,
         compatibility_flags: workerConfig.compatibility_flags,
         define: workerConfig.define,
@@ -852,6 +948,7 @@ describe("Shared Eliza runtime in Workerd", () => {
         "--no-install",
         "wrangler",
         "deploy",
+        entrypoint,
         "--dry-run",
         "--config",
         configPath,
@@ -1013,6 +1110,157 @@ describe("Shared Eliza runtime in Workerd", () => {
       true,
     );
   }, 120_000);
+
+  test("retains canonical failure brands across runtime and protocol exports", async () => {
+    const response = await miniflare.dispatchFetch(
+      "https://runtime.test/error-brand-consistency",
+    );
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      runtimeIsProtocol: true,
+      wrapperIsProtocol: true,
+      runtime: {
+        failureName: "SharedRuntimeProviderUnavailableError",
+        retryable: true,
+      },
+      protocol: {
+        failureName: "SharedRuntimeProviderUnavailableError",
+        retryable: true,
+      },
+      wrapped: {
+        failureName: "SharedRuntimeProviderUnavailableError",
+        retryable: true,
+      },
+      transported: {
+        failureName: "SharedRuntimeProviderUnavailableError",
+        retryable: true,
+      },
+    });
+  });
+
+  test.each([
+    [
+      "buffered transient",
+      "/synthetic-failure-turn",
+      "SHARED_RUNTIME_TURN_FAILED",
+      "transient_failure",
+      true,
+    ],
+    [
+      "streamed transient",
+      "/synthetic-failure-stream",
+      "SHARED_RUNTIME_MESSAGE_FAILED",
+      "transient_failure",
+      true,
+    ],
+    [
+      "buffered terminal",
+      "/synthetic-terminal-failure-turn",
+      "SHARED_RUNTIME_TURN_FAILED",
+      "provider_issue",
+      false,
+    ],
+    [
+      "streamed terminal",
+      "/synthetic-terminal-failure-stream",
+      "SHARED_RUNTIME_MESSAGE_FAILED",
+      "provider_issue",
+      false,
+    ],
+  ])(
+    "rejects a %s synthetic failure without committing it as Shared history or durable memory",
+    async (_mode, path, code, failureKind, retryable) => {
+      const requestsBefore = modelRequests.length;
+      const response = await miniflare.dispatchFetch(
+        `https://runtime.test${path}`,
+      );
+      const body = await response.text();
+      expect(response.status, body).toBe(retryable ? 503 : 500);
+      expect(body).not.toContain(PRIVATE_PROVIDER_SENTINEL);
+      const payload = JSON.parse(body) as {
+        success: boolean;
+        name?: string;
+        code?: string;
+        failureKind?: string;
+        failureName?: string;
+        retryable?: boolean;
+        history: Array<{ role: string; content: string }>;
+        persistedPairs: unknown[];
+        parts: Array<{ type: string; text: string }>;
+      };
+      expect(payload).toMatchObject({
+        success: false,
+        code,
+        failureKind,
+        failureName: retryable
+          ? "SharedRuntimeProviderUnavailableError"
+          : "SharedRuntimeProviderRejectedError",
+        retryable,
+        history: [
+          { role: "assistant", content: "A retained successful reply" },
+        ],
+        persistedPairs: [],
+      });
+      expect(payload.parts.some((part) => part.type === "finish")).toBe(false);
+      expect(payload.parts.map((part) => part.text).join("")).not.toContain(
+        "Something went wrong on my end. Please try again.",
+      );
+      if (retryable) {
+        expect(modelRequests.length - requestsBefore).toBeGreaterThan(1);
+      } else {
+        // 557 preserves four plain-text failure-reply slots after the single
+        // terminal primary invocation. Those recovery calls are not turn retries.
+        expect(modelRequestKinds.slice(requestsBefore)).toEqual([
+          "primary-generation",
+          "core-failure-reply",
+          "core-failure-reply",
+          "core-failure-reply",
+          "core-failure-reply",
+        ]);
+      }
+    },
+    120_000,
+  );
+
+  test.each([
+    ["buffered", "/synthetic-empty-turn", "SHARED_RUNTIME_TURN_FAILED"],
+    ["streamed", "/synthetic-empty-stream", "REPLY_GROUNDING_FAILED"],
+  ])(
+    "rejects %s HTTP200 empty output as a failure without successful history or finish",
+    async (_mode, path, code) => {
+      const requestsBefore = modelRequests.length;
+      const response = await miniflare.dispatchFetch(
+        `https://runtime.test${path}`,
+      );
+      const body = await response.text();
+      expect(response.status, body).toBeGreaterThanOrEqual(500);
+      expect(body).not.toContain(PRIVATE_PROVIDER_SENTINEL);
+      const payload = JSON.parse(body) as {
+        success: boolean;
+        code: string;
+        rootFailureCode: string;
+        history: unknown[];
+        persistedPairs: unknown[];
+        parts: Array<{ type: string; text?: string }>;
+      };
+      expect(payload).toMatchObject({
+        success: false,
+        code,
+        history: [
+          { role: "assistant", content: "A retained successful reply" },
+        ],
+        persistedPairs: [],
+        rootFailureCode: "REPLY_GROUNDING_FAILED",
+      });
+      expect(payload.parts.some((part) => part.type === "finish")).toBe(false);
+      expect(
+        payload.parts.map((part) => part.text ?? "").join(""),
+      ).not.toContain("Something went wrong on my end. Please try again.");
+      expect(modelRequests.length - requestsBefore).toBeGreaterThan(0);
+    },
+    120_000,
+  );
 
   test("runs the genuine REMINDERS action with a trusted Discord DM inside Workerd", async () => {
     const requestsBefore = modelRequests.length;

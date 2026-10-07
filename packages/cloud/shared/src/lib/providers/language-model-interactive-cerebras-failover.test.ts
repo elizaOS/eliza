@@ -25,8 +25,20 @@ mock.module("../utils/logger", () => ({
   },
 }));
 
+const FIXTURE_UNMAPPED_NATIVE_MODEL = "cerebras-native-unmapped-fixture";
+const actualModels = await import("../models");
+// A future catalog entry must remain usable before its alternate mapping exists.
+mock.module("../models", () => ({
+  ...actualModels,
+  CEREBRAS_NATIVE_TEXT_MODELS: [
+    ...actualModels.CEREBRAS_NATIVE_TEXT_MODELS,
+    FIXTURE_UNMAPPED_NATIVE_MODEL,
+  ],
+}));
 const { APICallError, generateText, streamText } = await import("ai");
-const { getInteractiveCerebrasLanguageModel } = await import("./language-model");
+const { getInteractiveCerebrasLanguageModel, ProviderConfigurationError } = await import(
+  "./language-model"
+);
 
 function hostOf(url: RequestInfo | URL): "openrouter" | "cerebras" | "other" {
   const u = String(url);
@@ -390,6 +402,59 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
     // A 400 is the caller's fault; never burn a failover on it.
     expect(hosts).toEqual(["cerebras"]);
   });
+});
+
+describe("native primary before alternate catalog resolution", () => {
+  test.each([false, true])(
+    "healthy unmapped catalog entry remains native (stream=%s)",
+    async (stream) => {
+      const hosts: string[] = [];
+      globalThis.fetch = (async (url: RequestInfo | URL) => {
+        hosts.push(hostOf(url));
+        return stream
+          ? streamedCompletion(FIXTURE_UNMAPPED_NATIVE_MODEL, "native-catalog-reply")
+          : completion(FIXTURE_UNMAPPED_NATIVE_MODEL, "native-catalog-reply");
+      }) as typeof fetch;
+      const params = {
+        model: getInteractiveCerebrasLanguageModel(FIXTURE_UNMAPPED_NATIVE_MODEL),
+        prompt: "hi",
+        maxRetries: 0,
+      };
+      const result = stream ? streamText(params) : await generateText(params);
+      expect(await result.text).toBe("native-catalog-reply");
+      expect(hosts).toEqual(["cerebras"]);
+    },
+  );
+
+  test.each([false, true])(
+    "unmapped alternate fails only after retryable native dispatch (stream=%s)",
+    async (stream) => {
+      const hosts: string[] = [];
+      const errors: unknown[] = [];
+      globalThis.fetch = (async (url: RequestInfo | URL) => {
+        hosts.push(hostOf(url));
+        return serverError();
+      }) as typeof fetch;
+      const params = {
+        model: getInteractiveCerebrasLanguageModel(FIXTURE_UNMAPPED_NATIVE_MODEL),
+        prompt: "hi",
+        maxRetries: 0,
+      };
+      if (stream) {
+        const result = streamText({
+        ...params,
+        onError: ({ error }) => {
+          errors.push(error);
+        },
+      });
+        await expect(result.text).rejects.toBeDefined();
+        expect(errors.some((error) => error instanceof ProviderConfigurationError)).toBe(true);
+      } else {
+        await expect(generateText(params)).rejects.toBeInstanceOf(ProviderConfigurationError);
+      }
+      expect(hosts).toEqual(["cerebras"]);
+    },
+  );
 });
 
 describe("getInteractiveCerebrasLanguageModel without OpenRouter key", () => {
