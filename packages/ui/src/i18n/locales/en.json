@@ -4947,6 +4947,7 @@
   "startupfailureview.AgentTimeout": "Your agent is taking longer than expected",
   "startupfailureview.AssetMissing": "Something needed is missing",
   "startupfailureview.BackendTimeout": "Taking longer than expected",
+  "startupfailureview.ConnectionSettings": "Connection settings",
   "startupfailureview.BackendUnreachable": "Can't connect",
   "startupfailureview.ChooseElizaCloud": "Choose Eliza Cloud",
   "startupfailureview.OpenApp": "Open App",
