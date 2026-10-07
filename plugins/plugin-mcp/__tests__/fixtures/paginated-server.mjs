@@ -80,6 +80,10 @@ if (capabilities.tools) {
       const content = [];
       if (mode === "result-mixed" || mode === "result-text")
         content.push({ type: "text", text: "Text summary from the tool" });
+      if (mode === "result-echo" || mode === "result-echo-spaced") {
+        const json = JSON.stringify(request.params.arguments);
+        content.push({ type: "text", text: mode === "result-echo" ? json : ` \n${json}\n ` });
+      }
       if (mode === "result-mixed")
         content.push({ type: "image", mimeType: "image/png", data: "AAAA" });
       return {

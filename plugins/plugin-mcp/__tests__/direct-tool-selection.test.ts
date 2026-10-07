@@ -86,7 +86,7 @@ describe("call_tool result through real stdio and SQLite", () => {
     for (const runtime of runtimes.splice(0)) await runtime.stop();
   });
 
-  it.each(["only", "mixed", "error", "empty", "text"])(
+  it.each(["only", "mixed", "error", "empty", "text", "echo", "echo-spaced"])(
     "retains the %s result in the action, synthesis input, and stored exchange",
     async (mode) => {
       const prompts: string[] = [];
@@ -178,6 +178,12 @@ describe("call_tool result through real stdio and SQLite", () => {
         expect(output).toContain(JSON.stringify(payload));
       }
       expect(prompts[0]).toContain(output);
+      if (mode.startsWith("echo")) {
+        const serialized = JSON.stringify(payload);
+        expect(output.split(serialized)).toHaveLength(2);
+        expect(prompts[0].split(serialized)).toHaveLength(2);
+        if (mode === "echo-spaced") expect(output).toBe(` \n${serialized}\n `);
+      }
       if (mode === "error") {
         expect(prompts[0]).toContain("The tool reported an ERROR");
         expect(result.error).toBeInstanceOf(Error);

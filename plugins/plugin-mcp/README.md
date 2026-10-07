@@ -10,6 +10,8 @@ health checks use protocol `ping` with the configured timeout, not `tools/list`.
 Tool results retain both `content` and `structuredContent`. The JSON result is
 included in the response model's input, action output, and stored tool memory.
 Text, image attachments, and the tool's error status remain available.
+If a text block already contains the same compact JSON, with optional surrounding
+whitespace, that text is used without adding a second JSON copy.
 
 Configure servers under `settings.mcp.servers` using `McpSettings` from `@elizaos/plugin-mcp`. Validate every server before connecting; remote requests use the core SSRF guard and stdio processes inherit only permitted environment values.
 

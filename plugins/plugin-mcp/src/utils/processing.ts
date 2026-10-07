@@ -104,7 +104,13 @@ export function processToolResult(
     }
   }
   if (result.structuredContent !== undefined) {
-    toolOutput += `${toolOutput ? "\n\n" : ""}Structured result:\n${JSON.stringify(result.structuredContent)}`;
+    const serialized = JSON.stringify(result.structuredContent);
+    const hasTextCopy = result.content.some(
+      (content) => content.type === "text" && content.text.trim() === serialized
+    );
+    if (!hasTextCopy) {
+      toolOutput += `${toolOutput ? "\n\n" : ""}Structured result:\n${serialized}`;
+    }
   }
   return { toolOutput, hasAttachments, attachments, isError: result.isError === true };
 }
