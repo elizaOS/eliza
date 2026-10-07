@@ -106,6 +106,7 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { registerBuiltinTypes } from "./builtins";
 import { assertFormControlGraphs } from "./form-control-graph";
+import { recordedFieldActivatedAt } from "./recorded-field-activated-at";
 import {
   getAutofillData,
   getSessionById,
@@ -1535,7 +1536,10 @@ export class FormService extends Service {
               fieldState.externalState.instructions ||
               "Waiting for confirmation...",
             reference: fieldState.externalState.reference || "",
-            activatedAt: fieldState.externalState.activatedAt || Date.now(),
+            activatedAt: recordedFieldActivatedAt(
+              fieldState.externalState.activatedAt,
+              Date.now(),
+            ),
             address: fieldState.externalState.address,
           });
         }
