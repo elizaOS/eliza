@@ -347,7 +347,7 @@ function nativeServiceCanRead(service: RuntimeIMessageServiceLike): boolean {
   );
 }
 
-function nativeMessageToLifeOps(
+export function nativeMessageToLifeOps(
   message: NativeIMessageMessage,
 ): IMessageRecord {
   const attachmentPaths = message.attachmentPaths ?? [];
@@ -357,7 +357,12 @@ function nativeMessageToLifeOps(
     toHandles: message.isFromMe && message.handle ? [message.handle] : [],
     text: message.text,
     isFromMe: message.isFromMe,
-    sentAt: new Date(message.timestamp || Date.now()).toISOString(),
+    sentAt: new Date(
+      typeof message.timestamp === "number" &&
+        Number.isFinite(message.timestamp)
+        ? message.timestamp
+        : Date.now(),
+    ).toISOString(),
     chatId: message.chatId,
     attachments:
       attachmentPaths.length > 0
