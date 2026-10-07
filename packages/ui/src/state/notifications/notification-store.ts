@@ -228,6 +228,8 @@ async function deliver(notification: AgentNotification): Promise<void> {
       title: notification.title,
       body: notification.body,
       createdAt: notification.createdAt,
+      nativeEpoch: notification.nativeEpoch,
+      nativeSequence: notification.nativeSequence,
       source: notification.source,
       readAt: notification.readAt,
       expiresAt: notification.expiresAt,

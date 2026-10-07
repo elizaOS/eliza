@@ -21,7 +21,9 @@ import { NotificationService } from "../src/services/notification.ts";
 import type { AgentEventPayload } from "../src/types/agent-event.ts";
 import {
 	type AgentNotification,
+	NATIVE_NOTIFICATION_PAGE_BYTES,
 	NOTIFICATION_STREAM,
+	type NotificationInboxSnapshot,
 } from "../src/types/notification.ts";
 import type { Plugin } from "../src/types/plugin.ts";
 import { ServiceType } from "../src/types/service.ts";
@@ -248,9 +250,11 @@ describe("NotificationService", () => {
 			expect(
 				service.listIncludingExpired().map((entry) => entry.title),
 			).toEqual(["Durable second"]);
-			const stored = await runtime.getCache<AgentNotification[]>(
-				`notifications:${runtime.agentId}`,
-			);
+			const stored = (
+				await runtime.getCache<NotificationInboxSnapshot>(
+					`notifications:${runtime.agentId}`,
+				)
+			)?.notifications;
 			expect(stored?.map((entry) => entry.title)).toEqual(["Durable second"]);
 		} finally {
 			runtime.setCache = originalSetCache;
@@ -276,9 +280,11 @@ describe("NotificationService", () => {
 			releaseNotify?.();
 			await expect(arriving).resolves.toMatchObject({ title: "Keep me" });
 			await expect(removal).resolves.toBe(true);
-			const stored = await runtime.getCache<AgentNotification[]>(
-				`notifications:${runtime.agentId}`,
-			);
+			const stored = (
+				await runtime.getCache<NotificationInboxSnapshot>(
+					`notifications:${runtime.agentId}`,
+				)
+			)?.notifications;
 			expect(stored?.map((entry) => entry.title)).toEqual(["Keep me"]);
 			expect(service.list().map((entry) => entry.title)).toEqual(["Keep me"]);
 		} finally {
@@ -305,9 +311,11 @@ describe("NotificationService", () => {
 			await expect(arriving).resolves.toMatchObject({
 				title: "After ambiguous removal",
 			});
-			const stored = await runtime.getCache<AgentNotification[]>(
-				`notifications:${runtime.agentId}`,
-			);
+			const stored = (
+				await runtime.getCache<NotificationInboxSnapshot>(
+					`notifications:${runtime.agentId}`,
+				)
+			)?.notifications;
 			expect(stored?.map((entry) => entry.title)).toEqual([
 				"After ambiguous removal",
 			]);
@@ -355,9 +363,11 @@ describe("NotificationService", () => {
 				"injected pending projection failure",
 			);
 			await expect(ensured).resolves.toMatchObject(input);
-			const stored = await runtime.getCache<AgentNotification[]>(
-				`notifications:${runtime.agentId}`,
-			);
+			const stored = (
+				await runtime.getCache<NotificationInboxSnapshot>(
+					`notifications:${runtime.agentId}`,
+				)
+			)?.notifications;
 			expect(stored).toHaveLength(1);
 			expect(stored?.[0]).toMatchObject(input);
 			expect(stored?.[0]?.data).toEqual(input.data);
@@ -398,12 +408,306 @@ describe("NotificationService", () => {
 		}
 		expect(service.getAvailableCapacity()).toBe(Number.POSITIVE_INFINITY);
 		await service.notifyWithoutEviction({ title: "Must not evict" });
-		const stored = await runtime.getCache<AgentNotification[]>(
-			`notifications:${runtime.agentId}`,
-		);
+		const stored = (
+			await runtime.getCache<NotificationInboxSnapshot>(
+				`notifications:${runtime.agentId}`,
+			)
+		)?.notifications;
 		expect(stored).toHaveLength(301);
 		expect(stored?.[0]?.title).toBe("Existing 0");
 		expect(stored?.at(-1)?.title).toBe("Must not evict");
+	});
+
+	it("shares durable coordinates across copies, restart, deletion and clear without changing stored records", async () => {
+		const original = await service.notify({
+			title: "Coordinates",
+			data: { privateContext: "kept", ownerType: "clock" },
+		});
+		const firstPage = await service.listNativePage();
+		expect(original.nativeSequence).toBe(firstPage.throughSequence);
+		expect(original.nativeEpoch).toBe(firstPage.nativeEpoch);
+		expect(service.list()[0]).toEqual(original);
+		expect(emitted[0].data.notification).toEqual(original);
+		expect(emitted[0].data.nativeNotification).toMatchObject({
+			nativeEpoch: original.nativeEpoch,
+			nativeSequence: original.nativeSequence,
+			data: { ownerType: "clock" },
+		});
+		expect(emitted[0].data.nativeNotification).not.toHaveProperty(
+			"data.privateContext",
+		);
+		const snapshot = await runtime.getCache<NotificationInboxSnapshot>(
+			`notifications:${runtime.agentId}`,
+		);
+		expect(snapshot?.notifications[0]).not.toHaveProperty("nativeSequence");
+		expect(snapshot?.notifications[0]).not.toHaveProperty("nativeEpoch");
+		expect(snapshot?.notifications[0].data).toEqual(original.data);
+		await service.remove(original.id);
+		await service.clear();
+		const restarted = (await NotificationService.start(
+			runtime,
+		)) as NotificationService;
+		const restoredEmpty = await restarted.listNativePage();
+		expect(restoredEmpty.nativeEpoch).toBe(original.nativeEpoch);
+		const later = await service.notify({ title: "After empty restart" });
+		expect(later.nativeEpoch).toBe(original.nativeEpoch);
+		expect(later.nativeSequence).toBe((original.nativeSequence ?? 0) + 1);
+		expect((await service.listNativePage()).notifications[0].id).toBe(later.id);
+		// Restore the registered instance's view before the next shared fixture test.
+		await restarted.stop();
+	});
+
+	it("reports a changed epoch before checking its older cursor against a lower counter", async () => {
+		const current = await service.listNativePage();
+		const oldCursor = {
+			nativeEpoch: "10000000-0000-0000-0000-000000000001",
+			afterSequence: current.throughSequence + 100,
+			throughSequence: current.throughSequence + 100,
+		};
+		await expect(service.listNativePage(oldCursor)).rejects.toMatchObject({
+			code: "NATIVE_NOTIFICATION_EPOCH_CHANGED",
+			status: 409,
+		});
+		await expect(
+			service.listNativePage({
+				...oldCursor,
+				nativeEpoch: current.nativeEpoch,
+			}),
+		).rejects.toMatchObject({ code: "INVALID_NATIVE_NOTIFICATION_CURSOR" });
+	});
+
+	it("pages a fixed append fence including read, low and expired rows despite deleted gaps", async () => {
+		const a = await service.notify({ title: "Read", priority: "low" });
+		const b = await service.notify({ title: "Deleted" });
+		const c = await service.notify({
+			title: "Expires later",
+			expiresAt: Date.now() + 60_000,
+		});
+		await service.markRead(a.id);
+		const first = await service.listNativePage({ limit: 1 });
+		expect(first.complete).toBe(false);
+		expect(first.notifications[0]).toMatchObject({ id: a.id, priority: "low" });
+		expect(first.notifications[0].readAt).not.toBeNull();
+		await service.remove(b.id);
+		const afterFence = await service.notify({ title: "After captured fence" });
+		const rest = await service.listNativePage({
+			nativeEpoch: first.nativeEpoch,
+			afterSequence: first.nextSequence,
+			throughSequence: first.throughSequence,
+			limit: 1,
+		});
+		expect(rest.notifications.map((n) => n.id)).toEqual([c.id]);
+		expect(rest.complete).toBe(true);
+		expect(rest.nextSequence).toBe(first.throughSequence);
+		expect(afterFence.nativeSequence).toBeGreaterThan(rest.throughSequence);
+		await service.clear();
+		await service.notify({ title: "Already expired", expiresAt: 1 });
+		expect(service.list()).toEqual([]);
+		expect((await service.listNativePage()).notifications[0].expiresAt).toBe(1);
+	});
+
+	it("bounds encoded native pages without truncating producer content or their retained history", async () => {
+		const body = "界".repeat(4096);
+		for (let index = 0; index < 130; index++)
+			await service.notify({
+				title: `Page${index}`,
+				body,
+				data: { privateContext: "sensitive" },
+			});
+		let page = await service.listNativePage();
+		const ids: string[] = [];
+		const through = page.throughSequence,
+			epoch = page.nativeEpoch;
+		for (;;) {
+			expect(
+				new TextEncoder().encode(JSON.stringify(page)).byteLength,
+			).toBeLessThanOrEqual(NATIVE_NOTIFICATION_PAGE_BYTES);
+			expect(page.notifications.length).toBeLessThanOrEqual(128);
+			for (const n of page.notifications) {
+				expect(n.body).toBe(body);
+				expect(n).not.toHaveProperty("data.privateContext");
+				ids.push(n.id);
+			}
+			if (page.complete) break;
+			const previous = page.nextSequence;
+			page = await service.listNativePage({
+				nativeEpoch: epoch,
+				afterSequence: previous,
+				throughSequence: through,
+			});
+			expect(page.nextSequence).toBeGreaterThan(previous);
+		}
+		expect(ids).toHaveLength(130);
+		expect(new Set(ids).size).toBe(130);
+		expect(page.nextSequence).toBe(through);
+		await service.clear();
+		const large = await service.notify({
+			title: "Oversized",
+			body: "x".repeat(4097),
+		});
+		expect(large.body).toHaveLength(4097);
+		await expect(service.listNativePage()).rejects.toMatchObject({
+			code: "NATIVE_NOTIFICATION_RECORD_TOO_LARGE",
+			status: 413,
+		});
+		expect(emitted.at(-1)?.data.nativeProjectionError).toMatchObject({
+			notificationId: large.id,
+			nativeSequence: large.nativeSequence,
+		});
+		expect(emitted.at(-1)?.data.nativeNotification).toBeUndefined();
+	});
+
+	it("reconciles the sequence sidecar after ambiguous commits before the next queued write", async () => {
+		const before = await service.listNativePage();
+		const originalSetCache = runtime.setCache.bind(runtime);
+		let once = true;
+		runtime.setCache = async (key, value) => {
+			const result = await originalSetCache(key, value);
+			if (once) {
+				once = false;
+				throw new Error("after atomic sequence commit");
+			}
+			return result;
+		};
+		try {
+			const first = service.notify({ title: "Committed but rejected" });
+			const second = service.notify({ title: "Next queued write" });
+			await expect(first).rejects.toThrow("after atomic sequence commit");
+			await expect(second).resolves.toMatchObject({
+				nativeSequence: before.throughSequence + 2,
+			});
+			const page = await service.listNativePage();
+			expect(page.notifications.map((n) => n.nativeSequence)).toEqual([
+				before.throughSequence + 1,
+				before.throughSequence + 2,
+			]);
+			expect(emitted).toHaveLength(1);
+		} finally {
+			runtime.setCache = originalSetCache;
+		}
+	});
+
+	it("blocks fences and later writes while an ambiguous commit cannot be read back", async () => {
+		const before = await service.listNativePage();
+		const originalSetCache = runtime.setCache.bind(runtime);
+		const originalGetCache = runtime.getCache.bind(runtime);
+		runtime.setCache = async () => {
+			throw new Error("Unconfirmed write");
+		};
+		runtime.getCache = async () => {
+			throw new Error("Unconfirmed readback");
+		};
+		try {
+			await expect(service.notify({ title: "Uncertain" })).rejects.toThrow(
+				/persistence and reconciliation failed/,
+			);
+			await expect(service.listNativePage()).rejects.toMatchObject({
+				code: "NOTIFICATION_INBOX_UNAVAILABLE",
+			});
+			await expect(
+				service.notify({ title: "Must remain blocked" }),
+			).rejects.toThrow("Unconfirmed readback");
+			expect(emitted).toEqual([]);
+		} finally {
+			runtime.setCache = originalSetCache;
+			runtime.getCache = originalGetCache;
+		}
+		const recovered = await service.notify({ title: "Recovered" });
+		expect(recovered.nativeSequence).toBe(before.throughSequence + 1);
+		expect(
+			(await service.listNativePage()).notifications.map((n) => n.id),
+		).toEqual([recovered.id]);
+	});
+
+	it("waits for the atomic durable mutation before exposing a native fence", async () => {
+		const originalSetCache = runtime.setCache.bind(runtime);
+		let release: (() => void) | undefined;
+		let entered: (() => void) | undefined;
+		const started = new Promise<void>((resolve) => {
+			entered = resolve;
+		});
+		const blocked = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		runtime.setCache = async (key, value) => {
+			entered?.();
+			await blocked;
+			return originalSetCache(key, value);
+		};
+		try {
+			const writing = service.notify({ title: "Pending durability" });
+			await started;
+			let settled = false;
+			const reading = service.listNativePage().then((page) => {
+				settled = true;
+				return page;
+			});
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			expect(settled).toBe(false);
+			release?.();
+			const notice = await writing;
+			expect((await reading).throughSequence).toBe(notice.nativeSequence);
+		} finally {
+			release?.();
+			runtime.setCache = originalSetCache;
+		}
+	});
+
+	it("migrates legacy insertion order atomically and retains coordinates across restart", async () => {
+		const fixture = await createRuntime([AgentEventService]);
+		try {
+			const key = `notifications:${fixture.runtime.agentId}`;
+			const legacy = [
+				{
+					id: "10000000-0000-0000-0000-000000000001",
+					title: "First stored",
+					body: "  exact  ",
+					category: "reminder",
+					priority: "high",
+					source: "fixture",
+					createdAt: 500,
+					data: { secret: "kept" },
+				},
+				{
+					id: "10000000-0000-0000-0000-000000000002",
+					title: "Second stored",
+					category: "general",
+					priority: "normal",
+					source: "fixture",
+					createdAt: 1,
+					expiresAt: 0,
+				},
+			];
+			await fixture.runtime.setCache(key, legacy);
+			const originalSetCache = fixture.runtime.setCache.bind(fixture.runtime);
+			fixture.runtime.setCache = async () => false;
+			await expect(NotificationService.start(fixture.runtime)).rejects.toThrow(
+				/persistence was rejected/,
+			);
+			expect(await fixture.runtime.getCache(key)).toEqual(legacy);
+			fixture.runtime.setCache = originalSetCache;
+			const migrated = (await NotificationService.start(
+				fixture.runtime,
+			)) as NotificationService;
+			const page = await migrated.listNativePage();
+			expect(
+				page.notifications.map((n) => [n.title, n.nativeSequence]),
+			).toEqual([
+				["First stored", 1],
+				["Second stored", 2],
+			]);
+			const stored =
+				await fixture.runtime.getCache<NotificationInboxSnapshot>(key);
+			expect(stored?.notifications).toEqual(legacy);
+			const again = (await NotificationService.start(
+				fixture.runtime,
+			)) as NotificationService;
+			expect(await again.listNativePage()).toEqual(page);
+			await migrated.stop();
+			await again.stop();
+		} finally {
+			await fixture.cleanup();
+		}
 	});
 
 	it("still records when no event bus is present", async () => {
@@ -689,6 +993,21 @@ describe("NotificationService", () => {
 		expect(list).toHaveLength(320);
 		expect(list[0].title).toBe("n319");
 		expect(list.some((n) => n.title === "n0")).toBe(true);
+		let page = await service.listNativePage();
+		const counts = [page.notifications.length];
+		const titles = page.notifications.map((n) => n.title);
+		while (!page.complete) {
+			page = await service.listNativePage({
+				nativeEpoch: page.nativeEpoch,
+				afterSequence: page.nextSequence,
+				throughSequence: page.throughSequence,
+			});
+			counts.push(page.notifications.length);
+			titles.push(...page.notifications.map((n) => n.title));
+		}
+		expect(counts).toEqual([128, 128, 64]);
+		expect(titles[0]).toBe("n0");
+		expect(titles.at(-1)).toBe("n319");
 	});
 
 	it("notify reflects unread count in the broadcast after collapse", async () => {
@@ -967,9 +1286,11 @@ describe("NotificationService", () => {
 			// The durable write completed: the accepted record survived in the
 			// durable inbox (it must be served again after restart), while the
 			// in-memory list was cleared once the drained tail settled.
-			const persisted = await stopRuntime.getCache<AgentNotification[]>(
-				`notifications:${stopRuntime.agentId}`,
-			);
+			const persisted = (
+				await stopRuntime.getCache<NotificationInboxSnapshot>(
+					`notifications:${stopRuntime.agentId}`,
+				)
+			)?.notifications;
 			expect(persisted?.map((n) => n.title)).toEqual(["in-flight write"]);
 			expect(stopService.listIncludingExpired()).toEqual([]);
 			// Restore before the runtime-level cleanup stops services again.

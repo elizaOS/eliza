@@ -22,18 +22,25 @@ import org.json.JSONObject;
 final class NativeNotificationInbox {
     interface Projector { boolean post(JSONObject notification) throws Exception; }
     interface DirectorySync { void sync(Path directory) throws IOException; }
+    interface AuthorityCheck { void current() throws Exception; }
     private static final int MAX_SEEN = 10000, MAX_BUFFERED = 128, MAX_BYTES = 4 * 1024 * 1024;
     private static final ConcurrentHashMap<Path, Object> LOCKS = new ConcurrentHashMap<>();
     private final Path directory, file, lock;
     private final String owner;
     private final Projector projector;
     private final DirectorySync sync;
+    private final AuthorityCheck authority;
     private interface Locked<T> { T run(JSONObject state) throws Exception; }
 
     NativeNotificationInbox(Path root, String ownerFingerprint, Projector projector, DirectorySync sync) throws IOException {
+        this(root, ownerFingerprint, projector, sync, () -> {});
+    }
+
+    NativeNotificationInbox(Path root, String ownerFingerprint, Projector projector, DirectorySync sync, AuthorityCheck authority) throws IOException {
         if (ownerFingerprint == null || !ownerFingerprint.matches("[a-f0-9]{64}")) throw new SecurityException("Invalid notification owner");
         Path nativeRoot = root.toRealPath();
         if (!root.toAbsolutePath().normalize().equals(nativeRoot)) throw new IOException("Native inbox root must not be a symlink");
+        this.authority = java.util.Objects.requireNonNull(authority);
         this.owner = ownerFingerprint; this.projector = java.util.Objects.requireNonNull(projector); this.sync = java.util.Objects.requireNonNull(sync);
         directory = nativeRoot.resolve("native-notification-inbox");
         if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) { Files.createDirectory(directory); sync.sync(nativeRoot); }
@@ -45,25 +52,34 @@ final class NativeNotificationInbox {
         locked(state -> { state.put("baselineReady", false); save(state); return null; });
     }
 
+    /** The request cursor is durable; reconnect and process restart resume the same append fence. */
+    JSONObject pageCursor() throws Exception {
+        return locked(this::cursor);
+    }
+
+    void restartEpoch() throws Exception {
+        locked(state -> { state.put("resetEpoch", true).put("page", JSONObject.NULL).put("bufferedMatches", new JSONObject()); save(state); return null; });
+    }
+
     JSONObject acceptLive(JSONObject notification) throws Exception {
         JSONObject copy = checked(notification);
         return locked(state -> {
             String id = copy.getString("id");
-            JSONObject seen = state.getJSONObject("seen");
-            if (seen.has(id)) return outcome(id, seen.getString(id), false, true);
-            // Before the first authoritative baseline, retain new arrivals so
-            // they cannot be mistaken for historical rows in that snapshot.
-            // Once initialized, foreground/live records can post immediately
-            // during reconnect; the later catch-up uses the same durable ids.
-            if (!state.getBoolean("initialized")) {
-                JSONObject buffered = state.getJSONObject("buffered");
-                boolean duplicate = buffered.has(id);
-                if (!duplicate && buffered.length() >= MAX_BUFFERED) throw new IOException("Native notification live buffer full");
-                if (!duplicate) { buffered.put(id, copy); save(state); }
-                return outcome(id, "buffered", false, duplicate);
+            JSONObject seen = state.getJSONObject("seen"), legacy = state.getJSONObject("legacySeen");
+            if (seen.has(id)) return outcome(id, seen.getJSONObject(id).getString("phase"), false, true);
+            if (legacy.has(id)) return outcome(id, legacy.getString(id), false, true);
+            JSONObject buffered = state.getJSONObject("buffered");
+            if (buffered.has(id)) return outcome(id, "buffered", false, true);
+            if (copy.getString("nativeEpoch").equals(state.optString("nativeEpoch"))
+                && copy.getLong("nativeSequence") <= state.getLong("closedThroughSequence"))
+                return outcome(id, "closed", false, true);
+            if (!state.getBoolean("initialized") || !copy.getString("nativeEpoch").equals(state.optString("nativeEpoch"))) {
+                if (buffered.length() >= MAX_BUFFERED) throw new IOException("Native notification live buffer full");
+                buffered.put(id, copy); save(state);
+                return outcome(id, "buffered", false, false);
             }
             project(state, copy);
-            String phase = seen.getString(id);
+            String phase = seen.getJSONObject(id).getString("phase");
             return outcome(id, phase, "accepted".equals(phase), false);
         });
     }
@@ -73,82 +89,157 @@ final class NativeNotificationInbox {
                 .put("retained", true).put("presented", presented).put("duplicate", duplicate);
     }
 
-    void completeBaseline(JSONArray notifications) throws Exception {
-        List<JSONObject> snapshot = new ArrayList<>();
-        java.util.Set<String> ids = new java.util.HashSet<>();
-        for (int i = 0; i < notifications.length(); i++) {
-            JSONObject item = checked(notifications.getJSONObject(i));
-            if (!ids.add(item.getString("id"))) throw new IOException("Duplicate notification baseline id");
-            snapshot.add(item);
-        }
-        locked(state -> {
-            JSONObject seen = state.getJSONObject("seen"), buffered = state.getJSONObject("buffered");
-            List<JSONObject> deliver = new ArrayList<>();
-            boolean initial = !state.getBoolean("initialized");
-            for (JSONObject item : snapshot) {
-                String id = item.getString("id");
-                if (seen.has(id)) continue;
-                if (buffered.has(id)) {
-                    // Preserve the original arrival contents, but the full
-                    // authoritative inbox can already know it was read or
-                    // expired before this delayed first presentation.
-                    buffered.getJSONObject(id).put("readAt", item.get("readAt"))
-                            .put("expiresAt", item.get("expiresAt"));
+    /** Only a fully validated, fully processed page closes its range. An incomplete
+     * page closes through its last emitted row; only complete=true closes deleted tail gaps. */
+    boolean acceptPage(JSONObject envelope, JSONObject requestedCursor) throws Exception {
+        JSONObject page = NativeNotificationWire.page(envelope, requestedCursor);
+        return locked(state -> {
+            JSONObject actual = cursor(state);
+            if (!actual.toString().equals(requestedCursor.toString()))
+                throw new IOException("Notification page cursor changed");
+            String epoch = page.getString("nativeEpoch");
+            if (!epoch.equals(state.optString("nativeEpoch"))) {
+                boolean changedEpoch = !state.isNull("nativeEpoch");
+                JSONObject old = state.getJSONObject("seen"), legacy = state.getJSONObject("legacySeen");
+                for (java.util.Iterator<String> keys = old.keys(); keys.hasNext();) {
+                    String id = keys.next(); legacy.put(id, old.getJSONObject(id).getString("phase"));
                 }
-                if (initial && !buffered.has(id)) remember(state, id, "baseline");
-                else if (!buffered.has(id)) deliver.add(item);
+                state.put("seen", new JSONObject()).put("nativeEpoch", epoch)
+                    .put("closedThroughSequence", 0);
+                if (changedEpoch) state.put("initialized", false);
             }
-            for (java.util.Iterator<String> keys = buffered.keys(); keys.hasNext();) {
-                String id = keys.next(); if (!seen.has(id)) deliver.add(buffered.getJSONObject(id));
-            }
-            if (deliver.size() > MAX_BUFFERED) throw new IOException("Native notification catch-up exceeds bounded delivery budget");
-            if (seen.length() + deliver.size() > MAX_SEEN) throw new IOException("Native notification receipt capacity exhausted");
-            deliver.sort(Comparator.comparingLong(item -> item.optLong("createdAt")));
-            state.put("initialized", true).put("baselineReady", true).put("buffered", new JSONObject());
+            state.put("resetEpoch", false);
+            JSONObject seen = state.getJSONObject("seen"), buffered = state.getJSONObject("buffered");
+            // Presence is journal metadata, never a producer-supplied record field.
+            // A new crawl must not reuse overlap evidence from an older fence.
+            if (!requestedCursor.has("throughSequence")) state.put("bufferedMatches", new JSONObject());
+            JSONObject matches = state.getJSONObject("bufferedMatches");
+            long through = page.getLong("throughSequence");
+            boolean initial = !state.getBoolean("initialized");
+            JSONArray records = page.getJSONArray("notifications");
+            // Commit the fixed fence before any effect. If a candidate fails,
+            // this page remains unfinished and its range remains open.
+            state.put("page", new JSONObject().put("nativeEpoch", epoch)
+                .put("afterSequence", requestedCursor.getLong("afterSequence"))
+                .put("throughSequence", page.getLong("throughSequence")));
             save(state);
-            for (JSONObject item : deliver) project(state, item);
-            return null;
+            for (int i = 0; i < records.length(); i++) {
+                JSONObject item = records.getJSONObject(i);
+                String id = item.getString("id");
+                boolean matched = false;
+                if (buffered.has(id)) {
+                    JSONObject arrival = buffered.getJSONObject(id);
+                    if (!arrival.has("nativeEpoch") || epoch.equals(arrival.optString("nativeEpoch"))) {
+                        arrival.put("readAt", item.get("readAt")).put("expiresAt", item.get("expiresAt"));
+                        // Migrated v1 arrivals obtain authoritative coordinates;
+                        // a different epoch's retained arrival stays unresolved.
+                        arrival.put("nativeEpoch", epoch).put("nativeSequence", item.getLong("nativeSequence"));
+                        matches.put(id, new JSONObject().put("nativeEpoch", epoch).put("throughSequence", through)
+                            .put("nativeSequence", item.getLong("nativeSequence")));
+                        save(state); matched = true;
+                    }
+                }
+                if (!matched && !seen.has(id) && !state.getJSONObject("legacySeen").has(id)) {
+                    if (initial) remember(state, item, "baseline");
+                    else project(state, item);
+                }
+            }
+            boolean complete = page.getBoolean("complete");
+            if (complete) {
+                List<JSONObject> arrivals = new ArrayList<>();
+                for (java.util.Iterator<String> keys = buffered.keys(); keys.hasNext();) {
+                    JSONObject arrival = buffered.getJSONObject(keys.next());
+                    if (epoch.equals(arrival.optString("nativeEpoch"))) arrivals.add(arrival);
+                }
+                arrivals.sort(Comparator.comparingLong(item -> item.optLong("nativeSequence")));
+                for (JSONObject item : arrivals) {
+                    String id = item.getString("id");
+                    long sequence = item.getLong("nativeSequence");
+                    JSONObject match = matches.optJSONObject(id);
+                    boolean present = match != null && epoch.equals(match.optString("nativeEpoch"))
+                        && match.optLong("throughSequence", -1) == through
+                        && match.optLong("nativeSequence", -1) == sequence;
+                    // Explicit exhaustion proves that an unobserved in-fence
+                    // arrival was deleted. It cannot authorize a stale OS post.
+                    // Above-fence arrivals remain new live delivery and retain
+                    // their receipts beyond this crawl's compaction boundary.
+                    if (sequence > through || present) project(state, item);
+                    buffered.remove(id); matches.remove(id); save(state);
+                }
+                state.put("initialized", true).put("baselineReady", true).put("page", JSONObject.NULL);
+            } else {
+                state.getJSONObject("page").put("afterSequence", page.getLong("nextSequence"));
+            }
+            long closed = page.getLong("nextSequence");
+            state.put("closedThroughSequence", closed);
+            List<String> compact = new ArrayList<>();
+            for (java.util.Iterator<String> keys = seen.keys(); keys.hasNext();) {
+                String id = keys.next(); JSONObject receipt = seen.getJSONObject(id);
+                String phase = receipt.getString("phase");
+                if (epoch.equals(receipt.getString("nativeEpoch")) && receipt.getLong("nativeSequence") <= closed
+                    && !"unknown".equals(phase) && !"dispatched".equals(phase)) compact.add(id);
+            }
+            for (String id : compact) seen.remove(id);
+            save(state);
+            return complete;
         });
+    }
+
+    private JSONObject cursor(JSONObject state) throws Exception {
+        if (state.optBoolean("resetEpoch")) return new JSONObject().put("afterSequence", 0);
+        JSONObject page = state.optJSONObject("page");
+        if (page != null) return new JSONObject(page.toString());
+        JSONObject result = new JSONObject().put("afterSequence", state.getLong("closedThroughSequence"));
+        if (!state.isNull("nativeEpoch")) result.put("nativeEpoch", state.getString("nativeEpoch"));
+        return result;
     }
 
     JSONObject status() throws Exception {
         return locked(state -> {
             int accepted = 0, unknown = 0;
-            JSONObject seen = state.getJSONObject("seen");
-            for (java.util.Iterator<String> keys = seen.keys(); keys.hasNext();) {
-                String phase = seen.getString(keys.next());
-                if ("accepted".equals(phase)) accepted++;
-                else if ("dispatched".equals(phase) || "unknown".equals(phase)) unknown++;
+            JSONObject seen = state.getJSONObject("seen"), legacy = state.getJSONObject("legacySeen");
+            for (JSONObject receipts : new JSONObject[]{seen, legacy}) {
+                for (java.util.Iterator<String> keys = receipts.keys(); keys.hasNext();) {
+                    String id = keys.next();
+                    String phase = receipts == seen ? receipts.getJSONObject(id).getString("phase") : receipts.getString(id);
+                    if ("accepted".equals(phase)) accepted++;
+                    else if ("dispatched".equals(phase) || "unknown".equals(phase)) unknown++;
+                }
             }
             return new JSONObject().put("initialized", state.getBoolean("initialized"))
                     .put("baselineReady", state.getBoolean("baselineReady"))
+                    .put("nativeEpoch", state.get("nativeEpoch")).put("closedThroughSequence", state.getLong("closedThroughSequence"))
                     .put("pendingBuffered", state.getJSONObject("buffered").length())
-                    .put("seenCount", seen.length()).put("acceptedCount", accepted).put("unknownCount", unknown);
+                    .put("seenCount", seen.length()).put("legacySeenCount", legacy.length())
+                    .put("receiptCapacity", MAX_SEEN).put("liveBufferCapacity", MAX_BUFFERED).put("journalMaximumBytes", MAX_BYTES)
+                    .put("acceptedCount", accepted).put("unknownCount", unknown);
         });
     }
 
     private void project(JSONObject state, JSONObject item) throws Exception {
         String id = item.getString("id");
-        if (state.getJSONObject("seen").has(id)) return;
-        long now = System.currentTimeMillis();
-        if ("low".equals(item.getString("priority")) || !item.isNull("readAt")
-                || (!item.isNull("expiresAt") && item.getLong("expiresAt") <= now)) {
-            remember(state, id, "ignored"); save(state); return;
-        }
-        remember(state, id, "dispatched"); save(state);
+        if (state.getJSONObject("seen").has(id) || state.getJSONObject("legacySeen").has(id)) return;
+        if (ignored(item)) { remember(state, item, "ignored"); save(state); return; }
+        remember(state, item, "dispatched"); save(state);
         boolean accepted;
-        try { accepted = projector.post(new JSONObject(item.toString())); }
+        try { authority.current(); accepted = projector.post(new JSONObject(item.toString())); }
         catch (Exception error) {
             // error-policy:J1 the durable pre-effect marker survives a partial/ambiguous platform post.
-            state.getJSONObject("seen").put(id, "unknown"); save(state); throw error;
+            state.getJSONObject("seen").getJSONObject(id).put("phase", "unknown"); save(state); throw error;
         }
-        state.getJSONObject("seen").put(id, accepted ? "accepted" : "unknown"); save(state);
+        state.getJSONObject("seen").getJSONObject(id).put("phase", accepted ? "accepted" : "unknown"); save(state);
     }
 
-    private void remember(JSONObject state, String id, String phase) throws Exception {
-        JSONObject seen = state.getJSONObject("seen");
+    private static boolean ignored(JSONObject item) throws Exception {
+        return "low".equals(item.getString("priority")) || !item.isNull("readAt")
+                || (!item.isNull("expiresAt") && item.getLong("expiresAt") <= System.currentTimeMillis());
+    }
+
+    private void remember(JSONObject state, JSONObject item, String phase) throws Exception {
+        JSONObject seen = state.getJSONObject("seen"); String id = item.getString("id");
         if (!seen.has(id) && seen.length() >= MAX_SEEN) throw new IOException("Native notification receipt capacity exhausted");
-        seen.put(id, phase);
+        seen.put(id, new JSONObject().put("phase", phase).put("nativeEpoch", item.getString("nativeEpoch"))
+            .put("nativeSequence", item.getLong("nativeSequence")));
     }
 
     static JSONObject checked(JSONObject value) throws Exception {
@@ -156,6 +247,10 @@ final class NativeNotificationInbox {
         String id = copy.getString("id");
         if (!id.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")) throw new IllegalArgumentException("Invalid notification id");
         copy.put("id", id.toLowerCase(java.util.Locale.ROOT));
+        String epoch = copy.getString("nativeEpoch");
+        if (!epoch.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")) throw new IllegalArgumentException("Invalid notification epoch");
+        copy.put("nativeEpoch", epoch.toLowerCase(java.util.Locale.ROOT));
+        NativeNotificationWire.sequence(copy, "nativeSequence", false);
         String title = copy.getString("title"), body = copy.optString("body", "");
         if (title.trim().isEmpty() || title.length() > 512 || title.indexOf('\0') >= 0 || body.length() > 4096 || body.indexOf('\0') >= 0) throw new IllegalArgumentException("Invalid notification text");
         if (!java.util.Arrays.asList("reminder", "task", "workflow", "agent", "approval", "message", "health", "system", "general").contains(copy.getString("category"))
@@ -180,22 +275,35 @@ final class NativeNotificationInbox {
             if (Files.isSymbolicLink(lock)) throw new IOException("Invalid inbox lock");
             try (FileChannel channel = FileChannel.open(lock, StandardOpenOption.CREATE, StandardOpenOption.WRITE); FileLock held = channel.lock()) {
                 if (!held.isValid()) throw new IOException("Notification inbox lock unavailable");
+                authority.current();
                 return operation.run(load());
             }
         }
     }
     private JSONObject load() throws Exception {
-        if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return new JSONObject().put("version", 1).put("owner", owner)
-                .put("initialized", false).put("baselineReady", false).put("seen", new JSONObject()).put("buffered", new JSONObject());
+        if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return new JSONObject().put("version", 2).put("owner", owner)
+                .put("initialized", false).put("baselineReady", false).put("seen", new JSONObject()).put("legacySeen", new JSONObject())
+                .put("nativeEpoch", JSONObject.NULL).put("closedThroughSequence", 0).put("page", JSONObject.NULL).put("buffered", new JSONObject()).put("bufferedMatches", new JSONObject());
         if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) > MAX_BYTES) throw new IOException("Invalid inbox journal");
         JSONObject state = new JSONObject(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
-        if (state.getInt("version") != 1 || !owner.equals(state.getString("owner"))) throw new SecurityException("Notification inbox owner changed");
+        int version = state.getInt("version");
+        if ((version != 1 && version != 2) || !owner.equals(state.getString("owner"))) throw new SecurityException("Notification inbox owner changed");
         if (state.getJSONObject("seen").length() > MAX_SEEN || state.getJSONObject("buffered").length() > MAX_BUFFERED) throw new IOException("Inbox journal capacity exceeded");
-        JSONObject seen = state.getJSONObject("seen");
-        for (java.util.Iterator<String> keys = seen.keys(); keys.hasNext();) {
-            String id = keys.next();
-            if (!id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-                    || !java.util.Arrays.asList("baseline", "ignored", "dispatched", "accepted", "unknown").contains(seen.getString(id))) throw new IOException("Invalid inbox receipt phase");
+        if (version == 1) {
+            state.put("legacySeen", state.getJSONObject("seen")).put("seen", new JSONObject()).put("version", 2)
+                .put("nativeEpoch", JSONObject.NULL).put("closedThroughSequence", 0).put("page", JSONObject.NULL);
+        }
+        if (!state.has("bufferedMatches")) state.put("bufferedMatches", new JSONObject());
+        NativeNotificationWire.sequence(state, "closedThroughSequence", true);
+        for (String field : new String[]{"seen", "legacySeen"}) {
+            JSONObject receipts = state.getJSONObject(field);
+            for (java.util.Iterator<String> keys = receipts.keys(); keys.hasNext();) {
+                String id = keys.next();
+                String phase = "seen".equals(field) ? receipts.getJSONObject(id).getString("phase") : receipts.getString(id);
+                if (!id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+                    || !java.util.Arrays.asList("baseline", "ignored", "dispatched", "accepted", "unknown").contains(phase)) throw new IOException("Invalid inbox receipt phase");
+                if ("seen".equals(field)) NativeNotificationWire.sequence(receipts.getJSONObject(id), "nativeSequence", false);
+            }
         }
         return state;
     }
