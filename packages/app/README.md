@@ -11,7 +11,7 @@ by the Electrobun desktop shell and by Capacitor for mobile. Nothing imports fro
 package; it imports from everything else.
 
 For the agent-facing deep dive (boot sequence, plugin loader, white-label seam,
-gotchas), see [`AGENTS.md`](./AGENTS.md).
+gotchas), see [`CLAUDE.md`](CLAUDE.md).
 
 ## Layout
 

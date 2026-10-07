@@ -30,7 +30,7 @@ The shared utilities are real:
 
 The full port plan — upstream pins, GGUF schema per head, fork
 integration steps, replacement path for the TS services — lives in
-[`AGENTS.md`](AGENTS.md). Read that before changing anything in this
+[`CLAUDE.md`](CLAUDE.md). Read that before changing anything in this
 directory.
 
 ## Build

@@ -17,7 +17,7 @@ The public C ABI declared in `include/wakeword/wakeword.h` is backed by
 
 The full port plan — upstream pin, three-stage pipeline, GGUF
 conversion, fork integration, replacement path — lives in
-[`AGENTS.md`](AGENTS.md). Read that before changing anything in this
+[`CLAUDE.md`](CLAUDE.md). Read that before changing anything in this
 directory.
 
 ## Build

@@ -161,12 +161,6 @@ jobs:
           install-protoc: "false"
           run-postinstall: "false"
 
-      - name: Run CLAUDE/AGENTS guide parity self-test
-        run: node --test scripts/assert-agents-claude-identical.test.mjs
-
-      - name: Run CLAUDE/AGENTS guide parity
-        run: bun run check:agents-claude
-
       - name: Check maintained Markdown link targets
         run: node scripts/check-markdown-links.mjs
 

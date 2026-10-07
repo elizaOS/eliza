@@ -12,7 +12,7 @@ import * as path from "node:path";
 // DEV-only dependency used solely to drive the migration archive through the
 // REAL importer, proving cross-package `.eliza-agent` format compatibility.
 import { importAgent } from "@elizaos/agent/services/agent-export";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { migrateAgent } from "../commands/migrate-agent.js";
 import { buildElizaAgentArchive } from "./archive-format.js";
 import { assemblePayload } from "./archive-writer.js";
@@ -21,7 +21,20 @@ import { buildMigrationPlan, emitSovereignArtifacts } from "./index.js";
 import { tierMemories } from "./memory-tiering.js";
 import { readOcAgentHome } from "./openclaw-reader.js";
 
-const FIXTURE = path.join(__dirname, "__tests__", "fixtures", "oc-home");
+const fixtureRoot = fs.mkdtempSync(
+  path.join(os.tmpdir(), "eliza-migration-fixtures-"),
+);
+fs.cpSync(path.join(__dirname, "__tests__", "fixtures"), fixtureRoot, {
+  recursive: true,
+});
+for (const home of ["oc-home", "oc-home-lean"]) {
+  fs.renameSync(
+    path.join(fixtureRoot, home, "AGENTS.txt"),
+    path.join(fixtureRoot, home, "AGENTS.md"),
+  );
+}
+afterAll(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));
+const FIXTURE = path.join(fixtureRoot, "oc-home");
 
 /** Personal-context strings from the fixture that MUST never reach a firewalled archive. */
 const PERSONAL_TEXT = [
@@ -508,8 +521,7 @@ function buildSqliteFixtureHome(): string | null {
 }
 
 describe("oc home-format variants (cross-version)", () => {
-  const fixDir = (name: string) =>
-    path.join(__dirname, "__tests__", "fixtures", name);
+  const fixDir = (name: string) => path.join(fixtureRoot, name);
   const sqliteHome = buildSqliteFixtureHome();
 
   it("reads legacy lowercase memory.md as curated memory (GAP A)", () => {

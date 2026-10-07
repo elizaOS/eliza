@@ -156,7 +156,6 @@ describe("Develop Full workflow authority", () => {
     expect(quality?.inputs).toEqual(
       expect.arrayContaining(["*.md", "**/*.md", "packages/docs/**"]),
     );
-    expect(qualityWorkflow).toContain("bun run check:agents-claude");
     expect(qualityWorkflow).toContain("node scripts/check-markdown-links.mjs");
   });
 

@@ -445,6 +445,6 @@ bun run --cwd packages/core test:coverage # with v8 coverage
 bun run --cwd packages/core typecheck     # tsgo --noEmit
 ```
 
-For agent-facing notes on layout, the public surface, and how to extend the runtime, see [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md).
+For agent-facing notes on layout, the public surface, and how to extend the runtime, see [CLAUDE.md](CLAUDE.md) / [CLAUDE.md](CLAUDE.md).
 
 ---
