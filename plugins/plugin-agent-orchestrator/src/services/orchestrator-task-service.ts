@@ -690,7 +690,10 @@ function trimMentionedUrl(raw: string): string {
   let prev = "";
   while (prev !== url) {
     prev = url;
-    url = url.replace(/[.,;:\]]+$/, "");
+    // Peel prose and Markdown that can sit after a wrapping ")" so the
+    // balance check can see that closer. A ")" that closes an earlier "("
+    // stays. Wikipedia paths and queries are unchanged.
+    url = url.replace(/[\].,;:!?*_'"—–>]+$/u, "");
     if (url.endsWith(")") && trailingParenIsWrapping(url)) {
       url = url.slice(0, -1);
     }
