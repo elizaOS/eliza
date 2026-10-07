@@ -29,7 +29,7 @@ const warmInferenceRateLimitGate = mock(async () => {
   calls.push("rate-limit-gate");
 });
 const coordinateSharedHistory = mock(async () => [] as unknown[]);
-const coordinateSharedConversationPrewarm = mock(async () => undefined);
+const coordinateSharedConversationPrewarm = mock(async (): Promise<void> => undefined);
 const seedSharedAgentScopeCache = mock(async () => {
   calls.push("authorization-scope");
 });
@@ -250,5 +250,86 @@ describe("prewarmPersonalSharedAgentTurnCaches", () => {
         error: error.message,
       }),
     );
+  });
+});
+
+describe("established Personal Shared cold prewarm", () => {
+  test("preserves existing history and never hydrates a balance ledger", async () => {
+    const namespace = {} as never;
+    const a = { id: "personal:existing-preserved", organization_id: "org-preserved" };
+    await prewarmPersonalSharedAgentTurnCaches(a, namespace, { warmConversation: false });
+    expect(coordinateSharedConversationPrewarm).toHaveBeenCalledWith(a.id, a.id, {
+      namespace,
+      startEmpty: false,
+    });
+    expect(warmInferenceAdmissionGate).not.toHaveBeenCalled();
+    expect(warmInferenceAdmissionSnapshot).not.toHaveBeenCalled();
+    expect(calculateCost).not.toHaveBeenCalled();
+  });
+
+  test("starts rate and existing-room warmups before either has finished", async () => {
+    let releaseRate!: () => void;
+    let releaseRoom!: () => void;
+    const rate = new Promise<void>((resolve) => {
+      releaseRate = resolve;
+    });
+    const room = new Promise<void>((resolve) => {
+      releaseRoom = resolve;
+    });
+    warmInferenceRateLimitGate.mockImplementation(() => rate);
+    coordinateSharedConversationPrewarm.mockImplementation(() => room);
+    const pending = prewarmPersonalSharedAgentTurnCaches(
+      { id: "personal:parallel-existing", organization_id: "org-parallel" },
+      {} as never,
+      { warmConversation: false },
+    );
+    expect(warmInferenceRateLimitGate).toHaveBeenCalledTimes(1);
+    expect(coordinateSharedConversationPrewarm).toHaveBeenCalledTimes(1);
+    releaseRate();
+    releaseRoom();
+    await pending;
+  });
+
+  test("reuses successful warmup briefly and retries after its 30-second budget", async () => {
+    const originalNow = Date.now;
+    let now = 100_000;
+    Date.now = () => now;
+    try {
+      const a = { id: "personal:ttl-existing", organization_id: "org-ttl" };
+      await prewarmPersonalSharedAgentTurnCaches(a, {} as never, { warmConversation: false });
+      await prewarmPersonalSharedAgentTurnCaches(a, {} as never, { warmConversation: false });
+      expect(coordinateSharedConversationPrewarm).toHaveBeenCalledTimes(1);
+      now += 30_001;
+      await prewarmPersonalSharedAgentTurnCaches(a, {} as never, { warmConversation: false });
+      expect(coordinateSharedConversationPrewarm).toHaveBeenCalledTimes(2);
+    } finally {
+      Date.now = originalNow;
+    }
+  });
+
+  test("a failed room warmup is observable and is not cached as success", async () => {
+    const a = { id: "personal:failed-existing", organization_id: "org-failed" };
+    coordinateSharedConversationPrewarm.mockRejectedValueOnce(new Error("room unavailable"));
+    await prewarmPersonalSharedAgentTurnCaches(a, {} as never, { warmConversation: false });
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[shared-runtime prewarm] leg failed; first turn falls back to warming 503s",
+      expect.objectContaining({ leg: "existing-conversation-runtime", error: "room unavailable" }),
+    );
+    await prewarmPersonalSharedAgentTurnCaches(a, {} as never, { warmConversation: false });
+    await prewarmPersonalSharedAgentTurnCaches(a, {} as never, { warmConversation: false });
+    expect(coordinateSharedConversationPrewarm).toHaveBeenCalledTimes(2);
+  });
+
+  test("memoization is per actor and room rather than organization", async () => {
+    const a = { id: "personal:rooms-existing", organization_id: "org-rooms" };
+    await prewarmPersonalSharedAgentTurnCaches(a, {} as never, {
+      warmConversation: false,
+      conversationId: "room-one",
+    });
+    await prewarmPersonalSharedAgentTurnCaches(a, {} as never, {
+      warmConversation: false,
+      conversationId: "room-two",
+    });
+    expect(coordinateSharedConversationPrewarm).toHaveBeenCalledTimes(2);
   });
 });

@@ -66,6 +66,11 @@ export interface PrewarmSharedAgentOptions {
   stewardUserId?: string;
 }
 
+const PERSONAL_CONVERSATION_PREWARM_TTL_MS = 30_000;
+const PERSONAL_CONVERSATION_PREWARM_MAX_ENTRIES = 4_096;
+// Only completed warmups are memoized; never share pending request I/O.
+const personalConversationPrewarmedUntil = new Map<string, number>();
+
 interface PrewarmLeg {
   leg: string;
   run: Promise<unknown>;
@@ -177,8 +182,8 @@ export async function prewarmSharedAgentTurnCaches(
 /**
  * Warm the authorities a Personal Shared turn needs. Platform-funded turns use
  * only the rate-limit window, so this deliberately avoids balance-ledger
- * hydration. Established accounts can skip the conversation leg while still
- * keeping inference admission off the first model request.
+ * hydration. Established rooms retain their history while conversation activation overlaps
+ * the rate-only gate. A short success-only memo bounds the extra RPC cost.
  */
 export async function prewarmPersonalSharedAgentTurnCaches(
   agent: Pick<SharedRuntimeAgent, "id" | "organization_id">,
@@ -199,6 +204,33 @@ export async function prewarmPersonalSharedAgentTurnCaches(
         startEmpty: true,
       }),
     });
+  } else {
+    const conversationId = options.conversationId ?? agent.id;
+    const key = JSON.stringify([agent.id, conversationId]);
+    if ((personalConversationPrewarmedUntil.get(key) ?? 0) <= Date.now()) {
+      // Cost: one extra existing-room RPC per actor/room per entry isolate at
+      // most every 30s. It overlaps the rate gate; no model call or cached
+      // authorization decision. Actual turns still read ordered history.
+      legs.push({
+        leg: "existing-conversation-runtime",
+        run: (async () => {
+          await coordinateSharedConversationPrewarm(agent.id, conversationId, {
+            namespace,
+            startEmpty: false,
+          });
+          if (
+            personalConversationPrewarmedUntil.size >= PERSONAL_CONVERSATION_PREWARM_MAX_ENTRIES
+          ) {
+            const oldest = personalConversationPrewarmedUntil.keys().next().value;
+            if (oldest !== undefined) personalConversationPrewarmedUntil.delete(oldest);
+          }
+          personalConversationPrewarmedUntil.set(
+            key,
+            Date.now() + PERSONAL_CONVERSATION_PREWARM_TTL_MS,
+          );
+        })(),
+      });
+    }
   }
   await settlePrewarmLegs(agent, legs);
 }
