@@ -23,6 +23,7 @@ import { jobs } from "../../../../db/schemas/jobs";
 import type { RuntimeDurableObjectNamespace } from "../../../../types/cloud-worker-env";
 import { getCloudBinding } from "../../../runtime/cloud-bindings";
 import { logger } from "../../../utils/logger";
+import { verifyAndStampBackupRestorability } from "../../agent-backup-verifier";
 import {
   cancelUnboundAgentComputeInTransaction,
   stopFundedAgentInTransaction,
@@ -264,6 +265,33 @@ export class SandboxDeletion {
 
     if (!precheck.ok) {
       return { success: false, error: precheck.error };
+    }
+    // A persisted capture is not yet a recovery point. Verify its actual
+    // stored ciphertext/manifest under the current keys before any provider
+    // teardown, then publish only against this unchanged deletion generation.
+    if (precheck.preDeleteBackupId) {
+      const backup = await agentSandboxesRepository.getStoredBackupById(precheck.preDeleteBackupId);
+      if (!backup) return { success: false, error: "Pre-delete backup is no longer available" };
+      const verification = await verifyAndStampBackupRestorability(backup, {
+        preDelete: {
+          agentId,
+          organizationId: orgId,
+          deletionAttemptId: precheck.deletionAttemptId,
+          deletionStartedAt: precheck.deletionStartedAt,
+          lifecycleRevision: precheck.lifecycleRevision,
+          environmentRevision: precheck.environmentRevision,
+          sandboxId: precheck.sandboxId,
+          nodeId: precheck.nodeId,
+        },
+      });
+      if (!verification.ok || verification.skipped) {
+        return {
+          success: false,
+          ...(verification.skipped ? { retryable: true } : {}),
+          error:
+            "Refusing to delete: persisted pre-delete backup did not pass restorability verification",
+        };
+      }
     }
     let deletionOwnership = precheck;
 
