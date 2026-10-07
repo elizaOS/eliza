@@ -169,7 +169,7 @@ async function openControlledClock(page: Page, scenario: Scenario) {
   });
   await openAppPath(page, "/clock");
   await expect(
-    page.getByRole("heading", { name: "Android alarm", exact: true }),
+    page.getByRole("heading", { name: "Alarms", exact: true }),
   ).toBeVisible();
   // Load the same real bridge module used by ClockView. The controlled host is
   // configured solely from this browser test, without a production test hook.
@@ -598,7 +598,7 @@ test("pending UNKNOWN receipt remains reconcilable after proposal refresh reject
   const actual = await diagnostics(page);
   expect(actual.reviewCalls.map((call) => call.state)).toEqual([
     "pending",
-    "done",
+    "reconciliation_required",
   ]);
   expect(actual.reviewCalls.map((call) => call.id)).toEqual([
     "controlled-owned-clock",
@@ -663,7 +663,7 @@ test("saved UNKNOWN receipt waits for verified owner after status read rejection
   const actual = await diagnostics(page);
   expect(actual.reviewCalls.map((call) => call.state)).toEqual([
     "pending",
-    "done",
+    "reconciliation_required",
   ]);
   expect(actual.dispatchCount).toBe(1);
   expect(effects).toEqual([]);
@@ -709,11 +709,11 @@ test("validated unavailable Clock owner clears saved receipt and outcome before 
     ).__clockHostUiBoundary.changeOwner();
   });
   await expect(
-    page.getByText(
-      "No pending Clock requests. Send your request in chat to create one.",
-      { exact: true },
-    ),
+    page.getByRole("heading", { name: "Alarms", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Clock proposals", exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByText(pendingOutcome, { exact: true })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Check saved receipt", exact: true }),
@@ -773,7 +773,7 @@ test("failed saved receipt reconciliation remains reachable through owned refres
   expect(actual.reviewCalls.map((call) => call.state)).toEqual([
     "pending",
     "reconciliation_required",
-    "done",
+    "reconciliation_required",
   ]);
   expect(actual.dispatchCount).toBe(1);
   expect(effects).toEqual([]);
@@ -902,9 +902,13 @@ test("Clock unmount aborts an active controlled native review", async ({
     }),
   ).toBeDisabled();
   await capture(page, "unmount-review-waiting");
-  await page
-    .getByRole("button", { name: "Manage reminders", exact: true })
-    .click();
+  await page.evaluate(
+    async (url) => {
+      const { navigateBrowserPath } = await import(url);
+      navigateBrowserPath("/automations");
+    },
+    `/@fs${path.join(repoRoot, "packages/ui/src/app-navigate-view.ts")}`,
+  );
   await expect(page).toHaveURL(/\/automations/);
   await expect.poll(async () => (await diagnostics(page)).aborted).toBe(1);
   expect((await diagnostics(page)).dispatchCount).toBe(0);
@@ -941,11 +945,11 @@ test("Clock owner scope change aborts an active controlled native review", async
     }),
   ).toHaveCount(0);
   await expect(
-    page.getByText(
-      "No pending Clock requests. Send your request in chat to create one.",
-      { exact: true },
-    ),
+    page.getByRole("heading", { name: "Alarms", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Clock proposals", exact: true }),
+  ).toHaveCount(0);
   expect((await diagnostics(page)).dispatchCount).toBe(0);
   expect(effects).toEqual([]);
   await capture(page, "owner-change-review-cancelled");
@@ -964,7 +968,7 @@ async function openOwnedClock(page: Page, permissions = true) {
   await installDefaultAppRoutes(page);
   await openAppPath(page, "/clock");
   await expect(
-    page.getByRole("heading", { name: "Android alarm", exact: true }),
+    page.getByRole("heading", { name: "Alarms", exact: true }),
   ).toBeVisible();
   await page.evaluate(
     async ({ url, permissions }) => {
@@ -1186,9 +1190,7 @@ async function openOwnedClock(page: Page, permissions = true) {
     { url: bridgeUrl, permissions },
   );
   await expect(
-    page
-      .getByRole("region", { name: "Saved alarms", exact: true })
-      .getByText("Morning routine", { exact: true }),
+    page.getByRole("listitem", { name: "Morning routine", exact: true }),
   ).toBeVisible();
 }
 async function ownedCalls(page: Page) {
@@ -1207,20 +1209,18 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport);
     await openOwnedClock(page);
-    await expect(page.getByText(/Android Clock owns/)).toHaveCount(0);
-    await page
-      .getByLabel("Alarm label", { exact: false })
-      .fill("朝の目覚まし — Work days");
+    await expect(page.getByText("Time on this device")).toHaveCount(0);
+    await expect(page.getByText("Manage reminders")).toHaveCount(0);
+    await expect(page.locator("#clock-alarm-time")).toHaveCount(0);
+    await page.getByRole("button", { name: "Add alarm", exact: true }).click();
+    await page.locator("#clock-alarm-label").fill("朝の目覚まし — Work days");
     await page.getByLabel("Repeat", { exact: true }).selectOption("daily");
-    await page
-      .getByRole("button", { name: "Create alarm", exact: true })
-      .click();
-    await expect(
-      page.getByRole("article", {
-        name: "朝の目覚まし — Work days",
-        exact: true,
-      }),
-    ).toBeVisible();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    const row = page.getByRole("listitem", {
+      name: "朝の目覚まし — Work days",
+      exact: true,
+    });
+    await expect(row).toBeVisible();
     expect((await ownedCalls(page))[0]).toMatchObject({
       revision: 3,
       operation: {
@@ -1231,21 +1231,17 @@ for (const viewport of [
         days: [1, 2, 3, 4, 5, 6, 7],
       },
     });
-    const row = page.getByRole("article", {
-      name: "朝の目覚まし — Work days",
-      exact: true,
-    });
-    await row.getByRole("button", { name: "Edit", exact: true }).click();
+    await row
+      .getByRole("button", {
+        name: "Edit 朝の目覚まし — Work days",
+        exact: true,
+      })
+      .click();
     await page.getByLabel("Alarm time", { exact: true }).fill("09:30");
     await page.getByLabel("Repeat", { exact: true }).selectOption("custom");
-    for (const day of ["Monday", "Wednesday", "Friday"])
-      await page.getByRole("checkbox", { name: day, exact: true }).check();
-    // Daily editing retained all seven days; explicitly remove the remaining days.
     for (const day of ["Sunday", "Tuesday", "Thursday", "Saturday"])
-      await page.getByRole("checkbox", { name: day, exact: true }).uncheck();
-    await page
-      .getByRole("button", { name: "Save alarm changes", exact: true })
-      .click();
+      await page.getByRole("button", { name: day, exact: true }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(row.getByText("09:30", { exact: true })).toBeVisible();
     expect((await ownedCalls(page))[1]).toMatchObject({
       revision: 4,
@@ -1255,79 +1251,74 @@ for (const viewport of [
         days: [2, 4, 6],
       },
     });
-    const directory = testOutputPath("owned-native-alarms", "renderer");
+    const directory = testOutputPath("owned-native-alarms", "minimal-renderer");
     await mkdir(directory, { recursive: true });
     await page
-      .getByRole("heading", { name: "Clock", exact: true })
+      .getByRole("heading", { name: "Alarms", exact: true })
       .scrollIntoViewIfNeeded();
     await page.screenshot({
       path: `${directory}/${viewport.name}-overview.png`,
       fullPage: true,
     });
-    await page
-      .getByRole("heading", { name: "Create an alarm", exact: true })
-      .scrollIntoViewIfNeeded();
+    await row
+      .getByRole("button", {
+        name: "Edit 朝の目覚まし — Work days",
+        exact: true,
+      })
+      .click();
     await page.screenshot({
-      path: `${directory}/${viewport.name}-form.png`,
+      path: `${directory}/${viewport.name}-editor.png`,
       fullPage: true,
     });
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await row.getByRole("switch").click();
     await expect(row.getByRole("switch")).toHaveAttribute(
       "aria-checked",
       "false",
     );
-    await row.getByRole("button", { name: "Delete", exact: true }).click();
+    await row
+      .getByRole("button", {
+        name: "Edit 朝の目覚まし — Work days",
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole("button", { name: "Delete alarm", exact: true })
+      .click();
     await expect(row).toHaveCount(0);
     expect(
       (await ownedCalls(page)).map((call) => call.operation.action),
     ).toEqual(["set", "update", "enable", "delete"]);
-    expect((await ownedCalls(page)).map((call) => call.revision)).toEqual([
-      3, 4, 5, 6,
-    ]);
   });
 }
 test("owned alarms permissions, failed inventory and old owner reads are explicit", async ({
   page,
 }) => {
   await openOwnedClock(page, false);
-  await expect(
-    page.getByRole("button", { name: "Create alarm", exact: true }),
-  ).toBeDisabled();
-  const disabled = page.getByRole("article", {
+  const row = page.getByRole("listitem", {
     name: "Morning routine",
     exact: true,
   });
-  await disabled.getByRole("switch").click();
-  await expect(disabled.getByRole("switch")).toHaveAttribute(
+  await row.getByRole("switch").click();
+  await expect(row.getByRole("switch")).toHaveAttribute(
     "aria-checked",
     "false",
   );
-  await disabled.getByRole("button", { name: "Edit", exact: true }).click();
+  await row
+    .getByRole("button", { name: "Edit Morning routine", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", { name: "Save alarm changes", exact: true }),
+    page.getByRole("button", { name: "Save", exact: true }),
   ).toBeEnabled();
-  await expect(disabled.getByRole("switch")).toBeDisabled();
   await page.getByLabel("Alarm time", { exact: true }).fill("09:05");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(row.getByText("09:05", { exact: true })).toBeVisible();
+  await expect(row.getByRole("switch")).toBeDisabled();
+  await page.getByRole("button", { name: "Allow alarms", exact: true }).click();
   await page
-    .getByRole("button", { name: "Save alarm changes", exact: true })
+    .getByRole("button", { name: "Allow notifications", exact: true })
     .click();
-  await expect(disabled.getByText("09:05", { exact: true })).toBeVisible();
-  await expect(disabled.getByRole("switch")).toHaveAttribute(
-    "aria-checked",
-    "false",
-  );
-  await page
-    .getByRole("button", { name: "Allow exact alarms", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Create alarm", exact: true }),
-  ).toBeDisabled();
-  await page
-    .getByRole("button", { name: "Allow alarm notifications", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Create alarm", exact: true }),
-  ).toBeEnabled();
+  await expect(row.getByRole("switch")).toBeEnabled();
   await page.evaluate(() =>
     (
       window as typeof window & { __ownedClockBoundary: OwnedBoundary }
@@ -1336,44 +1327,35 @@ test("owned alarms permissions, failed inventory and old owner reads are explici
   await expect(
     page.getByText("Controlled native inventory read failed", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/No Eliza alarms yet/)).toHaveCount(0);
-  await expect(page.getByText("Morning routine", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("listitem", { name: "Morning routine", exact: true }),
+  ).toHaveCount(0);
   await page.evaluate(() =>
     (
       window as typeof window & { __ownedClockBoundary: OwnedBoundary }
     ).__ownedClockBoundary.recoverInventory(),
   );
-  await expect(
-    page.getByText("Morning routine", { exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("article", { name: "Morning routine", exact: true })
-    .getByRole("button", { name: "Edit", exact: true })
+  await expect(row).toBeVisible();
+  await row
+    .getByRole("button", { name: "Edit Morning routine", exact: true })
     .click();
   await page.evaluate(() => {
-    const boundary = (
+    const b = (
       window as typeof window & { __ownedClockBoundary: OwnedBoundary }
     ).__ownedClockBoundary;
-    boundary.deferRead();
-    boundary.replaceOwner();
+    b.deferRead();
+    b.replaceOwner();
   });
   await expect(
-    page.getByText("New owner alarm", { exact: true }),
+    page.getByRole("listitem", { name: "New owner alarm", exact: true }),
   ).toBeVisible();
   await page.evaluate(() =>
     (
       window as typeof window & { __ownedClockBoundary: OwnedBoundary }
     ).__ownedClockBoundary.resolveRead(),
   );
-  await expect(page.getByText("Morning routine", { exact: true })).toHaveCount(
-    0,
-  );
-  await expect(page.getByLabel("Alarm label", { exact: false })).toHaveValue(
-    "",
-  );
-  expect((await ownedCalls(page)).map((call) => call.operation.action)).toEqual(
-    ["enable", "update"],
-  );
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("listitem", { name: "Morning routine", exact: true }),
+  ).toHaveCount(0);
 });

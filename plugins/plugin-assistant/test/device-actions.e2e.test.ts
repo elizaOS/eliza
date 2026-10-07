@@ -1909,6 +1909,20 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         expect(proposed.body.metadata.clientDevice.context).toEqual(
           currentContext,
         );
+        // Assistant proposals still enter the native review dialog, including
+        // ringing controls. Durable enqueue is not a device-delivery receipt.
+        expect(proposed.body.action.data).toMatchObject({
+          state: "pending",
+          executed: false,
+          approvalRequired: true,
+          awaitingUserInput: true,
+        });
+        expect(proposed.body.action.data).not.toHaveProperty(
+          "awaitingDeviceExecution",
+        );
+        expect(proposed.body.action.text).toContain(
+          "This tool has performed no device operation.",
+        );
         const id = proposed.body.action.data.proposalId;
         const pending = (await ownedRequest("/proposals")).body.proposals.find(
           (item: any) => item.id === id,

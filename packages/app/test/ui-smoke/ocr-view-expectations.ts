@@ -109,7 +109,7 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "builtin-clock": expected({
-    requireAll: ["Clock", "Android alarm"],
+    requireAll: ["Clock", "Alarms"],
   }),
   "builtin-automations": expected({
     requireAll: ["All"],

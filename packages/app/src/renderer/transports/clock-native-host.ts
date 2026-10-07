@@ -501,8 +501,8 @@ if (bridge) {
 
 const transport: AgentRequestTransport = {
   async request(url, init) {
-    if (!clockRequestUnbound(init))
-      throw new Error("Native Clock cannot replace an existing device binding");
+    if (!clockRequestSupported(url, init))
+      throw new Error("Native Clock request is not eligible");
     if (!bridge) throw new Error("Native Clock transport unavailable");
     const status = nativeStatus(await bridge.getStatus());
     if (!status.supported || !status.agentBase)
@@ -631,6 +631,9 @@ const transport: AgentRequestTransport = {
     }
   },
 };
+const CLOCK_AGENT_ROUTE =
+  /^\/api\/(?:chat|conversations(?:\/[-A-Za-z0-9_]+\/messages(?:\/stream)?)?)$/;
+
 export function clockAgentRelativePath(
   url: string,
   base: string,
@@ -644,20 +647,20 @@ export function clockAgentRelativePath(
   )
     return null;
   const path = target.pathname.slice(prefix.length);
-  return path === "/api/chat" ||
-    path === "/api/conversations" ||
-    /^\/api\/conversations\/[-A-Za-z0-9_]+\/(messages(?:\/stream)?|greeting)$/.test(
-      path,
-    )
-    ? path + target.search
-    : null;
+  return CLOCK_AGENT_ROUTE.test(path) ? path + target.search : null;
 }
 export async function nativeClockTransportForUrl(
   url: string,
   init?: RequestInit,
 ): Promise<AgentRequestTransport | null> {
-  if (!bridge || !clockRequestUnbound(init)) return null;
-  const status = nativeStatus(await bridge.getStatus());
+  if (!bridge || !clockRequestSupported(url, init)) return null;
+  let status: ClockStatus;
+  try {
+    status = nativeStatus(await bridge.getStatus());
+  } catch (error) {
+    reportRendererDiagnostic({ scope: "clock-transport-selection", error });
+    return null;
+  }
   return status.supported &&
     status.agentBase &&
     clockAgentRelativePath(url, status.agentBase) !== null
@@ -665,12 +668,48 @@ export async function nativeClockTransportForUrl(
     : null;
 }
 
-/** Prior device authority belongs to its existing transport, even when revoked
- * or malformed. Clock never interprets it, retries it, or substitutes enrollment. */
-function clockRequestUnbound(init: RequestInit = {}): boolean {
-  const headers = new Headers(init.headers);
-  if ([...headers.keys()].some((key) => key.startsWith("x-eliza-device-")))
+/** Match native request admission before enrollment I/O. Prior device authority
+ * and unsupported shapes retain their existing transport without alteration. */
+function clockRequestSupported(url: string, init: RequestInit = {}): boolean {
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    // error-policy:J3 an invalid or relative URL cannot match the native host.
     return false;
+  }
+  const path = target.pathname.slice(target.pathname.lastIndexOf("/api/"));
+  const method = (init.method ?? "GET").toUpperCase();
+  if (
+    target.username ||
+    target.password ||
+    target.hash ||
+    target.pathname.includes("%") ||
+    !CLOCK_AGENT_ROUTE.test(path) ||
+    !(
+      (method === "GET" &&
+        (path === "/api/conversations" || path.endsWith("/messages")) &&
+        init.body == null) ||
+      (method === "POST" && !target.search && init.body != null)
+    )
+  )
+    return false;
+  const headers = new Headers(init.headers);
+  for (const [name, value] of headers) {
+    const credential = ["authorization", "cookie", "x-eliza-csrf"].includes(
+      name,
+    );
+    if (
+      (!credential &&
+        !/^(?:accept|content-type|x-elizaos-client-id|x-elizaos-ui-language|x-eliza-last-activity|x-elizaos-turn-correlation|x-elizaos-turn-attempt)$/.test(
+          name,
+        )) ||
+      value.length > (credential ? 16384 : 256) ||
+      /[\r\n]/.test(value) ||
+      (credential && value.includes("\0"))
+    )
+      return false;
+  }
   if (init.body == null) return true;
   const text = bodyToString(init.body);
   if (typeof text !== "string") return false;

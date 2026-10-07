@@ -213,6 +213,22 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
       expect(mocks.enqueue).not.toHaveBeenCalled();
     });
 
+    it("keeps an epoch deadline as the approval expiry", async () => {
+      const result = await callDoc(makeRuntime(), makeMessage(), {
+        subaction: "request_signature",
+        requesteeEntityId: "entity-alice-001",
+        documentTitle: "Partnership NDA",
+        deadline: "1970-01-01T00:00:00.000Z",
+      });
+      expect(result.success).toBe(true);
+      const enqueueArg = mocks.enqueue.mock.calls[0]?.[0] as {
+        expiresAt: Date;
+      };
+      expect(enqueueArg.expiresAt.toISOString()).toBe(
+        "1970-01-01T00:00:00.000Z",
+      );
+    });
+
     it("returns a clear error when requesteeEntityId is missing", async () => {
       const result = await callDoc(makeRuntime(), makeMessage(), {
         subaction: "request_signature",

@@ -2,9 +2,10 @@ import MarkdownIt from "markdown-it";
 
 /**
  * Cleans assistant text for display by detecting and stripping roleplay stage
- * directions (`*beams*`, `*blushes*`, etc.). The leading-word set gates which
- * asterisk-wrapped spans are treated as stage directions rather than emphasis,
- * while Markdown code is preserved byte-for-byte.
+ * directions (`*beams*`, `*blushes*`, `*smiles warmly*`). A leading verb is not
+ * enough: `*look at the stack trace*` and `*looks correct*` are instructions
+ * and must stay. Only a bare action, plus a light modifier, is removed.
+ * Markdown code is preserved byte-for-byte.
  */
 const STAGE_DIRECTION_FIRST_WORDS = new Set([
 	"beam",
@@ -126,6 +127,27 @@ const STAGE_DIRECTION_FIRST_WORDS = new Set([
 	"yawning",
 ]);
 
+/** Words that can follow the action without turning it into an instruction. */
+const STAGE_DIRECTION_MODIFIERS = new Set([
+	"around",
+	"away",
+	"back",
+	"down",
+	"gently",
+	"happily",
+	"loudly",
+	"nervously",
+	"quickly",
+	"quietly",
+	"sadly",
+	"shyly",
+	"slightly",
+	"slowly",
+	"softly",
+	"up",
+	"warmly",
+]);
+
 function collapseInlineWhitespace(input: string): string {
 	return input.replace(/[ \t]+/g, " ").trim();
 }
@@ -138,12 +160,17 @@ function looksLikeStageDirection(input: string): boolean {
 	if (/[^\x00-\x7F]/.test(normalized)) {
 		return false;
 	}
+	if (/\d/.test(normalized)) return false;
 
-	const wordMatch = normalized.match(/^[^\w]*([A-Za-z]+)/);
-	if (!wordMatch) return false;
-
-	const firstWord = wordMatch[1].toLowerCase();
-	return STAGE_DIRECTION_FIRST_WORDS.has(firstWord);
+	const words = normalized.match(/[A-Za-z]+/g);
+	if (!words || words.length === 0 || words.length > 4) return false;
+	const [first, ...rest] = words;
+	if (!first || !STAGE_DIRECTION_FIRST_WORDS.has(first.toLowerCase())) {
+		return false;
+	}
+	return rest.every((word) =>
+		STAGE_DIRECTION_MODIFIERS.has(word.toLowerCase()),
+	);
 }
 
 function stripWrappedStageDirections(input: string, pattern: RegExp): string {

@@ -1882,7 +1882,16 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     let failedCleanup: (() => Promise<void>) | null = null;
     try {
       const result = await createRealTestRuntime({
-        plugins: [personalAssistantPlugin],
+        // This negative boundary needs the real approval tables but deliberately
+        // no scheduler. Starting the whole plugin would fail first on unrelated
+        // household service prerequisites, before enqueue can test rollback.
+        plugins: [
+          {
+            name: "approval-rollback-schema",
+            description: "Real approval storage without a scheduling service.",
+            schema: personalAssistantPlugin.schema,
+          },
+        ],
       });
       failedCleanup = result.cleanup;
       const failedQueue = createApprovalQueue(result.runtime, {
