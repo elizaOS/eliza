@@ -76,6 +76,8 @@ export function processToolResult(
   for (const content of result.content) {
     if (content.type === "text" && content.text) {
       toolOutput += content.text;
+    } else if (content.type === "resource_link") {
+      toolOutput += `\n\nResource link:\n${JSON.stringify(content)}`;
     } else if (content.type === "image" && content.data && content.mimeType) {
       hasAttachments = true;
       // Seed the deterministic UUID with values that vary per attachment (the
