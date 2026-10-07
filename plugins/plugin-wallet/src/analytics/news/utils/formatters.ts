@@ -6,17 +6,27 @@
  * Format a number as currency (USD)
  */
 export function formatCurrency(value: number, decimals: number = 2): string {
-  if (value >= 1e12) {
-    return `$${(value / 1e12).toFixed(decimals)}T`;
-  } else if (value >= 1e9) {
-    return `$${(value / 1e9).toFixed(decimals)}B`;
-  } else if (value >= 1e6) {
-    return `$${(value / 1e6).toFixed(decimals)}M`;
-  } else if (value >= 1e3) {
-    return `$${(value / 1e3).toFixed(decimals)}K`;
-  } else {
-    return `$${value.toFixed(decimals)}`;
+  const abs = Math.abs(value);
+  const tiers: Array<[number, string]> = [
+    [1e12, "T"],
+    [1e9, "B"],
+    [1e6, "M"],
+    [1e3, "K"],
+  ];
+  for (let i = 0; i < tiers.length; i++) {
+    const [threshold, suffix] = tiers[i];
+    if (abs >= threshold) {
+      const scaled = value / threshold;
+      // If rounding pushes the scaled value to 1000, promote to the next tier
+      // (e.g. 999999 -> "$1.00M", not "$1000.00K").
+      if (Math.abs(Number(scaled.toFixed(decimals))) >= 1000 && i > 0) {
+        const [higherThreshold, higherSuffix] = tiers[i - 1];
+        return `$${(value / higherThreshold).toFixed(decimals)}${higherSuffix}`;
+      }
+      return `$${scaled.toFixed(decimals)}${suffix}`;
+    }
   }
+  return `$${value.toFixed(decimals)}`;
 }
 
 /**
