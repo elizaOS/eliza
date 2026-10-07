@@ -33,6 +33,16 @@ function makeRuntime(embedded: ReturnType<typeof makeEmbeddedService> | null = n
 }
 
 describe('workflow dispatch service', () => {
+  test('preserves explicitly empty trigger data instead of falling back to payload', async () => {
+    const embedded = makeEmbeddedService();
+    const dispatch = createWorkflowDispatchService(makeRuntime(embedded) as never);
+    const payload = { source: 'legacy', privateValue: 'do not inherit' };
+    await dispatch.execute('workflow-1', payload, { triggerData: {} });
+    expect(embedded.executeWorkflow.mock.calls[0]?.[1].triggerData).toEqual({});
+    await dispatch.execute('workflow-1', payload);
+    expect(embedded.executeWorkflow.mock.calls[1]?.[1].triggerData).toEqual(payload);
+  });
+
   test('requires a workflow id and the native Smithers service', async () => {
     const runtime = makeRuntime();
     const dispatch = createWorkflowDispatchService(runtime as never);

@@ -1,8 +1,39 @@
 # elizaOS
 
 Monorepo for the Eliza agent runtime, application, cloud services, native
-bridges, benchmarks, and first-party plugins. Read the nearest package
-`README.md` and `AGENTS.md` before editing; manifests and source are authoritative.
+bridges, benchmarks, and first-party plugins. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+and the owning package's `README.md` before editing; manifests and source are
+authoritative. This root file is the only repository agent guide. Do not add
+nested `AGENTS.md` files.
+
+> [!IMPORTANT]
+> **The [contribution rules](CONTRIBUTING.md) are required for all issues
+> and PRs.** Report real bugs or missing approved MVP requirements. Link the PRD
+> and MVP plan. Do not add features outside that scope. Human maintainers must
+> discuss and approve new features, then add them to the PRD and MVP plan before
+> implementation issues or PRs are opened. Maintainers will close unnecessary
+> work and apply contributor penalties.
+
+- **Human-only issue creation:** Outside contributors must personally write the
+  issue title and body and submit the issue by hand on the GitHub website.
+  Agents must not write or create issues for contributors. Do not use an API,
+  CLI, browser automation, or another agent to submit an issue. Human approval
+  of an agent-written issue does not meet this rule. An agent that finds a
+  problem must report it privately to the human in the current work session;
+  the human decides whether to write and submit an issue.
+- Prove a useful improvement with before-and-after behavior or relevant scores.
+  Prefer cleanup, removal, and reuse. Combine duplicate types and functions.
+  Add new types or code only when necessary. Explain the research, alternatives,
+  and reason for the chosen implementation.
+- Do not create work for minor points with no useful effect, unnecessary tests,
+  defensive code, validation, or truncation. Preserve required safety boundaries.
+- Validate real behavior end to end and attach results for the reviewed commit.
+  Use existing tests. Avoid new unit tests, mock-only proof, and tests that repeat
+  the implementation. For documentation-only work, check the text and links.
+- Every UI PR must include an uploaded MP4 explainer and walkthrough with video
+  evidence of the complete user flow, plus detailed steps to test the change.
+- Write all issues and PRs in ASD-STE100 Simplified Technical English. Use short,
+  direct sentences, explain technical terms, and write for a non-technical reader.
 
 - Preserve unrelated changes in this shared working tree.
 - Use pinned Bun 1.4.2 and Node 24.15.0, ESM, and the repository's Biome config.

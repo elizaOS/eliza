@@ -178,4 +178,37 @@ describe("action-search-keywords resolution edge cases", () => {
       countActionSearchKeywordMatches(["forwarding this along"], ["forward"]),
     ).toBe(0);
   });
+
+  it("keeps word boundaries when the text contains emoji or accented letters", () => {
+    expect(
+      countActionSearchKeywordMatches(
+        ["forwarding this along 🙂"],
+        ["forward"],
+      ),
+    ).toBe(0);
+    expect(
+      countActionSearchKeywordMatches(["restart the server ✅"], ["art"]),
+    ).toBe(0);
+    expect(
+      countActionSearchKeywordMatches(["José is forwarding it"], ["forward"]),
+    ).toBe(0);
+    expect(
+      countActionSearchKeywordMatches(["forward this 🙂"], ["forward"]),
+    ).toBe(1);
+    expect(
+      countActionSearchKeywordMatches(["请forward这个"], ["forward"]),
+    ).toBe(1);
+    expect(
+      countActionSearchKeywordMatches(["ｆｏｒｗａｒｄ this"], ["forward"]),
+    ).toBe(1);
+  });
+
+  it("matches multi-word terms across line breaks and repeated spaces", () => {
+    expect(
+      countActionSearchKeywordMatches(["please send\nlater"], ["send later"]),
+    ).toBe(1);
+    expect(
+      countActionSearchKeywordMatches(["please send  later"], ["send later"]),
+    ).toBe(1);
+  });
 });
