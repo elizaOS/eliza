@@ -62,14 +62,16 @@ public final class NativeNotificationInboxTest {
         check(restored.pageCursor().getLong("afterSequence") == 2); check(restored.pageCursor().getLong("throughSequence") == 4);
         restored.acceptLive(record(1)); check(restored.status().getInt("pendingBuffered") == 1);
         restored.acceptLive(record(5));
-        finish(restored, 4, new JSONArray().put(record(3)));
+        check(!restored.acceptPage(page(4, 4, true, new JSONArray().put(record(3))), restored.pageCursor()));
+        check(effects.get() == 0); // Above-fence frame alone is not current presence.
+        finish(restored, 5, new JSONArray().put(record(5)));
         check(restored.status().getBoolean("initialized")); check(effects.get() == 1);
-        check(restored.status().getLong("closedThroughSequence") == 4); check(restored.status().getInt("seenCount") == 1);
+        check(restored.status().getLong("closedThroughSequence") == 5); check(restored.status().getInt("seenCount") == 0);
         restored.acceptLive(record(1)); restored.acceptLive(record(5)); check(effects.get() == 1);
         // Above-fence live receipts survive compaction; missed records page in sequence order.
         restored.beginBaseline(); restored.acceptLive(record(8));
-        check(!restored.acceptPage(page(9, 7, false, new JSONArray().put(record(5)).put(record(6)).put(record(7))), restored.pageCursor()));
-        check(effects.get() == 4); check(restored.status().getInt("seenCount") == 1);
+        check(!restored.acceptPage(page(9, 7, false, new JSONArray().put(record(6)).put(record(7))), restored.pageCursor()));
+        check(effects.get() == 3); check(restored.status().getInt("seenCount") == 0);
         finish(restored, 9, new JSONArray().put(record(8))); check(effects.get() == 4);
         check(restored.status().getInt("seenCount") == 0);
         restored.acceptLive(record(7)); check(effects.get() == 4);
@@ -90,9 +92,11 @@ public final class NativeNotificationInboxTest {
             preservedEffects.incrementAndGet(); return true;
         }, NativeNotificationInboxTest::sync);
         check(preserved.pageCursor().getLong("afterSequence") == 1);
-        finish(preserved, 3, new JSONArray());
+        check(!preserved.acceptPage(page(3, 3, true, new JSONArray()), preserved.pageCursor()));
+        check(preservedEffects.get() == 1); // seq4 waits for authoritative next range.
+        finish(preserved, 4, new JSONArray().put(record(4)));
         check(preservedEffects.get() == 2); check(preserved.status().getInt("pendingBuffered") == 1);
-        check(preserved.status().getInt("seenCount") == 1); check(preserved.status().getLong("closedThroughSequence") == 3);
+        check(preserved.status().getInt("seenCount") == 0); check(preserved.status().getLong("closedThroughSequence") == 4);
         preserved.acceptLive(record(2)); check(preservedEffects.get() == 2);
         // A matching UUID from another epoch does not rewrite the retained arrival.
         finish(preserved, 5, new JSONArray().put(record(5)));
