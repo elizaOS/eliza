@@ -178,7 +178,7 @@ function committed(data: Record<string, unknown>): ActionResult {
       ? {
           promptData: {
             noteContentFormat:
-              "Stored note content is title + body exactly. title is the prefix; body is the verbatim remainder, including any separator. Separate title/body input is joined by a newline; additional whitespace is content. Compare complete content, not the stored remainder alone, with the requested note.",
+              "Stored note content is title + body exactly. title is the prefix; body is the verbatim remainder, including any separator. Separate title/body input is joined by a newline; additional whitespace is content. Compare complete content, not the stored remainder alone, with the requested note. Timestamp fields are UTC instants, not local calendar-date labels. Use noteTimestampDisplay or selection.display for local dates. If the user did not ask for a date, omit an extra date label; preserve the exact user-authored title.",
           },
         }
       : {}),
