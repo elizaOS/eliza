@@ -23,7 +23,8 @@ import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** Native Clock adapter. Credentials never cross this bridge; server approval requires its Activity gesture.
+/** Native Clock adapter. Credentials never cross this bridge; definition changes require an Activity gesture.
+ * Authenticated current ringing Stop/Snooze use scoped immediate policy and the durable journal.
  * Cost: two bounded network workers, no polling. Owner enrollment/context is cached per native snapshot.
  * Review reads pending proposals; a gesture rechecks context/proposal, decides and claims. Confirm rechecks
  * context/proposal before one journal-controlled Activity launch, then posts the persisted outcome.
@@ -203,6 +204,10 @@ public final class SlotClockPlugin extends Plugin {
                 });
                 return;
             }
+            if (ClockOwnedAlarms.isRingingControl(requested)) {
+                controlAgentAlarm(call, session, identity, proposal);
+                return;
+            }
             ClockHostClient.requiresDecision(session.context, proposal);
             getActivity().runOnUiThread(() -> {
                 try {
@@ -233,6 +238,46 @@ public final class SlotClockPlugin extends Plugin {
             });
         });
     }
+    private void controlAgentAlarm(PluginCall call, Session session, ClockConsentCoordinator.Identity identity,
+                                   ClockHostClient.Proposal proposal) throws Exception {
+        long revision = alarmRevision(proposal.raw.getJSONObject("payload"), "clockContextRevision");
+        String owner = ClockOwnedAlarms.owner(getContext(), session.client);
+        store.withSnapshot(session.client.snapshot, () -> {
+            session.check(); ClockOwnedAlarms.requireActive(getContext(), owner, proposal.request, revision); return null;
+        });
+        session.client.sameContext(session.context);
+        ClockHostClient.Proposal fresh = session.client.require(session.context, proposal.id);
+        ClockHostClient.sameProposal(proposal, fresh);
+        ClockHostClient.Proposal approved = ClockHostClient.requiresDecision(session.context, fresh)
+                ? session.client.transition(session.context, fresh, "decision", new JSONObject().put("digest", fresh.digest).put("decision", "approve")) : fresh;
+        session.check(); session.client.sameContext(session.context);
+        ClockHostClient.Proposal claimed = session.client.transition(session.context, approved, "claim", new JSONObject().put("digest", fresh.digest));
+        session.check(); session.client.sameContext(session.context); session.admit(claimed);
+        getActivity().runOnUiThread(() -> {
+            try {
+                session.check();
+                ClockConsentCoordinator.Result result = store.withSnapshot(session.client.snapshot, () -> {
+                    session.check();
+                    return session.coordinator.controlActiveAlarm(identity, claimed.request, new ClockConsentCoordinator.Dispatcher() {
+                        private String receipt;
+                        @Override public ClockHandoff.Outcome dispatch(ClockHandoff.Request request, ClockHandoff.ApprovedConsent consume) {
+                            try {
+                                session.check();
+                                if (!Instant.parse(claimed.expiresAt).isAfter(Instant.now())) throw new SecurityException("Ringing control claim expired");
+                                if (!owner.equals(ClockOwnedAlarms.owner(getContext(), session.client))) throw new SecurityException("Ringing owner changed");
+                                ClockHandoff.Effect effect = ClockOwnedAlarms.execute(getActivity(), owner, identity, request, revision, consume);
+                                receipt = effect.receipt; return effect.outcome;
+                            } catch (RuntimeException error) { throw error; }
+                            catch (Exception error) { throw new IllegalStateException("Ringing control failed", error); }
+                        }
+                        @Override public String receipt() { return receipt; }
+                    });
+                });
+                postReceipt(call, session, claimed, identity, result);
+            } catch (Exception error) { reject(call); }
+        });
+    }
+
     private ClockReviewDialog.Callback callback(PluginCall call, ClockHandoff.Request request) {
         return new ClockReviewDialog.Callback() {
             @Override public void completed(ClockConsentCoordinator.Result result, String token) { complete(call, request, result, token); }
@@ -359,6 +404,36 @@ public final class SlotClockPlugin extends Plugin {
                         client.current();
                         if (!owner.equals(ClockOwnedAlarms.owner(getContext(), client)))
                             throw new SecurityException("Alarm inventory owner changed");
+                        if (ClockOwnedAlarms.isRingingControl(request)) {
+                            // Local authority is the authenticated owner; identity and exact request
+                            // are separately bound in the journal, without a server claim or gesture.
+                            ClockConsentCoordinator local = ClockReviewDialog.coordinator(getActivity(), owner, selected -> {
+                                try {
+                                    if (!foreground || !owner.equals(ClockOwnedAlarms.owner(getContext(), client)))
+                                        throw new SecurityException("Ringing owner changed");
+                                    return new ClockConsentCoordinator.ApprovedEntry(identity, request, owner, owner);
+                                } catch (RuntimeException error) { throw error; }
+                                catch (Exception error) { throw new SecurityException("Ringing owner changed", error); }
+                            });
+                            ClockConsentCoordinator.Result result = store.withSnapshot(client.snapshot, () ->
+                                local.controlActiveAlarm(identity, request, new ClockConsentCoordinator.Dispatcher() {
+                                    private String receipt;
+                                    @Override public ClockHandoff.Outcome dispatch(ClockHandoff.Request selected, ClockHandoff.ApprovedConsent consume) {
+                                        try {
+                                            if (!foreground || !owner.equals(ClockOwnedAlarms.owner(getContext(), client)))
+                                                throw new SecurityException("Ringing owner changed");
+                                            ClockHandoff.Effect effect = ClockOwnedAlarms.execute(getActivity(), owner, identity, selected, revision, consume);
+                                            receipt = effect.receipt; return effect.outcome;
+                                        } catch (RuntimeException error) { throw error; }
+                                        catch (Exception error) { throw new IllegalStateException("Local ringing control failed", error); }
+                                    }
+                                    @Override public String receipt() { return receipt; }
+                                }));
+                            call.resolve(js(new JSONObject().put("result", ClockHostReceipts.result(request, result, local.effectReceipt(identity), id))
+                                    .put("alarmsRevision", ElizaAlarms.revision(getContext()))));
+                            notifyListeners("proposalsChanged", new JSObject());
+                            return;
+                        }
                         localAlarmCall = call;
                         localAlarmDialog = new AlertDialog.Builder(getActivity()).setTitle("Review alarm").setMessage(description)
                                 .setPositiveButton(ClockReviewDialog.positiveLabel(request), (dialog, which) -> {

@@ -98,19 +98,21 @@ export function NotificationsShellBoot(): null {
     // request has already finished. The existing initializer rechecks the grant
     // without prompting and keeps successful registration idempotent.
     document.addEventListener(APP_RESUME_EVENT, registerPush);
-    const refreshAuthority = (force = false) => {
-      void refreshPushRegistrationAuthority(undefined, force).catch(
-        (error: unknown) => {
-          // error-policy:J1 the shell transport boundary reports failed revoke or
-          // re-registration without turning an authority switch into a UI crash.
-          logger.error(
-            { src: "push-registration", error },
-            "[push-registration] failed to rotate device push authority",
-          );
-        },
-      );
+    const refreshAuthority = () => {
+      void refreshPushRegistrationAuthority().catch((error: unknown) => {
+        // error-policy:J1 the shell transport boundary reports failed revoke or
+        // re-registration without turning an authority switch into a UI crash.
+        logger.error(
+          { src: "push-registration", error },
+          "[push-registration] failed to rotate device push authority",
+        );
+      });
     };
-    const onBaseAuthorityChange = () => refreshAuthority(true);
+    // setBaseUrl also publishes identical-base restore/reconnect events.
+    // The full profile/base/token authority key decides whether to retire;
+    // forcing retirement here can disable an independent native connection
+    // while the app is backgrounded and cannot start its replacement.
+    const onBaseAuthorityChange = () => refreshAuthority();
     const onTokenAuthorityChange = () => refreshAuthority();
     const unsubscribeBase = client.onBaseUrlChange(onBaseAuthorityChange);
     window.addEventListener("steward-token-sync", onTokenAuthorityChange);

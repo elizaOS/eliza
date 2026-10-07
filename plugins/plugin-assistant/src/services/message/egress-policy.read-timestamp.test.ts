@@ -330,6 +330,14 @@ describe("grounded read timestamp labels", () => {
       [{ ...read, success: false }],
       [read, { success: false, data: { actionName: "NOTES_PATCH" } }],
       [
+        read,
+        {
+          success: true,
+          data: { awaitingDeviceExecution: true, approvalRequired: true },
+        },
+      ],
+      [read, { success: true, values: { awaitingDeviceExecution: true } }],
+      [
         {
           success: true,
           data: {

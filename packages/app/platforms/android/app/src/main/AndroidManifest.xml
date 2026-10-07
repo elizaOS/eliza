@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
     <queries>
+        <!-- Capability detection must not confuse package invisibility with
+             absent Google Play services and replace a working FCM path. -->
+        <package android:name="com.google.android.gms" />
         <package android:name="${elizaChromiumPackageName}" />
         <package android:name="com.x8bit.bitwarden" />
         <package android:name="com.onepassword.android" />
@@ -211,10 +214,22 @@
                 android:name="android.view.im"
                 android:resource="@xml/method" />
         </service>
-<service
+        <service
             android:name="ai.elizaos.app.GatewayConnectionService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <service android:name=".NativeNotificationConnectionService"
+            android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="remote-agent-notification-delivery-without-google-play-services" />
+        </service>
+        <receiver android:name=".NativeNotificationConnectionReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name="ai.elizaos.app.ElizaAgentService"

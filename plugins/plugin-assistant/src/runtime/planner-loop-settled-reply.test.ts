@@ -314,3 +314,321 @@ describe("settled navigation reply recovery", () => {
     ).toBe(true);
   });
 });
+
+describe("pending device settlement", () => {
+  it.each([
+    {
+      mode: "final",
+      decision: "FINISH",
+      coding: false,
+      batch: false,
+      wrapped: false,
+      child: false,
+    },
+    {
+      mode: "more_work_pending",
+      decision: "CONTINUE",
+      coding: false,
+      batch: false,
+      wrapped: false,
+      child: false,
+    },
+    {
+      mode: "final",
+      decision: "NEXT_RECOMMENDED",
+      coding: false,
+      batch: true,
+      wrapped: false,
+      child: false,
+    },
+    {
+      mode: "final",
+      decision: "NEXT_RECOMMENDED",
+      coding: true,
+      batch: true,
+      wrapped: false,
+      child: false,
+    },
+    {
+      mode: "final",
+      decision: "FINISH",
+      coding: false,
+      batch: false,
+      wrapped: false,
+      child: true,
+    },
+    {
+      mode: "more_work_pending",
+      decision: "CONTINUE",
+      coding: false,
+      batch: false,
+      wrapped: true,
+      child: false,
+    },
+  ] as const)(
+    "settles once without replay, dependent execution or success: %j",
+    async (scenario) => {
+      const pendingReply =
+        "Your alarm control request is queued for the phone.";
+      const marker = {
+        awaitingDeviceExecution: true,
+        approvalRequired: true,
+        executed: false,
+      };
+      const plan = vi.fn(async () => ({
+        text: "",
+        toolCalls: [
+          {
+            id: "device",
+            name: "DEVICE_CONTROL",
+            arguments: { eliza_turn_scope: scenario.mode },
+          },
+          ...(scenario.batch
+            ? [
+                {
+                  id: "dependent",
+                  name: "DEPENDENT",
+                  arguments: { eliza_turn_scope: "final" },
+                },
+              ]
+            : []),
+        ],
+        messageToUser: "The requested work is complete.",
+      }));
+      const execute = vi.fn(async (call: { name: string }) => {
+        if (call.name !== "DEVICE_CONTROL")
+          throw Error("A dependent operation ran before native settlement");
+        return {
+          success: true,
+          transcriptVisibility: "internal" as const,
+          text: "Opaque native request queued; no effect applied.",
+          userFacingText: pendingReply,
+          data: scenario.wrapped ? { values: marker } : marker,
+          ...(scenario.child
+            ? {
+                subPlannerEvaluation: {
+                  decision: "FINISH" as const,
+                  success: true,
+                  messageToUser: "The requested work is complete.",
+                },
+              }
+            : {}),
+        };
+      });
+      const evaluate = vi.fn(async () => ({
+        decision: scenario.decision,
+        success: true,
+        recommendedToolCallId: "dependent",
+        messageToUser: pendingReply,
+      }));
+      const result = await runPlannerLoop({
+        codingMode: scenario.coding,
+        context,
+        tools: ["DEVICE_CONTROL", "DEPENDENT"].map((name) => ({
+          name,
+          description: name,
+          parameters: { type: "object", properties: {} },
+        })),
+        runtime: { useModel: plan },
+        executeToolCall: execute,
+        evaluate,
+        config: { maxIterations: 2, maxToolCalls: 2 },
+      });
+      expect(plan).toHaveBeenCalledTimes(1);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      expect(result.evaluator).toMatchObject({
+        decision: "FINISH",
+        success: false,
+        requestFullyCovered: false,
+      });
+      expect(result.finalMessage).toBe(pendingReply);
+      expect(result.trajectory.plannedQueue).toHaveLength(0);
+      expect(
+        result.trajectory.steps.flatMap(
+          (step) => step.result?.effectReceipts ?? [],
+        ),
+      ).toEqual([]);
+    },
+  );
+});
+
+describe("pending device reply authority", () => {
+  it.each([
+    "Stopped the alarm.",
+    "Snoozed the alarm for five minutes.",
+    "Opaque native request queued; no effect applied.",
+  ])(
+    "does not relay unsupported completion or raw diagnostics: %s",
+    async (claimedText) => {
+      const pendingText =
+        "Your alarm control request is queued for your phone. It isn’t confirmed yet.";
+      const plan = vi.fn(async () => ({
+        text: "",
+        toolCalls: [
+          {
+            id: "control",
+            name: "DEVICE_CONTROL",
+            arguments: { eliza_turn_scope: "final" },
+          },
+        ],
+      }));
+      const execute = vi.fn(async () => ({
+        success: true,
+        transcriptVisibility: "internal" as const,
+        modelReplyRequired: true,
+        text: "Opaque native request queued; no effect applied.",
+        userFacingText: pendingText,
+        data: {
+          awaitingDeviceExecution: true,
+          approvalRequired: true,
+          executed: false,
+        },
+      }));
+      const raw = claimedText.startsWith("Opaque");
+      const evaluate = vi.fn(async () => ({
+        decision: "FINISH" as const,
+        success: !raw,
+        requestFullyCovered: !raw,
+        replyEffectStatus: raw
+          ? ("non_applied" as const)
+          : ("applied" as const),
+        messageToUser: claimedText,
+      }));
+      const result = await runPlannerLoop({
+        context,
+        tools: [{ name: "DEVICE_CONTROL" }],
+        runtime: { useModel: plan },
+        executeToolCall: execute,
+        evaluate,
+      });
+      expect(plan).toHaveBeenCalledTimes(1);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      expect(result.evaluator).toMatchObject({
+        decision: "FINISH",
+        success: false,
+        requestFullyCovered: false,
+        replyEffectStatus: "non_applied",
+      });
+      expect(result.finalMessage).toBe(pendingText);
+      expect(
+        result.trajectory.steps.flatMap(
+          (step) => step.result?.effectReceipts ?? [],
+        ),
+      ).toEqual([]);
+    },
+  );
+});
+
+describe("pending device seeded and mixed reply closure", () => {
+  it("keeps pending seeded synthesis partial with one model call and no tool replay", async () => {
+    const reply =
+      "Your stop request is queued for your phone. It isn’t confirmed yet.";
+    const model = vi.fn(async () =>
+      JSON.stringify({ completed: false, toolCalls: [], messageToUser: reply }),
+    );
+    const execute = vi.fn();
+    const evaluate = vi.fn();
+    const result = await runPlannerLoop({
+      context,
+      postToolReplySeed: {
+        toolCall: { id: "seed", name: "DEVICE_CONTROL", params: {} },
+        result: {
+          success: true,
+          modelReplyRequired: true,
+          transcriptVisibility: "internal",
+          text: "Opaque pending device diagnostics.",
+          userFacingText: reply,
+          data: {
+            awaitingDeviceExecution: true,
+            approvalRequired: true,
+            executed: false,
+          },
+        },
+      },
+      runtime: { useModel: model },
+      executeToolCall: execute,
+      evaluate,
+    });
+    expect(model).toHaveBeenCalledTimes(1);
+    expect(execute).not.toHaveBeenCalled();
+    expect(evaluate).not.toHaveBeenCalled();
+    expect(result.evaluator).toMatchObject({
+      success: false,
+      decision: "FINISH",
+      requestFullyCovered: false,
+      replyEffectStatus: "non_applied",
+    });
+    expect(result.finalMessage).toBe(reply);
+  });
+  it("preserves the read answer in an explicit mixed partial evaluator reply", async () => {
+    const reply =
+      "Your note says to take the keys. Your snooze request is queued for your phone.";
+    const model = vi.fn(async () => ({
+      text: "",
+      toolCalls: [
+        {
+          id: "read",
+          name: "READ_NOTE",
+          arguments: { eliza_turn_scope: "more_work_pending" },
+        },
+        {
+          id: "device",
+          name: "DEVICE_CONTROL",
+          arguments: { eliza_turn_scope: "final" },
+        },
+      ],
+    }));
+    const execute = vi.fn(async (call: { name: string }) =>
+      call.name === "READ_NOTE"
+        ? {
+            success: true,
+            text: "Take the keys.",
+            data: { readOnlyOperation: true },
+          }
+        : {
+            success: true,
+            transcriptVisibility: "internal" as const,
+            text: "Opaque pending device diagnostics.",
+            userFacingText: "Your snooze request is queued for your phone.",
+            data: {
+              awaitingDeviceExecution: true,
+              approvalRequired: true,
+              executed: false,
+            },
+          },
+    );
+    let evaluations = 0;
+    const evaluate = vi.fn(async () =>
+      ++evaluations === 1
+        ? {
+            success: false,
+            decision: "NEXT_RECOMMENDED" as const,
+            recommendedToolCallId: "device",
+          }
+        : {
+            success: true,
+            decision: "FINISH" as const,
+            requestFullyCovered: false,
+            replyEffectStatus: "non_applied" as const,
+            messageToUser: reply,
+          },
+    );
+    const result = await runPlannerLoop({
+      context,
+      tools: [{ name: "READ_NOTE" }, { name: "DEVICE_CONTROL" }],
+      runtime: { useModel: model },
+      executeToolCall: execute,
+      evaluate,
+    });
+    expect(model).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(evaluate).toHaveBeenCalledTimes(2);
+    expect(result.evaluator).toMatchObject({
+      success: false,
+      requestFullyCovered: false,
+    });
+    expect(result.finalMessage).toBe(reply);
+  });
+});

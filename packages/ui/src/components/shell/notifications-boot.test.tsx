@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   init: vi.fn(),
   localTap: vi.fn(async () => undefined),
   push: vi.fn(async (): Promise<void> => undefined),
-  refreshPush: vi.fn(async () => undefined),
+  refreshPush: vi.fn(
+    async (_deps?: unknown, _force?: boolean): Promise<void> => undefined,
+  ),
   unsubscribeBase: vi.fn(),
   onBaseUrlChange: vi.fn(),
   seed: vi.fn(async () => undefined),
@@ -69,11 +71,96 @@ afterEach(() => {
   appState.setTab = mocks.setTab;
   mocks.localTap.mockResolvedValue(undefined);
   mocks.push.mockResolvedValue(undefined);
+  mocks.refreshPush.mockResolvedValue(undefined);
+  registration.__resetPushRegistrationForTests();
 });
 
 mocks.onBaseUrlChange.mockReturnValue(mocks.unsubscribeBase);
 
 describe("notification boot boundaries", () => {
+  it.each([false, true])(
+    "preserves same-authority native delivery on an identical-base reconnect (focused=%s)",
+    async (focused) => {
+      let enabled = true;
+      let key = "same-profile-same-base-same-token";
+      let nativeOwner = "a".repeat(64);
+      let windowFocused = true;
+      const order: string[] = [];
+      const register = vi.fn(async () => {
+        order.push("register");
+        if (!windowFocused) throw new Error("Native foreground start denied");
+        enabled = true;
+      });
+      const unregister = vi.fn(async () => {
+        order.push("unregister");
+        enabled = false;
+      });
+      const deps: import("../../state/notifications/push-registration").PushRegistrationDeps =
+        {
+          getPlatform: () => "android",
+          isRemotePushEnabled: () => true,
+          getPlugin: () => ({
+            checkPermissions: async () => ({ receive: "granted" }),
+            getNativeNotificationDeliveryStatus: async () => ({
+              transport: "native",
+              owner: nativeOwner,
+              activated: true,
+              enabled,
+              connected: enabled,
+              state: enabled ? "connected" : "stopped",
+              batteryExempt: true,
+              backgroundReliable: enabled,
+              notificationsAllowed: true,
+              inbox: null,
+            }),
+            register,
+            unregister,
+            addListener: async () => ({ remove: async () => {} }),
+          }),
+          registerToken: vi.fn(async () => ({ ok: true })),
+          unregisterToken: vi.fn(async () => ({ ok: true })),
+          navigate: vi.fn(),
+          captureAuthority: () => ({
+            key,
+            registerToken: vi.fn(async () => ({ ok: true })),
+            unregisterToken: vi.fn(async () => ({ ok: true })),
+          }),
+        };
+      await registration.initPushRegistration(deps);
+      register.mockClear();
+      order.length = 0;
+      windowFocused = focused;
+      mocks.push.mockImplementation(() =>
+        registration.initPushRegistration(deps),
+      );
+      let transition: Promise<void> = Promise.resolve();
+      mocks.refreshPush.mockImplementation((_unused, force) => {
+        transition = registration.refreshPushRegistrationAuthority(deps, force);
+        return transition;
+      });
+      render(<NotificationsShellBoot />);
+      const onBase = mocks.onBaseUrlChange.mock.calls.at(-1)?.[0];
+      act(() => onBase?.("http://same-base.example"));
+      await act(async () => {
+        await transition.catch(() => {});
+      });
+      expect(enabled).toBe(true);
+      expect(unregister).not.toHaveBeenCalled();
+      expect(register).not.toHaveBeenCalled();
+
+      // A real profile/token change on that same URL must still retire first.
+      key = "different-profile-or-token-at-same-base";
+      nativeOwner = "b".repeat(64);
+      windowFocused = true;
+      act(() => onBase?.("http://same-base.example"));
+      await act(async () => {
+        await transition;
+      });
+      expect(order).toEqual(["unregister", "register"]);
+      expect(enabled).toBe(true);
+      expect(registration.captureNativeNotificationOwner()).toBe(nativeOwner);
+    },
+  );
   it("starts ingress and native tap routing above startup/auth gates", async () => {
     const { container } = render(<NotificationsDataBoot />);
     expect(container.innerHTML).toBe("");

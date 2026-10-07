@@ -328,6 +328,17 @@ export function overlayAndroid({
     let xml = fs.readFileSync(manifestPath, "utf8");
     let dirty = false;
 
+    // Existing generated projects can retain the canonical component names
+    // after Java has moved into the product namespace.
+    const withNotificationNamespace = xml.replace(
+      /(android:name=")(?:ai\.elizaos\.app\.|\.)NativeNotificationConnection(Service|Receiver)"/g,
+      `$1${androidPackage}.NativeNotificationConnection$2"`,
+    );
+    if (withNotificationNamespace !== xml) {
+      xml = withNotificationNamespace;
+      dirty = true;
+    }
+
     const withLocalCleartext = applyAndroidCleartextPolicy(xml, {
       allowCleartext: true,
     });

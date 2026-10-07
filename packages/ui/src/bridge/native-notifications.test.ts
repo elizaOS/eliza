@@ -11,13 +11,15 @@ const native = vi.hoisted(() => ({
     createChannel: vi.fn(),
   },
   push: {
+    getNativeNotificationDeliveryStatus: vi.fn(),
+    presentNativeNotification: vi.fn(),
     getReminderDataCapabilities: vi.fn(),
     presentReminderNotification: vi.fn(),
     resolveReminderChannel: vi.fn(),
   },
 }));
 vi.mock("@capacitor/core", () => ({
-  Capacitor: { getPlatform: () => "android" },
+  Capacitor: { getPlatform: () => "android", isNativePlatform: () => true },
 }));
 vi.mock("./native-plugins", () => ({
   getNativePlugin: (name: string) =>
@@ -34,6 +36,9 @@ beforeEach(() => {
   vi.resetAllMocks();
   __resetEnsuredChannelsForTests();
   native.local.checkPermissions.mockResolvedValue({ display: "granted" });
+  native.push.getNativeNotificationDeliveryStatus.mockResolvedValue({
+    transport: "fcm",
+  });
   native.push.getReminderDataCapabilities.mockResolvedValue({
     reminderDataNotifications: true,
     reminderPresentation: true,
@@ -54,6 +59,77 @@ const request = {
   },
 };
 describe("one native managed reminder presentation", () => {
+  it("shares foreground non-GMS receipts while the background connection is offline", async () => {
+    native.push.getNativeNotificationDeliveryStatus.mockResolvedValue({
+      transport: "native",
+      owner: "a".repeat(64),
+      enabled: false,
+    });
+    native.push.presentNativeNotification.mockResolvedValue({
+      notificationId: request.id,
+      state: "buffered",
+      retained: true,
+      presented: false,
+      duplicate: false,
+    });
+    expect(
+      await showNativeNotification({
+        ...request,
+        createdAt: 1791400000000,
+        source: "lifeops",
+        expectedBase: "http://10.0.0.241:31725",
+        expectedOwner: "a".repeat(64),
+      }),
+    ).toBe("none");
+    expect(native.push.presentNativeNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedOwner: "a".repeat(64),
+        expectedBase: "http://10.0.0.241:31725",
+        notification: expect.objectContaining({
+          id: request.id,
+          createdAt: 1791400000000,
+        }),
+      }),
+    );
+    expect(native.local.schedule).not.toHaveBeenCalled();
+    expect(native.push.presentReminderNotification).not.toHaveBeenCalled();
+  });
+  it("does not fork a second LocalNotifications store after native foreground presentation fails", async () => {
+    native.push.getNativeNotificationDeliveryStatus.mockResolvedValue({
+      transport: "native",
+      owner: "a".repeat(64),
+    });
+    native.push.presentNativeNotification.mockRejectedValue(
+      new Error("Native owner changed"),
+    );
+    await expect(
+      showNativeNotification({
+        ...request,
+        createdAt: 1791400000000,
+        expectedBase: "http://10.0.0.241:31725",
+        expectedOwner: "a".repeat(64),
+      }),
+    ).rejects.toThrow("Native owner changed");
+    expect(native.local.schedule).not.toHaveBeenCalled();
+  });
+  it("rejects an old record after a same-base account switch instead of binding it to the new native owner", async () => {
+    native.push.getNativeNotificationDeliveryStatus.mockResolvedValue({
+      transport: "native",
+      owner: "b".repeat(64),
+      enabled: true,
+    });
+    expect(
+      await showNativeNotification({
+        ...request,
+        body: "Previous account record",
+        createdAt: 1791400000000,
+        expectedBase: "http://10.0.0.241:31725",
+        expectedOwner: "a".repeat(64),
+      }),
+    ).toBe("none");
+    expect(native.push.presentNativeNotification).not.toHaveBeenCalled();
+    expect(native.local.schedule).not.toHaveBeenCalled();
+  });
   it.each(["occurrence", "calendar_event"])(
     "uses common native authority for %s",
     async (ownerType) => {

@@ -90,6 +90,21 @@ final class ClockOwnedAlarms {
                 .put("defaultToneAvailable", ElizaAlarmRingingService.defaultToneAvailable(context));
     }
 
+    static boolean isRingingControl(ClockHandoff.Request request) {
+        return request.owned && (request.action == ClockHandoff.Action.DISMISS || request.action == ClockHandoff.Action.SNOOZE);
+    }
+
+    static void requireActive(Context context, String owner, ClockHandoff.Request request, long revision) throws Exception {
+        if (!isRingingControl(request)) throw new SecurityException("Only active ringing controls are immediate");
+        ElizaAlarms.withRevision(context, revision, () -> {
+            ElizaAlarms.find(context, request.alarmId, owner);
+            ElizaAlarms.Occurrence active = ElizaAlarms.peekActive(context);
+            if (active == null || !request.alarmId.equals(active.id))
+                throw new SecurityException("The selected owned alarm is no longer ringing");
+            return null;
+        });
+    }
+
     static ClockHandoff.Effect execute(Activity activity, String owner, ClockConsentCoordinator.Identity identity,
                           ClockHandoff.Request request, long revision, ClockHandoff.ApprovedConsent consent) throws Exception {
         if (!request.owned) throw new SecurityException("This Clock manages Eliza alarms only");
