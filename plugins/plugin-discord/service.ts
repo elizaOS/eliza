@@ -2424,7 +2424,9 @@ export class DiscordService extends Service implements IDiscordService {
 									platformMessageId: sentMsg.id,
 									...extractContentMetadata(content),
 								},
-								createdAt: sentMsg.createdTimestamp || Date.now(),
+								createdAt: Number.isFinite(sentMsg.createdTimestamp)
+									? sentMsg.createdTimestamp
+									: Date.now(),
 							};
 							const persisted = await createDiscordMessageMemoryOnce(
 								runtime,

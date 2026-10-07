@@ -114,6 +114,23 @@ describe("Discord connector outbound media", () => {
 		vi.unstubAllGlobals();
 	});
 
+	it("keeps a sent message recorded at epoch", async () => {
+		const { runtime, service } = setup(async () => ({
+			id: "444444444444444444",
+			content: "hi",
+			attachments: { size: 0 },
+			url: "https://discord.com/channels/111/222/444",
+			createdTimestamp: 0,
+		}));
+		await service.handleSendMessage(runtime, TARGET as never, {
+			text: "hi",
+		});
+		const memory = vi.mocked(runtime.createMemory).mock.calls[0]?.[0] as {
+			createdAt?: number;
+		};
+		expect(memory.createdAt).toBe(0);
+	});
+
 	it("maps a Media attachment to a Discord AttachmentBuilder on send (with text)", async () => {
 		const { runtime, service, send } = setup();
 		const content: Content = {
