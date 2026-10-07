@@ -215,7 +215,7 @@
     "@capacitor/android": "8.5.0",
     "@capacitor/app": "8.1.1",
     "@capacitor/background-runner": "^3.0.0",
-    "@capacitor/barcode-scanner": "3.0.2",
+    "@capacitor/barcode-scanner": "3.1.2",
     "@capacitor/browser": "8.0.4",
     "@capacitor/core": "8.5.0",
     "@capacitor/device": "8.0.3",
