@@ -381,7 +381,7 @@ jobs:
           fi
 
       - name: Attest built image and filesystem SBOM
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-path: |
             ${{ env.WORK_ROOT }}/canonical/*.raw.zst
@@ -555,7 +555,7 @@ jobs:
           done
 
       - name: Attest exact signed publication inputs
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-path: |
             ${{ env.WORK_ROOT }}/publish/*/*
