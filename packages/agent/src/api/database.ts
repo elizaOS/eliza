@@ -395,7 +395,25 @@ async function executeRawSql(
 function detectCurrentProvider(): DatabaseProviderType {
   return process.env.POSTGRES_URL ? "postgres" : "pglite";
 }
-/** Verify a table name refers to a real user table. */
+/**
+ * A user table the unqualified reads can open. information_schema also lists
+ * tables outside search_path. Those names are not relations for FROM "name",
+ * and the row query then fails. schemaColumn and nameColumn are SQL expressions
+ * owned by the caller, not request text.
+ */
+function visibleUserTableSql(schemaColumn: string, nameColumn: string): string {
+  return `EXISTS (
+       SELECT 1
+       FROM pg_catalog.pg_class vis_c
+       JOIN pg_catalog.pg_namespace vis_n ON vis_n.oid = vis_c.relnamespace
+       WHERE vis_n.nspname = ${schemaColumn}
+         AND vis_c.relname = ${nameColumn}
+         AND vis_n.nspname NOT IN ('pg_catalog', 'information_schema')
+         AND vis_c.relkind IN ('r', 'p')
+         AND pg_catalog.pg_table_is_visible(vis_c.oid)
+     )`;
+}
+/** Verify a table name refers to a real user table on the current search path. */
 async function assertTableExists(
   runtime: AgentRuntime,
   tableName: string,
@@ -403,10 +421,13 @@ async function assertTableExists(
   const safe = tableName.replace(/'/g, "''");
   const { rows } = await executeRawSql(
     runtime,
-    `SELECT 1 FROM information_schema.tables
-     WHERE table_name = '${safe}'
-       AND table_schema NOT IN ('pg_catalog', 'information_schema')
-       AND table_type = 'BASE TABLE'
+    `SELECT 1
+     FROM pg_catalog.pg_class c
+     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+     WHERE c.relname = '${safe}'
+       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+       AND c.relkind IN ('r', 'p')
+       AND pg_catalog.pg_table_is_visible(c.oid)
      LIMIT 1`,
   );
   return rows.length > 0;
@@ -671,6 +692,7 @@ async function handleGetTables(
        AND s.relname = t.table_name
      WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema')
        AND t.table_type = 'BASE TABLE'
+       AND ${visibleUserTableSql("t.table_schema", "t.table_name")}
      ORDER BY t.table_schema, t.table_name`,
   );
   // Get columns for all tables in one query
@@ -697,6 +719,7 @@ async function handleGetTables(
        ) AS is_primary_key
      FROM information_schema.columns c
      WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema')
+       AND ${visibleUserTableSql("c.table_schema", "c.table_name")}
      ORDER BY c.table_schema, c.table_name, c.ordinal_position`,
   );
   // Group columns by table
