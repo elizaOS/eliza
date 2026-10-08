@@ -286,9 +286,14 @@ export function parseBrowserWorkspaceEvmChainId(value: unknown): number | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  const parsed = trimmed.startsWith("0x")
-    ? Number.parseInt(trimmed.slice(2), 16)
-    : Number(trimmed);
+  if (trimmed.startsWith("0x")) {
+    const hex = trimmed.slice(2);
+    // parseInt("1g", 16) is 1. A trailing junk character must not select chain 1.
+    if (!/^[0-9a-fA-F]+$/.test(hex)) return null;
+    const parsed = Number.parseInt(hex, 16);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  const parsed = Number(trimmed);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 export function formatBrowserWorkspaceEvmChainId(chainId: number): string {
