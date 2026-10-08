@@ -216,6 +216,18 @@ describe("InlineWidgetText", () => {
     expect(container.textContent ?? "").not.toContain("<think>");
   });
 
+  it("strips hidden <thought> reasoning blocks", () => {
+    const { container } = withApp(
+      <InlineWidgetText
+        content={"Visible answer.<thought>secret plan</thought> More."}
+      />,
+    );
+    expect(container.textContent ?? "").toContain("Visible answer.");
+    expect(container.textContent ?? "").toContain("More.");
+    expect(container.textContent ?? "").not.toContain("secret plan");
+    expect(container.textContent ?? "").not.toContain("<thought>");
+  });
+
   it("renders a complete model table with a surplus closing brace without another model call", () => {
     const patch = {
       op: "add",

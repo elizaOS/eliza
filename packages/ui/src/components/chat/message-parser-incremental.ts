@@ -22,6 +22,7 @@
 import { stripAssistantStageDirections } from "@elizaos/core/protocol";
 import {
   collectSegmentRegions,
+  HIDDEN_TAG_BLOCK_RE,
   interleaveSegments,
   normalizeDisplayCore,
   normalizeDisplayText,
@@ -70,8 +71,6 @@ export interface StreamingParseResult {
   segments: Segment[];
   cache: StreamingParseCache;
 }
-const HIDDEN_BLOCK_RE =
-  /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
 /**
  * Largest raw offset `c ≥ fromCut` such that `normalizeDisplayCore` splits
  * cleanly there — `core(raw) === core(raw.slice(0,c)) + core(raw.slice(c))` —
@@ -92,11 +91,11 @@ export function computeSafeNormCut(raw: string, fromCut: number): number {
     end: number;
   }> = [];
   let unclosedFrom = raw.length + 1;
-  HIDDEN_BLOCK_RE.lastIndex = 0;
+  HIDDEN_TAG_BLOCK_RE.lastIndex = 0;
   for (
-    let m = HIDDEN_BLOCK_RE.exec(window);
+    let m = HIDDEN_TAG_BLOCK_RE.exec(window);
     m !== null;
-    m = HIDDEN_BLOCK_RE.exec(window)
+    m = HIDDEN_TAG_BLOCK_RE.exec(window)
   ) {
     const start = fromCut + m.index;
     const end = start + m[0].length;
