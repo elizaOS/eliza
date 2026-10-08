@@ -193,7 +193,6 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run && bun test __tests__/dist-packaging.test.ts",
-    "test:unit": "vitest run __tests__/unit/",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-elizacloud -- bun run build:unlocked",
     "build:unlocked": "bun run build.ts && bun run build:views && node ../../packages/scripts/plugins/plugin-elizacloud/verify-built-package.ts",

@@ -128,6 +128,22 @@ if (!turboArgs.some((arg) => arg === "--ui" || arg.startsWith("--ui="))) {
   turboArgs.unshift("--ui=stream");
 }
 
+// CI supplies a verified ancestor. Local verification remains full by default.
+if (process.env.RUN_TURBO_AFFECTED === "1") {
+  if (!process.env.TURBO_SCM_BASE?.match(/^[0-9a-f]{40}$/)) {
+    throw new Error("Affected verification requires a verified TURBO_SCM_BASE");
+  }
+  if (
+    turboArgs.includes("run") &&
+    turboArgs.some((arg) =>
+      ["typecheck", "lint:check", "format:check"].includes(arg),
+    ) &&
+    !turboArgs.includes("--affected")
+  ) {
+    turboArgs.push("--affected");
+  }
+}
+
 const runIndex = turboArgs.indexOf("run");
 if (
   runIndex !== -1 &&

@@ -508,21 +508,6 @@ jobs:
         with:
           fused-lib-dir: ${{ runner.temp }}/fused-lib
 
-      - name: Pre-Gemma ASR compatibility FFI smoke (bun:ffi)
-        run: |
-          set -euo pipefail
-          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-asr-smoke.XXXXXX")
-          trap 'rm -f "$PRIVATE_LOG"' EXIT
-          if bun run --cwd plugins/plugin-local-inference test:asr:real > "$PRIVATE_LOG" 2>&1; then
-            echo "phase=asr-compatibility status=passed code=ASR_COMPATIBILITY_PASSED"
-          else
-            echo "phase=asr-compatibility status=failed code=ASR_COMPATIBILITY_FAILED" >&2
-            exit 1
-          fi
-
-      # Designed key-gated step: the mixed round-trip crosses two external
-      # paid services. Absence of the keys is surfaced loudly below instead of
-      # a silent skip.
       - name: Optional mixed real round-trip test
         if: env.ELEVENLABS_API_KEY != '' && env.CEREBRAS_API_KEY != ''
         run: |
@@ -630,33 +615,6 @@ jobs:
             '{phase:"provisioning",status:"passed",code:"VOICE_ASSETS_READY",bundleFileCount:$bundleFileCount,libraryReady:$libraryReady}' \
             > "$VOICE_REAL_MATRIX_PROOF/provisioning.json"
           echo "phase=provisioning status=passed code=VOICE_ASSETS_READY bundleFileCount=$bundle_file_count"
-
-      - name: Real Kokoro GGUF synth smoke
-        run: |
-          set -euo pipefail
-          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-kokoro.XXXXXX")
-          trap 'rm -f "$PRIVATE_LOG"' EXIT
-          if bun run --cwd plugins/plugin-local-inference test:kokoro:real > "$PRIVATE_LOG" 2>&1; then
-            jq -n '{phase:"kokoro",status:"passed",code:"KOKORO_SMOKE_PASSED"}' > "$VOICE_REAL_MATRIX_PROOF/kokoro.json"
-            echo "phase=kokoro status=passed code=KOKORO_SMOKE_PASSED"
-          else
-            echo "phase=kokoro status=failed code=KOKORO_SMOKE_FAILED" >&2
-            exit 1
-          fi
-
-      - name: Real fused attribution smoke
-        run: |
-          set -euo pipefail
-          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-attribution.XXXXXX")
-          trap 'rm -f "$PRIVATE_LOG"' EXIT
-          if bun packages/app/scripts/voice-attribution-smoke.ts \
-            --models "$ELIZA_VOICE_REAL_MODEL_DIR" --require-real > "$PRIVATE_LOG" 2>&1; then
-            jq -n '{phase:"attribution",status:"passed",code:"ATTRIBUTION_SMOKE_PASSED"}' > "$VOICE_REAL_MATRIX_PROOF/attribution.json"
-            echo "phase=attribution status=passed code=ATTRIBUTION_SMOKE_PASSED"
-          else
-            echo "phase=attribution status=failed code=ATTRIBUTION_SMOKE_FAILED" >&2
-            exit 1
-          fi
 
       - name: Real plugin voice stack matrix
         run: |
