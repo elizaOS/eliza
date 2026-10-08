@@ -1,7 +1,9 @@
 package ai.elizaos.app;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** Executes the production wire/state policies against the actual producer
@@ -72,6 +74,25 @@ public final class NativeNotificationTransportTest {
         rejected = false;
         try { NativeNotificationWire.notification(frame.toString()); } catch (IllegalArgumentException invalid) { rejected = true; }
         check(rejected, "Explicit projection failure rejects only live input");
+        // org.json writes "</" as "<\/". JS JSON.stringify does not. A page
+        // inside the server's 256 KiB budget must still hydrate.
+        StringBuilder closingTags = new StringBuilder(200000);
+        for (int i = 0; i < 100000; i++) closingTags.append("</");
+        JSONObject urlPage = new JSONObject()
+            .put("serviceStatus", "ready")
+            .put("nativeEpoch", "10000000-0000-0000-0000-000000000001")
+            .put("throughSequence", 0)
+            .put("nextSequence", 0)
+            .put("complete", true)
+            .put("notifications", new JSONArray())
+            .put("body", closingTags.toString());
+        String reserialized = urlPage.toString();
+        int javascriptBytes = reserialized.replace("\\/", "/").getBytes(StandardCharsets.UTF_8).length;
+        int androidBytes = reserialized.getBytes(StandardCharsets.UTF_8).length;
+        check(javascriptBytes <= 262144, "Server JSON stays inside 256 KiB");
+        check(androidBytes > 262144, "Re-serialized page exceeds 256 KiB");
+        JSONObject accepted = NativeNotificationWire.page(urlPage, new JSONObject().put("afterSequence", 0));
+        check(accepted.getBoolean("complete"), "Page inside the server budget must hydrate");
         System.out.println("Native notification wire/state checks passed: " + checks);
     }
 }
