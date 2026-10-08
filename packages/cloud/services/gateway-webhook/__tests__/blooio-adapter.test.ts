@@ -6,7 +6,11 @@ import type { ChatEvent, WebhookConfig } from "../src/adapters/types";
 import { logger } from "../src/logger";
 
 function makeConfig(overrides: Partial<WebhookConfig> = {}): WebhookConfig {
-  return { apiKey: "bl_live_test", fromNumber: "+15550001111", ...overrides } as WebhookConfig;
+  return {
+    apiKey: "bl_live_test",
+    fromNumber: "+15550001111",
+    ...overrides,
+  } as WebhookConfig;
 }
 
 const originalFetch = globalThis.fetch;
@@ -138,5 +142,4 @@ describe("blooio send timing", () => {
       blooioAdapter.sendReply(makeConfig(), chatEvent, "hello"),
     ).rejects.toBe(failure);
   });
-
 });
