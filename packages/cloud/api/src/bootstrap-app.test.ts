@@ -286,6 +286,31 @@ test("an allowed native decision preserves public locale routing", async () => {
   expect(body).toEqual({ language: "ja" });
 });
 
+test("a q=0 accept-language tag is excluded and does not shadow region routing", async () => {
+  const app = await createApp({ requestPath: "/api/i18n/locale" });
+  const response = await app.fetch(
+    new Request("https://api.example.test/api/i18n/locale", {
+      headers: {
+        "accept-language": "ja;q=0",
+        "cf-ipcountry": "KR",
+        "cf-connecting-ip": "203.0.113.10",
+      },
+    }),
+    environment({
+      async limit() {
+        return { success: true };
+      },
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  // `ja;q=0` is "not acceptable" (RFC 9110 §12.4.2), so the country geo hint
+  // must decide. Before the fix the excluded tag was still ranked first and
+  // the response was `{ language: "ja" }`.
+  const body = (await response.json()) as { language: string | null };
+  expect(body).toEqual({ language: "ko" });
+});
+
 test("only model-dispatch surfaces bypass the legacy Railway Redis guard", () => {
   for (const path of [
     "/api/v1/chat",
