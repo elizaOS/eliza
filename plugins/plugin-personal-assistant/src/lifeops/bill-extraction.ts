@@ -20,6 +20,7 @@ import {
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { wrapUntrustedEmailContent } from "@elizaos/core/protocol";
+import { parse as parseDomain } from "tldts";
 import type { EmailLikeMessage } from "./email-classifier.js";
 import { getConfiguredEmailClassifierModel } from "./email-classifier.js";
 
@@ -232,19 +233,18 @@ export function extractMerchantFromMessage(
   const fromEmail = message.fromEmail?.trim();
   if (fromEmail?.includes("@")) {
     const domain = fromEmail.slice(fromEmail.indexOf("@") + 1);
-    const labels = domain.split(".").filter((label) => label.length > 0);
-    const last = labels[labels.length - 1]?.toLowerCase();
-    // mail.stripe.com is the brand "stripe". stripe.co.uk stays "stripe.co".
-    const simpleTld =
-      last === "com" ||
-      last === "org" ||
-      last === "net" ||
-      last === "io" ||
-      last === "app";
-    const root =
-      labels.length >= 3 && simpleTld
-        ? (labels[labels.length - 2] ?? domain)
-        : labels.slice(0, -1).join(".") || domain;
+    const parsed = parseDomain(domain, {
+      allowPrivateDomains: true,
+      extractHostname: false,
+    });
+    // Keep hosted sender identities distinct; this is a display fallback,
+    // not verification that the sender represents the named merchant.
+    const root = parsed.isPrivate
+      ? parsed.domain
+      : parsed.isIcann
+        ? parsed.domainWithoutSuffix
+        : parsed.hostname;
+    if (!root) return null;
     return root.charAt(0).toUpperCase() + root.slice(1);
   }
   return null;

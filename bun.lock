@@ -2837,6 +2837,7 @@
         "lucide-react": "^1.0.0",
         "react-plaid-link": "^5.0.0",
         "sharp": "^0.35.3",
+        "tldts": "7.4.16",
         "zod": "^4.6.5",
       },
       "devDependencies": {
