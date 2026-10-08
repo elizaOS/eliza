@@ -1,0 +1,2 @@
+package android.content;
+public final class ContentProviderOperation {public static Builder newAssertQuery(android.net.Uri uri){return new Builder();}public static final class Builder {public Builder withValues(ContentValues values){return this;}public Builder withExpectedCount(int count){return this;}public Builder withSelection(String selection,String[] args){return this;}public ContentProviderOperation build(){return new ContentProviderOperation();}}}
