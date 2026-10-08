@@ -13,6 +13,7 @@ import {
   projectDeferredProviders,
   resolveActionGateFailure,
   type UUID,
+  validateToolArgs,
 } from "@elizaos/core";
 import { renderContextObject } from "@elizaos/core/protocol";
 import { expect, test, vi } from "vitest";
@@ -3974,5 +3975,115 @@ test("enrolled phone record authority blocks backend discovery and forced writes
     serviceLookup.mockRestore();
     await fixture.cleanup();
     await rm(directory, { recursive: true, force: true });
+  }
+}, 120000);
+
+test("executor decodes typed phone operation JSON before validation and preserves authority", async () => {
+  const fixture = await createRealTestRuntime({
+    characterName: "DeviceOperationJson",
+    withLLM: false,
+  });
+  const runtime = fixture.runtime;
+  const credential = {
+    subjectUserId: runtime.agentId,
+    installationId: randomUUID(),
+    deviceKey: "d".repeat(64),
+    capabilities: ["notes.local-record.v1"],
+  };
+  const service = new DeviceActionService(runtime);
+  const operation = {
+    type: "create_note",
+    title: "Agent QA MAPLE-49",
+    body: "Bring the blue folder.",
+  };
+  const encoded =
+    '{"type":"create_note","title":"Agent QA MAPLE-49","body":"Bring the blue folder."}';
+  const message = {
+    id: randomUUID(),
+    agentId: runtime.agentId,
+    entityId: runtime.agentId,
+    roomId: randomUUID(),
+    content: { text: "Create my phone note" },
+  } as Memory;
+  const execute = (value: unknown) =>
+    executePlannedToolCall(
+      runtime,
+      { message, activeContexts: ["general"], userRoles: ["OWNER"] },
+      {
+        name: "PROPOSE_DEVICE_ACTION",
+        params: {
+          operation: value,
+          operationKey: randomUUID(),
+          reason: "Owner requested this note",
+        },
+      },
+    );
+  try {
+    runtime.registerAction(proposeDeviceAction);
+    await service.register(credential, "Typed operation fixture");
+    await withDeviceActionTurn(runtime, credential, async () => {
+      expect(await execute(encoded)).toMatchObject({
+        success: true,
+        data: { state: "pending", executed: false, approvalRequired: true },
+      });
+      const pending = await service.list(credential);
+      expect(pending).toHaveLength(1);
+      expect(pending[0].payload).toMatchObject({ operation });
+      expect(await execute(operation)).toMatchObject({ success: true });
+      for (const invalid of [
+        '{"type":"create_note",',
+        "null",
+        "[]",
+        "42",
+        JSON.stringify(encoded),
+        JSON.stringify({ ...operation, unexpected: true }),
+        JSON.stringify({ ...operation, body: { text: operation.body } }),
+        { ...operation, type: "unregistered_operation" },
+        { ...operation, unexpected: true },
+      ]) {
+        expect(await execute(invalid)).toMatchObject({ success: false });
+      }
+      expect(await service.list(credential)).toHaveLength(2);
+    });
+    // A decoded object does not grant a native session or unsupported capabilities.
+    expect(await execute(encoded)).toMatchObject({ success: false });
+    await withDeviceActionTurn(
+      runtime,
+      { ...credential, capabilities: ["clock.handoff.v1"] },
+      async () => {
+        expect(await execute(encoded)).toMatchObject({ success: false });
+      },
+    );
+    await expect(
+      withDeviceActionTurn(
+        runtime,
+        { ...credential, deviceKey: "e".repeat(64) },
+        async () => execute(encoded),
+      ),
+    ).rejects.toThrow();
+    expect(await service.list(credential)).toHaveLength(2);
+    // JSON-looking text remains literal when the authored parameter accepts strings.
+    const mixed = validateToolArgs(
+      {
+        ...proposeDeviceAction,
+        parameters: [
+          {
+            name: "operation",
+            required: true,
+            description: "Text or structured value",
+            schema: {
+              anyOf: [
+                { type: "string" },
+                { type: "object", additionalProperties: true },
+              ],
+            },
+          },
+        ],
+      },
+      { operation: encoded },
+    );
+    expect(mixed).toMatchObject({ valid: true, args: { operation: encoded } });
+  } finally {
+    await fixture.cleanup();
   }
 }, 120000);
