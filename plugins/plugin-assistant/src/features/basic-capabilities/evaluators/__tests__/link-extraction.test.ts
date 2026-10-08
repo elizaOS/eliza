@@ -190,6 +190,30 @@ describe("linkExtractionEvaluator", () => {
     );
   });
 
+  it("reads an og:title when content comes before property", async () => {
+    stubPreviewFetch(
+      makeFetchResponse(
+        '<html><head><meta content="Hello World" property="og:title"></head><body><p>body</p></body></html>',
+      ),
+    );
+    const runtime = makeRuntime(async () => "summary");
+    const message = makeMessage("see https://example.com/og");
+    const prepared = await linkExtractionEvaluator.prepare?.(
+      makeContext(runtime, message),
+    );
+    expect(prepared?.links[0]?.title).toBe("Hello World");
+
+    stubPreviewFetch(
+      makeFetchResponse(
+        '<html><head><meta property="og:title" content="Common Order"></head><body><p>body</p></body></html>',
+      ),
+    );
+    const common = await linkExtractionEvaluator.prepare?.(
+      makeContext(runtime, makeMessage("see https://example.com/og-common")),
+    );
+    expect(common?.links[0]?.title).toBe("Common Order");
+  });
+
   it("decodes title entities once and strips browser-tokenized raw-text tags", async () => {
     stubPreviewFetch(
       makeFetchResponse(

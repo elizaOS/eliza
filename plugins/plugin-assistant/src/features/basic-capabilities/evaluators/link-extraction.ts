@@ -122,11 +122,21 @@ function extractTitle(html: string): string {
   if (titleMatch?.[1]) {
     return decodeHtmlEntities(titleMatch[1]).replace(/\s+/g, " ").trim();
   }
-  const ogMatch = html.match(
-    /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
-  );
-  if (ogMatch?.[1]) {
-    return decodeHtmlEntities(ogMatch[1]).trim();
+  // HTML attributes are unordered. Requiring property before content drops
+  // <meta content="Hello World" property="og:title"> and stores an empty title.
+  const ogTitle = extractOpenGraphTitle(html);
+  if (ogTitle) {
+    return decodeHtmlEntities(ogTitle).trim();
+  }
+  return "";
+}
+
+function extractOpenGraphTitle(html: string): string {
+  for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
+    const tag = match[0];
+    if (!/\bproperty=["']og:title["']/i.test(tag)) continue;
+    const content = /\bcontent=["']([^"']+)["']/i.exec(tag);
+    if (content?.[1]) return content[1];
   }
   return "";
 }
