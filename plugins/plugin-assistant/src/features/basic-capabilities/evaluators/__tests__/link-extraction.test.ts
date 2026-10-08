@@ -262,6 +262,42 @@ describe("linkExtractionEvaluator", () => {
     ]);
   });
 
+  it("keeps an IPv6 host bracket and the path after it", async () => {
+    stubPreviewFetch(
+      makeFetchResponse("<html><title>doc</title><body>x</body></html>"),
+    );
+    const runtime = makeRuntime(async () => "ok summary");
+    const message = makeMessage(
+      "see http://[2001:db8::1]/docs and http://[2001:db8::1] and https://example.com].",
+    );
+    const context = {
+      ...makeContext(runtime, message),
+      state: { values: {}, data: {}, text: "" } as State,
+    };
+    const prepared = await linkExtractionEvaluator.prepare?.(context);
+    expect(prepared?.links.map((link) => link.url)).toEqual([
+      "http://[2001:db8::1]/docs",
+      "http://[2001:db8::1]",
+      "https://example.com",
+    ]);
+  });
+
+  it("does not join a markdown link whose text is the URL", async () => {
+    stubPreviewFetch(
+      makeFetchResponse("<html><title>doc</title><body>x</body></html>"),
+    );
+    const runtime = makeRuntime(async () => "ok summary");
+    const message = makeMessage("see [http://example.com](http://example.com)");
+    const context = {
+      ...makeContext(runtime, message),
+      state: { values: {}, data: {}, text: "" } as State,
+    };
+    const prepared = await linkExtractionEvaluator.prepare?.(context);
+    expect(prepared?.links.map((link) => link.url)).toEqual([
+      "http://example.com",
+    ]);
+  });
+
   it("prepare persists the URL even when fetch fails (no title/summary)", async () => {
     stubPreviewFetchFailure(new Error("network down"));
 

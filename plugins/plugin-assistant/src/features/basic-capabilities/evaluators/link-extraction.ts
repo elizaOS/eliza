@@ -32,7 +32,11 @@ import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 const EVALUATOR_NAME = "linkExtraction";
 const EVALUATOR_SOURCE = "link_extraction_evaluator";
 const MEMORY_TABLE = "links";
-const URL_REGEX = /https?:\/\/[^\s<>"'`\]]+/gi;
+// A "]" is part of the URL only when it closes an IPv6 host, as in
+// "http://[2001:db8::1]/docs". Any other "]" ends the match, so
+// "[http://example.com](http://example.com)" stays one URL.
+const URL_REGEX =
+  /https?:\/\/(?:\[[0-9a-f:.%]+\][^\s<>"'`\]]*|[^\s<>"'`\]]+)/gi;
 const SUMMARY_FETCH_TIMEOUT_MS = 5_000;
 
 interface LinkRecord {
@@ -95,6 +99,7 @@ function extractUrls(text: string): string[] {
 
 function stripTrailingPunctuation(url: string): string {
   let depth = 0;
+  let brackets = 0;
   let end = 0;
   for (let i = 0; i < url.length; i++) {
     const char = url[i];
@@ -102,7 +107,13 @@ function stripTrailingPunctuation(url: string): string {
     else if (char === ")") {
       if (depth === 0) continue;
       depth--;
-    } else if (/[.,;:!?\]}>*_]/u.test(char)) continue;
+    } else if (char === "[") {
+      brackets++;
+    } else if (char === "]") {
+      // Keep the "]" that closes "[2001:db8::1]". Drop a leftover "]".
+      if (brackets === 0) continue;
+      brackets--;
+    } else if (/[.,;:!?}>*_]/u.test(char)) continue;
     end = i + 1;
   }
   return url.slice(0, end);
