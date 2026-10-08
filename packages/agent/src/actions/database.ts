@@ -344,21 +344,26 @@ async function opListTables(
 
 const SCHEMA_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+function isUserSchema(name: string): boolean {
+  return (
+    SCHEMA_IDENT.test(name) &&
+    name !== "pg_catalog" &&
+    name !== "information_schema"
+  );
+}
+
 async function resolveGetTableSchema(
   runtime: IAgentRuntime,
   tableName: string,
   requestedSchema: string | undefined,
 ): Promise<
-  { ok: true; schema: string } | { ok: false; text: string; reason: string }
+  | { ok: true; schema: string; tableName: string }
+  | { ok: false; text: string; reason: string }
 > {
   const safe = tableName.replace(/'/g, "''");
   const requested = requestedSchema?.trim() ?? "";
   if (requested.length > 0) {
-    if (
-      !SCHEMA_IDENT.test(requested) ||
-      requested === "pg_catalog" ||
-      requested === "information_schema"
-    ) {
+    if (!isUserSchema(requested)) {
       return {
         ok: false,
         text: "schema must be a single identifier.",
@@ -383,7 +388,7 @@ async function resolveGetTableSchema(
         reason: "TABLE_NOT_FOUND",
       };
     }
-    return { ok: true, schema: requested };
+    return { ok: true, schema: requested, tableName };
   }
   const visible = await executeRawSql(
     runtime,
@@ -403,7 +408,36 @@ async function resolveGetTableSchema(
      LIMIT 1`,
   );
   if (visible.rows.length > 0) {
-    return { ok: true, schema: String(visible.rows[0]?.schema) };
+    return {
+      ok: true,
+      schema: String(visible.rows[0]?.schema),
+      tableName,
+    };
+  }
+  const dot = tableName.indexOf(".");
+  if (dot > 0) {
+    const schemaPart = tableName.slice(0, dot);
+    const namePart = tableName.slice(dot + 1);
+    if (isUserSchema(schemaPart) && SCHEMA_IDENT.test(namePart)) {
+      const literal = await executeRawSql(
+        runtime,
+        `SELECT 1
+         FROM pg_catalog.pg_class c
+         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relname = '${safe}'
+           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+           AND c.relkind IN ('r', 'p')
+         LIMIT 1`,
+      );
+      if (literal.rows.length === 0) {
+        const named = await resolveGetTableSchema(
+          runtime,
+          namePart,
+          schemaPart,
+        );
+        if (named.ok) return named;
+      }
+    }
   }
   return {
     ok: false,
@@ -416,8 +450,8 @@ async function opGetTable(
   runtime: IAgentRuntime,
   params: DatabaseParams,
 ): Promise<ActionResult> {
-  const tableName = params.tableName?.trim();
-  if (!tableName) {
+  const requestedName = params.tableName?.trim();
+  if (!requestedName) {
     return {
       success: false,
       text: "tableName is required for op:get_table.",
@@ -427,7 +461,7 @@ async function opGetTable(
 
   const resolved = await resolveGetTableSchema(
     runtime,
-    tableName,
+    requestedName,
     params.schema,
   );
   if (!resolved.ok) {
@@ -440,6 +474,7 @@ async function opGetTable(
       },
     };
   }
+  const tableName = resolved.tableName;
   const safe = tableName.replace(/'/g, "''");
   const safeSchema = resolved.schema.replace(/'/g, "''");
   const relation = `${quoteIdent(resolved.schema)}.${quoteIdent(tableName)}`;
@@ -799,7 +834,8 @@ export const databaseAction: Action = {
     },
     {
       name: "tableName",
-      description: "get_table: table name to read.",
+      description:
+        "get_table: table name, or schema.table copied from list_tables.",
       required: false,
       schema: { type: "string" as const },
     },

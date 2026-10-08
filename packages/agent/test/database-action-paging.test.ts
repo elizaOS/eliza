@@ -171,6 +171,25 @@ it("returns every tied row once and ignores another schema's primary key", async
     );
     expect(listedByQualified.success, listedByQualified.text).toBe(true);
     expect(listedByQualified.text).toContain("hidden_ns.only_here");
+    const copied = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      {
+        parameters: {
+          action: "get_table",
+          tableName: "hidden_ns.only_here",
+          limit: 8,
+          offset: 0,
+        },
+      },
+      undefined,
+    );
+    expect(copied.success, copied.text).toBe(true);
+    const copiedRows = (
+      copied.data as { rows?: Array<{ id: number }> } | undefined
+    )?.rows;
+    expect(copiedRows?.map((row) => Number(row.id))).toEqual([7]);
     const systemTable = await handler(
       runtime,
       {} as never,
