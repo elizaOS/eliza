@@ -13,7 +13,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { EmailLikeMessage } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
-import { extractBill } from "./bill-extraction.js";
+import { extractAmountFromText, extractBill } from "./bill-extraction.js";
 
 function runtimeWithModel(response: string): IAgentRuntime {
   return {
@@ -101,5 +101,25 @@ describe("extractBill merge merchant selection", () => {
     });
     const bill = await extractBill(runtimeWithModel(payload), message);
     expect(bill?.merchant).toBe("Unknown merchant");
+  });
+});
+
+describe("extractAmountFromText currency code", () => {
+  it("keeps an explicit CAD code when the amount uses a dollar sign", () => {
+    expect(extractAmountFromText("Amount due CAD $49.99")).toEqual({
+      amount: 49.99,
+      currency: "CAD",
+    });
+    expect(extractAmountFromText("Amount due $49.99 CAD")).toEqual({
+      amount: 49.99,
+      currency: "CAD",
+    });
+  });
+
+  it("still maps a bare dollar sign to USD", () => {
+    expect(extractAmountFromText("Amount due $49.95")).toEqual({
+      amount: 49.95,
+      currency: "USD",
+    });
   });
 });
