@@ -7,7 +7,10 @@ import type {
 } from "./reminder-contract.ts";
 import type { ReminderCreateOperation } from "./reminder-create-contract.ts";
 
-function formatDateTime(value: string | number, timeZone: string): string {
+export function formatDeviceRecordDateTime(
+  value: string | number,
+  timeZone: string,
+): string {
   const date = new Date(value);
   return new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -32,12 +35,12 @@ function presentReminderTiming(
 ): { description: string; summary: string } {
   const zone = schedule.recurrence?.zone ?? timeZone;
   const lines = [
-    `Due ${formatDateTime(schedule.dueAt ?? schedule.at, zone)} (${zone}).`,
+    `Due ${formatDeviceRecordDateTime(schedule.dueAt ?? schedule.at, zone)} (${zone}).`,
   ];
   if (schedule.alertMinutes === null) lines.push("No alert; saved task only.");
   else {
     lines.push(
-      `Alert ${formatDateTime(schedule.at, zone)}. Notification delivery may be approximate.`,
+      `Alert ${formatDeviceRecordDateTime(schedule.at, zone)}. Notification delivery may be approximate.`,
     );
   }
   const summary = lines.join(" ");
@@ -96,7 +99,7 @@ export function presentDeviceRecordOperation(
         operation.type === "calendar_create"
           ? "Created event"
           : "Updated event";
-      const timing = `${formatDateTime(fields.start, fields.timeZone)} – ${formatDateTime(fields.end, fields.timeZone)} (${fields.timeZone})`;
+      const timing = `${formatDeviceRecordDateTime(fields.start, fields.timeZone)} – ${formatDeviceRecordDateTime(fields.end, fields.timeZone)} (${fields.timeZone})`;
       summaryDetails = `“${fields.title}” — ${timing}.`;
       details = [
         `“${fields.title}”`,
@@ -142,8 +145,8 @@ export function presentDeviceRecordOperation(
     case "create_reminder":
       title = "Create reminder";
       applied = "Created reminder";
-      details = `“${operation.title}”\nDue ${formatDateTime(operation.dueAt, timeZone)} (${timeZone}).\nNotification delivery may be approximate.`;
-      summaryDetails = `“${operation.title}”. Due ${formatDateTime(operation.dueAt, timeZone)} (${timeZone}). Alert requested; notification delivery may be approximate.`;
+      details = `“${operation.title}”\nDue ${formatDeviceRecordDateTime(operation.dueAt, timeZone)} (${timeZone}).\nNotification delivery may be approximate.`;
+      summaryDetails = `“${operation.title}”. Due ${formatDeviceRecordDateTime(operation.dueAt, timeZone)} (${timeZone}). Alert requested; notification delivery may be approximate.`;
       break;
     case "reminder_read_selected":
       title = "Share selected reminder";
