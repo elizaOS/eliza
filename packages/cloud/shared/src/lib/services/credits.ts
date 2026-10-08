@@ -7,20 +7,28 @@ import Decimal from "decimal.js";
 import { sql } from "drizzle-orm";
 import { type SqlExecutor, sqlRows } from "../../db/execute-helpers";
 import { dbWrite, writeTransaction } from "../../db/helpers";
+import { appsRepository } from "../../db/repositories/apps";
 import {
-  appsRepository,
   type CreditPack,
-  type CreditTransaction,
   creditPacksRepository,
+} from "../../db/repositories/credit-packs";
+import {
+  type CreditTransaction,
   creditTransactionsRepository,
   type NewCreditTransaction,
-  organizationsRepository,
-} from "../../db/repositories";
+} from "../../db/repositories/credit-transactions";
+import { organizationsRepository } from "../../db/repositories/organizations";
 import { CacheInvalidation } from "../cache/invalidation";
 import { invalidateOrganizationCache } from "../cache/organizations-cache";
-import { canSendLowCreditsEmail, markLowCreditsEmailSent } from "../email/utils/rate-limiter";
+import {
+  canSendLowCreditsEmail,
+  markLowCreditsEmailSent,
+} from "../email/utils/rate-limiter";
 import { calculateCost, getProviderFromModel } from "../pricing";
-import { PROVIDER_DEFAULT_MAX_RETRIES, PROVIDER_MAX_BACKOFF_DELAY_MS } from "../providers/_http";
+import {
+  PROVIDER_DEFAULT_MAX_RETRIES,
+  PROVIDER_MAX_BACKOFF_DELAY_MS,
+} from "../providers/_http";
 import { getRequestTaskDefer } from "../runtime/request-context";
 import { logger } from "../utils/logger";
 import { getRouteTimeoutMs } from "../utils/request-timeout";

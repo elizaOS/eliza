@@ -7,7 +7,7 @@ import {
   type GenerationSummary,
   generationsRepository,
   type NewGeneration,
-} from "../../db/repositories";
+} from "../../db/repositories/generations";
 
 /**
  * Service for tracking and managing AI generation jobs.

@@ -9,7 +9,7 @@ import crypto from "crypto";
 import { and, eq, gt, isNull, notExists, or, sql } from "drizzle-orm";
 import { type DbTransaction, dbWrite } from "../../db/client";
 import { encryptApiKey } from "../../db/crypto/api-keys";
-import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories";
+import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories/api-keys";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { ForbiddenError } from "../api/cloud-worker-errors";
 import { isMobileApiKeySecret, MOBILE_API_KEY_PREFIX } from "../auth/mobile-api-key";
