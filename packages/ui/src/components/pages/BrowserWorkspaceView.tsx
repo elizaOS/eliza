@@ -1510,6 +1510,12 @@ function BrowserWorkspaceForAuthority({
                 return;
               }
               const txChainId = parseBrowserWorkspaceEvmChainId(tx.chainId);
+              if (tx.chainId !== undefined && txChainId === null) {
+                reply({
+                  error: "eth_sendTransaction requires a valid chainId.",
+                });
+                return;
+              }
               const chainId =
                 txChainId ?? tabChainIdRef.current.get(req.tabId) ?? 1;
               if (!isBrowserWorkspaceEvmChainSupported(chainId)) {

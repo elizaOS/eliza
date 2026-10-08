@@ -4,7 +4,11 @@
  * `WalletRouteContext` mock — no real HTTP server or wallet backend involved.
  */
 import { describe, expect, it, vi } from "vitest";
-import { handleWalletRoutes, type WalletRouteContext } from "./wallet-routes";
+import {
+  handleWalletRoutes,
+  resolveBrowserWalletMessagePayload,
+  type WalletRouteContext,
+} from "./wallet-routes";
 
 function buildCtx(): {
   ctx: WalletRouteContext;
@@ -57,5 +61,13 @@ describe("wallet route contracts", () => {
     );
     expect(readJsonBody).not.toHaveBeenCalled();
     expect(resolveWalletExportRejection).not.toHaveBeenCalled();
+  });
+
+  it("signs an uppercase 0X personal_sign payload as the same bytes as 0x", () => {
+    const lower = resolveBrowserWalletMessagePayload("0x4869");
+    const upper = resolveBrowserWalletMessagePayload("0X4869");
+    expect(Buffer.from(upper as Uint8Array).toString("utf8")).toBe("Hi");
+    expect(upper).toEqual(lower);
+    expect(resolveBrowserWalletMessagePayload("0X68zz")).toBe("0X68zz");
   });
 });

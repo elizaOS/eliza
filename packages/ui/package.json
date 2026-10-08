@@ -88,7 +88,7 @@
     "audit:design": "node scripts/audit-design.ts",
     "test:design-audit": "node --test scripts/audit-design.test.ts",
     "design:build": "vite build --config stories/vite.config.ts",
-    "test:node": "node --test --experimental-transform-types src/api/runtime-json-client.node.test.ts src/utils/value-formatting.node.test.ts test/api/conversation-turn-controller.test.mjs test/api/recorded-transcription-controller.test.mjs test/api/speech-playback-controllers.test.mjs test/api/text-control-editing.test.mjs test/api/json-storage.test.mjs",
+    "test:node": "node --test --experimental-transform-types src/api/runtime-json-client.node.test.ts src/components/pages/browser-wallet-consent-format.node.test.ts src/utils/value-formatting.node.test.ts test/api/conversation-turn-controller.test.mjs test/api/recorded-transcription-controller.test.mjs test/api/speech-playback-controllers.test.mjs test/api/text-control-editing.test.mjs test/api/json-storage.test.mjs",
     "test:progressive-speech-e2e": "node src/voice/__e2e__/run-progressive-speech.mjs"
   },
   "exports": {
