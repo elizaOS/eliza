@@ -104,7 +104,17 @@ jobs:
             task_name="$1"; task_cwd="$2"; shift 2
             task_limit=60
             if [ "$task_name" = real-workerd ]; then task_limit=180; fi
-            timeout --kill-after=10s "${task_limit}s" bash -c 'cd "$1"; shift; exec bun test "$@"' _ "$task_cwd" "$@" > "$TASK_EVIDENCE/$task_name.log" 2>&1
+            if timeout --kill-after=10s "${task_limit}s" bash -c 'cd "$1"; shift; exec bun test "$@"' _ "$task_cwd" "$@" > "$TASK_EVIDENCE/$task_name.log" 2>&1; then
+              task_exit=0
+            else
+              task_exit=$?
+            fi
+            test "$(wc -c < "$TASK_EVIDENCE/$task_name.log")" -le 2097152
+            if [ "$task_exit" -ne 0 ]; then
+              printf '::error::Owning suite %s failed with exit %s\n' "$task_name" "$task_exit"
+              tail -100 "$TASK_EVIDENCE/$task_name.log"
+              return "$task_exit"
+            fi
             test "$(wc -c < "$TASK_EVIDENCE/$task_name.log")" -le 2097152
             grep -Eq '^[[:space:]]*[1-9][0-9]* pass[[:space:]]*$' "$TASK_EVIDENCE/$task_name.log"
             grep -Eq '^[[:space:]]*0 fail[[:space:]]*$' "$TASK_EVIDENCE/$task_name.log"
