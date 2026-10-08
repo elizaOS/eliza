@@ -9,12 +9,13 @@ import android.provider.CalendarContract;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import ai.eliza.plugins.calendar.read.CalendarSourceIdentity;
 import org.json.JSONObject;
 
 /** Provider-owned snapshot and atomic mutation assertions. No UI, agent, or network policy. */
 public final class CalendarEventGuard {
  private static final String[] EVENT={"_id","calendar_id","title","description","eventLocation","dtstart","dtend","eventTimezone","allDay","rrule","rdate","exrule","exdate","original_id","original_sync_id","eventStatus","deleted","hasAlarm","hasAttendeeData","availability","accessLevel","organizer"};
- private static final String[] CALENDAR={"_id","account_name","account_type","name","calendar_access_level","ownerAccount"};
+ private static final String[] CALENDAR=CalendarSourceIdentity.fields();
  static final class Snapshot {
   final long id,calendarId; final ContentValues event,calendar; final String revision,sourceRevision;
   Snapshot(long id,long calendarId,ContentValues event,ContentValues calendar)throws Exception {
@@ -36,9 +37,7 @@ public final class CalendarEventGuard {
  }
  static String sourceRevision(ContentResolver resolver,long id,String account,String name)throws Exception {ContentValues values=read(resolver,ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,id),CALENDAR);if(values==null||!account.equals(values.getAsString("account_name"))||!CalendarContract.ACCOUNT_TYPE_LOCAL.equals(values.getAsString("account_type"))||!name.equals(values.getAsString("name"))||number(values,"calendar_access_level")<CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR)throw new IllegalStateException("Source unavailable");return sourceDigest(values);}
  static ContentProviderOperation sourceAssertion(ContentResolver resolver,long id,String expected)throws Exception{ContentValues values=read(resolver,ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,id),CALENDAR);if(values==null)throw new IllegalStateException();if(!expected.equals(sourceDigest(values)))throw new IllegalStateException("Source changed");return ContentProviderOperation.newAssertQuery(ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,id)).withValues(values).withExpectedCount(1).build();}
- /** Read-only identity uses the same canonical source fields/hash as mutation assertions. */
- public static JSONObject sourceIdentity(ContentResolver resolver,long id)throws Exception {if(id<=0)throw new IllegalArgumentException();ContentValues values=read(resolver,ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,id),CALENDAR);if(values==null)throw new IllegalStateException("Calendar source unavailable");String account=values.getAsString("account_name");return new JSONObject().put("id",Long.toString(id)).put("account",account==null?"":account).put("sourceRevision",sourceDigest(values));}
- private static String sourceDigest(ContentValues values)throws Exception {StringBuilder source=new StringBuilder();append(source,CALENDAR,values);return digest(source.toString());}
+ private static String sourceDigest(ContentValues values)throws Exception {return CalendarSourceIdentity.digest(values);}
  private static String digest(String value)throws Exception{byte[] bytes=MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));StringBuilder result=new StringBuilder();for(byte b:bytes)result.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return result.toString();}
  private static void append(StringBuilder out,String[] fields,ContentValues values){for(String key:fields){Object value=values.get(key);out.append(key.length()).append(':').append(key).append(value==null?"N":"V"+value.toString().length()+":"+value.toString()).append(';');}}
  private static long number(ContentValues values,String key){Long value=values.getAsLong(key);return value==null?0:value;}
