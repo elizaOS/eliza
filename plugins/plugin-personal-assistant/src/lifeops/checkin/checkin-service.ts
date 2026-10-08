@@ -168,8 +168,11 @@ function formatDurationMinutes(durationMin: number | null): string | null {
   ) {
     return null;
   }
-  const hours = Math.floor(durationMin / 60);
-  const minutes = Math.round(durationMin - hours * 60);
+  // Round the whole duration first. 59.5 minutes becomes 60, which is 1h,
+  // not "60m". 119.5 minutes becomes 2h, not "1h60m".
+  const total = Math.round(durationMin);
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
   if (hours === 0) return `${minutes}m`;
   if (minutes === 0) return `${hours}h`;
   return `${hours}h${minutes}m`;
