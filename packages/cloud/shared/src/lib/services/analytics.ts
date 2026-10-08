@@ -154,10 +154,14 @@ export class AnalyticsService {
       maxRows?: number;
     },
   ) {
+    // The page asks for 20 rows. The export asks for 100000. An omitted limit
+    // is the repository default (50). The key omitted `limit`, so those calls
+    // shared one page.
+    const limitKey = options?.limit === undefined ? "default" : String(options.limit);
     const cacheKey = CacheKeys.analytics.modelBreakdown(
       organizationId,
       options?.startDate?.toISOString() || "null",
-      options?.endDate?.toISOString() || "null",
+      `${options?.endDate?.toISOString() || "null"}:${limitKey}`,
     );
 
     const data = await cacheClient.getWithSWR(cacheKey, CacheStaleTTL.analytics.breakdown, () =>
