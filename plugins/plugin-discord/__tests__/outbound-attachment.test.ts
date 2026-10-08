@@ -11,6 +11,7 @@ import { ContentType, type Media } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	buildOutboundDiscordAttachment,
+	getAttachmentFileName,
 	type OutboundAttachmentFetchOptions,
 } from "../utils.ts";
 
@@ -40,6 +41,29 @@ function transport(
 
 afterEach(() => {
 	vi.restoreAllMocks();
+});
+
+describe("getAttachmentFileName", () => {
+	it("does not treat a short path with no dot as a file extension", () => {
+		expect(
+			getAttachmentFileName(
+				media({
+					url: "https://cdn.example.com/img",
+					title: "photo",
+					contentType: ContentType.IMAGE,
+				}),
+			),
+		).toBe("photo.png");
+		expect(
+			getAttachmentFileName(
+				media({
+					url: "https://cdn.example.com/pic.jpeg",
+					title: "photo",
+					contentType: ContentType.IMAGE,
+				}),
+			),
+		).toBe("photo.jpeg");
+	});
 });
 
 describe("buildOutboundDiscordAttachment", () => {
