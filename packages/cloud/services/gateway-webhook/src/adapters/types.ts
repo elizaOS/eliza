@@ -6,6 +6,8 @@ export type Platform = "telegram" | "blooio" | "twilio" | "whatsapp";
 export interface ChatEvent {
   platform: Platform;
   messageId: string;
+  /** Gateway-generated correlation only; never taken from the provider body. */
+  traceId?: string;
   platformRecordId?: string;
   chatId: string;
   chatType?: string;
