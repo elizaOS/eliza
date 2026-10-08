@@ -227,6 +227,13 @@ describe("extractSelfNameClaim", () => {
   it("rejects lowercase names (heuristic anchor)", () => {
     expect(extractSelfNameClaim("i am jill")).toBeNull();
   });
+
+  it("does not treat a possessive as the speaker name", () => {
+    expect(extractSelfNameClaim("Hi, it's Jill's birthday")).toBeNull();
+    expect(extractSelfNameClaim("This is Jill's husband")).toBeNull();
+    expect(extractSelfNameClaim("This is Jill's Birthday")).toBeNull();
+    expect(extractSelfNameClaim("I’m Jill’s friend")).toBeNull();
+  });
 });
 
 describe("extractKinClaim", () => {
