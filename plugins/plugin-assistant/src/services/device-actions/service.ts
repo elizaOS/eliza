@@ -165,6 +165,7 @@ export class DeviceActionService {
     enrollmentId: string;
     capabilities: string[];
     viewProfileVersion: 1;
+    userTextFormatVersion: 1;
   }> {
     if (
       workflowProtocol !== 0 &&
@@ -187,6 +188,7 @@ export class DeviceActionService {
         installationId: c.installationId,
         enrollmentId: String(row.enrollment_id),
         viewProfileVersion: 1,
+        userTextFormatVersion: 1,
         capabilities: [
           "calendar.local-event.v1",
           "notes.local-record.v1",

@@ -229,9 +229,9 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       });
       return { status: result.status, body: (await result.json()) as any };
     };
-    expect(
-      (await request("/register", { label: "Fixture phone" })).status,
-    ).toBe(200);
+    const enrolled = await request("/register", { label: "Fixture phone" });
+    expect(enrolled.status).toBe(200);
+    expect(enrolled.body).toMatchObject({ userTextFormatVersion: 1 });
     const context = await request("/context");
     expect(context.status).toBe(200);
     expect(context.body).toMatchObject({
