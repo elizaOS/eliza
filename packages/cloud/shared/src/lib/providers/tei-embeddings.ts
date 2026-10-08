@@ -5,13 +5,14 @@ import { z } from "zod";
 import { isKnownUnacceptedProviderError } from "../services/inference-provider-outcome";
 import { createBgeEmbeddingModel } from "./bge-embeddings";
 
+const revision = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a";
+
 const infoSchema = z.object({
   model_id: z.literal("BAAI/bge-small-en-v1.5"),
-  model_sha: z.literal("5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"),
+  model_sha: z.literal(revision),
   model_type: z.object({ embedding: z.object({ pooling: z.literal("cls") }) }),
   max_input_length: z.literal(512),
 });
-const revision = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a";
 
 export function createTeiEmbeddingModel(baseUrl: string, apiKey: string) {
   const root = baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "");
@@ -30,8 +31,9 @@ export function createTeiEmbeddingModel(baseUrl: string, apiKey: string) {
           });
         }
         const info = infoSchema.safeParse(await infoResponse.json());
-        // Canonical vectors require the endpoint to attest its immutable loaded revision.
-        if (!info.success || (info.data.model_sha && info.data.model_sha !== revision)) {
+        // Require the configured startup revision; this is not an independent
+        // fingerprint of the loaded model weights.
+        if (!info.success) {
           throw new ElizaError(
             "TEI must serve pinned BGE-small-en-v1.5 with CLS pooling and a 512-token context",
             {
