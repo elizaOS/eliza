@@ -791,16 +791,16 @@ function assertBundledAgentOrchestratorInstallFix() {
   }
 }
 function assertOrchestratorVersionPinned() {
-  const rootPackage = JSON.parse(
-    readFileSync("package.json", "utf8"),
+  const appPackage = JSON.parse(
+    readFileSync("packages/app/package.json", "utf8"),
   ) as RootPackageJson;
   const orchestratorPluginPackageJsonPath =
     resolveOrchestratorPluginPackageJsonPath();
   const version =
-    rootPackage.dependencies?.["@elizaos/plugin-agent-orchestrator"];
+    appPackage.dependencies?.["@elizaos/plugin-agent-orchestrator"];
   if (!version) {
     console.error(
-      "release-check: @elizaos/plugin-agent-orchestrator is not in dependencies.",
+      "release-check: @elizaos/plugin-agent-orchestrator is not in app dependencies.",
     );
     process.exit(1);
   }
