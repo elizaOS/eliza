@@ -31,13 +31,14 @@ test("actual shared Calendar reader scopes owner-day all-day events by civil dat
       "-d",
       temporary,
       ...files(fixtures),
-      join(
-        root,
-        "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java",
-      ),
-      join(
-        root,
-        "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/read/SelectedCalendarReader.java",
+      // Without CalendarEventGuard: read-only hosts ship only the read package.
+      ...["CalendarSourceIdentity.java", "SelectedCalendarReader.java"].map(
+        (name) =>
+          join(
+            root,
+            "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/read",
+            name,
+          ),
       ),
     ]);
     expect(
