@@ -101,6 +101,17 @@ function normalizeConfig(
 	};
 }
 
+function avoidSplittingSurrogatePair(text: string, index: number): number {
+	if (index <= 0 || index >= text.length) return index;
+	const prev = text.charCodeAt(index - 1);
+	const next = text.charCodeAt(index);
+	const splitsPair =
+		prev >= 0xd800 && prev <= 0xdbff && next >= 0xdc00 && next <= 0xdfff;
+	if (!splitsPair) return index;
+	// Keep the pair in the next chunk, unless that would emit nothing.
+	return index > 1 ? index - 1 : index + 1;
+}
+
 function endsWithSentencePunctuation(text: string): boolean {
 	const trimmed = text.trimEnd();
 	if (!/[.!?]$/.test(trimmed)) return false;
@@ -173,8 +184,8 @@ export class VoiceTtsChunker {
 	private findSplitIndex(limit: number): number {
 		const window = this.buffer.slice(0, limit);
 		const whitespace = window.lastIndexOf(" ");
-		if (whitespace >= this.config.minChars) return whitespace + 1;
-		return limit;
+		const split = whitespace >= this.config.minChars ? whitespace + 1 : limit;
+		return avoidSplittingSurrogatePair(this.buffer, split);
 	}
 
 	private emit(
