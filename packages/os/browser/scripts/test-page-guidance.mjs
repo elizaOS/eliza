@@ -496,6 +496,9 @@ try {
   await page.evaluate(() => document.querySelector("#cover").hidePopover());
   await new Promise((resolve) => setTimeout(resolve, 250));
   await page.mouse.click(...(await center(".card:nth-child(2)")));
+  assert.equal(await evaluate("(globalThis.__sent??[]).length"), 0);
+  await new Promise((resolve) => setTimeout(resolve, 850));
+  await page.mouse.click(...(await center(".card:nth-child(2)")));
   await page.mouse.click(...(await center(".secondary")));
   const sent = await evaluate("globalThis.__sent");
   assert.deepEqual(sent, [

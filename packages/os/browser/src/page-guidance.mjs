@@ -222,7 +222,8 @@ export function pageGuidance(request) {
   // Personal values stay as text in this closed tree. A tap returns only the
   // host's answer ID to the extension; the page sees a click on the host node.
   let answered = false,
-    unobscured = false;
+    unobscured = false,
+    unobscuredSince = 0;
   const choose = (id) => (event) => {
     if (
       !event.isTrusted ||
@@ -234,6 +235,7 @@ export function pageGuidance(request) {
       state.dismissed ||
       !state.visible ||
       !label.classList.contains("shown") ||
+      Date.now() - unobscuredSince < 800 ||
       Date.now() - visibleSince < 800 ||
       Date.now() >= request.expiresAt
     )
@@ -296,7 +298,12 @@ export function pageGuidance(request) {
   // covered by page content (including the top layer), transformed or faded.
   const visibility = new IntersectionObserver(
     (entries) => {
-      unobscured = entries.at(-1).isVisible === true;
+      for (const entry of entries) {
+        const visible = entry.isVisible === true;
+        if (visible && !unobscured) unobscuredSince = Date.now();
+        if (!visible) unobscuredSince = 0;
+        unobscured = visible;
+      }
     },
     { trackVisibility: true, delay: 100 },
   );

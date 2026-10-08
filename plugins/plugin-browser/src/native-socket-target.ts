@@ -641,6 +641,9 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         "This browser does not support a configured assistant name.",
         { targetId: this.id },
       );
+    // Rebinding retires the old offer before any in-flight answer can arrive.
+    for (const [id, offer] of this.offers)
+      if (offer.tabId === binding.tabId) this.offers.delete(id);
     return this.request(undefined, undefined, binding);
   }
 
