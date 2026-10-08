@@ -915,6 +915,16 @@ jobs:
             --version=${{ needs.prepare.outputs.version }} \
             --arch=x86_64
 
+      - name: Run packaged Linux user journeys
+        if: matrix.platform.os == 'linux' && steps.build-electrobun-app.outputs.fallback != 'true'
+        env:
+          ELIZA_TEST_PACKAGED_AUTO_BUILD: "0"
+          STARTUP_TIMEOUT: "420"
+          LIVENESS_TIMEOUT: "10"
+          SKIP_BUILD: "1"
+          SKIP_SIGNATURE_CHECK: "1"
+        run: bun run --cwd packages/app test:desktop:packaged
+
       - name: Install and launch Flatpak artifact
         if: matrix.platform.os == 'linux' && steps.build-electrobun-app.outputs.fallback != 'true'
         run: |
@@ -947,6 +957,28 @@ jobs:
           ELECTROBUN_TEAMID: ${{ secrets.APPLE_TEAM_ID }}
           ELECTROBUN_SKIP_CODESIGN: ${{ steps.macos-keychain.outputs.skip_codesign }}
         run: bash packages/app/scripts/electrobun/stage-macos-release-artifacts.sh
+
+      - name: Run packaged macOS user journeys
+        id: macos-packaged-smoke
+        if: matrix.platform.os == 'macos' && steps.build-electrobun-app.outputs.fallback != 'true'
+        continue-on-error: true
+        env:
+          SMOKE_DIAGNOSTICS_DIR: ${{ runner.temp }}/eliza-smoke-diagnostics
+        run: |
+          STARTUP_TIMEOUT=420 \
+          LIVENESS_TIMEOUT=10 \
+          SKIP_BUILD=1 \
+          SKIP_SIGNATURE_CHECK=1 \
+          bun run --cwd packages/app test:desktop:packaged
+
+      - name: Upload macOS journey diagnostics
+        if: matrix.platform.os == 'macos' && steps.macos-packaged-smoke.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: electrobun-macos-journey-diagnostics-${{ matrix.platform.artifact-name }}
+          path: ${{ runner.temp }}/eliza-smoke-diagnostics/**
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Sign Windows executables
         if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
@@ -1136,6 +1168,15 @@ jobs:
             Write-Error "Windows clean installer proof exited with code $LASTEXITCODE."
             exit $LASTEXITCODE
           }
+          $launcherPathFile = Join-Path $env:RUNNER_TEMP "eliza-windows-proof-launcher.txt"
+          if (-not (Test-Path $launcherPathFile)) {
+            throw "Installer proof did not retain a renderer launcher."
+          }
+          $launcherPath = (Get-Content $launcherPathFile -Raw).Trim()
+          if ([string]::IsNullOrWhiteSpace($launcherPath) -or -not (Test-Path $launcherPath)) {
+            throw "Installer proof renderer launcher is unavailable."
+          }
+          Add-Content -Path $env:GITHUB_ENV -Value "ELIZA_TEST_WINDOWS_LAUNCHER_PATH=$launcherPath"
 
       - name: Upload Windows installer proof artifact
         if: always() && matrix.platform.os == 'windows'
