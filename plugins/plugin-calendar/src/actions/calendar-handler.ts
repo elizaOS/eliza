@@ -1702,6 +1702,8 @@ export function parseExplicitLocalDate(
     if (isRealDate) {
       return { year, month, day };
     }
+    // "2023-02-29" is not 29 Feb of a later leap year. Stop here.
+    return null;
   }
 
   const monthNameMatch = normalized.match(MONTH_NAME_PATTERN);

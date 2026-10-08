@@ -66,6 +66,14 @@ describe("parseExplicitLocalDate numeric branch (#21941)", () => {
       month: 2,
       day: 29,
     });
+    // 2028 is a leap year. The MM-DD tail must not become 29 Feb 2028.
+    expect(
+      parseExplicitLocalDate(
+        "review on 2023-02-29",
+        TZ,
+        new Date("2028-01-15T12:00:00Z"),
+      ),
+    ).toBeNull();
   });
 
   it("still parses valid slash and dashed dates", () => {
