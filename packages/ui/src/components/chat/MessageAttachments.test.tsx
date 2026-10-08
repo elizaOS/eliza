@@ -315,6 +315,9 @@ describe("MessageAttachments — unsafe-URL handling (security/error path)", () 
     { name: "file:", url: "file:///etc/passwd" },
     { name: "data:text/html", url: "data:text/html,<script>alert(1)</script>" },
     { name: "scheme-relative", url: "//evil.example.com/x.png" },
+    { name: "backslash authority", url: "/\\outside.invalid/x.png" },
+    { name: "tab-separated authority", url: "/\t/outside.invalid/x.png" },
+    { name: "newline-separated authority", url: "/\n\\outside.invalid/x.png" },
   ];
 
   for (const { name, url } of DANGEROUS) {
