@@ -167,6 +167,89 @@ it("pages the visible same-named table when another schema has a different prima
   }
 }, 120_000);
 
+it("does not list or read a table that exists only outside the search path", async () => {
+  const { runtime, cleanup } = await createRealTestRuntime({
+    characterName: "DbViewerHidden",
+  });
+  const server = http.createServer((req, res) => {
+    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    void handleDatabaseRoute(req, res, runtime, pathname).catch((error) => {
+      if (res.headersSent) return;
+      const message = error instanceof Error ? error.message : "failed";
+      res.statusCode = 500;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ error: message }));
+    });
+  });
+  try {
+    const db = runtime.adapter.db as {
+      execute(query: unknown): Promise<unknown>;
+    };
+    await db.execute(sql.raw("CREATE SCHEMA hidden_shelf"));
+    await db.execute(
+      sql.raw(
+        "CREATE TABLE hidden_shelf.closed_shelf (id integer PRIMARY KEY, kind text)",
+      ),
+    );
+    await db.execute(
+      sql.raw(
+        "INSERT INTO hidden_shelf.closed_shelf (id, kind) VALUES (1, 'hidden')",
+      ),
+    );
+    await db.execute(
+      sql.raw("CREATE TABLE open_shelf (id integer PRIMARY KEY, kind text)"),
+    );
+    await db.execute(
+      sql.raw("INSERT INTO open_shelf (id, kind) VALUES (1, 'visible')"),
+    );
+    await db.execute(sql.raw("SET search_path TO public"));
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const listed = await fetch(`http://127.0.0.1:${port}/api/database/tables`);
+    const listedBody = (await listed.json()) as {
+      tables: Array<{ name: string; schema: string }>;
+    };
+    expect(listed.status).toBe(200);
+    expect(
+      listedBody.tables.some(
+        (table) => table.schema === "public" && table.name === "open_shelf",
+      ),
+    ).toBe(true);
+    expect(
+      listedBody.tables.some(
+        (table) =>
+          table.schema === "hidden_shelf" && table.name === "closed_shelf",
+      ),
+    ).toBe(true);
+    const hiddenWithoutSchema = await fetch(
+      `http://127.0.0.1:${port}/api/database/tables/closed_shelf/rows?limit=25&offset=0`,
+    );
+    expect(hiddenWithoutSchema.status).toBe(404);
+    const hidden = await fetch(
+      `http://127.0.0.1:${port}/api/database/tables/closed_shelf/rows?limit=25&offset=0&schema=hidden_shelf`,
+    );
+    const hiddenBody = (await hidden.json()) as {
+      rows?: Array<{ id: number }>;
+      error?: string;
+    };
+    expect(hidden.status).toBe(200);
+    expect(hiddenBody.rows?.map((row) => Number(row.id))).toEqual([1]);
+    const visible = await fetch(
+      `http://127.0.0.1:${port}/api/database/tables/open_shelf/rows?limit=25&offset=0`,
+    );
+    const visibleBody = (await visible.json()) as {
+      rows?: Array<{ id: number }>;
+    };
+    expect(visible.status).toBe(200);
+    expect(visibleBody.rows?.map((row) => Number(row.id))).toEqual([1]);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await cleanup();
+  }
+}, 120_000);
+
 it("searches the visible table when another schema has extra columns", async () => {
   const { runtime, cleanup } = await createRealTestRuntime({
     characterName: "DbViewerSearchSchema",

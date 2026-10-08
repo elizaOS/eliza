@@ -395,21 +395,89 @@ async function executeRawSql(
 function detectCurrentProvider(): DatabaseProviderType {
   return process.env.POSTGRES_URL ? "postgres" : "pglite";
 }
-/** Verify a table name refers to a real user table. */
-async function assertTableExists(
+const SCHEMA_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/**
+ * Optional schema query. Empty means "the visible relation". Anything else
+ * must be one identifier. Plugin schemas such as todos are not on search_path,
+ * so the caller has to name them.
+ */
+function parseRequestedSchema(
+  raw: string | null,
+): { ok: true; schema: string | null } | { ok: false } {
+  if (raw === null || raw === "") return { ok: true, schema: null };
+  if (!SCHEMA_IDENT.test(raw)) return { ok: false };
+  if (raw === "pg_catalog" || raw === "information_schema")
+    return { ok: false };
+  return { ok: true, schema: raw };
+}
+function qualifiedTable(schema: string, tableName: string): string {
+  return `${quoteIdent(schema)}.${quoteIdent(tableName)}`;
+}
+/**
+ * Schema to use for a row read. An explicit schema names that relation even
+ * when it is outside search_path. With no schema, use the relation an
+ * unqualified FROM would open.
+ */
+async function resolveTableSchema(
   runtime: AgentRuntime,
   tableName: string,
-): Promise<boolean> {
+  requestedSchema: string | null,
+): Promise<string | null> {
   const safe = tableName.replace(/'/g, "''");
+  if (requestedSchema) {
+    const safeSchema = requestedSchema.replace(/'/g, "''");
+    const { rows } = await executeRawSql(
+      runtime,
+      `SELECT n.nspname AS schema
+       FROM pg_catalog.pg_class c
+       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       WHERE c.relname = '${safe}'
+         AND n.nspname = '${safeSchema}'
+         AND c.relkind IN ('r', 'p')
+       LIMIT 1`,
+    );
+    return rows.length > 0 ? String(rows[0].schema) : null;
+  }
   const { rows } = await executeRawSql(
     runtime,
-    `SELECT 1 FROM information_schema.tables
-     WHERE table_name = '${safe}'
-       AND table_schema NOT IN ('pg_catalog', 'information_schema')
-       AND table_type = 'BASE TABLE'
+    `SELECT n.nspname AS schema
+     FROM pg_catalog.pg_class c
+     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+     WHERE c.relname = '${safe}'
+       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+       AND c.relkind IN ('r', 'p')
+       AND pg_catalog.pg_table_is_visible(c.oid)
+     ORDER BY (
+       SELECT s.ord
+       FROM unnest(current_schemas(true)) WITH ORDINALITY AS s(name, ord)
+       WHERE s.name = n.nspname
+       LIMIT 1
+     )
      LIMIT 1`,
   );
-  return rows.length > 0;
+  return rows.length > 0 ? String(rows[0].schema) : null;
+}
+async function requireTableSchema(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  runtime: AgentRuntime,
+  tableName: string,
+): Promise<string | null> {
+  const url = new URL(
+    req.url ?? "/",
+    `http://${req.headers.host ?? "localhost"}`,
+  );
+  const parsed = parseRequestedSchema(url.searchParams.get("schema"));
+  if (!parsed.ok) {
+    sendJsonError(res, "schema must be a single identifier", 400);
+    return null;
+  }
+  const schema = await resolveTableSchema(runtime, tableName, parsed.schema);
+  if (!schema) {
+    sendJsonError(res, `Table "${tableName}" not found`, 404);
+    return null;
+  }
+  return schema;
 }
 // ---------------------------------------------------------------------------
 // Route handlers
@@ -797,28 +865,30 @@ async function handleGetRows(
   const sortCol = url.searchParams.get("sort") ?? "";
   const sortOrder = parsedOrder.order;
   const search = url.searchParams.get("search") ?? "";
-  if (!(await assertTableExists(runtime, tableName))) {
+  const parsedSchema = parseRequestedSchema(url.searchParams.get("schema"));
+  if (!parsedSchema.ok) {
+    sendJsonError(res, "schema must be a single identifier", 400);
+    return;
+  }
+  const schema = await resolveTableSchema(
+    runtime,
+    tableName,
+    parsedSchema.schema,
+  );
+  if (!schema) {
     sendJsonError(res, `Table "${tableName}" not found`, 404);
     return;
   }
-  // Search and sort must use the relation an unqualified FROM resolves.
-  // A same-named table in another schema would otherwise add columns this
-  // read does not have, and the search query would fail.
+  const relation = qualifiedTable(schema, tableName);
+  // Get column names for this table (for search and sort validation)
   const safeTableName = tableName.replace(/'/g, "''");
+  const safeSchema = schema.replace(/'/g, "''");
   const colResult = await executeRawSql(
     runtime,
     `SELECT column_name, data_type
      FROM information_schema.columns
      WHERE table_name = '${safeTableName}'
-       AND table_schema = (
-         SELECT n.nspname
-         FROM pg_catalog.pg_class c
-         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-         WHERE c.relname = '${safeTableName}'
-           AND c.relkind IN ('r', 'p')
-           AND pg_catalog.pg_table_is_visible(c.oid)
-         LIMIT 1
-       )
+       AND table_schema = '${safeSchema}'
      ORDER BY ordinal_position`,
   );
   const columnNames = colResult.rows.map((r) => String(r.column_name));
@@ -863,7 +933,7 @@ async function handleGetRows(
   // Count total (with search filter)
   const countResult = await executeRawSql(
     runtime,
-    `SELECT count(*) AS total FROM ${quoteIdent(tableName)} ${whereClause}`,
+    `SELECT count(*) AS total FROM ${relation} ${whereClause}`,
   );
   const total = Number(
     (countResult.rows[0] as Record<string, unknown>)?.total ?? 0,
@@ -886,15 +956,7 @@ async function handleGetRows(
       AND tc.table_name = kcu.table_name
      WHERE tc.constraint_type = 'PRIMARY KEY'
        AND tc.table_name = '${safeTableName}'
-       AND tc.table_schema = (
-         SELECT n.nspname
-         FROM pg_catalog.pg_class c
-         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-         WHERE c.relname = '${safeTableName}'
-           AND c.relkind IN ('r', 'p')
-           AND pg_catalog.pg_table_is_visible(c.oid)
-         LIMIT 1
-       )
+       AND tc.table_schema = '${safeSchema}'
      ORDER BY kcu.ordinal_position`,
   );
   const tieBreak = pkResult.rows.length
@@ -906,7 +968,7 @@ async function handleGetRows(
   ].map((term) => `${term} ${sortOrder}`);
   // Fetch rows
   const orderClause = `ORDER BY ${orderTerms.join(", ")}`;
-  const query = `SELECT * FROM ${quoteIdent(tableName)} ${whereClause} ${orderClause} LIMIT ${limit} OFFSET ${offset}`;
+  const query = `SELECT * FROM ${relation} ${whereClause} ${orderClause} LIMIT ${limit} OFFSET ${offset}`;
   const result = await executeRawSql(runtime, query);
   sendJson(res, {
     table: tableName,
@@ -939,17 +1001,15 @@ async function handleInsertRow(
     sendJsonError(res, "Request body must include a non-empty 'data' object.");
     return;
   }
-  if (!(await assertTableExists(runtime, tableName))) {
-    sendJsonError(res, `Table "${tableName}" not found`, 404);
-    return;
-  }
+  const schema = await requireTableSchema(req, res, runtime, tableName);
+  if (!schema) return;
   const columns = Object.keys(body.data);
   const values = Object.values(body.data);
   const colList = columns.map((c) => quoteIdent(c)).join(", ");
   const valList = values.map(sqlLiteral).join(", ");
   const result = await executeRawSql(
     runtime,
-    `INSERT INTO ${quoteIdent(tableName)} (${colList}) VALUES (${valList}) RETURNING *`,
+    `INSERT INTO ${qualifiedTable(schema, tableName)} (${colList}) VALUES (${valList}) RETURNING *`,
   );
   sendJson(res, { inserted: true, row: result.rows[0] ?? null }, 201);
 }
@@ -982,6 +1042,8 @@ async function handleUpdateRow(
     );
     return;
   }
+  const schema = await requireTableSchema(req, res, runtime, tableName);
+  if (!schema) return;
   const setClauses = Object.entries(body.data).map(([col, val]) =>
     sqlAssign(col, val),
   );
@@ -990,7 +1052,7 @@ async function handleUpdateRow(
   );
   const result = await executeRawSql(
     runtime,
-    `UPDATE ${quoteIdent(tableName)}
+    `UPDATE ${qualifiedTable(schema, tableName)}
         SET ${setClauses.join(", ")}
       WHERE ${whereClauses.join(" AND ")}
       RETURNING *`,
@@ -1022,12 +1084,14 @@ async function handleDeleteRow(
     );
     return;
   }
+  const schema = await requireTableSchema(req, res, runtime, tableName);
+  if (!schema) return;
   const whereClauses = Object.entries(body.where).map(([col, val]) =>
     sqlPredicate(col, val),
   );
   const result = await executeRawSql(
     runtime,
-    `DELETE FROM ${quoteIdent(tableName)}
+    `DELETE FROM ${qualifiedTable(schema, tableName)}
       WHERE ${whereClauses.join(" AND ")}
       RETURNING *`,
   );
