@@ -1,47 +1,24 @@
 /** Canonical service leaves must retain the exact repository instances and prototypes. */
 import { describe, expect, test } from "bun:test";
 import * as barrel from "../db/repositories";
+import { ApiKeysRepository, apiKeysRepository } from "../db/repositories/api-keys";
+import { AppsRepository, appsRepository } from "../db/repositories/apps";
 import {
-  apiKeysRepository,
-  ApiKeysRepository,
-} from "../db/repositories/api-keys";
-import { appsRepository, AppsRepository } from "../db/repositories/apps";
-import {
-  creditTransactionsRepository,
   CreditTransactionsRepository,
+  creditTransactionsRepository,
 } from "../db/repositories/credit-transactions";
-import {
-  generationsRepository,
-  GenerationsRepository,
-} from "../db/repositories/generations";
-import {
-  organizationsRepository,
-  OrganizationsRepository,
-} from "../db/repositories/organizations";
-import {
-  usageRecordsRepository,
-  UsageRecordsRepository,
-} from "../db/repositories/usage-records";
-import {
-  userSessionsRepository,
-  UserSessionsRepository,
-} from "../db/repositories/user-sessions";
+import { GenerationsRepository, generationsRepository } from "../db/repositories/generations";
+import { OrganizationsRepository, organizationsRepository } from "../db/repositories/organizations";
+import { UsageRecordsRepository, usageRecordsRepository } from "../db/repositories/usage-records";
+import { UserSessionsRepository, userSessionsRepository } from "../db/repositories/user-sessions";
 
 describe("prewarm canonical repository identity", () => {
   for (const [name, instance, constructor] of [
     ["apiKeysRepository", apiKeysRepository, ApiKeysRepository],
     ["appsRepository", appsRepository, AppsRepository],
-    [
-      "creditTransactionsRepository",
-      creditTransactionsRepository,
-      CreditTransactionsRepository,
-    ],
+    ["creditTransactionsRepository", creditTransactionsRepository, CreditTransactionsRepository],
     ["generationsRepository", generationsRepository, GenerationsRepository],
-    [
-      "organizationsRepository",
-      organizationsRepository,
-      OrganizationsRepository,
-    ],
+    ["organizationsRepository", organizationsRepository, OrganizationsRepository],
     ["usageRecordsRepository", usageRecordsRepository, UsageRecordsRepository],
     ["userSessionsRepository", userSessionsRepository, UserSessionsRepository],
   ] as const) {

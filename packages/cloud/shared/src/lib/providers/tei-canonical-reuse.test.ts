@@ -1,8 +1,9 @@
-import { serve } from "bun";
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { createTeiEmbeddingModel } from "./tei-embeddings";
-import { createBgeEmbeddingModel } from "./bge-embeddings";
 import { prepareBgeEmbeddingInput } from "@elizaos/plugin-native-inference/model-catalog/bge-input";
+import { serve } from "bun";
+import { createBgeEmbeddingModel } from "./bge-embeddings";
+import { createTeiEmbeddingModel } from "./tei-embeddings";
+
 const originalFetch = globalThis.fetch;
 const revision = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a";
 const identity = {
@@ -16,10 +17,7 @@ afterEach(() => {
 });
 function fixture(responses: unknown[]) {
   const calls: { url: string; init?: RequestInit }[] = [];
-  globalThis.fetch = (async (
-    url: string | URL | Request,
-    init?: RequestInit,
-  ) => {
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     calls.push({ url: String(url), init });
     const response = responses.shift();
     return response instanceof Response ? response : Response.json(response);
@@ -38,10 +36,9 @@ describe("canonical BGE TEI identity and transport boundary", () => {
     test(`blocks incompatible identity ${JSON.stringify(changed)} before embedding`, async () => {
       const calls = fixture([{ ...identity, ...changed }]);
       await expect(
-        createTeiEmbeddingModel(
-          "https://fixture.invalid",
-          "fixture-key",
-        ).doEmbed({ values: ["fixture"] }),
+        createTeiEmbeddingModel("https://fixture.invalid", "fixture-key").doEmbed({
+          values: ["fixture"],
+        }),
       ).rejects.toThrow();
       expect(calls).toHaveLength(1);
       expect(calls[0].url.endsWith("/info")).toBe(true);
@@ -63,9 +60,7 @@ describe("canonical BGE TEI identity and transport boundary", () => {
           authorization: req.headers.get("authorization"),
           body: await req.text(),
         });
-        return path === "/info"
-          ? Response.json(identity)
-          : Response.json([Array(384).fill(2)]);
+        return path === "/info" ? Response.json(identity) : Response.json([Array(384).fill(2)]);
       },
     });
     try {
@@ -78,17 +73,11 @@ describe("canonical BGE TEI identity and transport boundary", () => {
       const result = await model.doEmbed({ values: [input] });
       expect(result.embeddings[0]).toHaveLength(384);
       expect(Math.hypot(...result.embeddings[0])).toBeCloseTo(1, 12);
-      expect(model.embeddingSpace).toBe(
-        "BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1",
-      );
+      expect(model.embeddingSpace).toBe("BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1");
       expect(result.usage?.tokens).toBe(prepared.tokenIds.length);
       expect(captured.map((x) => x.path)).toEqual(["/info", "/embed"]);
-      expect(
-        captured.every((x) => x.authorization === "Bearer fixture-owned-key"),
-      ).toBe(true);
-      expect(captured.every((x) => !x.body.includes("fixture-owned-key"))).toBe(
-        true,
-      );
+      expect(captured.every((x) => x.authorization === "Bearer fixture-owned-key")).toBe(true);
+      expect(captured.every((x) => !x.body.includes("fixture-owned-key"))).toBe(true);
       expect(JSON.parse(captured[1].body)).toEqual({
         inputs: [prepared.text],
         normalize: true,
@@ -109,28 +98,27 @@ describe("canonical BGE TEI identity and transport boundary", () => {
     test(`rejects invalid output shape ${vectors[0]?.length ?? 0}`, async () => {
       fixture([identity, vectors]);
       await expect(
-        createTeiEmbeddingModel(
-          "https://fixture.invalid",
-          "fixture-key",
-        ).doEmbed({ values: ["fixture"] }),
+        createTeiEmbeddingModel("https://fixture.invalid", "fixture-key").doEmbed({
+          values: ["fixture"],
+        }),
       ).rejects.toThrow();
     });
   }
   test("preflight HTTP rejection dispatches no embedding", async () => {
     const calls = fixture([new Response("fixture", { status: 401 })]);
     await expect(
-      createTeiEmbeddingModel("https://fixture.invalid", "fixture-key").doEmbed(
-        { values: ["fixture"] },
-      ),
+      createTeiEmbeddingModel("https://fixture.invalid", "fixture-key").doEmbed({
+        values: ["fixture"],
+      }),
     ).rejects.toThrow();
     expect(calls).toHaveLength(1);
   });
   test("inference HTTP failure remains a single failed request", async () => {
     const calls = fixture([identity, new Response("fixture", { status: 503 })]);
     await expect(
-      createTeiEmbeddingModel("https://fixture.invalid", "fixture-key").doEmbed(
-        { values: ["fixture"] },
-      ),
+      createTeiEmbeddingModel("https://fixture.invalid", "fixture-key").doEmbed({
+        values: ["fixture"],
+      }),
     ).rejects.toThrow();
     expect(calls).toHaveLength(2);
   });
@@ -175,9 +163,7 @@ describe("canonical BGE TEI identity and transport boundary", () => {
       tail = prepareBgeEmbeddingInput(text);
     expect(tail.tokenIds[0]).toBe(101);
     expect(tail.tokenIds.at(-1)).toBe(102);
-    expect(tail.tokenIds.slice(1, -1)).toEqual(
-      content.slice(-(tail.tokenIds.length - 2)),
-    );
+    expect(tail.tokenIds.slice(1, -1)).toEqual(content.slice(-(tail.tokenIds.length - 2)));
     expect(text.endsWith(tail.text)).toBe(true);
   });
 });
