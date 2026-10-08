@@ -168,7 +168,7 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     // full round trip (merge engine → VOICE_ENTITY_BOUND → bindEntity) has
     // completed when this resolves.
     await emitVoiceTurnObserved(runtime, {
-      text: "Hey there, I'm Jill",
+      text: "Hi it's Jill I wanted to ask about Monday",
       imprintClusterId: "cluster_jill",
       matchConfidence: 0.92,
       matchedEntityId: null,
