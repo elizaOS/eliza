@@ -23,7 +23,6 @@ import type {
 } from "@elizaos/plugin-todos";
 import { searchKeylessWeb } from "@elizaos/plugin-web-search";
 import { runWithCloudBindingsAsync } from "../../../shared/src/lib/runtime/cloud-bindings";
-import { runSharedElizaRuntimeTurn } from "../../../shared/src/lib/services/shared-runtime/shared-eliza-runtime";
 import { chatSseFrame } from "../../../shared/src/lib/services/chat-sse-frames";
 import type { BridgeRequest } from "../../../shared/src/lib/services/eliza-sandbox";
 import { handleCanonicalScopedAgentStream } from "../../../shared/src/lib/services/shared-runtime/canonical-scoped-stream";
@@ -34,6 +33,7 @@ import {
   runSharedAgentTurnStream,
   type SharedAgentTurnStreamPart,
 } from "../../../shared/src/lib/services/shared-runtime/run-shared-agent-turn";
+import { runSharedElizaRuntimeTurn } from "../../../shared/src/lib/services/shared-runtime/shared-eliza-runtime";
 import {
   SharedMemoryStore,
   type SharedMemoryTurnPair,
@@ -394,25 +394,52 @@ const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     return await runWithCloudBindingsAsync(env, async () => {
       const url = new URL(request.url);
-      if (url.pathname === "/cancel-before-model" || url.pathname === "/cancel-at-dispatch") {
+      if (
+        url.pathname === "/cancel-before-model" ||
+        url.pathname === "/cancel-at-dispatch"
+      ) {
         const controller = new AbortController();
-        const reason = new DOMException("Cancelled Workerd fixture", "AbortError");
+        const reason = new DOMException(
+          "Cancelled Workerd fixture",
+          "AbortError",
+        );
         let dispatches = 0;
         let rejected = false;
         const outcomes: string[] = [];
         if (url.pathname === "/cancel-before-model") controller.abort(reason);
         try {
           await runSharedElizaRuntimeTurn({
-            character: { name: "Cancelled Shared Probe", system: "You are Eliza.", model: "local/shared-runtime-probe" },
-            history: [], message: "shared cancelled dispatch fixture",
+            character: {
+              name: "Cancelled Shared Probe",
+              system: "You are Eliza.",
+              model: "local/shared-runtime-probe",
+            },
+            history: [],
+            message: "shared cancelled dispatch fixture",
             agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
-            model: "local/shared-runtime-probe", abortSignal: controller.signal,
-            onProviderDispatch: async () => { dispatches++; controller.abort(reason); },
+            model: "local/shared-runtime-probe",
+            abortSignal: controller.signal,
+            onProviderDispatch: async () => {
+              dispatches++;
+              controller.abort(reason);
+            },
             onRuntimeTiming: (receipt) => outcomes.push(receipt.outcome),
-            execution: { channel: { type: ChannelType.DM, source: "shared-runtime" }, agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f", roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f" },
+            execution: {
+              channel: { type: ChannelType.DM, source: "shared-runtime" },
+              agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+              roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+            },
           });
-        } catch { rejected = true; }
-        return Response.json({ rejected, dispatches, signalAborted: controller.signal.aborted, abortReasonUnchanged: controller.signal.reason === reason, outcomes });
+        } catch {
+          rejected = true;
+        }
+        return Response.json({
+          rejected,
+          dispatches,
+          signalAborted: controller.signal.aborted,
+          abortReasonUnchanged: controller.signal.reason === reason,
+          outcomes,
+        });
       }
       if (url.pathname === "/error-brand-consistency") {
         const runtimeFailure = new ElizaError("Private runtime failure", {

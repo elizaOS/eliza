@@ -7,8 +7,8 @@ import {
   parseSharedRuntimeFailureDiagnostic,
   recordSharedRuntimeFailureDiagnostic,
   SharedRuntimeTurnError,
-  sharedModelFailureDiagnostic,
   sharedModelCompletionDiagnostic,
+  sharedModelFailureDiagnostic,
 } from "../../shared/src/lib/services/shared-runtime/shared-runtime-errors";
 
 describe("Shared failure diagnostic boundary", () => {
@@ -862,18 +862,38 @@ describe("Fixed diagnostic producer and recorder version", () => {
 
 describe("closed SDK reasoning diagnostics are not provider-presence proof", () => {
   test("retains an SDK zero with unknown provider detail, and legacy calls unchanged", () => {
-    const legacy = sharedModelCompletionDiagnostic("generate", "ready", 0, "stop");
+    const legacy = sharedModelCompletionDiagnostic(
+      "generate",
+      "ready",
+      0,
+      "stop",
+    );
     expect(legacy).not.toHaveProperty("sdkReasoningTokens");
-    const value = sharedModelCompletionDiagnostic("generate", "ready", 0, "stop", {
-      reasoningTokens: 0,
+    const value = sharedModelCompletionDiagnostic(
+      "generate",
+      "ready",
+      0,
+      "stop",
+      {
+        reasoningTokens: 0,
+      },
+    );
+    expect(value).toMatchObject({
+      sdkReasoningTokens: 0,
+      providerReasoningDetailPresent: null,
     });
-    expect(value).toMatchObject({ sdkReasoningTokens: 0, providerReasoningDetailPresent: null });
   });
   test("roundtrips a bounded count without copying raw SDK metadata", () => {
-    const completion = sharedModelCompletionDiagnostic("stream", "ready", 1, "tool-calls", {
-      reasoningTokens: 900,
-      raw: "PRIVATE_RAW",
-    });
+    const completion = sharedModelCompletionDiagnostic(
+      "stream",
+      "ready",
+      1,
+      "tool-calls",
+      {
+        reasoningTokens: 900,
+        raw: "PRIVATE_RAW",
+      },
+    );
     const parsed = parseSharedRuntimeFailureDiagnostic({
       modelInvocationStarted: true,
       failureKind: "unknown",
@@ -885,10 +905,17 @@ describe("closed SDK reasoning diagnostics are not provider-presence proof", () 
     expect(JSON.stringify(parsed)).not.toContain("PRIVATE_");
   });
   test("invalid and poisoned SDK counts are a diagnostic miss", () => {
-    for (const reasoningTokens of [-1, 4_000_001, Number.NaN, Infinity, "PRIVATE_COUNT"]) {
+    for (const reasoningTokens of [
+      -1,
+      4_000_001,
+      Number.NaN,
+      Infinity,
+      "PRIVATE_COUNT",
+    ]) {
       expect(
-        sharedModelCompletionDiagnostic("generate", "ready", 0, "stop", { reasoningTokens })
-          .sdkReasoningTokens,
+        sharedModelCompletionDiagnostic("generate", "ready", 0, "stop", {
+          reasoningTokens,
+        }).sdkReasoningTokens,
       ).toBeNull();
     }
     const value = Object.defineProperty({}, "reasoningTokens", {
@@ -897,13 +924,20 @@ describe("closed SDK reasoning diagnostics are not provider-presence proof", () 
       },
     });
     expect(
-      sharedModelCompletionDiagnostic("generate", "ready", 0, "stop", value).sdkReasoningTokens,
+      sharedModelCompletionDiagnostic("generate", "ready", 0, "stop", value)
+        .sdkReasoningTokens,
     ).toBeNull();
   });
   test("transport rejects invalid count/presence authority", () => {
-    const completion = sharedModelCompletionDiagnostic("generate", "ready", 0, "stop", {
-      reasoningTokens: 0,
-    });
+    const completion = sharedModelCompletionDiagnostic(
+      "generate",
+      "ready",
+      0,
+      "stop",
+      {
+        reasoningTokens: 0,
+      },
+    );
     for (const invalid of [
       { ...completion, sdkReasoningTokens: -1 },
       { ...completion, sdkReasoningTokens: 4_000_001 },

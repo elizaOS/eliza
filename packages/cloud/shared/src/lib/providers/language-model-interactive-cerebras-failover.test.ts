@@ -47,9 +47,11 @@ mock.module("../models", () => ({
   ],
 }));
 const { APICallError, generateText, jsonSchema, streamText } = await import("ai");
-const { getInteractiveCerebrasLanguageModel, ProviderConfigurationError, ProviderFallbackRefusedError } = await import(
-  "./language-model"
-);
+const {
+  getInteractiveCerebrasLanguageModel,
+  ProviderConfigurationError,
+  ProviderFallbackRefusedError,
+} = await import("./language-model");
 
 function hostOf(url: RequestInfo | URL): "openrouter" | "cerebras" | "other" {
   const u = String(url);
@@ -675,7 +677,6 @@ describe("Core Qwen thinking-off control through the actual existing clients", (
   }
 });
 
-
 describe("public routing slot and cancellation before cross-provider fallback", () => {
   for (const mode of ["generate", "stream"] as const) {
     for (const thinkingOff of [false, true]) {
@@ -683,15 +684,43 @@ describe("public routing slot and cancellation before cross-provider fallback", 
         const bodies: Array<Record<string, unknown>> = [];
         const hosts: string[] = [];
         const policyCalls: unknown[] = [];
-        const routing = { fallbackPolicy: (context: unknown) => { policyCalls.push(context); return { allow: false as const, reason: "fixture routing refusal" }; } };
-        globalThis.fetch = Object.assign(async (url: RequestInfo | URL, init?: RequestInit) => { hosts.push(hostOf(url)); bodies.push(JSON.parse(String(init?.body))); return serverError(); }, { preconnect: ORIGINAL_FETCH.preconnect });
-        const model = getInteractiveCerebrasLanguageModel("qwen-3.8-27b", undefined, routing, thinkingOff ? { eliza: { thinking: "off" } } : undefined);
-        const call = { prompt: [{ role: "user" as const, content: [{ type: "text" as const, text: "unchanged" }] }], maxOutputTokens: 64 };
+        const routing = {
+          fallbackPolicy: (context: unknown) => {
+            policyCalls.push(context);
+            return { allow: false as const, reason: "fixture routing refusal" };
+          },
+        };
+        globalThis.fetch = Object.assign(
+          async (url: RequestInfo | URL, init?: RequestInit) => {
+            hosts.push(hostOf(url));
+            bodies.push(JSON.parse(String(init?.body)));
+            return serverError();
+          },
+          { preconnect: ORIGINAL_FETCH.preconnect },
+        );
+        const model = getInteractiveCerebrasLanguageModel(
+          "qwen-3.8-27b",
+          undefined,
+          routing,
+          thinkingOff ? { eliza: { thinking: "off" } } : undefined,
+        );
+        const call = {
+          prompt: [
+            { role: "user" as const, content: [{ type: "text" as const, text: "unchanged" }] },
+          ],
+          maxOutputTokens: 64,
+        };
         const work = mode === "generate" ? model.doGenerate(call) : model.doStream(call);
         await expect(work).rejects.toBeInstanceOf(ProviderFallbackRefusedError);
         expect(hosts).toEqual(["cerebras"]);
         expect(policyCalls).toHaveLength(1);
-        expect(policyCalls[0]).toMatchObject({ model: "qwen-3.8-27b", primary: "cerebras", alternate: "openrouter", operation: mode, status: 503 });
+        expect(policyCalls[0]).toMatchObject({
+          model: "qwen-3.8-27b",
+          primary: "cerebras",
+          alternate: "openrouter",
+          operation: mode,
+          status: 503,
+        });
         if (thinkingOff) expect(bodies[0].reasoning_effort).toBe("none");
         else expect(bodies[0]).not.toHaveProperty("reasoning_effort");
       });
@@ -700,12 +729,35 @@ describe("public routing slot and cancellation before cross-provider fallback", 
       const controller = new AbortController();
       const policyCalls: unknown[] = [];
       const hosts: string[] = [];
-      const routing = { fallbackPolicy: (context: unknown) => { policyCalls.push(context); return { allow: true as const }; } };
-      globalThis.fetch = Object.assign(async (url: RequestInfo | URL) => { hosts.push(hostOf(url)); controller.abort(new DOMException("cancelled fixture", "AbortError")); return serverError(); }, { preconnect: ORIGINAL_FETCH.preconnect });
-      const model = getInteractiveCerebrasLanguageModel("qwen-3.8-27b", undefined, routing, { eliza: { thinking: "off" } });
-      const call = { prompt: [{ role: "user" as const, content: [{ type: "text" as const, text: "unchanged" }] }], abortSignal: controller.signal };
+      const routing = {
+        fallbackPolicy: (context: unknown) => {
+          policyCalls.push(context);
+          return { allow: true as const };
+        },
+      };
+      globalThis.fetch = Object.assign(
+        async (url: RequestInfo | URL) => {
+          hosts.push(hostOf(url));
+          controller.abort(new DOMException("cancelled fixture", "AbortError"));
+          return serverError();
+        },
+        { preconnect: ORIGINAL_FETCH.preconnect },
+      );
+      const model = getInteractiveCerebrasLanguageModel("qwen-3.8-27b", undefined, routing, {
+        eliza: { thinking: "off" },
+      });
+      const call = {
+        prompt: [
+          { role: "user" as const, content: [{ type: "text" as const, text: "unchanged" }] },
+        ],
+        abortSignal: controller.signal,
+      };
       let failure: unknown;
-      try { await (mode === "generate" ? model.doGenerate(call) : model.doStream(call)); } catch(error) { failure=error; }
+      try {
+        await (mode === "generate" ? model.doGenerate(call) : model.doStream(call));
+      } catch (error) {
+        failure = error;
+      }
       expect(APICallError.isInstance(failure)).toBe(true);
       if (!APICallError.isInstance(failure)) throw new Error("Original primary SDK error missing");
       expect(failure.statusCode).toBe(503);

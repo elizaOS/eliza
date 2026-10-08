@@ -916,14 +916,20 @@ describe("Shared Eliza runtime in Workerd", () => {
         compatibility_flags: z.array(z.string()),
         define: z.record(z.string(), z.string()),
         alias: z.record(z.string(), z.string()),
-        env: z.object({ production: z.object({ compatibility_flags: z.array(z.string()).optional() }) }),
+        env: z.object({
+          production: z.object({
+            compatibility_flags: z.array(z.string()).optional(),
+          }),
+        }),
       })
       .parse(
         Bun.TOML.parse(
           await readFile(join(apiDirectory, "wrangler.toml"), "utf8"),
         ),
       );
-    const effectiveCompatibilityFlags = workerConfig.env.production.compatibility_flags ?? workerConfig.compatibility_flags;
+    const effectiveCompatibilityFlags =
+      workerConfig.env.production.compatibility_flags ??
+      workerConfig.compatibility_flags;
     const configPath = join(buildDirectory, "wrangler.json");
     await Bun.write(
       configPath,
@@ -1009,13 +1015,24 @@ describe("Shared Eliza runtime in Workerd", () => {
   test.each([
     { path: "/cancel-before-model", expectedDispatches: 0 },
     { path: "/cancel-at-dispatch", expectedDispatches: 1 },
-  ])("$path rejects genuine runtime work before SDK provider calls", async ({ path, expectedDispatches }) => {
-    const before = modelRequests.length;
-    const response = await miniflare.dispatchFetch(`https://runtime.test${path}`);
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ rejected: true, dispatches: expectedDispatches, signalAborted: true, abortReasonUnchanged: true, outcomes: ["aborted"] });
-    expect(modelRequests).toHaveLength(before);
-  });
+  ])(
+    "$path rejects genuine runtime work before SDK provider calls",
+    async ({ path, expectedDispatches }) => {
+      const before = modelRequests.length;
+      const response = await miniflare.dispatchFetch(
+        `https://runtime.test${path}`,
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        rejected: true,
+        dispatches: expectedDispatches,
+        signalAborted: true,
+        abortReasonUnchanged: true,
+        outcomes: ["aborted"],
+      });
+      expect(modelRequests).toHaveLength(before);
+    },
+  );
 
   test("runs the production Shared adapter through the genuine runtime", async () => {
     const response = await miniflare.dispatchFetch("https://runtime.test/");
