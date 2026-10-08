@@ -385,13 +385,14 @@ export class DexScreenerService extends Service {
   }
   formatPrice(price: string | number): string {
     const numPrice = typeof price === "string" ? parseFloat(price) : price;
-    if (numPrice >= 1) {
-      return numPrice.toFixed(2);
-    } else if (numPrice >= 0.01) {
-      return numPrice.toFixed(4);
-    } else {
-      return numPrice.toFixed(8);
+    if (numPrice >= 1) return numPrice.toFixed(2);
+    if (numPrice >= 0.01) {
+      const text = numPrice.toFixed(4);
+      // 0.99996 renders "1.0000". Use the dollar tier for that display.
+      return text === "1.0000" ? numPrice.toFixed(2) : text;
     }
+    const text = numPrice.toFixed(8);
+    return text === "0.01000000" ? numPrice.toFixed(4) : text;
   }
   formatPriceChange(change: number): string {
     const sign = change >= 0 ? "+" : "";
