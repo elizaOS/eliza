@@ -154,8 +154,10 @@ export function convertMarkdownToTelegram(markdown: string): string {
   //    In Telegram MarkdownV2 italic must be delimited by underscores.
   //    Process asterisk-based italic first.
   //    (Using negative lookbehind/lookahead to avoid matching bold **)
+  //    As in CommonMark, a `*` followed by whitespace cannot open italic and
+  //    one preceded by whitespace cannot close it, so `2 * 3 * 4` stays literal.
   converted = converted.replace(
-    /(?<!\*)\*([^*\n]+)\*(?!\*)/g,
+    /(?<!\*)\*(?!\s)([^*\n]+)(?<!\s)\*(?!\*)/g,
     (_match, content) => {
       const formattedContent = escapePlainText(content);
       const formatted = `_${formattedContent}_`;

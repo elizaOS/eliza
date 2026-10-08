@@ -26,6 +26,16 @@ describe("convertMarkdownToTelegram", () => {
     expect(convertMarkdownToTelegram("~~struck~~")).toBe("~struck~");
   });
 
+  it("does not italicize asterisks flanked by whitespace", () => {
+    expect(convertMarkdownToTelegram("2 * 3 * 4")).toBe("2 \\* 3 \\* 4");
+    expect(convertMarkdownToTelegram("* Use *this* now")).toBe(
+      "\\* Use _this_ now",
+    );
+    expect(convertMarkdownToTelegram("*it* and * not *")).toBe(
+      "_it_ and \\* not \\*",
+    );
+  });
+
   it("escapes MarkdownV2 reserved chars in plain text", () => {
     expect(convertMarkdownToTelegram("hello.")).toBe("hello\\.");
     expect(convertMarkdownToTelegram("a-b!")).toBe("a\\-b\\!");

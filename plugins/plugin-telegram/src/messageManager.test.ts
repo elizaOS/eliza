@@ -133,6 +133,26 @@ describe("MessageManager long message splitting", () => {
     ).toHaveLength(1);
   });
 
+  it("keeps spaced asterisks literal in the MarkdownV2 text it sends", async () => {
+    const { manager, sendMessage } = createManager();
+
+    await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: {
+          sendChatAction: vi.fn(async () => undefined),
+          sendMessage,
+        },
+      } as never,
+      { text: "5 * 2 = 10 and 3 * 4 = 12, but *this* is italic" },
+    );
+
+    expect(sendMessage.mock.calls[0][1]).toBe(
+      "5 \\* 2 \\= 10 and 3 \\* 4 \\= 12, but _this_ is italic",
+    );
+    expect(sendMessage.mock.calls[0][2]?.parse_mode).toBe("MarkdownV2");
+  });
+
   it("hard-splits a single over-limit line into Telegram-sized messages", async () => {
     const { manager, sendMessage } = createManager();
     const text = "x".repeat(4096 * 2 + 17);
