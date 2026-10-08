@@ -385,26 +385,36 @@ export class DexScreenerService extends Service {
   }
   formatPrice(price: string | number): string {
     const numPrice = typeof price === "string" ? parseFloat(price) : price;
-    if (numPrice >= 1) {
-      return numPrice.toFixed(2);
-    } else if (numPrice >= 0.01) {
-      return numPrice.toFixed(4);
-    } else {
-      return numPrice.toFixed(8);
+    if (numPrice >= 1) return numPrice.toFixed(2);
+    if (numPrice >= 0.01) {
+      const text = numPrice.toFixed(4);
+      // 0.99996 renders "1.0000". Use the dollar tier for that display.
+      return text === "1.0000" ? numPrice.toFixed(2) : text;
     }
+    const text = numPrice.toFixed(8);
+    return text === "0.01000000" ? numPrice.toFixed(4) : text;
   }
   formatPriceChange(change: number): string {
     const sign = change >= 0 ? "+" : "";
     return `${sign}${change.toFixed(2)}%`;
   }
   formatUsdValue(value: number): string {
-    if (value >= 1000000) {
-      return `$${(value / 1000000).toFixed(2)}M`;
-    } else if (value >= 1000) {
-      return `$${(value / 1000).toFixed(2)}K`;
-    } else {
-      return `$${value.toFixed(2)}`;
+    const tiers = [
+      { divisor: 1_000_000_000, suffix: "B" },
+      { divisor: 1_000_000, suffix: "M" },
+      { divisor: 1_000, suffix: "K" },
+      { divisor: 1, suffix: "" },
+    ];
+    let index = tiers.findIndex((tier) => value >= tier.divisor);
+    if (index < 0) index = tiers.length - 1;
+    let scaled = (value / tiers[index].divisor).toFixed(2);
+    // 999_999 / 1000 renders "1000.00". Promote that display to the next
+    // suffix. Leave every other rounded value on the tier it started on.
+    if (scaled === "1000.00" && index > 0) {
+      index -= 1;
+      scaled = (value / tiers[index].divisor).toFixed(2);
     }
+    return `$${scaled}${tiers[index].suffix}`;
   }
   async getMultipleTokens(
     chainId: string,
