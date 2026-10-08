@@ -506,6 +506,7 @@ export {
 	shouldIncludeByContext,
 } from "./utils/context-routing";
 export { createHash } from "./utils/crypto-compat.ts";
+export { parseDurationMs } from "./utils/duration.ts";
 export {
 	isEnvDisabled,
 	isExactTrueEnvFlag,

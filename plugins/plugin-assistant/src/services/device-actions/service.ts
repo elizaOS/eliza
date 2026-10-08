@@ -83,6 +83,7 @@ interface TransactionDatabase extends TransactionalDb {
   transaction<T>(fn: (tx: TransactionalDb) => Promise<T>): Promise<T>;
 }
 interface DeviceTurn {
+  readonly startedAt: number;
   runtime: IAgentRuntime;
   credential: DeviceCredential;
   active: boolean;
@@ -98,10 +99,11 @@ export async function withDeviceActionTurn<T>(
   credential: DeviceCredential,
   fn: () => Promise<T>,
 ): Promise<T> {
+  const startedAt = Date.now();
   const viewProfile = await new DeviceActionService(runtime).viewProfile(
     credential,
   );
-  const context = { runtime, credential, active: true, viewProfile };
+  const context = { runtime, credential, active: true, viewProfile, startedAt };
   try {
     return await turn.run(context, () =>
       withActionGatePolicy((action, gate) => {
