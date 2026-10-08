@@ -75,10 +75,16 @@ jobs:
           cat > "$task_script" <<'SCRIPT'
           set -euo pipefail
           cd "$TASK_WORKSPACE"
-          test "$(git rev-parse HEAD)" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
-          test "$(bun --version)" = 1.4.2
-          test "$(node --version)" = v24.15.0
-          test "$(node_modules/.bin/biome --version)" = "Version: 2.5.14"
+          trap 'printf "::error::Focused launcher guard stopped at line %s\n" "$LINENO"' ERR
+          task_source_head="$(git rev-parse HEAD)"
+          task_bun_version="$(bun --version)"
+          task_node_version="$(node --version)"
+          task_biome_version="$(node_modules/.bin/biome --version)"
+          printf 'Focused source=%s bun=%s node=%s biome=%s\n' "$task_source_head" "$task_bun_version" "$task_node_version" "$task_biome_version"
+          test "$task_source_head" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
+          test "$task_bun_version" = 1.4.2
+          test "$task_node_version" = v24.15.0
+          test "$task_biome_version" = "Version: 2.5.14"
           mkdir -p "$TASK_EVIDENCE"
           node_modules/.bin/biome check --vcs-enabled=false \
             packages/cloud/shared/src/lib/providers/language-model.ts \
