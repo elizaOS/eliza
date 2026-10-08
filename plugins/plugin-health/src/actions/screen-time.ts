@@ -326,10 +326,14 @@ export function normalizeDomain(value: string): string {
   const withScheme =
     trimmed.startsWith("http://") || trimmed.startsWith("https://")
       ? trimmed
-      : trimmed.includes("/")
-        ? `https://${trimmed}`
-        : null;
-  if (withScheme === null) return trimmed;
+      : trimmed.includes("://") || trimmed.indexOf("/") <= 0
+        ? null
+        : `https://${trimmed}`;
+  if (withScheme === null) {
+    // "/section" and "ftp://host/x" must not become a made-up host.
+    if (trimmed.startsWith("/") || trimmed.includes("://")) return "";
+    return trimmed;
+  }
   try {
     return new URL(withScheme).hostname.toLowerCase();
   } catch {

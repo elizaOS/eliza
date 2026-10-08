@@ -12,4 +12,9 @@ describe("normalizeDomain", () => {
     expect(normalizeDomain("nytimes.com")).toBe("nytimes.com");
     expect(normalizeDomain("https://")).toBe("");
   });
+
+  it("does not invent a host from a path or a non-http scheme", () => {
+    expect(normalizeDomain("/section")).toBe("");
+    expect(normalizeDomain("ftp://nytimes.com/x")).toBe("");
+  });
 });
