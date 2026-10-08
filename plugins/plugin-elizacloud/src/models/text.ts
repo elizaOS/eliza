@@ -799,27 +799,39 @@ function sanitizeNativeMessages(
 function buildNativeMessages(
   params: GenerateTextParamsWithNativeOptions,
   promptText: string,
-  systemPrompt?: string
+  systemPrompt?: string,
+  responseFormat?: unknown
 ): Array<Record<string, unknown>> {
+  let messages: Array<Record<string, unknown>>;
   if (Array.isArray(params.messages) && params.messages.length > 0) {
-    const messages = params.messages.map((message) =>
+    messages = params.messages.map((message) =>
       isRecord(message)
         ? { ...message }
         : { role: "user", content: stringifyMessageContent(message) }
     );
-    const first = asRecord(messages[0]);
-    const withSystem =
-      systemPrompt && first.role !== "system"
-        ? [{ role: "system", content: systemPrompt }, ...messages]
-        : messages;
-    return sanitizeNativeMessages(withSystem);
+    if (systemPrompt && messages[0].role !== "system") {
+      messages.unshift({ role: "system", content: systemPrompt });
+    }
+    messages = sanitizeNativeMessages(messages);
+  } else {
+    messages = [];
+    if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
+    messages.push({ role: "user", content: promptText });
   }
 
-  const messages: Array<Record<string, unknown>> = [];
-  if (systemPrompt) {
-    messages.push({ role: "system", content: systemPrompt });
+  // The native gateway omits schema response formats unless explicitly supplied.
+  // Keep the caller's complete output contract in model-visible instructions.
+  if (params.responseSchema && asRecord(responseFormat).type !== "json_schema") {
+    const instruction = `Return only JSON matching this schema; do not add prohibited fields.\nResponse JSON schema:\n${JSON.stringify(unwrapJsonSchema(params.responseSchema))}`;
+    const first = messages[0];
+    if (first.role === "system" && typeof first.content === "string") {
+      first.content += `\n\n${instruction}`;
+    } else if (first.role === "system" && Array.isArray(first.content)) {
+      first.content = [...first.content, { type: "text", text: instruction }];
+    } else {
+      messages.unshift({ role: "system", content: instruction });
+    }
   }
-  messages.push({ role: "user", content: promptText });
   return messages;
 }
 
@@ -937,8 +949,8 @@ function buildNativeResponseFormat(responseSchema: unknown, _modelName: string):
   // The Cloud's native `/chat/completions` gateway 400s on `response_format`
   // for its served models — BOTH `json_schema` AND `json_object`, verified
   // live against zai-glm-4.7 AND gemma-4-31b (each: with either format → 400,
-  // without → 200). The structured schema is already embedded in the prompt
-  // body and the caller repairs/validates the returned JSON, so omit
+  // without → 200). buildNativeMessages supplies the complete schema in the
+  // system instructions and the caller validates returned JSON, so omit
   // `response_format` entirely; otherwise every structured-output call (the
   // trajectory evaluator, the planner) fails with `Bad Request` and breaks
   // every tool-using turn (web search, price lookups, sub-agent spawns).
@@ -1038,7 +1050,7 @@ function buildNativeRequestBody(
   const responseFormat = buildNativeResponseFormat(params.responseSchema, modelName);
   const requestBody: Record<string, unknown> = {
     model: modelName,
-    messages: buildNativeMessages(params, promptText, systemPrompt),
+    messages: buildNativeMessages(params, promptText, systemPrompt, responseFormat),
   };
   // An omitted output budget remains omitted. The selected provider owns its
   // real model boundary; core defaults would silently turn a complete request
