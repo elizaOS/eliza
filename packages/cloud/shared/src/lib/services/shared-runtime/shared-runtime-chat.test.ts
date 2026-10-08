@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import * as organizationInferenceAdmissionActual from "../organization-inference-admission";
 import type { SharedReminderActionProvenance } from "./run-shared-agent-turn";
+import type { SharedTurnTerminalResult } from "./shared-runtime-chat";
 
 let turn: Record<string, unknown>;
 let streamTurn: Record<string, unknown>;
@@ -2036,7 +2037,7 @@ describe("SharedRuntimeChatService", () => {
 
   // ---- durable claim/replay/conflict boundary for clientMessageId (#18045) ----
 
-  type ClaimRecord = { hash: string; result?: Record<string, unknown> };
+  type ClaimRecord = { hash: string; result?: SharedTurnTerminalResult };
 
   function memoryTurnClaims(options: { failCompleteAttempts?: number } = {}) {
     const claims = new Map<string, ClaimRecord>();
@@ -2049,14 +2050,14 @@ describe("SharedRuntimeChatService", () => {
           if (existing) {
             if (existing.hash !== hash) return { state: "conflict" as const };
             if (existing.result) {
-              return { state: "replay" as const, result: existing.result as never };
+              return { state: "replay" as const, result: existing.result };
             }
             return { state: "claimed" as const };
           }
           claims.set(key, { hash });
           return { state: "claimed" as const };
         },
-        complete: async (key: string, result: Record<string, unknown>) => {
+        complete: async (key: string, result: SharedTurnTerminalResult) => {
           if (remainingCompleteFailures > 0) {
             remainingCompleteFailures--;
             throw new Error("claim completion failed");

@@ -641,11 +641,13 @@ describe("personal Shared messaging deliveries", () => {
         throw new Error("Cancelled prewarm must not run coordinator work");
       },
     );
-    const pending = request(
-      valid,
-      "Bearer test-secret",
-      "44444444444444448444444444444444",
-      controller.signal,
+    const pending = Promise.resolve(
+      request(
+        valid,
+        "Bearer test-secret",
+        "44444444444444448444444444444444",
+        controller.signal,
+      ),
     );
     pending.catch(() => undefined);
     await entered.promise;

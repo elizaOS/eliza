@@ -2969,10 +2969,13 @@ describe("genuine Shared caller cancellation dispatch boundary", () => {
     const timingOutcomes: string[] = [];
     let calls = 0;
     let dispatches = 0;
-    globalThis.fetch = (async () => {
-      calls += 1;
-      throw new Error("Preaborted turn must not contact a provider");
-    }) as typeof fetch;
+    globalThis.fetch = Object.assign(
+      async () => {
+        calls += 1;
+        throw new Error("Preaborted turn must not contact a provider");
+      },
+      { preconnect: ORIGINAL_FETCH.preconnect },
+    );
     await expect(
       runSharedElizaRuntimeTurn(
         input(
@@ -2999,17 +3002,20 @@ describe("genuine Shared caller cancellation dispatch boundary", () => {
     const timingOutcomes: string[] = [];
     const reason = new DOMException("caller cancelled", "AbortError");
     const hosts: string[] = [];
-    globalThis.fetch = (async (url) => {
-      const host = new URL(String(url)).hostname;
-      hosts.push(host);
-      if (host !== "api.cerebras.ai")
-        throw new Error("Cancelled genuine turn must not start fallback");
-      controller.abort(reason);
-      return Response.json(
-        { error: { message: "fixture response races cancellation" } },
-        { status: 503 },
-      );
-    }) as typeof fetch;
+    globalThis.fetch = Object.assign(
+      async (url: RequestInfo | URL) => {
+        const host = new URL(String(url)).hostname;
+        hosts.push(host);
+        if (host !== "api.cerebras.ai")
+          throw new Error("Cancelled genuine turn must not start fallback");
+        controller.abort(reason);
+        return Response.json(
+          { error: { message: "fixture response races cancellation" } },
+          { status: 503 },
+        );
+      },
+      { preconnect: ORIGINAL_FETCH.preconnect },
+    );
     try {
       await expect(
         runSharedElizaRuntimeTurn(
