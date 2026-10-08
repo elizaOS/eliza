@@ -7,6 +7,7 @@ export const CHARACTER_LANGUAGES = [
 	"pt",
 	"vi",
 	"tl",
+	"ja",
 ] as const;
 
 export type CharacterLanguage = (typeof CHARACTER_LANGUAGES)[number];
@@ -21,6 +22,7 @@ export const LANGUAGE_REPLY_RULES: Record<CharacterLanguage, string> = {
 	pt: "Default to natural Brazilian Portuguese unless the user clearly switches languages.",
 	vi: "Default to natural Vietnamese unless the user clearly switches languages.",
 	tl: "Default to natural Tagalog unless the user clearly switches languages.",
+	ja: "Default to natural Japanese unless the user clearly switches languages.",
 };
 export function addLanguageRule(
 	system: string,
@@ -58,6 +60,9 @@ export function normalizeCharacterLanguage(input: unknown): CharacterLanguage {
 	}
 	if (lower.startsWith("tl") || lower.startsWith("fil")) {
 		return "tl";
+	}
+	if (lower === "ja" || lower.startsWith("ja-")) {
+		return "ja";
 	}
 	return DEFAULT_CHARACTER_LANGUAGE;
 }
