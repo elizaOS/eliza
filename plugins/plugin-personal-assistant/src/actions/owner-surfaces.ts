@@ -309,7 +309,11 @@ export const ownerRemindersAction: Action = {
     defaultKind: "definition",
   }),
   name: "OWNER_REMINDERS",
-  tags: [...OWNER_OPERATION_TAGS, FOLLOW_UP_CAPABLE_ACTION_TAG],
+  tags: [
+    ...OWNER_OPERATION_TAGS,
+    "resource:reminders-records",
+    FOLLOW_UP_CAPABLE_ACTION_TAG,
+  ],
   similes: [
     "REMINDER",
     "REMINDERS",

@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
-import { stableStringify } from "@elizaos/core";
+import { stableStringify, withActionGatePolicy } from "@elizaos/core";
 import {
   executeRawSqlTx,
   sqlText,
@@ -103,7 +103,28 @@ export async function withDeviceActionTurn<T>(
   );
   const context = { runtime, credential, active: true, viewProfile };
   try {
-    return await turn.run(context, fn);
+    return await turn.run(context, () =>
+      withActionGatePolicy((action) => {
+        if (action.name === "PROPOSE_DEVICE_ACTION") return;
+        const capabilities = credential.capabilities ?? [];
+        const tags = action.tags ?? [];
+        const nativeDomain =
+          capabilities.includes(NOTES_CAPABILITY) &&
+          tags.includes("resource:notes")
+            ? "Notes"
+            : capabilities.includes(CALENDAR_CAPABILITY) &&
+                tags.includes("resource:calendar-records")
+              ? "Calendar"
+              : (capabilities.includes(REMINDER_CAPABILITY) ||
+                    capabilities.includes(REMINDER_TIMING_CAPABILITY) ||
+                    capabilities.includes(REMINDER_CREATE_CAPABILITY)) &&
+                  tags.includes("resource:reminders-records")
+                ? "reminders"
+                : undefined;
+        if (nativeDomain)
+          return `This authenticated phone owns ${nativeDomain} records. Use PROPOSE_DEVICE_ACTION for its supported operations; native approval and a device receipt are required. Backend-store actions cannot substitute for device records.`;
+      }, fn),
+    );
   } finally {
     context.active = false;
   }
