@@ -474,7 +474,7 @@ function resolveSolanaAddressForConfiguredSource(
 const HEX_RE = /^[0-9a-fA-F]+$/;
 
 export function validateEvmPrivateKey(key: string): KeyValidationResult {
-  const cleaned = key.startsWith("0x") ? key.slice(2) : key;
+  const cleaned = /^0x/i.test(key) ? key.slice(2) : key;
   if (cleaned.length !== 64)
     return {
       valid: false,
@@ -536,10 +536,7 @@ export function validateSolanaPrivateKey(key: string): KeyValidationResult {
 /** Auto-detect chain from key format and validate. */
 export function validatePrivateKey(key: string): KeyValidationResult {
   const trimmed = key.trim();
-  if (
-    trimmed.startsWith("0x") ||
-    (trimmed.length === 64 && HEX_RE.test(trimmed))
-  )
+  if (/^0x/i.test(trimmed) || (trimmed.length === 64 && HEX_RE.test(trimmed)))
     return validateEvmPrivateKey(trimmed);
   return validateSolanaPrivateKey(trimmed);
 }
@@ -560,9 +557,8 @@ export function importWallet(
     const v = validateEvmPrivateKey(trimmed);
     if (!v.valid)
       return { success: false, chain, address: null, error: v.error };
-    process.env.EVM_PRIVATE_KEY = trimmed.startsWith("0x")
-      ? trimmed
-      : `0x${trimmed}`;
+    const hexBody = /^0x/i.test(trimmed) ? trimmed.slice(2) : trimmed;
+    process.env.EVM_PRIVATE_KEY = `0x${hexBody}`;
     logger.info(`[wallet] Imported EVM wallet: ${v.address}`);
     return { success: true, chain, address: v.address, error: null };
   }
