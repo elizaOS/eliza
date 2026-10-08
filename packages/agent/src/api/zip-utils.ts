@@ -55,6 +55,14 @@ function crc32(buffer: Buffer): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+/** APPNOTE bit 11: the entry name is UTF-8, not CP437. */
+function languageEncodingFlag(name: string): number {
+  for (let index = 0; index < name.length; index += 1) {
+    if (name.charCodeAt(index) > 0x7f) return 0x0800;
+  }
+  return 0;
+}
+
 function toDosDateTime(date: Date): { date: number; time: number } {
   const year = Math.min(Math.max(date.getFullYear(), 1980), 2107);
   const month = Math.min(Math.max(date.getMonth() + 1, 1), 12);
@@ -83,11 +91,14 @@ export function createZipArchive(entries: ZipEntryInput[]): Buffer {
     const dataBuffer = toBuffer(entry.data);
     const checksum = crc32(dataBuffer);
     const { date, time } = toDosDateTime(entry.mtime ?? new Date());
+    // The name is always written as UTF-8. Bit 11 tells readers to decode it
+    // that way. Without the bit, "café.txt" is read back as "caf├⌐.txt".
+    const flags = languageEncodingFlag(name);
 
     const localHeader = Buffer.alloc(30 + nameBuffer.length);
     localHeader.writeUInt32LE(0x04034b50, 0); // local file header signature
     localHeader.writeUInt16LE(20, 4); // version needed to extract
-    localHeader.writeUInt16LE(0, 6); // general purpose bit flag
+    localHeader.writeUInt16LE(flags, 6); // general purpose bit flag
     localHeader.writeUInt16LE(0, 8); // compression method: store
     localHeader.writeUInt16LE(time, 10);
     localHeader.writeUInt16LE(date, 12);
@@ -102,7 +113,7 @@ export function createZipArchive(entries: ZipEntryInput[]): Buffer {
     centralHeader.writeUInt32LE(0x02014b50, 0); // central file header signature
     centralHeader.writeUInt16LE(20, 4); // version made by
     centralHeader.writeUInt16LE(20, 6); // version needed to extract
-    centralHeader.writeUInt16LE(0, 8); // general purpose bit flag
+    centralHeader.writeUInt16LE(flags, 8); // general purpose bit flag
     centralHeader.writeUInt16LE(0, 10); // compression method: store
     centralHeader.writeUInt16LE(time, 12);
     centralHeader.writeUInt16LE(date, 14);
