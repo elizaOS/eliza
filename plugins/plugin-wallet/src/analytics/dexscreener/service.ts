@@ -398,13 +398,21 @@ export class DexScreenerService extends Service {
     return `${sign}${change.toFixed(2)}%`;
   }
   formatUsdValue(value: number): string {
-    if (value >= 1000000) {
-      return `$${(value / 1000000).toFixed(2)}M`;
-    } else if (value >= 1000) {
-      return `$${(value / 1000).toFixed(2)}K`;
-    } else {
-      return `$${value.toFixed(2)}`;
+    const tiers = [
+      { divisor: 1_000_000, suffix: "M" },
+      { divisor: 1_000, suffix: "K" },
+      { divisor: 1, suffix: "" },
+    ];
+    let index = tiers.findIndex((tier) => value >= tier.divisor);
+    if (index < 0) index = tiers.length - 1;
+    let scaled = (value / tiers[index].divisor).toFixed(2);
+    // 999_999 / 1000 renders "1000.00". Promote that display to the next
+    // suffix. Leave every other rounded value on the tier it started on.
+    if (scaled === "1000.00" && index > 0) {
+      index -= 1;
+      scaled = (value / tiers[index].divisor).toFixed(2);
     }
+    return `$${scaled}${tiers[index].suffix}`;
   }
   async getMultipleTokens(
     chainId: string,
