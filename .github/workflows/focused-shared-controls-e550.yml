@@ -24,7 +24,7 @@ jobs:
       - name: Checkout exact reviewed public source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 8ff6416e86c227719b97c8ef13c3bf43afda5eee
+          ref: 6eefe82931b7d51f5788879da3677c0cfbee891c
           fetch-depth: 1
           submodules: false
           persist-credentials: false
@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 8ff6416e86c227719b97c8ef13c3bf43afda5eee
+          test "$(git rev-parse HEAD)" = 6eefe82931b7d51f5788879da3677c0cfbee891c
           command -v timeout
           command -v unshare
           command -v ip
@@ -97,7 +97,7 @@ jobs:
           test -f plugins/plugin-google-workspace/dist/gmail-attachments.js
           test -f plugins/plugin-wallet/dist/lib/market-overview.js
           test -f plugins/plugin-elizacloud/dist/cloud-config/domain-contract.js
-          test "$(git rev-parse HEAD)" = 8ff6416e86c227719b97c8ef13c3bf43afda5eee
+          test "$(git rev-parse HEAD)" = 6eefe82931b7d51f5788879da3677c0cfbee891c
           git diff --quiet HEAD
       - name: Test exact five owning files in a loopback-only namespace
         shell: bash
@@ -116,7 +116,7 @@ jobs:
           task_node_version="$(node --version)"
           task_biome_version="$(node_modules/.bin/biome --version)"
           printf 'Focused source=%s bun=%s node=%s biome=%s\n' "$task_source_head" "$task_bun_version" "$task_node_version" "$task_biome_version"
-          test "$task_source_head" = 8ff6416e86c227719b97c8ef13c3bf43afda5eee
+          test "$task_source_head" = 6eefe82931b7d51f5788879da3677c0cfbee891c
           test "$task_bun_version" = 1.4.2
           test "$task_node_version" = v24.15.0
           test "$task_biome_version" = "Version: 2.5.14"
@@ -186,7 +186,7 @@ jobs:
             exit "$task_exit"
           fi
           tail -8 "$TASK_EVIDENCE/incoming-http.log"
-          test "$(git rev-parse HEAD)" = 8ff6416e86c227719b97c8ef13c3bf43afda5eee
+          test "$(git rev-parse HEAD)" = 6eefe82931b7d51f5788879da3677c0cfbee891c
           git diff --quiet HEAD
           SCRIPT
           # No fallback to the host network when namespace creation is unavailable.
@@ -211,7 +211,7 @@ jobs:
           cat > "$task_script" <<'SCRIPT'
           set -euo pipefail
           cd "$TASK_WORKSPACE"
-          test "$(git rev-parse HEAD)" = 8ff6416e86c227719b97c8ef13c3bf43afda5eee
+          test "$(git rev-parse HEAD)" = 6eefe82931b7d51f5788879da3677c0cfbee891c
           check() {
             task_name="$1"; shift
             if timeout --kill-after=10s 120s "$@" > "$TASK_EVIDENCE/$task_name.log" 2>&1; then
