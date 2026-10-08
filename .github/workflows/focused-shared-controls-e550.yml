@@ -66,6 +66,8 @@ jobs:
           timeout --kill-after=10s 120s bun run --cwd plugins/plugin-native-inference build
           test -f plugins/plugin-native-inference/dist/model-catalog/bge-input.js
           test -f plugins/plugin-native-inference/dist/model-catalog/bge/tokenizer.json
+          timeout --kill-after=10s 120s bun run --cwd packages/cloud/sdk build
+          test -f packages/cloud/sdk/dist/browser-contracts/index.js
           timeout --kill-after=10s 120s bun run --cwd plugins/plugin-scheduling build:js
           timeout --kill-after=10s 120s bun run --cwd plugins/plugin-todos build:js
           timeout --kill-after=10s 120s bun run --cwd plugins/plugin-assistant build
