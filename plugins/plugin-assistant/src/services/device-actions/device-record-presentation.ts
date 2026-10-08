@@ -1,5 +1,6 @@
 /** Human-readable device review and receipt text. Presentation grants no authority. */
 import type { CalendarOperation } from "./calendar-contract.ts";
+import type { NotesOperation } from "./notes-contract.ts";
 import type {
   ReminderOperation,
   ReminderSchedule,
@@ -51,15 +52,38 @@ function reminderTimingDescription(
 export function presentDeviceRecordOperation(
   operation:
     | CalendarOperation
+    | NotesOperation
     | ReminderOperation
     | ReminderCreateOperation
-    | { type: "create_reminder"; title: string; dueAt: string },
+    | { type: "create_reminder"; title: string; dueAt: string }
+    | { type: "create_note"; title: string; body: string },
   timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
 ): { title: string; description: string; appliedSummary: string } {
   let title: string;
   let applied: string;
   let details = "";
   switch (operation.type) {
+    case "create_note":
+    case "notes_update": {
+      const fields =
+        operation.type === "create_note" ? operation : operation.fields;
+      title = operation.type === "create_note" ? "Create note" : "Update note";
+      applied =
+        operation.type === "create_note" ? "Saved note" : "Updated note";
+      details = `“${fields.title}”\n${fields.body}`;
+      break;
+    }
+    case "notes_read_selected":
+      title = "Share selected note";
+      applied = "Shared selected note";
+      details = "Send this note’s exact title and text to the connected agent.";
+      break;
+    case "notes_delete":
+      title = "Delete selected note";
+      applied = "Deleted selected note";
+      details =
+        "Delete this note from this phone. Attached audio files are retained.";
+      break;
     case "calendar_create":
     case "calendar_update": {
       const fields = operation.fields;

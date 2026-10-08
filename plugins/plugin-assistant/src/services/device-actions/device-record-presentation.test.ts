@@ -98,3 +98,49 @@ test("Reminder review preserves message, due time, no-alert state and recurrence
     "Repeats on weekdays at 09:00 (America/Los_Angeles).",
   );
 });
+
+test("Notes review and receipt preserve exact title and body without record identifiers", () => {
+  const fields = {
+    title: "  Blue folder  ",
+    body:
+      "\n  First line.\n\n" +
+      "Keep this exact text. ".repeat(100) +
+      "\nLast line.  \n",
+  };
+  const target = {
+    sourceId: "private-source",
+    sourceRevision: "private-source-revision",
+    noteId: "private-note",
+    revision: "private-note-revision",
+  };
+  const before = structuredClone({ fields, target });
+  for (const operation of [
+    { type: "create_note" as const, ...fields },
+    { type: "notes_update" as const, fields, target },
+  ]) {
+    const presentation = presentDeviceRecordOperation(operation);
+    const creating = operation.type === "create_note";
+    expect(presentation.description).toBe(
+      `${creating ? "Create" : "Update"} note\n“${fields.title}”\n${fields.body}`,
+    );
+    expect(presentation.appliedSummary).toBe(
+      `${creating ? "Saved" : "Updated"} note “${fields.title}”\n${fields.body}`,
+    );
+  }
+  const shared = presentDeviceRecordOperation({
+    type: "notes_read_selected",
+    target,
+  });
+  expect(shared.description).toBe(
+    "Share selected note\nSend this note’s exact title and text to the connected agent.",
+  );
+  const deleted = presentDeviceRecordOperation({
+    type: "notes_delete",
+    target,
+  });
+  expect(deleted.description).toContain("Attached audio files are retained.");
+  expect(shared.description + deleted.description).not.toMatch(
+    /private-source|private-note|\{|\}/,
+  );
+  expect({ fields, target }).toEqual(before);
+});
