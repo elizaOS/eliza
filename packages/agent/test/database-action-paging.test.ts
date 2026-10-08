@@ -116,6 +116,85 @@ it("returns every tied row once and ignores another schema's primary key", async
     );
     expect(hidden.success).toBe(false);
     expect(hidden.text).toBe('Table "only_here" not found.');
+    await db.execute(
+      sql.raw("INSERT INTO hidden_ns.only_here (id) VALUES (7)"),
+    );
+    const named = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      {
+        parameters: {
+          action: "get_table",
+          tableName: "only_here",
+          schema: "hidden_ns",
+          limit: 8,
+          offset: 0,
+        },
+      },
+      undefined,
+    );
+    expect(named.success, named.text).toBe(true);
+    expect(named.text).toContain('from "hidden_ns.only_here"');
+    expect((named.data as { schema?: string } | undefined)?.schema).toBe(
+      "hidden_ns",
+    );
+    const namedRows = (
+      named.data as { rows?: Array<{ id: number }> } | undefined
+    )?.rows;
+    expect(namedRows?.map((row) => Number(row.id))).toEqual([7]);
+    const listed = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      { parameters: { action: "list_tables", filter: "only_here" } },
+      undefined,
+    );
+    expect(listed.success, listed.text).toBe(true);
+    expect(listed.text).toContain("hidden_ns.only_here");
+    const listedBySchema = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      { parameters: { action: "list_tables", filter: "hidden_ns" } },
+      undefined,
+    );
+    expect(listedBySchema.success, listedBySchema.text).toBe(true);
+    expect(listedBySchema.text).toContain("hidden_ns.only_here");
+    const listedByQualified = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      {
+        parameters: {
+          action: "list_tables",
+          filter: "hidden_ns.only_here",
+        },
+      },
+      undefined,
+    );
+    expect(listedByQualified.success, listedByQualified.text).toBe(true);
+    expect(listedByQualified.text).toContain("hidden_ns.only_here");
+    const copied = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      {
+        parameters: {
+          action: "get_table",
+          tableName: "hidden_ns.only_here",
+          limit: 8,
+          offset: 0,
+        },
+      },
+      undefined,
+    );
+    expect(copied.success, copied.text).toBe(true);
+    expect(copied.text).toContain('from "hidden_ns.only_here"');
+    const copiedRows = (
+      copied.data as { rows?: Array<{ id: number }> } | undefined
+    )?.rows;
+    expect(copiedRows?.map((row) => Number(row.id))).toEqual([7]);
     const systemTable = await handler(
       runtime,
       {} as never,

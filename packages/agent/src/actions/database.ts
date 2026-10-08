@@ -52,6 +52,7 @@ interface DatabaseParams {
   includeEmpty?: boolean;
   // get_table
   tableName?: string;
+  schema?: string;
   limit?: number;
   offset?: number;
   sortBy?: string;
@@ -294,20 +295,24 @@ async function opListTables(
   const filter = params.filter?.trim().toLowerCase() ?? "";
   const includeEmpty = params.includeEmpty ?? true;
   const tables = allTables.filter((table) => {
-    if (filter && !table.name.toLowerCase().includes(filter)) return false;
+    if (filter) {
+      const qualified = `${table.schema}.${table.name}`.toLowerCase();
+      if (!qualified.includes(filter)) return false;
+    }
     if (!includeEmpty && table.rowCount === 0) return false;
     return true;
   });
 
   const lines = tables.map(
-    (t) => `- ${t.name} (${t.columns.length} cols, ${t.rowCount} rows)`,
+    (t) =>
+      `- ${t.schema}.${t.name} (${t.columns.length} cols, ${t.rowCount} rows)`,
   );
 
   // Both branches used to hide the narrowing above: "No tables found." read as
   // an empty database and "Found 7 table(s)" read as the whole schema while
   // `allTables` held the real count. Name what narrowed it and how to widen.
   const narrowings: string[] = [];
-  if (filter) narrowings.push(`name contains "${filter}"`);
+  if (filter) narrowings.push(`schema or name contains "${filter}"`);
   if (!includeEmpty)
     narrowings.push("includeEmpty:false (zero-row tables dropped)");
   const widen = includeEmpty
@@ -337,12 +342,116 @@ async function opListTables(
   };
 }
 
+const SCHEMA_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function isUserSchema(name: string): boolean {
+  return (
+    SCHEMA_IDENT.test(name) &&
+    name !== "pg_catalog" &&
+    name !== "information_schema"
+  );
+}
+
+async function resolveGetTableSchema(
+  runtime: IAgentRuntime,
+  tableName: string,
+  requestedSchema: string | undefined,
+): Promise<
+  | { ok: true; schema: string; tableName: string }
+  | { ok: false; text: string; reason: string }
+> {
+  const safe = tableName.replace(/'/g, "''");
+  const requested = requestedSchema?.trim() ?? "";
+  if (requested.length > 0) {
+    if (!isUserSchema(requested)) {
+      return {
+        ok: false,
+        text: "schema must be a single identifier.",
+        reason: "INVALID_SCHEMA",
+      };
+    }
+    const safeSchema = requested.replace(/'/g, "''");
+    const found = await executeRawSql(
+      runtime,
+      `SELECT 1
+       FROM pg_catalog.pg_class c
+       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       WHERE c.relname = '${safe}'
+         AND n.nspname = '${safeSchema}'
+         AND c.relkind IN ('r', 'p')
+       LIMIT 1`,
+    );
+    if (found.rows.length === 0) {
+      return {
+        ok: false,
+        text: `Table "${requested}.${tableName}" not found.`,
+        reason: "TABLE_NOT_FOUND",
+      };
+    }
+    return { ok: true, schema: requested, tableName };
+  }
+  const visible = await executeRawSql(
+    runtime,
+    `SELECT n.nspname AS schema
+     FROM pg_catalog.pg_class c
+     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+     WHERE c.relname = '${safe}'
+       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+       AND c.relkind IN ('r', 'p')
+       AND pg_catalog.pg_table_is_visible(c.oid)
+     ORDER BY (
+       SELECT s.ord
+       FROM unnest(current_schemas(true)) WITH ORDINALITY AS s(name, ord)
+       WHERE s.name = n.nspname
+       LIMIT 1
+     )
+     LIMIT 1`,
+  );
+  if (visible.rows.length > 0) {
+    return {
+      ok: true,
+      schema: String(visible.rows[0]?.schema),
+      tableName,
+    };
+  }
+  const dot = tableName.indexOf(".");
+  if (dot > 0) {
+    const schemaPart = tableName.slice(0, dot);
+    const namePart = tableName.slice(dot + 1);
+    if (isUserSchema(schemaPart) && SCHEMA_IDENT.test(namePart)) {
+      const literal = await executeRawSql(
+        runtime,
+        `SELECT 1
+         FROM pg_catalog.pg_class c
+         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relname = '${safe}'
+           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+           AND c.relkind IN ('r', 'p')
+         LIMIT 1`,
+      );
+      if (literal.rows.length === 0) {
+        const named = await resolveGetTableSchema(
+          runtime,
+          namePart,
+          schemaPart,
+        );
+        if (named.ok) return named;
+      }
+    }
+  }
+  return {
+    ok: false,
+    text: `Table "${tableName}" not found.`,
+    reason: "TABLE_NOT_FOUND",
+  };
+}
+
 async function opGetTable(
   runtime: IAgentRuntime,
   params: DatabaseParams,
 ): Promise<ActionResult> {
-  const tableName = params.tableName?.trim();
-  if (!tableName) {
+  const requestedName = params.tableName?.trim();
+  if (!requestedName) {
     return {
       success: false,
       text: "tableName is required for op:get_table.",
@@ -350,32 +459,25 @@ async function opGetTable(
     };
   }
 
-  const safe = tableName.replace(/'/g, "''");
-  const visibleSchema = `(
-         SELECT n.nspname
-         FROM pg_catalog.pg_class c
-         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-         WHERE c.relname = '${safe}'
-           AND c.relkind IN ('r', 'p')
-           AND pg_catalog.pg_table_is_visible(c.oid)
-         LIMIT 1
-       )`;
-  const exists = await executeRawSql(
+  const resolved = await resolveGetTableSchema(
     runtime,
-    `SELECT 1 FROM information_schema.tables
-     WHERE table_name = '${safe}'
-       AND table_schema = ${visibleSchema}
-       AND table_schema NOT IN ('pg_catalog', 'information_schema')
-       AND table_type = 'BASE TABLE'
-     LIMIT 1`,
+    requestedName,
+    params.schema,
   );
-  if (exists.rows.length === 0) {
+  if (!resolved.ok) {
     return {
       success: false,
-      text: `Table "${tableName}" not found.`,
-      values: { error: "DATABASE_GET_TABLE_FAILED", reason: "TABLE_NOT_FOUND" },
+      text: resolved.text,
+      values: {
+        error: "DATABASE_GET_TABLE_FAILED",
+        reason: resolved.reason,
+      },
     };
   }
+  const tableName = resolved.tableName;
+  const safe = tableName.replace(/'/g, "''");
+  const safeSchema = resolved.schema.replace(/'/g, "''");
+  const relation = `${quoteIdent(resolved.schema)}.${quoteIdent(tableName)}`;
 
   const limit = parseOptionalPositiveInteger(params.limit, "limit");
   const offset = parseOptionalNonNegativeInteger(params.offset, "offset") ?? 0;
@@ -387,7 +489,7 @@ async function opGetTable(
       runtime,
       `SELECT column_name FROM information_schema.columns
        WHERE table_name = '${safe}'
-         AND table_schema = ${visibleSchema}`,
+         AND table_schema = '${safeSchema}'`,
     );
     if (cols.rows.some((r) => String(r.column_name) === params.sortBy)) {
       validSort = params.sortBy;
@@ -408,7 +510,7 @@ async function opGetTable(
       AND tc.table_name = kcu.table_name
      WHERE tc.constraint_type = 'PRIMARY KEY'
        AND tc.table_name = '${safe}'
-       AND tc.table_schema = ${visibleSchema}
+       AND tc.table_schema = '${safeSchema}'
      ORDER BY kcu.ordinal_position`,
   );
   const primaryKey: string[] = [];
@@ -427,23 +529,25 @@ async function opGetTable(
 
   const countResult = await executeRawSql(
     runtime,
-    `SELECT count(*) AS total FROM ${quoteIdent(tableName)}`,
+    `SELECT count(*) AS total FROM ${relation}`,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
 
   const result = await executeRawSql(
     runtime,
-    `SELECT * FROM ${quoteIdent(tableName)} ${orderClause}${limit === undefined ? "" : ` LIMIT ${limit}`}${offset === 0 ? "" : ` OFFSET ${offset}`}`,
+    `SELECT * FROM ${relation} ${orderClause}${limit === undefined ? "" : ` LIMIT ${limit}`}${offset === 0 ? "" : ` OFFSET ${offset}`}`,
   );
 
+  const qualifiedName = `${resolved.schema}.${tableName}`;
   return {
     success: true,
-    text: `Returned ${result.rows.length} row(s) from "${tableName}" (total: ${total}).`,
+    text: `Returned ${result.rows.length} row(s) from "${qualifiedName}" (total: ${total}).`,
     values: { rowCount: result.rows.length, total },
     data: {
       actionName: "DATABASE",
       op: "get_table",
       tableName,
+      schema: resolved.schema,
       rows: result.rows,
       columns: result.columns,
       total,
@@ -719,7 +823,8 @@ export const databaseAction: Action = {
     },
     {
       name: "filter",
-      description: "list_tables: case-insensitive substring on table name.",
+      description:
+        "list_tables: case-insensitive substring on schema.table or the table name.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -731,7 +836,15 @@ export const databaseAction: Action = {
     },
     {
       name: "tableName",
-      description: "get_table: table name to read.",
+      description:
+        "get_table: table name, or schema.table copied from list_tables.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "schema",
+      description:
+        "get_table: schema that owns the table. Required when the same name exists in more than one schema. Plugin tables such as todos.todos are outside search_path.",
       required: false,
       schema: { type: "string" as const },
     },
