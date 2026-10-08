@@ -187,6 +187,25 @@ function publicSubjectWords(value: string | undefined): string | undefined {
   return /^[\p{L}\p{N}.'’&-]+(?:\s+[\p{L}\p{N}.'’&-]+){0,3}$/u.test(subject) ? subject : undefined;
 }
 
+/** Keep an explicit public city/region together while excluding follow-on instructions. */
+function publicWeatherLocation(value: string | undefined): string | undefined {
+  if (!value || value.length > 240) return undefined;
+  // A period ends the location sentence, except common place-name abbreviations.
+  const sentence = value.split(/(?<!\bSt)(?<!\bMt)\.(?:\s|$)/iu, 1)[0];
+  const location = sentence
+    .split(
+      /(?:\s+and)?\s+(?=(?:include|provide|return|answer|respond)\b|text\s+only\b)/iu,
+      1,
+    )[0]
+    .trim();
+  if (!location || location.length > 80) return undefined;
+  const parts = location.split(",");
+  if (parts.length > 3) return undefined;
+  const normalized = parts.map(publicSubjectWords);
+  if (normalized.some((part) => !part)) return undefined;
+  return normalized.join(", ");
+}
+
 function publicProviderQuery(domain: SharedRealtimeDomain, text: string): string | undefined {
   if (domain === "markets") {
     const recognized = [
@@ -203,9 +222,9 @@ function publicProviderQuery(domain: SharedRealtimeDomain, text: string): string
     return `${recognized.join(" ")} ${metric} current`;
   }
   if (domain === "weather") {
-    const location = publicSubjectWords(
+    const location = publicWeatherLocation(
       text.match(
-        /\b(?:weather|forecast|temperature|rain|snow|wind)\b[^,;\n]*?\b(?:in|at|for|near|around)\s+([^,;?!\n]{1,80})/iu,
+        /\b(?:weather|forecast|temperature|rain|snow|wind)\b[^,;\n]*?\b(?:in|at|for|near|around)\s+([^;?!\n]{1,240})(?=[;?!\n]|$)/iu,
       )?.[1],
     );
     return location ? `current public weather in ${location}` : undefined;
