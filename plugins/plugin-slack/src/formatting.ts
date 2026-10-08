@@ -94,8 +94,11 @@ export function escapeSlackMrkdwn(text: string): string {
   return text
     .split("\n")
     .map((line) => {
-      if (line.startsWith("> ")) {
-        return `> ${escapeSlackMrkdwnContent(line.slice(2))}`;
+      // Slack accepts a leading quote marker without a following space.
+      // Preserve the marker run and escape only the content that follows it.
+      const marker = /^>+/.exec(line)?.[0];
+      if (marker) {
+        return `${marker}${escapeSlackMrkdwnContent(line.slice(marker.length))}`;
       }
       return escapeSlackMrkdwnContent(line);
     })
