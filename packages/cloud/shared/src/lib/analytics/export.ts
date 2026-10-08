@@ -294,11 +294,9 @@ export function formatPercentage(value: unknown): string {
  * @returns ISO date string.
  */
 export function formatDate(value: unknown): string {
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  if (typeof value === "string") {
-    return new Date(value).toISOString();
-  }
-  return "";
+  const date = value instanceof Date ? value : typeof value === "string" ? new Date(value) : null;
+  // The user export stores a missing last-active time as "". Date rejects
+  // that string, and toISOString throws, so the whole export fails.
+  if (!date || !Number.isFinite(date.getTime())) return "";
+  return date.toISOString();
 }
