@@ -107,10 +107,17 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 				pendingBoundary = undefined;
 			}
 
+			const continuesEllipsis = (offset: number): boolean => {
+				if (chunk[offset] !== ".") return false;
+				const previous = offset > 0 ? chunk[offset - 1] : lastWord.at(-1);
+				return previous === ".";
+			};
+
 			for (let offset = 0; offset < chunk.length; offset += 1) {
 				const char = chunk[offset];
 				if (
 					SENTENCE_END.has(char) &&
+					!continuesEllipsis(offset) &&
 					chunk[offset + 1] === undefined &&
 					!endOfInput
 				) {
@@ -124,6 +131,7 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 					};
 				} else if (
 					SENTENCE_END.has(char) &&
+					!continuesEllipsis(offset) &&
 					isBoundaryFollower(chunk[offset + 1])
 				) {
 					const word = lastWord.endsWith(".")
