@@ -246,6 +246,14 @@ function cleanOrganization(raw: string): string | null {
   );
   if (clauseBreak > 0) cleaned = cleaned.slice(0, clauseBreak).trim();
   cleaned = cleaned.replace(/[.,;:!?]+$/, "").trim();
+  // "I work at Acme today" captures "Acme today". A trailing "today" is not
+  // part of the organization, and it also hides a one-word department
+  // ("accounting today" no longer counts as a single department token).
+  const orgWords = cleaned.split(" ");
+  if (orgWords.length > 1 && orgWords[orgWords.length - 1] === "today") {
+    orgWords.pop();
+    cleaned = orgWords.join(" ");
+  }
   if (cleaned.length < 2) return null;
   if (NAME_STOPWORDS.has(cleaned.toLowerCase())) return null;
   // Cap runaway captures: an org phrase longer than five words is almost
