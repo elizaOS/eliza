@@ -10,7 +10,8 @@ const lanes = {
   auth: /^packages\/auth(?:\/|$)/,
   runtime:
     /^(?:packages\/(?:agent|testing)|plugins\/plugin-(?:assistant|personal-assistant))(?:\/|$)/,
-  scenarios: /^packages\/testing(?:\/|$)/,
+  // Scenario manifests can load plugins by catalog name without a package edge.
+  scenarios: /^(?:packages\/testing(?:\/|$)|plugins\/)/,
   providers: /^plugins\/plugin-(?:anthropic|discord|openai|embeddings)(?:\/|$)/,
   app: /^packages\/(?:app|ui)(?:\/|$)/,
   os: /^packages\/os(?:\/|$)/,

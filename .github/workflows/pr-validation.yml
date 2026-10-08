@@ -89,6 +89,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Verify change selection with real Git histories
+        run: node --test packages/scripts/ci-affected.integration.test.ts
+
       - name: Select affected workspaces
         id: affected
         env:
@@ -424,9 +427,9 @@ jobs:
             fi
             sleep 1
           done
-          # Each suite uses an isolated process and private database schema/store.
-          # Bound concurrency to the hosted runner instead of buying more runners.
-          xargs -r -n 1 -P 2 bun test --config=/dev/null --isolate <<'SUITES'
+          # Suites use separate processes but some migrations lock shared public tables.
+          # Serialize them until every suite has an independent database.
+          xargs -r -n 1 -P 1 bun test --config=/dev/null --isolate <<'SUITES'
           packages/cloud/shared/src/db/repositories/account-billing-snapshot.postgres.integration.test.ts
           packages/cloud/shared/src/db/repositories/app-billing-accounts.postgres.integration.test.ts
           packages/cloud/shared/src/db/repositories/subscription-cancellation.postgres.integration.test.ts

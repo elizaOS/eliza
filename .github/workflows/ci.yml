@@ -28,7 +28,7 @@ jobs:
   secret-scan:
     uses: ./.github/workflows/gitleaks.yml
     with:
-      base_sha: ${{ github.event.before || inputs.base_sha || '' }}
+      base_sha: ${{ inputs.base_sha || github.event.before || '' }}
       head_sha: ${{ github.sha }}
   os:
     if: needs.preflight.outputs.os == 'true'
