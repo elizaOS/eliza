@@ -5,12 +5,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   type ActionResult,
+  actionGateFailure,
   activeCommittedEffectReceipts,
   ChannelType,
+  executePlannedToolCall,
   type Memory,
   ModelType,
   projectDeferredProviders,
+  resolveActionGateFailure,
   type UUID,
+  validateToolArgs,
 } from "@elizaos/core";
 import { renderContextObject } from "@elizaos/core/protocol";
 import { expect, test, vi } from "vitest";
@@ -35,9 +39,24 @@ import {
   type DrizzleDatabase,
 } from "../../../packages/app/src/services/auth-store.ts";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
+import { calendarAction as standaloneCalendarAction } from "../../plugin-calendar/src/actions/calendar.ts";
+import { calendarSourcesAction } from "../../plugin-calendar/src/actions/calendar-sources.ts";
+import { notesPlugin } from "../../plugin-notes/src/plugin.ts";
+import {
+  NOTES_SERVICE_TYPE,
+  NotesService,
+} from "../../plugin-notes/src/service.ts";
+import { NotesStore } from "../../plugin-notes/src/store.ts";
 import { calendarAction } from "../../plugin-personal-assistant/src/actions/calendar.ts";
 import { ownerDocumentsAction } from "../../plugin-personal-assistant/src/actions/document.ts";
-import { ownerRemindersAction } from "../../plugin-personal-assistant/src/actions/owner-surfaces.ts";
+import { householdCoordinationAction } from "../../plugin-personal-assistant/src/actions/household-coordination.ts";
+import {
+  ownerAlarmsAction,
+  ownerGoalsAction,
+  ownerRemindersAction,
+  ownerRoutinesAction,
+  ownerTodosAction,
+} from "../../plugin-personal-assistant/src/actions/owner-surfaces.ts";
 import { stage1Response } from "../src/__tests__/stage1/fixtures.ts";
 import { runEvaluator } from "../src/runtime/evaluator.ts";
 import {
@@ -55,6 +74,7 @@ import {
   readContextRequests,
 } from "../src/services/message/context-discovery.ts";
 import { stage1ResponseStateProviderNames } from "../src/services/message/provider-state.ts";
+import { collectDiscoveryCatalogActions } from "../src/services/message/tool-discovery.ts";
 import { runV5MessageRuntimeStage1 } from "../src/services/message.ts";
 
 // Real HTTP, session authentication, registered proposal tool, SQL migrations,
@@ -3795,3 +3815,316 @@ test.each([
   },
   120000,
 );
+
+test("enrolled phone record authority blocks backend discovery and forced writes without affecting counter-requests", async () => {
+  const fixture = await createRealTestRuntime({
+    characterName: "NativeRecordAuthority",
+  });
+  const runtime = fixture.runtime;
+  const directory = await mkdtemp(join(tmpdir(), "native-note-authority-"));
+  const notes = new NotesService(runtime, {
+    store: new NotesStore({ filePath: join(directory, "notes.json") }),
+  });
+  await notes.initialize();
+  const originalGet = runtime.getService.bind(runtime);
+  const serviceLookup = vi
+    .spyOn(runtime, "getService")
+    .mockImplementation(((name: string) =>
+      name === NOTES_SERVICE_TYPE
+        ? notes
+        : originalGet(name)) as typeof runtime.getService);
+  const credential = {
+    subjectUserId: runtime.agentId,
+    installationId: randomUUID(),
+    deviceKey: "a".repeat(64),
+    capabilities: [
+      "notes.local-record.v1",
+      "calendar.local-event.v1",
+      "reminders.local-record.v2",
+    ],
+  };
+  const service = new DeviceActionService(runtime);
+  const message = {
+    id: randomUUID(),
+    agentId: runtime.agentId,
+    entityId: runtime.agentId,
+    roomId: randomUUID(),
+    content: {
+      text: "Create my phone note",
+      metadata: {
+        clientDevice: {
+          installationId: credential.installationId,
+          capabilities: credential.capabilities,
+        },
+      },
+    },
+  } as Memory;
+  const unrelatedActions = [
+    ownerAlarmsAction,
+    ownerGoalsAction,
+    ownerTodosAction,
+    ownerRoutinesAction,
+    householdCoordinationAction,
+    calendarSourcesAction,
+    calendarAction,
+    standaloneCalendarAction,
+  ];
+  const actions = [
+    ...(notesPlugin.actions ?? []),
+    calendarAction,
+    ownerRemindersAction,
+    proposeDeviceAction,
+    ...unrelatedActions,
+  ];
+  const discover = () =>
+    collectDiscoveryCatalogActions({
+      actions,
+      message,
+      selectedContexts: ["general"],
+      userRoles: ["OWNER"],
+    }).map((action) => action.name);
+  const execute = (content: string, actionMessage: Memory = message) =>
+    executePlannedToolCall(
+      runtime,
+      {
+        message: actionMessage,
+        activeContexts: ["notes"],
+        userRoles: ["OWNER"],
+      },
+      { name: "NOTES_CREATE", params: { content } },
+    );
+  try {
+    await service.register(credential, "Native record owner");
+    for (const action of actions) runtime.registerAction(action);
+    const outside = discover();
+    expect(outside).toContain("NOTES_CREATE");
+    expect(outside).toContain("CALENDAR");
+    expect(outside).toContain("OWNER_REMINDERS");
+    await withDeviceActionTurn(runtime, credential, async () => {
+      const catalog = discover();
+      expect(catalog).not.toContain("NOTES_CREATE");
+      expect(catalog).not.toContain("NOTES_PATCH");
+      expect(catalog).toContain("CALENDAR");
+      expect(catalog).not.toContain("OWNER_REMINDERS");
+      expect(catalog).toContain("PROPOSE_DEVICE_ACTION");
+      for (const action of unrelatedActions) {
+        expect(catalog).toContain(action.name);
+        expect(
+          await resolveActionGateFailure(runtime, action, {
+            message,
+            userRoles: ["OWNER"],
+            evaluateContexts: false,
+          }),
+        ).toBeUndefined();
+      }
+      // The authenticated request scope owns this policy; optional message
+      // metadata must never disable it at discovery or the effect boundary.
+      for (const actionMessage of [
+        { ...message, agentId: undefined },
+        { ...message, agentId: randomUUID() },
+      ]) {
+        expect(
+          await execute("Must not bypass native ownership", actionMessage),
+        ).toMatchObject({ success: false });
+      }
+      for (const action of [
+        ...(notesPlugin.actions ?? []),
+        ownerRemindersAction,
+      ]) {
+        for (const gateContext of [
+          { userRoles: ["OWNER"] as const, activeContexts: ["notes"] as const },
+          {
+            message: { ...message, agentId: undefined },
+            userRoles: ["OWNER"] as const,
+            activeContexts: ["notes"] as const,
+          },
+          {
+            message: { ...message, agentId: randomUUID() },
+            userRoles: ["OWNER"] as const,
+            activeContexts: ["notes"] as const,
+          },
+        ]) {
+          expect(actionGateFailure(action, gateContext)).toContain(
+            "authenticated phone owns",
+          );
+        }
+      }
+      expect(notes.listNotes()).toHaveLength(0);
+      // Plan-step and non-CONTEXT hook execution skip context routing, but
+      // must retain native-record authority at their final handler gate.
+      for (const action of [
+        ...(notesPlugin.actions ?? []),
+        ownerRemindersAction,
+      ]) {
+        expect(
+          await resolveActionGateFailure(runtime, action, {
+            message,
+            userRoles: ["OWNER"],
+            evaluateContexts: false,
+          }),
+        ).toContain("authenticated phone owns");
+      }
+      expect(
+        await execute("Must not reach the server Notes store"),
+      ).toMatchObject({ success: false });
+      expect(notes.listNotes()).toHaveLength(0);
+    });
+    // Forged clientDevice metadata is not authority; an ordinary counter-request still writes its real store.
+    expect(
+      await execute("Ordinary backend note", {
+        ...message,
+        agentId: undefined,
+      }),
+    ).toMatchObject({ success: true });
+    expect(notes.listNotes()).toHaveLength(1);
+    await withDeviceActionTurn(
+      runtime,
+      { ...credential, capabilities: ["clock.handoff.v1"] },
+      async () => {
+        expect(discover()).toContain("NOTES_CREATE");
+        expect(discover()).toContain("CALENDAR");
+        expect(discover()).toContain("OWNER_REMINDERS");
+        expect(await execute("Clock-only caller backend note")).toMatchObject({
+          success: true,
+        });
+      },
+    );
+    let release!: () => void;
+    const held = withDeviceActionTurn(runtime, credential, async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      expect(discover()).not.toContain("NOTES_CREATE");
+    });
+    while (!release) await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(discover()).toContain("NOTES_CREATE");
+    expect(await execute("Concurrent non-phone note")).toMatchObject({
+      success: true,
+    });
+    release();
+    await held;
+    expect(notes.listNotes()).toHaveLength(3);
+    await expect(
+      withDeviceActionTurn(
+        runtime,
+        { ...credential, deviceKey: "b".repeat(64) },
+        async () => execute("Invalid device"),
+      ),
+    ).rejects.toThrow();
+    expect(notes.listNotes()).toHaveLength(3);
+  } finally {
+    serviceLookup.mockRestore();
+    await fixture.cleanup();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 120000);
+
+test("executor decodes typed phone operation JSON before validation and preserves authority", async () => {
+  const fixture = await createRealTestRuntime({
+    characterName: "DeviceOperationJson",
+    withLLM: false,
+  });
+  const runtime = fixture.runtime;
+  const credential = {
+    subjectUserId: runtime.agentId,
+    installationId: randomUUID(),
+    deviceKey: "d".repeat(64),
+    capabilities: ["notes.local-record.v1"],
+  };
+  const service = new DeviceActionService(runtime);
+  const operation = {
+    type: "create_note",
+    title: "Agent QA MAPLE-49",
+    body: "Bring the blue folder.",
+  };
+  const encoded =
+    '{"type":"create_note","title":"Agent QA MAPLE-49","body":"Bring the blue folder."}';
+  const message = {
+    id: randomUUID(),
+    agentId: runtime.agentId,
+    entityId: runtime.agentId,
+    roomId: randomUUID(),
+    content: { text: "Create my phone note" },
+  } as Memory;
+  const execute = (value: unknown) =>
+    executePlannedToolCall(
+      runtime,
+      { message, activeContexts: ["general"], userRoles: ["OWNER"] },
+      {
+        name: "PROPOSE_DEVICE_ACTION",
+        params: {
+          operation: value,
+          operationKey: randomUUID(),
+          reason: "Owner requested this note",
+        },
+      },
+    );
+  try {
+    runtime.registerAction(proposeDeviceAction);
+    await service.register(credential, "Typed operation fixture");
+    await withDeviceActionTurn(runtime, credential, async () => {
+      expect(await execute(encoded)).toMatchObject({
+        success: true,
+        data: { state: "pending", executed: false, approvalRequired: true },
+      });
+      const pending = await service.list(credential);
+      expect(pending).toHaveLength(1);
+      expect(pending[0].payload).toMatchObject({ operation });
+      expect(await execute(operation)).toMatchObject({ success: true });
+      for (const invalid of [
+        '{"type":"create_note",',
+        "null",
+        "[]",
+        "42",
+        JSON.stringify(encoded),
+        JSON.stringify({ ...operation, unexpected: true }),
+        JSON.stringify({ ...operation, body: { text: operation.body } }),
+        { ...operation, type: "unregistered_operation" },
+        { ...operation, unexpected: true },
+      ]) {
+        expect(await execute(invalid)).toMatchObject({ success: false });
+      }
+      expect(await service.list(credential)).toHaveLength(2);
+    });
+    // A decoded object does not grant a native session or unsupported capabilities.
+    expect(await execute(encoded)).toMatchObject({ success: false });
+    await withDeviceActionTurn(
+      runtime,
+      { ...credential, capabilities: ["clock.handoff.v1"] },
+      async () => {
+        expect(await execute(encoded)).toMatchObject({ success: false });
+      },
+    );
+    await expect(
+      withDeviceActionTurn(
+        runtime,
+        { ...credential, deviceKey: "e".repeat(64) },
+        async () => execute(encoded),
+      ),
+    ).rejects.toThrow();
+    expect(await service.list(credential)).toHaveLength(2);
+    // JSON-looking text remains literal when the authored parameter accepts strings.
+    const mixed = validateToolArgs(
+      {
+        ...proposeDeviceAction,
+        parameters: [
+          {
+            name: "operation",
+            required: true,
+            description: "Text or structured value",
+            schema: {
+              anyOf: [
+                { type: "string" },
+                { type: "object", additionalProperties: true },
+              ],
+            },
+          },
+        ],
+      },
+      { operation: encoded },
+    );
+    expect(mixed).toMatchObject({ valid: true, args: { operation: encoded } });
+  } finally {
+    await fixture.cleanup();
+  }
+}, 120000);

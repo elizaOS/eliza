@@ -11,7 +11,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd plugins/plugin-native-calendar build  # build
-bun run --cwd plugins/plugin-native-calendar test   # tests
 ```
 
 

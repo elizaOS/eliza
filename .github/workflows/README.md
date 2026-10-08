@@ -6,10 +6,13 @@ Workflow YAML owns triggers and permissions; package scripts own product checks.
 PR admission includes mock-backed payment replay Playwright proof. Device
 qualification is available through `workflow_dispatch` or `workflow_call` from
 authorized callers. Android packaging runs on demand through `android-build.yml`.
-Develop validation runs package tests and integration contracts once; broad smoke
-shards, mock walkthrough recordings, and the dev smoke workflow are retired.
-Storybook catalog rendering and isolated Discord gateway reruns remain on demand;
-Cloud already owns the gateway tests.
+Develop validation retains affected integration and browser lanes. The shared
+selector compares against the last successfully validated ancestor and follows
+reverse workspace dependencies; shared tooling, unknown paths,
+and unavailable history require full validation. Unit-test fan-out and platform,
+RISC-V, and live smoke workflows are retired. Cloud browser/database jobs run in
+parallel with static checks. Manual certification and protected release workflows
+remain available for target-specific qualification.
 Live deployment requires the protected environment gates.
 
 `staging-launch-gate.yml` is the manual exact-SHA staging certification. It
@@ -24,8 +27,9 @@ receipts plus one composed receipt naming the owner of the first failed lane.
 | `staging` | `staging` | `gateway-webhook-stg` |
 | `production` | `main` | `gateway-webhook` |
 
-No separate build. Test workflow contracts from the repository root:
+No separate build. Validate workflow syntax and executable references from the repository root:
 
 ```bash
-bun run test:scripts
+actionlint -config-file .github/actionlint.yaml
+node packages/scripts/audit-scripts.ts
 ```

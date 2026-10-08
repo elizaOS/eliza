@@ -42,7 +42,6 @@
     "vite-env.d.ts",
     "src/app-config.ts",
     "src/ios-voice-selftest-smoke.ts",
-    "src/public-web-entry.test.tsx",
     "src/character-catalog.ts",
     "src/ios-full-bun-entrypoint.ts",
     "src/desktop-fn-hold-policy.ts",

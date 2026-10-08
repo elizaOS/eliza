@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
-import { stableStringify } from "@elizaos/core";
+import { stableStringify, withActionGatePolicy } from "@elizaos/core";
 import {
   executeRawSqlTx,
   sqlText,
@@ -83,6 +83,7 @@ interface TransactionDatabase extends TransactionalDb {
   transaction<T>(fn: (tx: TransactionalDb) => Promise<T>): Promise<T>;
 }
 interface DeviceTurn {
+  readonly startedAt: number;
   runtime: IAgentRuntime;
   credential: DeviceCredential;
   active: boolean;
@@ -98,12 +99,34 @@ export async function withDeviceActionTurn<T>(
   credential: DeviceCredential,
   fn: () => Promise<T>,
 ): Promise<T> {
+  const startedAt = Date.now();
   const viewProfile = await new DeviceActionService(runtime).viewProfile(
     credential,
   );
-  const context = { runtime, credential, active: true, viewProfile };
+  const context = { runtime, credential, active: true, viewProfile, startedAt };
   try {
-    return await turn.run(context, fn);
+    return await turn.run(context, () =>
+      withActionGatePolicy((action) => {
+        if (action.name === "PROPOSE_DEVICE_ACTION") return;
+        const capabilities = credential.capabilities ?? [];
+        const tags = action.tags ?? [];
+        const nativeDomain =
+          capabilities.includes(NOTES_CAPABILITY) &&
+          tags.includes("resource:notes")
+            ? "Notes"
+            : capabilities.includes(CALENDAR_CAPABILITY) &&
+                tags.includes("resource:calendar-records")
+              ? "Calendar"
+              : (capabilities.includes(REMINDER_CAPABILITY) ||
+                    capabilities.includes(REMINDER_TIMING_CAPABILITY) ||
+                    capabilities.includes(REMINDER_CREATE_CAPABILITY)) &&
+                  tags.includes("resource:reminders-records")
+                ? "reminders"
+                : undefined;
+        if (nativeDomain)
+          return `This authenticated phone owns ${nativeDomain} records. Use PROPOSE_DEVICE_ACTION for its supported operations; native approval and a device receipt are required. Backend-store actions cannot substitute for device records.`;
+      }, fn),
+    );
   } finally {
     context.active = false;
   }

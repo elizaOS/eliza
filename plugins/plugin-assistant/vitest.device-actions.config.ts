@@ -11,6 +11,7 @@ export default defineConfig({
     fileParallelism: false,
     include: [
       "test/device-actions.e2e.test.ts",
+      "test/reminder-relative-create.integration.test.ts",
       "test/workflow-owner-*.test.ts",
     ],
     testTimeout: 120000,

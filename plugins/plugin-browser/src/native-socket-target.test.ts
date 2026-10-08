@@ -732,6 +732,37 @@ it("relays one value-free answer for the current offer and drops stale answers",
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(answers).toHaveLength(1);
     expect(await target.available()).toBe(true);
+    // An answer already in flight must not cross a binding replacement.
+    const third = target.guideTask({ ...base, revision: 4 });
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(4));
+    const thirdId = frames.messages[3].id;
+    frames.send({
+      type: "result",
+      id: thirdId,
+      ok: true,
+      result: { accepted: true },
+    });
+    await third;
+    const rebound = target.bindTask({
+      ...base.taskContext,
+      epoch: 2,
+      bindingRevision: 2,
+      tabId: "1",
+      origin: "https://example.test",
+      expiresAt: Date.now() + 60000,
+      targets: [],
+      revoked: false,
+    });
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(5));
+    frames.send({ ...answer, id: thirdId, revision: 4 });
+    frames.send({
+      type: "result",
+      id: frames.messages[4].id,
+      ok: true,
+      result: { bound: true },
+    });
+    await rebound;
+    expect(answers).toHaveLength(1);
     // A malformed or value-carrying answer is a protocol violation.
     frames.send({ ...answer, value: "b@example.test" });
     await vi.waitFor(async () => expect(await target.available()).toBe(false));
