@@ -252,14 +252,17 @@ export function createBinaryDownloadResponse(
 }
 
 /**
- * Formats a value as currency (cents to dollars).
+ * Formats a credit total for an analytics export cell.
  *
- * @param value - Value in cents.
- * @returns Formatted currency string.
+ * The dashboard prints this same total with two decimals. Dividing by 100
+ * treated the total as cents, so 1.50 credits exported as 0.01.
+ *
+ * @param value - Credit total.
+ * @returns Two-decimal credit text.
  */
 export function formatCurrency(value: unknown): string {
   const num = Number(value);
-  return isNaN(num) ? "0.00" : (num / 100).toFixed(2);
+  return Number.isNaN(num) ? "0.00" : num.toFixed(2);
 }
 
 /**
