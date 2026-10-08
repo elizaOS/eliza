@@ -86,6 +86,7 @@ try {
   };
   const records = {};
   const api = {
+    runtime: { id: "test-extension" },
     storage: {
       local: {
         get: async (key) => ({ [key]: records[key] }),
@@ -139,7 +140,7 @@ try {
     taskId: "task",
     epoch: 0,
   };
-  const bind = (targets = []) =>
+  const bind = (targets = [], extra = {}) =>
     send({
       type: "task-bind",
       id: `binding-${sequence++}`,
@@ -151,6 +152,7 @@ try {
         expiresAt: Date.now() + 60000,
         targets,
         revoked: false,
+        ...extra,
       },
     });
   const show = async () => {
@@ -179,7 +181,7 @@ try {
       },
     });
     assert.equal(reply.ok, true, JSON.stringify(reply));
-    const visibleDeadline = Date.now() + 3000;
+    const visibleDeadline = Date.now() + 5000;
     while (!(await evaluate("globalThis.__elizaPageGuidanceV1.visible"))) {
       assert.ok(
         Date.now() < visibleDeadline,
@@ -243,8 +245,140 @@ try {
   await page.goto(origin);
   await show();
   assert.equal(await page.evaluate(() => window.clicks), 0);
-  // Actual bound actions own their preview and still revalidate before dispatch.
+  // Offers: a trusted tap becomes one value-free answer event for the host.
   context = { ...context, epoch: 4 };
+  assert.equal((await bind([], { assistantName: "Grace" })).ok, true);
+  const offerRead = await send({
+    type: "command",
+    id: `offer-read-${sequence++}`,
+    command: { subaction: "snapshot", id: "1", taskContext: context },
+  });
+  const offerTarget = offerRead.result.frames[0].elements.find(
+    (e) => e.label === "Manual input",
+  ).selector;
+  const offerId = `offer-${sequence++}`;
+  const offerRevision = sequence;
+  const offered = await send({
+    type: "task-guide",
+    id: offerId,
+    guidance: {
+      tabId: "1",
+      taskContext: context,
+      revision: offerRevision,
+      kind: "show",
+      stepId: "email",
+      selector: offerTarget,
+      text: "Which email should I use?",
+      detail: "Tap one, or type it yourself.",
+      tone: "offer",
+      answers: [
+        {
+          id: "card-0",
+          kind: "card",
+          text: "private.one@example.test",
+          tag: "Personal",
+        },
+        {
+          id: "card-1",
+          kind: "card",
+          text: "private.two@example.test",
+          tag: "Work",
+        },
+        { id: "type", kind: "secondary", text: "I'll type it" },
+      ],
+      expiresAt: Date.now() + 30000,
+    },
+  });
+  assert.equal(offered.ok, true, JSON.stringify(offered));
+  await evaluate(
+    "globalThis.chrome={runtime:{sendMessage:async(m)=>{(globalThis.__answers??=[]).push(m);return {delivered:true}}}};true",
+  );
+  const offerDeadline = Date.now() + 5000;
+  while (
+    !(await evaluate(
+      "globalThis.__elizaPageGuidanceV1.visible && globalThis.__elizaPageGuidanceV1.shadow.querySelector('.label').classList.contains('shown')",
+    ))
+  ) {
+    assert.ok(Date.now() < offerDeadline, "Offer did not become visible");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.equal(
+    await evaluate(
+      "globalThis.__elizaPageGuidanceV1.shadow.querySelector('.mark').textContent",
+    ),
+    "G",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 850));
+  await page.screenshot({ path: join(output, "offer.png") });
+  const card = await evaluate(
+    "(()=>{const r=globalThis.__elizaPageGuidanceV1.shadow.querySelectorAll('.card')[1].getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2]})()",
+  );
+  await page.mouse.click(card[0], card[1]);
+  const [tapped] = await evaluate("globalThis.__answers");
+  const answerSender = async (extra = {}) => ({
+    id: "test-extension",
+    tab: { id: 1 },
+    frameId: 0,
+    documentId: (await frame()).loaderId,
+    url: page.url(),
+    ...extra,
+  });
+  const answered = (message, sender) => {
+    try {
+      return handler.answerGuide(message, sender);
+    } catch (error) {
+      return error;
+    }
+  };
+  for (const [forged, sender] of [
+    [{ ...tapped, answerKey: "guessed" }, await answerSender()],
+    [{ ...tapped, answerId: "card-9" }, await answerSender()],
+    [tapped, await answerSender({ documentId: "other-document" })],
+    [tapped, await answerSender({ frameId: 3 })],
+    [tapped, await answerSender({ id: "other-extension" })],
+    [{ ...tapped, value: "private.two@example.test" }, await answerSender()],
+  ])
+    assert.equal(answered(forged, sender).kind, "STALE_REF");
+  const event = answered(tapped, await answerSender());
+  assert.deepEqual(event, {
+    type: "task-guide-answer",
+    id: offerId,
+    tabId: "1",
+    stepId: "email",
+    revision: offerRevision,
+    answerId: "card-1",
+  });
+  assert.ok(!JSON.stringify(event).includes("example.test"));
+  assert.ok(!JSON.stringify(tapped).includes("example.test"));
+  assert.equal(answered(tapped, await answerSender()).kind, "STALE_REF");
+  assert.ok(
+    !(await page.evaluate(() => document.documentElement.outerHTML)).includes(
+      "example.test",
+    ),
+  );
+  // Pause keeps only the grey cursor and ends the offer.
+  const paused = await send({
+    type: "task-guide",
+    id: `pause-${sequence++}`,
+    guidance: {
+      tabId: "1",
+      taskContext: context,
+      revision: sequence,
+      kind: "pause",
+    },
+  });
+  assert.equal(paused.ok, true, JSON.stringify(paused));
+  assert.deepEqual(paused.result, { visible: false, paused: true });
+  assert.deepEqual(
+    await evaluate(
+      "(()=>{const s=globalThis.__elizaPageGuidanceV1;return [s.paused,s.shadow.querySelector('.label').hidden,s.shadow.querySelector('.tag').textContent]})()",
+    ),
+    [true, true, "GGrace · paused"],
+  );
+  await page.screenshot({ path: join(output, "paused.png") });
+  assert.deepEqual(records["task-guidance-tabs-v1"], ["1"]);
+  // Actual bound actions own their preview and still revalidate before dispatch.
+  context = { ...context, epoch: 5 };
   assert.equal(
     (
       await bind([
@@ -298,6 +432,21 @@ try {
   await send({ type: "cancel", id: cancelledAction.id });
   assert.equal((await cancelledAction.pending).ok, false);
   assert.equal(await pointerVisible(), false);
+  assert.equal(await page.evaluate(() => window.clicks), 0);
+  const pausedAction = await startAction();
+  await waitPointer();
+  const pausing = await send({
+    type: "task-guide",
+    id: `pause-${sequence++}`,
+    guidance: {
+      tabId: "1",
+      taskContext: context,
+      revision: sequence,
+      kind: "pause",
+    },
+  });
+  assert.equal(pausing.ok, true);
+  assert.equal((await pausedAction.pending).ok, false);
   assert.equal(await page.evaluate(() => window.clicks), 0);
   const changedAction = await startAction();
   await waitPointer();
@@ -375,6 +524,8 @@ try {
           "Pay policy denial occurs before showing an action pointer",
           "approved fill shows its own instruction and writes the controlled value",
           "approved native action shows pointer before one actual click and tap after dispatch",
+          "configured assistant name; offer tap becomes one answer-ID event; forged, repeated and cross-document answers rejected",
+          "pause keeps a grey paused cursor, ends the offer and cancels a pending action",
         ],
         scope:
           "actual Chromium + command handler; not installed native transport or Android",

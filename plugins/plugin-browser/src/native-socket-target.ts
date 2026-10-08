@@ -22,6 +22,23 @@ import type {
   BrowserWorkspaceCommandResult,
 } from "./workspace/browser-workspace-types.js";
 
+/** Label tone: the person acts, the assistant acts, an offer, or a host-confirmed success. */
+export type NativeTaskGuideTone =
+  | "instruction"
+  | "active"
+  | "offer"
+  | "success";
+/**
+ * One tappable offer answer. Cards (two or three) show a value and its purpose;
+ * at most one primary (Yes, only without cards) and one secondary (the decline).
+ * Only `id` ever returns from the page.
+ */
+export interface NativeTaskGuideAnswer {
+  id: string;
+  kind: "card" | "primary" | "secondary";
+  text: string;
+  tag?: string;
+}
 /** Trusted host annotation request; deliberately absent from model browser actions. */
 export type NativeTaskGuidance = {
   tabId: string;
@@ -29,15 +46,28 @@ export type NativeTaskGuidance = {
   revision: number;
 } & (
   | { kind: "hide" }
+  /** Removes the label and answers; leaves a show-only paused cursor. */
+  | { kind: "pause" }
   | {
       kind: "show";
       stepId: string;
       selector: string;
       text: string;
+      detail?: string;
+      tone?: NativeTaskGuideTone;
+      /** Required exactly when `tone` is `"offer"`. */
+      answers?: NativeTaskGuideAnswer[];
       expiresAt: number;
       restore?: boolean;
     }
 );
+/** A person's tap on a shown offer. It names the answer, never its value. */
+export interface NativeTaskGuideAnswerEvent {
+  tabId: string;
+  stepId: string;
+  revision: number;
+  answerId: string;
+}
 
 const capabilities = new Set([
   "list",
@@ -65,6 +95,8 @@ export interface NativeTaskBinding extends NativeTaskContext {
   origin: string;
   expiresAt: number;
   revoked: boolean;
+  /** Overlay display name (cursor tag and label mark). Defaults to "Eliza". */
+  assistantName?: string;
   targets: Array<{
     selector: string;
     action: "click" | "fill" | "fill-code" | "scroll";
@@ -104,6 +136,13 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
   private profileId: string | null = null;
   private advertised = new Set<string>();
   private pending = new Map<string, NativeReply>();
+  private offers = new Map<
+    string,
+    { tabId: string; stepId: string; revision: number; answerIds: string[] }
+  >();
+  private answerListeners = new Set<
+    (answer: NativeTaskGuideAnswerEvent) => void
+  >();
   private stopped = false;
   private reconnect: ReturnType<typeof setTimeout> | null = null;
   private lastTransportDiagnostic: string | null = null;
@@ -333,6 +372,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         );
       }
       this.pending.clear();
+      this.offers.clear();
     });
   }
 
@@ -375,6 +415,10 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       post({ type: "pong", nonce: message.nonce, profileId: this.profileId });
       return;
     }
+    if (message.type === "task-guide-answer") {
+      this.acceptGuideAnswer(message);
+      return;
+    }
     if (
       !this.profileId ||
       message.type !== "result" ||
@@ -412,6 +456,56 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     }
   }
 
+  private acceptGuideAnswer(message: Record<string, unknown>): void {
+    if (
+      !this.profileId ||
+      !this.advertised.has("task-guide-label") ||
+      Object.keys(message).sort().join(",") !==
+        "answerId,id,revision,stepId,tabId,type" ||
+      typeof message.id !== "string" ||
+      typeof message.tabId !== "string" ||
+      typeof message.stepId !== "string" ||
+      typeof message.answerId !== "string" ||
+      !Number.isSafeInteger(message.revision)
+    )
+      throw new Error("Invalid native browser guide answer.");
+    const offer = this.offers.get(message.id);
+    // An answer to a guide that was replaced, removed or already answered
+    // no longer applies; it is dropped, never redirected.
+    if (
+      !offer ||
+      offer.tabId !== message.tabId ||
+      offer.stepId !== message.stepId ||
+      offer.revision !== message.revision ||
+      !offer.answerIds.includes(message.answerId)
+    )
+      return;
+    this.offers.delete(message.id);
+    const answer = {
+      tabId: offer.tabId,
+      stepId: offer.stepId,
+      revision: offer.revision,
+      answerId: message.answerId,
+    };
+    for (const listener of this.answerListeners) {
+      try {
+        listener(answer);
+      } catch (error) {
+        this.onDiagnostic(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+    }
+  }
+
+  /** Trusted host only: receives value-free offer answers from the bound page. */
+  onTaskGuideAnswer(
+    listener: (answer: NativeTaskGuideAnswerEvent) => void,
+  ): () => void {
+    this.answerListeners.add(listener);
+    return () => this.answerListeners.delete(listener);
+  }
+
   private request(
     command: BrowserWorkspaceCommand | undefined,
     signal?: AbortSignal,
@@ -445,6 +539,13 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         ),
       );
     const id = randomUUID();
+    if (guidance?.kind === "show" && guidance.answers)
+      this.offers.set(id, {
+        tabId: guidance.tabId,
+        stepId: guidance.stepId,
+        revision: guidance.revision,
+        answerIds: guidance.answers.map((answer) => answer.id),
+      });
     return new Promise((resolve, reject) => {
       const cancelRemote = () => {
         if (
@@ -491,7 +592,10 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       }, 30000);
       this.pending.set(id, {
         resolve: finish(resolve),
-        reject: finish(reject),
+        reject: finish((error) => {
+          this.offers.delete(id);
+          reject(error);
+        }),
         timer,
       });
       signal?.addEventListener("abort", abort, { once: true });
@@ -528,6 +632,15 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         "This browser does not enforce task bindings.",
         { targetId: this.id },
       );
+    if (
+      binding.assistantName !== undefined &&
+      !this.advertised.has("task-guide-label")
+    )
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "This browser does not support a configured assistant name.",
+        { targetId: this.id },
+      );
     return this.request(undefined, undefined, binding);
   }
 
@@ -542,6 +655,22 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         "This browser does not support task guidance.",
         { targetId: this.id },
       );
+    if (
+      (guidance.kind === "pause" ||
+        (guidance.kind === "show" &&
+          (guidance.detail !== undefined ||
+            guidance.tone !== undefined ||
+            guidance.answers !== undefined))) &&
+      !this.advertised.has("task-guide-label")
+    )
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "This browser does not support guide labels, offers or pause.",
+        { targetId: this.id },
+      );
+    // Any new guide for the tab replaces its offer; late answers are dropped.
+    for (const [id, offer] of this.offers)
+      if (offer.tabId === guidance.tabId) this.offers.delete(id);
     return this.request(undefined, signal, undefined, guidance);
   }
 
