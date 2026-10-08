@@ -52,10 +52,10 @@
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts __tests__/",
-    "test:unit": "vitest run --config ./vitest.config.ts __tests__/",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
-    "build:ts": "bun run build.ts"
+    "build:ts": "bun run build.ts",
+    "test:integration": "bun run test"
   },
   "publishConfig": {
     "access": "public"

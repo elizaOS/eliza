@@ -59,6 +59,26 @@ const KNOWN_CURRENCY_CODES = new Set([
   "NZD",
 ]);
 
+const CURRENCY_CODE_SOURCE = [...KNOWN_CURRENCY_CODES].join("|");
+
+/** A code written next to a symbol wins. `$` alone is USD, but `CAD $49.99` is CAD. */
+function explicitCurrencyBesideSymbol(
+  text: string,
+  matchIndex: number,
+  matchLength: number,
+): string | null {
+  const before = text.slice(0, matchIndex);
+  const after = text.slice(matchIndex + matchLength);
+  const prefix = before.match(
+    new RegExp(`\\b(${CURRENCY_CODE_SOURCE})\\s*$`, "i"),
+  );
+  const suffix = after.match(
+    new RegExp(`^\\s*(${CURRENCY_CODE_SOURCE})\\b`, "i"),
+  );
+  const code = prefix?.[1] ?? suffix?.[1];
+  return code ? code.toUpperCase() : null;
+}
+
 const MONTH_TOKENS: Record<string, number> = {
   jan: 0,
   january: 0,
@@ -144,11 +164,19 @@ export function extractAmountFromText(text: string): {
 } | null {
   // $123.45, $1,234.56
   const symbolMatch = text.match(/([$€£¥])\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/);
-  if (symbolMatch) {
+  if (symbolMatch && symbolMatch.index !== undefined) {
     const symbol = symbolMatch[1] as keyof typeof CURRENCY_BY_SYMBOL;
     const numeric = Number(symbolMatch[2].replace(/,/g, ""));
     if (Number.isFinite(numeric) && numeric > 0) {
-      return { amount: numeric, currency: CURRENCY_BY_SYMBOL[symbol] };
+      const explicit = explicitCurrencyBesideSymbol(
+        text,
+        symbolMatch.index,
+        symbolMatch[0].length,
+      );
+      return {
+        amount: numeric,
+        currency: explicit ?? CURRENCY_BY_SYMBOL[symbol],
+      };
     }
   }
   // USD 123.45 / 123.45 USD
@@ -202,7 +230,7 @@ export function extractDueDateFromText(
   }
   // "(due|by) Apr 15(, 2026)?"
   const monthMatch = text.match(
-    /\b(?:due|by|payment\s+due)\s+(?:on\s+)?([A-Za-z]{3,9})\s+(\d{1,2})(?:,?\s+(\d{2,4}))?/i,
+    /\b(?:due|by|payment\s+due)\s+(?:on\s+)?([A-Za-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{2,4}))?/i,
   );
   if (monthMatch) {
     const monthIdx = MONTH_TOKENS[monthMatch[1].toLowerCase()];

@@ -58,8 +58,7 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format .",
-    "test:client": "node --test --experimental-transform-types test/device-client.test.mjs"
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

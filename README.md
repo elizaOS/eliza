@@ -49,7 +49,7 @@ Common repository commands:
 bun run start       # run the standalone agent host
 bun run build       # build the workspace with Turbo
 bun run verify      # dependency, type, lint, and audit gates
-bun run test        # repository unit/integration test lane
+bun run test        # repository end-to-end test lane
 bun run test:e2e    # end-to-end lane
 bun run cloud:mock  # local Eliza Cloud stack with mocks
 ```

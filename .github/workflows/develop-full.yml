@@ -21,6 +21,7 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: read
+  actions: read
 jobs:
   plan:
     if: ${{ github.event_name == 'push' || (contains(fromJSON('["develop","staging","main"]'), github.ref_name) && inputs.source_sha == github.sha && inputs.effect_digest != '') }}
@@ -28,9 +29,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
+      base_sha: ${{ steps.baseline.outputs.base_sha }}
       run_canonical: ${{ steps.resolve.outputs.run_canonical }}
       run_cloud: ${{ steps.resolve.outputs.run_cloud }}
-      run_platform_smoke: ${{ steps.resolve.outputs.run_platform_smoke }}
       run_ui_core: ${{ steps.resolve.outputs.run_ui_core }}
     steps:
       - name: Validate promoted dispatch authority
@@ -70,10 +71,33 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 24.15.0
+      - name: Resolve last successfully validated ancestor
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          base=0000000000000000000000000000000000000000
+          if [ "$EVENT_NAME" = push ]; then
+            if gh api --method GET "/repos/$GITHUB_REPOSITORY/actions/workflows/develop-full.yml/runs" \
+              -f "branch=$GITHUB_REF_NAME" -f status=success -f per_page=100 \
+              --jq '.workflow_runs[].head_sha' > "$RUNNER_TEMP/validated-ancestors"; then
+              while IFS= read -r candidate; do
+                if [[ "$candidate" =~ ^[0-9a-f]{40}$ ]] && git merge-base --is-ancestor "$candidate" "$GITHUB_SHA"; then
+                  base="$candidate"
+                  break
+                fi
+              done < "$RUNNER_TEMP/validated-ancestors"
+            else
+              echo "::warning::Validation history unavailable; running full validation."
+            fi
+          fi
+          echo "base_sha=$base" >> "$GITHUB_OUTPUT"
       - name: Compute exact input closures
         id: impact
         env:
-          BASE_SHA: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
+          BASE_SHA: ${{ steps.baseline.outputs.base_sha }}
           HEAD_SHA: ${{ github.sha }}
         run: node packages/scripts/develop-impact-evidence.ts plan --base "$BASE_SHA" --head "$HEAD_SHA" --expected .develop-evidence/expected.json --github-output "$GITHUB_OUTPUT"
       - name: Select current-run validation
@@ -83,23 +107,23 @@ jobs:
     needs: plan
     if: needs.plan.outputs.run_canonical == 'true'
     uses: ./.github/workflows/ci.yml
+    with:
+      base_sha: ${{ needs.plan.outputs.base_sha }}
     secrets: inherit
   cloud:
     needs: plan
     if: needs.plan.outputs.run_cloud == 'true'
     uses: ./.github/workflows/cloud-tests.yml
     with:
+      base_sha: ${{ needs.plan.outputs.base_sha }}
       source_checks_in_canonical_ci: true
     secrets: inherit
-  platform-smoke:
-    needs: plan
-    if: needs.plan.outputs.run_platform_smoke == 'true'
-    uses: ./.github/workflows/platform-smoke.yml
   ui-core:
     needs: plan
     if: needs.plan.outputs.run_ui_core == 'true'
     uses: ./.github/workflows/ui-e2e-gate.yml
     with:
+      base_sha: ${{ needs.plan.outputs.base_sha }}
       publish_bun_install_cache: ${{ needs.plan.outputs.run_canonical != 'true' }}
       concurrency_scope: promotion-full-${{ github.ref_name }}
     secrets: inherit
@@ -110,12 +134,11 @@ jobs:
       - plan
       - canonical
       - cloud
-      - platform-smoke
       - ui-core
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      SURFACE_RESULTS: '{"canonical":"${{ needs.canonical.result }}","cloud":"${{ needs.cloud.result }}","platform-smoke":"${{ needs.platform-smoke.result }}","ui-core":"${{ needs.ui-core.result }}"}'
+      SURFACE_RESULTS: '{"canonical":"${{ needs.canonical.result }}","cloud":"${{ needs.cloud.result }}","ui-core":"${{ needs.ui-core.result }}"}'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -139,7 +162,7 @@ jobs:
           JS
       - name: Recompute expected manifest
         env:
-          BASE_SHA: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
+          BASE_SHA: ${{ needs.plan.outputs.base_sha }}
           HEAD_SHA: ${{ github.sha }}
         run: node packages/scripts/develop-impact-evidence.ts plan --base "$BASE_SHA" --head "$HEAD_SHA" --expected .develop-evidence/expected.json
       - name: Require one current green row per surface

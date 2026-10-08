@@ -706,15 +706,14 @@ function resolveBrowserSolanaMessageBytes(
   }
   return Buffer.from(message, "utf8");
 }
-function resolveBrowserWalletMessagePayload(
+export function resolveBrowserWalletMessagePayload(
   message: string,
 ): string | Uint8Array {
   const trimmed = message.trim();
-  if (
-    trimmed.startsWith("0x") &&
-    trimmed.length >= 4 &&
-    trimmed.length % 2 === 0
-  ) {
+  // The consent preview treats 0x and 0X as the same hex payload. The signer
+  // must use that same rule, or the dialog shows "Hi" while the wallet signs
+  // the text "0X4869".
+  if (/^0x/i.test(trimmed) && trimmed.length >= 4 && trimmed.length % 2 === 0) {
     try {
       return ethers.getBytes(trimmed);
     } catch {

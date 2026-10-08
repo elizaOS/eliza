@@ -145,7 +145,7 @@ function languageFromAcceptLanguage(header: string | null): UiLanguage | null {
       const [tag, ...params] = part.trim().split(";");
       const q = params
         .map((p) => p.trim())
-        .find((p) => p.startsWith("q="))
+        .find((p) => p.toLowerCase().startsWith("q="))
         ?.slice(2);
       return { tag: tag.trim(), q: q ? Number.parseFloat(q) : 1 };
     })

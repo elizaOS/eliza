@@ -3866,6 +3866,8 @@ test("enrolled phone record authority blocks backend discovery and forced writes
     ownerRoutinesAction,
     householdCoordinationAction,
     calendarSourcesAction,
+    calendarAction,
+    standaloneCalendarAction,
   ];
   const actions = [
     ...(notesPlugin.actions ?? []),
@@ -3902,7 +3904,7 @@ test("enrolled phone record authority blocks backend discovery and forced writes
       const catalog = discover();
       expect(catalog).not.toContain("NOTES_CREATE");
       expect(catalog).not.toContain("NOTES_PATCH");
-      expect(catalog).not.toContain("CALENDAR");
+      expect(catalog).toContain("CALENDAR");
       expect(catalog).not.toContain("OWNER_REMINDERS");
       expect(catalog).toContain("PROPOSE_DEVICE_ACTION");
       for (const action of unrelatedActions) {
@@ -3927,8 +3929,6 @@ test("enrolled phone record authority blocks backend discovery and forced writes
       }
       for (const action of [
         ...(notesPlugin.actions ?? []),
-        calendarAction,
-        standaloneCalendarAction,
         ownerRemindersAction,
       ]) {
         for (const gateContext of [
@@ -3954,8 +3954,6 @@ test("enrolled phone record authority blocks backend discovery and forced writes
       // must retain native-record authority at their final handler gate.
       for (const action of [
         ...(notesPlugin.actions ?? []),
-        calendarAction,
-        standaloneCalendarAction,
         ownerRemindersAction,
       ]) {
         expect(

@@ -35,8 +35,9 @@ to retain their generated-declaration boundaries.
 Run independent verification commands in separate worktrees: parallel runs in
 one checkout can delete `dist` while another process is checking it.
 
-The script test runner discovers tests recursively here and in
-`packages/cloud/scripts/`, including untracked files during development.
+The optional local script test runner discovers tests recursively here and in
+`packages/cloud/scripts/`, including untracked files during development. It is not
+a CI admission lane; root `test` runs end-to-end checks.
 Relative module imports resolve from their source file; operational outputs and
 repository configuration resolve from the checkout root. Keep those paths
 correct when moving tools between subdirectories.
