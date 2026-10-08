@@ -2190,24 +2190,51 @@ describe("SharedRuntimeChatService", () => {
 
   test("keeps a keyed claim pending when claim completion exceeds the terminal deadline", async () => {
     const claims = memoryTurnClaims();
-    claims.store.complete = async () => await new Promise<never>(() => {});
+    const completionGate = Promise.withResolvers<void>();
+    let completionEntered = false;
+    // Keep completion blocked through the deadline assertions, then release
+    // only this test seam. It never calls the original store completion.
+    claims.store.complete = async () => {
+      completionEntered = true;
+      await completionGate.promise;
+    };
     const h = harness([]);
     h.historyStore.checkpointPending = async () => undefined;
 
-    const body = await (
-      await new SharedRuntimeChatService(20).stream(agent, keyedRpc, {
-        ...h,
-        turnClaims: claims.store,
-      })
-    ).text();
+    try {
+      const body = await (
+        await new SharedRuntimeChatService(20).stream(agent, keyedRpc, {
+          ...h,
+          turnClaims: claims.store,
+        })
+      ).text();
 
-    expect(body).toContain("event: error");
-    expect(body).not.toContain("event: done");
+      expect(completionEntered).toBe(true);
+      expect(body).toContain("event: error");
+      expect(body).not.toContain("event: done");
+      expect(claims.claims.get("client-key-1")?.result).toBeUndefined();
+      expect(h.staged()).toEqual([
+        expect.objectContaining({ role: "user", content: "hello" }),
+        expect.objectContaining({ role: "assistant", content: "hello", interrupted: true }),
+      ]);
+    } finally {
+      completionGate.resolve();
+      let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          Promise.all(h.background),
+          new Promise<never>((_resolve, reject) => {
+            cleanupTimer = setTimeout(
+              () => reject(new Error("Claim fixture cleanup exceeded 1s")),
+              1_000,
+            );
+          }),
+        ]);
+      } finally {
+        if (cleanupTimer !== undefined) clearTimeout(cleanupTimer);
+      }
+    }
     expect(claims.claims.get("client-key-1")?.result).toBeUndefined();
-    expect(h.staged()).toEqual([
-      expect.objectContaining({ role: "user", content: "hello" }),
-      expect.objectContaining({ role: "assistant", content: "hello", interrupted: true }),
-    ]);
   });
 
   test("an unkeyed client may reuse a JSON-RPC id without reusing durable message identities", async () => {
