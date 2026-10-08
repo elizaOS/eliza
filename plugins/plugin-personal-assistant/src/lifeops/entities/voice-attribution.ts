@@ -31,25 +31,25 @@ import type { SELF_ENTITY_ID } from "./types.js";
 // casing variants explicitly. The captured name stays anchored on an uppercase
 // first letter to filter lowercased noise; JavaScript RegExp does not support
 // scoped flag groups such as `(?-i:...)`.
-const NAME_PATTERN =
-  "[A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2}";
+const NAME_TOKEN_PATTERN = "(?!I['’](?:m|ve|ll|d)\\b)[A-Z][A-Za-z'.-]{1,40}";
+const NAME_PATTERN = `${NAME_TOKEN_PATTERN}(?:\\s+${NAME_TOKEN_PATTERN}){0,2}`;
 // A curly apostrophe is outside the name class, so "Jill’s" ends the name
 // at Jill. Reject possessives and prevent fallback to a shorter name prefix.
 const NAME_CLAIM_PATTERNS: RegExp[] = [
   new RegExp(
-    `\\b[Mm]y\\s+name\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+    `\\b[Mm]y\\s+name\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+${NAME_TOKEN_PATTERN})`,
   ),
   new RegExp(
-    `\\b[Ii]\\s+am\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+    `\\b[Ii]\\s+am\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+${NAME_TOKEN_PATTERN})`,
   ),
   new RegExp(
-    `\\b[Ii]['’]?m\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+    `\\b[Ii]['’]?m\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+${NAME_TOKEN_PATTERN})`,
   ),
   new RegExp(
-    `\\b[Tt]his\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+    `\\b[Tt]his\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+${NAME_TOKEN_PATTERN})`,
   ),
   new RegExp(
-    `\\b[Ii]t['’]?s\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+    `\\b[Ii]t['’]?s\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+${NAME_TOKEN_PATTERN})`,
   ),
 ];
 
