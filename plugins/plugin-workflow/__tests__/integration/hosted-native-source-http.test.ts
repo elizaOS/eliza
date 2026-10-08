@@ -67,7 +67,8 @@ test('native selected source persists through HTTP; explicit dossier has one mod
       sourceId: live.sourceId,
       sourceRevision: live.revision,
       occurrence: request.occurrence,
-      observedAt: new Date().toISOString(),
+      observedAt: '2026-10-08T19:30:00.000Z',
+      asOfDisplay: 'Oct 8, 2026, 12:30 PM PDT',
       timeZone: 'America/Los_Angeles',
       secretMetadata: 'NATIVE_SECRET_SENTINEL',
       events: [
@@ -136,6 +137,12 @@ test('native selected source persists through HTTP; explicit dossier has one mod
                 );
               }
 
+              const capturedPrompt = JSON.parse(String(params.prompt));
+              const summaryInput = JSON.parse(capturedPrompt.sourceText);
+              expect(summaryInput.asOf).toBe('Oct 8, 2026, 12:30 PM PDT');
+              expect(summaryInput).not.toHaveProperty('observedAt');
+              expect(params.prompt).not.toContain('2026-10-08T19:30:00.000Z');
+              expect(capturedPrompt.instruction).toContain('does not prove completion');
               expect(params.prompt).toContain('Selected meeting');
               expect(params.prompt).toContain('Selected reminder');
               expect(params.prompt).not.toContain('UNSELECTED');
@@ -275,6 +282,7 @@ test('native selected source persists through HTTP; explicit dossier has one mod
       sourceId: live.sourceId,
       sourceRevision: live.revision,
       secretMetadata: 'NATIVE_SECRET_SENTINEL',
+      observedAt: '2026-10-08T19:30:00.000Z',
     });
     expect(modelCalls).toBe(1);
     expect(reads).toBe(1);

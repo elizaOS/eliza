@@ -84,6 +84,7 @@ test("installed native source callback reuses local display formatter without ch
       ok: true,
       result: {
         timeZone: "America/Los_Angeles",
+        observedAt: "2026-10-08T19:30:00.000Z",
         events: [
           {
             start: "2026-11-01T00:00:00.000Z",
@@ -106,6 +107,8 @@ test("installed native source callback reuses local display formatter without ch
     };
     const result = (await capture.reader!(request)) as any;
     expect(capture.request).toEqual({ op: "nativeSourceRead", request });
+    expect(result.asOfDisplay).toBe("Oct 8, 2026, 12:30 PM PDT");
+    expect(result.observedAt).toBe("2026-10-08T19:30:00.000Z");
     expect(result.events[0].startDisplay).toBe("Nov 1, 2026");
     expect(result.events[0].endDateExclusive).toBe("2026-11-02");
     expect(result.events[1].startDisplay).toContain("1:30 AM PDT");
@@ -116,6 +119,7 @@ test("installed native source callback reuses local display formatter without ch
       ok: true,
       result: {
         timeZone: "Pacific/Invalid",
+        observedAt: "2026-10-08T19:30:00.000Z",
         events: [],
         reminders: [{ dueAt: "2026-10-08T15:43:19.576Z" }],
       },

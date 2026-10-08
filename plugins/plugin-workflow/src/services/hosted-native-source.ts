@@ -144,6 +144,7 @@ export async function readHostedNativeSource(
     throw new WorkflowApiError('Native source returned an unselected calendar', 409);
   const summary = {
     timeZone: snapshot.timeZone,
+    asOf: digestText(snapshot.asOfDisplay, 200),
     ...(scope.calendars.length
       ? {
           calendar: snapshot.events.map((value) => {
