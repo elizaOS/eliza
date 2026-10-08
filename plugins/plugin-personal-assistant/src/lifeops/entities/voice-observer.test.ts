@@ -209,6 +209,12 @@ it("retains names followed by an unpunctuated first-person clause", () => {
   expect(
     extractSelfNameClaim("This is Alice I am calling about the invoice"),
   ).toBe("Alice");
+  expect(extractSelfNameClaim("Hi it's Jill I'm calling about Monday")).toBe(
+    "Jill",
+  );
+  expect(extractSelfNameClaim("This is Alice I've called before")).toBe(
+    "Alice",
+  );
   expect(extractSelfNameClaim("I'm Mary Jane’s friend")).toBeNull();
 });
 
