@@ -185,3 +185,14 @@ export function parseChatTerminalFailure(
 export function isRetryableChatFailureKind(kind: ChatFailureKind): boolean {
   return RETRYABLE_CHAT_FAILURE_KIND_SET.has(kind);
 }
+
+/** Display provenance only. Unknown formats must never license text decoding. */
+export type ChatUserTextFormat = "plain-v1" | "unknown";
+
+/** Public history exposes only this fixed discriminator, never client metadata. */
+export function parseChatUserTextFormat(
+  value: unknown,
+): ChatUserTextFormat | undefined {
+  if (value === undefined) return undefined;
+  return value === "plain-v1" ? "plain-v1" : "unknown";
+}

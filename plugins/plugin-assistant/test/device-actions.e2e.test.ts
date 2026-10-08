@@ -3892,7 +3892,9 @@ test("enrolled phone record authority blocks backend discovery and forced writes
       { name: "NOTES_CREATE", params: { content } },
     );
   try {
-    await service.register(credential, "Native record owner");
+    expect(
+      await service.register(credential, "Native record owner"),
+    ).toMatchObject({ userTextFormatVersion: 1 });
     for (const action of actions) runtime.registerAction(action);
     const outside = discover();
     expect(outside).toContain("NOTES_CREATE");
