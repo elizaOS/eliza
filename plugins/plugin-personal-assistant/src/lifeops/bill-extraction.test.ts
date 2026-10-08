@@ -13,7 +13,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { EmailLikeMessage } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
-import { extractBill } from "./bill-extraction.js";
+import { extractBill, extractDueDateFromText } from "./bill-extraction.js";
 
 function runtimeWithModel(response: string): IAgentRuntime {
   return {
@@ -101,5 +101,21 @@ describe("extractBill merge merchant selection", () => {
     });
     const bill = await extractBill(runtimeWithModel(payload), message);
     expect(bill?.merchant).toBe("Unknown merchant");
+  });
+});
+
+describe("extractDueDateFromText ordinal day", () => {
+  const observedAt = new Date("2027-03-01T00:00:00.000Z");
+
+  it("keeps the written year when the day has an ordinal suffix", () => {
+    expect(
+      extractDueDateFromText("payment due April 15th, 2026", observedAt),
+    ).toBe("2026-04-15");
+  });
+
+  it("still reads a day that has no ordinal suffix", () => {
+    expect(
+      extractDueDateFromText("payment due April 15, 2026", observedAt),
+    ).toBe("2026-04-15");
   });
 });
