@@ -1,6 +1,15 @@
+import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { validateToolArgs } from "@elizaos/core";
@@ -228,9 +237,11 @@ test("next-event receipt binds a thirty-local-day window and rejects unrelated o
 test("native Share accepts its focused owned dialog and rejects background or foreign windows", async () => {
   const root = join(import.meta.dirname, "../../../.."),
     directory = await mkdtemp(join(tmpdir(), "calendar-focus-"));
-  const java =
-    process.env.JAVA_HOME ||
-    "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home";
+  const javaBin = process.env.JAVA_HOME
+    ? join(process.env.JAVA_HOME, "bin")
+    : existsSync("/opt/homebrew/opt/openjdk@21/bin/java")
+      ? "/opt/homebrew/opt/openjdk@21/bin"
+      : "";
   try {
     const source = await readFile(
         join(
@@ -257,7 +268,7 @@ test("native Share accepts its focused owned dialog and rejects background or fo
 ${methods!.join("\n")}
 static void check(boolean value){if(!value)throw new AssertionError();}public static void main(String[] args){CalendarReviewFocusProof p=new CalendarReviewFocusProof();check(!p.workflowForeground());check(p.workflowForeground(p.deleteDialog));p.activity.lifecycle.state=androidx.lifecycle.Lifecycle.State.STARTED;check(!p.workflowForeground(p.deleteDialog));p.activity.lifecycle.state=androidx.lifecycle.Lifecycle.State.RESUMED;p.deleteDialog.focused=false;check(!p.workflowForeground(p.deleteDialog));p.deleteDialog.focused=true;check(!p.workflowForeground(new android.app.AlertDialog()));p.deleteDialog.showing=false;check(!p.workflowForeground(p.deleteDialog));p.deleteDialog.showing=true;p.activity.destroyed=true;check(!p.workflowForeground(p.deleteDialog));System.out.println("PASS native owned-dialog focus and lifecycle predicate");}}`,
     );
-    execFileSync(join(java, "bin/javac"), [
+    execFileSync(javaBin ? join(javaBin, "javac") : "javac", [
       "--release",
       "11",
       "-d",
@@ -268,11 +279,135 @@ static void check(boolean value){if(!value)throw new AssertionError();}public st
     ]);
     expect(
       execFileSync(
-        join(java, "bin/java"),
+        javaBin ? join(javaBin, "java") : "java",
         ["-cp", directory, "CalendarReviewFocusProof"],
         { encoding: "utf8" },
       ),
     ).toContain("PASS native owned-dialog focus");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("native Cairo, Santiago and St_Johns receipts retain civil-day boundaries", {
+  skip: !process.env.ELIZA_JSON_JAR,
+}, async () => {
+  const root = join(import.meta.dirname, "../../../.."),
+    directory = await mkdtemp(join(tmpdir(), "calendar-midnight-gap-")),
+    javaBin = process.env.JAVA_HOME
+      ? join(process.env.JAVA_HOME, "bin")
+      : existsSync("/opt/homebrew/opt/openjdk@21/bin/java")
+        ? "/opt/homebrew/opt/openjdk@21/bin"
+        : "",
+    jar = process.env.ELIZA_JSON_JAR;
+  assert.ok(jar, "The existing pinned JVM JSON dependency is required");
+  try {
+    const fixtures = join(root, "plugins/plugin-native-calendar/test/jvm"),
+      identitySource = join(
+        root,
+        "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/read/CalendarSourceIdentity.java",
+      );
+    const files: string[] = [];
+    for (const parent of [
+      fixtures,
+      join(fixtures, "android/content"),
+      join(fixtures, "android/database"),
+      join(fixtures, "android/net"),
+      join(fixtures, "android/provider"),
+    ])
+      for (const name of await readdir(parent))
+        if (name.endsWith(".java")) files.push(join(parent, name));
+    execFileSync(javaBin ? join(javaBin, "javac") : "javac", [
+      "--release",
+      "11",
+      "-cp",
+      jar,
+      "-d",
+      directory,
+      ...files,
+      ...(existsSync(identitySource) ? [identitySource] : []),
+      join(
+        root,
+        "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java",
+      ),
+      join(
+        root,
+        "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/read/SelectedCalendarReader.java",
+      ),
+    ]);
+    const produced = JSON.parse(
+      execFileSync(
+        javaBin ? join(javaBin, "java") : "java",
+        [
+          "-cp",
+          directory + ":" + jar,
+          "ai.eliza.plugins.calendar.read.SelectedCalendarReaderTest",
+          "midnight-gap-receipts",
+        ],
+        { encoding: "utf8" },
+      ),
+    ) as Array<{ case: string; valid?: boolean; receipt: Record<string, any> }>;
+    assert.equal(produced.length, 7);
+    const errors: string[] = [];
+    for (const sample of produced) {
+      const receipt = sample.receipt;
+      // Native Share retains the window but omits its private source/event binding fields.
+      if (receipt.event)
+        receipt.event = Object.fromEntries(
+          ["title", "start", "end", "allDay", "timing", "timeZone"].map(
+            (key) => [key, receipt.event[key]],
+          ),
+        );
+      try {
+        validateCalendarResult({ type: "calendar_read_next" }, receipt);
+        if (sample.valid === false)
+          errors.push(sample.case + ": invalid boundary admitted");
+      } catch (error) {
+        if (sample.valid !== false)
+          errors.push(sample.case + ": " + (error as Error).message);
+      }
+    }
+    assert.deepEqual(errors, []);
+    for (const { receipt, valid } of produced) {
+      if (valid === false) continue;
+      const operation = { type: "calendar_read_next" } as const;
+      assert.throws(() =>
+        validateCalendarResult(operation, {
+          ...receipt,
+          window: {
+            ...receipt.window,
+            end: new Date(Date.parse(receipt.window.end) + 1000).toISOString(),
+          },
+        }),
+      );
+      if (receipt.event) {
+        assert.throws(() =>
+          validateCalendarResult(operation, {
+            ...receipt,
+            event: {
+              ...receipt.event,
+              timing:
+                receipt.event.timing === "ongoing" ? "upcoming" : "ongoing",
+            },
+          }),
+        );
+        const after = {
+          ...receipt,
+          window: {
+            ...receipt.window,
+            start: new Date(Date.parse(receipt.window.start) + 1).toISOString(),
+          },
+        };
+        if (receipt.event.timing === "upcoming")
+          assert.throws(() => validateCalendarResult(operation, after));
+        assert.doesNotThrow(() =>
+          validateCalendarResult(operation, {
+            ...after,
+            event: { ...receipt.event, timing: "ongoing" },
+          }),
+        );
+      }
+    }
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

@@ -240,21 +240,10 @@ export function validateCalendarResult(
         `${parts.year}-${parts.month}-${parts.day}T00:00:00.000Z`,
       );
     };
-    const endParts = new Intl.DateTimeFormat("en", {
-      timeZone: window.timeZone,
-      hourCycle: "h23",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }).formatToParts(Date.parse(window.end));
     if (
       civil(Date.parse(window.end)) - civil(Date.parse(window.start)) !==
         30 * 86400000 ||
-      endParts.some(
-        (p) =>
-          ["hour", "minute", "second"].includes(p.type) &&
-          Number(p.value) !== 0,
-      ) ||
+      civil(Date.parse(window.end) - 1) >= civil(Date.parse(window.end)) ||
       Date.parse(window.end) % 1000 !== 0
     )
       throw Error(
@@ -276,25 +265,13 @@ export function validateCalendarResult(
         : Date.parse(end) < Date.parse(start))
     )
       throw Error("Invalid discovered event");
-    const startParts = new Intl.DateTimeFormat("en", {
-      timeZone: window.timeZone,
-      hourCycle: "h23",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }).formatToParts(Date.parse(window.start));
-    const afterMidnight =
-      Date.parse(window.start) % 1000 !== 0 ||
-      startParts.some(
-        (p) =>
-          ["hour", "minute", "second"].includes(p.type) &&
-          Number(p.value) !== 0,
-      );
+    const afterDayStart =
+      civil(Date.parse(window.start) - 1) >= civil(Date.parse(window.start));
     const ongoing =
       e.allDay &&
       (Date.parse(start) < civil(Date.parse(window.start)) ||
         (Date.parse(start) === civil(Date.parse(window.start)) &&
-          afterMidnight));
+          afterDayStart));
     if (
       e.timing !== (ongoing ? "ongoing" : "upcoming") ||
       (!e.allDay && Date.parse(start) < Date.parse(window.start))
