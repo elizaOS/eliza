@@ -37,11 +37,22 @@ server.setRequestHandler(CallToolRequestSchema, async () => ({
   content:
     mode === "only"
       ? [audio, audio]
-      : mode === "image"
-        ? [image]
-        : mode === "text"
-          ? [{ type: "text", text: "Text control" }]
-          : [{ type: "text", text: "Captured tone" }, audio, image, audio],
+      : mode === "resource"
+        ? [
+            {
+              type: "resource_link",
+              name: "report",
+              uri: "file:///private/report",
+              description: "Complete resource metadata",
+              mimeType: "text/plain",
+              size: 42,
+            },
+          ]
+        : mode === "image"
+          ? [image]
+          : mode === "text"
+            ? [{ type: "text", text: "Text control" }]
+            : [{ type: "text", text: "Captured tone" }, audio, image, audio],
   ...(mode === "error" ? { isError: true } : {}),
 }));
 await server.connect(new StdioServerTransport());

@@ -82,6 +82,12 @@ export function DatabaseView({
     cachedStatus?.data ?? null,
   );
   const [tables, setTables] = useState<TableInfo[]>(cachedTables?.data ?? []);
+  const tableLabel = (table: TableInfo): string =>
+    tables.some(
+      (other) => other.name === table.name && other.schema !== table.schema,
+    )
+      ? `${table.schema}.${table.name}`
+      : table.name;
   const [selectedTable, setSelectedTable] = useState("");
   const [selectedSchema, setSelectedSchema] = useState("");
   const [tableData, setTableData] = useState<TableRowsResponse | null>(null);
@@ -467,9 +473,9 @@ export function DatabaseView({
         contentIdentity="database"
         collapsedRailItems={filteredTables.map((table) => (
           <SidebarContent.RailItem
-            key={`${table.schema}.${table.name}`}
-            aria-label={table.name}
-            title={table.name}
+            key={JSON.stringify([table.schema, table.name])}
+            aria-label={tableLabel(table)}
+            title={tableLabel(table)}
             active={
               selectedTable === table.name && selectedSchema === table.schema
             }
@@ -505,7 +511,7 @@ export function DatabaseView({
                 ) : (
                   filteredTables.map((table) => (
                     <SidebarContent.Item
-                      key={`${table.schema}.${table.name}`}
+                      key={JSON.stringify([table.schema, table.name])}
                       active={
                         selectedTable === table.name &&
                         selectedSchema === table.schema
@@ -517,7 +523,7 @@ export function DatabaseView({
                     >
                       <SidebarContent.ItemBody>
                         <SidebarContent.ItemTitle>
-                          {table.name}
+                          {tableLabel(table)}
                         </SidebarContent.ItemTitle>
                         <SidebarContent.ItemDescription>
                           {t("databaseview.RowCountLabel", {
@@ -739,7 +745,7 @@ export function DatabaseView({
                   >
                     {filteredTables.map((t) => (
                       <SidebarContent.Item
-                        key={`${t.schema}.${t.name}`}
+                        key={JSON.stringify([t.schema, t.name])}
                         active={
                           selectedTable === t.name &&
                           selectedSchema === t.schema
@@ -749,7 +755,7 @@ export function DatabaseView({
                       >
                         <SidebarContent.ItemBody>
                           <SidebarContent.ItemTitle>
-                            {t.name}
+                            {tableLabel(t)}
                           </SidebarContent.ItemTitle>
                           <SidebarContent.ItemDescription>
                             {(t.rowCount ?? 0).toLocaleString("en-US")} rows

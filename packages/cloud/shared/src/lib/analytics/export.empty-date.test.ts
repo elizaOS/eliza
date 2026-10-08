@@ -8,7 +8,8 @@ import { formatDate, generateCSV } from "./export";
 
 test("keeps a missing last-active export cell empty", () => {
   expect(formatDate("")).toBe("");
-  expect(formatDate("not-a-date")).toBe("");
+  expect(() => formatDate("not-a-date")).toThrow();
+  expect(() => formatDate(new Date(Number.NaN))).toThrow();
   expect(formatDate("2026-08-13T00:00:00.000Z")).toBe("2026-08-13T00:00:00.000Z");
   expect(
     generateCSV(

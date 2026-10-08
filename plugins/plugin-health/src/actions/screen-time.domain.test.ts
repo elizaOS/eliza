@@ -10,6 +10,9 @@ describe("normalizeDomain", () => {
 
   it("keeps a bare host and rejects an empty URL", () => {
     expect(normalizeDomain("nytimes.com")).toBe("nytimes.com");
+    expect(normalizeDomain("nytimes.com?section=world")).toBe("nytimes.com");
+    expect(normalizeDomain("nytimes.com:443/world")).toBe("nytimes.com");
+    expect(normalizeDomain("https://nytimes.com./world")).toBe("nytimes.com");
     expect(normalizeDomain("https://")).toBe("");
   });
 

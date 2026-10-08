@@ -1674,6 +1674,20 @@ function parseRelativeDayOffset(text: string): number | null {
   return null;
 }
 
+function isRealCalendarDay(year: number, month: number, day: number): boolean {
+  const candidate = new Date(0);
+  candidate.setUTCFullYear(year, month - 1, day);
+  return (
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= 31 &&
+    candidate.getUTCFullYear() === year &&
+    candidate.getUTCMonth() + 1 === month &&
+    candidate.getUTCDate() === day
+  );
+}
+
 export function parseExplicitLocalDate(
   value: string,
   timeZone: string,
@@ -1687,23 +1701,8 @@ export function parseExplicitLocalDate(
     const year = Number(isoMatch[1]);
     const month = Number(isoMatch[2]);
     const day = Number(isoMatch[3]);
-    // The slash form already drops Feb 30. An ISO day must do the same,
-    // or "2026-02-30" is stored as a day that does not exist.
-    const candidate = new Date(0);
-    candidate.setUTCFullYear(year, month - 1, day);
-    const isRealDate =
-      month >= 1 &&
-      month <= 12 &&
-      day >= 1 &&
-      day <= 31 &&
-      candidate.getUTCFullYear() === year &&
-      candidate.getUTCMonth() + 1 === month &&
-      candidate.getUTCDate() === day;
-    if (isRealDate) {
-      return { year, month, day };
-    }
-    // "2023-02-29" is not 29 Feb of a later leap year. Stop here.
-    return null;
+    // Do not reinterpret an invalid ISO date as a yearless numeric date.
+    return isRealCalendarDay(year, month, day) ? { year, month, day } : null;
   }
 
   const monthNameMatch = normalized.match(MONTH_NAME_PATTERN);
@@ -1720,18 +1719,7 @@ export function parseExplicitLocalDate(
       ? Number(monthNameMatch[3])
       : localToday.year;
     const day = Number(monthNameMatch[2]);
-    // "2/30/2026" already returns null. "February 30, 2026" must not stay
-    // as a day that does not exist.
-    const candidate = new Date(0);
-    candidate.setUTCFullYear(year, month - 1, day);
-    const isRealDate =
-      day >= 1 &&
-      day <= 31 &&
-      candidate.getUTCFullYear() === year &&
-      candidate.getUTCMonth() + 1 === month &&
-      candidate.getUTCDate() === day;
-    if (!isRealDate) return null;
-    return { year, month, day };
+    return isRealCalendarDay(year, month, day) ? { year, month, day } : null;
   }
 
   const numericMatch = normalized.match(
@@ -1757,17 +1745,7 @@ export function parseExplicitLocalDate(
     // Range-check and round-trip through Date.UTC so impossible dates
     // (month 25, Feb 30) fall through to the later branches instead of
     // rolling over (#21941).
-    const dCand = new Date(0);
-    dCand.setUTCFullYear(parsedYear, month - 1, day);
-    const candidate = dCand;
-    const isRealDate =
-      month >= 1 &&
-      month <= 12 &&
-      day >= 1 &&
-      day <= 31 &&
-      candidate.getUTCFullYear() === parsedYear &&
-      candidate.getUTCMonth() + 1 === month &&
-      candidate.getUTCDate() === day;
+    const isRealDate = isRealCalendarDay(parsedYear, month, day);
     if (isRealDate && !yearlessDashTimeRange) {
       return {
         year: parsedYear,

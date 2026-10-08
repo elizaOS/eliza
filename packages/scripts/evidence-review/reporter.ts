@@ -35,10 +35,10 @@ export function formatDuration(ms) {
   if (ms < 1000) return `${ms}ms`;
   const seconds = ms / 1000;
   if (seconds < 60) {
-    const rounded = Math.round(seconds * 10) / 10;
+    const text = seconds.toFixed(1);
     // 59.96s rounds to 60.0. The matrix must not print "60.0s".
-    if (rounded >= 60) return "1m00s";
-    return `${rounded.toFixed(1)}s`;
+    if (Number(text) >= 60) return "1m00s";
+    return `${text}s`;
   }
   const minutes = Math.floor(seconds / 60);
   const rest = Math.round(seconds - minutes * 60);

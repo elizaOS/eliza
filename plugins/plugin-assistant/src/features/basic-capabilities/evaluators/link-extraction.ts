@@ -28,15 +28,11 @@ import {
 } from "@elizaos/core";
 import { v4 } from "uuid";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
+import { extractUrls } from "../../../utils/extract-urls.ts";
 
 const EVALUATOR_NAME = "linkExtraction";
 const EVALUATOR_SOURCE = "link_extraction_evaluator";
 const MEMORY_TABLE = "links";
-// A "]" is part of the URL only when it closes an IPv6 host, as in
-// "http://[2001:db8::1]/docs". Any other "]" ends the match, so
-// "[http://example.com](http://example.com)" stays one URL.
-const URL_REGEX =
-  /https?:\/\/(?:\[[0-9a-f:.%]+\][^\s<>"'`\]]*|[^\s<>"'`\]]+)/gi;
 const SUMMARY_FETCH_TIMEOUT_MS = 5_000;
 
 interface LinkRecord {
@@ -76,56 +72,8 @@ function getMessageSource(message: Memory): string {
   return typeof source === "string" && source.length > 0 ? source : "unknown";
 }
 
-function extractUrls(text: string): string[] {
-  const matches = text.match(URL_REGEX);
-  if (!matches) {
-    return [];
-  }
-  const seen = new Set<string>();
-  const urls: string[] = [];
-  for (const raw of matches) {
-    const trimmed = stripTrailingPunctuation(raw);
-    if (!trimmed) {
-      continue;
-    }
-    if (seen.has(trimmed)) {
-      continue;
-    }
-    seen.add(trimmed);
-    urls.push(trimmed);
-  }
-  return urls;
-}
-
-function stripTrailingPunctuation(url: string): string {
-  let depth = 0;
-  let brackets = 0;
-  let end = 0;
-  for (let i = 0; i < url.length; i++) {
-    const char = url[i];
-    if (char === "(") depth++;
-    else if (char === ")") {
-      if (depth === 0) continue;
-      depth--;
-    } else if (char === "[") {
-      brackets++;
-    } else if (char === "]") {
-      // Keep the "]" that closes "[2001:db8::1]". Drop a leftover "]".
-      if (brackets === 0) continue;
-      brackets--;
-    } else if (/[.,;:!?}>*_]/u.test(char)) continue;
-    end = i + 1;
-  }
-  return url.slice(0, end);
-}
-
 function hasUrl(message: Memory): boolean {
-  const text = getMessageText(message);
-  if (!text) {
-    return false;
-  }
-  URL_REGEX.lastIndex = 0;
-  return URL_REGEX.test(text);
+  return extractUrls(getMessageText(message)).length > 0;
 }
 
 function extractTitle(html: string): string {

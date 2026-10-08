@@ -72,22 +72,25 @@ describe("/search", () => {
 		);
 	});
 
-	it("keeps every match when the limit is negative", async () => {
-		const search = getRegisteredCommands().get("search");
-		if (!search) throw new Error("search command not registered");
-		const interaction = makeSearchInteraction("hello", -1);
-		const runtime = {
-			getMemories: vi.fn(async () => [
-				{ content: { text: "hello one" }, createdAt: Date.now() },
-				{ content: { text: "hello two" }, createdAt: Date.now() },
-				{ content: { text: "hello three" }, createdAt: Date.now() },
-			]),
-		};
+	it.each([-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY])(
+		"uses the default maximum for invalid limit %s",
+		async (limit) => {
+			const search = getRegisteredCommands().get("search");
+			if (!search) throw new Error("search command not registered");
+			const interaction = makeSearchInteraction("hello", limit);
+			const runtime = {
+				getMemories: vi.fn(async () => [
+					{ content: { text: "hello one" }, createdAt: Date.now() },
+					{ content: { text: "hello two" }, createdAt: Date.now() },
+					{ content: { text: "hello three" }, createdAt: Date.now() },
+				]),
+			};
 
-		await search.execute(interaction as never, runtime as never);
+			await search.execute(interaction as never, runtime as never);
 
-		expect(interaction.edits[0].content).toContain("hello three");
-	});
+			expect(interaction.edits[0].content).toContain("hello three");
+		},
+	);
 
 	it("does not treat a blank query as a match for every message", async () => {
 		const search = getRegisteredCommands().get("search");
@@ -103,6 +106,7 @@ describe("/search", () => {
 
 		expect(interaction.edits[0].content).not.toContain("hello world");
 		expect(interaction.edits[0].content).toContain("Enter a search query.");
+		expect(runtime.getMemories).not.toHaveBeenCalled();
 	});
 
 	it("reports the error message when getMemories throws", async () => {

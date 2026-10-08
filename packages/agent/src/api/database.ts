@@ -51,6 +51,13 @@ export {
   stripSqlLineComments,
 } from "../shared/sql-sanitizers.ts";
 
+import {
+  parseRequestedSchema,
+  qualifiedTable,
+  quoteIdent,
+  resolveTableSchema,
+} from "../shared/database-table.ts";
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -61,13 +68,6 @@ async function readJsonBody<T = Record<string, unknown>>(
   return parseJsonBody(req, res, {
     maxBytes: 2 * 1024 * 1024,
   });
-}
-/**
- * Safely quote a SQL identifier (table or column name).
- * Postgres uses double-quote escaping: embedded " becomes "".
- */
-function quoteIdent(name: string): string {
-  return `"${name.replace(/"/g, '""')}"`;
 }
 /**
  * Build a Postgres connection string from individual credential fields.
@@ -395,68 +395,6 @@ async function executeRawSql(
 function detectCurrentProvider(): DatabaseProviderType {
   return process.env.POSTGRES_URL ? "postgres" : "pglite";
 }
-const SCHEMA_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
-/**
- * Optional schema query. Empty means "the visible relation". Anything else
- * must be one identifier. Plugin schemas such as todos are not on search_path,
- * so the caller has to name them.
- */
-function parseRequestedSchema(
-  raw: string | null,
-): { ok: true; schema: string | null } | { ok: false } {
-  if (raw === null || raw === "") return { ok: true, schema: null };
-  if (!SCHEMA_IDENT.test(raw)) return { ok: false };
-  if (raw === "pg_catalog" || raw === "information_schema")
-    return { ok: false };
-  return { ok: true, schema: raw };
-}
-function qualifiedTable(schema: string, tableName: string): string {
-  return `${quoteIdent(schema)}.${quoteIdent(tableName)}`;
-}
-/**
- * Schema to use for a row read. An explicit schema names that relation even
- * when it is outside search_path. With no schema, use the relation an
- * unqualified FROM would open.
- */
-async function resolveTableSchema(
-  runtime: AgentRuntime,
-  tableName: string,
-  requestedSchema: string | null,
-): Promise<string | null> {
-  const safe = tableName.replace(/'/g, "''");
-  if (requestedSchema) {
-    const safeSchema = requestedSchema.replace(/'/g, "''");
-    const { rows } = await executeRawSql(
-      runtime,
-      `SELECT n.nspname AS schema
-       FROM pg_catalog.pg_class c
-       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-       WHERE c.relname = '${safe}'
-         AND n.nspname = '${safeSchema}'
-         AND c.relkind IN ('r', 'p')
-       LIMIT 1`,
-    );
-    return rows.length > 0 ? String(rows[0].schema) : null;
-  }
-  const { rows } = await executeRawSql(
-    runtime,
-    `SELECT n.nspname AS schema
-     FROM pg_catalog.pg_class c
-     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-     WHERE c.relname = '${safe}'
-       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-       AND c.relkind IN ('r', 'p')
-       AND pg_catalog.pg_table_is_visible(c.oid)
-     ORDER BY (
-       SELECT s.ord
-       FROM unnest(current_schemas(true)) WITH ORDINALITY AS s(name, ord)
-       WHERE s.name = n.nspname
-       LIMIT 1
-     )
-     LIMIT 1`,
-  );
-  return rows.length > 0 ? String(rows[0].schema) : null;
-}
 async function requireTableSchema(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -469,10 +407,14 @@ async function requireTableSchema(
   );
   const parsed = parseRequestedSchema(url.searchParams.get("schema"));
   if (!parsed.ok) {
-    sendJsonError(res, "schema must be a single identifier", 400);
+    sendJsonError(res, "schema must name a non-system database schema", 400);
     return null;
   }
-  const schema = await resolveTableSchema(runtime, tableName, parsed.schema);
+  const schema = await resolveTableSchema(
+    (query) => executeRawSql(runtime, query),
+    tableName,
+    parsed.schema,
+  );
   if (!schema) {
     sendJsonError(res, `Table "${tableName}" not found`, 404);
     return null;
@@ -770,7 +712,7 @@ async function handleGetTables(
   // Group columns by table
   const columnsByTable = new Map<string, ColumnInfo[]>();
   for (const row of columnsResult.rows) {
-    const key = `${String(row.schema)}.${String(row.table_name)}`;
+    const key = JSON.stringify([row.schema, row.table_name]);
     const cols = columnsByTable.get(key) ?? [];
     cols.push({
       name: String(row.name),
@@ -783,7 +725,7 @@ async function handleGetTables(
     columnsByTable.set(key, cols);
   }
   const tables: TableInfo[] = tablesResult.rows.map((row) => {
-    const key = `${String(row.schema)}.${String(row.name)}`;
+    const key = JSON.stringify([row.schema, row.name]);
     return {
       name: String(row.name),
       schema: String(row.schema),
@@ -867,11 +809,11 @@ async function handleGetRows(
   const search = url.searchParams.get("search") ?? "";
   const parsedSchema = parseRequestedSchema(url.searchParams.get("schema"));
   if (!parsedSchema.ok) {
-    sendJsonError(res, "schema must be a single identifier", 400);
+    sendJsonError(res, "schema must name a non-system database schema", 400);
     return;
   }
   const schema = await resolveTableSchema(
-    runtime,
+    (query) => executeRawSql(runtime, query),
     tableName,
     parsedSchema.schema,
   );

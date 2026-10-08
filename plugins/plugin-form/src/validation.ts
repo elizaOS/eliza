@@ -354,12 +354,17 @@ function parseStrictNumber(input: string): number {
   const cleaned = input
     .trim()
     .replace(/^([+-]?)\s*\$/, "$1")
-    .trim()
-    .replace(/,/g, "");
-  if (!STRICT_NUMBER_PATTERN.test(cleaned)) {
+    .trim();
+  if (
+    cleaned.includes(",") &&
+    !/^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d*)?(?:e[+-]?\d+)?$/i.test(cleaned)
+  )
+    return Number.NaN;
+  const normalized = cleaned.replace(/,/g, "");
+  if (!STRICT_NUMBER_PATTERN.test(normalized)) {
     return Number.NaN;
   }
-  return Number(cleaned);
+  return Number(normalized);
 }
 /**
  * Validate number field.

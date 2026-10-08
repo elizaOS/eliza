@@ -6,6 +6,7 @@ const fixture = vi.hoisted(() => ({
   clear: vi.fn(async () => ({})),
   readAll: vi.fn(async () => ({})),
   events: new Map<string, (event: never) => void>(),
+  authListeners: new Set<() => void>(),
   auth: {
     phase: "authenticated",
     identity: { id: "owner" },
@@ -34,7 +35,10 @@ vi.mock("../../api/client", () => ({
 }));
 vi.mock("../../hooks/useAuthStatus", () => ({
   getAuthStatusSnapshot: () => fixture.auth,
-  subscribeAuthStatus: () => () => {},
+  subscribeAuthStatus: (listener: () => void) => {
+    fixture.authListeners.add(listener);
+    return () => fixture.authListeners.delete(listener);
+  },
 }));
 vi.mock("../../bridge/notification-delivery", () => ({
   deliverSystemNotification: vi.fn(async () => "none"),
@@ -80,6 +84,8 @@ function event(n: number, removed = false) {
 afterEach(() => {
   __resetNotificationStoreForTests();
   fixture.events.clear();
+  fixture.authListeners.clear();
+  fixture.auth.identity.id = "owner";
   fixture.list.mockReset();
   fixture.clear.mockReset().mockResolvedValue({});
   fixture.readAll.mockReset().mockResolvedValue({});
@@ -261,9 +267,11 @@ it("a newer empty successful clear fences an older failed clear rollback", async
       }),
   );
   const first = clearNotifications();
-  await clearNotifications();
+  const second = clearNotifications();
+  expect(fixture.clear).toHaveBeenCalledTimes(1);
   reject(new Error("First clear failed"));
-  await first;
+  await Promise.all([first, second]);
+  expect(fixture.clear).toHaveBeenCalledTimes(2);
   expect(__getStateForTests().notifications).toEqual([]);
   expect(__getStateForTests().unreadCount).toBe(0);
 });
@@ -329,4 +337,124 @@ it("failed all-read removes its hydration fence and restores global total", asyn
   finish({ notifications: [row(1), row(2)], unreadCount: 1001 });
   await refresh;
   expect(__getStateForTests().unreadCount).toBe(1001);
+});
+
+function deferredWrite() {
+  let reject!: (error: Error) => void;
+  let resolve!: (value: object) => void;
+  const promise = new Promise<object>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, reject, resolve };
+}
+const bulk = {
+  clear: { write: fixture.clear, run: clearNotifications },
+  readAll: { write: fixture.readAll, run: markAllNotificationsRead },
+};
+it.each([
+  ["clear", "clear"],
+  ["clear", "readAll"],
+  ["readAll", "clear"],
+  ["readAll", "readAll"],
+] as const)(
+  "failed %s then failed %s restores the original global inbox",
+  async (one, two) => {
+    await readyGlobalInbox();
+    const firstWrite = deferredWrite();
+    const secondWrite = deferredWrite();
+    bulk[one].write.mockImplementationOnce(() => firstWrite.promise);
+    bulk[two].write.mockImplementationOnce(() => secondWrite.promise);
+    const first = bulk[one].run();
+    const second = bulk[two].run();
+    expect(
+      fixture.clear.mock.calls.length + fixture.readAll.mock.calls.length,
+    ).toBe(1);
+    expect(__getStateForTests().unreadCount).toBe(0);
+    firstWrite.reject(new Error("First bulk write failed"));
+    await first;
+    await vi.waitFor(() =>
+      expect(
+        fixture.clear.mock.calls.length + fixture.readAll.mock.calls.length,
+      ).toBe(2),
+    );
+    secondWrite.reject(new Error("Second bulk write failed"));
+    await second;
+    expect(__getStateForTests().notifications).toEqual([row(1)]);
+    expect(__getStateForTests().unreadCount).toBe(1000);
+  },
+);
+it("a successful first clear remains cleared when the queued clear fails", async () => {
+  await readyGlobalInbox();
+  const firstWrite = deferredWrite();
+  fixture.clear.mockImplementationOnce(() => firstWrite.promise);
+  fixture.clear.mockRejectedValueOnce(new Error("Second clear failed"));
+  const first = clearNotifications();
+  const second = clearNotifications();
+  firstWrite.resolve({});
+  await Promise.all([first, second]);
+  expect(__getStateForTests().notifications).toEqual([]);
+  expect(__getStateForTests().unreadCount).toBe(0);
+});
+it("bulk rollback and a queued failed read preserve newer authoritative live rows", async () => {
+  await readyGlobalInbox();
+  const firstWrite = deferredWrite();
+  fixture.clear.mockImplementationOnce(() => firstWrite.promise);
+  fixture.readAll.mockRejectedValueOnce(new Error("Read failed"));
+  const first = clearNotifications();
+  const second = markAllNotificationsRead();
+  fixture.events.get("agent_event")?.({
+    stream: "notification",
+    payload: { type: "notification", notification: row(2), unreadCount: 1001 },
+  } as never);
+  firstWrite.reject(new Error("Clear failed"));
+  await Promise.all([first, second]);
+  expect(__getStateForTests().notifications).toEqual([row(2), row(1)]);
+  expect(__getStateForTests().unreadCount).toBe(1001);
+});
+it("queued old-owner writes cannot dispatch after an authority switch or delay its new owner", async () => {
+  await readyGlobalInbox();
+  const firstWrite = deferredWrite();
+  fixture.clear.mockImplementationOnce(() => firstWrite.promise);
+  const first = clearNotifications();
+  const oldQueued = markAllNotificationsRead();
+  fixture.list.mockResolvedValueOnce({
+    notifications: [row(3)],
+    unreadCount: 1,
+  });
+  fixture.auth.identity.id = "successor-owner";
+  for (const listener of fixture.authListeners) listener();
+  await vi.waitFor(() =>
+    expect(__getStateForTests().notifications).toEqual([row(3)]),
+  );
+  await markAllNotificationsRead();
+  expect(fixture.readAll).toHaveBeenCalledTimes(1);
+  firstWrite.reject(new Error("Old owner clear failed"));
+  await Promise.all([first, oldQueued]);
+  expect(fixture.readAll).toHaveBeenCalledTimes(1);
+  expect(__getStateForTests().notifications).toHaveLength(1);
+  expect(__getStateForTests().notifications[0]?.id).toBe(id(3));
+  expect(__getStateForTests().notifications[0]?.readAt).toBeTruthy();
+  expect(__getStateForTests().unreadCount).toBe(0);
+});
+it("queued successful clear fences an older hydration after a failed predecessor", async () => {
+  await readyGlobalInbox();
+  let finish!: (value: unknown) => void;
+  fixture.list.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const refresh = retryNotificationHydration();
+  const firstWrite = deferredWrite();
+  fixture.clear.mockImplementationOnce(() => firstWrite.promise);
+  const first = clearNotifications();
+  const second = clearNotifications();
+  firstWrite.reject(new Error("First clear failed"));
+  await Promise.all([first, second]);
+  finish({ notifications: [row(1)], unreadCount: 1000 });
+  await refresh;
+  expect(__getStateForTests().notifications).toEqual([]);
+  expect(__getStateForTests().unreadCount).toBe(0);
 });

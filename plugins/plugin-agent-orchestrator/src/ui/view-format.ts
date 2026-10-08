@@ -77,11 +77,9 @@ export function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const seconds = ms / 1000;
   if (seconds < 60) {
-    const rounded =
-      seconds < 10 ? Math.round(seconds * 10) / 10 : Math.round(seconds);
-    // 59.5s rounds to 60. Exact minutes drop the seconds, so this is "1m".
-    if (rounded >= 60) return "1m";
-    return seconds < 10 ? `${rounded.toFixed(1)}s` : `${rounded}s`;
+    const text = seconds.toFixed(seconds < 10 ? 1 : 0);
+    if (Number(text) >= 60) return "1m";
+    return `${text}s`;
   }
   const minutes = Math.floor(seconds / 60);
   const rest = Math.round(seconds % 60);

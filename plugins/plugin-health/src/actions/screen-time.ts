@@ -29,6 +29,7 @@ import type {
   LifeOpsScreenTimeSource,
   LifeOpsScreenTimeSummary,
 } from "../contracts/lifeops.js";
+import { hostnameFromValue } from "../screen-time/social-taxonomy.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
@@ -321,28 +322,8 @@ function resolveWindowMs(windowHours: number | undefined): number {
 }
 
 export function normalizeDomain(value: string): string {
-  const trimmed = value.trim().toLowerCase().replace(/\.+$/, "");
-  if (!trimmed) return "";
-  // "https://nytimes.com/section" already becomes the host. A bare
-  // "nytimes.com/section" must do the same, or the lookup misses the site.
-  const withScheme =
-    trimmed.startsWith("http://") || trimmed.startsWith("https://")
-      ? trimmed
-      : trimmed.includes("://") || trimmed.indexOf("/") <= 0
-        ? null
-        : `https://${trimmed}`;
-  if (withScheme === null) {
-    // "/section" and "ftp://host/x" must not become a made-up host.
-    if (trimmed.startsWith("/") || trimmed.includes("://")) return "";
-    return trimmed;
-  }
-  try {
-    return new URL(withScheme).hostname.toLowerCase();
-  } catch {
-    // error-policy:J3 untrusted domain input; an unparseable URL yields the
-    // empty invalid signal rather than a fabricated hostname.
-    return "";
-  }
+  if (value.trim().startsWith("/")) return "";
+  return hostnameFromValue(value) ?? "";
 }
 
 function buildReportSummary(

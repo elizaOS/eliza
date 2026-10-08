@@ -115,7 +115,8 @@ let mutationRevision = 0;
 let clearMutationRevision = 0;
 let allReadMutationRevision = 0;
 let allReadMutationTimestamp = 0;
-let bulkMutationRevision = 0;
+let bulkMutationGeneration = 0;
+let bulkMutationTail: Promise<void> | null = null;
 const notificationMutationRevisions = new Map<string, number>();
 // Unsubscribes the currently-bound live WS notification handler; rebound on
 // every authority change so a handler closure from a superseded authority can
@@ -453,7 +454,8 @@ function clearForAuthorityChange(): void {
   clearMutationRevision = 0;
   allReadMutationRevision = 0;
   allReadMutationTimestamp = 0;
-  bulkMutationRevision = 0;
+  bulkMutationGeneration += 1;
+  bulkMutationTail = null;
   notificationMutationRevisions.clear();
   if (hydrationRetryTimer) {
     clearTimeout(hydrationRetryTimer);
@@ -900,7 +902,6 @@ interface MutationSnapshot {
   authorityEpoch: number;
   unreadCount: number;
   liveRevision: number;
-  bulkRevision?: number;
   originals: Map<string, AgentNotification>;
   revisions: Map<string, number>;
 }
@@ -952,16 +953,6 @@ function revertMutation(
     logger.warn(
       { err },
       `[notification-store] ${op} failed after an authority switch; stale rollback discarded`,
-    );
-    return;
-  }
-  if (
-    snapshot.bulkRevision !== undefined &&
-    snapshot.bulkRevision !== bulkMutationRevision
-  ) {
-    logger.warn(
-      { err },
-      `[notification-store] ${op} failed after a newer bulk mutation; stale rollback discarded`,
     );
     return;
   }
@@ -1020,12 +1011,51 @@ export async function markNotificationRead(id: string): Promise<void> {
   }
 }
 
-export async function markAllNotificationsRead(): Promise<void> {
+/** Bulk snapshots must observe the previous bulk write's settled state. */
+function enqueueBulkMutation(operation: () => Promise<void>): Promise<void> {
+  const ownerKey = currentAuthorityKey;
+  const ownerEpoch = authorityEpoch;
+  const generation = bulkMutationGeneration;
+  const run = async () => {
+    if (
+      generation !== bulkMutationGeneration ||
+      ownerKey !== currentAuthorityKey ||
+      ownerEpoch !== authorityEpoch
+    ) {
+      logger.warn(
+        "[notification-store] queued bulk mutation cancelled after authority change",
+      );
+      return;
+    }
+    await operation();
+  };
+  // Run the first mutation synchronously through its first await, preserving
+  // immediate optimistic feedback. A failed predecessor cannot strand the queue.
+  const result = bulkMutationTail ? bulkMutationTail.then(run, run) : run();
+  bulkMutationTail = result;
+  void result.then(
+    () => {
+      if (bulkMutationTail === result) bulkMutationTail = null;
+    },
+    (error: unknown) => {
+      if (bulkMutationTail === result) bulkMutationTail = null;
+      // error-policy:J7 report an unexpected queue failure; the returned original
+      // promise remains rejected. HTTP failures retain their logged rollback path.
+      logger.error({ err: error }, "[notification-store] bulk mutation failed");
+    },
+  );
+  return result;
+}
+
+export function markAllNotificationsRead(): Promise<void> {
+  return enqueueBulkMutation(markAllNotificationsReadSerialized);
+}
+
+async function markAllNotificationsReadSerialized(): Promise<void> {
   const snapshot = snapshotForMutation(state.notifications.map((n) => n.id));
   const previousAllReadRevision = allReadMutationRevision;
   const previousAllReadTimestamp = allReadMutationTimestamp;
   const ownBulkRevision = ++mutationRevision;
-  snapshot.bulkRevision = bulkMutationRevision = ownBulkRevision;
   allReadMutationRevision = ownBulkRevision;
   const now = Date.now();
   allReadMutationTimestamp = now;
@@ -1104,12 +1134,15 @@ export async function removeNotifications(
   }
 }
 
-export async function clearNotifications(): Promise<void> {
+export function clearNotifications(): Promise<void> {
+  return enqueueBulkMutation(clearNotificationsSerialized);
+}
+
+async function clearNotificationsSerialized(): Promise<void> {
   const snapshot = snapshotForMutation(state.notifications.map((n) => n.id));
   const previousClearRevision = clearMutationRevision;
   const ownClearRevision = ++mutationRevision;
   clearMutationRevision = ownClearRevision;
-  snapshot.bulkRevision = bulkMutationRevision = ownClearRevision;
   const previousEphemeralIds = [...ephemeralNotificationIds];
   setState({ notifications: [], unreadCount: 0 });
   ephemeralNotificationIds.clear();
@@ -1122,8 +1155,7 @@ export async function clearNotifications(): Promise<void> {
     ) {
       if (clearMutationRevision === ownClearRevision)
         clearMutationRevision = previousClearRevision;
-      if (bulkMutationRevision === ownClearRevision)
-        for (const id of previousEphemeralIds) ephemeralNotificationIds.add(id);
+      for (const id of previousEphemeralIds) ephemeralNotificationIds.add(id);
     }
     revertMutation(snapshot, "clearNotifications", err);
   }
@@ -1160,7 +1192,8 @@ export function __resetNotificationStoreForTests(): void {
   clearMutationRevision = 0;
   allReadMutationRevision = 0;
   allReadMutationTimestamp = 0;
-  bulkMutationRevision = 0;
+  bulkMutationGeneration += 1;
+  bulkMutationTail = null;
   notificationMutationRevisions.clear();
   notificationEventUnsub?.();
   notificationEventUnsub = null;

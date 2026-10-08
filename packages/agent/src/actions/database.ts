@@ -31,6 +31,13 @@ import {
 
 import { checkReadOnly } from "../security/sql-readonly-guard.ts";
 
+import {
+  parseRequestedSchema,
+  qualifiedTable,
+  quoteIdent,
+  resolveTableSchema,
+} from "../shared/database-table.ts";
+
 // ---------------------------------------------------------------------------
 // Op dispatch
 // ---------------------------------------------------------------------------
@@ -132,10 +139,6 @@ async function executeRawSql(
     result.fields?.map((f) => f.name) ??
     (rows.length > 0 ? Object.keys(rows[0]) : []);
   return { rows, columns };
-}
-
-function quoteIdent(name: string): string {
-  return `"${name.replace(/"/g, '""')}"`;
 }
 
 function parseOptionalPositiveInteger(
@@ -269,7 +272,7 @@ async function opListTables(
 
   const columnsByTable = new Map<string, ColumnInfo[]>();
   for (const row of columnsResult.rows) {
-    const key = `${String(row.schema)}.${String(row.table_name)}`;
+    const key = JSON.stringify([row.schema, row.table_name]);
     const cols = columnsByTable.get(key) ?? [];
     cols.push({
       name: String(row.name),
@@ -283,7 +286,7 @@ async function opListTables(
   }
 
   const allTables: TableInfo[] = tablesResult.rows.map((row) => {
-    const key = `${String(row.schema)}.${String(row.name)}`;
+    const key = JSON.stringify([row.schema, row.name]);
     return {
       name: String(row.name),
       schema: String(row.schema),
@@ -342,16 +345,6 @@ async function opListTables(
   };
 }
 
-const SCHEMA_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-function isUserSchema(name: string): boolean {
-  return (
-    SCHEMA_IDENT.test(name) &&
-    name !== "pg_catalog" &&
-    name !== "information_schema"
-  );
-}
-
 async function resolveGetTableSchema(
   runtime: IAgentRuntime,
   tableName: string,
@@ -360,88 +353,33 @@ async function resolveGetTableSchema(
   | { ok: true; schema: string; tableName: string }
   | { ok: false; text: string; reason: string }
 > {
-  const safe = tableName.replace(/'/g, "''");
-  const requested = requestedSchema?.trim() ?? "";
-  if (requested.length > 0) {
-    if (!isUserSchema(requested)) {
-      return {
-        ok: false,
-        text: "schema must be a single identifier.",
-        reason: "INVALID_SCHEMA",
-      };
-    }
-    const safeSchema = requested.replace(/'/g, "''");
-    const found = await executeRawSql(
-      runtime,
-      `SELECT 1
-       FROM pg_catalog.pg_class c
-       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-       WHERE c.relname = '${safe}'
-         AND n.nspname = '${safeSchema}'
-         AND c.relkind IN ('r', 'p')
-       LIMIT 1`,
-    );
-    if (found.rows.length === 0) {
-      return {
-        ok: false,
-        text: `Table "${requested}.${tableName}" not found.`,
-        reason: "TABLE_NOT_FOUND",
-      };
-    }
-    return { ok: true, schema: requested, tableName };
-  }
-  const visible = await executeRawSql(
-    runtime,
-    `SELECT n.nspname AS schema
-     FROM pg_catalog.pg_class c
-     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-     WHERE c.relname = '${safe}'
-       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-       AND c.relkind IN ('r', 'p')
-       AND pg_catalog.pg_table_is_visible(c.oid)
-     ORDER BY (
-       SELECT s.ord
-       FROM unnest(current_schemas(true)) WITH ORDINALITY AS s(name, ord)
-       WHERE s.name = n.nspname
-       LIMIT 1
-     )
-     LIMIT 1`,
-  );
-  if (visible.rows.length > 0) {
+  const parsed = parseRequestedSchema(requestedSchema);
+  if (!parsed.ok)
     return {
-      ok: true,
-      schema: String(visible.rows[0]?.schema),
-      tableName,
+      ok: false,
+      text: "schema must name a non-system database schema.",
+      reason: "INVALID_SCHEMA",
     };
-  }
-  const dot = tableName.indexOf(".");
-  if (dot > 0) {
-    const schemaPart = tableName.slice(0, dot);
-    const namePart = tableName.slice(dot + 1);
-    if (isUserSchema(schemaPart) && SCHEMA_IDENT.test(namePart)) {
-      const literal = await executeRawSql(
-        runtime,
-        `SELECT 1
-         FROM pg_catalog.pg_class c
-         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-         WHERE c.relname = '${safe}'
-           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-           AND c.relkind IN ('r', 'p')
-         LIMIT 1`,
-      );
-      if (literal.rows.length === 0) {
-        const named = await resolveGetTableSchema(
-          runtime,
-          namePart,
-          schemaPart,
-        );
-        if (named.ok) return named;
-      }
-    }
+  const execute = (query: string) => executeRawSql(runtime, query);
+  const schema = await resolveTableSchema(execute, tableName, parsed.schema);
+  if (schema !== null) return { ok: true, schema, tableName };
+  // Preserve a visible literal dotted name before accepting a simple copied schema.table.
+  const qualified =
+    parsed.schema === null
+      ? /^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/.exec(tableName)
+      : null;
+  if (qualified) {
+    const namedSchema = await resolveTableSchema(
+      execute,
+      qualified[2],
+      qualified[1],
+    );
+    if (namedSchema !== null)
+      return { ok: true, schema: namedSchema, tableName: qualified[2] };
   }
   return {
     ok: false,
-    text: `Table "${tableName}" not found.`,
+    text: `Table "${parsed.schema === null ? tableName : `${parsed.schema}.${tableName}`}" not found.`,
     reason: "TABLE_NOT_FOUND",
   };
 }
@@ -450,7 +388,7 @@ async function opGetTable(
   runtime: IAgentRuntime,
   params: DatabaseParams,
 ): Promise<ActionResult> {
-  const requestedName = params.tableName?.trim();
+  const requestedName = params.tableName;
   if (!requestedName) {
     return {
       success: false,
@@ -477,7 +415,7 @@ async function opGetTable(
   const tableName = resolved.tableName;
   const safe = tableName.replace(/'/g, "''");
   const safeSchema = resolved.schema.replace(/'/g, "''");
-  const relation = `${quoteIdent(resolved.schema)}.${quoteIdent(tableName)}`;
+  const relation = qualifiedTable(resolved.schema, tableName);
 
   const limit = parseOptionalPositiveInteger(params.limit, "limit");
   const offset = parseOptionalNonNegativeInteger(params.offset, "offset") ?? 0;

@@ -11,6 +11,7 @@ function runEnd(durationMs: number): string | undefined {
 describe("activity duration text", () => {
 	it("does not print a 60 second remainder", () => {
 		// 119.6s rounds the leftover seconds to 60, so the rail showed "1m 60s".
+		expect(runEnd(1150)).toBe("Run completed (1.1s)");
 		expect(runEnd(119_600)).toBe("Run completed (2m 0s)");
 		// 59.5s is still under a minute, but toFixed(0) printed "60s".
 		expect(runEnd(59_500)).toBe("Run completed (1m 0s)");

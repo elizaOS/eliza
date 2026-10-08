@@ -387,6 +387,7 @@ describe("audio tool results through SDK stdio and SQLite", () => {
     ["error", 3],
     ["image", 1],
     ["text", 0],
+    ["resource", 0],
   ] as const)("delivers the %s result without losing media", async (mode, expectedCount) => {
     const prompts: string[] = [];
     const callbacks: Parameters<HandlerCallback>[0][] = [];
@@ -481,6 +482,11 @@ describe("audio tool results through SDK stdio and SQLite", () => {
     if (mode === "error") {
       expect(result.error).toMatchObject({ code: "TOOL_EXECUTION_ERROR" });
       expect(prompts[0]).toContain("The tool reported an ERROR");
+    }
+    if (mode === "resource") {
+      expect(result.data?.output).toContain(JSON.stringify(original.content[0]));
+      expect(prompts[0]).toContain("file:///private/report");
+      expect(prompts[0]).toContain("Complete resource metadata");
     }
     if (mode === "mixed" || mode === "error" || mode === "text") {
       expect(result.data?.output).toBe(mode === "text" ? "Text control" : "Captured tone");

@@ -173,18 +173,12 @@ const searchCommand: SlashCommand = {
 		// A negative limit is truthy, so `|| 5` keeps it. slice(0, -1) then
 		// drops the last match instead of applying the default maximum.
 		const limit =
-			typeof rawLimit === "number" && Number.isFinite(rawLimit) && rawLimit > 0
-				? Math.floor(rawLimit)
+			typeof rawLimit === "number" && Number.isInteger(rawLimit) && rawLimit > 0
+				? rawLimit
 				: 5;
 		await interaction.deferReply({ ephemeral: true });
 
 		try {
-			const roomId = createUniqueUuid(runtime, interaction.channelId);
-			const memories = await runtime.getMemories({
-				tableName: "messages",
-				roomId,
-				count: 100,
-			});
 			const normalizedQuery = query.trim().toLowerCase();
 			// " ".includes is true for every message, so a blank query listed
 			// the room history as search results.
@@ -194,6 +188,12 @@ const searchCommand: SlashCommand = {
 				});
 				return;
 			}
+			const roomId = createUniqueUuid(runtime, interaction.channelId);
+			const memories = await runtime.getMemories({
+				tableName: "messages",
+				roomId,
+				count: 100,
+			});
 			const filteredMemories = memories.filter((memory) =>
 				(memory.content?.text ?? "").toLowerCase().includes(normalizedQuery),
 			);

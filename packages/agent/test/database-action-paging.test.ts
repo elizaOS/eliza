@@ -195,6 +195,29 @@ it("returns every tied row once and ignores another schema's primary key", async
       copied.data as { rows?: Array<{ id: number }> } | undefined
     )?.rows;
     expect(copiedRows?.map((row) => Number(row.id))).toEqual([7]);
+    for (const schema of ["odd-name", "a.b", 'quote"schema', "quote'schema"]) {
+      const quoted = `"${schema.replace(/"/g, '""')}"`;
+      await db.execute(sql.raw(`CREATE SCHEMA ${quoted}`));
+      await db.execute(
+        sql.raw(`CREATE TABLE ${quoted}.only_here (id integer PRIMARY KEY)`),
+      );
+      await db.execute(sql.raw(`INSERT INTO ${quoted}.only_here VALUES (77)`));
+      const exact = await handler(
+        runtime,
+        {} as never,
+        undefined,
+        {
+          parameters: { action: "get_table", tableName: "only_here", schema },
+        },
+        undefined,
+      );
+      expect(exact.success, exact.text).toBe(true);
+      expect(
+        (exact.data as { rows: { id: number }[] }).rows.map((row) =>
+          Number(row.id),
+        ),
+      ).toEqual([77]);
+    }
     const systemTable = await handler(
       runtime,
       {} as never,

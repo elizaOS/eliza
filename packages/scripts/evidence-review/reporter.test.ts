@@ -23,6 +23,7 @@ test("formatDuration renders ms, seconds, and minutes", () => {
   assert.equal(formatDuration(0), "0ms");
   assert.equal(formatDuration(850), "850ms");
   assert.equal(formatDuration(1500), "1.5s");
+  assert.equal(formatDuration(1150), "1.1s");
   assert.equal(formatDuration(65000), "1m05s");
   // 59.96s rounds to 60.0, so the matrix printed "60.0s".
   assert.equal(formatDuration(59960), "1m00s");

@@ -11,6 +11,7 @@
  *   - Raydium: https://docs.raydium.io/raydium/token-pairs-and-liquidity
  */
 
+import { ElizaError } from "@elizaos/core";
 import type { TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { toHuman } from "./decimals.js";
@@ -165,15 +166,28 @@ export function formatSplBalance(rawBalance: bigint, decimals: number): string {
  * Nine decimal places. An extra dot is not part of the amount.
  */
 export function parseSolLamports(amount: string): bigint {
-  // One optional dot. "1.5.2" used to keep only "1.5". "-1.5" used to
-  // become -0.5 SOL because the fraction was added to a negative integer.
   if (!/^(?:\d+\.\d*|\d+|\.\d+)$/.test(amount)) {
-    throw new Error(`invalid SOL amount "${amount}"`);
+    throw new ElizaError(`invalid SOL amount "${amount}"`, {
+      code: "SOLANA_TRANSFER_AMOUNT_INVALID",
+    });
   }
-  const parts = amount.split(".");
-  const intPart = BigInt(parts[0] || "0");
-  const fracStr = (parts[1] ?? "").padEnd(9, "0").slice(0, 9);
-  return intPart * 1_000_000_000n + BigInt(fracStr);
+  const [whole, fraction = ""] = amount.split(".");
+  if (/[1-9]/.test(fraction.slice(9))) {
+    throw new ElizaError(
+      "SOL amount must be exactly representable in lamports.",
+      { code: "SOLANA_TRANSFER_AMOUNT_INVALID" },
+    );
+  }
+  const lamports =
+    BigInt(whole || "0") * 1_000_000_000n +
+    BigInt(fraction.slice(0, 9).padEnd(9, "0"));
+  if (lamports > 18_446_744_073_709_551_615n) {
+    throw new ElizaError(
+      "SOL amount exceeds the unsigned 64-bit transfer range.",
+      { code: "SOLANA_TRANSFER_AMOUNT_INVALID" },
+    );
+  }
+  return lamports;
 }
 
 /**
@@ -301,19 +315,23 @@ export class SolanaWallet {
    * @param amount - Lamports (bigint) OR SOL amount as string (e.g. "1.5")
    */
   async sendSol(to: string, amount: string | bigint): Promise<SolanaTxResult> {
+    const lamports =
+      typeof amount === "string" ? parseSolLamports(amount) : amount;
+    if (lamports < 0n || lamports > 18_446_744_073_709_551_615n) {
+      throw new ElizaError("SOL lamports must be an unsigned 64-bit amount.", {
+        code: "SOLANA_TRANSFER_AMOUNT_INVALID",
+      });
+    }
     const { PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } =
       await loadSolanaWeb3();
     const connection = await this.getConnection();
     const keypair = await this.getKeypair();
 
-    const lamports =
-      typeof amount === "string" ? parseSolLamports(amount) : amount;
-
     const transaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: keypair.publicKey,
         toPubkey: new PublicKey(to),
-        lamports: Number(lamports),
+        lamports,
       }),
     );
 

@@ -167,7 +167,7 @@ it("pages the visible same-named table when another schema has a different prima
   }
 }, 120_000);
 
-it("does not list or read a table that exists only outside the search path", async () => {
+it("requires an explicit schema to read a table outside the search path", async () => {
   const { runtime, cleanup } = await createRealTestRuntime({
     characterName: "DbViewerHidden",
   });
@@ -244,6 +244,24 @@ it("does not list or read a table that exists only outside the search path", asy
     };
     expect(visible.status).toBe(200);
     expect(visibleBody.rows?.map((row) => Number(row.id))).toEqual([1]);
+    for (const schema of ["odd-name", "a.b", 'quote"schema', "quote'schema"]) {
+      const quoted = `"${schema.replace(/"/g, '""')}"`;
+      await db.execute(sql.raw(`CREATE SCHEMA ${quoted}`));
+      await db.execute(
+        sql.raw(
+          `CREATE TABLE ${quoted}.closed_shelf (id integer PRIMARY KEY, kind text)`,
+        ),
+      );
+      await db.execute(
+        sql.raw(`INSERT INTO ${quoted}.closed_shelf VALUES (77, 'quoted')`),
+      );
+      const response = await fetch(
+        `http://127.0.0.1:${port}/api/database/tables/closed_shelf/rows?schema=${encodeURIComponent(schema)}&search=quoted`,
+      );
+      const body = (await response.json()) as { rows: { id: number }[] };
+      expect(response.status).toBe(200);
+      expect(body.rows.map((row) => Number(row.id))).toEqual([77]);
+    }
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await cleanup();

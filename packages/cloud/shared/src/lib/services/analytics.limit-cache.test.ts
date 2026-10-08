@@ -44,6 +44,6 @@ test("does not reuse a default analytics page for an explicit limit of 0", async
   expect(await service.getUsageByUser("org-1")).toEqual(users);
   expect(await service.getUsageByUser("org-1", { limit: 0 })).toEqual([]);
 
-  expect(await service.getCostBreakdown("org-1", "model")).toEqual(costs);
+  expect(await service.getCostBreakdown("org-1", "model", {})).toEqual(costs);
   expect(await service.getCostBreakdown("org-1", "model", { limit: 0 })).toEqual([]);
 });
