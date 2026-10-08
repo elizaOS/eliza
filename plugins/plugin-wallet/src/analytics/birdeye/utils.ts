@@ -350,11 +350,15 @@ export const formatTimestamp = (timestamp?: number): string => {
 };
 
 export const formatPrice = (price?: number): string => {
-  return price
-    ? price < 0.01
-      ? price.toExponential(2)
-      : price.toFixed(2)
-    : "N/A";
+  if (!price) return "N/A";
+  if (price < 0.01) {
+    const exponential = price.toExponential(2);
+    // 0.009999 is below one cent, but two-digit exponential text is "1.00e-2",
+    // which is one cent. Show the two-decimal form used at and above 0.01.
+    if (exponential === "1.00e-2") return price.toFixed(2);
+    return exponential;
+  }
+  return price.toFixed(2);
 };
 
 export const formatJsonScalar = (value: unknown): string => {
