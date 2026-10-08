@@ -223,7 +223,7 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     expect(profile.entityId).toBeNull();
     const replies: string[] = [];
     const message = {
-      content: { text: "that was Sam" },
+      content: { text: "That was Sam on the phone" },
     } as unknown as Memory;
     const result = await identifySpeakerAction.handler(
       runtime,
@@ -240,7 +240,8 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     expect(bound?.entityId).toBeTruthy();
     const entity = await entityStore.get(bound?.entityId ?? "");
     expect(entity?.preferredName).toBe("Sam");
-    expect(replies.join(" ")).toContain("Sam");
+    expect(replies.join(" ")).toContain("Sam's voice");
+    expect(replies.join(" ")).not.toContain("Sam on the");
   });
   it("applies correction provenance and merges duplicate named entities", async () => {
     const firstSarah = await entityStore.upsert({
@@ -270,7 +271,7 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     });
     const result = await identifySpeakerAction.handler(runtime, {
       id: "turn_owner_correction_sarah",
-      content: { text: "that was Sarah" },
+      content: { text: "That was Sarah from work" },
     } as unknown as Memory);
     expect(result?.success).toBe(true);
     const sarahs = (await entityStore.list()).filter(
