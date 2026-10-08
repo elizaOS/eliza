@@ -294,7 +294,9 @@ function stripTrailingUrlPunctuation(url: string): string {
     const char = url[i];
     if (char === "(") depth++;
     else if (char === ")") {
-      if (depth === 0) continue;
+      // "https://x.com/a),next" must stop at the ")". Skipping it and
+      // then reading "next" keeps the ")" inside the saved URL.
+      if (depth === 0) break;
       depth--;
     } else if (/[.,;:!?]/u.test(char)) continue;
     end = i + 1;

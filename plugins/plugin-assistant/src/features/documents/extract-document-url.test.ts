@@ -21,4 +21,10 @@ describe("extractDocumentUrlFromText", () => {
       "https://example.com/docs",
     );
   });
+
+  it("stops at an unmatched parenthesis before more text", () => {
+    expect(extractDocumentUrlFromText("https://x.com/a),next")).toBe(
+      "https://x.com/a",
+    );
+  });
 });
