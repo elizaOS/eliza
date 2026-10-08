@@ -20,6 +20,7 @@ function setup(
     ConstructorParameters<typeof NativeTaskActuator>[0]["target"]["guideTask"]
   >,
   reconcile?: ConstructorParameters<typeof NativeTaskActuator>[0]["reconcile"],
+  assistantName?: string,
 ) {
   let task = createInteractiveTask({
     id: "task",
@@ -38,6 +39,7 @@ function setup(
   });
   const protectedKinds: Array<string | undefined> = [];
   const targetCounts: number[] = [];
+  const assistantNames: Array<string | undefined> = [];
   let sequence = 0,
     effects = 0,
     bindings = 0;
@@ -51,6 +53,7 @@ function setup(
     ).task;
   };
   const actuator = new NativeTaskActuator({
+    assistantName,
     getTask: () => task,
     reconcile,
     nextBindingRevision: () => ++bindings,
@@ -69,6 +72,7 @@ function setup(
       guideTask: guideTask || (async () => ({ visible: false })),
       bindTask: async (binding) => {
         targetCounts.push(binding.targets.length);
+        assistantNames.push(binding.assistantName);
         return {
           bound: true,
           tabId: binding.tabId,
@@ -154,6 +158,7 @@ function setup(
     actuator,
     protectedKinds,
     targetCounts,
+    assistantNames,
     prepare,
     transition,
     get task() {
@@ -390,4 +395,65 @@ it("rejects stale readback before binding or interpreting a snapshot", async () 
   expect(f.targetCounts).toEqual([1]);
   expect(f.effects).toBe(0);
   expect(reads).toBe(0);
+});
+
+it("passes label words, offers and the configured name, and pauses before removal", async () => {
+  const requests: Array<Record<string, unknown>> = [];
+  const f = setup(
+    "browser.click",
+    async () => "value",
+    async (request) => {
+      requests.push(request);
+      return request.kind === "show" ? { accepted: true } : { visible: false };
+    },
+    undefined,
+    "Grace",
+  );
+  const observation = await f.actuator.observe({
+    owner,
+    taskId: "task",
+    signal: new AbortController().signal,
+  });
+  f.transition({ type: "observe", observation });
+  expect(f.assistantNames).toEqual(["Grace"]);
+  const answers = [
+    { id: "yes", kind: "primary" as const, text: "Yes" },
+    { id: "type", kind: "secondary" as const, text: "I'll type it" },
+  ];
+  await expect(
+    f.actuator.showGuidance(
+      "task",
+      owner,
+      {
+        stepId: "email",
+        targetRef: `${observation.id}:0:0`,
+        text: "Use your email?",
+        detail: "From your profile.",
+        tone: "offer",
+        answers,
+      },
+      new AbortController().signal,
+    ),
+  ).resolves.toEqual({ tabId: "1", revision: 1 });
+  expect(requests[0]).toMatchObject({
+    kind: "show",
+    detail: "From your profile.",
+    tone: "offer",
+    answers,
+  });
+  await expect(
+    f.actuator.pauseGuidance({
+      owner: { ...owner, actorId: "other" },
+      taskId: "task",
+    }),
+  ).rejects.toThrow(/owner/);
+  f.transition({ type: "pause" });
+  await f.actuator.pauseGuidance({ owner, taskId: "task" });
+  await f.actuator.quiesce({ owner, taskId: "task" });
+  expect(requests.map((r) => [r.kind, r.revision])).toEqual([
+    ["show", 1],
+    ["pause", 2],
+    ["hide", 3],
+  ]);
+  expect(f.effects).toBe(0);
 });

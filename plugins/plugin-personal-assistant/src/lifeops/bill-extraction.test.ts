@@ -103,3 +103,38 @@ describe("extractBill merge merchant selection", () => {
     expect(bill?.merchant).toBe("Unknown merchant");
   });
 });
+
+describe("extractBill sender-domain fallback", () => {
+  it.each([
+    ["receipts@mail.stripe.com", "Stripe"],
+    ["billing@stripe.com", "Stripe"],
+    ["billing@mail.stripe.co.uk", "Stripe"],
+    ["billing@stripe.co.uk", "Stripe"],
+    ["billing@alice.github.io", "Alice.github.io"],
+    ["billing@bob.github.io", "Bob.github.io"],
+    ["billing@mail.alice.github.io", "Alice.github.io"],
+    ["billing@accounts.example.internal", "Accounts.example.internal"],
+  ])(
+    "keeps the correct sender fallback for %s",
+    async (fromEmail, merchant) => {
+      const message: EmailLikeMessage = {
+        id: `merchant-domain-${fromEmail}`,
+        fromEmail,
+        subject: "Invoice ready",
+        bodyText: "Amount $49.95 due 5/20/2026",
+      };
+      const bill = await extractBill(runtimeWithModel(netflixPayload), message);
+      expect(bill).toMatchObject({ merchant, amount: 49.95, currency: "USD" });
+    },
+  );
+
+  it("keeps the sender display name ahead of a hosting domain", async () => {
+    const bill = await extractBill(runtimeWithModel(netflixPayload), {
+      id: "merchant-hosted-display-name",
+      from: '"Alice Studio" <billing@mail.alice.github.io>',
+      fromEmail: "billing@mail.alice.github.io",
+      bodyText: "Amount $49.95 due 5/20/2026",
+    });
+    expect(bill?.merchant).toBe("Alice Studio");
+  });
+});

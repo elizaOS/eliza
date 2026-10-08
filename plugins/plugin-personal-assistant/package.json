@@ -108,7 +108,8 @@
     "react-plaid-link": "^5.0.0",
     "sharp": "^0.35.3",
     "zod": "^4.6.5",
-    "@elizaos/contracts": "workspace:*"
+    "@elizaos/contracts": "workspace:*",
+    "tldts": "7.4.16"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",

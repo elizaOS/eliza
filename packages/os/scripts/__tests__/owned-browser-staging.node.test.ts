@@ -72,6 +72,8 @@ function fixture(t, application = "ai.elizaos.app") {
     "manual-activity.mjs",
     "task-guidance.mjs",
     "page-guidance.mjs",
+    "guide-font.mjs",
+    "figtree-OFL.txt",
     "protocol.mjs",
     "runtime-config.mjs",
     "native-connection.mjs",
@@ -534,6 +536,8 @@ test("owned admission checks the full guidance resource inventory and bytes", (t
     "manual-activity.mjs",
     "task-guidance.mjs",
     "page-guidance.mjs",
+    "guide-font.mjs",
+    "figtree-OFL.txt",
   ]) {
     const ref = f.provenance.resources[name];
     delete f.provenance.resources[name];
