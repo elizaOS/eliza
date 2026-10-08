@@ -69,8 +69,14 @@ export function generateCSV(
         // Sanitize for CSV injection
         const sanitized = sanitizeSpreadsheetValue(stringValue);
 
-        // Quote if contains comma or quote
-        if (sanitized.includes(",") || sanitized.includes('"')) {
+        // Quote if the cell contains a comma, quote, or line break. A raw
+        // line break would start a new CSV record.
+        if (
+          sanitized.includes(",") ||
+          sanitized.includes('"') ||
+          sanitized.includes("\n") ||
+          sanitized.includes("\r")
+        ) {
           return `"${sanitized.replace(/"/g, '""')}"`;
         }
 
