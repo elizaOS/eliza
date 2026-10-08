@@ -792,9 +792,17 @@ function formatDuration(ms: unknown): string | null {
 	if (value === undefined) return null;
 	if (value < 1000) return `${Math.round(value)}ms`;
 	const seconds = value / 1000;
-	if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
+	if (seconds < 60) {
+		const rounded =
+			seconds < 10 ? Math.round(seconds * 10) / 10 : Math.round(seconds);
+		// 59.5s rounds to 60. The activity rail must not print "60s".
+		if (rounded >= 60) return "1m 0s";
+		return seconds < 10 ? `${rounded.toFixed(1)}s` : `${rounded}s`;
+	}
 	const minutes = Math.floor(seconds / 60);
 	const remainder = Math.round(seconds % 60);
+	// 119.6s leaves 59.6s, which rounds to 60 and printed "1m 60s".
+	if (remainder >= 60) return `${minutes + 1}m 0s`;
 	return `${minutes}m ${remainder}s`;
 }
 
