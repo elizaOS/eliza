@@ -210,6 +210,16 @@ describe("useChatVoiceController voice playback unlock", () => {
     vi.clearAllMocks();
   });
 
+  it("passes Japanese speech locale through the controller and updates it on language change", () => {
+    const { rerender } = renderHook(
+      ({ uiLanguage }) => useChatVoiceController({ ...baseOptions, uiLanguage }),
+      { initialProps: { uiLanguage: "ja" as "ja" | "en" } },
+    );
+    expect(useVoiceChatMock.mock.calls.at(-1)?.[0].lang).toBe("ja-JP");
+    rerender({ uiLanguage: "en" });
+    expect(useVoiceChatMock.mock.calls.at(-1)?.[0].lang).toBe("en-US");
+  });
+
   it("does not cancel speech queued by the same user gesture that unlocks audio", () => {
     const { rerender } = renderHook(() => useChatVoiceController(baseOptions));
     const stopSpeaking = vi.mocked(voiceState.stopSpeaking);
