@@ -295,7 +295,10 @@ async function opListTables(
   const filter = params.filter?.trim().toLowerCase() ?? "";
   const includeEmpty = params.includeEmpty ?? true;
   const tables = allTables.filter((table) => {
-    if (filter && !table.name.toLowerCase().includes(filter)) return false;
+    if (filter) {
+      const qualified = `${table.schema}.${table.name}`.toLowerCase();
+      if (!qualified.includes(filter)) return false;
+    }
     if (!includeEmpty && table.rowCount === 0) return false;
     return true;
   });
@@ -309,7 +312,7 @@ async function opListTables(
   // an empty database and "Found 7 table(s)" read as the whole schema while
   // `allTables` held the real count. Name what narrowed it and how to widen.
   const narrowings: string[] = [];
-  if (filter) narrowings.push(`name contains "${filter}"`);
+  if (filter) narrowings.push(`schema or name contains "${filter}"`);
   if (!includeEmpty)
     narrowings.push("includeEmpty:false (zero-row tables dropped)");
   const widen = includeEmpty
@@ -783,7 +786,8 @@ export const databaseAction: Action = {
     },
     {
       name: "filter",
-      description: "list_tables: case-insensitive substring on table name.",
+      description:
+        "list_tables: case-insensitive substring on schema.table or the table name.",
       required: false,
       schema: { type: "string" as const },
     },

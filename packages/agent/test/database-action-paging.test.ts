@@ -148,6 +148,29 @@ it("returns every tied row once and ignores another schema's primary key", async
     );
     expect(listed.success, listed.text).toBe(true);
     expect(listed.text).toContain("hidden_ns.only_here");
+    const listedBySchema = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      { parameters: { action: "list_tables", filter: "hidden_ns" } },
+      undefined,
+    );
+    expect(listedBySchema.success, listedBySchema.text).toBe(true);
+    expect(listedBySchema.text).toContain("hidden_ns.only_here");
+    const listedByQualified = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      {
+        parameters: {
+          action: "list_tables",
+          filter: "hidden_ns.only_here",
+        },
+      },
+      undefined,
+    );
+    expect(listedByQualified.success, listedByQualified.text).toBe(true);
+    expect(listedByQualified.text).toContain("hidden_ns.only_here");
     const systemTable = await handler(
       runtime,
       {} as never,
