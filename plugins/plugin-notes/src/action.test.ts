@@ -1108,6 +1108,7 @@ describe("promoted Notes execution", () => {
       [created, updated, deleted].map((result) => result.data?.notesRevision),
     ).toEqual([1, 2, 3]);
     for (const result of [created, updated, deleted]) {
+      expect(result.data?.notesRevision).toEqual(expect.any(Number));
       expect(result.effectReceipts).toEqual([
         expect.objectContaining({
           outcome: "applied",

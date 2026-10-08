@@ -493,9 +493,9 @@ export function formatGmailRecommendations(
 }
 
 function describeEmailSearchQuery(query: string): string {
-  const parts = query
-    .trim()
-    .split(/\s+/)
+  // A quoted operator such as from:"Ada Lovelace" is one token. Splitting on
+  // every space turns the last name into a keyword.
+  const parts = (query.trim().match(/(?:[^\s"]+|"[^"]*")+/g) ?? [])
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
   if (parts.length === 0) {

@@ -34,7 +34,9 @@ export function normalizeLanguage(input: unknown): UiLanguage {
 	if (UI_LANGUAGE_SET.has(trimmed)) return trimmed as UiLanguage;
 
 	const lower = trimmed.toLowerCase();
-	if (lower === "zh" || lower === "zh-cn" || lower.startsWith("zh-hans")) {
+	// zh-TW, zh-HK, and zh-Hant are Traditional Chinese. The only Chinese UI
+	// is zh-CN, which is also the country fallback for TW/HK/MO.
+	if (lower === "zh" || lower.startsWith("zh-")) {
 		return "zh-CN";
 	}
 	if (lower === "en" || lower.startsWith("en-")) {
