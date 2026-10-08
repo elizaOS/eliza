@@ -53,6 +53,13 @@ describe("markdownToSlackMrkdwn", () => {
     expect(markdownToSlackMrkdwn("")).toBe("");
   });
 
+  it("keeps a blockquote marker when markdown omits the space", () => {
+    expect(markdownToSlackMrkdwn(">hello & there")).toBe(">hello &amp; there");
+    expect(markdownToSlackMrkdwn("> spaced")).toBe("> spaced");
+    expect(markdownToSlackMrkdwn(">>nested")).toBe(">>nested");
+    expect(markdownToSlackMrkdwn("3 > 1")).toBe("3 &gt; 1");
+  });
+
   it("drops the whole opening info string and keeps a one-line fence body", () => {
     expect(markdownToSlackMrkdwn("```c++\nint x = 1;\n```")).toBe(
       "```\nint x = 1;\n```",

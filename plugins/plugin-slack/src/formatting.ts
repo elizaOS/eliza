@@ -94,8 +94,12 @@ export function escapeSlackMrkdwn(text: string): string {
   return text
     .split("\n")
     .map((line) => {
-      if (line.startsWith("> ")) {
-        return `> ${escapeSlackMrkdwnContent(line.slice(2))}`;
+      // A leading ">" run is a Slack quote. Markdown allows the space after
+      // the marker to be omitted, and a nested quote is ">>". Escaping those
+      // markers turns the line into literal "&gt;" text.
+      const marker = /^(>+)([ ]?)([\s\S]*)$/.exec(line);
+      if (marker) {
+        return `${marker[1]}${marker[2]}${escapeSlackMrkdwnContent(marker[3])}`;
       }
       return escapeSlackMrkdwnContent(line);
     })
