@@ -491,6 +491,13 @@ function hasFileExtension(path: string): boolean {
   return last.includes(".") && !last.startsWith(".");
 }
 
+function declaresAttribute(html: string, attribute: string, value: string): boolean {
+  const escapedValue = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Quote style is free in HTML. A check for name="description" misses
+  // name='description' and injects a second description meta.
+  return new RegExp(`(?:^|\\s)${attribute}\\s*=\\s*(["'])${escapedValue}\\1`, "i").test(html);
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -514,30 +521,30 @@ export function injectSeo(html: string, seo: FrontendSeo): string {
   if (seo.title && !/<title[\s>]/i.test(html)) {
     tags.push(`<title>${escapeHtml(seo.title)}</title>`);
   }
-  if (seo.description && !lower.includes('name="description"')) {
+  if (seo.description && !declaresAttribute(html, "name", "description")) {
     tags.push(`<meta name="description" content="${escapeHtml(seo.description)}" />`);
   }
-  if (seo.title && !lower.includes('property="og:title"')) {
+  if (seo.title && !declaresAttribute(html, "property", "og:title")) {
     tags.push(`<meta property="og:title" content="${escapeHtml(seo.title)}" />`);
   }
-  if (seo.description && !lower.includes('property="og:description"')) {
+  if (seo.description && !declaresAttribute(html, "property", "og:description")) {
     tags.push(`<meta property="og:description" content="${escapeHtml(seo.description)}" />`);
   }
-  if (seo.image && !lower.includes('property="og:image"')) {
+  if (seo.image && !declaresAttribute(html, "property", "og:image")) {
     tags.push(`<meta property="og:image" content="${escapeHtml(seo.image)}" />`);
   }
-  if (seo.url && !lower.includes('property="og:url"')) {
+  if (seo.url && !declaresAttribute(html, "property", "og:url")) {
     tags.push(`<meta property="og:url" content="${escapeHtml(seo.url)}" />`);
   }
-  if (seo.siteName && !lower.includes('property="og:site_name"')) {
+  if (seo.siteName && !declaresAttribute(html, "property", "og:site_name")) {
     tags.push(`<meta property="og:site_name" content="${escapeHtml(seo.siteName)}" />`);
   }
-  if ((seo.title || seo.image) && !lower.includes('name="twitter:card"')) {
+  if ((seo.title || seo.image) && !declaresAttribute(html, "name", "twitter:card")) {
     tags.push(
       `<meta name="twitter:card" content="${seo.image ? "summary_large_image" : "summary"}" />`,
     );
   }
-  if (seo.url && !lower.includes('rel="canonical"')) {
+  if (seo.url && !declaresAttribute(html, "rel", "canonical")) {
     tags.push(`<link rel="canonical" href="${escapeHtml(seo.url)}" />`);
   }
   if (seo.jsonLd && !lower.includes("application/ld+json")) {
