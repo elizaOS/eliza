@@ -229,7 +229,7 @@ export function extractDueDateFromText(
   }
   // "(due|by) Apr 15(, 2026)?"
   const monthMatch = text.match(
-    /\b(?:due|by|payment\s+due)\s+(?:on\s+)?([A-Za-z]{3,9})\s+(\d{1,2})(?:,?\s+(\d{2,4}))?/i,
+    /\b(?:due|by|payment\s+due)\s+(?:on\s+)?([A-Za-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{2,4}))?/i,
   );
   if (monthMatch) {
     const monthIdx = MONTH_TOKENS[monthMatch[1].toLowerCase()];
