@@ -496,6 +496,7 @@ function logSharedProviderSpans(
   input: SharedElizaRuntimeTurnInput,
   summary: InferenceTurnSummary | undefined,
   responded: boolean,
+  lastModelCompletion?: SharedModelCompletionDiagnostic | null,
 ): void {
   const providerSpans = (summary?.spans ?? [])
     .filter((span) => span.name === "composeState" || span.name.startsWith("provider:"))
@@ -507,6 +508,7 @@ function logSharedProviderSpans(
     source: input.execution.channel.source,
     responded,
     providerSpans,
+    ...(lastModelCompletion ? { lastModelCompletion } : {}),
     providerBudgetTargetMs: 300,
     providerBudgetCeilingMs: 500,
   });
@@ -657,7 +659,13 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     };
     let model: ReturnType<typeof getInteractiveCerebrasLanguageModel>;
     try {
-      model = getInteractiveCerebrasLanguageModel(input.model, modelCall.select);
+      params.signal?.throwIfAborted();
+      model = getInteractiveCerebrasLanguageModel(
+        input.model,
+        modelCall.select,
+        undefined,
+        params.providerOptions,
+      );
     } catch (error) {
       // error-policy:J2 preserve the original model-resolution failure.
       reportModelFailure(error, "resolve");
@@ -699,6 +707,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           throw providerStreamFailure ? providerStreamFailure.error : error;
         });
       try {
+        params.signal?.throwIfAborted();
         modelInvocationStarted = true;
         modelCall.begin();
         result = streamText({
@@ -735,13 +744,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       const totalUsage = preserveProviderFailure(Promise.resolve(result.totalUsage));
       // error-policy:J5 runtime observes these same rejected SDK promises; this
       // completion-shape observer neither changes nor logs the failure payload.
-      void Promise.all([rawText, toolCalls, rawFinishReason])
-        .then(([text, calls, reason]) => {
+      void Promise.all([rawText, toolCalls, rawFinishReason, totalUsage.catch(() => undefined)])
+        .then(([text, calls, reason, sdkUsage]) => {
           lastModelCompletion = sharedModelCompletionDiagnostic(
             "stream",
             text,
             calls.length,
             reason,
+            sdkUsage,
           );
         })
         .catch(() => {});
@@ -812,6 +822,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     }
     let result: Awaited<ReturnType<typeof generateText>>;
     try {
+      params.signal?.throwIfAborted();
       modelInvocationStarted = true;
       modelCall.begin();
       result = await generateText({ ...generation });
@@ -827,6 +838,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       result.text,
       result.toolCalls.length,
       result.finishReason,
+      result.usage,
     );
     try {
       assertModelOutputComplete({
@@ -1209,7 +1221,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     // callback with `agentVoiced`; core then correctly reports no second model
     // response. The callback receipt is still an actual user-visible delivery.
     if (!result?.didRespond && delivered.length === 0) {
-      logSharedProviderSpans(input, inferenceTelemetry.summary, false);
+      logSharedProviderSpans(input, inferenceTelemetry.summary, false, lastModelCompletion);
       const preflightActionResults = input.preflightActionResults ?? [];
       return {
         reply: "",
@@ -1229,7 +1241,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     if (!reply) {
       throw new Error("Eliza Shared runtime completed without a user-visible reply");
     }
-    logSharedProviderSpans(input, inferenceTelemetry.summary, true);
+    logSharedProviderSpans(input, inferenceTelemetry.summary, true, lastModelCompletion);
     const actionResults = [
       ...(input.preflightActionResults ?? []),
       ...(result.actionResults ?? []),
