@@ -16,6 +16,20 @@
  * exposing alternating layers without rescans.
  */
 
+import { REASONING_TAG_NAMES } from "./utils/reasoning-tags";
+
+const NON_SPEECH_TAGS = [...REASONING_TAG_NAMES, "tool_calls?", "tools?"].join(
+	"|",
+);
+const NON_SPEECH_BLOCK = new RegExp(
+	`<(${NON_SPEECH_TAGS})\\b[^>]*>[\\s\\S]*?(?:<\\/\\1>|$)`,
+	"gi",
+);
+const INCOMPLETE_NON_SPEECH_TAG = new RegExp(
+	`<(?:${NON_SPEECH_TAGS})\\b[^>]*$`,
+	"gi",
+);
+
 function collapseWhitespace(input: string): string {
 	return input.replace(/\s+/g, " ").trim();
 }
@@ -26,18 +40,8 @@ function stripUrls(input: string): string {
 
 function stripThinkingAndMarkup(input: string): string {
 	let text = input;
-	// REASONING_TAG_NAMES also includes thinking, reflection, thought, and
-	// antthinking. A later pass removes only the markers, so a missing name
-	// speaks the hidden text: "<thought>secret plan</thought> Hello" became
-	// "secret plan Hello".
-	text = text.replace(
-		/<(think|thinking|analysis|reasoning|reflection|thought|antthinking|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi,
-		" ",
-	);
-	text = text.replace(
-		/<(?:think|thinking|analysis|reasoning|reflection|thought|antthinking|tool_calls?|tools?)\b[^>]*$/gi,
-		" ",
-	);
+	text = text.replace(NON_SPEECH_BLOCK, " ");
+	text = text.replace(INCOMPLETE_NON_SPEECH_TAG, " ");
 	text = text.replace(/```[\s\S]*?```/g, " ");
 	text = text.replace(/`([^`]+)`/g, "$1");
 	text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
