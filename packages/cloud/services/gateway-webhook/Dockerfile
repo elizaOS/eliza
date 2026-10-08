@@ -58,6 +58,7 @@ ARG SDK_DIR
 COPY ${COMMON_DIR}/src ${COMMON_DIR}/src
 COPY ${SDK_DIR}/src ${SDK_DIR}/src
 COPY ${CORE_DIR}/src/errors.ts ${CORE_DIR}/src/errors.ts
+COPY ${CORE_DIR}/src/utils/errors.ts ${CORE_DIR}/src/utils/errors.ts
 COPY ${CORE_DIR}/src/security/log-redaction.ts ${CORE_DIR}/src/security/log-redaction.ts
 COPY ${SERVICE_DIR}/tsconfig.json ${SERVICE_DIR}/
 COPY ${SERVICE_DIR}/src ${SERVICE_DIR}/src

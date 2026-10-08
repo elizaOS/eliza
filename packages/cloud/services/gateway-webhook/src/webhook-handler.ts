@@ -618,6 +618,8 @@ export async function handleWebhook(
     return ackResponse(adapter.platform);
   }
 
+  if (adapter.platform === "blooio") event.traceId = trace.traceId;
+
   const dedupKey = buildWebhookDedupeKey(
     adapter,
     config,
