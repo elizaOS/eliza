@@ -1040,6 +1040,9 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       expect([...enrolled.body.capabilities].sort()).toEqual(
         [
           ...allCapabilities.split(","),
+          "calendar.create.v1",
+          "calendar.next-read.v1",
+          "notes.query.v1",
           "reminders.local-record.v2",
           "reminders.create.v1",
           "clock.handoff.v2",
