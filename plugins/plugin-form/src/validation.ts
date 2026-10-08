@@ -611,12 +611,15 @@ function validateFile(
  * matchesMimeType('application/pdf', 'image/*') // false
  */
 export function matchesMimeType(mimeType: string, pattern: string): boolean {
-  if (pattern === "*/*") return true;
-  if (pattern.endsWith("/*")) {
-    const prefix = pattern.slice(0, -1); // "image/" from "image/*"
-    return mimeType.startsWith(prefix);
+  // Type and subtype are case-insensitive. "IMAGE/*" must accept image/png.
+  const type = mimeType.toLowerCase();
+  const expected = pattern.toLowerCase();
+  if (expected === "*/*") return true;
+  if (expected.endsWith("/*")) {
+    const prefix = expected.slice(0, -1); // "image/" from "image/*"
+    return type.startsWith(prefix);
   }
-  return mimeType === pattern;
+  return type === expected;
 }
 /**
  * Format bytes to human-readable string.
