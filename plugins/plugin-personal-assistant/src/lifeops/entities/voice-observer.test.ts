@@ -263,6 +263,18 @@ describe("extractKinClaim", () => {
     expect(extractKinClaim("how is the weather")).toBeNull();
     expect(extractKinClaim("")).toBeNull();
   });
+
+  it("does not treat an ordinary phrase as a person name", () => {
+    expect(extractKinClaim("the update is my husband")).toBeNull();
+    expect(extractKinClaim("today is my wife")).toBeNull();
+    expect(extractKinClaim("The update is my husband")).toBeNull();
+  });
+
+  it("keeps a sentence-case introduction", () => {
+    const claim = extractKinClaim("This is my wife Jill");
+    expect(claim?.name).toBe("Jill");
+    expect(claim?.label).toBe("wife");
+  });
 });
 
 describe("extractSelfAffiliationClaim", () => {
