@@ -4,7 +4,7 @@
  * read can authorize the final Telegram-safe reply.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { ActionResult } from "@elizaos/core/edge";
 
 let searchResult: ActionResult;
@@ -98,6 +98,51 @@ beforeEach(() => {
 });
 
 describe("runSharedAgentTurn realtime grounding", () => {
+  test("audits the real refusal caller in quiet mode with only closed diagnostic fields", async () => {
+    expect(process.env.VERBOSE_LOGGING ?? "false").toBe("false");
+    const { logger } = await import("../../utils/logger");
+    const sink = spyOn(console, "info").mockImplementation(() => {});
+    try {
+      logger.info("quiet-mode-sentinel", { value: 1 });
+      runtimeReply = "Bitcoin is currently 63,800 USD according to TradingView.";
+      const traceId = "a".repeat(32);
+      const result = await runSharedAgentTurn({
+        character,
+        history: [],
+        message: "what is btc price rn",
+        capabilityText: "what is btc price rn",
+        traceId,
+        execution: {
+          agentKey: "personal-shared:quiet-audit",
+          roomKey: "telegram:quiet-audit",
+          channel: { type: "DM", source: "telegram" },
+        },
+      });
+      const records = sink.mock.calls.filter(
+        (call) => call[0] === "[shared-realtime] claim binding refused",
+      );
+      expect(records).toEqual([
+        [
+          "[shared-realtime] claim binding refused",
+          {
+            traceId,
+            markerCount: 0,
+            knownSourceMarkerCount: 0,
+            failedPredicateMask: 0,
+            reason: "marker_missing",
+          },
+        ],
+      ]);
+      expect(sink.mock.calls.some((call) => call[0] === "quiet-mode-sentinel")).toBe(false);
+      expect(JSON.stringify(records)).not.toContain("63,800");
+      expect(JSON.stringify(records)).not.toContain("TradingView");
+      expect(JSON.stringify(records)).not.toContain("https://");
+      expect(result.reply).toContain("couldn’t safely bind the requested claim");
+    } finally {
+      sink.mockRestore();
+    }
+  });
+
   test("preflights current prices and returns a concise traceable source", async () => {
     const result = await runSharedAgentTurn({
       character,

@@ -1373,7 +1373,7 @@ export async function runSharedAgentTurn(
       turn.reply,
       realtimeGrounding,
       (diagnostic) => {
-        logger.info("[shared-realtime] claim binding refused", {
+        logger.audit("[shared-realtime] claim binding refused", {
           ...(input.traceId && /^[0-9a-f]{32}$/.test(input.traceId)
             ? { traceId: input.traceId }
             : {}),
