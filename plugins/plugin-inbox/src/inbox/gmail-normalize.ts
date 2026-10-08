@@ -133,6 +133,13 @@ export function splitMailboxLikeList(value: string): string[] {
   for (let index = 0; index < value.length; index += 1) {
     const char = value[index];
     const next = value[index + 1];
+    // RFC 5322 quoted-pair: a backslash inside a display name keeps the next
+    // character literal, so \" does not end the quoted name.
+    if (inQuotes && char === "\\" && next !== undefined) {
+      current += char + next;
+      index += 1;
+      continue;
+    }
     if (char === '"') {
       inQuotes = !inQuotes;
       current += char;
