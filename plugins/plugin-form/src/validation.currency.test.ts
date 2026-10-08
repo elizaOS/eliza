@@ -21,4 +21,12 @@ describe("validateField currency numbers", () => {
     expect(parseValue("$1,234", control)).toBe(1234);
     expect(parseValue("1,234", control)).toBe(1234);
   });
+
+  it("accepts a sign before the dollar sign", () => {
+    expect(validateField("-$50", control).valid).toBe(true);
+    expect(parseValue("-$50", control)).toBe(-50);
+    expect(parseValue("-$1,234.50", control)).toBe(-1234.5);
+    expect(parseValue("+$5", control)).toBe(5);
+    expect(parseValue("$-50", control)).toBe(-50);
+  });
 });

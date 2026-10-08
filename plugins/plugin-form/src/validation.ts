@@ -348,9 +348,14 @@ function validateEmail(
  */
 const STRICT_NUMBER_PATTERN = /^[+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
 function parseStrictNumber(input: string): number {
-  // A dollar sign is a currency mark only at the start. Stripping every "$"
-  // turned "1$2" into 12 and "50$" into 50.
-  const cleaned = input.trim().replace(/^\$/, "").trim().replace(/,/g, "");
+  // A dollar sign is a currency mark only at the start, after an optional
+  // sign. Stripping every "$" turned "1$2" into 12. Anchoring on "^$" alone
+  // rejected "-$50", which is a negative amount.
+  const cleaned = input
+    .trim()
+    .replace(/^([+-]?)\s*\$/, "$1")
+    .trim()
+    .replace(/,/g, "");
   if (!STRICT_NUMBER_PATTERN.test(cleaned)) {
     return Number.NaN;
   }
