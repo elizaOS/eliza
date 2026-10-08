@@ -52,6 +52,7 @@ interface DatabaseParams {
   includeEmpty?: boolean;
   // get_table
   tableName?: string;
+  schema?: string;
   limit?: number;
   offset?: number;
   sortBy?: string;
@@ -300,7 +301,8 @@ async function opListTables(
   });
 
   const lines = tables.map(
-    (t) => `- ${t.name} (${t.columns.length} cols, ${t.rowCount} rows)`,
+    (t) =>
+      `- ${t.schema}.${t.name} (${t.columns.length} cols, ${t.rowCount} rows)`,
   );
 
   // Both branches used to hide the narrowing above: "No tables found." read as
@@ -337,6 +339,76 @@ async function opListTables(
   };
 }
 
+const SCHEMA_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+async function resolveGetTableSchema(
+  runtime: IAgentRuntime,
+  tableName: string,
+  requestedSchema: string | undefined,
+): Promise<
+  { ok: true; schema: string } | { ok: false; text: string; reason: string }
+> {
+  const safe = tableName.replace(/'/g, "''");
+  const requested = requestedSchema?.trim() ?? "";
+  if (requested.length > 0) {
+    if (
+      !SCHEMA_IDENT.test(requested) ||
+      requested === "pg_catalog" ||
+      requested === "information_schema"
+    ) {
+      return {
+        ok: false,
+        text: "schema must be a single identifier.",
+        reason: "INVALID_SCHEMA",
+      };
+    }
+    const safeSchema = requested.replace(/'/g, "''");
+    const found = await executeRawSql(
+      runtime,
+      `SELECT 1
+       FROM pg_catalog.pg_class c
+       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       WHERE c.relname = '${safe}'
+         AND n.nspname = '${safeSchema}'
+         AND c.relkind IN ('r', 'p')
+       LIMIT 1`,
+    );
+    if (found.rows.length === 0) {
+      return {
+        ok: false,
+        text: `Table "${requested}.${tableName}" not found.`,
+        reason: "TABLE_NOT_FOUND",
+      };
+    }
+    return { ok: true, schema: requested };
+  }
+  const visible = await executeRawSql(
+    runtime,
+    `SELECT n.nspname AS schema
+     FROM pg_catalog.pg_class c
+     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+     WHERE c.relname = '${safe}'
+       AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+       AND c.relkind IN ('r', 'p')
+       AND pg_catalog.pg_table_is_visible(c.oid)
+     ORDER BY (
+       SELECT s.ord
+       FROM unnest(current_schemas(true)) WITH ORDINALITY AS s(name, ord)
+       WHERE s.name = n.nspname
+       LIMIT 1
+     )
+     LIMIT 1`,
+  );
+  if (visible.rows.length > 0) {
+    return { ok: true, schema: String(visible.rows[0]?.schema) };
+  }
+  return {
+    ok: false,
+    text: `Table "${tableName}" not found.`,
+    reason: "TABLE_NOT_FOUND",
+  };
+}
+
 async function opGetTable(
   runtime: IAgentRuntime,
   params: DatabaseParams,
@@ -350,32 +422,24 @@ async function opGetTable(
     };
   }
 
-  const safe = tableName.replace(/'/g, "''");
-  const visibleSchema = `(
-         SELECT n.nspname
-         FROM pg_catalog.pg_class c
-         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-         WHERE c.relname = '${safe}'
-           AND c.relkind IN ('r', 'p')
-           AND pg_catalog.pg_table_is_visible(c.oid)
-         LIMIT 1
-       )`;
-  const exists = await executeRawSql(
+  const resolved = await resolveGetTableSchema(
     runtime,
-    `SELECT 1 FROM information_schema.tables
-     WHERE table_name = '${safe}'
-       AND table_schema = ${visibleSchema}
-       AND table_schema NOT IN ('pg_catalog', 'information_schema')
-       AND table_type = 'BASE TABLE'
-     LIMIT 1`,
+    tableName,
+    params.schema,
   );
-  if (exists.rows.length === 0) {
+  if (!resolved.ok) {
     return {
       success: false,
-      text: `Table "${tableName}" not found.`,
-      values: { error: "DATABASE_GET_TABLE_FAILED", reason: "TABLE_NOT_FOUND" },
+      text: resolved.text,
+      values: {
+        error: "DATABASE_GET_TABLE_FAILED",
+        reason: resolved.reason,
+      },
     };
   }
+  const safe = tableName.replace(/'/g, "''");
+  const safeSchema = resolved.schema.replace(/'/g, "''");
+  const relation = `${quoteIdent(resolved.schema)}.${quoteIdent(tableName)}`;
 
   const limit = parseOptionalPositiveInteger(params.limit, "limit");
   const offset = parseOptionalNonNegativeInteger(params.offset, "offset") ?? 0;
@@ -387,7 +451,7 @@ async function opGetTable(
       runtime,
       `SELECT column_name FROM information_schema.columns
        WHERE table_name = '${safe}'
-         AND table_schema = ${visibleSchema}`,
+         AND table_schema = '${safeSchema}'`,
     );
     if (cols.rows.some((r) => String(r.column_name) === params.sortBy)) {
       validSort = params.sortBy;
@@ -408,7 +472,7 @@ async function opGetTable(
       AND tc.table_name = kcu.table_name
      WHERE tc.constraint_type = 'PRIMARY KEY'
        AND tc.table_name = '${safe}'
-       AND tc.table_schema = ${visibleSchema}
+       AND tc.table_schema = '${safeSchema}'
      ORDER BY kcu.ordinal_position`,
   );
   const primaryKey: string[] = [];
@@ -427,13 +491,13 @@ async function opGetTable(
 
   const countResult = await executeRawSql(
     runtime,
-    `SELECT count(*) AS total FROM ${quoteIdent(tableName)}`,
+    `SELECT count(*) AS total FROM ${relation}`,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
 
   const result = await executeRawSql(
     runtime,
-    `SELECT * FROM ${quoteIdent(tableName)} ${orderClause}${limit === undefined ? "" : ` LIMIT ${limit}`}${offset === 0 ? "" : ` OFFSET ${offset}`}`,
+    `SELECT * FROM ${relation} ${orderClause}${limit === undefined ? "" : ` LIMIT ${limit}`}${offset === 0 ? "" : ` OFFSET ${offset}`}`,
   );
 
   return {
@@ -732,6 +796,13 @@ export const databaseAction: Action = {
     {
       name: "tableName",
       description: "get_table: table name to read.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "schema",
+      description:
+        "get_table: schema that owns the table. Required when the same name exists in more than one schema. Plugin tables such as todos.todos are outside search_path.",
       required: false,
       schema: { type: "string" as const },
     },

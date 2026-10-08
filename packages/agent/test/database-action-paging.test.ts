@@ -116,6 +116,38 @@ it("returns every tied row once and ignores another schema's primary key", async
     );
     expect(hidden.success).toBe(false);
     expect(hidden.text).toBe('Table "only_here" not found.');
+    await db.execute(
+      sql.raw("INSERT INTO hidden_ns.only_here (id) VALUES (7)"),
+    );
+    const named = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      {
+        parameters: {
+          action: "get_table",
+          tableName: "only_here",
+          schema: "hidden_ns",
+          limit: 8,
+          offset: 0,
+        },
+      },
+      undefined,
+    );
+    expect(named.success, named.text).toBe(true);
+    const namedRows = (
+      named.data as { rows?: Array<{ id: number }> } | undefined
+    )?.rows;
+    expect(namedRows?.map((row) => Number(row.id))).toEqual([7]);
+    const listed = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      { parameters: { action: "list_tables", filter: "only_here" } },
+      undefined,
+    );
+    expect(listed.success, listed.text).toBe(true);
+    expect(listed.text).toContain("hidden_ns.only_here");
     const systemTable = await handler(
       runtime,
       {} as never,
