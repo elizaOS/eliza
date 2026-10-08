@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	createFirstSentenceScanner,
+	createFirstSentenceStreamTracker,
 	extractFirstSentence,
 } from "../src/utils/text-splitting.ts";
 
@@ -24,6 +25,33 @@ describe("extractFirstSentence", () => {
 		});
 	});
 
+	it("finishes spoken replies ending in a time across every stream split", () => {
+		for (const time of ["a.m.", "p.m.", "P.M."]) {
+			for (const suffix of ["", "   ", '")', '")  ']) {
+				const text = `Your alarm is set for 7 ${time}${suffix}`;
+				expect(extractFirstSentence(text)).toEqual({
+					first: text.trim(),
+					rest: "",
+					complete: true,
+				});
+				for (let split = 0; split <= text.length; split++) {
+					const tracker = createFirstSentenceStreamTracker();
+					expect(
+						tracker.push(text.slice(0, split), text.slice(0, split)),
+					).toBeUndefined();
+					expect(tracker.push(text.slice(split), text)).toBeUndefined();
+					expect(tracker.finish()).toBe(text.trimEnd().length);
+				}
+				const tracker = createFirstSentenceStreamTracker();
+				for (let end = 1; end <= text.length; end++) {
+					expect(
+						tracker.push(text[end - 1], text.slice(0, end)),
+					).toBeUndefined();
+				}
+				expect(tracker.finish()).toBe(text.trimEnd().length);
+			}
+		}
+	});
 	it("still ends a real sentence and keeps Dr. inside one", () => {
 		expect(extractFirstSentence("Ends here. Next sentence")).toEqual({
 			first: "Ends here.",
