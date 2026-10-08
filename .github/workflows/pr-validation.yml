@@ -427,9 +427,19 @@ jobs:
             fi
             sleep 1
           done
-          # Suites use separate processes but some migrations lock shared public tables.
-          # Serialize them until every suite has an independent database.
-          xargs -r -n 1 -P 1 bun test --config=/dev/null --isolate <<'SUITES'
+          # Suites apply migrations beyond their private schemas. Give each
+          # process its own database so concurrent DDL cannot deadlock peers.
+          export CI_POSTGRES_CONTAINER="$container"
+          run_suite() {
+            local suite="$1" database="ci_suite_${BASHPID}" status=0
+            docker exec "$CI_POSTGRES_CONTAINER" createdb -U postgres "$database"
+            SUBSCRIPTION_AUTHORITY_POSTGRES_URL="postgresql://postgres@127.0.0.1:5432/$database" \
+              bun test --config=/dev/null --isolate "$suite" || status=$?
+            docker exec "$CI_POSTGRES_CONTAINER" dropdb -U postgres --force "$database" || status=1
+            return "$status"
+          }
+          export -f run_suite
+          xargs -r -n 1 -P 2 bash -euo pipefail -c 'run_suite "$1"' _ <<'SUITES'
           packages/cloud/shared/src/db/repositories/account-billing-snapshot.postgres.integration.test.ts
           packages/cloud/shared/src/db/repositories/app-billing-accounts.postgres.integration.test.ts
           packages/cloud/shared/src/db/repositories/subscription-cancellation.postgres.integration.test.ts
