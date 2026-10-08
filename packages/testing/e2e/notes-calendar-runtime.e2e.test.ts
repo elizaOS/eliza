@@ -509,8 +509,23 @@ async function scenario(label: string, withApprovals = false) {
       throw new Error("Notes read omitted its revision");
     readRevisions.set(note.id, data.notesRevision);
     expect(data.count).toBe(1);
-    expect(data.notes).toEqual([expect.objectContaining(note)]);
     const returned = record((data.notes as RecordValue[])[0]);
+    expect(returned).toMatchObject({
+      id: note.id,
+      title: note.title,
+      color: note.color,
+      createdAt: note.createdAt,
+      updatedAt: note.updatedAt,
+    });
+    if (
+      typeof returned.title !== "string" ||
+      typeof returned.body !== "string" ||
+      (returned.bodySeparator !== "" && returned.bodySeparator !== "\n")
+    )
+      throw new Error("Notes read omitted its lossless model content");
+    expect(returned.title + returned.bodySeparator + returned.body).toBe(
+      note.title + note.body,
+    );
     const source = record(returned.sourceNote);
     const expectedSource: SourceNote = {
       agentId: runtime.agentId,
