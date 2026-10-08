@@ -214,13 +214,14 @@ function relativeTimeParts(diffMs: number): {
 } {
   const future = diffMs < 0;
   const absMs = Math.abs(diffMs);
-  const round = future ? Math.ceil : Math.floor;
+  // Ceil made 61 seconds in the future read as "in 2m". Floor matches
+  // the past branch: the next unit starts at the next whole boundary.
   return {
     future,
     absMs,
-    mins: round(absMs / 60000),
-    hours: round(absMs / 3600000),
-    days: round(absMs / 86400000),
+    mins: Math.floor(absMs / 60000),
+    hours: Math.floor(absMs / 3600000),
+    days: Math.floor(absMs / 86400000),
   };
 }
 export function formatRelativeTimeShort(
