@@ -119,7 +119,10 @@ export function isSafeAttachmentUrl(url: string): boolean {
   // (`//host/...`) is rejected: it is not an app path and its scheme is
   // ambiguous.
   if (trimmed.startsWith("/")) {
-    return !trimmed.startsWith("//");
+    // WHATWG URL parsing treats `\` as `/`, so `/\evil.example` is the same
+    // scheme-relative URL as `//evil.example`.
+    const slashes = trimmed.replaceAll("\\", "/");
+    return slashes.startsWith("/") && !slashes.startsWith("//");
   }
 
   // Resolve the scheme the way a browser would: ignore whitespace/control
