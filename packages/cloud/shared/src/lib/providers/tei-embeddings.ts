@@ -7,7 +7,7 @@ import { createBgeEmbeddingModel } from "./bge-embeddings";
 
 const infoSchema = z.object({
   model_id: z.literal("BAAI/bge-small-en-v1.5"),
-  model_sha: z.string().nullable().optional(),
+  model_sha: z.literal("5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"),
   model_type: z.object({ embedding: z.object({ pooling: z.literal("cls") }) }),
   max_input_length: z.literal(512),
 });
@@ -30,8 +30,7 @@ export function createTeiEmbeddingModel(baseUrl: string, apiKey: string) {
           });
         }
         const info = infoSchema.safeParse(await infoResponse.json());
-        // Some TEI builds omit model_sha. Deployment must pin the revision there;
-        // when advertised, it must agree rather than silently naming another space.
+        // Canonical vectors require the endpoint to attest its immutable loaded revision.
         if (!info.success || (info.data.model_sha && info.data.model_sha !== revision)) {
           throw new ElizaError(
             "TEI must serve pinned BGE-small-en-v1.5 with CLS pooling and a 512-token context",
