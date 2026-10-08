@@ -115,15 +115,18 @@ describe("MessageManager URL enrichment", () => {
 	it("keeps a later code block when the first fence is long", async () => {
 		const result = await managerFor(runtime()).processMessage(
 			discordMessage(
-				`${"```"}${"x".repeat(80)}${"```"} then ${"```"}y${"```"}`,
+				`${"```"}${"x".repeat(80)}${"```"} then ${"```"}y${"```"} and ${"```"}y${"```"}`,
 			),
 		);
 		const code = result.attachments.filter(
 			(attachment) => attachment.source === "Code",
 		);
 
-		expect(code).toHaveLength(2);
-		expect(code[1]?.text).toBe("y");
+		expect(code.map((attachment) => attachment.text)).toEqual([
+			"x".repeat(80),
+			"y",
+			"y",
+		]);
 		expect(result.processedContent).not.toContain("```");
 	});
 });

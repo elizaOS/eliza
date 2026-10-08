@@ -3390,33 +3390,25 @@ export class MessageManager {
 		);
 
 		const codeBlockRegex = /```([\s\S]*?)```/g;
-		let match: RegExpExecArray | null = codeBlockRegex.exec(processedContent);
-		while (match !== null) {
-			const fullMatch = match[0];
-			const codeBlock = match[1];
-			const lines = codeBlock.split("\n");
-			const title = lines[0];
-			const description = lines.slice(0, 3).join("\n");
-			const attachmentId =
-				`code-${Date.now()}-${Math.floor(Math.random() * 1000)}`.slice(-5);
-			attachments.push({
-				id: attachmentId,
-				url: "",
-				title: title || "Code Block",
-				source: "Code",
-				description,
-				text: codeBlock,
-			});
-			processedContent = processedContent.replace(
-				fullMatch,
-				`Code Block (${attachmentId})`,
-			);
-			// The global regex keeps lastIndex from the string before the
-			// replacement. A long fence makes that index sit past the next
-			// fence in the shorter text, so the later block stays raw.
-			codeBlockRegex.lastIndex = 0;
-			match = codeBlockRegex.exec(processedContent);
-		}
+		processedContent = processedContent.replace(
+			codeBlockRegex,
+			(_match, codeBlock: string) => {
+				const lines = codeBlock.split("\n");
+				const title = lines[0];
+				const description = lines.slice(0, 3).join("\n");
+				const attachmentId =
+					`code-${Date.now()}-${Math.floor(Math.random() * 1000)}`.slice(-5);
+				attachments.push({
+					id: attachmentId,
+					url: "",
+					title: title || "Code Block",
+					source: "Code",
+					description,
+					text: codeBlock,
+				});
+				return `Code Block (${attachmentId})`;
+			},
+		);
 
 		if (message.attachments.size > 0) {
 			attachments.push(
