@@ -169,7 +169,13 @@ const searchCommand: SlashCommand = {
 	cooldown: 10,
 	async execute(interaction, runtime) {
 		const query = interaction.options.getString("query", true);
-		const limit = interaction.options.getNumber("limit") || 5;
+		const rawLimit = interaction.options.getNumber("limit");
+		// A negative limit is truthy, so `|| 5` keeps it. slice(0, -1) then
+		// drops the last match instead of applying the default maximum.
+		const limit =
+			typeof rawLimit === "number" && Number.isFinite(rawLimit) && rawLimit > 0
+				? Math.floor(rawLimit)
+				: 5;
 		await interaction.deferReply({ ephemeral: true });
 
 		try {
