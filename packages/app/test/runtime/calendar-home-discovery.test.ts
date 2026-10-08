@@ -325,7 +325,7 @@ test("native Cairo, Santiago and St_Johns receipts retain civil-day boundaries",
       "-d",
       directory,
       ...files,
-      ...(existsSync(identitySource) ? [identitySource] : []),
+      identitySource,
       join(
         root,
         "plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java",
