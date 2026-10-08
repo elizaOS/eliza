@@ -18,4 +18,6 @@ it("promotes a DexScreener USD value that rounds across a suffix boundary", asyn
   expect(service.formatUsdValue(999.994)).toBe("$999.99");
   expect(service.formatUsdValue(999_999)).toBe("$1.00M");
   expect(service.formatUsdValue(999.999)).toBe("$1.00K");
+  expect(service.formatUsdValue(1_500_000_000)).toBe("$1.50B");
+  expect(service.formatUsdValue(999_999_999)).toBe("$1.00B");
 });

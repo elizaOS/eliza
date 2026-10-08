@@ -399,6 +399,7 @@ export class DexScreenerService extends Service {
   }
   formatUsdValue(value: number): string {
     const tiers = [
+      { divisor: 1_000_000_000, suffix: "B" },
       { divisor: 1_000_000, suffix: "M" },
       { divisor: 1_000, suffix: "K" },
       { divisor: 1, suffix: "" },
