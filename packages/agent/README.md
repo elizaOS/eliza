@@ -37,6 +37,10 @@ Pause/cancel/revoke, hosts must await `runtime.settle()` before reporting cleanu
 complete or replacing the runtime. The HTTP handler does this automatically.
 Unconfirmed cleanup returns `TASK_CLEANUP_UNCONFIRMED`; a later status read retries
 cleanup only, without repeating the task transition or browser action.
+The pause route accepts optional `reason: "close"` when the user closes the task
+surface. This keeps the pause transition but passes `close` to `quiesce`; ordinary
+Pause, cancel, and revoke pass their own reasons. Per-task cleanup runs in control
+order, and a retry retains its reason.
 
 Trusted hosts may call `runtime.reconcile` for an unknown operation through an
 optional actuator `reconcile` readback implementation. It must read evidence only,
