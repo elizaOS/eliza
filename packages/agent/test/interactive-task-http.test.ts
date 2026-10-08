@@ -397,6 +397,7 @@ it("HTTP control waits for cleanup and retries only cleanup after a missing ackn
     release = deferred<void>();
   let calls = 0,
     fail = false;
+  const reasons: unknown[] = [];
   const runtime = new InteractiveTaskRuntime({
     owner,
     store: f.store,
@@ -408,7 +409,8 @@ it("HTTP control waits for cleanup and retries only cleanup after a missing ackn
       execute: async () => {
         throw new Error("unexpected execute");
       },
-      quiesce: async () => {
+      quiesce: async ({ reason }) => {
+        reasons.push(reason);
         calls++;
         if (calls === 1) {
           entered.resolve();
@@ -437,8 +439,33 @@ it("HTTP control waits for cleanup and retries only cleanup after a missing ackn
     await entered.promise;
     expect(runtime.get("task-1").status).toBe("paused");
     expect(completed).toBe(false);
+    // A host may close a task while its earlier Pause cleanup still awaits an ack.
+    runtime.control("task-1", runtime.get("task-1").revision, "close");
+    await Promise.resolve();
+    const beforePauseAcknowledged = [...reasons];
     release.resolve();
     expect((await pending).status).toBe(200);
+    expect(beforePauseAcknowledged).toEqual(["pause"]);
+    // Close is a pause; only the host cleanup reason differs.
+    for (const body of [
+      { expectedRevision: 1, reason: "pause" },
+      { expectedRevision: 1, reason: "close", extra: true },
+    ])
+      expect((await http.call("/tasks/task-1/pause", body)).status).toBe(400);
+    expect(
+      (
+        await http.call("/tasks/task-1/cancel", {
+          expectedRevision: 1,
+          reason: "close",
+        })
+      ).status,
+    ).toBe(400);
+    const closed = await http.call("/tasks/task-1/pause", {
+      expectedRevision: runtime.get("task-1").revision,
+      reason: "close",
+    });
+    expect(closed.status).toBe(200);
+    expect((await closed.json()).task.status).toBe("paused");
     fail = true;
     const cancelled = await http.call("/tasks/task-1/cancel", {
       expectedRevision: runtime.get("task-1").revision,
@@ -453,7 +480,9 @@ it("HTTP control waits for cleanup and retries only cleanup after a missing ackn
     expect(refreshed.status).toBe(200);
     expect(await refreshed.json()).toEqual({ task: null });
     expect(runtime.get("task-1").revision).toBe(revision);
-    expect(calls).toBe(3);
+    expect(calls).toBe(5);
+    // A retried cleanup keeps the reason of the control that started it.
+    expect(reasons).toEqual(["pause", "close", "close", "cancel", "cancel"]);
   } finally {
     release.resolve();
     await http.close();

@@ -55,6 +55,40 @@ test("Close reads durable state before pausing and does not optimistically claim
   });
 });
 
+test("Close sends the close reason, also for a task that is already paused", async () => {
+  for (const status of ["active", "paused"]) {
+    const called = [];
+    let state;
+    const client = new TaskLifecycle(
+      async (path, body) => {
+        called.push({ path, body });
+        return path === "/tasks/current"
+          ? { task: { ...task, status } }
+          : { task: { ...task, revision: 4, epoch: 2, status: "paused" } };
+      },
+      (next) => {
+        state = next;
+      },
+    );
+    assert.equal(await client.control("close"), true);
+    assert.equal(state.task.status, "paused");
+    assert.deepEqual(called[1], {
+      path: "/tasks/task/pause",
+      body: { expectedRevision: 3, reason: "close" },
+    });
+  }
+  const called = [];
+  const paused = new TaskLifecycle(
+    async (path) => {
+      called.push(path);
+      return { task: { ...task, status: "paused" } };
+    },
+    () => {},
+  );
+  assert.equal(await paused.control("pause"), true);
+  assert.deepEqual(called, ["/tasks/current"]);
+});
+
 test("account reset and later Close suppress an older Resume response", async () => {
   const reply = deferred();
   let state;
