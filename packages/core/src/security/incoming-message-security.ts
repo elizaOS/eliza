@@ -148,11 +148,13 @@ function isBoundConnectorPayload(
 	while (offset >= 0) {
 		const prefix = rendered.slice(0, offset);
 		const suffix = rendered.slice(offset + payload.length);
+		// Guild names and thread titles may contain "]". The tag closes at the
+		// "]" before " @sender". Reply display names may contain ")".
 		const startsAtFieldBoundary =
-			/^\[Discord [^\r\n\]]+\] @[^\r\n]+(?: \([^\r\n)]*\))?:\s*$/u.test(prefix);
+			/^\[Discord [^\r\n]+\] @[^\r\n]+(?: \([^\r\n)]*\))?:\s*$/u.test(prefix);
 		const endsAtFieldBoundary =
 			suffix.length === 0 ||
-			/^\r?\n\[platform_reply_reference\]\r?\n[\s\S]*\r?\n\[\/platform_reply_reference\]\r?\n\(in reply to @[^\r\n)]*\)$/u.test(
+			/^\r?\n\[platform_reply_reference\]\r?\n[\s\S]*\r?\n\[\/platform_reply_reference\]\r?\n\(in reply to @[^\r\n]*\)$/u.test(
 				suffix,
 			);
 		if (startsAtFieldBoundary && endsAtFieldBoundary) return true;
