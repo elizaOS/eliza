@@ -292,6 +292,15 @@ describe("extractSelfAffiliationClaim", () => {
     expect(claim?.organization).toBe(organization);
   });
 
+  it("drops a trailing time word from the organization", () => {
+    expect(
+      extractSelfAffiliationClaim("I work at Acme today")?.organization,
+    ).toBe("Acme");
+    expect(
+      extractSelfAffiliationClaim("I am John from accounting today"),
+    ).toEqual({ name: "John", organization: "accounting" });
+  });
+
   it("rejects non-affiliation phrasing", () => {
     // Lowercase "calling" fails the uppercase name anchor.
     expect(extractSelfAffiliationClaim("I'm calling from the airport")).toBe(
