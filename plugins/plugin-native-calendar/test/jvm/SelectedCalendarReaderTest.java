@@ -22,7 +22,7 @@ public final class SelectedCalendarReaderTest {
   }
  }
  static Object[] event(long id,String title,String start,String end,boolean allDay){return new Object[]{id,1L,title,epoch(start),epoch(end),allDay?1:0};}
- static JSONArray sources(Provider provider)throws Exception{return new JSONArray().put(new JSONObject().put("id","1").put("revision",ai.eliza.plugins.calendar.CalendarEventGuard.sourceIdentity(provider,1).getString("sourceRevision")));}
+ static JSONArray sources(Provider provider)throws Exception{return new JSONArray().put(new JSONObject().put("id","1").put("revision",CalendarSourceIdentity.read(provider,1).getString("sourceRevision")));}
  static Set<String> titles(JSONArray rows)throws Exception{Set<String> result=new HashSet<>();for(int i=0;i<rows.length();i++)result.add(rows.getJSONObject(i).getString("title"));return result;}
  public static void main(String[] args)throws Exception {
   if(args.length==1&&"midnight-gap-receipts".equals(args[0])){

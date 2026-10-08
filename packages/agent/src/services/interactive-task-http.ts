@@ -149,8 +149,11 @@ export function createInteractiveTaskHandler(options: {
       if (!command || request.method !== "POST")
         return json(405, { code: "TASK_METHOD_NOT_ALLOWED" });
       const input = await body(request);
+      // Pause accepts reason "close": the user also closed the task surface.
+      const close = command === "pause" && "reason" in input;
       if (
-        Object.keys(input).length !== 1 ||
+        Object.keys(input).length !== (close ? 2 : 1) ||
+        (close && input.reason !== "close") ||
         !Number.isSafeInteger(input.expectedRevision) ||
         Number(input.expectedRevision) < 0
       )
@@ -168,7 +171,7 @@ export function createInteractiveTaskHandler(options: {
           : options.runtime.control(
               id,
               Number(input.expectedRevision),
-              command as "pause" | "cancel",
+              close ? "close" : (command as "pause" | "cancel"),
             );
       await options.runtime.settle(id);
       if (!(await authenticated(request)))

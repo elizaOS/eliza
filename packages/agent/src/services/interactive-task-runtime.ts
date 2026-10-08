@@ -12,10 +12,20 @@ import {
 } from "@elizaos/core/protocol";
 import type { SqliteInteractiveTaskStore } from "./interactive-task-store.ts";
 
+/**
+ * Why host cleanup runs after a task control. "close" is a pause whose user
+ * also closed the task surface. Actuator-internal cleanup passes no reason.
+ */
+export type TaskCleanupReason = "pause" | "close" | "cancel" | "revoke";
+
 export interface InteractiveTaskActuator {
   readonly capabilities: readonly string[];
   /** Remove host-owned transient UI/effects; resolves only after acknowledgement. */
-  quiesce?(context: { owner: TaskOwner; taskId: string }): Promise<void>;
+  quiesce?(context: {
+    owner: TaskOwner;
+    taskId: string;
+    reason?: TaskCleanupReason;
+  }): Promise<void>;
   observe(context: {
     owner: TaskOwner;
     taskId: string;
@@ -56,7 +66,7 @@ export class InteractiveTaskRuntime {
   private poisoned = false;
   private cleanup = new Map<
     string,
-    { promise: Promise<void>; failed: boolean }
+    { promise: Promise<void>; failed: boolean; reason?: TaskCleanupReason }
   >();
   readonly owner: TaskOwner;
   constructor(
@@ -113,13 +123,22 @@ export class InteractiveTaskRuntime {
       now: this.now(),
     });
   }
-  private startCleanup(id: string) {
+  private startCleanup(id: string, reason?: TaskCleanupReason) {
     const quiesce = this.options.actuator.quiesce;
     if (!quiesce) return;
-    const entry = { failed: false, promise: Promise.resolve() };
-    entry.promise = Promise.resolve().then(() =>
-      quiesce.call(this.options.actuator, { owner: this.owner, taskId: id }),
-    );
+    const previous = this.cleanup.get(id);
+    const entry = { failed: false, promise: Promise.resolve(), reason };
+    // Finish the older cleanup before a newer reason changes host presentation.
+    // Only the new acknowledgement can supersede an earlier cleanup failure.
+    entry.promise = (previous?.promise ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() =>
+        quiesce.call(this.options.actuator, {
+          owner: this.owner,
+          taskId: id,
+          ...(reason ? { reason } : {}),
+        }),
+      );
     this.cleanup.set(id, entry);
     // Observe rejection now; settle() still reports it to the requesting host.
     void entry.promise.catch(() => {
@@ -133,7 +152,8 @@ export class InteractiveTaskRuntime {
       for (;;) {
         let entry = this.cleanup.get(taskId);
         if (!entry) break;
-        if (entry.failed) entry = this.startCleanup(taskId) ?? entry;
+        if (entry.failed)
+          entry = this.startCleanup(taskId, entry.reason) ?? entry;
         try {
           await entry.promise;
         } catch {
@@ -147,10 +167,11 @@ export class InteractiveTaskRuntime {
       }
     }
   }
+  /** "close" is the "pause" transition; only the cleanup reason differs. */
   control(
     id: string,
     expectedRevision: number,
-    type: "pause" | "cancel" | "revoke",
+    type: TaskCleanupReason,
   ): InteractiveTask {
     this.requireHealthy();
     let shouldAbort = false;
@@ -158,7 +179,7 @@ export class InteractiveTaskRuntime {
       const result = this.options.store.transition(
         id,
         { owner: this.owner, expectedRevision, now: this.now() },
-        { type },
+        { type: type === "close" ? "pause" : type },
       ).task;
       shouldAbort = true;
       return result;
@@ -176,7 +197,7 @@ export class InteractiveTaskRuntime {
     } finally {
       if (shouldAbort) {
         this.pending.get(id)?.abort();
-        this.startCleanup(id);
+        this.startCleanup(id, type);
       }
     }
   }
