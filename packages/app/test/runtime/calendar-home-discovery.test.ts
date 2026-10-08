@@ -5,8 +5,8 @@ import { existsSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
-  readFile,
   readdir,
+  readFile,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -19,6 +19,7 @@ import {
   proposeDeviceAction,
 } from "../../../../plugins/plugin-assistant/src/services/device-actions/action";
 import {
+  type CalendarNextResult,
   validateCalendarOperation,
   validateCalendarResult,
 } from "../../../../plugins/plugin-assistant/src/services/device-actions/calendar-contract";
@@ -133,7 +134,7 @@ test("real enrollment and SQL proposal gates require negotiated Calendar intents
         /capability/,
       );
       const claimed = await service.claim(credential, proposal.id, digest);
-      expect(claimed.execution).not.toBeNull();
+      assert.ok(claimed.execution);
       const result =
         operation.type === "calendar_read_next"
           ? {
@@ -159,7 +160,7 @@ test("real enrollment and SQL proposal gates require negotiated Calendar intents
           old,
           proposal.id,
           digest,
-          claimed.execution!.attemptId,
+          claimed.execution.attemptId,
           receipt,
         ),
       ).rejects.toThrow(/capability/);
@@ -169,7 +170,7 @@ test("real enrollment and SQL proposal gates require negotiated Calendar intents
             credential,
             proposal.id,
             digest,
-            claimed.execution!.attemptId,
+            claimed.execution.attemptId,
             receipt,
           )
         ).state,
@@ -251,6 +252,7 @@ test("native Share accepts its focused owned dialog and rejects background or fo
         "utf8",
       ),
       methods = source.match(/^ private boolean workflowForeground.*$/gm);
+    assert.ok(methods);
     expect(methods).toHaveLength(2);
     await mkdir(join(directory, "android/app"), { recursive: true });
     await mkdir(join(directory, "androidx/lifecycle"), { recursive: true });
@@ -265,7 +267,7 @@ test("native Share accepts its focused owned dialog and rejects background or fo
     await writeFile(
       join(directory, "CalendarReviewFocusProof.java"),
       `public final class CalendarReviewFocusProof { static class Activity {boolean focus,finishing,destroyed;androidx.lifecycle.Lifecycle lifecycle=new androidx.lifecycle.Lifecycle();boolean hasWindowFocus(){return focus;}boolean isFinishing(){return finishing;}boolean isDestroyed(){return destroyed;}androidx.lifecycle.Lifecycle getLifecycle(){return lifecycle;}} Activity activity=new Activity();android.app.AlertDialog deleteDialog=new android.app.AlertDialog();Activity getActivity(){return activity;}
-${methods!.join("\n")}
+${methods.join("\n")}
 static void check(boolean value){if(!value)throw new AssertionError();}public static void main(String[] args){CalendarReviewFocusProof p=new CalendarReviewFocusProof();check(!p.workflowForeground());check(p.workflowForeground(p.deleteDialog));p.activity.lifecycle.state=androidx.lifecycle.Lifecycle.State.STARTED;check(!p.workflowForeground(p.deleteDialog));p.activity.lifecycle.state=androidx.lifecycle.Lifecycle.State.RESUMED;p.deleteDialog.focused=false;check(!p.workflowForeground(p.deleteDialog));p.deleteDialog.focused=true;check(!p.workflowForeground(new android.app.AlertDialog()));p.deleteDialog.showing=false;check(!p.workflowForeground(p.deleteDialog));p.deleteDialog.showing=true;p.activity.destroyed=true;check(!p.workflowForeground(p.deleteDialog));System.out.println("PASS native owned-dialog focus and lifecycle predicate");}}`,
     );
     execFileSync(javaBin ? join(javaBin, "javac") : "javac", [
@@ -340,31 +342,29 @@ test("native Cairo, Santiago and St_Johns receipts retain civil-day boundaries",
         javaBin ? join(javaBin, "java") : "java",
         [
           "-cp",
-          directory + ":" + jar,
+          `${directory}:${jar}`,
           "ai.eliza.plugins.calendar.read.SelectedCalendarReaderTest",
           "midnight-gap-receipts",
         ],
         { encoding: "utf8" },
       ),
-    ) as Array<{ case: string; valid?: boolean; receipt: Record<string, any> }>;
+    ) as Array<{ case: string; valid?: boolean; receipt: CalendarNextResult }>;
     assert.equal(produced.length, 7);
     const errors: string[] = [];
     for (const sample of produced) {
       const receipt = sample.receipt;
       // Native Share retains the window but omits its private source/event binding fields.
-      if (receipt.event)
-        receipt.event = Object.fromEntries(
-          ["title", "start", "end", "allDay", "timing", "timeZone"].map(
-            (key) => [key, receipt.event[key]],
-          ),
-        );
+      if (receipt.event) {
+        const { title, start, end, allDay, timing, timeZone } = receipt.event;
+        receipt.event = { title, start, end, allDay, timing, timeZone };
+      }
       try {
         validateCalendarResult({ type: "calendar_read_next" }, receipt);
         if (sample.valid === false)
-          errors.push(sample.case + ": invalid boundary admitted");
+          errors.push(`${sample.case}: invalid boundary admitted`);
       } catch (error) {
         if (sample.valid !== false)
-          errors.push(sample.case + ": " + (error as Error).message);
+          errors.push(`${sample.case}: ${(error as Error).message}`);
       }
     }
     assert.deepEqual(errors, []);
