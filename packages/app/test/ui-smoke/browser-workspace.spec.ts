@@ -1162,7 +1162,7 @@ for (const viewport of [
     await dialog.getByRole("button", { name: "Reject", exact: true }).click();
     await expect(dialog).toBeHidden();
     expect(effects).toEqual([]);
-    await send(2, "personal_sign", ["  0X4869\n", address]);
+    await send(2, "personal_sign", [" \t0X4869\n", address]);
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("Hi");
     await page.screenshot({
@@ -1197,10 +1197,10 @@ for (const viewport of [
     await expect.poll(() => effects.length).toBe(1);
     expect(effects[0]).toMatchObject({ to: address, value: "1", chainId: 1 });
     await expect(dialog).toBeHidden();
-    await send(5, "personal_sign", ["  0X4869\n", address]);
+    await send(5, "personal_sign", [" \t0X4869\n", address]);
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "Sign", exact: true }).click();
     await expect.poll(() => effects.length).toBe(2);
-    expect(effects[1]).toEqual({ message: "  0X4869\n" });
+    expect(effects[1]).toEqual({ message: " \t0X4869\n" });
     await expect(dialog).toBeHidden();
   });
