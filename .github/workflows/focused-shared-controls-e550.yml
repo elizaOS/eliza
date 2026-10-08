@@ -119,7 +119,7 @@ jobs:
           test "$task_source_head" = 6eefe82931b7d51f5788879da3677c0cfbee891c
           test "$task_bun_version" = 1.4.2
           test "$task_node_version" = v24.15.0
-          test "$task_biome_version" = "Version: 2.5.14"
+          test "$task_biome_version" = "Version: 2.5.15"
           mkdir -p "$TASK_EVIDENCE"
           node_modules/.bin/biome check --vcs-enabled=false \
             packages/cloud/shared/src/lib/providers/language-model.ts \
