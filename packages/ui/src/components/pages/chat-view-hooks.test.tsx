@@ -212,7 +212,8 @@ describe("useChatVoiceController voice playback unlock", () => {
 
   it("passes Japanese speech locale through the controller and updates it on language change", () => {
     const { rerender } = renderHook(
-      ({ uiLanguage }) => useChatVoiceController({ ...baseOptions, uiLanguage }),
+      ({ uiLanguage }) =>
+        useChatVoiceController({ ...baseOptions, uiLanguage }),
       { initialProps: { uiLanguage: "ja" as "ja" | "en" } },
     );
     expect(useVoiceChatMock.mock.calls.at(-1)?.[0].lang).toBe("ja-JP");
