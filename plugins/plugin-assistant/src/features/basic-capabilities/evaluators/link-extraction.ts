@@ -32,9 +32,11 @@ import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 const EVALUATOR_NAME = "linkExtraction";
 const EVALUATOR_SOURCE = "link_extraction_evaluator";
 const MEMORY_TABLE = "links";
-// "]" stays in the match so "http://[2001:db8::1]/docs" keeps the host
-// bracket and the path. An unmatched trailing "]" is removed later.
-const URL_REGEX = /https?:\/\/[^\s<>"'`]+/gi;
+// A "]" is part of the URL only when it closes an IPv6 host, as in
+// "http://[2001:db8::1]/docs". Any other "]" ends the match, so
+// "[http://example.com](http://example.com)" stays one URL.
+const URL_REGEX =
+  /https?:\/\/(?:\[[0-9a-f:.%]+\][^\s<>"'`\]]*|[^\s<>"'`\]]+)/gi;
 const SUMMARY_FETCH_TIMEOUT_MS = 5_000;
 
 interface LinkRecord {
