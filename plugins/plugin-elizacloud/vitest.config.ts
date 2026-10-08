@@ -61,10 +61,7 @@ export default defineConfig({
     ],
   },
   test: {
-    include: [
-      "__tests__/**/*.test.ts",
-      "src/**/*.test.{ts,tsx}",
-    ],
+    include: ["__tests__/**/*.test.ts", "src/**/*.test.{ts,tsx}"],
     // dist-packaging drives the real build.ts, which is bun-only
     // (import.meta.dir); it runs under `bun test` in the cloud sweep and can
     // never execute under vitest — excluded here (extending the defaults) so
