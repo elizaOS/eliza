@@ -11,7 +11,6 @@ let searchResult: ActionResult;
 let runtimeReply = "";
 let runtimeResponded = true;
 let runtimeActionResults: ActionResult[] | undefined;
-let capturedRuntimeInput: Record<string, unknown> | undefined;
 let searchQueries: string[] = [];
 let searchObservedAt = 0;
 
@@ -31,7 +30,6 @@ mock.module("@elizaos/plugin-web-search", () => ({
 
 mock.module("./shared-eliza-runtime", () => ({
   runSharedElizaRuntimeTurn: async (input: Record<string, unknown>) => {
-    capturedRuntimeInput = input;
     const history = input.history as Array<{
       role: "system" | "user" | "assistant";
       content: string;
@@ -56,7 +54,7 @@ mock.module("./shared-eliza-runtime", () => ({
   },
 }));
 
-const { runSharedAgentTurn, runSharedAgentTurnStream } = await import("./run-shared-agent-turn");
+const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
 
 const character = { name: "Grounding Pin", system: "You are a test persona." };
 
@@ -93,7 +91,6 @@ beforeEach(() => {
   runtimeReply = "BTC is 70,000 USD. [[SOURCE_URL:https://example.com/markets/btc-usd]]";
   runtimeResponded = true;
   runtimeActionResults = undefined;
-  capturedRuntimeInput = undefined;
   searchQueries = [];
 });
 
@@ -142,5 +139,4 @@ describe("runSharedAgentTurn quiet binding audit", () => {
       sink.mockRestore();
     }
   });
-
 });

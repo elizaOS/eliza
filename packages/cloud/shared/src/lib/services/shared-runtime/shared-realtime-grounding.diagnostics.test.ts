@@ -38,9 +38,7 @@ describe("Shared realtime binding refusal diagnostics", () => {
   test("missing markers expose only bounded diagnostic fields, never the draft", () => {
     const diagnostics: SharedRealtimeBindingDiagnostic[] = [];
     const draft = "PRIVATE_DRAFT_SENTINEL 12345";
-    const reply = finalizeSharedRealtimeReply(draft, grounding, (value) =>
-      diagnostics.push(value),
-    );
+    const reply = finalizeSharedRealtimeReply(draft, grounding, (value) => diagnostics.push(value));
     expect(reply).toContain("couldn’t safely bind");
     expect(diagnostics).toEqual([
       {
@@ -51,9 +49,7 @@ describe("Shared realtime binding refusal diagnostics", () => {
       },
     ]);
     expect(JSON.stringify(diagnostics)).not.toContain(draft);
-    expect(JSON.stringify(diagnostics)).not.toContain(
-      grounding.sources?.[0].text ?? "",
-    );
+    expect(JSON.stringify(diagnostics)).not.toContain(grounding.sources?.[0].text ?? "");
   });
 
   test("a marker outside the receipt has a source reason without logging its URL", () => {
@@ -75,11 +71,8 @@ describe("Shared realtime binding refusal diagnostics", () => {
 
   test("unit mismatch records the predicate while preserving the refusal", () => {
     const diagnostics: SharedRealtimeBindingDiagnostic[] = [];
-    const draft =
-      "Bitcoin is 77,357.93 EUR. [[SOURCE_URL:https://coin.example/bitcoin]]";
-    const reply = finalizeSharedRealtimeReply(draft, grounding, (value) =>
-      diagnostics.push(value),
-    );
+    const draft = "Bitcoin is 77,357.93 EUR. [[SOURCE_URL:https://coin.example/bitcoin]]";
+    const reply = finalizeSharedRealtimeReply(draft, grounding, (value) => diagnostics.push(value));
     expect(reply).toBe(finalizeSharedRealtimeReply(draft, grounding));
     expect(diagnostics[0]?.reason).toBe("claim_not_supported");
     expect((diagnostics[0]?.failedPredicateMask ?? 0) & 4).toBe(4);
@@ -97,5 +90,4 @@ describe("Shared realtime binding refusal diagnostics", () => {
     ).toBe(expected);
     expect(observations).toBe(1);
   });
-
 });

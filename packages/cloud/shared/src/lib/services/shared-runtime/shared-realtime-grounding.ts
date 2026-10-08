@@ -707,11 +707,12 @@ function supportedRealtimeReply(
     try {
       onRefusal({
         ...diagnostic,
-        reason: diagnostic.markerCount === 0
-          ? "marker_missing"
-          : diagnostic.knownSourceMarkerCount === 0
-            ? "source_not_in_receipt"
-            : "claim_not_supported",
+        reason:
+          diagnostic.markerCount === 0
+            ? "marker_missing"
+            : diagnostic.knownSourceMarkerCount === 0
+              ? "source_not_in_receipt"
+              : "claim_not_supported",
       });
     } catch {
       // Diagnostic delivery must not change the existing refusal outcome.
