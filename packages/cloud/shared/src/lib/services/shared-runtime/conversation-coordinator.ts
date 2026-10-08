@@ -51,6 +51,9 @@ export interface SharedConversationPrewarmTiming {
   historyMs?: number;
   runtimeMs?: number;
   conversationMemoized?: boolean;
+  conversationPrewarmState?: "started" | "joined_pending" | "already_ready";
+  conversationHeadersMs?: number;
+  conversationAckMs?: number;
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -165,6 +168,7 @@ export async function coordinateSharedConversationPrewarm(
   },
 ): Promise<void> {
   const namespace = requireHistoryCoordinator(options);
+  const startedAt = performance.now();
   const response = await coordinatorStub(namespace, agentId, roomId).fetch(
     "https://shared-runtime.internal/prewarm",
     {
@@ -178,10 +182,21 @@ export async function coordinateSharedConversationPrewarm(
       }),
     },
   );
+  const headersReceivedAt = performance.now();
   await requireCoordinatorResponse(response, "conversation prewarm");
   // The Durable Object releases its per-room queue when the response body is
   // consumed. Drain this tiny acknowledgement before the first real turn.
   const body = await response.arrayBuffer();
+  const acknowledgementCompletedAt = performance.now();
+  if (options.timing) {
+    for (const [field, duration] of [
+      ["conversationHeadersMs", headersReceivedAt - startedAt],
+      ["conversationAckMs", acknowledgementCompletedAt - headersReceivedAt],
+    ] as const) {
+      if (Number.isFinite(duration) && duration >= 0 && duration <= 60_000)
+        options.timing[field] = duration;
+    }
+  }
   // Optional diagnostics reuse the same tiny acknowledgement. Malformed metrics
   // cannot change completion, history, admission or another caller's state.
   if (options.timing && body.byteLength <= 4096) {
@@ -201,6 +216,12 @@ export async function coordinateSharedConversationPrewarm(
         }
         if (typeof value.memoized === "boolean")
           options.timing.conversationMemoized = value.memoized;
+        if (
+          value.prewarmState === "started" ||
+          value.prewarmState === "joined_pending" ||
+          value.prewarmState === "already_ready"
+        )
+          options.timing.conversationPrewarmState = value.prewarmState;
       }
     } catch {
       // Diagnostics are optional; the completed acknowledgement was already drained.

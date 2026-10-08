@@ -1901,7 +1901,20 @@ app.post("/", async (c) => {
         : `prewarm_rate;dur=${prewarmLegTiming.rateLimitMs.toFixed(1)}`,
       prewarmLegTiming.conversationMs === undefined
         ? ""
-        : `prewarm_conversation;dur=${prewarmLegTiming.conversationMs.toFixed(1)}`,
+        : `prewarm_conversation;dur=${prewarmLegTiming.conversationMs.toFixed(1)};desc="${
+            prewarmLegTiming.conversationPrewarmState ??
+            (prewarmLegTiming.conversationMemoized === true
+              ? "already_ready"
+              : prewarmLegTiming.conversationMemoized === false
+                ? "completed_state_unknown"
+                : "unknown")
+          }"`,
+      prewarmLegTiming.conversationHeadersMs === undefined
+        ? ""
+        : `prewarm_conversation_headers;dur=${prewarmLegTiming.conversationHeadersMs.toFixed(1)}`,
+      prewarmLegTiming.conversationAckMs === undefined
+        ? ""
+        : `prewarm_conversation_ack;dur=${prewarmLegTiming.conversationAckMs.toFixed(1)}`,
       prewarmLegTiming.historyMs === undefined
         ? ""
         : `prewarm_history;dur=${prewarmLegTiming.historyMs.toFixed(1)}`,

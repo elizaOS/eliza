@@ -534,6 +534,11 @@ export class SharedRuntimeConversation {
     channelId: string,
     startEmpty: boolean,
   ): Response {
+    const prewarmState = this.prewarmReady
+      ? "already_ready"
+      : this.prewarm
+        ? "joined_pending"
+        : "started";
     if (!this.prewarmReady && !this.prewarm) {
       const prewarm = this.prewarmConversation(agentId, channelId, startEmpty);
       this.prewarm = prewarm;
@@ -548,8 +553,8 @@ export class SharedRuntimeConversation {
     const completion = this.prewarm ?? Promise.resolve();
     const timing = () =>
       memoized
-        ? { historyMs: 0, runtimeMs: 0, memoized: true }
-        : { ...this.prewarmTiming, memoized: false };
+        ? { historyMs: 0, runtimeMs: 0, memoized: true, prewarmState }
+        : { ...this.prewarmTiming, memoized: false, prewarmState };
     let canceled = false;
     const body = new ReadableStream<Uint8Array>({
       start(controller) {

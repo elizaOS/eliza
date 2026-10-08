@@ -760,21 +760,37 @@ describe("shared conversation coordinator", () => {
 describe("prewarm completion diagnostics", () => {
   test("reads bounded durations from the existing acknowledgement without another request", async () => {
     const fetch = mock(async () =>
-      Response.json({ success: true, timing: { historyMs: 37, runtimeMs: 81, memoized: false } }),
+      Response.json({
+        success: true,
+        timing: { historyMs: 37, runtimeMs: 81, memoized: false, prewarmState: "joined_pending" },
+      }),
     );
     const timing: { historyMs?: number; runtimeMs?: number; conversationMemoized?: boolean } = {};
     await coordinateSharedConversationPrewarm("agent-1", "room-1", {
       namespace: { getByName: () => ({ fetch }) } as never,
       timing,
     });
-    expect(timing).toEqual({ historyMs: 37, runtimeMs: 81, conversationMemoized: false });
+    expect(timing).toEqual({
+      historyMs: 37,
+      runtimeMs: 81,
+      conversationMemoized: false,
+      conversationPrewarmState: "joined_pending",
+      conversationHeadersMs: expect.any(Number),
+      conversationAckMs: expect.any(Number),
+    });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
   test("malformed metrics cannot fail a completed warmup or leak arbitrary fields", async () => {
     for (const body of [
       JSON.stringify({
         success: true,
-        timing: { historyMs: -1, runtimeMs: 60001, memoized: "false", apiKey: "private-sentinel" },
+        timing: {
+          historyMs: -1,
+          runtimeMs: 60001,
+          memoized: "false",
+          prewarmState: "private-sentinel",
+          apiKey: "private-sentinel",
+        },
       }),
       "not-json",
     ]) {
@@ -786,7 +802,10 @@ describe("prewarm completion diagnostics", () => {
           timing,
         }),
       ).resolves.toBeUndefined();
-      expect(timing).toEqual({});
+      expect(timing).toEqual({
+        conversationHeadersMs: expect.any(Number),
+        conversationAckMs: expect.any(Number),
+      });
       expect(fetch).toHaveBeenCalledTimes(1);
     }
   });

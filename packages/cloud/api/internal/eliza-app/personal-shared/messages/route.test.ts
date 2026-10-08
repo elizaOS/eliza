@@ -6,6 +6,7 @@ import {
   groupParticipantLabel,
   resolveGroupParticipantDisplayName,
 } from "@/lib/services/shared-runtime/group-participant-labels";
+import type { PersonalSharedPrewarmTiming } from "@/lib/services/shared-runtime/prewarm-shared-agent";
 import { logger } from "@/lib/utils/logger";
 import { markPreverifiedPersonalSharedRequest } from "../preverified-auth";
 
@@ -26,7 +27,9 @@ const prewarmPersonalSharedAgentTurnCaches = mock(
   async (
     _agent?: unknown,
     _namespace?: unknown,
-    _options?: { timing?: { rateLimitMs?: number; conversationMs?: number; historyMs?: number; runtimeMs?: number } },
+    _options?: {
+      timing?: PersonalSharedPrewarmTiming;
+    },
   ) => undefined,
 );
 const runOnboardingChat = mock(async (_input: OnboardingChatInput) => ({
@@ -2389,6 +2392,34 @@ describe("personal Shared messaging deliveries", () => {
     expect(timing).toContain("prewarm_runtime;dur=1300.0");
     expect(timing).not.toContain("private failure");
   });
+
+  test.each(["started", "joined_pending", "already_ready"] as const)(
+    "emits content-free prewarm state %s and independent header/ack durations",
+    async (state) => {
+      prewarmPersonalSharedAgentTurnCaches.mockImplementationOnce(
+        async (_agent, _namespace, options) => {
+          if (!options?.timing) throw new Error("No timing output supplied");
+          options.timing.rateLimitMs = 21;
+          options.timing.conversationMs = 40;
+          options.timing.conversationHeadersMs = 11;
+          options.timing.conversationAckMs = 29;
+          options.timing.conversationPrewarmState = state;
+          options.timing.conversationMemoized = state === "already_ready";
+          options.timing.historyMs = 0;
+          options.timing.runtimeMs = 0;
+        },
+      );
+      const response = await request(valid);
+      expect(response.status).toBe(200);
+      const timing = response.headers.get("server-timing") ?? "";
+      expect(timing).toContain(`prewarm_conversation;dur=40.0;desc="${state}"`);
+      expect(timing).toContain("prewarm_conversation_headers;dur=11.0");
+      expect(timing).toContain("prewarm_conversation_ack;dur=29.0");
+      expect(timing).toContain("prewarm_history;dur=0.0");
+      expect(timing).toContain("prewarm_runtime;dur=0.0");
+      expect(timing).not.toContain("private-sentinel");
+    },
+  );
 
   test("reports a memoized conversation without inventing a zero-duration conversation RPC", async () => {
     prewarmPersonalSharedAgentTurnCaches.mockImplementationOnce(

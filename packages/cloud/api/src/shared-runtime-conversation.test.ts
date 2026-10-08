@@ -1010,6 +1010,7 @@ test("prewarm joins cold hydration without writing a conversation turn", async (
     success: true,
     timing: {
       memoized: false,
+      prewarmState: "started",
       historyMs: expect.any(Number),
       runtimeMs: expect.any(Number),
     },
@@ -1044,7 +1045,12 @@ test("prewarm joins cold hydration without writing a conversation turn", async (
   expect(warmResponse.status).toBe(200);
   await expect(warmResponse.json()).resolves.toEqual({
     success: true,
-    timing: { historyMs: 0, runtimeMs: 0, memoized: true },
+    timing: {
+      historyMs: 0,
+      runtimeMs: 0,
+      memoized: true,
+      prewarmState: "already_ready",
+    },
   });
   await Promise.all(background.splice(0));
   expect(repositoryReads).toBe(1);
@@ -1133,7 +1139,28 @@ test("slow prewarm returns headers and releases the room queue before completion
     false,
   );
 
+  const joinedPrewarm = await object.fetch(
+    new Request("https://shared-runtime.internal/prewarm", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "prewarm",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "room-1",
+      }),
+    }),
+  );
+  let joinedCompleted = false;
+  const joinedAck = joinedPrewarm.json().then((value) => {
+    joinedCompleted = true;
+    return value;
+  });
+  await Promise.resolve();
+  expect(joinedCompleted).toBe(false);
   resolveRuntimePrewarmGate();
+  await expect(joinedAck).resolves.toMatchObject({
+    success: true,
+    timing: { memoized: false, prewarmState: "joined_pending" },
+  });
   const completedPrewarm = await prewarmReader?.read();
   const completedAck = JSON.parse(
     `{"success":${new TextDecoder().decode(completedPrewarm?.value)}`,
@@ -1142,6 +1169,7 @@ test("slow prewarm returns headers and releases the room queue before completion
     success: true,
     timing: {
       memoized: false,
+      prewarmState: "started",
       historyMs: expect.any(Number),
       runtimeMs: expect.any(Number),
     },
@@ -1194,7 +1222,12 @@ test("canceling the prewarm response does not cancel background readiness", asyn
   );
   await expect(warmResponse.json()).resolves.toEqual({
     success: true,
-    timing: { historyMs: 0, runtimeMs: 0, memoized: true },
+    timing: {
+      historyMs: 0,
+      runtimeMs: 0,
+      memoized: true,
+      prewarmState: "already_ready",
+    },
   });
 });
 
