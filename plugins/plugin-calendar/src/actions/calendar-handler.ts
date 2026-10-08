@@ -5134,7 +5134,6 @@ const calendarAction: CalendarHandlerAction = {
   ],
   tags: [
     "domain:calendar",
-    "resource:calendar-records",
     "capability:read",
     "capability:write",
     "capability:update",
