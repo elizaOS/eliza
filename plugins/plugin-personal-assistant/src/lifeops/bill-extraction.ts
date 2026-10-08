@@ -232,7 +232,19 @@ export function extractMerchantFromMessage(
   const fromEmail = message.fromEmail?.trim();
   if (fromEmail?.includes("@")) {
     const domain = fromEmail.slice(fromEmail.indexOf("@") + 1);
-    const root = domain.split(".").slice(0, -1).join(".") || domain;
+    const labels = domain.split(".").filter((label) => label.length > 0);
+    const last = labels[labels.length - 1]?.toLowerCase();
+    // mail.stripe.com is the brand "stripe". stripe.co.uk stays "stripe.co".
+    const simpleTld =
+      last === "com" ||
+      last === "org" ||
+      last === "net" ||
+      last === "io" ||
+      last === "app";
+    const root =
+      labels.length >= 3 && simpleTld
+        ? (labels[labels.length - 2] ?? domain)
+        : labels.slice(0, -1).join(".") || domain;
     return root.charAt(0).toUpperCase() + root.slice(1);
   }
   return null;

@@ -13,7 +13,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { EmailLikeMessage } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
-import { extractBill } from "./bill-extraction.js";
+import { extractBill, extractMerchantFromMessage } from "./bill-extraction.js";
 
 function runtimeWithModel(response: string): IAgentRuntime {
   return {
@@ -101,5 +101,22 @@ describe("extractBill merge merchant selection", () => {
     });
     const bill = await extractBill(runtimeWithModel(payload), message);
     expect(bill?.merchant).toBe("Unknown merchant");
+  });
+});
+
+describe("extractMerchantFromMessage email domain", () => {
+  it("uses the brand label when the address has a mail subdomain", () => {
+    expect(
+      extractMerchantFromMessage({ fromEmail: "receipts@mail.stripe.com" }),
+    ).toBe("Stripe");
+  });
+
+  it("keeps a two-label domain and a country-code domain", () => {
+    expect(
+      extractMerchantFromMessage({ fromEmail: "billing@stripe.com" }),
+    ).toBe("Stripe");
+    expect(
+      extractMerchantFromMessage({ fromEmail: "billing@stripe.co.uk" }),
+    ).toBe("Stripe.co");
   });
 });
