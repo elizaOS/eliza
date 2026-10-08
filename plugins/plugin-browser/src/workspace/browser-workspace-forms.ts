@@ -149,6 +149,9 @@ export async function activateWebBrowserWorkspaceElement(
   element: Element,
   subaction: "click" | "dblclick",
 ): Promise<BrowserWorkspaceCommandResult> {
+  if (element.matches(":disabled")) {
+    throw new Error("Target element is disabled.");
+  }
   const tag = element.tagName.toLowerCase();
   if (tag === "a") {
     const href = element.getAttribute("href")?.trim();
