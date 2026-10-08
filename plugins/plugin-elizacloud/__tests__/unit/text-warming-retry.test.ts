@@ -1,7 +1,8 @@
 /**
  * Offline unit coverage for the cold-gateway warming retry: a 503 whose body
  * carries a structural `*_cache_warming` code, the inference admission
- * boundary's exact `rate_limit_unavailable` shape, or the retryable
+ * boundary's exact `rate_limit_unavailable` or `inference_admission_unavailable`
+ * shape, or the retryable
  * service_unavailable envelope is retried in place with bounded backoff so a
  * gateway that recovers in ~3s stays within one registration. Persistent
  * unavailability preserves a typed exhaustion signal for provider-aware
@@ -63,6 +64,14 @@ const RATE_LIMIT_UNAVAILABLE_BODY = {
   message: "The inference rate limiter is temporarily unavailable.",
 };
 
+const ADMISSION_UNAVAILABLE_BODY = {
+  error: {
+    message: "Inference admission is temporarily unavailable. Retry shortly.",
+    type: "service_unavailable",
+    code: "inference_admission_unavailable",
+  },
+};
+
 function warmingResponse(headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(WARMING_BODY), {
     status: 503,
@@ -83,6 +92,18 @@ function rateLimitUnavailableResponse(): Response {
     headers: { "Content-Type": "application/json", "Retry-After": "1" },
   });
 }
+
+function admissionUnavailableResponse(): Response {
+  return new Response(JSON.stringify(ADMISSION_UNAVAILABLE_BODY), {
+    status: 503,
+    headers: { "Content-Type": "application/json", "Retry-After": "1" },
+  });
+}
+
+const transientResponses = [
+  ["cache warming", warmingResponse],
+  ["inference admission unavailable", admissionUnavailableResponse],
+] as const;
 
 function successResponse(): Response {
   return new Response(
@@ -168,12 +189,18 @@ describe("warming 503 classification", () => {
     expect(isWarmingUnavailableResponse(503, JSON.stringify(RATE_LIMIT_UNAVAILABLE_BODY))).toBe(
       true
     );
+    expect(isWarmingUnavailableResponse(503, JSON.stringify(ADMISSION_UNAVAILABLE_BODY))).toBe(
+      true
+    );
   });
 
   it("rejects real failures, non-503 statuses, and unparseable bodies", () => {
     expect(isWarmingUnavailableResponse(503, JSON.stringify(REAL_FAILURE_BODY))).toBe(false);
     expect(isWarmingUnavailableResponse(200, JSON.stringify(WARMING_BODY))).toBe(false);
     expect(isWarmingUnavailableResponse(502, JSON.stringify(WARMING_BODY))).toBe(false);
+    expect(isWarmingUnavailableResponse(502, JSON.stringify(ADMISSION_UNAVAILABLE_BODY))).toBe(
+      false
+    );
     expect(
       isWarmingUnavailableResponse(
         503,
@@ -227,14 +254,17 @@ describe("buffered native chat completion", () => {
     vi.restoreAllMocks();
   });
 
-  it("retries a warming 503 with backoff and succeeds without throwing", async () => {
-    const fetchMock = mockFetchSequence([warmingResponse, warmingResponse, successResponse]);
-    const pending = generateNativeChatCompletion(runtime(), "TEXT_SMALL", NATIVE_PARAMS, CONTEXT);
-    await vi.runAllTimersAsync();
-    const result = await pending;
-    expect(result.text).toBe("ok");
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-  });
+  it.each(transientResponses)(
+    "retries %s with backoff and succeeds without throwing",
+    async (_label, response) => {
+      const fetchMock = mockFetchSequence([response, response, successResponse]);
+      const pending = generateNativeChatCompletion(runtime(), "TEXT_SMALL", NATIVE_PARAMS, CONTEXT);
+      await vi.runAllTimersAsync();
+      const result = await pending;
+      expect(result.text).toBe("ok");
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    }
+  );
 
   it("fails over immediately on a real provider 503 (no retry, no delay)", async () => {
     const fetchMock = mockFetchSequence([realFailureResponse]);
@@ -253,22 +283,25 @@ describe("buffered native chat completion", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("spends exactly one bounded retry budget and preserves typed exhaustion", async () => {
-    const fetchMock = mockFetchSequence([warmingResponse]);
-    const pending = generateNativeChatCompletion(
-      runtime(),
-      "TEXT_SMALL",
-      NATIVE_PARAMS,
-      CONTEXT
-    ).catch((error: Error & { status?: number }) => error);
-    await vi.runAllTimersAsync();
-    const error = await pending;
-    expect(error).toBeInstanceOf(ElizaCloudGatewayWarmingExhaustedError);
-    expect((error as ElizaErrorShape).code).toBe(MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED);
-    expect((error as Error & { status?: number }).status).toBe(503);
-    // 1 initial attempt + 4 bounded retries, then the normal error path.
-    expect(fetchMock).toHaveBeenCalledTimes(5);
-  });
+  it.each(transientResponses)(
+    "spends exactly one bounded retry budget for %s and preserves typed exhaustion",
+    async (_label, response) => {
+      const fetchMock = mockFetchSequence([response]);
+      const pending = generateNativeChatCompletion(
+        runtime(),
+        "TEXT_SMALL",
+        NATIVE_PARAMS,
+        CONTEXT
+      ).catch((error: Error & { status?: number }) => error);
+      await vi.runAllTimersAsync();
+      const error = await pending;
+      expect(error).toBeInstanceOf(ElizaCloudGatewayWarmingExhaustedError);
+      expect((error as ElizaErrorShape).code).toBe(MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED);
+      expect((error as Error & { status?: number }).status).toBe(503);
+      // 1 initial attempt + 4 bounded retries, then the normal error path.
+      expect(fetchMock).toHaveBeenCalledTimes(5);
+    }
+  );
 
   it("waits the server-declared Retry-After before the next attempt", async () => {
     const fetchMock = mockFetchSequence([
@@ -286,8 +319,11 @@ describe("buffered native chat completion", () => {
     expect(result.text).toBe("ok");
   });
 
-  it("retries a cold inference-admission limiter and stays on Cloud", async () => {
-    const fetchMock = mockFetchSequence([rateLimitUnavailableResponse, successResponse]);
+  it.each([
+    ["admission limiter", rateLimitUnavailableResponse],
+    ["admission reservation", admissionUnavailableResponse],
+  ] as const)("retries a cold %s and stays on Cloud", async (_label, response) => {
+    const fetchMock = mockFetchSequence([response, successResponse]);
     const pending = generateNativeChatCompletion(runtime(), "TEXT_SMALL", NATIVE_PARAMS, CONTEXT);
     await vi.advanceTimersByTimeAsync(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -312,19 +348,22 @@ describe("streaming native chat completion", () => {
     __resetNativeChatLimiterForTests();
   });
 
-  it("retries a warming 503 then streams the recovered response", async () => {
-    const fetchMock = mockFetchSequence([warmingResponse, sseResponse]);
-    const pending = streamNativeChatCompletion(runtime(), "TEXT_SMALL", NATIVE_PARAMS, CONTEXT);
-    await vi.runAllTimersAsync();
-    const result = await pending;
-    const chunks: string[] = [];
-    for await (const chunk of result.textStream) {
-      chunks.push(chunk);
+  it.each(transientResponses)(
+    "retries %s then streams the recovered response",
+    async (_label, response) => {
+      const fetchMock = mockFetchSequence([response, sseResponse]);
+      const pending = streamNativeChatCompletion(runtime(), "TEXT_SMALL", NATIVE_PARAMS, CONTEXT);
+      await vi.runAllTimersAsync();
+      const result = await pending;
+      const chunks: string[] = [];
+      for await (const chunk of result.textStream) {
+        chunks.push(chunk);
+      }
+      expect(chunks.join("")).toBe("hi");
+      await expect(result.text).resolves.toBe("hi");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     }
-    expect(chunks.join("")).toBe("hi");
-    await expect(result.text).resolves.toBe("hi");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
+  );
 
   it("retries an unavailable admission limiter then streams the recovered response", async () => {
     const fetchMock = mockFetchSequence([rateLimitUnavailableResponse, sseResponse]);
@@ -411,40 +450,46 @@ describe("streaming native chat completion", () => {
     );
   });
 
-  it("ends a buffered completion's warming backoff on caller abort without another request", async () => {
-    const fetchMock = mockFetchSequence([warmingResponse]);
-    const controller = new AbortController();
-    const abortReason = new DOMException("turn cancelled", "AbortError");
-    const pending = generateNativeChatCompletion(
-      runtime(),
-      "TEXT_SMALL",
-      { ...NATIVE_PARAMS, signal: controller.signal },
-      CONTEXT
-    ).catch((error: unknown) => error);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    controller.abort(abortReason);
-    await vi.runAllTimersAsync();
-    await expect(pending).resolves.toBe(abortReason);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
+  it.each(transientResponses)(
+    "ends a buffered completion's %s backoff on caller abort without another request",
+    async (_label, response) => {
+      const fetchMock = mockFetchSequence([response]);
+      const controller = new AbortController();
+      const abortReason = new DOMException("turn cancelled", "AbortError");
+      const pending = generateNativeChatCompletion(
+        runtime(),
+        "TEXT_SMALL",
+        { ...NATIVE_PARAMS, signal: controller.signal },
+        CONTEXT
+      ).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      controller.abort(abortReason);
+      await vi.runAllTimersAsync();
+      await expect(pending).resolves.toBe(abortReason);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  );
 
-  it("preserves caller abort during warming backoff without another request", async () => {
-    const fetchMock = mockFetchSequence([warmingResponse]);
-    const controller = new AbortController();
-    const abortReason = new DOMException("turn cancelled", "AbortError");
-    const pending = streamNativeChatCompletion(
-      runtime(),
-      "TEXT_SMALL",
-      { ...NATIVE_PARAMS, signal: controller.signal },
-      CONTEXT
-    );
-    await vi.advanceTimersByTimeAsync(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    controller.abort(abortReason);
-    await expect(pending).rejects.toBe(abortReason);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
+  it.each(transientResponses)(
+    "preserves caller abort during %s backoff without another request",
+    async (_label, response) => {
+      const fetchMock = mockFetchSequence([response]);
+      const controller = new AbortController();
+      const abortReason = new DOMException("turn cancelled", "AbortError");
+      const pending = streamNativeChatCompletion(
+        runtime(),
+        "TEXT_SMALL",
+        { ...NATIVE_PARAMS, signal: controller.signal },
+        CONTEXT
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      controller.abort(abortReason);
+      await expect(pending).rejects.toBe(abortReason);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  );
 
   it("releases the concurrency permit when a warming response body read aborts", async () => {
     const controller = new AbortController();
@@ -487,20 +532,23 @@ describe("streaming native chat completion", () => {
     expect(followupEntered).toBe(true);
   });
 
-  it("preserves typed exhaustion when streaming spends its one retry budget", async () => {
-    const fetchMock = mockFetchSequence([warmingResponse]);
-    const pending = streamNativeChatCompletion(
-      runtime(),
-      "TEXT_SMALL",
-      NATIVE_PARAMS,
-      CONTEXT
-    ).catch((error: Error) => error);
-    await vi.runAllTimersAsync();
-    const error = await pending;
-    expect(error).toBeInstanceOf(ElizaCloudGatewayWarmingExhaustedError);
-    expect((error as ElizaErrorShape).code).toBe(MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED);
-    expect(fetchMock).toHaveBeenCalledTimes(5);
-  });
+  it.each(transientResponses)(
+    "preserves typed exhaustion when %s streaming spends its one retry budget",
+    async (_label, response) => {
+      const fetchMock = mockFetchSequence([response]);
+      const pending = streamNativeChatCompletion(
+        runtime(),
+        "TEXT_SMALL",
+        NATIVE_PARAMS,
+        CONTEXT
+      ).catch((error: Error) => error);
+      await vi.runAllTimersAsync();
+      const error = await pending;
+      expect(error).toBeInstanceOf(ElizaCloudGatewayWarmingExhaustedError);
+      expect((error as ElizaErrorShape).code).toBe(MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED);
+      expect(fetchMock).toHaveBeenCalledTimes(5);
+    }
+  );
 });
 
 describe("requestNativeWithWarmingRetry contract", () => {

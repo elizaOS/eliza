@@ -488,7 +488,8 @@ function firstNumber(...values: unknown[]): number | undefined {
  * Bounded retry for the cold-gateway "warming" 503 (first turn after idle).
  *
  * A cold Cloudflare Worker answers with 503 and a machine-readable transient
- * code (`*_cache_warming`, `rate_limit_unavailable`, or the generative ApiError
+ * code (`*_cache_warming`, `inference_admission_unavailable`,
+ * `rate_limit_unavailable`, or the generative ApiError
  * retryable envelope) while it hydrates auth/billing/admission state under
  * waitUntil or starts the inference-admission Durable Object — recovery is ~3s.
  * That 503 is a retry-shortly signal, NOT a dead provider, but the runtime's
@@ -535,7 +536,8 @@ function parseJsonRecord(text: string): Record<string, unknown> | undefined {
 
 /**
  * True only for the gateway's explicit transient 503 shapes:
- * `{ error: { code: "*_cache_warming" } }` (chat/completions, embeddings) or
+ * `{ error: { code: "*_cache_warming" | "inference_admission_unavailable" } }`
+ * (chat/completions, embeddings) or
  * the generative ApiError envelope `{ code: "service_unavailable",
  * details: { retryable: true } }`, plus the inference-admission boundary's
  * `{ success: false, code: "rate_limit_unavailable" }`. Everything else —
@@ -547,7 +549,10 @@ export function isWarmingUnavailableResponse(status: number, bodyText: string): 
   const body = parseJsonRecord(bodyText);
   if (!body) return false;
   const errorCode = asRecord(body.error).code;
-  if (typeof errorCode === "string" && errorCode.endsWith("_cache_warming")) {
+  if (
+    errorCode === "inference_admission_unavailable" ||
+    (typeof errorCode === "string" && errorCode.endsWith("_cache_warming"))
+  ) {
     return true;
   }
   if (body.success === false && body.code === "rate_limit_unavailable") {
