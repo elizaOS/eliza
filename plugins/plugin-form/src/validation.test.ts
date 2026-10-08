@@ -354,6 +354,14 @@ describe("boolean contract", () => {
     );
   });
 
+  it("accepts a boolean literal with surrounding spaces", () => {
+    expect(parseBoolean(" yes ")).toEqual({ known: true, value: true });
+    expect(parseBoolean(" no ")).toEqual({ known: true, value: false });
+    expect(validateField(" yes ", booleanControl).valid).toBe(true);
+    expect(formatValue(" YES ", booleanControl)).toBe("Yes");
+    expect(parseBoolean(" ")).toEqual({ known: false });
+  });
+
   it("keeps an unrecognised extraction as its original string", () => {
     expect(parseValue("maybe", booleanControl)).toBe("maybe");
     expect(parseValue("no", booleanControl)).toBe(false);

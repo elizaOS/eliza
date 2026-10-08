@@ -418,7 +418,8 @@ export function parseBoolean(value: JsonValue): ParsedBoolean {
   if (typeof value === "boolean") {
     return { known: true, value };
   }
-  const literal = String(value).toLowerCase();
+  // Extraction often wraps a literal in spaces. " yes " is yes, not an unknown.
+  const literal = String(value).trim().toLowerCase();
   if (BOOLEAN_TRUE_LITERALS.includes(literal)) {
     return { known: true, value: true };
   }
