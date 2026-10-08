@@ -144,27 +144,20 @@ function isBoundConnectorPayload(
 	if (!payload) return false;
 	if (rendered === payload) return true;
 	if ((source ?? "").trim().toLowerCase() !== "discord") return false;
-	let offset = rendered.indexOf(payload);
-	while (offset >= 0) {
-		const prefix = rendered.slice(0, offset);
-		const suffix = rendered.slice(offset + payload.length);
-		// Guild names and thread titles may contain "]". The tag closes at the
-		// "]" before " @sender". The envelope always ends the header with the
-		// weekday timestamp, so a colon inside the user text is not a second
-		// header. Reply display names may contain ")".
-		const startsAtFieldBoundary =
-			/^\[Discord [^\r\n]+\] @[^\r\n]+ \((?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{2}\/\d{2}\/\d{4} \d{2}:\d{2} [^)\r\n]+\):\s*$/u.test(
-				prefix,
-			);
-		const endsAtFieldBoundary =
-			suffix.length === 0 ||
-			/^\r?\n\[platform_reply_reference\]\r?\n[\s\S]*\r?\n\[\/platform_reply_reference\]\r?\n\(in reply to @[^\r\n]*\)$/u.test(
-				suffix,
-			);
-		if (startsAtFieldBoundary && endsAtFieldBoundary) return true;
-		offset = rendered.indexOf(payload, offset + 1);
-	}
-	return false;
+	// Bind to the first complete connector header. Header-shaped text later in
+	// the message remains part of the user's payload.
+	const header =
+		/^\[Discord [^\r\n]+?\] @[^\r\n]+? \((?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{2}\/\d{2}\/\d{4} \d{2}:\d{2} [^)\r\n]+\):\s*/u.exec(
+			rendered,
+		)?.[0];
+	if (!header || !rendered.startsWith(payload, header.length)) return false;
+	const suffix = rendered.slice(header.length + payload.length);
+	return (
+		suffix.length === 0 ||
+		/^\r?\n\[platform_reply_reference\]\r?\n[\s\S]*\r?\n\[\/platform_reply_reference\]\r?\n\(in reply to @[^\r\n]*\)$/u.test(
+			suffix,
+		)
+	);
 }
 
 /**
