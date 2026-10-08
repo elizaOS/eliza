@@ -180,6 +180,14 @@ const searchCommand: SlashCommand = {
 				count: 100,
 			});
 			const normalizedQuery = query.trim().toLowerCase();
+			// " ".includes is true for every message, so a blank query listed
+			// the room history as search results.
+			if (!normalizedQuery) {
+				await interaction.editReply({
+					content: "Enter a search query.",
+				});
+				return;
+			}
 			const filteredMemories = memories.filter((memory) =>
 				(memory.content?.text ?? "").toLowerCase().includes(normalizedQuery),
 			);

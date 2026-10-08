@@ -72,6 +72,22 @@ describe("/search", () => {
 		);
 	});
 
+	it("does not treat a blank query as a match for every message", async () => {
+		const search = getRegisteredCommands().get("search");
+		if (!search) throw new Error("search command not registered");
+		const interaction = makeSearchInteraction("   ");
+		const runtime = {
+			getMemories: vi.fn(async () => [
+				{ content: { text: "hello world" }, createdAt: Date.now() },
+			]),
+		};
+
+		await search.execute(interaction as never, runtime as never);
+
+		expect(interaction.edits[0].content).not.toContain("hello world");
+		expect(interaction.edits[0].content).toContain("Enter a search query.");
+	});
+
 	it("reports the error message when getMemories throws", async () => {
 		const search = getRegisteredCommands().get("search");
 		if (!search) throw new Error("search command not registered");
