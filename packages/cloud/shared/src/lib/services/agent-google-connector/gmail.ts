@@ -181,8 +181,20 @@ function decodeHtmlEntities(value: string): string {
     quot: '"',
     "#39": "'",
   };
-  return value.replace(/&(nbsp|amp|lt|gt|quot|#39);/gi, (entity, name: string) => {
-    return namedEntities[name.toLowerCase()] ?? entity;
+  return value.replace(/&(nbsp|amp|lt|gt|quot|#x[0-9a-f]+|#\d+);/gi, (entity, name: string) => {
+    const key = name.toLowerCase();
+    const named = namedEntities[key];
+    if (named !== undefined) return named;
+    // Gmail HTML writes apostrophes as &#x27;. Named &#39; is already covered.
+    const hex = /^#x([0-9a-f]+)$/i.exec(key);
+    const decimal = hex ? null : /^#(\d+)$/.exec(key);
+    const digits = hex?.[1] ?? decimal?.[1];
+    if (!digits) return entity;
+    const code = Number.parseInt(digits, hex ? 16 : 10);
+    if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) return entity;
+    if (code >= 0xd800 && code <= 0xdfff) return entity;
+    if (code === 0xa0) return " ";
+    return String.fromCodePoint(code);
   });
 }
 
