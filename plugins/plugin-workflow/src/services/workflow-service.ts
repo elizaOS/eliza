@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 /**
  * Chat-facing facade for authoring, searching, deploying, and inspecting native
  * Smithers workflows. Generation uses the selected elizaOS model and produces
@@ -22,6 +23,7 @@ import {
   type ExecuteWorkflowOptions,
   isWorkflowRemoved,
 } from './embedded-workflow-service';
+import { HOSTED_SPEC, validateDigestSpec } from './hosted-digest';
 import { generatePhoneSpec, phoneGenerationInput } from './phone-workflow-generation';
 import {
   PHONE_CATALOG_REVISION,
@@ -311,6 +313,52 @@ export class WorkflowService extends Service {
       cancellationRequestedAt: execution.cancellationRequestedAt ?? null,
     };
   }
+  /** Explicit chat request only; selection comes from already reviewed native sources. */
+  async prepareDossier(
+    ownerId: string,
+    messageId: string,
+    sourceId?: string
+  ): Promise<WorkflowExecution> {
+    const sources = (await this.embedded().listDigestSources(ownerId)).filter(
+      (source) =>
+        source.live?.provider === 'native' &&
+        !source.revoked &&
+        Date.parse(source.expiresAt) > Date.now()
+    );
+    const selected = sourceId
+      ? sources.find((source) => source.id === sourceId)
+      : sources.length === 1
+        ? sources[0]
+        : undefined;
+    if (!selected)
+      throw new WorkflowApiError(
+        sources.length > 1
+          ? 'Choose which reviewed phone source to use for this dossier.'
+          : 'Choose the Calendar sources or reminders you want to share in the phone’s digest settings first.',
+        409,
+        {
+          code: 'NATIVE_DOSSIER_SOURCE_REVIEW_REQUIRED',
+          sources: sources.map((source) => ({
+            id: source.id,
+            label: source.label,
+            reviewedAt: source.observedAt,
+            expiresAt: source.expiresAt,
+          })),
+        }
+      );
+    if (!messageId)
+      throw new WorkflowApiError('This dossier request needs a current user message', 409);
+    const mutationId = createHash('sha256')
+      .update(JSON.stringify(['native-dossier', ownerId, messageId]))
+      .digest('hex');
+    return this.embedded().runHostedDossier(
+      ownerId,
+      selected.id,
+      selected.revision,
+      mutationId,
+      true
+    );
+  }
   private embedded(): EmbeddedWorkflowService {
     const service = this.runtime.getService<EmbeddedWorkflowService>(
       EMBEDDED_WORKFLOW_SERVICE_TYPE
@@ -474,7 +522,12 @@ export class WorkflowService extends Service {
     removed = false
   ): Promise<WorkflowDefinitionResponse[]> {
     const workflows = (await this.embedded().listWorkflows()).data.filter(
-      (workflow) => isWorkflowRemoved(workflow) === removed
+      (workflow) =>
+        isWorkflowRemoved(workflow) === removed &&
+        !(
+          workflow.metadata?.[HOSTED_SPEC] &&
+          validateDigestSpec(JSON.parse(String(workflow.metadata[HOSTED_SPEC]))).manualOnly
+        )
     );
     const owned = ownerEntityId
       ? workflows.filter((workflow) => this.isOwnedBy(workflow, ownerEntityId))
