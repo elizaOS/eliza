@@ -38,33 +38,14 @@ public abstract class CalendarPlugin extends Plugin {
  @PermissionCallback private void workflowPermissionResult(PluginCall c){status(c,workflowReadAllowed()?"granted":"denied");}
  @PluginMethod public void workflowCalendars(PluginCall c){
   if(!workflowReadAllowed()){status(c,"permission-required");return;}if(!workflowForeground()){c.reject("Open Workflows before reading calendar sources");return;}
-  try{JSArray calendars=new JSArray();try(Cursor rows=getContext().getContentResolver().query(CalendarContract.Calendars.CONTENT_URI,new String[]{CalendarContract.Calendars._ID,CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,CalendarContract.Calendars.ACCOUNT_NAME},null,null,CalendarContract.Calendars._ID+" ASC")){if(rows==null)throw new IllegalStateException();while(rows.moveToNext()){if(calendars.length()>=256)throw new IllegalStateException();JSObject row=new JSObject();row.put("id",Long.toString(rows.getLong(0)));row.put("name",rows.getString(1)==null?"":rows.getString(1));row.put("account",rows.getString(2)==null?"":rows.getString(2));calendars.put(row);}}
+  try{JSArray calendars=new JSArray();try(Cursor rows=getContext().getContentResolver().query(CalendarContract.Calendars.CONTENT_URI,new String[]{CalendarContract.Calendars._ID,CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,CalendarContract.Calendars.ACCOUNT_NAME},null,null,CalendarContract.Calendars._ID+" ASC")){if(rows==null)throw new IllegalStateException();while(rows.moveToNext()){if(calendars.length()>=256)throw new IllegalStateException();JSObject row=new JSObject();row.put("id",Long.toString(rows.getLong(0)));row.put("name",rows.getString(1)==null?"":rows.getString(1));org.json.JSONObject identity=CalendarEventGuard.sourceIdentity(getContext().getContentResolver(),rows.getLong(0));row.put("account",identity.getString("account"));row.put("sourceRevision",identity.getString("sourceRevision"));calendars.put(row);}}
    if(!workflowForeground()||!workflowReadAllowed())throw new IllegalStateException();JSObject value=new JSObject();value.put("status","ready");value.put("calendars",calendars);c.resolve(value);
   }catch(Exception unavailable){c.reject("Selected calendar sources could not be read");}
  }
  @PluginMethod public void readWorkflowRange(PluginCall c){
   if(!workflowReadAllowed()){status(c,"permission-required");return;}if(!workflowForeground()){c.reject("Workflow calendar read requires the foreground phone");return;}
   try{
-   JSArray selected=c.getArray("calendarIds");Integer maximum=c.getInt("maximumEvents");String start=c.getString("start"),finish=c.getString("end");
-   if(selected==null||selected.length()<1||selected.length()>16||maximum==null||maximum<1||maximum>200||start==null||finish==null)throw new IllegalArgumentException();
-   long begin=java.time.Instant.parse(start).toEpochMilli(),end=java.time.Instant.parse(finish).toEpochMilli();
-   java.time.format.DateTimeFormatter format=new java.time.format.DateTimeFormatterBuilder().appendInstant(3).toFormatter();
-   if(!format.format(java.time.Instant.ofEpochMilli(begin)).equals(start)||!format.format(java.time.Instant.ofEpochMilli(end)).equals(finish)||end<=begin||end-begin>7L*86400000)throw new IllegalArgumentException();
-   java.util.LinkedHashSet<String> ids=new java.util.LinkedHashSet<>();for(int i=0;i<selected.length();i++){String id=selected.getString(i);if(!id.matches("[1-9][0-9]{0,18}")||Long.parseLong(id)<=0||!ids.add(id))throw new IllegalArgumentException();}
-   String[] arguments=ids.toArray(new String[0]);String placeholders=String.join(",",java.util.Collections.nCopies(ids.size(),"?"));
-   java.util.Set<String> found=new java.util.HashSet<>();try(Cursor rows=getContext().getContentResolver().query(CalendarContract.Calendars.CONTENT_URI,new String[]{CalendarContract.Calendars._ID},CalendarContract.Calendars._ID+" IN ("+placeholders+")",arguments,null)){if(rows==null)throw new IllegalStateException();while(rows.moveToNext())found.add(Long.toString(rows.getLong(0)));}if(!found.equals(ids))throw new IllegalStateException();
-   Uri.Builder uri=CalendarContract.Instances.CONTENT_URI.buildUpon();ContentUris.appendId(uri,begin);ContentUris.appendId(uri,end);
-   // Selection is enforced in the provider query. Never read other calendars and filter later.
-   String selection=CalendarContract.Instances.CALENDAR_ID+" IN ("+placeholders+") AND "+CalendarContract.Events.DELETED+"=0";
-   String[] projection={CalendarContract.Instances.EVENT_ID,CalendarContract.Instances.CALENDAR_ID,CalendarContract.Instances.TITLE,CalendarContract.Instances.BEGIN,CalendarContract.Instances.END,CalendarContract.Instances.ALL_DAY};
-   JSArray events=new JSArray();try(Cursor rows=getContext().getContentResolver().query(uri.build(),projection,selection,arguments,CalendarContract.Instances.BEGIN+" ASC, "+CalendarContract.Instances.EVENT_ID+" ASC")){
-    if(rows==null)throw new IllegalStateException();while(rows.moveToNext()){
-     long a=rows.getLong(3),b=rows.getLong(4);if(b<a)throw new IllegalStateException();if(a>=end||(a==b?a<begin:b<=begin))continue;
-     if(events.length()>=maximum)throw new IllegalStateException("Range exceeds reviewed count");String title=rows.getString(2);if(title==null)title="";if(title.length()>1000||title.indexOf(0)>=0)throw new IllegalStateException();String calendarId=Long.toString(rows.getLong(1));if(!ids.contains(calendarId))throw new IllegalStateException();
-     JSObject row=new JSObject();row.put("id",Long.toString(rows.getLong(0)));row.put("calendarId",calendarId);row.put("title",title);row.put("start",format.format(java.time.Instant.ofEpochMilli(a)));row.put("end",format.format(java.time.Instant.ofEpochMilli(b)));row.put("allDay",rows.getInt(5)!=0);events.put(row);
-     if(events.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>65536)throw new IllegalStateException("Range exceeds byte bound");
-    }
-   }
+   org.json.JSONArray events=ai.eliza.plugins.calendar.read.SelectedCalendarReader.read(getContext().getContentResolver(),c.getArray("calendarIds"),c.getString("start"),c.getString("end"),c.getInt("maximumEvents"));
    if(!workflowReadAllowed()||!workflowForeground())throw new IllegalStateException();JSObject value=new JSObject();value.put("status","ready");value.put("events",events);c.resolve(value);
   }catch(Exception unavailable){c.reject("Calendar read was not completed within the approved scope. Nothing was uploaded.");}
  }

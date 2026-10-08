@@ -8,6 +8,9 @@ import {
   realpathSync,
 } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
+import { formatCalendarEventDateTime } from "@elizaos/plugin-calendar/format";
+import { requestBionicHost } from "@elizaos/plugin-native-inference/bionic-host-request";
+import { configureHostedNativeSourceReader } from "@elizaos/plugin-workflow/services/hosted-native-source";
 import {
   configureWorkflowProcessHost,
   WORKFLOW_BUN_FLAGS,
@@ -162,6 +165,61 @@ export function installMobileWorkflowProcessHost(
     executable: pin(env.LD_PATH),
     prefixFiles: [pin(env.BUN_PATH)],
   };
+  const nativeSocket = env.ELIZA_BIONIC_INFERENCE_SOCK;
+  if (env.ELIZA_BIONIC_HOST_DELEGATED === "1" && nativeSocket) {
+    configureHostedNativeSourceReader(async (request) => {
+      const response = await requestBionicHost(
+        nativeSocket,
+        { op: "nativeSourceRead", request },
+        30_000,
+      );
+      if (
+        !response ||
+        typeof response !== "object" ||
+        !("ok" in response) ||
+        response.ok !== true ||
+        !("result" in response)
+      )
+        throw new Error("Native selected source is unavailable");
+      if (request.action !== "read") return response.result;
+      const snapshot = response.result as {
+        timeZone: string;
+        events: Array<{ start: string; end: string; allDay: boolean }>;
+        reminders: Array<{ dueAt: string }>;
+      };
+      const local = (startAt: string, isAllDay = false) =>
+        formatCalendarEventDateTime(
+          { startAt, timezone: snapshot.timeZone, isAllDay },
+          {
+            includeYear: true,
+            includeTimeZoneName: true,
+            timeZone: snapshot.timeZone,
+          },
+        );
+      return {
+        ...snapshot,
+        events: snapshot.events.map((event) => ({
+          ...event,
+          startDisplay: local(event.start, event.allDay),
+          ...(event.allDay
+            ? {
+                endDateExclusive: event.end.slice(0, 10),
+                lastDateDisplay: local(
+                  new Date(
+                    new Date(event.end).getTime() - 86400000,
+                  ).toISOString(),
+                  true,
+                ),
+              }
+            : { endDisplay: local(event.end) }),
+        })),
+        reminders: snapshot.reminders.map((reminder) => ({
+          ...reminder,
+          dueAtDisplay: local(reminder.dueAt),
+        })),
+      };
+    });
+  }
   configureWorkflowProcessHost({
     runtime: launcher,
     compiler: launcher,
