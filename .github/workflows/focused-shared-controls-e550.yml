@@ -87,6 +87,16 @@ jobs:
           test -f plugins/plugin-assistant/dist/index.js
           test -f plugins/plugin-web-search/dist/index.js
           test -f plugins/plugin-sqlite/dist/portable.js
+          # Official backend artifact builders only; no native engines, UI view bundles or providers.
+          timeout --kill-after=10s 120s bun run --cwd packages/voice build
+          timeout --kill-after=10s 120s bun run --cwd plugins/plugin-mcp build
+          timeout --kill-after=10s 120s bun run --cwd plugins/plugin-google-workspace build
+          timeout --kill-after=10s 120s bun run --cwd plugins/plugin-wallet build.ts
+          timeout --kill-after=10s 120s bun run --cwd plugins/plugin-elizacloud build.ts
+          test -f plugins/plugin-mcp/dist/protocol-utils/json.js
+          test -f plugins/plugin-google-workspace/dist/gmail-attachments.js
+          test -f plugins/plugin-wallet/dist/lib/market-overview.js
+          test -f plugins/plugin-elizacloud/dist/cloud-config/domain-contract.js
           test "$(git rev-parse HEAD)" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
           git diff --quiet HEAD
       - name: Test exact five owning files in a loopback-only namespace
