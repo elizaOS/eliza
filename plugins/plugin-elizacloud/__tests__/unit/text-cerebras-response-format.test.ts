@@ -7,12 +7,13 @@
  * `responseFormat` override still reaches the wire.
  *
  * The fetch is mocked: we capture the request body and return a canned
- * chat-completions response, asserting only the outgoing `response_format`.
+ * chat-completions response, checking the actual schema, messages and format on the SDK HTTP request.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/host/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { evaluatorSchema } from "../../../plugin-assistant/src/prompts/evaluator";
 import { generateNativeChatCompletion } from "../../src/models/text";
 
 type RuntimeFixture = Pick<IAgentRuntime, "character" | "emitEvent" | "getSetting"> &
@@ -23,7 +24,7 @@ function runtime(): IAgentRuntime {
   };
   const fixture: RuntimeFixture = {
     character: { name: "Eliza", bio: [] },
-    getSetting: (key: string) => settings[key],
+    getSetting: (key: string) => settings[key] ?? null,
     emitEvent: vi.fn(),
   };
   return fixture as IAgentRuntime;
@@ -85,6 +86,89 @@ describe("native /chat/completions response_format gate", () => {
     expect(body).not.toBeNull();
     expect(body?.response_format).toBeUndefined();
   });
+  it.each(["raw", "schema", "jsonSchema"])(
+    "sends the complete closed evaluator schema once for %s input and preserves tool history",
+    async (envelope) => {
+      const messages = [
+        { role: "system", content: "Evaluate only the recorded work." },
+        { role: "user", content: "Create one reminder; wait for approval." },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            {
+              id: "proposal-call",
+              type: "function",
+              function: { name: "PROPOSE_DEVICE_ACTION", arguments: "{}" },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "proposal-call",
+          content: "Existing proposal pending; no device effect.",
+        },
+      ];
+      const before = structuredClone(messages);
+      const responseSchema = envelope === "raw" ? evaluatorSchema : { [envelope]: evaluatorSchema };
+      const body = await captureBody(DEFAULT_CEREBRAS_TEXT_MODEL, {
+        messages: Object.freeze(messages),
+        responseSchema,
+      });
+      expect(body?.response_format).toBeUndefined();
+      const wire = body?.messages as typeof messages;
+      const instruction = wire[0].content;
+      expect(instruction.startsWith(before[0].content)).toBe(true);
+      const schemaText = instruction.split("Response JSON schema:\n");
+      expect(schemaText).toHaveLength(2);
+      expect(JSON.parse(schemaText[1])).toEqual(evaluatorSchema);
+      expect(JSON.parse(schemaText[1]).additionalProperties).toBe(false);
+      expect(wire.slice(1)).toEqual(before.slice(1));
+      expect(messages).toEqual(before);
+    }
+  );
+  it("adds schema instructions before a user message without changing content parts", async () => {
+    const messages = [
+      { role: "user", content: [{ type: "text", text: "Keep the complete evidence." }] },
+    ];
+    const before = structuredClone(messages);
+    const body = await captureBody(DEFAULT_CEREBRAS_TEXT_MODEL, {
+      messages,
+      responseSchema: RESPONSE_SCHEMA,
+    });
+    const wire = body?.messages as Array<{ role: string; content: unknown }>;
+    expect(wire[0].role).toBe("system");
+    expect(JSON.parse(String(wire[0].content).split("Response JSON schema:\n")[1])).toEqual(
+      RESPONSE_SCHEMA.schema
+    );
+    expect(wire.slice(1)).toEqual(before);
+    expect(messages).toEqual(before);
+  });
+  it("does not duplicate a schema enforced by an explicit json_schema response format", async () => {
+    const messages = [
+      { role: "system", content: "Evaluate the result." },
+      { role: "user", content: "Preserve this request." },
+    ];
+    const responseFormat = {
+      type: "json_schema",
+      json_schema: { name: "evaluator", strict: true, schema: evaluatorSchema },
+    };
+    const body = await captureBody(DEFAULT_CEREBRAS_TEXT_MODEL, {
+      messages,
+      responseSchema: { schema: evaluatorSchema, responseFormat },
+    });
+    expect(body?.response_format).toEqual(responseFormat);
+    expect(body?.messages).toEqual(messages);
+  });
+  it("does not add output instructions without a caller response schema", async () => {
+    const messages = [
+      { role: "system", content: "Reply naturally." },
+      { role: "user", content: "Hello." },
+    ];
+    const body = await captureBody(DEFAULT_CEREBRAS_TEXT_MODEL, { messages });
+    expect(body?.messages).toEqual(messages);
+    expect(body?.response_format).toBeUndefined();
+  });
   it("still honors an explicit caller responseFormat override", async () => {
     const body = await captureBody("zai-glm-4.7", {
       responseSchema: {
@@ -93,6 +177,10 @@ describe("native /chat/completions response_format gate", () => {
       },
     });
     expect(body?.response_format).toEqual({ type: "json_object" });
+    const wire = body?.messages as Array<{ role: string; content: string }>;
+    expect(JSON.parse(wire[0].content.split("Response JSON schema:\n")[1])).toEqual(
+      RESPONSE_SCHEMA.schema
+    );
   });
 });
 /**
