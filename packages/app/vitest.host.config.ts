@@ -41,6 +41,7 @@ export default defineConfig({
       "src/registry/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/api/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/services/**/*.{test,spec}.?(c|m)[jt]s?(x)",
+      "test/runtime/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/stubs/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/dev-stack/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/electrobun/**/*.{test,spec}.?(c|m)[jt]s?(x)",
