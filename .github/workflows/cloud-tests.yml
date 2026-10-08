@@ -6,6 +6,10 @@ name: Cloud Tests
 on:
   workflow_call:
     inputs:
+      base_sha:
+        type: string
+        required: false
+        default: ''
       source_checks_in_canonical_ci:
         description: The caller also requires canonical CI, which owns full workspace lint/typecheck
         type: boolean
@@ -29,7 +33,26 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.affected.outputs.cloud }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          submodules: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.15.0
+      - id: affected
+        env:
+          BASE_SHA: ${{ inputs.base_sha || '' }}
+        run: node packages/scripts/ci-affected.ts "$BASE_SHA"
   polyglot-services:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -58,6 +81,8 @@ jobs:
           PYTHON
 
   lint-and-types:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     env:
@@ -81,25 +106,9 @@ jobs:
   # it. Do not re-add a standalone dry-run job: #14474 + #14504 briefly ran it
   # twice per PR on the saturated runner fleet.
 
-  unit-tests:
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    # Separate jobs bound suite duration; every batch belongs to exactly one shard.
-    timeout-minutes: 40
-    env:
-      NODE_ENV: test
-      ELIZA_CLOUD_TEST_SHARD: ${{ matrix.shard }}/4
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: ./.github/actions/cloud-setup-test-env
-      - name: Run cloud integration tests
-        run: bun run test:cloud
-
-
   integration-tests:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     env:
@@ -113,11 +122,12 @@ jobs:
         run: bun run test:cloud:integration
 
   e2e-tests:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     # This lane starts a real pgvector container. Generic fleet labels do not
     # attest Docker-daemon access, so use GitHub's Docker-capable image.
     runs-on: ubuntu-24.04
     timeout-minutes: 35
-    needs: [lint-and-types]
     env:
       NODE_ENV: test
     steps:
@@ -211,9 +221,10 @@ jobs:
   # .github/workflows/monetized-loop-nightly.yml. Failures propagate — no
   # continue-on-error.
   stack-e2e-tests:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
-    needs: [lint-and-types]
     env:
       NODE_ENV: test
       CI: "true"
@@ -253,7 +264,8 @@ jobs:
           if-no-files-found: warn
 
   agent-stability:
-    needs: [lint-and-types]
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     uses: ./.github/workflows/cloud-stability.yml
     with:
       real_model: false

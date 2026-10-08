@@ -1276,7 +1276,18 @@ export async function runSharedAgentTurn(
     );
   }
   if (realtimeRequirement) {
-    const groundedReply = finalizeSharedRealtimeReply(turn.reply, realtimeGrounding);
+    const groundedReply = finalizeSharedRealtimeReply(
+      turn.reply,
+      realtimeGrounding,
+      (diagnostic) => {
+        logger.audit("[shared-realtime] claim binding refused", {
+          ...(input.traceId && /^[0-9a-f]{32}$/.test(input.traceId)
+            ? { traceId: input.traceId }
+            : {}),
+          ...diagnostic,
+        });
+      },
+    );
     const history = [...turn.history];
     let replaced = false;
     for (let index = history.length - 1; index >= 0; index -= 1) {

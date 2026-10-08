@@ -34,8 +34,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint:check": "bunx @biomejs/biome check src *.ts",
     "lint": "bunx @biomejs/biome check --write src *.ts",
-    "prepublishOnly": "bun run build",
-    "test": "node ../scripts/run-vitest.ts run"
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

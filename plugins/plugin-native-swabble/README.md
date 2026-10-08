@@ -11,5 +11,4 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd plugins/plugin-native-swabble build  # build
-bun run --cwd plugins/plugin-native-swabble test   # tests
 ```

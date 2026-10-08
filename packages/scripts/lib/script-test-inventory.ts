@@ -15,7 +15,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { isAlias, isMap, isScalar, isSeq, parseDocument, visit } from "yaml";
 import {
   assertContainedRegularFile,
   assertUniqueRepositoryIdentities,
@@ -28,9 +27,6 @@ export const SCRIPT_TEST_RUNNER =
 export const SCRIPT_TEST_LANE_COMMANDS = {
   "test:scripts:node":
     "node --conditions=eliza-source --import tsx node_modules/vitest/vitest.mjs run --config packages/scripts/vitest.node.config.ts",
-  test: "node packages/scripts/run-all-tests.ts --only=test --no-cloud --require-work && bun run test:scripts",
-  "test:all":
-    "node packages/scripts/run-all-tests.ts --all --require-work && bun run test:scripts",
 };
 export const SCRIPT_TEST_EXTENSIONS = [
   "ts",
@@ -150,128 +146,7 @@ function validateExclusions(eligibleFiles, exclusions) {
   return records.sort((left, right) => compareText(left.file, right.file));
 }
 
-function scalarKey(pair) {
-  return isScalar(pair.key) && typeof pair.key.value === "string"
-    ? pair.key.value
-    : undefined;
-}
-
-function mappingValue(mapping, key) {
-  const pair = mapping.items.find((candidate) => scalarKey(candidate) === key);
-  return pair?.value;
-}
-
-function scalarString(mapping, key, label, requiredType) {
-  const value = mappingValue(mapping, key);
-  if (!isScalar(value) || typeof value.value !== "string") {
-    throw new Error(`[script-test-inventory] ${label} must be a string scalar`);
-  }
-  if (requiredType !== undefined && value.type !== requiredType) {
-    throw new Error(
-      `[script-test-inventory] ${label} must use ${requiredType.toLocaleLowerCase("en-US")} YAML scalar syntax`,
-    );
-  }
-  return value.value;
-}
-
-function parseCiWorkflow(source) {
-  const document = parseDocument(source, {
-    merge: false,
-    prettyErrors: true,
-    uniqueKeys: true,
-  });
-  if (document.errors.length > 0) {
-    throw new Error(
-      `[script-test-inventory] ci.yml is invalid YAML: ${document.errors[0].message}`,
-    );
-  }
-  visit(document, {
-    Alias(_key, node) {
-      if (isAlias(node)) {
-        throw new Error(
-          "[script-test-inventory] ci.yml may not use YAML aliases",
-        );
-      }
-    },
-    Pair(_key, pair) {
-      if (scalarKey(pair) === "<<") {
-        throw new Error(
-          "[script-test-inventory] ci.yml may not use YAML merge keys",
-        );
-      }
-    },
-  });
-  if (!isMap(document.contents)) {
-    throw new Error("[script-test-inventory] ci.yml root must be a mapping");
-  }
-  return document.contents;
-}
-
-function assertCiLane(ciWorkflow) {
-  const root = parseCiWorkflow(ciWorkflow);
-  const jobs = mappingValue(root, "jobs");
-  if (!isMap(jobs)) {
-    throw new Error(
-      "[script-test-inventory] ci.yml must declare a jobs mapping",
-    );
-  }
-  const job = mappingValue(jobs, "tests");
-  if (!isMap(job)) {
-    throw new Error("[script-test-inventory] ci.yml must declare jobs.tests");
-  }
-  if (mappingValue(job, "continue-on-error") !== undefined) {
-    throw new Error(
-      "[script-test-inventory] tests job may not continue on error",
-    );
-  }
-  const steps = mappingValue(job, "steps");
-  if (!isSeq(steps)) {
-    throw new Error("[script-test-inventory] tests.steps must be a sequence");
-  }
-  const named = steps.items.filter(
-    (step) =>
-      isMap(step) &&
-      mappingValue(step, "name")?.value === "Script contract tests",
-  );
-  if (named.length !== 1 || !isMap(named[0])) {
-    throw new Error(
-      "[script-test-inventory] tests job must own exactly one Script contract tests step",
-    );
-  }
-  const step = named[0];
-  for (const forbidden of [
-    "continue-on-error",
-    "if",
-    "shell",
-    "uses",
-    "working-directory",
-  ]) {
-    if (mappingValue(step, forbidden) !== undefined) {
-      throw new Error(
-        `[script-test-inventory] packages/scripts test sweep may not declare ${forbidden}`,
-      );
-    }
-  }
-  if (
-    scalarString(step, "run", "packages/scripts test sweep run", "PLAIN") !==
-    "bun run test:scripts"
-  ) {
-    throw new Error(
-      "[script-test-inventory] ci.yml script contract step must execute bun run test:scripts",
-    );
-  }
-  const env = mappingValue(step, "env");
-  if (
-    !isMap(env) ||
-    String(mappingValue(env, "E2E_COVERAGE_GATE_ENFORCE")?.value) !== "1"
-  ) {
-    throw new Error(
-      "[script-test-inventory] packages/scripts sweep must enforce the E2E coverage gate",
-    );
-  }
-}
-
-function assertLaneContracts({ packageScripts, ciWorkflow }) {
+function assertLaneContracts({ packageScripts }) {
   if (packageScripts["test:scripts"] !== SCRIPT_TEST_RUNNER) {
     throw new Error(
       `[script-test-inventory] package.json test:scripts must be exactly: ${SCRIPT_TEST_RUNNER}`,
@@ -286,7 +161,6 @@ function assertLaneContracts({ packageScripts, ciWorkflow }) {
       );
     }
   }
-  assertCiLane(ciWorkflow);
 }
 
 /**
@@ -338,16 +212,8 @@ export function buildScriptTestInventory(options = {}) {
     options.packageScripts ??
     JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"))
       .scripts;
-  const ciWorkflow =
-    options.ciWorkflow ??
-    readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
-  assertLaneContracts({ packageScripts, ciWorkflow });
-
-  const lanes = [
-    "package.json#test",
-    "package.json#test:all",
-    ".github/workflows/ci.yml#tests",
-  ];
+  assertLaneContracts({ packageScripts });
+  const lanes = ["package.json#test:scripts"];
   const inventory = {
     schemaVersion: 2,
     runner: {

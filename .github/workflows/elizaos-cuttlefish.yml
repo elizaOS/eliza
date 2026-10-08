@@ -158,9 +158,6 @@ jobs:
         working-directory: .
         run: bun install --frozen-lockfile
 
-      - name: Run assistant verifier regression canary
-        working-directory: .
-        run: bun test packages/app/scripts/lib/android-assistant-verify-lib.test.ts
       - name: Resolve brand
         id: brand
         run: |

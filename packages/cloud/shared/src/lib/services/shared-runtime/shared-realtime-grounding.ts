@@ -560,13 +560,34 @@ function sourceForUrl(
   return grounding.sources?.find((source) => canonicalPublicUrl(source.url) === canonical);
 }
 
-function claimSupported(claim: string, source: SourceEvidence): boolean {
+export interface SharedRealtimeBindingDiagnostic {
+  reason: "marker_missing" | "source_not_in_receipt" | "claim_not_supported";
+  markerCount: number;
+  knownSourceMarkerCount: number;
+  /** Bits: negation1, numbers2, numericUnits4, units8, attribution16, words32, url64, empty128. */
+  failedPredicateMask: number;
+}
+
+function claimSupported(
+  claim: string,
+  source: SourceEvidence,
+  diagnostic?: { failedPredicateMask: number },
+): boolean {
   const normalized = claim.trim();
-  if (!normalized || /^[\s?!.,-]{1,12}$/u.test(normalized)) return false;
+  if (!normalized || /^[\s?!.,-]{1,12}$/u.test(normalized)) {
+    if (diagnostic) diagnostic.failedPredicateMask |= 128;
+    return false;
+  }
   const urls = replyUrls(normalized);
-  if (!urls) return false;
+  if (!urls) {
+    if (diagnostic) diagnostic.failedPredicateMask |= 64;
+    return false;
+  }
   for (const url of urls) {
-    if (url !== canonicalPublicUrl(source.url)) return false;
+    if (url !== canonicalPublicUrl(source.url)) {
+      if (diagnostic) diagnostic.failedPredicateMask |= 64;
+      return false;
+    }
   }
   const claimNumbers = numericValues(normalized);
   const units = claimUnits(normalized);
@@ -576,14 +597,31 @@ function claimSupported(claim: string, source: SourceEvidence): boolean {
   );
   const words = claimWords(normalized);
   return evidenceClauses(source.text).some((clause) => {
-    if (NEGATION.test(normalized) !== NEGATION.test(clause)) return false;
-    if (!orderedNumbersSupported(claimNumbers, numericValues(clause))) return false;
-    if (!orderedNumericUnitsSupported(numericUnits, numericUnitTuples(clause))) return false;
+    if (NEGATION.test(normalized) !== NEGATION.test(clause)) {
+      if (diagnostic) diagnostic.failedPredicateMask |= 1;
+      return false;
+    }
+    if (!orderedNumbersSupported(claimNumbers, numericValues(clause))) {
+      if (diagnostic) diagnostic.failedPredicateMask |= 2;
+      return false;
+    }
+    if (!orderedNumericUnitsSupported(numericUnits, numericUnitTuples(clause))) {
+      if (diagnostic) diagnostic.failedPredicateMask |= 4;
+      return false;
+    }
     const evidenceUnits = new Set(claimUnits(clause));
-    if (units.some((unit) => !evidenceUnits.has(unit))) return false;
+    if (units.some((unit) => !evidenceUnits.has(unit))) {
+      if (diagnostic) diagnostic.failedPredicateMask |= 8;
+      return false;
+    }
     const lowerClause = clause.toLowerCase();
-    if (attributions.some((attribution) => !lowerClause.includes(attribution))) return false;
-    return orderedWordsSupported(words, claimWords(clause));
+    if (attributions.some((attribution) => !lowerClause.includes(attribution))) {
+      if (diagnostic) diagnostic.failedPredicateMask |= 16;
+      return false;
+    }
+    const supported = orderedWordsSupported(words, claimWords(clause));
+    if (!supported && diagnostic) diagnostic.failedPredicateMask |= 32;
+    return supported;
   });
 }
 
@@ -640,17 +678,23 @@ export function validateSharedRealtimeReply(reply: string, grounding: AvailableG
 function supportedRealtimeReply(
   reply: string,
   grounding: AvailableGrounding,
+  onRefusal?: (diagnostic: SharedRealtimeBindingDiagnostic) => void,
 ): { reply: string; selectedUrls: string[]; omittedUnsupported: boolean } | undefined {
   if (!hasTraceableRealtimeGrounding(grounding)) return undefined;
   SOURCE_MARKER.lastIndex = 0;
   let cursor = 0;
   let omittedUnsupported = false;
+  const diagnostic = { markerCount: 0, knownSourceMarkerCount: 0, failedPredicateMask: 0 };
   const segments: string[] = [];
   const selectedUrls: string[] = [];
   for (const marker of reply.matchAll(SOURCE_MARKER)) {
+    diagnostic.markerCount = Math.min(1000, diagnostic.markerCount + 1);
     const source = sourceForUrl(grounding, marker[1]);
+    if (source) {
+      diagnostic.knownSourceMarkerCount = Math.min(1000, diagnostic.knownSourceMarkerCount + 1);
+    }
     const claim = reply.slice(cursor, marker.index).trim();
-    if (source && claimSupported(claim, source)) {
+    if (source && claimSupported(claim, source, diagnostic)) {
       segments.push(claim);
       selectedUrls.push(marker[1]);
     } else {
@@ -659,6 +703,21 @@ function supportedRealtimeReply(
     cursor = (marker.index ?? 0) + marker[0].length;
   }
   if (reply.slice(cursor).trim()) omittedUnsupported = true;
+  if (segments.length === 0 && onRefusal) {
+    try {
+      onRefusal({
+        ...diagnostic,
+        reason:
+          diagnostic.markerCount === 0
+            ? "marker_missing"
+            : diagnostic.knownSourceMarkerCount === 0
+              ? "source_not_in_receipt"
+              : "claim_not_supported",
+      });
+    } catch {
+      // Diagnostic delivery must not change the existing refusal outcome.
+    }
+  }
   return segments.length > 0
     ? { reply: segments.join("\n"), selectedUrls, omittedUnsupported }
     : undefined;
@@ -668,11 +727,12 @@ function supportedRealtimeReply(
 export function finalizeSharedRealtimeReply(
   reply: string,
   grounding: SharedRuntimePublicGrounding | undefined,
+  onRefusal?: (diagnostic: SharedRealtimeBindingDiagnostic) => void,
 ): string {
   if (!hasTraceableRealtimeGrounding(grounding)) {
     return "I can’t verify the current value from a complete, traceable live source right now, so I won’t guess. Please try again shortly.";
   }
-  const supported = supportedRealtimeReply(reply, grounding);
+  const supported = supportedRealtimeReply(reply, grounding, onRefusal);
   if (!supported) {
     return `I found live public results, but I couldn’t safely bind the requested claim to one complete source, so I won’t guess.\n\nSource provider: ${grounding.provider} (checked ${new Date(grounding.observedAt).toISOString()})`;
   }

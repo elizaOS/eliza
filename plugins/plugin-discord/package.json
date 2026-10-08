@@ -38,7 +38,8 @@
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",
-		"format:check": "bunx @biomejs/biome format ."
+		"format:check": "bunx @biomejs/biome format .",
+		"test:integration": "bun run test:real-runtime"
 	},
 	"dependencies": {
 		"@discordjs/builders": "^1.14.1",

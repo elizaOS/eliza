@@ -13,7 +13,7 @@ import { listScenarioMetadata } from "@elizaos/testing/scenarios";
  * artifacts/benchmark-report.md plus the raw JSON at
  * artifacts/lifeops-scenario-report.json.
  *
- * Required env: the same LLM and connector credentials as live-smoke.yml.
+ * Required env: the selected LLM provider and connector credentials.
  * Optional:
  *   LIFEOPS_JUDGE_THRESHOLD (default 0.8)
  *   SCENARIO_FILTER         (comma-separated ids)

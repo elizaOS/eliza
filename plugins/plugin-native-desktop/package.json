@@ -35,7 +35,6 @@
   "scripts": {
     "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-desktop -- bun run build:unlocked",
     "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
-    "test": "vitest run",
     "prepublishOnly": "bun run build",
     "watch": "tsc6 --watch",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",

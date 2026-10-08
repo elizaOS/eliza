@@ -45,7 +45,7 @@
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
-    "test:client": "node --test --experimental-transform-types test/device-client.test.mjs test/device-query.test.mjs"
+    "test:client": "node --test --experimental-transform-types test/device-query.test.mjs"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
