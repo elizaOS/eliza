@@ -2154,7 +2154,7 @@ describe("SharedRuntimeChatService", () => {
     });
     await Promise.all(h.background);
     expect(retried.result?.text).toBe("hello back");
-    expect(claims.claims.get("client-key-1")?.result).toEqual(retried.result);
+    expect<unknown>(claims.claims.get("client-key-1")?.result).toEqual(retried.result);
     expect(h.history()).toHaveLength(2);
     expect(turnCalls).toBe(2);
     expect(billCalls).toHaveLength(1);
@@ -2180,7 +2180,7 @@ describe("SharedRuntimeChatService", () => {
       timing: expect.objectContaining({ replayed: true, callCount: 0 }),
     });
     expect(h.history()).toEqual(committedHistory);
-    expect(claims.claims.get("client-key-1")?.result).toEqual(first.result);
+    expect<unknown>(claims.claims.get("client-key-1")?.result).toEqual(first.result);
     expect(turnCalls).toBe(1);
     expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
     expect(billCalls).toHaveLength(1);
