@@ -8,6 +8,7 @@ import {
   isSharedPublicSearchSafe,
   requireTraceableRealtimeSearch,
   resolveSharedRealtimeRequirement,
+  type SharedRealtimeBindingDiagnostic,
   validateSharedRealtimeReply,
 } from "./shared-realtime-grounding";
 
@@ -49,21 +50,38 @@ describe("Shared realtime request classification", () => {
     ["who is the current CEO of Example Corp?", "mutable_fact"],
   ] as const) {
     test(`requires ${domain} grounding for ${message}`, () => {
-      expect(resolveSharedRealtimeRequirement(message, [])?.domain).toBe(domain);
+      expect(resolveSharedRealtimeRequirement(message, [])?.domain).toBe(
+        domain,
+      );
     });
   }
 
   for (const [message, location] of [
-    ["IM-WX-1008: What is the current weather in Springfield, Missouri? Include the city, current temperature, and conditions. Text only.", "Springfield, Missouri"],
+    [
+      "IM-WX-1008: What is the current weather in Springfield, Missouri? Include the city, current temperature, and conditions. Text only.",
+      "Springfield, Missouri",
+    ],
     ["current weather in Paris, France?", "Paris, France"],
     ["weather in Springfield, Missouri, USA", "Springfield, Missouri, USA"],
     ["current weather in Springfield, MO.", "Springfield, MO"],
-    ["weather in St. Louis, Missouri. Include temperature and conditions.", "St. Louis, Missouri"],
+    [
+      "weather in St. Louis, Missouri. Include temperature and conditions.",
+      "St. Louis, Missouri",
+    ],
     ["weather in Mt. Pleasant, Michigan.", "Mt. Pleasant, Michigan"],
     ["weather in Springfield, Missouri. Text only.", "Springfield, Missouri"],
-    ["weather in Springfield, Missouri; include conditions", "Springfield, Missouri"],
-    ["weather in Springfield, Missouri include temperature and conditions", "Springfield, Missouri"],
-    ["weather in Springfield, Missouri and include temperature", "Springfield, Missouri"],
+    [
+      "weather in Springfield, Missouri; include conditions",
+      "Springfield, Missouri",
+    ],
+    [
+      "weather in Springfield, Missouri include temperature and conditions",
+      "Springfield, Missouri",
+    ],
+    [
+      "weather in Springfield, Missouri and include temperature",
+      "Springfield, Missouri",
+    ],
     ["weather in Austin", "Austin"],
   ] as const) {
     test(`preserves bounded public weather location: ${message}`, () => {
@@ -93,9 +111,15 @@ describe("Shared realtime request classification", () => {
   }
 
   test("does not force live lookup for static or explicitly historical facts", () => {
-    expect(resolveSharedRealtimeRequirement("What is Bitcoin?", [])).toBeUndefined();
-    expect(resolveSharedRealtimeRequirement("Explain proof of work", [])).toBeUndefined();
-    expect(resolveSharedRealtimeRequirement("Why did BTC move in 2017?", [])).toBeUndefined();
+    expect(
+      resolveSharedRealtimeRequirement("What is Bitcoin?", []),
+    ).toBeUndefined();
+    expect(
+      resolveSharedRealtimeRequirement("Explain proof of work", []),
+    ).toBeUndefined();
+    expect(
+      resolveSharedRealtimeRequirement("Why did BTC move in 2017?", []),
+    ).toBeUndefined();
   });
 
   for (const message of [
@@ -114,15 +138,18 @@ describe("Shared realtime request classification", () => {
   }
 
   test("still recognizes explicit current public requests after conservative classification", () => {
-    expect(resolveSharedRealtimeRequirement("what's the weather like in Austin?", [])?.domain).toBe(
-      "weather",
-    );
-    expect(resolveSharedRealtimeRequirement("check the latest BTC price", [])?.domain).toBe(
-      "markets",
-    );
-    expect(resolveSharedRealtimeRequirement("show me current NBA standings", [])?.domain).toBe(
-      "sports",
-    );
+    expect(
+      resolveSharedRealtimeRequirement("what's the weather like in Austin?", [])
+        ?.domain,
+    ).toBe("weather");
+    expect(
+      resolveSharedRealtimeRequirement("check the latest BTC price", [])
+        ?.domain,
+    ).toBe("markets");
+    expect(
+      resolveSharedRealtimeRequirement("show me current NBA standings", [])
+        ?.domain,
+    ).toBe("sports");
   });
   for (const message of [
     "check my todos",
@@ -143,17 +170,25 @@ describe("Shared realtime request classification", () => {
     const history = [
       {
         role: "user" as const,
-        content: "[Public guild; speaker: Alice; channel: ops] what is btc price rn",
+        content:
+          "[Public guild; speaker: Alice; channel: ops] what is btc price rn",
       },
       {
         role: "assistant" as const,
         content: "Bitcoin is currently 63,800 USD according to TradingView",
       },
     ];
-    expect(resolveSharedRealtimeRequirement("that's wrong, check again", history)).toBeUndefined();
-    expect(resolveSharedRealtimeRequirement("check the web", history)).toBeUndefined();
     expect(
-      resolveSharedRealtimeRequirement("wrong — what is the current BTC price?", history),
+      resolveSharedRealtimeRequirement("that's wrong, check again", history),
+    ).toBeUndefined();
+    expect(
+      resolveSharedRealtimeRequirement("check the web", history),
+    ).toBeUndefined();
+    expect(
+      resolveSharedRealtimeRequirement(
+        "wrong — what is the current BTC price?",
+        history,
+      ),
     ).toMatchObject({
       domain: "markets",
       query: "BTC price current",
@@ -186,7 +221,12 @@ describe("Shared realtime request classification", () => {
   }
 
   test("constructs a narrow market query instead of exporting unrelated utterance text", () => {
-    expect(resolveSharedRealtimeRequirement("please check the current BTC price", [])).toEqual({
+    expect(
+      resolveSharedRealtimeRequirement(
+        "please check the current BTC price",
+        [],
+      ),
+    ).toEqual({
       domain: "markets",
       query: "BTC price current",
       correction: false,
@@ -194,16 +234,18 @@ describe("Shared realtime request classification", () => {
   });
 
   test("constructs bounded stock queries without exporting appended clauses", () => {
-    expect(resolveSharedRealtimeRequirement("current AAPL stock price", [])?.query).toBe(
-      "AAPL stock price current",
-    );
-    expect(resolveSharedRealtimeRequirement("Apple share price now", [])?.query).toBe(
-      "Apple stock price current",
-    );
+    expect(
+      resolveSharedRealtimeRequirement("current AAPL stock price", [])?.query,
+    ).toBe("AAPL stock price current");
+    expect(
+      resolveSharedRealtimeRequirement("Apple share price now", [])?.query,
+    ).toBe("Apple stock price current");
   });
 
   test("refuses an unscoped weather lookup rather than searching arbitrary global weather", () => {
-    expect(resolveSharedRealtimeRequirement("what's the weather?", [])).toBeUndefined();
+    expect(
+      resolveSharedRealtimeRequirement("what's the weather?", []),
+    ).toBeUndefined();
   });
 
   test("fresh-searches every follow-up for which history policy selects mutable grounding", () => {
@@ -215,7 +257,11 @@ describe("Shared realtime request classification", () => {
         grounding,
       },
     ];
-    for (const message of ["what about that now?", "what about that?", "BTC outlook?"]) {
+    for (const message of [
+      "what about that now?",
+      "what about that?",
+      "BTC outlook?",
+    ]) {
       expect(resolveSharedRealtimeRequirement(message, history)).toMatchObject({
         domain: "markets",
         query: "BTC price current",
@@ -234,7 +280,11 @@ describe("Shared realtime request classification", () => {
       expect(
         resolveSharedRealtimeRequirement(followUp, [
           { role: "user", content: query },
-          { role: "assistant", content: "Old mutable claim.", grounding: prior },
+          {
+            role: "assistant",
+            content: "Old mutable claim.",
+            grounding: prior,
+          },
         ])?.query,
       ).toBe(query);
     }
@@ -271,7 +321,9 @@ describe("Shared realtime request classification", () => {
       { role: "user" as const, content: "what is on my schedule today" },
       { role: "assistant" as const, content: "Your schedule is unavailable." },
     ];
-    expect(resolveSharedRealtimeRequirement("that's wrong, check again", history)).toBeUndefined();
+    expect(
+      resolveSharedRealtimeRequirement("that's wrong, check again", history),
+    ).toBeUndefined();
   });
 });
 
@@ -282,7 +334,11 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
         {
           success: true,
           text: "Bitcoin is 77,357.93 USD",
-          data: { actionName: "WEB_SEARCH", query: "BTC price", provider: "parallel" },
+          data: {
+            actionName: "WEB_SEARCH",
+            query: "BTC price",
+            provider: "parallel",
+          },
         },
         "BTC price",
         observedAt,
@@ -294,7 +350,10 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
   });
 
   test("rejects truncated and hostile-overflow receipts even when they contain URLs", () => {
-    for (const extra of [{ truncated: true }, { truncated: false, evidenceOverflowed: true }]) {
+    for (const extra of [
+      { truncated: true },
+      { truncated: false, evidenceOverflowed: true },
+    ]) {
       expect(
         requireTraceableRealtimeSearch(
           {
@@ -304,7 +363,9 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
               actionName: "WEB_SEARCH",
               query: "BTC price",
               provider: "parallel",
-              sources: [{ url: "https://coin.example/bitcoin", text: "77,357.93 USD" }],
+              sources: [
+                { url: "https://coin.example/bitcoin", text: "77,357.93 USD" },
+              ],
               ...extra,
             },
           },
@@ -316,7 +377,10 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
   });
 
   test("rejects source evidence that embeds a loopback or credential-bearing URL", () => {
-    for (const unsafeUrl of ["http://127.0.0.1/admin", "https://user:pass@example.com/private"]) {
+    for (const unsafeUrl of [
+      "http://127.0.0.1/admin",
+      "https://user:pass@example.com/private",
+    ]) {
       expect(
         requireTraceableRealtimeSearch(
           {
@@ -353,10 +417,17 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
         provider: "parallel",
         observedAt,
         truncated: false,
-        sources: [{ url: "https://coin.example/bitcoin", text: "Bitcoin is 77,357.93 USD" }],
+        sources: [
+          {
+            url: "https://coin.example/bitcoin",
+            text: "Bitcoin is 77,357.93 USD",
+          },
+        ],
       },
     };
-    expect(requireTraceableRealtimeSearch(base, " btc  PRICE ", observedAt)).toMatchObject({
+    expect(
+      requireTraceableRealtimeSearch(base, " btc  PRICE ", observedAt),
+    ).toMatchObject({
       success: true,
     });
     for (const data of [
@@ -366,22 +437,32 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
       { ...base.data, observedAt: observedAt - 5 * 60 * 1000 - 1 },
     ]) {
       expect(
-        requireTraceableRealtimeSearch({ ...base, data }, "BTC price", observedAt),
+        requireTraceableRealtimeSearch(
+          { ...base, data },
+          "BTC price",
+          observedAt,
+        ),
       ).toMatchObject({ success: false });
     }
   });
 
   test("accepts only values, currency, URLs, and attribution present in evidence", () => {
-    if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
+    if (grounding.kind !== "web_search")
+      throw new Error("fixture grounding must be available");
     expect(
       validateSharedRealtimeReply(
         "Bitcoin is 77,357.93 USD. [[SOURCE_URL:https://coin.example/bitcoin]]",
         grounding,
       ),
     ).toBe(true);
-    expect(validateSharedRealtimeReply("Bitcoin is 63,800 USD.", grounding)).toBe(false);
     expect(
-      validateSharedRealtimeReply("Bitcoin is 77,357.93 USD according to TradingView.", grounding),
+      validateSharedRealtimeReply("Bitcoin is 63,800 USD.", grounding),
+    ).toBe(false);
+    expect(
+      validateSharedRealtimeReply(
+        "Bitcoin is 77,357.93 USD according to TradingView.",
+        grounding,
+      ),
     ).toBe(false);
     expect(
       validateSharedRealtimeReply(
@@ -411,20 +492,34 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
       ["Temperature is 20 celsius", "Temperature is 20 fahrenheit"],
       ["Wind is 10 mph", "Wind is 10 km/h"],
       ["Length is 5 inches", "Length is 5 cm"],
-      ["Wind is 5 mph and distance is 10 km", "Wind is 5 km and distance is 10 mph"],
+      [
+        "Wind is 5 mph and distance is 10 km",
+        "Wind is 5 km and distance is 10 mph",
+      ],
     ] as const) {
       const result = withEvidence(evidence);
-      if (result.kind !== "web_search") throw new Error("fixture grounding must be available");
-      expect(validateSharedRealtimeReply(`${claim}. ${marker}`, result)).toBe(false);
+      if (result.kind !== "web_search")
+        throw new Error("fixture grounding must be available");
+      expect(validateSharedRealtimeReply(`${claim}. ${marker}`, result)).toBe(
+        false,
+      );
     }
-    const equivalent = withEvidence("Asset is 77 dollars and growth is 5 percent.");
-    if (equivalent.kind !== "web_search") throw new Error("fixture grounding must be available");
-    expect(validateSharedRealtimeReply(`Asset is $77. ${marker}`, equivalent)).toBe(true);
-    expect(validateSharedRealtimeReply(`Growth is 5%. ${marker}`, equivalent)).toBe(true);
+    const equivalent = withEvidence(
+      "Asset is 77 dollars and growth is 5 percent.",
+    );
+    if (equivalent.kind !== "web_search")
+      throw new Error("fixture grounding must be available");
+    expect(
+      validateSharedRealtimeReply(`Asset is $77. ${marker}`, equivalent),
+    ).toBe(true);
+    expect(
+      validateSharedRealtimeReply(`Growth is 5%. ${marker}`, equivalent),
+    ).toBe(true);
   });
 
   test("rejects cross-result value-to-URL misattribution", () => {
-    if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
+    if (grounding.kind !== "web_search")
+      throw new Error("fixture grounding must be available");
     const divided: SharedRuntimePublicGrounding = {
       ...grounding,
       sourceUrls: ["https://coin.example/a", "https://coin.example/b"],
@@ -433,7 +528,8 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
         { url: "https://coin.example/b", text: "Bitcoin is 77,357.93 USD." },
       ],
     };
-    if (divided.kind !== "web_search") throw new Error("fixture grounding must be available");
+    if (divided.kind !== "web_search")
+      throw new Error("fixture grounding must be available");
     expect(
       validateSharedRealtimeReply(
         "Bitcoin is 77,357.93 USD. [[SOURCE_URL:https://coin.example/a]]",
@@ -470,7 +566,8 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
   });
 
   test("allows a source-bound rounded market value without accepting an unrelated number", () => {
-    if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
+    if (grounding.kind !== "web_search")
+      throw new Error("fixture grounding must be available");
     expect(
       validateSharedRealtimeReply(
         "Bitcoin is about 77,400 USD. [[SOURCE_URL:https://coin.example/bitcoin]]",
@@ -486,7 +583,8 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
   });
 
   test("rejects qualitative contradictions and unsupported predicates", () => {
-    if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
+    if (grounding.kind !== "web_search")
+      throw new Error("fixture grounding must be available");
     const executiveGrounding: SharedRuntimePublicGrounding = {
       ...grounding,
       sourceUrls: ["https://company.example/leadership"],
@@ -522,16 +620,22 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
   });
 
   test("retains short semantic predicates when binding a claim to evidence", () => {
-    if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
+    if (grounding.kind !== "web_search")
+      throw new Error("fixture grounding must be available");
     const marker = "[[SOURCE_URL:https://coin.example/direction]]";
-    const directionGrounding = (text: string): SharedRuntimePublicGrounding => ({
+    const directionGrounding = (
+      text: string,
+    ): SharedRuntimePublicGrounding => ({
       ...grounding,
       sourceUrls: ["https://coin.example/direction"],
       sources: [{ url: "https://coin.example/direction", text }],
     });
 
     expect(
-      validateSharedRealtimeReply(`BTC is up. ${marker}`, directionGrounding("BTC is up.")),
+      validateSharedRealtimeReply(
+        `BTC is up. ${marker}`,
+        directionGrounding("BTC is up."),
+      ),
     ).toBe(true);
     for (const [claim, evidence] of [
       ["BTC is up", "BTC is down"],
@@ -539,8 +643,11 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
       ["Bitcoin price is up at 120 USD", "Bitcoin price is down at 120 USD"],
     ] as const) {
       const result = directionGrounding(evidence);
-      if (result.kind !== "web_search") throw new Error("fixture grounding must be available");
-      expect(validateSharedRealtimeReply(`${claim}. ${marker}`, result)).toBe(false);
+      if (result.kind !== "web_search")
+        throw new Error("fixture grounding must be available");
+      expect(validateSharedRealtimeReply(`${claim}. ${marker}`, result)).toBe(
+        false,
+      );
     }
   });
 
@@ -578,7 +685,8 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
   });
 
   test("does not borrow unrelated negation from another evidence clause", () => {
-    if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
+    if (grounding.kind !== "web_search")
+      throw new Error("fixture grounding must be available");
     const mixedGrounding: SharedRuntimePublicGrounding = {
       ...grounding,
       sourceUrls: ["https://company.example/leadership"],
@@ -587,7 +695,8 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
           url: "https://company.example/leadership",
           text: JSON.stringify({
             url: "https://company.example/leadership",
-            excerpt: "Alice Example is the current CEO of Example Corp. Bob is not the CFO.",
+            excerpt:
+              "Alice Example is the current CEO of Example Corp. Bob is not the CFO.",
           }),
         },
       ],
@@ -604,7 +713,8 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
   });
 
   test("rejects subject-object and per-entity value swaps within one source", () => {
-    if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
+    if (grounding.kind !== "web_search")
+      throw new Error("fixture grounding must be available");
     const relationGrounding: SharedRuntimePublicGrounding = {
       ...grounding,
       sourceUrls: ["https://facts.example/current"],
@@ -633,7 +743,8 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
   });
 
   test("rejects unsafe URLs in delivered claim prose instead of filtering them out", () => {
-    if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
+    if (grounding.kind !== "web_search")
+      throw new Error("fixture grounding must be available");
     const source: SharedRuntimePublicGrounding = {
       ...grounding,
       sourceUrls: ["https://status.example.com/current"],
@@ -644,7 +755,8 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
         },
       ],
     };
-    if (source.kind !== "web_search") throw new Error("fixture grounding must be available");
+    if (source.kind !== "web_search")
+      throw new Error("fixture grounding must be available");
     expect(
       validateSharedRealtimeReply(
         "See http://127.0.0.1/admin for status. [[SOURCE_URL:https://status.example.com/current]]",
@@ -689,5 +801,109 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
     expect(reply).toContain("can’t verify");
     expect(reply).toContain("won’t guess");
     expect(reply).not.toMatch(/\b\d[\d,.]*\b/u);
+  });
+});
+
+describe("Shared realtime binding refusal diagnostics", () => {
+  test("missing markers expose only bounded diagnostic fields, never the draft", () => {
+    const diagnostics: SharedRealtimeBindingDiagnostic[] = [];
+    const draft = "PRIVATE_DRAFT_SENTINEL 12345";
+    const reply = finalizeSharedRealtimeReply(draft, grounding, (value) =>
+      diagnostics.push(value),
+    );
+    expect(reply).toContain("couldn’t safely bind");
+    expect(diagnostics).toEqual([
+      {
+        reason: "marker_missing",
+        markerCount: 0,
+        knownSourceMarkerCount: 0,
+        failedPredicateMask: 0,
+      },
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain(draft);
+    expect(JSON.stringify(diagnostics)).not.toContain(
+      grounding.sources?.[0].text ?? "",
+    );
+  });
+
+  test("a marker outside the receipt has a source reason without logging its URL", () => {
+    const diagnostics: SharedRealtimeBindingDiagnostic[] = [];
+    const otherUrl = "https://different.example/private-draft-sentinel";
+    finalizeSharedRealtimeReply(
+      `Bitcoin is 77,357.93 USD. [[SOURCE_URL:${otherUrl}]]`,
+      grounding,
+      (value) => diagnostics.push(value),
+    );
+    expect(diagnostics[0]).toEqual({
+      reason: "source_not_in_receipt",
+      markerCount: 1,
+      knownSourceMarkerCount: 0,
+      failedPredicateMask: 0,
+    });
+    expect(JSON.stringify(diagnostics)).not.toContain(otherUrl);
+  });
+
+  test("unit mismatch records the predicate while preserving the refusal", () => {
+    const diagnostics: SharedRealtimeBindingDiagnostic[] = [];
+    const draft =
+      "Bitcoin is 77,357.93 EUR. [[SOURCE_URL:https://coin.example/bitcoin]]";
+    const reply = finalizeSharedRealtimeReply(draft, grounding, (value) =>
+      diagnostics.push(value),
+    );
+    expect(reply).toBe(finalizeSharedRealtimeReply(draft, grounding));
+    expect(diagnostics[0]?.reason).toBe("claim_not_supported");
+    expect((diagnostics[0]?.failedPredicateMask ?? 0) & 4).toBe(4);
+  });
+
+  test("an observer failure cannot change the refusal or escape the boundary", () => {
+    const draft = "A draft without a source marker";
+    const expected = finalizeSharedRealtimeReply(draft, grounding);
+    let observations = 0;
+    expect(
+      finalizeSharedRealtimeReply(draft, grounding, () => {
+        observations += 1;
+        throw new Error("PRIVATE_OBSERVER_ERROR_SENTINEL");
+      }),
+    ).toBe(expected);
+    expect(observations).toBe(1);
+  });
+
+  test("a source-valid synthetic weather draft passes but an echoed numeric QA nonce fails", () => {
+    // Synthetic diagnostic, not the discarded owned model draft or its actual public receipt.
+    const sourceUrl = "https://weather.example/current";
+    const claim = "Springfield, Missouri is 75 Fahrenheit and sunny.";
+    const weather: SharedRuntimePublicGrounding = {
+      kind: "web_search",
+      query: "current public weather in Springfield, Missouri",
+      provider: "parallel",
+      observedAt,
+      sourceUrls: [sourceUrl],
+      truncated: false,
+      sources: [
+        {
+          url: sourceUrl,
+          text: JSON.stringify({
+            title: "Springfield, Missouri weather",
+            excerpts: [claim],
+          }),
+        },
+      ],
+    };
+    const valid = `${claim} [[SOURCE_URL:${sourceUrl}]]`;
+    const observations: SharedRealtimeBindingDiagnostic[] = [];
+    expect(validateSharedRealtimeReply(valid, weather)).toBe(true);
+    expect(
+      finalizeSharedRealtimeReply(valid, weather, (value) =>
+        observations.push(value),
+      ),
+    ).toContain(claim);
+    expect(observations).toEqual([]);
+    const prefixed = `IM-WX-877-1008: ${valid}`;
+    expect(validateSharedRealtimeReply(prefixed, weather)).toBe(false);
+    finalizeSharedRealtimeReply(prefixed, weather, (value) =>
+      observations.push(value),
+    );
+    expect(observations[0]?.reason).toBe("claim_not_supported");
+    expect((observations[0]?.failedPredicateMask ?? 0) & 2).toBe(2);
   });
 });
