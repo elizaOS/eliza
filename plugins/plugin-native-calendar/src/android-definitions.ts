@@ -69,7 +69,10 @@ export type AndroidCalendarAgentResult =
         window: { start: string; end: string; timeZone: string };
         event:
           | null
-          | (Pick<AndroidCalendarFields, "title" | "start" | "end" | "timeZone"> & {
+          | (Pick<
+              AndroidCalendarFields,
+              "title" | "start" | "end" | "timeZone"
+            > & {
               allDay: boolean;
               timing: "ongoing" | "upcoming";
             });
