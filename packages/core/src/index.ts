@@ -190,6 +190,7 @@ export {
 	canActionRun,
 	resolveActionCallerRoles,
 	resolveActionGateFailure,
+	withActionGatePolicy,
 } from "./runtime/action-gate";
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
 export { isLocalProvider } from "./runtime/action-model-routing";
