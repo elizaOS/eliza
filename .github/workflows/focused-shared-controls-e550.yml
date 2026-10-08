@@ -1,0 +1,134 @@
+name: Focused Shared controls e550 validation
+on:
+  push:
+    branches: [codex/validate-shared-controls-e550e1f]
+permissions:
+  contents: read
+concurrency:
+  group: focused-shared-controls-e550
+  cancel-in-progress: false
+jobs:
+  exact-public-owning-suites:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: "true"
+      BUN_VERSION: "1.4.2"
+      NODE_VERSION: "24.15.0"
+      WRANGLER_SEND_METRICS: "false"
+      TURBO_TELEMETRY_DISABLED: "1"
+      DO_NOT_TRACK: "1"
+      RUN_TURBO_CONCURRENCY: "1"
+      NODE_OPTIONS: --max-old-space-size=8192
+    steps:
+      - name: Checkout exact reviewed public source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+      - name: Assert source and runner prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
+          command -v timeout
+          command -v unshare
+          command -v ip
+          sudo -n true
+          free -b
+          nproc
+          test "$(awk '/MemTotal:/ {print $2}' /proc/meminfo)" -ge 12582912
+          sudo -n unshare --net -- bash -c 'ip link set lo up; test "$(ls /sys/class/net | wc -l)" -eq 1; test -z "$(ip route show)"'
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.4.2"
+          node-version: "24.15.0"
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          setup-fused-inference: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+          init-submodules: "false"
+          publish-caches: "false"
+          publish-bun-install-cache: "false"
+      - name: Build only the real Core prerequisite closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          node packages/scripts/ensure-workspace-symlinks.ts
+          timeout --kill-after=10s 600s bun packages/scripts/run-turbo.ts run build --filter=@elizaos/core
+          test "$(git rev-parse HEAD)" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
+          git diff --quiet HEAD
+      - name: Test exact five owning files in a loopback-only namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_runner_path="$PATH"
+          task_runner_home="$HOME"
+          task_workspace="$GITHUB_WORKSPACE"
+          task_script="$RUNNER_TEMP/focused-shared-controls.sh"
+          cat > "$task_script" <<'SCRIPT'
+          set -euo pipefail
+          cd "$TASK_WORKSPACE"
+          test "$(git rev-parse HEAD)" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
+          test "$(bun --version)" = 1.4.2
+          test "$(node --version)" = v24.15.0
+          test "$(node_modules/.bin/biome --version)" = "Version: 2.5.14"
+          mkdir -p "$TASK_EVIDENCE"
+          node_modules/.bin/biome check --vcs-enabled=false \
+            packages/cloud/shared/src/lib/providers/language-model.ts \
+            packages/cloud/shared/src/lib/providers/language-model-interactive-cerebras-failover.test.ts \
+            packages/cloud/shared/src/lib/providers/language-model-fallback-policy.test.ts \
+            packages/cloud/shared/src/lib/services/shared-runtime/shared-eliza-runtime.ts \
+            packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-errors.ts \
+            packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts \
+            packages/cloud/shared/src/lib/services/shared-runtime/shared-rest-adapter.ts \
+            packages/cloud/api/src/shared-runtime-conversation.ts \
+            packages/cloud/api/internal/eliza-app/personal-shared/messages/route.ts \
+            packages/cloud/api/__tests__/shared-runtime-failure-diagnostics.test.ts \
+            packages/cloud/api/__tests__/shared-runtime-diagnostic-transport-trace.test.ts \
+            packages/cloud/api/__tests__/shared-eliza-runtime.miniflare.test.ts \
+            packages/cloud/api/test/fixtures/shared-eliza-runtime-worker.ts
+          run_one() {
+            task_name="$1"; task_cwd="$2"; shift 2
+            task_limit=60
+            if [ "$task_name" = real-workerd ]; then task_limit=180; fi
+            timeout --kill-after=10s "${task_limit}s" bash -c 'cd "$1"; shift; exec bun test "$@"' _ "$task_cwd" "$@" > "$TASK_EVIDENCE/$task_name.log" 2>&1
+            test "$(wc -c < "$TASK_EVIDENCE/$task_name.log")" -le 2097152
+            grep -Eq '^[[:space:]]*[1-9][0-9]* pass[[:space:]]*$' "$TASK_EVIDENCE/$task_name.log"
+            grep -Eq '^[[:space:]]*0 fail[[:space:]]*$' "$TASK_EVIDENCE/$task_name.log"
+            grep -Eq '^Ran [1-9][0-9]* tests? across ' "$TASK_EVIDENCE/$task_name.log"
+            case "$task_name" in
+              sdk-cerebras) grep -E '\(pass\).*fourth Core hint' "$TASK_EVIDENCE/$task_name.log" > /dev/null; grep -E '\(pass\).*cancellation retains the primary SDK error before routing policy' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
+              sdk-routing) grep -E '\(pass\).*does not consult fallback policy after abort' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
+              closed-diagnostics) grep -E '\(pass\).*SDK zero with unknown provider detail' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
+              rest-coordinator) grep -E '\(pass\).*without moving account state or server trace' "$TASK_EVIDENCE/$task_name.log" > /dev/null; grep -E '\(pass\).*already-aborted caller' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
+              real-workerd) grep -E '\(pass\).*/cancel-before-model' "$TASK_EVIDENCE/$task_name.log" > /dev/null; grep -E '\(pass\).*/cancel-at-dispatch' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
+            esac
+            tail -8 "$TASK_EVIDENCE/$task_name.log"
+          }
+          run_one sdk-cerebras packages/cloud/shared src/lib/providers/language-model-interactive-cerebras-failover.test.ts --timeout 60000
+          run_one sdk-routing packages/cloud/shared src/lib/providers/language-model-fallback-policy.test.ts --timeout 60000
+          run_one closed-diagnostics packages/cloud/api __tests__/shared-runtime-failure-diagnostics.test.ts --timeout 60000
+          run_one rest-coordinator packages/cloud/api __tests__/shared-runtime-diagnostic-transport-trace.test.ts --timeout 60000
+          run_one real-workerd packages/cloud/api __tests__/shared-eliza-runtime.miniflare.test.ts --test-name-pattern '/cancel-before-model|/cancel-at-dispatch|runs the production Shared adapter through the genuine runtime|retains canonical failure brands' --timeout 120000
+          grep -Eq '^Ran 4 tests across 1 file' "$TASK_EVIDENCE/real-workerd.log"
+          test "$(git rev-parse HEAD)" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
+          git diff --quiet HEAD
+          SCRIPT
+          # No fallback to the host network when namespace creation is unavailable.
+          sudo -n unshare --net -- bash -c '
+            set -euo pipefail
+            ip link set lo up
+            test "$(ls /sys/class/net | wc -l)" -eq 1
+            test -z "$(ip route show)"
+            exec env -i PATH="$1" HOME="$2" CI=true NODE_ENV=test \
+              WRANGLER_SEND_METRICS=false TURBO_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 \
+              NODE_OPTIONS=--max-old-space-size=8192 RUN_TURBO_CONCURRENCY=1 \
+              TASK_WORKSPACE="$3" TASK_EVIDENCE="$4" bash "$5"
+          ' _ "$task_runner_path" "$task_runner_home" "$task_workspace" "$RUNNER_TEMP/focused-shared-controls" "$task_script"
