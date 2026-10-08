@@ -758,6 +758,7 @@ describe("chat-view hook helpers", () => {
 
   it("maps every supported UI language to its speech locale", () => {
     expect(mapUiLanguageToSpeechLocale("zh-CN")).toBe("zh-CN");
+    expect(mapUiLanguageToSpeechLocale("ja")).toBe("ja-JP");
     expect(mapUiLanguageToSpeechLocale("ko")).toBe("ko-KR");
     expect(mapUiLanguageToSpeechLocale("es")).toBe("es-ES");
     expect(mapUiLanguageToSpeechLocale("pt")).toBe("pt-BR");
