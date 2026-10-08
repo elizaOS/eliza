@@ -17,6 +17,8 @@ const ABBREVIATIONS = new Set([
 	"etc",
 	"e.g",
 	"i.e",
+	"a.m",
+	"p.m",
 ]);
 
 const SENTENCE_END = new Set([".", "?", "!"]);
