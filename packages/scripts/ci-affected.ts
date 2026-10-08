@@ -11,7 +11,7 @@ const lanes = {
   runtime:
     /^(?:packages\/(?:agent|testing)|plugins\/plugin-(?:assistant|personal-assistant))(?:\/|$)/,
   scenarios: /^packages\/testing(?:\/|$)/,
-  providers: /^plugins\/plugin-(?:anthropic|discord)(?:\/|$)/,
+  providers: /^plugins\/plugin-(?:anthropic|discord|openai|embeddings)(?:\/|$)/,
   app: /^packages\/(?:app|ui)(?:\/|$)/,
   os: /^packages\/os(?:\/|$)/,
   cloud: /^(?:packages\/cloud|plugins\/plugin-elizacloud)(?:\/|$)/,
@@ -95,6 +95,11 @@ const results: Record<string, string> = {
 for (const [lane, pattern] of Object.entries(lanes)) {
   results[lane] = String(full || directories.some((dir) => pattern.test(dir)));
 }
+results.provider_matrix = JSON.stringify(
+  ["anthropic", "discord", "openai", "embeddings"].filter(
+    (provider) => full || directories.includes(`plugins/plugin-${provider}`),
+  ),
+);
 if (output) {
   appendFileSync(
     output,

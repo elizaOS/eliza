@@ -86,9 +86,9 @@
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
-    "test:ts": "vitest run --config ./vitest.config.ts",
     "test:real-runtime": "bunx vitest run --config vitest.real-runtime.config.ts",
-    "build": "bun run build.ts"
+    "build": "bun run build.ts",
+    "test:integration": "bun run test && bun run test:real-runtime"
   },
   "publishConfig": {
     "access": "public"

@@ -179,6 +179,7 @@ jobs:
       runtime: ${{ steps.affected.outputs.runtime }}
       scenarios: ${{ steps.affected.outputs.scenarios }}
       providers: ${{ steps.affected.outputs.providers }}
+      provider_matrix: ${{ steps.affected.outputs.provider_matrix }}
       app: ${{ steps.affected.outputs.app }}
       os: ${{ steps.affected.outputs.os }}
       cloud: ${{ steps.affected.outputs.cloud }}
@@ -364,7 +365,11 @@ jobs:
         run: bun --conditions=eliza-source packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage
   zero-key-model-provider-e2e:
     if: needs.preflight.outputs.providers == 'true'
-    name: Zero-Key harness E2E
+    name: Provider integration (${{ matrix.provider }})
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: ${{ fromJSON(needs.preflight.outputs.provider_matrix) }}
     needs: preflight
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
@@ -407,9 +412,7 @@ jobs:
           setup-python: "true"
           install-protoc: "true"
       - name: Per-plugin deterministic model-provider runtime adoption proofs
-        run: |
-          bun run --cwd plugins/plugin-anthropic test:real-runtime
-          bun run --cwd plugins/plugin-discord test:real-runtime
+        run: bun run --cwd plugins/plugin-${{ matrix.provider }} test:integration
   local-runtime-integration:
     if: needs.preflight.outputs.app == 'true'
     name: Local provisioning and chat contracts

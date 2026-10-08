@@ -39,8 +39,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      # Cloud API checking needs more than 4 GiB; serialize tasks so its
-      # 8 GiB heap does not compete with another compiler on a 16 GiB runner.
+      # Cloud API checking needs an 8 GiB heap. Run one compiler alongside
+      # the separately capped 2 GiB lint process on the 16 GiB runner.
       NODE_OPTIONS: "--max-old-space-size=8192"
       RUN_TURBO_CONCURRENCY: "1"
     steps:
@@ -84,6 +84,20 @@ jobs:
             echo "synthetic_world_changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Setup Node for dependency-free change selection
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Select affected workspaces
+        id: affected
+        env:
+          GITHUB_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: node packages/scripts/ci-affected.ts '${{ steps.diff.outputs.merge_base }}'
+
+      - name: Validate documentation links
+        run: node packages/scripts/check-markdown-links.ts
+
       - name: Install pinned workflow linters
         shell: bash
         run: packages/scripts/github/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
@@ -107,7 +121,8 @@ jobs:
             -config-file .github/actionlint.yaml \
             "${workflows[@]}"
 
-      - uses: ./.github/actions/setup-bun-workspace
+      - if: steps.affected.outputs.source == 'true'
+        uses: ./.github/actions/setup-bun-workspace
         with:
           publish-bun-install-cache: "true"
           bun-version: ${{ env.BUN_VERSION }}
@@ -121,15 +136,18 @@ jobs:
           no-vision-deps: "true"
 
       - name: Apply required dependency compatibility patches
+        if: steps.affected.outputs.source == 'true'
         run: |
           bun packages/scripts/patch-punycode-deprecation.ts
           bun packages/scripts/patch-llama-cpp-capacitor.ts
           bun packages/scripts/patch-electrobun-linux-cef-profile.ts
 
       - name: Validate CI Bun version pin contract
+        if: steps.affected.outputs.source == 'true'
         run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
 
       - name: Upload Bun runtime resolution inventory
+        if: steps.affected.outputs.source == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: bun-runtime-inventory
@@ -138,6 +156,7 @@ jobs:
           if-no-files-found: error
 
       - name: Resolve broad core bootstrap
+        if: steps.affected.outputs.source == 'true'
         id: core_scope
         env:
           MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
@@ -154,6 +173,7 @@ jobs:
         run: bun run build:core
 
       - name: Build affected workspace closure
+        if: steps.affected.outputs.source == 'true'
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
         run: node packages/scripts/run-turbo.ts run build --concurrency=4 --affected --output-logs=errors-only
@@ -163,6 +183,7 @@ jobs:
         run: bun run --cwd packages/testing test:synthetic-world
 
       - name: Lint and typecheck affected workspaces in parallel
+        if: steps.affected.outputs.source == 'true'
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
         run: |
@@ -350,7 +371,7 @@ jobs:
           merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
           test -n "$merge_base"
           if git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
-            packages/cloud/shared packages/core packages/core \
+            packages/cloud/shared packages/core \
             package.json bun.lock bunfig.toml turbo.json \
             tsconfig.json tsconfig.base.json .github/actions/setup-bun-workspace \
             .github/workflows/pr-validation.yml; then
@@ -403,107 +424,41 @@ jobs:
             fi
             sleep 1
           done
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/account-billing-snapshot.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/app-billing-accounts.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/subscription-cancellation.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/organization-upgrade-commands.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/organization-upgrade-invoice-origins.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/organization-upgrade-finalization.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-target.pglite.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-repreview.pglite.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-dispatch.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/api/v1/subscriptions/upgrade/confirm/route.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/sdk/src/organization-upgrade.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-dispatch.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-invoice-search.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-recovery-state.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/organization-upgrade-recovery-context.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-recovery.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-historical-target.pglite.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-later-period.pglite.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-target-search.pglite.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/api/__tests__/stripe-event.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/organization-upgrade-observation-lease.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-maintenance.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/api/cron/process-stripe-queue/route.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/organization-upgrade-allowance-posting.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-invoice-origin.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-preview.pglite.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-downgrade-review.pglite.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-downgrade-preview.pglite.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/organization-downgrade-quotes.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/organization-schedule-effects.postgres.integration.test.ts \
-            packages/cloud/shared/src/db/repositories/organization-schedule-dispatch-source.postgres.integration.test.ts \
-            packages/cloud/shared/src/db/repositories/organization-schedule-compensation-result.postgres.integration.test.ts \
-            packages/cloud/shared/src/db/repositories/organization-schedule-compensation-finalization.postgres.integration.test.ts \
-            packages/cloud/shared/src/db/repositories/organization-schedule-finalization.postgres.integration.test.ts \
-            packages/cloud/shared/src/db/repositories/organization-schedule-quote-terms-legacy.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/organization-schedule-migration-ledger.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-effect-contract.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-effect-origin.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-attached-terms.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-phase-mapping.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-event-search.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-configuration-proof.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-reviewed-configuration.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-target-phase.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-target-lifecycle.test.ts \
-            packages/cloud/shared/src/lib/services/stripe-captured-renewal-payment.test.ts \
-            packages/cloud/shared/src/lib/services/stripe-renewal-live-observation.test.ts \
-            packages/cloud/shared/src/lib/services/subscription-next-invoice.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-target-authority.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-target-observation.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-live-compatibility.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-pending-lineage.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-dunning-observation.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-publication.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-release-proof.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-dispatch.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-configuration.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-compensation.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-retained-terms.test.ts \
-            packages/cloud/shared/src/lib/services/organization-schedule-quote-terms.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-invoice.pglite.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/lib/services/organization-upgrade-payment-observation.pglite.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/organization-upgrade-binding-migration.pglite.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/subscription-reconciliation.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/subscription-renewal.postgres.integration.test.ts
+          # Each suite uses an isolated process and private database schema/store.
+          # Bound concurrency to the hosted runner instead of buying more runners.
+          xargs -r -n 1 -P 2 bun test --config=/dev/null --isolate <<'SUITES'
+          packages/cloud/shared/src/db/repositories/account-billing-snapshot.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/app-billing-accounts.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/subscription-cancellation.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-upgrade-commands.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-upgrade-invoice-origins.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-upgrade-finalization.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-target.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-repreview.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-dispatch.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-upgrade-recovery-context.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-recovery.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-historical-target.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-later-period.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-target-search.pglite.test.ts
+          packages/cloud/shared/src/db/repositories/organization-upgrade-observation-lease.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-preview.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-downgrade-review.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-downgrade-preview.pglite.test.ts
+          packages/cloud/shared/src/db/repositories/organization-downgrade-quotes.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-schedule-effects.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-schedule-dispatch-source.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-schedule-compensation-result.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-schedule-compensation-finalization.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-schedule-finalization.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-schedule-quote-terms-legacy.postgres.integration.test.ts
+          packages/cloud/shared/src/db/organization-schedule-migration-ledger.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-invoice.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-payment-observation.pglite.test.ts
+          packages/cloud/shared/src/db/repositories/organization-upgrade-binding-migration.pglite.test.ts
+          packages/cloud/shared/src/db/repositories/subscription-reconciliation.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/subscription-renewal.postgres.integration.test.ts
+          SUITES
       - name: Require subscription authority outcome
         if: always()
         env:

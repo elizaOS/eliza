@@ -11,7 +11,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd plugins/plugin-native-camera build  # build
-bun run --cwd plugins/plugin-native-camera test   # tests
 ```
 
 Android uses CameraX 1.5.3. Recording start waits for Start, and Stop waits for

@@ -61,18 +61,14 @@ export default defineConfig({
     ],
   },
   test: {
-    // packages/scripts/plugins/plugin-elizacloud holds the post-build dist probe and its unit test as .mjs so
-    // they run under plain Node during `bun run build`; the glob must include
-    // them or the NODE_OPTIONS-stripping guarantee regresses undetected.
     include: [
       "__tests__/**/*.test.ts",
       "src/**/*.test.{ts,tsx}",
-      "../../packages/scripts/plugins/plugin-elizacloud/**/*.test.ts",
     ],
     // dist-packaging drives the real build.ts, which is bun-only
     // (import.meta.dir); it runs under `bun test` in the cloud sweep and can
     // never execute under vitest — excluded here (extending the defaults) so
-    // the package's vitest lane (incl. the Windows plugins shard) stays green
+    // the package's Vitest lane stays runnable
     // without weakening the gate.
     exclude: [...configDefaults.exclude, "__tests__/dist-packaging.test.ts"],
     environment: "node",

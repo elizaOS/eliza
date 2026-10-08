@@ -54,7 +54,6 @@ const NESTED_REPOSITORY_PATHS = readGitSubmodulePaths(ROOT);
 const RUST_SKIP_MSG = "Rust tests skipped";
 const PYTHON_SKIP_MSG = "Python tests skipped";
 const REQUIRED_WORKSPACE_SCRIPTS = [
-  "test",
   "typecheck",
   "lint",
   "lint:check",

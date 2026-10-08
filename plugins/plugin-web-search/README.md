@@ -19,7 +19,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd plugins/plugin-web-search build  # build
-bun run --cwd plugins/plugin-web-search test   # tests
 bun plugins/plugin-web-search/scripts/test-browser-search.mjs # real Linux Chromium + Google
 ```
 

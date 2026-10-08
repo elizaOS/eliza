@@ -21,7 +21,6 @@
 #
 # Configure on elizaOS/eliza repo settings:
 #   WINDOWS_SIGN_CERT_BASE64, WINDOWS_SIGN_CERT_PASSWORD, WINDOWS_SIGN_TIMESTAMP_URL
-#   ANTHROPIC_API_KEY (used by Windows packaged smoke test as the boot AI provider)
 #   ELIZAOS_CLOUD_API_KEY / ELIZACLOUD_API_KEY / ELIZAOS_CLOUD_BASE_URL (optional cloud regression)
 #
 # Optional release-host upload secrets:
@@ -1377,11 +1376,6 @@ jobs:
             exit 1
           fi
 
-      # Advisory unlike the Linux and Windows packaged smokes, which fail the
-      # job. Keep the id so the diagnostics upload below can key off this
-      # step's own outcome: continue-on-error means a smoke failure never makes
-      # failure() true, so a condition on failure() alone can never collect the
-      # evidence for the failure it was written for.
       - name: Compress Windows artifacts before upload
         if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
         shell: pwsh
