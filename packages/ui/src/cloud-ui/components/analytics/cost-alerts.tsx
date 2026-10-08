@@ -25,10 +25,13 @@ export function CostAlerts({ costTrending }: CostAlertsProps) {
     costTrending.daysUntilBalanceZero !== null &&
     costTrending.daysUntilBalanceZero < 7
   ) {
+    const days = costTrending.daysUntilBalanceZero;
+    const runway =
+      days < 1 ? "less than 1 day" : days === 1 ? "1 day" : `${days} days`;
     alerts.push({
       type: "error",
       title: "Low Balance",
-      description: `You will run out of balance in ${costTrending.daysUntilBalanceZero} days at current burn rate. Consider adding funds.`,
+      description: `You will run out of balance in ${runway} at current burn rate. Consider adding funds.`,
     });
   }
 
