@@ -44,7 +44,7 @@ export function normalizeCharacterLanguage(input: unknown): CharacterLanguage {
 	}
 	const lower = trimmed.toLowerCase();
 	// zh-TW, zh-HK, and zh-Hant are Traditional Chinese. The only Chinese
-	// reply language is zh-CN, matching normalizeLanguage.
+	// reply language is zh-CN.
 	if (lower === "zh" || lower.startsWith("zh-")) {
 		return "zh-CN";
 	}
