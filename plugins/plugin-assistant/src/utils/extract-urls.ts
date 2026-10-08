@@ -22,11 +22,14 @@ function stripTrailingPunctuation(url: string): string {
     const char = url[i];
     if (char === "(") depth++;
     else if (char === ")") {
-      if (depth === 0) break;
+      if (depth === 0) {
+        if (/[,;]/u.test(url[i + 1] ?? "")) break;
+        continue;
+      }
       depth--;
     } else if (char === "[") brackets++;
     else if (char === "]") {
-      if (brackets === 0) break;
+      if (brackets === 0) continue;
       brackets--;
     } else if (/[.,;:!?}>*_]/u.test(char)) continue;
     end = i + 1;

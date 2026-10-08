@@ -38,6 +38,7 @@ import {
   type EventPayload,
   EventType,
   fetchWithSsrfGuard,
+  formatDiagnosticError,
   getConfiguredOwnerEntityIds,
   getLocalServerUrl,
   type IAgentRuntime,
@@ -1161,7 +1162,10 @@ const events: PluginEvents = {
             startTime: payload.startTime,
             endTime: payload.endTime,
             duration: payload.duration,
-            error: payload.error,
+            error:
+              payload.error === undefined
+                ? undefined
+                : formatDiagnosticError(payload.error),
             source: payload.source || "unknown",
           } as BaseLogBody,
         },
@@ -1193,7 +1197,10 @@ const events: PluginEvents = {
             startTime: payload.startTime,
             endTime: payload.endTime,
             duration: payload.duration,
-            error: payload.error,
+            error:
+              payload.error === undefined
+                ? undefined
+                : formatDiagnosticError(payload.error),
             source: payload.source || "unknown",
           } as BaseLogBody,
         },

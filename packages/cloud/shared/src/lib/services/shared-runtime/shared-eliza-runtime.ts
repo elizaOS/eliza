@@ -34,6 +34,7 @@ import {
   type TextStreamResult,
   type ToolChoice,
   type ToolDefinition,
+  TurnAbortedError,
   type UUID,
 } from "@elizaos/core";
 import { type AgentCapabilityTransport } from "@elizaos/core/protocol";
@@ -584,6 +585,11 @@ async function executeSharedElizaRuntimeTurn(
     return { ...result, timing: receipt.model };
   } catch (error) {
     emitTiming(input.abortSignal?.aborted ? "aborted" : "error");
+    // Core normalizes cancellation for its turn contract; this host's caller
+    // retains ownership of the original abort reason, including its identity.
+    if (error instanceof TurnAbortedError && input.abortSignal?.aborted) {
+      input.abortSignal.throwIfAborted();
+    }
     throw error;
   }
 }
