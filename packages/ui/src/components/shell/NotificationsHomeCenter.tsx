@@ -1683,6 +1683,7 @@ export function NotificationsHomeCenter({
         ? emptyGestureTargetRef.current
         : list;
     const usesEmptyBackground = gestureTarget !== list;
+    let scrollTarget = gestureTarget;
     let start: { identifier: number; x: number; y: number } | null = null;
     // clientY where the drag first reached the top; the pull is measured from
     // here so a continuous drag that scrolled the list up to its top doesn't
@@ -1706,6 +1707,16 @@ export function NotificationsHomeCenter({
         abortTouchPull();
         return;
       }
+      // List-origin listeners stay on the cards. In short layouts their
+      // natural-height list delegates scrolling to the dashboard frame.
+      const outer = list.closest<HTMLElement>("[data-home-scroll-frame]");
+      scrollTarget =
+        !usesEmptyBackground &&
+        outer &&
+        getComputedStyle(list).overflowY === "visible" &&
+        /^(auto|scroll)$/.test(getComputedStyle(outer).overflowY)
+          ? outer
+          : gestureTarget;
       start = {
         identifier: t.identifier,
         x: t.clientX,
@@ -1714,17 +1725,17 @@ export function NotificationsHomeCenter({
       // Already at the top → anchor at the touch start so the whole drag counts
       // as pull. Started scrolled down → leave null; the move handler anchors at
       // the instant scrollTop first reaches 0 (the top crossing).
-      expandAnchorY = start && gestureTarget.scrollTop <= 0 ? start.y : null;
+      expandAnchorY = start && scrollTarget.scrollTop <= 0 ? start.y : null;
 
       const maxScrollTop = Math.max(
         0,
-        gestureTarget.scrollHeight - gestureTarget.clientHeight,
+        scrollTarget.scrollHeight - scrollTarget.clientHeight,
       );
-      const atBottom = gestureTarget.scrollTop >= maxScrollTop - 1;
+      const atBottom = scrollTarget.scrollTop >= maxScrollTop - 1;
       const viewportBottom =
         window.visualViewport?.height ?? window.innerHeight;
       const visibleBottom = Math.min(
-        gestureTarget.getBoundingClientRect().bottom,
+        scrollTarget.getBoundingClientRect().bottom,
         viewportBottom,
       );
       closeFromBottomEdge = Boolean(
@@ -1769,9 +1780,9 @@ export function NotificationsHomeCenter({
         // toward the close threshold.
         const maxScrollTop = Math.max(
           0,
-          gestureTarget.scrollHeight - gestureTarget.clientHeight,
+          scrollTarget.scrollHeight - scrollTarget.clientHeight,
         );
-        const atBottom = gestureTarget.scrollTop >= maxScrollTop - 1;
+        const atBottom = scrollTarget.scrollTop >= maxScrollTop - 1;
         if (
           canCollapse &&
           (usesEmptyBackground ||
@@ -1795,13 +1806,13 @@ export function NotificationsHomeCenter({
       }
       if (
         canExpand &&
-        (expandAnchorY !== null || gestureTarget.scrollTop <= 0)
+        (expandAnchorY !== null || scrollTarget.scrollTop <= 0)
       ) {
         if (expandAnchorY === null) expandAnchorY = t.clientY;
         const pull = t.clientY - expandAnchorY;
         if (pull > PULL_SLOP_PX) {
           event?.preventDefault();
-          if (gestureTarget.scrollTop !== 0) gestureTarget.scrollTop = 0;
+          if (scrollTarget.scrollTop !== 0) scrollTarget.scrollTop = 0;
           setPullPx(dampenPull(pull));
         } else if (pullPxRef.current !== 0) {
           // Finger reversed back above the anchor — the pull is withdrawn, so

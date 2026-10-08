@@ -72,6 +72,7 @@ afterEach(() => {
   mocks.localTap.mockResolvedValue(undefined);
   mocks.push.mockResolvedValue(undefined);
   mocks.refreshPush.mockResolvedValue(undefined);
+  mocks.refreshPush.mockResolvedValue(undefined);
   registration.__resetPushRegistrationForTests();
 });
 
@@ -319,7 +320,7 @@ describe("notification boot boundaries", () => {
       expect(plugin.register).toHaveBeenCalledOnce();
       expect(registerToken).toHaveBeenCalledOnce();
       expect(plugin.requestPermissions).not.toHaveBeenCalled();
-      expect(mocks.refreshPush).not.toHaveBeenCalled();
+      expect(mocks.refreshPush).toHaveBeenCalledTimes(5);
 
       view.unmount();
       mocks.push.mockClear();
@@ -372,7 +373,7 @@ describe("notification boot boundaries", () => {
 
     act(() => baseListener?.("https://agent-b.example"));
     act(() => window.dispatchEvent(new Event("steward-token-sync")));
-    await waitFor(() => expect(mocks.refreshPush).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.refreshPush).toHaveBeenCalledTimes(3));
 
     unmount();
     expect(mocks.unsubscribeBase).toHaveBeenCalledOnce();
@@ -390,3 +391,130 @@ describe("notification boot boundaries", () => {
     expect(mocks.unsubscribeBase).not.toHaveBeenCalled();
   });
 });
+
+it.each(["post-fails-before-pair", "token-arrives-after-pair"])(
+  "reconciles paired-token sync missed behind the auth gate on remount and resume (%s)",
+  async (timing) => {
+    registration.__resetPushRegistrationForTests();
+    let authorityKey = "host-a-paired";
+    let onRegistered: ((token: PushRegistrationToken) => void) | undefined;
+    const posts: string[] = [];
+    const registry = new Set<string>();
+    const register = vi.fn(async () => {
+      if (
+        timing !== "token-arrives-after-pair" ||
+        authorityKey !== "host-b-unpaired"
+      )
+        onRegistered?.({ value: "owned-synthetic-device-token" });
+    });
+    const plugin = {
+      checkPermissions: async () => ({ receive: "granted" as const }),
+      addListener: async (eventName: string, listener: unknown) => {
+        if (eventName === "registration")
+          onRegistered = listener as (token: PushRegistrationToken) => void;
+        return { remove: async () => {} };
+      },
+      register,
+    };
+    const deps: import("../../state/notifications/push-registration").PushRegistrationDeps =
+      {
+        getPlatform: () => "android",
+        isRemotePushEnabled: () => true,
+        getPlugin: () => plugin,
+        registerToken: async () => ({ ok: true, deliveryEnabled: false }),
+        unregisterToken: async () => ({ ok: true }),
+        navigate: vi.fn(),
+        sleep: async () => {},
+        captureAuthority: () => {
+          const captured = authorityKey;
+          return {
+            key: captured,
+            registerToken: async () => {
+              posts.push(captured);
+              if (captured === "host-b-unpaired")
+                throw Object.assign(new Error("Synthetic auth required"), {
+                  status: 401,
+                });
+              registry.add(captured);
+              return { ok: true, deliveryEnabled: false };
+            },
+            unregisterToken: async () => {
+              registry.delete(captured);
+              return { ok: true };
+            },
+          };
+        },
+      };
+    await registration.initPushRegistration(deps);
+    await waitFor(() => expect(registry.has("host-a-paired")).toBe(true));
+    mocks.push.mockImplementation(() =>
+      registration.initPushRegistration(deps),
+    );
+    let transition: Promise<void> = Promise.resolve();
+    mocks.refreshPush.mockImplementation((_unused, force) => {
+      transition = registration.refreshPushRegistrationAuthority(deps, force);
+      return transition;
+    });
+    const originalShell = render(<NotificationsShellBoot />);
+    authorityKey = "host-b-unpaired";
+    act(() =>
+      mocks.onBaseUrlChange.mock.calls.at(-1)?.[0]?.("http://host-b.invalid"),
+    );
+    await act(async () => {
+      await transition;
+    });
+    if (timing === "post-fails-before-pair")
+      await waitFor(() =>
+        expect(posts.filter((p) => p === "host-b-unpaired")).toHaveLength(3),
+      );
+    expect(register).toHaveBeenCalledTimes(2);
+    originalShell.unmount();
+    const refreshCallsBeforePairing = mocks.refreshPush.mock.calls.length;
+    authorityKey = "host-b-paired";
+    act(() => window.dispatchEvent(new CustomEvent("steward-token-sync")));
+    expect(mocks.refreshPush).toHaveBeenCalledTimes(refreshCallsBeforePairing);
+    if (timing === "token-arrives-after-pair") {
+      onRegistered?.({ value: "owned-synthetic-device-token" });
+      expect(await registration.hasAndroidPushDelivery("message")).toBe(false);
+    }
+    const pairedShell = render(<NotificationsShellBoot />);
+    await act(async () => {
+      await mocks.push.mock.results.at(-1)?.value;
+    });
+    await waitFor(() => expect(registry.has("host-b-paired")).toBe(true));
+    expect(registry.has("host-a-paired")).toBe(false);
+    await act(async () => {
+      document.dispatchEvent(new Event(APP_RESUME_EVENT));
+      await mocks.push.mock.results.at(-1)?.value;
+    });
+    await waitFor(() => expect(registry.has("host-b-paired")).toBe(true));
+    expect(register).toHaveBeenCalledTimes(3);
+    expect(posts.filter((p) => p === "host-b-paired")).toHaveLength(1);
+    expect(registry.has("host-b-paired")).toBe(true);
+    // Resume must also reconcile a changed current authority if its one-off
+    // sync signal was missed, and retire the old token before keeping the new.
+    authorityKey = "host-c-paired";
+    await act(async () => {
+      document.dispatchEvent(new Event(APP_RESUME_EVENT));
+    });
+    await waitFor(() => expect(registry.has("host-c-paired")).toBe(true));
+    expect(registry.has("host-b-paired")).toBe(false);
+    expect(registry.size).toBe(1);
+    expect(register).toHaveBeenCalledTimes(4);
+    expect(posts.filter((p) => p === "host-c-paired")).toHaveLength(1);
+    await act(async () => {
+      document.dispatchEvent(new Event(APP_RESUME_EVENT));
+    });
+    expect(register).toHaveBeenCalledTimes(4);
+    // Cold startup is still idempotent server-side; it is no longer required
+    // to recover the pairing transition.
+    pairedShell.unmount();
+    registration.__resetPushRegistrationForTests();
+    await registration.initPushRegistration(deps);
+    await waitFor(() =>
+      expect(posts.filter((p) => p === "host-c-paired")).toHaveLength(2),
+    );
+    expect(register).toHaveBeenCalledTimes(5);
+    expect(registry.size).toBe(1);
+  },
+);

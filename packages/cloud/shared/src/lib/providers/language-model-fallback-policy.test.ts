@@ -16,7 +16,7 @@ mock.module("@/lib/utils/logger", () => ({
   logger: { debug: () => {}, error: () => {}, info: () => {}, warn: () => {} },
 }));
 
-const { generateText } = await import("ai");
+const { APICallError, generateText } = await import("ai");
 const { getLanguageModel, ProviderFallbackRefusedError } = await import("./language-model");
 type FallbackContext = import("./language-model").ProviderFallbackContext;
 
@@ -102,4 +102,50 @@ describe("provider fallback policy", () => {
       },
     ]);
   });
+});
+
+describe("cancelled calls through the canonical provider fallback", () => {
+  for (const operation of ["generate", "stream"] as const) {
+    test(`${operation} retains native OpenAI failure and does not consult fallback policy after abort`, async () => {
+      const controller = new AbortController();
+      const hosts: string[] = [];
+      const policies: FallbackContext[] = [];
+      globalThis.fetch = Object.assign(
+        async (url: RequestInfo | URL) => {
+          hosts.push(new URL(String(url)).hostname);
+          controller.abort(new DOMException("cancelled fixture", "AbortError"));
+          return new Response(JSON.stringify({ error: { message: "Service Unavailable" } }), {
+            status: 503,
+          });
+        },
+        { preconnect: ORIGINAL_FETCH.preconnect },
+      );
+      const model = getLanguageModel("openai/gpt-test", undefined, undefined, {
+        fallbackPolicy: (context) => {
+          policies.push(context);
+          return { allow: true };
+        },
+      });
+      const params = {
+        prompt: [
+          { role: "user" as const, content: [{ type: "text" as const, text: "same request" }] },
+        ],
+        abortSignal: controller.signal,
+      };
+      let error: unknown;
+      try {
+        await (operation === "generate" ? model.doGenerate(params) : model.doStream(params));
+      } catch (failure) {
+        error = failure;
+      }
+      expect(APICallError.isInstance(error)).toBe(true);
+      if (!APICallError.isInstance(error))
+        throw new Error("Expected the original primary SDK error");
+      expect(error.statusCode).toBe(503);
+      expect(error.url).toContain("api.openai.test");
+      expect(error).not.toBeInstanceOf(ProviderFallbackRefusedError);
+      expect(hosts).toEqual(["api.openai.test"]);
+      expect(policies).toEqual([]);
+    });
+  }
 });

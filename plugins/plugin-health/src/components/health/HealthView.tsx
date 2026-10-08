@@ -150,7 +150,10 @@ function formatLocalHour(hour: number | null): string {
   const normalized = ((hour % 24) + 24) % 24;
   const whole = Math.floor(normalized);
   const mins = Math.round((normalized - whole) * 60);
-  return `${String(whole).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+  // 22:59.5 rounds the minute to 60. The row must not print "22:60".
+  const hourOut = mins === 60 ? (whole + 1) % 24 : whole;
+  const minuteOut = mins === 60 ? 0 : mins;
+  return `${String(hourOut).padStart(2, "0")}:${String(minuteOut).padStart(2, "0")}`;
 }
 
 const REGULARITY_LABELS: Record<LifeOpsRegularityClass, string> = {

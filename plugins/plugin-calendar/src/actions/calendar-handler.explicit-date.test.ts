@@ -57,6 +57,44 @@ describe("parseExplicitLocalDate numeric branch (#21941)", () => {
     expect(parseExplicitLocalDate("review on 2/30/2026", TZ)).toBeNull();
   });
 
+  it("rejects an impossible ISO day instead of keeping it", () => {
+    expect(parseExplicitLocalDate("review on 2026-02-30", TZ)).toBeNull();
+    expect(parseExplicitLocalDate("review on 2023-02-29", TZ)).toBeNull();
+    expect(parseExplicitLocalDate("review on 2026-13-01", TZ)).toBeNull();
+    expect(parseExplicitLocalDate("meet on 2024-02-29", TZ)).toEqual({
+      year: 2024,
+      month: 2,
+      day: 29,
+    });
+    // 2028 is a leap year. The MM-DD tail must not become 29 Feb 2028.
+    expect(
+      parseExplicitLocalDate(
+        "review on 2023-02-29",
+        TZ,
+        new Date("2028-01-15T12:00:00Z"),
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects an impossible month-name day instead of keeping it", () => {
+    expect(
+      parseExplicitLocalDate("review on February 30, 2026", TZ),
+    ).toBeNull();
+    expect(
+      parseExplicitLocalDate("review on February 29, 2023", TZ),
+    ).toBeNull();
+    expect(parseExplicitLocalDate("meet on February 29, 2024", TZ)).toEqual({
+      year: 2024,
+      month: 2,
+      day: 29,
+    });
+    expect(parseExplicitLocalDate("meet on March 1st, 2026", TZ)).toEqual({
+      year: 2026,
+      month: 3,
+      day: 1,
+    });
+  });
+
   it("still parses valid slash and dashed dates", () => {
     const year = new Date().getFullYear();
     expect(parseExplicitLocalDate("dinner on 12/25", TZ)).toMatchObject({

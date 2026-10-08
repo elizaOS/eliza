@@ -2017,6 +2017,7 @@ export class SharedRuntimeConversation {
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
+        abortSignal: request.signal,
         traceId: payload.traceId,
         executionCtx,
         historyStore,
@@ -2205,6 +2206,9 @@ export class SharedRuntimeConversation {
             code: "shared_runtime_turn_failed",
             failureName: error.failureName,
             retryable: error.retryable,
+            ...(error.failureDiagnostic
+              ? { failureDiagnostic: error.failureDiagnostic }
+              : {}),
           },
           { status: error.retryable ? 503 : 500 },
         );

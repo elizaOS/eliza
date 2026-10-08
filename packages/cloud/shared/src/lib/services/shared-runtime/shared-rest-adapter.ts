@@ -585,6 +585,8 @@ export async function sharedRestMessageSend(
   trustedChannel?: SharedRuntimeChannel,
   /** Server-resolved Dedicated fallback account state (#25146); never from RPC params. */
   trustedAccountState?: PersonalSharedFallbackAccountState,
+  traceId?: string,
+  abortSignal?: AbortSignal,
 ): Promise<{
   text: string;
   agentName: string;
@@ -611,6 +613,8 @@ export async function sharedRestMessageSend(
   const response = await coordinateSharedBridge(agent, rpc, {
     executionCtx,
     namespace,
+    ...(traceId ? { traceId } : {}),
+    ...(abortSignal ? { abortSignal } : {}),
     ...(funding === "platform" ? { agentKind: "personal" as const } : {}),
     ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
     ...(trustedAccountState ? { trustedAccountState } : {}),

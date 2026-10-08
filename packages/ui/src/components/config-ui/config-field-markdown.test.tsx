@@ -99,4 +99,18 @@ describe("markdown field preview link sanitizing", () => {
     renderPreview("[click](foo://launch-os-handler)");
     expect(screen.queryByRole("link")).toBeNull();
   });
+
+  it("keeps a whitespace-flanked asterisk literal", () => {
+    renderPreview("2 * 3 * 4");
+    const preview = document.querySelector("[data-field-type=markdown]");
+    expect(preview?.querySelector("em")).toBeNull();
+    expect(preview?.textContent).toContain("2 * 3 * 4");
+  });
+
+  it("still italicizes a tight asterisk span beside a spaced star", () => {
+    renderPreview("say *this* and * not *");
+    const preview = document.querySelector("[data-field-type=markdown]");
+    expect(preview?.querySelector("em")?.textContent).toBe("this");
+    expect(preview?.textContent).toContain("* not *");
+  });
 });

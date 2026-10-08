@@ -35,6 +35,11 @@ describe("formatDuration", () => {
     expect(formatDuration(45000)).toBe("45s"); // >= 10s drops the decimal
     expect(formatDuration(150000)).toBe("2m 30s");
     expect(formatDuration(120000)).toBe("2m"); // exact minutes drop the seconds
+    // 119.6s rounds the leftover seconds to 60, so the tool row showed "1m 60s".
+    expect(formatDuration(1150)).toBe("1.1s");
+    expect(formatDuration(119_600)).toBe("2m");
+    // 59.5s is still under a minute, but toFixed(0) printed "60s".
+    expect(formatDuration(59_500)).toBe("1m");
   });
 });
 

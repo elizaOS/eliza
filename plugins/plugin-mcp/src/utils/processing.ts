@@ -1,6 +1,6 @@
 /**
- * Post-call processing for MCP results: flattens tool output (text, base64 image
- * attachments, embedded resources) and resource contents into text, then drives
+ * Post-call processing for MCP results: retains tool text, image/audio
+ * attachments and resource contents, then drives
  * the model to synthesize a user-facing reply, persists the exchange as memory,
  * and invokes the callback. Also sends the initial acknowledgement.
  */
@@ -70,30 +70,37 @@ export function processToolResult(
   let toolOutput = "";
   let hasAttachments = false;
   const attachments: Media[] = [];
-  // Distinguishes each image within one tool result so its `Media.id` is
+  // Distinguishes each media block within one tool result so its `Media.id` is
   // unique even when several attachments share identical bytes.
-  let imageIndex = 0;
+  let mediaIndex = 0;
   for (const content of result.content) {
     if (content.type === "text" && content.text) {
       toolOutput += content.text;
-    } else if (content.type === "image" && content.data && content.mimeType) {
+    } else if (content.type === "resource_link") {
+      toolOutput += `\n\nResource link:\n${JSON.stringify(content)}`;
+    } else if (
+      (content.type === "image" || content.type === "audio") &&
+      content.data &&
+      content.mimeType
+    ) {
       hasAttachments = true;
-      // Seed the deterministic UUID with values that vary per attachment (the
+      const mediaKind = content.type === "audio" ? "audio" : "image";
+      // Seed the deterministic UUID with values that vary per media attachment (the
       // base64 bytes plus a positional index) rather than the constant
       // `messageEntityId`. A constant seed gave every image in a batch — and
       // every tool call by the same user — the same `Media.id`, which the UI
       // treats as a unique handle for React keys and download filenames
       // (packages/ui/src/components/chat/MessageAttachments.tsx).
-      const attachmentSeed = `${messageEntityId}:${serverName}/${toolName}:${imageIndex}:${content.data}`;
-      imageIndex += 1;
+      const attachmentSeed = `${messageEntityId}:${serverName}/${toolName}:${mediaIndex}:${content.data}`;
+      mediaIndex += 1;
       attachments.push({
         contentType: getMimeTypeToContentType(content.mimeType),
         url: `data:${content.mimeType};base64,${content.data}`,
         id: createUniqueUuid(runtime, attachmentSeed),
-        title: "Generated image",
+        title: `Generated ${mediaKind}`,
         source: `${serverName}/${toolName}`,
-        description: "Tool-generated image",
-        text: "Generated image",
+        description: `Tool-generated ${mediaKind}`,
+        text: `Generated ${mediaKind}`,
       });
     } else if (content.type === "resource" && content.resource) {
       const resource = content.resource;

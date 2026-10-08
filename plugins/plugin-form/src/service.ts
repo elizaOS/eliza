@@ -1515,7 +1515,7 @@ export class FormService extends Service {
       }
 
       if (fieldState?.status === "filled") {
-        filledCount++;
+        if (control.required) filledCount++;
         filledFields.push({
           key: control.key,
           label: control.label,

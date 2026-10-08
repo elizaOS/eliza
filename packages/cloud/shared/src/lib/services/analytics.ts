@@ -98,7 +98,10 @@ export class AnalyticsService {
       maxRows?: number;
     },
   ) {
-    const params = `${options?.startDate?.toISOString() || "null"}-${options?.endDate?.toISOString() || "null"}-${options?.limit || 0}`;
+    // An omitted limit is the repository default (50). An explicit 0 is an
+    // empty page. `limit || 0` stored both under the same key.
+    const limitKey = options?.limit === undefined ? "default" : String(options.limit);
+    const params = `${options?.startDate?.toISOString() || "null"}-${options?.endDate?.toISOString() || "null"}-${limitKey}`;
     const cacheKey = CacheKeys.analytics.userBreakdown(organizationId, params);
 
     const data = await cacheClient.getWithSWR(cacheKey, CacheStaleTTL.analytics.breakdown, () =>
@@ -151,10 +154,14 @@ export class AnalyticsService {
       maxRows?: number;
     },
   ) {
+    // The page asks for 20 rows. The export asks for 100000. An omitted limit
+    // is the repository default (50). The key omitted `limit`, so those calls
+    // shared one page.
+    const limitKey = options?.limit === undefined ? "default" : String(options.limit);
     const cacheKey = CacheKeys.analytics.modelBreakdown(
       organizationId,
       options?.startDate?.toISOString() || "null",
-      options?.endDate?.toISOString() || "null",
+      `${options?.endDate?.toISOString() || "null"}:${limitKey}`,
     );
 
     const data = await cacheClient.getWithSWR(cacheKey, CacheStaleTTL.analytics.breakdown, () =>
@@ -405,7 +412,10 @@ export class AnalyticsService {
   }): string {
     if (!options) return "default";
     const { startDate, endDate, sortBy, sortOrder, limit, offset } = options;
-    return `${startDate?.toISOString() || "null"}-${endDate?.toISOString() || "null"}-${sortBy || "cost"}-${sortOrder || "desc"}-${limit || 0}-${offset || 0}`;
+    // An omitted limit is the repository default (100). An explicit 0 is an
+    // empty page. `limit || 0` stored both under the same key.
+    const limitKey = limit === undefined ? "default" : String(limit);
+    return `${startDate?.toISOString() || "null"}-${endDate?.toISOString() || "null"}-${sortBy || "cost"}-${sortOrder || "desc"}-${limitKey}-${offset || 0}`;
   }
 }
 

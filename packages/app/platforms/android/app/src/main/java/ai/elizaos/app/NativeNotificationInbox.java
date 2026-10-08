@@ -73,7 +73,8 @@ final class NativeNotificationInbox {
             if (copy.getString("nativeEpoch").equals(state.optString("nativeEpoch"))
                 && copy.getLong("nativeSequence") <= state.getLong("closedThroughSequence"))
                 return outcome(id, "closed", false, true);
-            if (!state.getBoolean("initialized") || !copy.getString("nativeEpoch").equals(state.optString("nativeEpoch"))) {
+            if (!state.getBoolean("initialized") || !state.getBoolean("baselineReady")
+                    || !copy.getString("nativeEpoch").equals(state.optString("nativeEpoch"))) {
                 if (buffered.length() >= MAX_BUFFERED) throw new IOException("Native notification live buffer full");
                 buffered.put(id, copy); save(state);
                 return outcome(id, "buffered", false, false);
@@ -145,6 +146,7 @@ final class NativeNotificationInbox {
                 }
             }
             boolean complete = page.getBoolean("complete");
+            boolean needsNextFence = false;
             if (complete) {
                 List<JSONObject> arrivals = new ArrayList<>();
                 for (java.util.Iterator<String> keys = buffered.keys(); keys.hasNext();) {
@@ -161,12 +163,14 @@ final class NativeNotificationInbox {
                         && match.optLong("nativeSequence", -1) == sequence;
                     // Explicit exhaustion proves that an unobserved in-fence
                     // arrival was deleted. It cannot authorize a stale OS post.
-                    // Above-fence arrivals remain new live delivery and retain
-                    // their receipts beyond this crawl's compaction boundary.
-                    if (sequence > through || present) project(state, item);
+                    // Above-fence arrivals require the next authoritative
+                    // range too: an original WS frame is not proof that a
+                    // subsequently read/deleted notification is still present.
+                    if (sequence > through) { needsNextFence = true; continue; }
+                    if (present) project(state, item);
                     buffered.remove(id); matches.remove(id); save(state);
                 }
-                state.put("initialized", true).put("baselineReady", true).put("page", JSONObject.NULL);
+                state.put("initialized", true).put("baselineReady", !needsNextFence).put("page", JSONObject.NULL);
             } else {
                 state.getJSONObject("page").put("afterSequence", page.getLong("nextSequence"));
             }
@@ -181,7 +185,7 @@ final class NativeNotificationInbox {
             }
             for (String id : compact) seen.remove(id);
             save(state);
-            return complete;
+            return complete && !needsNextFence;
         });
     }
 

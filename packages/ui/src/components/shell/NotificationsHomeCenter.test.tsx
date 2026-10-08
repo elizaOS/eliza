@@ -3958,6 +3958,37 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
   });
 
+  it.each([false, true])(
+    "short-layout list gestures use the outer scroll owner (at end: %s)",
+    (atEnd) => {
+      seedTriage();
+      render(
+        <div data-home-scroll-frame="" style={{ overflowY: "auto" }}>
+          <NotificationsHomeCenter />
+        </div>,
+      );
+      const list = screen.getByTestId("home-notification-list");
+      collapseShade();
+      expandShade();
+      list.style.overflowY = "visible";
+      Object.defineProperties(list, {
+        scrollHeight: { configurable: true, value: 900 },
+        clientHeight: { configurable: true, value: 900 },
+      });
+      const outer = list.closest<HTMLElement>("[data-home-scroll-frame]");
+      if (!outer) throw new Error("Missing dashboard scroll frame");
+      setOverflowingListGeometry(outer);
+      if (atEnd) outer.scrollTop = 600;
+      fireEvent.touchStart(list, { touches: [{ clientX: 150, clientY: 250 }] });
+      fireEvent.touchMove(list, { touches: [{ clientX: 152, clientY: 90 }] });
+      fireEvent.touchEnd(list, { touches: [] });
+      finishShadeCollapse();
+      expect(list.getAttribute("data-shade-mode")).toBe(
+        atEnd ? "rested" : "expanded",
+      );
+    },
+  );
+
   it("rebases an upward close when an overflowing touch reaches the list end", () => {
     seedTriage();
     renderRestedNotifications();

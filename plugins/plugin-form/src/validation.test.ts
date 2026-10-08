@@ -354,6 +354,14 @@ describe("boolean contract", () => {
     );
   });
 
+  it("accepts a boolean literal with surrounding spaces", () => {
+    expect(parseBoolean(" yes ")).toEqual({ known: true, value: true });
+    expect(parseBoolean(" no ")).toEqual({ known: true, value: false });
+    expect(validateField(" yes ", booleanControl).valid).toBe(true);
+    expect(formatValue(" YES ", booleanControl)).toBe("Yes");
+    expect(parseBoolean(" ")).toEqual({ known: false });
+  });
+
   it("keeps an unrecognised extraction as its original string", () => {
     expect(parseValue("maybe", booleanControl)).toBe("maybe");
     expect(parseValue("no", booleanControl)).toBe(false);
@@ -371,5 +379,40 @@ describe("boolean contract", () => {
     expect(formatValue(false, booleanControl)).toBe("No");
     // Unknown input is shown as-is rather than as a confident answer.
     expect(formatValue("maybe", booleanControl)).toBe("maybe");
+  });
+});
+
+describe("validateField currency numbers", () => {
+  const control = { key: "amount", label: "Amount", type: "number" as const };
+  it.each(["1,2", "12,34", "1,,234", "1.2,3"])(
+    "rejects malformed comma grouping %s",
+    (value) => {
+      expect(validateField(value, control).valid).toBe(false);
+      expect(parseValue(value, control)).toBe(value);
+    },
+  );
+  it("rejects a dollar sign inside the digits", () => {
+    expect(validateField("1$2", control).valid).toBe(false);
+    expect(parseValue("1$2", control)).toBe("1$2");
+  });
+
+  it("rejects a trailing dollar sign", () => {
+    expect(validateField("50$", control).valid).toBe(false);
+    expect(parseValue("50$", control)).toBe("50$");
+  });
+
+  it("still accepts a leading dollar sign and thousands commas", () => {
+    expect(validateField("$50", control).valid).toBe(true);
+    expect(parseValue("$50", control)).toBe(50);
+    expect(parseValue("$1,234", control)).toBe(1234);
+    expect(parseValue("1,234", control)).toBe(1234);
+  });
+
+  it("accepts a sign before the dollar sign", () => {
+    expect(validateField("-$50", control).valid).toBe(true);
+    expect(parseValue("-$50", control)).toBe(-50);
+    expect(parseValue("-$1,234.50", control)).toBe(-1234.5);
+    expect(parseValue("+$5", control)).toBe(5);
+    expect(parseValue("$-50", control)).toBe(-50);
   });
 });

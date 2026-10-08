@@ -34,9 +34,16 @@ export function formatDuration(ms) {
   if (!Number.isFinite(ms) || ms < 0) return "—";
   if (ms < 1000) return `${ms}ms`;
   const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  if (seconds < 60) {
+    const text = seconds.toFixed(1);
+    // 59.96s rounds to 60.0. The matrix must not print "60.0s".
+    if (Number(text) >= 60) return "1m00s";
+    return `${text}s`;
+  }
   const minutes = Math.floor(seconds / 60);
   const rest = Math.round(seconds - minutes * 60);
+  // 119.96s leaves 59.96s, which rounds to 60 and printed "1m60s".
+  if (rest >= 60) return `${minutes + 1}m00s`;
   return `${minutes}m${String(rest).padStart(2, "0")}s`;
 }
 

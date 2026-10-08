@@ -176,7 +176,12 @@ export class SandboxManager {
     const workspaceRoot = path.resolve(this.resolveWorkspaceRoot());
     const absoluteHostPath = path.resolve(hostPath);
     const relative = path.relative(workspaceRoot, absoluteHostPath);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    // A file named "..notes" is inside the workspace. Only the ".." segment leaves it.
+    if (
+      relative === ".." ||
+      relative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relative)
+    ) {
       return null;
     }
 

@@ -62,7 +62,11 @@ export function describeCron(expression: string): string | null {
   // Every-N-minutes form
   const everyN = minPart.match(/^\*\/(\d+)$/);
   if (everyN && hourPart === "*" && domPart === "*" && dowPart === "*") {
-    return `Every ${everyN[1]} minutes`;
+    // The minute step restarts every hour, so `*/n` is an even n-minute
+    // cadence only when n divides 60 (`*/45` fires at :00 and :45).
+    const minutes = Number(everyN[1]);
+    if (minutes <= 0 || 60 % minutes !== 0) return null;
+    return minutes === 1 ? "Every minute" : `Every ${minutes} minutes`;
   }
 
   // Clock-aligned hour intervals divide the day evenly. Other step sizes

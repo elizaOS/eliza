@@ -374,3 +374,122 @@ describe("call_tool with an explicit selection", () => {
     expect(useModel).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("audio tool results through SDK stdio and SQLite", () => {
+  const runtimes: ReturnType<typeof createSQLiteTestRuntime>[] = [];
+  afterEach(async () => {
+    for (const runtime of runtimes.splice(0)) await runtime.stop();
+  });
+
+  it.each([
+    ["only", 2],
+    ["mixed", 3],
+    ["error", 3],
+    ["image", 1],
+    ["text", 0],
+    ["resource", 0],
+  ] as const)("delivers the %s result without losing media", async (mode, expectedCount) => {
+    const prompts: string[] = [];
+    const callbacks: Parameters<HandlerCallback>[0][] = [];
+    const fixture = fileURLToPath(new URL("./fixtures/audio-result-server.mjs", import.meta.url));
+    const runtime = createSQLiteTestRuntime({
+      character: {
+        name: "mcp-audio-delivery",
+        bio: "Receive complete tool media",
+        settings: {
+          mcp: { servers: { audio: { type: "stdio", command: "node", args: [fixture, mode] } } },
+        },
+      },
+      plugins: [
+        mcpPlugin,
+        {
+          name: "audio-synthesis-capture",
+          description: "Capture synthesis input; no live inference in this regression",
+          models: {
+            [ModelType.TEXT_SMALL]: async (_runtime, input) => {
+              prompts.push(input.prompt);
+              return "Captured audio delivery";
+            },
+          },
+        },
+      ],
+      logLevel: "fatal",
+    });
+    runtimes.push(runtime);
+    runtime.registerProvider(recentMessagesProvider);
+    await runtime.initialize();
+    const service = (await runtime.getServiceLoadPromise("mcp")) as McpService;
+    expect(service.getServers()[0].status).toBe("connected");
+    const original = await service.callTool("audio", "sample", {});
+    const roomId = randomUUID();
+    const entityId = randomUUID();
+    const worldId = randomUUID();
+    await runtime.ensureConnection({
+      roomId,
+      entityId,
+      worldId,
+      source: "mcp-test",
+      type: ChannelType.DM,
+    });
+    const message: Memory = {
+      id: randomUUID(),
+      roomId,
+      entityId,
+      worldId,
+      agentId: runtime.agentId,
+      content: { text: "Return the sample media", source: "mcp-test" },
+    };
+    await runtime.createMemory(message, "messages");
+    const result = await mcpAction.handler(
+      runtime,
+      message,
+      undefined,
+      { op: "call_tool", serverName: "audio", toolName: "sample", arguments: {} },
+      async (content) => {
+        callbacks.push(content);
+        return [];
+      }
+    );
+    expect(result.success).toBe(mode !== "error");
+    expect(result.data?.isError).toBe(mode === "error");
+    expect(result.data?.attachmentCount).toBe(expectedCount);
+    const messages = await runtime.getMemories({ tableName: "messages", roomId, count: 10 });
+    const reply = messages.find((memory) => memory.content.actions?.includes("CALL_MCP_TOOL"));
+    const attachments = reply?.content.attachments ?? [];
+    expect(attachments).toHaveLength(expectedCount);
+    expect(new Set(attachments.map((media) => media.id)).size).toBe(expectedCount);
+    expect(callbacks.at(-1)?.attachments ?? []).toEqual(attachments);
+    expect(reply?.content.text).toBe("Captured audio delivery");
+    const mediaBlocks = original.content.filter(
+      (content) => content.type === "image" || content.type === "audio"
+    );
+    expect(attachments.map((media) => media.url)).toEqual(
+      mediaBlocks.map((content) => `data:${content.mimeType};base64,${content.data}`)
+    );
+    for (const media of attachments.filter((item) => item.contentType === "audio")) {
+      expect(media.title).toBe("Generated audio");
+      expect(media.source).toBe("audio/sample");
+      const bytes = Buffer.from(media.url.split(",")[1], "base64");
+      expect(bytes.toString("ascii", 0, 4)).toBe("RIFF");
+      expect(bytes.toString("ascii", 8, 12)).toBe("WAVE");
+      expect(bytes.length).toBe(1644);
+      expect(bytes.readUInt32LE(40)).toBe(1600);
+    }
+    expect(prompts).toHaveLength(1);
+    if (expectedCount > 0) {
+      expect(prompts[0]).toContain("media that will be shared with the user");
+    } else expect(prompts[0]).not.toContain("media that will be shared with the user");
+    if (mode === "error") {
+      expect(result.error).toMatchObject({ code: "TOOL_EXECUTION_ERROR" });
+      expect(prompts[0]).toContain("The tool reported an ERROR");
+    }
+    if (mode === "resource") {
+      expect(result.data?.output).toContain(JSON.stringify(original.content[0]));
+      expect(prompts[0]).toContain("file:///private/report");
+      expect(prompts[0]).toContain("Complete resource metadata");
+    }
+    if (mode === "mixed" || mode === "error" || mode === "text") {
+      expect(result.data?.output).toBe(mode === "text" ? "Text control" : "Captured tone");
+    }
+  });
+});

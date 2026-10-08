@@ -34,6 +34,7 @@ import {
   type TextStreamResult,
   type ToolChoice,
   type ToolDefinition,
+  TurnAbortedError,
   type UUID,
 } from "@elizaos/core";
 import { type AgentCapabilityTransport } from "@elizaos/core/protocol";
@@ -81,10 +82,12 @@ import {
   SHARED_RUNTIME_CAPABILITIES_PROVIDER,
 } from "./shared-runtime-capabilities";
 import {
-  classifySharedRuntimeTurnFailure,
   projectQualifiedSharedProviderFailure,
+  recordSharedRuntimeFailureDiagnostic,
   type SharedModelCompletionDiagnostic,
+  type SharedModelFailureDiagnostic,
   sharedModelCompletionDiagnostic,
+  sharedModelFailureDiagnostic,
 } from "./shared-runtime-errors";
 import {
   insertSharedRuntimeGroundingMessages,
@@ -494,6 +497,7 @@ function logSharedProviderSpans(
   input: SharedElizaRuntimeTurnInput,
   summary: InferenceTurnSummary | undefined,
   responded: boolean,
+  lastModelCompletion?: SharedModelCompletionDiagnostic | null,
 ): void {
   const providerSpans = (summary?.spans ?? [])
     .filter((span) => span.name === "composeState" || span.name.startsWith("provider:"))
@@ -505,6 +509,7 @@ function logSharedProviderSpans(
     source: input.execution.channel.source,
     responded,
     providerSpans,
+    ...(lastModelCompletion ? { lastModelCompletion } : {}),
     providerBudgetTargetMs: 300,
     providerBudgetCeilingMs: 500,
   });
@@ -580,6 +585,11 @@ async function executeSharedElizaRuntimeTurn(
     return { ...result, timing: receipt.model };
   } catch (error) {
     emitTiming(input.abortSignal?.aborted ? "aborted" : "error");
+    // Core normalizes cancellation for its turn contract; this host's caller
+    // retains ownership of the original abort reason, including its identity.
+    if (error instanceof TurnAbortedError && input.abortSignal?.aborted) {
+      input.abortSignal.throwIfAborted();
+    }
     throw error;
   }
 }
@@ -607,6 +617,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   let providerDispatched = false;
   let modelInvocationStarted = false;
   let lastModelCompletion: SharedModelCompletionDiagnostic | null = null;
+  let firstModelFailure: SharedModelFailureDiagnostic | undefined;
   const inferenceTelemetry: { summary?: InferenceTurnSummary } = {};
   let usage: SharedAgentTurnUsage | undefined;
   const groundingObservedAt = Date.now();
@@ -627,44 +638,34 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     const modelCall = timing.prepareModelCall();
     let failureReported = false;
     const reportModelFailure = (error: unknown, operation: "resolve" | "generate" | "stream") => {
+      // Caller cancellation is an aborted turn, not a failed provider call.
+      if (
+        input.abortSignal?.aborted &&
+        (error === input.abortSignal.reason ||
+          (params.signal?.aborted && error === params.signal.reason) ||
+          (error instanceof Error && error.name === "AbortError"))
+      ) {
+        return;
+      }
       if (failureReported) return;
       failureReported = true;
       // error-policy:J7 content-free diagnostics must not replace the original
       // provider failure. Neither messages, stacks, headers, request values nor
       // response bodies cross this logging boundary.
       try {
-        const name = error instanceof Error ? error.name : "UnknownError";
-        const knownNames = new Set([
-          "Error",
-          "TypeError",
-          "ElizaError",
-          "ProviderConfigurationError",
-          "AbortError",
-          "TimeoutError",
-          "AI_APICallError",
-          "AI_RetryError",
-          "AI_TypeValidationError",
-          "AI_NoSuchToolError",
-          "AI_InvalidToolInputError",
-          "AI_InvalidPromptError",
-          "AI_InvalidResponseDataError",
-          "AI_NoOutputGeneratedError",
-          "AI_UnsupportedFunctionalityError",
-          "AI_UnsupportedModelVersionError",
-        ]);
-        const knownCodes = new Set([
-          "MODEL_OUTPUT_INCOMPLETE",
-          "PROVIDER_FALLBACK_REFUSED",
-          "OPENROUTER_FALLBACK_UNAVAILABLE",
-        ]);
-        const diagnosticCode =
-          error instanceof ElizaError && knownCodes.has(error.code) ? error.code : undefined;
+        const diagnostic = sharedModelFailureDiagnostic(error, operation);
+        firstModelFailure ??= diagnostic;
+        recordSharedRuntimeFailureDiagnostic(error, {
+          modelInvocationStarted,
+          failureKind: "unknown",
+          terminalFailurePresent: false,
+          terminalMode: "unknown",
+          lastModelCompletion,
+          modelFailure: firstModelFailure,
+        });
         logger.error("[shared-eliza-runtime] model call failed", {
           traceId: input.traceId ?? null,
-          operation,
-          errorName: knownNames.has(name) ? name : "UnknownError",
-          ...(diagnosticCode ? { diagnosticCode } : {}),
-          ...classifySharedRuntimeTurnFailure(error),
+          ...diagnostic,
         });
       } catch {
         // The same original error remains the runtime outcome even if a
@@ -673,7 +674,13 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     };
     let model: ReturnType<typeof getInteractiveCerebrasLanguageModel>;
     try {
-      model = getInteractiveCerebrasLanguageModel(input.model, modelCall.select);
+      params.signal?.throwIfAborted();
+      model = getInteractiveCerebrasLanguageModel(
+        input.model,
+        modelCall.select,
+        undefined,
+        params.providerOptions,
+      );
     } catch (error) {
       // error-policy:J2 preserve the original model-resolution failure.
       reportModelFailure(error, "resolve");
@@ -715,6 +722,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           throw providerStreamFailure ? providerStreamFailure.error : error;
         });
       try {
+        params.signal?.throwIfAborted();
         modelInvocationStarted = true;
         modelCall.begin();
         result = streamText({
@@ -751,13 +759,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       const totalUsage = preserveProviderFailure(Promise.resolve(result.totalUsage));
       // error-policy:J5 runtime observes these same rejected SDK promises; this
       // completion-shape observer neither changes nor logs the failure payload.
-      void Promise.all([rawText, toolCalls, rawFinishReason])
-        .then(([text, calls, reason]) => {
+      void Promise.all([rawText, toolCalls, rawFinishReason, totalUsage.catch(() => undefined)])
+        .then(([text, calls, reason, sdkUsage]) => {
           lastModelCompletion = sharedModelCompletionDiagnostic(
             "stream",
             text,
             calls.length,
             reason,
+            sdkUsage,
           );
         })
         .catch(() => {});
@@ -828,6 +837,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     }
     let result: Awaited<ReturnType<typeof generateText>>;
     try {
+      params.signal?.throwIfAborted();
       modelInvocationStarted = true;
       modelCall.begin();
       result = await generateText({ ...generation });
@@ -843,6 +853,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       result.text,
       result.toolCalls.length,
       result.finishReason,
+      result.usage,
     );
     try {
       assertModelOutputComplete({
@@ -1193,19 +1204,39 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         // error-policy:J7 even failed content-free diagnostics preserve the
         // original terminal failure and never permit a successful commit.
       }
-      throw new ElizaError("Eliza Shared runtime message processing failed.", {
+      const terminalError = new ElizaError("Eliza Shared runtime message processing failed.", {
         code: "SHARED_RUNTIME_MESSAGE_FAILED",
         context: { failureKind: failure.kind, transient: failure.transient },
         cause: failure,
         severity: failure.transient ? "ephemeral" : "fatal",
       });
+      recordSharedRuntimeFailureDiagnostic(terminalError, () => {
+        const didRespond = result.didRespond;
+        return {
+          modelInvocationStarted,
+          didRespond: typeof didRespond === "boolean" ? didRespond : null,
+          responseErrorPresent: Boolean(result.responseContent?.error),
+          failureKind: failure.kind,
+          terminalFailurePresent: Boolean(terminalFailure),
+          terminalMode:
+            result.mode === "simple" ||
+            result.mode === "actions" ||
+            result.mode === "blocked" ||
+            result.mode === "none"
+              ? result.mode
+              : "unknown",
+          lastModelCompletion,
+          ...(firstModelFailure ? { modelFailure: firstModelFailure } : {}),
+        };
+      });
+      throw terminalError;
     }
     const reply = delivered.at(-1)?.trim() || result?.responseContent?.text?.trim() || "";
     // A verified action may own the response and deliver it through the
     // callback with `agentVoiced`; core then correctly reports no second model
     // response. The callback receipt is still an actual user-visible delivery.
     if (!result?.didRespond && delivered.length === 0) {
-      logSharedProviderSpans(input, inferenceTelemetry.summary, false);
+      logSharedProviderSpans(input, inferenceTelemetry.summary, false, lastModelCompletion);
       const preflightActionResults = input.preflightActionResults ?? [];
       return {
         reply: "",
@@ -1225,7 +1256,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     if (!reply) {
       throw new Error("Eliza Shared runtime completed without a user-visible reply");
     }
-    logSharedProviderSpans(input, inferenceTelemetry.summary, true);
+    logSharedProviderSpans(input, inferenceTelemetry.summary, true, lastModelCompletion);
     const actionResults = [
       ...(input.preflightActionResults ?? []),
       ...(result.actionResults ?? []),

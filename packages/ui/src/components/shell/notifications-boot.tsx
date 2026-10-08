@@ -84,14 +84,19 @@ export function NotificationsShellBoot(): null {
     // Native-only, gated on granted permission, guarded against double-register.
     // The token POST is what makes the server's APNs/FCM stack a live pipeline.
     const registerPush = () => {
-      void initPushRegistration().catch((error: unknown) => {
-        // error-policy:J1 push registration is an OS/provider transport boundary;
-        // a missing distributor Firebase configuration must not crash the shell.
-        logger.error(
-          { src: "push-registration", error },
-          "[push-registration] native registration unavailable",
-        );
-      });
+      // Pairing can publish token-sync while this shell is behind its auth
+      // gate. Reconcile missed authority changes before reusing the startup
+      // guard; the initializer still rechecks a later permission grant.
+      void refreshPushRegistrationAuthority()
+        .then(() => initPushRegistration())
+        .catch((error: unknown) => {
+          // error-policy:J1 push registration is an OS/provider transport boundary;
+          // a missing distributor Firebase configuration must not crash the shell.
+          logger.error(
+            { src: "push-registration", error },
+            "[push-registration] native registration unavailable",
+          );
+        });
     };
     registerPush();
     // Returning from OS settings may grant permission after the permission

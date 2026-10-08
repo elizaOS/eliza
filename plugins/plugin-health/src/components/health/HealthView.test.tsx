@@ -201,6 +201,21 @@ describe("HealthView (fetch-driven)", () => {
     expect(screen.getByText("Window summary")).toBeTruthy();
   });
 
+  it("carries a rounded 60 minute bedtime into the next hour", async () => {
+    // 22:59.5 rounds the minute to 60, so the row showed "22:60".
+    const fetchers: SleepFetchers = {
+      fetchHistory: vi.fn(async () => populatedHistory()),
+      fetchRegularity: vi.fn(async () => REGULARITY),
+      fetchBaseline: vi.fn(async () => ({
+        ...BASELINE,
+        medianBedtimeLocalHour: 22 + 59.5 / 60,
+      })),
+    };
+    render(<HealthView fetchers={fetchers} />);
+    expect(await screen.findByText("23:00")).toBeTruthy();
+    expect(screen.queryByText("22:60")).toBeNull();
+  });
+
   it("shows a quiet proactive line only when regularity reads as off-rhythm", async () => {
     const irregular: LifeOpsSleepRegularityResponse = {
       ...REGULARITY,

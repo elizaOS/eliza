@@ -28,6 +28,12 @@ describe("url-ingest", () => {
     );
     expect(isYouTubeUrl("https://youtu.be/dQw4w9WgXcQ")).toBe(true);
     expect(isYouTubeUrl("https://example.com/video")).toBe(false);
+    expect(
+      isYouTubeUrl("https://youtube.com.example.com/watch?v=dQw4w9WgXcQ"),
+    ).toBe(false);
+    expect(
+      isYouTubeUrl("https://youtube.com@other.example/watch?v=dQw4w9WgXcQ"),
+    ).toBe(false);
   });
 
   it("rejects invalid URL formats and unsafe local protocols", async () => {
@@ -289,4 +295,47 @@ describe("url-ingest", () => {
       fetchDocumentFromUrl("https://youtu.be/short"),
     ).rejects.toThrow("Invalid YouTube URL: could not extract video ID");
   });
+
+  it.each([
+    "https://www.youtube.com/shorts/dQw4w9WgXcQ",
+    "https://www.youtube.com/live/dQw4w9WgXcQ",
+    "https://www.youtube.com/embed/dQw4w9WgXcQ",
+    "https://www.youtube.com/v/dQw4w9WgXcQ",
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQ&feature=shared",
+    "https://youtu.be/dQw4w9WgXcQ?feature=shared",
+  ])("reads %s as the complete video id", async (url) => {
+    let requested = "";
+    __setDocumentUrlFetchImplForTests(async (input) => {
+      requested = input.url.toString();
+      return new Response("<html></html>", {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    await expect(fetchDocumentFromUrl(url)).rejects.toThrow(
+      "Could not fetch YouTube transcript",
+    );
+    expect(requested).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+  });
+
+  it.each([
+    "https://www.youtube.com/shorts/dQw4w9WgXcQx",
+    "https://www.youtube.com/live/dQw4w9WgXcQ/another",
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQx",
+    "https://youtu.be/dQw4w9WgXcQx",
+    "https://www.youtube.com/redirect?next=/live/dQw4w9WgXcQ",
+  ])(
+    "rejects a malformed or embedded video id in %s before fetching",
+    async (url) => {
+      let requested = false;
+      __setDocumentUrlFetchImplForTests(async () => {
+        requested = true;
+        return new Response("unexpected");
+      });
+      await expect(fetchDocumentFromUrl(url)).rejects.toThrow(
+        "Invalid YouTube URL: could not extract video ID",
+      );
+      expect(requested).toBe(false);
+    },
+  );
 });

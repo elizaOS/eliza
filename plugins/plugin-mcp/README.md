@@ -9,10 +9,14 @@ health checks use protocol `ping` with the configured timeout, not `tools/list`.
 
 Tool results retain both `content` and `structuredContent`. The JSON result is
 included in the response model's input, action output, and stored tool memory.
-Text, image attachments, and the tool's error status remain available.
+Text, image and audio attachments, and the tool's error status remain available.
+Tool-generated audio is shared in the reply and saved with that reply.
 If a text block parses as the same JSON data, it is used without adding a
 second copy. Its whitespace, formatting, and key order are retained.
 JSON embedded in prose remains ordinary text.
+
+Tool resource links retain their URI and complete metadata in the result text.
+Eliza does not read the linked resource until the agent requests a resource read.
 
 Successful resource reads return the complete processed content in
 `ActionResult.data.output`, so later planner steps can use the resource data.
