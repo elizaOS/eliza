@@ -74,13 +74,30 @@ const personalConversationPrewarmedUntil = new Map<string, number>();
 interface PrewarmLeg {
   leg: string;
   run: Promise<unknown>;
+  startedAt?: number;
+  durationMs?: number;
+}
+
+/** Elapsed helper spans, including failures; an omitted conversation span was memoized. */
+export interface PersonalSharedPrewarmTiming {
+  rateLimitMs?: number;
+  conversationMs?: number;
 }
 
 async function settlePrewarmLegs(
   agent: Pick<SharedRuntimeAgent, "id" | "organization_id">,
   legs: PrewarmLeg[],
 ): Promise<void> {
-  const results = await Promise.allSettled(legs.map(({ run }) => run));
+  const results = await Promise.allSettled(
+    legs.map((leg) => {
+      const startedAt = leg.startedAt;
+      return startedAt === undefined
+        ? leg.run
+        : leg.run.finally(() => {
+            leg.durationMs = Math.max(0, performance.now() - startedAt);
+          });
+    }),
+  );
   results.forEach((result, index) => {
     if (result.status === "rejected") {
       logger.warn("[shared-runtime prewarm] leg failed; first turn falls back to warming 503s", {
@@ -188,17 +205,23 @@ export async function prewarmSharedAgentTurnCaches(
 export async function prewarmPersonalSharedAgentTurnCaches(
   agent: Pick<SharedRuntimeAgent, "id" | "organization_id">,
   namespace: RuntimeDurableObjectNamespace,
-  options: { warmConversation?: boolean; conversationId?: string } = {},
+  options: {
+    warmConversation?: boolean;
+    conversationId?: string;
+    timing?: PersonalSharedPrewarmTiming;
+  } = {},
 ): Promise<void> {
   const legs: PrewarmLeg[] = [
     {
       leg: "rate-limit-gate",
+      startedAt: performance.now(),
       run: warmInferenceRateLimitGate(agent.organization_id),
     },
   ];
   if (options.warmConversation !== false) {
     legs.push({
       leg: "conversation-object",
+      startedAt: performance.now(),
       run: coordinateSharedConversationPrewarm(agent.id, options.conversationId ?? agent.id, {
         namespace,
         startEmpty: true,
@@ -213,6 +236,7 @@ export async function prewarmPersonalSharedAgentTurnCaches(
       // authorization decision. Actual turns still read ordered history.
       legs.push({
         leg: "existing-conversation-runtime",
+        startedAt: performance.now(),
         run: (async () => {
           await coordinateSharedConversationPrewarm(agent.id, conversationId, {
             namespace,
@@ -233,4 +257,8 @@ export async function prewarmPersonalSharedAgentTurnCaches(
     }
   }
   await settlePrewarmLegs(agent, legs);
+  if (options.timing) {
+    options.timing.rateLimitMs = legs[0].durationMs;
+    options.timing.conversationMs = legs[1]?.durationMs;
+  }
 }

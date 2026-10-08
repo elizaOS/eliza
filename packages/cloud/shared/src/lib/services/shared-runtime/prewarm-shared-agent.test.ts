@@ -4,7 +4,7 @@
  * External cache, character, and Durable Object boundaries are deterministic mocks.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import * as realLoggerNs from "../../utils/logger";
@@ -331,5 +331,85 @@ describe("established Personal Shared cold prewarm", () => {
       conversationId: "room-two",
     });
     expect(coordinateSharedConversationPrewarm).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Personal Shared prewarm timing", () => {
+  test("reports parallel legs independently rather than timing the faster leg until the slower settles", async () => {
+    let now = 100;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    let finishRate!: () => void;
+    let finishRoom!: () => void;
+    warmInferenceRateLimitGate.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRate = resolve;
+        }),
+    );
+    coordinateSharedConversationPrewarm.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRoom = resolve;
+        }),
+    );
+    const timing: { rateLimitMs?: number; conversationMs?: number } = {};
+    try {
+      const pending = prewarmPersonalSharedAgentTurnCaches(
+        { id: "personal:timed-parallel", organization_id: "org-timed" },
+        {} as never,
+        { warmConversation: false, timing },
+      );
+      expect(warmInferenceRateLimitGate).toHaveBeenCalledTimes(1);
+      expect(coordinateSharedConversationPrewarm).toHaveBeenCalledTimes(1);
+      now = 120;
+      finishRate();
+      await Promise.resolve();
+      await Promise.resolve();
+      now = 400;
+      finishRoom();
+      await pending;
+      expect(timing).toEqual({ rateLimitMs: 20, conversationMs: 300 });
+      expect(coordinateSharedConversationPrewarm).toHaveBeenCalledWith(
+        "personal:timed-parallel",
+        "personal:timed-parallel",
+        { namespace: {}, startEmpty: false },
+      );
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("reports failed warmup duration and omits a memoized conversation leg without another RPC", async () => {
+    let now = 10;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    const a = { id: "personal:timed-failure", organization_id: "org-timed-failure" };
+    coordinateSharedConversationPrewarm.mockImplementationOnce(async () => {
+      now = 45;
+      throw new Error("room unavailable");
+    });
+    const failed: { rateLimitMs?: number; conversationMs?: number } = {};
+    try {
+      await expect(
+        prewarmPersonalSharedAgentTurnCaches(a, {} as never, {
+          warmConversation: false,
+          timing: failed,
+        }),
+      ).resolves.toBeUndefined();
+      expect(failed.conversationMs).toBe(35);
+      expect(loggerWarn).toHaveBeenCalledTimes(1);
+      await prewarmPersonalSharedAgentTurnCaches(a, {} as never, { warmConversation: false });
+      const memoized: { rateLimitMs?: number; conversationMs?: number } = {};
+      await prewarmPersonalSharedAgentTurnCaches(a, {} as never, {
+        warmConversation: false,
+        timing: memoized,
+      });
+      expect(coordinateSharedConversationPrewarm).toHaveBeenCalledTimes(2);
+      expect(memoized.conversationMs).toBeUndefined();
+      expect(memoized.rateLimitMs).toBe(0);
+      expect(warmInferenceAdmissionGate).not.toHaveBeenCalled();
+      expect(warmInferenceAdmissionSnapshot).not.toHaveBeenCalled();
+    } finally {
+      clock.mockRestore();
+    }
   });
 });

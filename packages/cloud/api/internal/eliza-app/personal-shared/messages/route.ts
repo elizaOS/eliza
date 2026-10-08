@@ -42,7 +42,10 @@ import {
   redactGroupParticipantHandles,
 } from "@/lib/services/shared-runtime/group-participant-labels";
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
-import { prewarmPersonalSharedAgentTurnCaches } from "@/lib/services/shared-runtime/prewarm-shared-agent";
+import {
+  type PersonalSharedPrewarmTiming,
+  prewarmPersonalSharedAgentTurnCaches,
+} from "@/lib/services/shared-runtime/prewarm-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestMessageSend,
@@ -1551,6 +1554,7 @@ app.post("/", async (c) => {
     const accountMs = performance.now() - accountStartedAt;
     const accountTiming = `account;dur=${accountMs.toFixed(1)};desc="${accountResolution}"`;
     c.header("Server-Timing", accountTiming);
+    const prewarmLegTiming: PersonalSharedPrewarmTiming = {};
     const personalPrewarm = dedicated
       ? null
       : (() => {
@@ -1559,6 +1563,7 @@ app.post("/", async (c) => {
             agent,
             worker.namespace,
             {
+              timing: prewarmLegTiming,
               warmConversation:
                 isNewPersonalAccount || Boolean(groupConversationId),
               ...(groupConversationId
@@ -1889,6 +1894,19 @@ app.post("/", async (c) => {
       throw new Error("Shared turn reached inference with a Dedicated target");
     }
     const prewarmMs = await personalPrewarm;
+    const prewarmTiming = [
+      `prewarm;dur=${prewarmMs.toFixed(1)}`,
+      prewarmLegTiming.rateLimitMs === undefined
+        ? ""
+        : `prewarm_rate;dur=${prewarmLegTiming.rateLimitMs.toFixed(1)}`,
+      prewarmLegTiming.conversationMs === undefined
+        ? ""
+        : `prewarm_conversation;dur=${prewarmLegTiming.conversationMs.toFixed(1)}`,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    // Keep completed warmup timings even if the subsequent turn fails.
+    c.header("Server-Timing", `${accountTiming}, ${prewarmTiming}`);
     const sharedStartedAt = performance.now();
     const trustedDelivery = isGroupMessage(parsed.data)
       ? undefined
@@ -1949,7 +1967,7 @@ app.post("/", async (c) => {
       "Server-Timing",
       [
         accountTiming,
-        `prewarm;dur=${prewarmMs.toFixed(1)}`,
+        prewarmTiming,
         `shared;dur=${(performance.now() - sharedStartedAt).toFixed(1)}`,
         providerTiming,
       ]

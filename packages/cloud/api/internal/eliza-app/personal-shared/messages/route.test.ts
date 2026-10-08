@@ -22,7 +22,13 @@ const resolvePersonalDelivery = mock(async () => ({
   isNew: personalDeliveryIsNew,
   resolution: "single-query-repeat" as const,
 }));
-const prewarmPersonalSharedAgentTurnCaches = mock(async () => undefined);
+const prewarmPersonalSharedAgentTurnCaches = mock(
+  async (
+    _agent?: unknown,
+    _namespace?: unknown,
+    _options?: { timing?: { rateLimitMs?: number; conversationMs?: number } },
+  ) => undefined,
+);
 const runOnboardingChat = mock(async (_input: OnboardingChatInput) => ({
   loginUrl:
     "https://cloud-staging.eliza.app/get-started?onboardingSession=claim-token",
@@ -800,7 +806,7 @@ describe("personal Shared messaging deliveries", () => {
         user_id: "00000000-0000-4000-8000-000000000002",
       }),
       namespace,
-      { warmConversation: true },
+      { warmConversation: true, timing: expect.any(Object) },
     );
     expect(order).toEqual(["prewarm", "turn"]);
     expect(runtimeWaitUntil).toHaveBeenCalledTimes(1);
@@ -818,7 +824,7 @@ describe("personal Shared messaging deliveries", () => {
         organization_id: "00000000-0000-4000-8000-000000000001",
       }),
       namespace,
-      { warmConversation: false },
+      { warmConversation: false, timing: expect.any(Object) },
     );
     expect(runtimeWaitUntil).toHaveBeenCalledTimes(1);
     expect(response.headers.get("server-timing")).toMatch(
@@ -1427,6 +1433,7 @@ describe("personal Shared messaging deliveries", () => {
       namespace,
       {
         warmConversation: true,
+        timing: expect.any(Object),
         conversationId: canonicalGroupBinding.conversation_id,
       },
     );
@@ -1802,7 +1809,7 @@ describe("personal Shared messaging deliveries", () => {
         user_id: "00000000-0000-4000-8000-000000000002",
       }),
       namespace,
-      { warmConversation: true },
+      { warmConversation: true, timing: expect.any(Object) },
     );
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1986,7 +1993,7 @@ describe("personal Shared messaging deliveries", () => {
         user_id: "00000000-0000-4000-8000-000000000002",
       }),
       namespace,
-      { warmConversation: true },
+      { warmConversation: true, timing: expect.any(Object) },
     );
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({ id: body.data.identity.id }),
@@ -2360,6 +2367,39 @@ describe("personal Shared messaging deliveries", () => {
   // client as a `shared_model` Server-Timing segment. Every other test here
   // returns no `timing`, so that segment was never produced — this drives the
   // real serializer with a real receipt.
+  test("emits separate prewarm spans and preserves them on a subsequent Shared failure", async () => {
+    prewarmPersonalSharedAgentTurnCaches.mockImplementationOnce(
+      async (_agent, _namespace, options) => {
+        if (!options?.timing) throw new Error("No timing output supplied");
+        options.timing.rateLimitMs = 21;
+        options.timing.conversationMs = 2700;
+      },
+    );
+    sharedRestMessageSend.mockRejectedValueOnce(
+      new TypeError("private failure"),
+    );
+    const response = await request(valid);
+    expect(response.status).toBe(500);
+    const timing = response.headers.get("server-timing") ?? "";
+    expect(timing).toContain("prewarm_rate;dur=21.0");
+    expect(timing).toContain("prewarm_conversation;dur=2700.0");
+    expect(timing).not.toContain("private failure");
+  });
+
+  test("reports a memoized conversation without inventing a zero-duration conversation RPC", async () => {
+    prewarmPersonalSharedAgentTurnCaches.mockImplementationOnce(
+      async (_agent, _namespace, options) => {
+        if (!options?.timing) throw new Error("No timing output supplied");
+        options.timing.rateLimitMs = 0;
+      },
+    );
+    const response = await request(valid);
+    expect(response.status).toBe(200);
+    const timing = response.headers.get("server-timing") ?? "";
+    expect(timing).toContain("prewarm_rate;dur=0.0");
+    expect(timing).not.toContain("prewarm_conversation;");
+  });
+
   test("emits the shared_model segment when the turn carries a timing receipt", async () => {
     sharedRestMessageSend.mockResolvedValueOnce({
       text: "hello from Eliza",
