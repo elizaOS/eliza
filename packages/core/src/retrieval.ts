@@ -1949,13 +1949,13 @@ function usesWebsearchSyntax(value: string): boolean {
 	);
 }
 
-type WebsearchClause = { text: string; negated: boolean };
+type WebsearchClause = { terms: string[]; negated: boolean };
 
 /**
  * Reads a folded query like `websearch_to_tsquery`: quoted text is one phrase,
  * a leading `-` negates the next term or phrase, a standalone `or` starts an
- * alternative, and everything else is ANDed. Clause text is the clause's words
- * joined by single spaces, so a phrase matches only adjacent words.
+ * alternative, and everything else is ANDed. Each clause's words are
+ * kept as tokens, so a phrase matches only adjacent whole words.
  */
 function parseWebsearchQuery(foldedQuery: string): WebsearchClause[][] {
 	const groups: WebsearchClause[][] = [[]];
@@ -1965,9 +1965,9 @@ function parseWebsearchQuery(foldedQuery: string): WebsearchClause[][] {
 			groups.push([]);
 			continue;
 		}
-		const text = messageSearchTokens(quoted ?? bare ?? "").join(" ");
-		if (text.length > 0) {
-			groups[groups.length - 1].push({ text, negated: minus === "-" });
+		const terms = messageSearchTokens(quoted ?? bare ?? "");
+		if (terms.length > 0) {
+			groups[groups.length - 1].push({ terms, negated: minus === "-" });
 		}
 	}
 	return groups.filter((group) => group.length > 0);
@@ -1982,14 +1982,25 @@ function websearchRank(
 	groups: WebsearchClause[][],
 	document: string,
 ): number | null {
-	const words = messageSearchTokens(document).join(" ");
-	const length = Math.max(words.length, 1);
+	const words = messageSearchTokens(document);
+	const length = Math.max(document.length, 1);
 	let best: number | null = null;
 	for (const group of groups) {
 		let rank = 0;
 		let matched = true;
 		for (const clause of group) {
-			const count = occurrences(words, clause.text);
+			let count = 0;
+			for (
+				let index = 0;
+				index <= words.length - clause.terms.length;
+				index++
+			) {
+				if (
+					clause.terms.every((term, offset) => words[index + offset] === term)
+				) {
+					count++;
+				}
+			}
 			if (clause.negated ? count > 0 : count === 0) {
 				matched = false;
 				break;

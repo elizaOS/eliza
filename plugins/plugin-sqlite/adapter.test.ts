@@ -156,6 +156,17 @@ describe("durable SQLite agent adapter", () => {
     );
     // An interior hyphen is ordinary text, not negation.
     expect(await search("abc-123")).toEqual([ticket]);
+
+    const farm = "alpha beta farm";
+    const partialWords = "xalpha betamax";
+    await adapter.createMemories(
+      [farm, partialWords].map((text) => ({
+        memory: { ...memory(text), embedding: undefined },
+        tableName: "messages",
+      })),
+    );
+    expect.soft(await search('"alpha beta"')).toEqual([adjacent, farm].sort());
+    expect.soft(await search("alpha -far")).toEqual([adjacent, farm].sort());
   });
 
   it("deletes document fragments when the document is deleted", async () => {
