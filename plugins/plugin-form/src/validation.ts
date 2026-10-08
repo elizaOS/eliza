@@ -533,9 +533,11 @@ function validateFile(
     control.file?.maxFiles !== undefined &&
     files.length > control.file.maxFiles
   ) {
+    const maxFiles = control.file.maxFiles;
+    const noun = maxFiles === 1 ? "file" : "files";
     return {
       valid: false,
-      error: `Maximum ${control.file.maxFiles} files allowed`,
+      error: `Maximum ${maxFiles} ${noun} allowed`,
     };
   }
   for (const file of files) {
