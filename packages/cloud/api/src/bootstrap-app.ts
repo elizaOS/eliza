@@ -141,6 +141,12 @@ function matchSupported(tag: string): UiLanguage | null {
   if (!tag) return null;
   if (/^en(-|$)/i.test(tag)) return "en";
   const lower = tag.toLowerCase();
+  // `zh-CN` is the only supported code with a capital letter. A lowercased
+  // lookup misses it, and the base tag `zh` is not in the set, so a browser
+  // header `zh-CN,zh;q=0.9,en;q=0.8` selected English.
+  if (lower === "zh" || lower === "zh-cn" || lower.startsWith("zh-hans")) {
+    return "zh-CN";
+  }
   if (SUPPORTED.has(lower)) return lower as UiLanguage;
   const base = lower.split("-")[0];
   if (SUPPORTED.has(base)) return base as UiLanguage;
