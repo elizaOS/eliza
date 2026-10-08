@@ -133,7 +133,7 @@ public abstract class CalendarPlugin extends Plugin {
  private static String eventTimeDescription(long start,long end,String timeZone){
   String zone=timeZone==null||timeZone.isEmpty()?"UTC":timeZone;
   String pattern="EEE, MMM d yyyy h:mm"+(start%60000!=0||end%60000!=0?":ss":"")+(start%1000!=0||end%1000!=0?".SSS":"")+" a z";
-  java.text.DateFormat format=new java.text.SimpleDateFormat(pattern,java.util.Locale.getDefault());format.setTimeZone(TimeZone.getTimeZone(zone));
+  java.text.DateFormat format=new java.text.SimpleDateFormat(pattern,java.util.Locale.getDefault());format.setTimeZone(TimeZone.getTimeZone(java.time.ZoneId.of(zone)));
   return format.format(new java.util.Date(start))+" — "+format.format(new java.util.Date(end))+"\nTime zone: "+zone;
  }
  private static void agentKeys(org.json.JSONObject value,String... keys)throws Exception{if(value==null||value.length()!=keys.length)throw new IllegalArgumentException();for(String key:keys)if(!value.has(key))throw new IllegalArgumentException();}
