@@ -10,7 +10,7 @@ import { and, count, eq, gt, isNull, notExists, or, sql } from "drizzle-orm";
 import { type DbTransaction, dbWrite } from "../../db/client";
 import { encryptApiKey } from "../../db/crypto/api-keys";
 import { writeTransaction } from "../../db/helpers";
-import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories";
+import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories/api-keys";
 import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { ForbiddenError } from "../api/cloud-worker-errors";
