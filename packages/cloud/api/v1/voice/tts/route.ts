@@ -659,8 +659,13 @@ async function __hono_POST(c: AppContext) {
       organizationId: user.organization_id,
       userId: user.id,
       apiKeyId,
-      model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
-      provider: "elevenlabs",
+      // Attribute the engine selected for this request; the existing ElevenLabs
+      // catalog still determines the price and remains the billing source.
+      model:
+        providerSelection.provider === "cartesia"
+          ? "cartesia/sonic-3.5"
+          : `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
+      provider: providerSelection.provider,
       billingSource: "elevenlabs",
       requestId: ttsIdempotencyKey
         ? `voice-tts:${user.organization_id}:${ttsIdempotencyKey}`
@@ -830,6 +835,7 @@ async function __hono_POST(c: AppContext) {
           user_id: user.id,
           api_key_id: apiKeyId,
           type: "tts",
+          request_id: billingContext.requestId,
           // Attribute the engine that actually synthesized; the CHARGE always
           // comes from the ElevenLabs catalog rate (billingSource below), so a
           // Cartesia-served request costs the user exactly what the

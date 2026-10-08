@@ -1006,7 +1006,14 @@ test("prewarm joins cold hydration without writing a conversation turn", async (
   );
 
   expect(response.status).toBe(200);
-  await expect(response.json()).resolves.toEqual({ success: true });
+  await expect(response.json()).resolves.toMatchObject({
+    success: true,
+    timing: {
+      memoized: false,
+      historyMs: expect.any(Number),
+      runtimeMs: expect.any(Number),
+    },
+  });
   await Promise.all(background.splice(0));
   expect(repositoryReads).toBe(1);
   expect(
@@ -1035,7 +1042,10 @@ test("prewarm joins cold hydration without writing a conversation turn", async (
     }),
   );
   expect(warmResponse.status).toBe(200);
-  await warmResponse.arrayBuffer();
+  await expect(warmResponse.json()).resolves.toEqual({
+    success: true,
+    timing: { historyMs: 0, runtimeMs: 0, memoized: true },
+  });
   await Promise.all(background.splice(0));
   expect(repositoryReads).toBe(1);
   expect(
@@ -1125,7 +1135,17 @@ test("slow prewarm returns headers and releases the room queue before completion
 
   resolveRuntimePrewarmGate();
   const completedPrewarm = await prewarmReader?.read();
-  expect(new TextDecoder().decode(completedPrewarm?.value)).toBe("true}");
+  const completedAck = JSON.parse(
+    `{"success":${new TextDecoder().decode(completedPrewarm?.value)}`,
+  );
+  expect(completedAck).toMatchObject({
+    success: true,
+    timing: {
+      memoized: false,
+      historyMs: expect.any(Number),
+      runtimeMs: expect.any(Number),
+    },
+  });
   await expect(prewarmReader?.read()).resolves.toMatchObject({ done: true });
   await Promise.all(background.splice(0));
   expect(repositoryReads).toBe(1);
@@ -1172,7 +1192,10 @@ test("canceling the prewarm response does not cancel background readiness", asyn
       }),
     }),
   );
-  await expect(warmResponse.json()).resolves.toEqual({ success: true });
+  await expect(warmResponse.json()).resolves.toEqual({
+    success: true,
+    timing: { historyMs: 0, runtimeMs: 0, memoized: true },
+  });
 });
 
 test("fresh-room prewarm skips a legacy history query", async () => {

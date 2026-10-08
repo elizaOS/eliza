@@ -600,6 +600,9 @@ describe("Shared turn AgentRuntime boundary", () => {
     ["Will you remind me tomorrow to call mom", "create", undefined],
     ["Remind me on August 30 to call mom", "create", undefined],
     ["Create a reminder to call mom", "create", undefined],
+    ["Create a one-time reminder in 2 minutes to check QA", "create", undefined],
+    ["Set one-time reminder in 2 minutes to check QA", "create", undefined],
+    ["Schedule a one time reminder at noon", "create", undefined],
     ["Remove the reminder add something in my todo", "delete", "add something in my todo"],
     ["Could you please delete the reminder Stretch please", "delete", "stretch"],
     ["Update the reminder Stretch to 4pm", "update", "stretch"],
@@ -682,6 +685,9 @@ describe("Shared turn AgentRuntime boundary", () => {
     "I don't want you to update my reminder to 3pm",
     "Don’t update my reminder",
     "Update the reminder Stretch to 4pm, actually don't",
+    "Create a one-time reminder in 2 minutes, actually don't",
+    "Do not create a one-time reminder in 2 minutes",
+    "Can you explain how to create a one-time reminder?",
   ])("does not require or trust a negated or discussed reminder mutation: %s", async (message) => {
     await runSharedAgentTurn({
       character: { name: "Eliza", system: "You are Eliza." },

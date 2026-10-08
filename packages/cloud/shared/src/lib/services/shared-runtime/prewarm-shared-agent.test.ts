@@ -372,7 +372,7 @@ describe("Personal Shared prewarm timing", () => {
       expect(coordinateSharedConversationPrewarm).toHaveBeenCalledWith(
         "personal:timed-parallel",
         "personal:timed-parallel",
-        { namespace: {}, startEmpty: false },
+        { namespace: {}, startEmpty: false, timing },
       );
     } finally {
       clock.mockRestore();

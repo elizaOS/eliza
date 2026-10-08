@@ -26,7 +26,7 @@ const prewarmPersonalSharedAgentTurnCaches = mock(
   async (
     _agent?: unknown,
     _namespace?: unknown,
-    _options?: { timing?: { rateLimitMs?: number; conversationMs?: number } },
+    _options?: { timing?: { rateLimitMs?: number; conversationMs?: number; historyMs?: number; runtimeMs?: number } },
   ) => undefined,
 );
 const runOnboardingChat = mock(async (_input: OnboardingChatInput) => ({
@@ -2373,6 +2373,8 @@ describe("personal Shared messaging deliveries", () => {
         if (!options?.timing) throw new Error("No timing output supplied");
         options.timing.rateLimitMs = 21;
         options.timing.conversationMs = 2700;
+        options.timing.historyMs = 1400;
+        options.timing.runtimeMs = 1300;
       },
     );
     sharedRestMessageSend.mockRejectedValueOnce(
@@ -2383,6 +2385,8 @@ describe("personal Shared messaging deliveries", () => {
     const timing = response.headers.get("server-timing") ?? "";
     expect(timing).toContain("prewarm_rate;dur=21.0");
     expect(timing).toContain("prewarm_conversation;dur=2700.0");
+    expect(timing).toContain("prewarm_history;dur=1400.0");
+    expect(timing).toContain("prewarm_runtime;dur=1300.0");
     expect(timing).not.toContain("private failure");
   });
 

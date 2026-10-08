@@ -46,6 +46,13 @@ export interface SharedConversationCoordinatorOptions {
   channel?: SharedRuntimeChannel;
 }
 
+/** Content-free durations from the existing prewarm acknowledgement. */
+export interface SharedConversationPrewarmTiming {
+  historyMs?: number;
+  runtimeMs?: number;
+  conversationMemoized?: boolean;
+}
+
 export interface SharedConversationHistoryCoordinatorOptions {
   namespace: RuntimeDurableObjectNamespace;
   /** A newly minted room has no legacy history and can skip Postgres migration. */
@@ -153,7 +160,9 @@ export type PreparedPersonalProvisionalHistoryConvergence =
 export async function coordinateSharedConversationPrewarm(
   agentId: string,
   roomId: string,
-  options: SharedConversationHistoryCoordinatorOptions,
+  options: SharedConversationHistoryCoordinatorOptions & {
+    timing?: SharedConversationPrewarmTiming;
+  },
 ): Promise<void> {
   const namespace = requireHistoryCoordinator(options);
   const response = await coordinatorStub(namespace, agentId, roomId).fetch(
@@ -172,7 +181,31 @@ export async function coordinateSharedConversationPrewarm(
   await requireCoordinatorResponse(response, "conversation prewarm");
   // The Durable Object releases its per-room queue when the response body is
   // consumed. Drain this tiny acknowledgement before the first real turn.
-  await response.arrayBuffer();
+  const body = await response.arrayBuffer();
+  // Optional diagnostics reuse the same tiny acknowledgement. Malformed metrics
+  // cannot change completion, history, admission or another caller's state.
+  if (options.timing && body.byteLength <= 4096) {
+    try {
+      const value = JSON.parse(new TextDecoder().decode(body))?.timing;
+      if (value && typeof value === "object") {
+        for (const field of ["historyMs", "runtimeMs"] as const) {
+          const duration = value[field];
+          if (
+            typeof duration === "number" &&
+            Number.isFinite(duration) &&
+            duration >= 0 &&
+            duration <= 60_000
+          ) {
+            options.timing[field] = duration;
+          }
+        }
+        if (typeof value.memoized === "boolean")
+          options.timing.conversationMemoized = value.memoized;
+      }
+    } catch {
+      // Diagnostics are optional; the completed acknowledgement was already drained.
+    }
+  }
 }
 
 /** Persist one idempotent lifecycle marker without dispatching or billing a model turn. */

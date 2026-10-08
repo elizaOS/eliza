@@ -38,6 +38,7 @@ import { warmInferenceAdmissionSnapshot } from "../inference-admission-snapshot"
 import {
   coordinateSharedConversationPrewarm,
   coordinateSharedHistory,
+  type SharedConversationPrewarmTiming,
 } from "./conversation-coordinator";
 import { seedSharedAgentScopeCache } from "./resolve-shared-agent";
 import { resolveSharedAgentTurnModel } from "./run-shared-agent-turn";
@@ -79,7 +80,7 @@ interface PrewarmLeg {
 }
 
 /** Elapsed helper spans, including failures; an omitted conversation span was memoized. */
-export interface PersonalSharedPrewarmTiming {
+export interface PersonalSharedPrewarmTiming extends SharedConversationPrewarmTiming {
   rateLimitMs?: number;
   conversationMs?: number;
 }
@@ -225,6 +226,7 @@ export async function prewarmPersonalSharedAgentTurnCaches(
       run: coordinateSharedConversationPrewarm(agent.id, options.conversationId ?? agent.id, {
         namespace,
         startEmpty: true,
+        ...(options.timing ? { timing: options.timing } : {}),
       }),
     });
   } else {
@@ -241,6 +243,7 @@ export async function prewarmPersonalSharedAgentTurnCaches(
           await coordinateSharedConversationPrewarm(agent.id, conversationId, {
             namespace,
             startEmpty: false,
+            ...(options.timing ? { timing: options.timing } : {}),
           });
           if (
             personalConversationPrewarmedUntil.size >= PERSONAL_CONVERSATION_PREWARM_MAX_ENTRIES

@@ -1902,6 +1902,12 @@ app.post("/", async (c) => {
       prewarmLegTiming.conversationMs === undefined
         ? ""
         : `prewarm_conversation;dur=${prewarmLegTiming.conversationMs.toFixed(1)}`,
+      prewarmLegTiming.historyMs === undefined
+        ? ""
+        : `prewarm_history;dur=${prewarmLegTiming.historyMs.toFixed(1)}`,
+      prewarmLegTiming.runtimeMs === undefined
+        ? ""
+        : `prewarm_runtime;dur=${prewarmLegTiming.runtimeMs.toFixed(1)}`,
     ]
       .filter(Boolean)
       .join(", ");

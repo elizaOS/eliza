@@ -783,7 +783,7 @@ function isExplicitReminderCreationIntent(text: string): boolean {
   if (!normalized) return false;
   if (
     new RegExp(
-      `^${POSITIVE_REMINDER_COMMAND_PREFIX}(?:set|create|add|schedule) (?:me )?(?:(?:a|an|new|another) )?reminder(?: .*)?$`,
+      `^${POSITIVE_REMINDER_COMMAND_PREFIX}(?:set|create|add|schedule) (?:me )?(?:(?:a|an|new|another) )?(?:one time )?reminder(?: .*)?$`,
       "iu",
     ).test(normalized)
   ) {

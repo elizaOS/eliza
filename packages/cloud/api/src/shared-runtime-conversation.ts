@@ -358,6 +358,7 @@ export class SharedRuntimeConversation {
   private pendingHistoryCheckpoint: Promise<void> = Promise.resolve();
   private hydration: Promise<void> | undefined;
   private prewarmReady = false;
+  private prewarmTiming: { historyMs: number; runtimeMs: number } | undefined;
   private prewarm: Promise<void> | undefined;
   private queue: Promise<void> = Promise.resolve();
   private mirrorQueue: Promise<void> = Promise.resolve();
@@ -497,8 +498,12 @@ export class SharedRuntimeConversation {
       );
       await Promise.all(imports);
     });
-    this.prewarmReady = true;
     const completedAt = Date.now();
+    this.prewarmTiming = {
+      historyMs: Math.max(0, historyReadyAt - startedAt),
+      runtimeMs: Math.max(0, completedAt - historyReadyAt),
+    };
+    this.prewarmReady = true;
     this.state.waitUntil(
       import("@/lib/utils/logger").then(({ logger }) => {
         logger.info(
@@ -539,7 +544,12 @@ export class SharedRuntimeConversation {
       this.state.waitUntil(prewarm);
     }
 
+    const memoized = this.prewarmReady;
     const completion = this.prewarm ?? Promise.resolve();
+    const timing = () =>
+      memoized
+        ? { historyMs: 0, runtimeMs: 0, memoized: true }
+        : { ...this.prewarmTiming, memoized: false };
     let canceled = false;
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -547,7 +557,11 @@ export class SharedRuntimeConversation {
         void completion.then(
           () => {
             if (canceled) return;
-            controller.enqueue(new TextEncoder().encode("true}"));
+            controller.enqueue(
+              new TextEncoder().encode(
+                `true,"timing":${JSON.stringify(timing())}}`,
+              ),
+            );
             controller.close();
           },
           (error) => {

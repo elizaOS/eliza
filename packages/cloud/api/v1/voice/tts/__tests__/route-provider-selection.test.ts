@@ -35,7 +35,7 @@ const payoutAwareReservation = {
   affiliatePayoutSourceId: "ai_billing:affiliate:voice-tts-test",
   reconcile: reconcileReservation,
 };
-const reserveCredits = mock(async () => payoutAwareReservation);
+const reserveCredits = mock(async (..._args: unknown[]) => payoutAwareReservation);
 const billUsage = mock(async (..._args: unknown[]) => ({
   totalCost: 0.001,
   baseTotalCost: 0.001,
@@ -358,10 +358,20 @@ describe("POST /api/v1/voice/tts provider selection", () => {
       billingSource: "elevenlabs",
     });
     expect(billUsage.mock.calls[0]?.[2]).toBe(payoutAwareReservation);
+    expect(reserveCredits.mock.calls[0]?.[0]).toMatchObject({
+      model: "cartesia/sonic-3.5",
+      provider: "cartesia",
+      billingSource: "elevenlabs",
+    });
     await Promise.resolve();
+    const admitted = reserveCredits.mock.calls[0]?.[0] as
+      | { requestId: string }
+      | undefined;
+    if (!admitted) throw new Error("No TTS admission recorded");
     expect(createUsage.mock.calls[0]?.[0]).toMatchObject({
       provider: "cartesia",
       model: "sonic-3.5",
+      request_id: admitted.requestId,
     });
   });
 
@@ -740,6 +750,15 @@ describe("POST /api/v1/voice/tts provider selection", () => {
       idempotencyKey: "utt-abc",
     });
     expect(keyedArgs?.[0].requestId).toBe("voice-tts:org-1:utt-abc");
+    expect(keyedArgs?.[0]).toMatchObject({
+      provider: "elevenlabs",
+      model: "elevenlabs/eleven_flash_v2_5",
+      billingSource: "elevenlabs",
+    });
+    await Promise.resolve();
+    expect(createUsage.mock.calls[0]?.[0]).toMatchObject({
+      request_id: "voice-tts:org-1:utt-abc",
+    });
   });
 
   test("without the header the reservation stays unkeyed (behavior unchanged)", async () => {

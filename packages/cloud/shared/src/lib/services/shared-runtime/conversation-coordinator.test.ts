@@ -756,3 +756,38 @@ describe("shared conversation coordinator", () => {
     expect(seen?.aborted).toBe(true);
   });
 });
+
+describe("prewarm completion diagnostics", () => {
+  test("reads bounded durations from the existing acknowledgement without another request", async () => {
+    const fetch = mock(async () =>
+      Response.json({ success: true, timing: { historyMs: 37, runtimeMs: 81, memoized: false } }),
+    );
+    const timing: { historyMs?: number; runtimeMs?: number; conversationMemoized?: boolean } = {};
+    await coordinateSharedConversationPrewarm("agent-1", "room-1", {
+      namespace: { getByName: () => ({ fetch }) } as never,
+      timing,
+    });
+    expect(timing).toEqual({ historyMs: 37, runtimeMs: 81, conversationMemoized: false });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  test("malformed metrics cannot fail a completed warmup or leak arbitrary fields", async () => {
+    for (const body of [
+      JSON.stringify({
+        success: true,
+        timing: { historyMs: -1, runtimeMs: 60001, memoized: "false", apiKey: "private-sentinel" },
+      }),
+      "not-json",
+    ]) {
+      const fetch = mock(async () => new Response(body));
+      const timing: { historyMs?: number; runtimeMs?: number; conversationMemoized?: boolean } = {};
+      await expect(
+        coordinateSharedConversationPrewarm("agent-1", "room-1", {
+          namespace: { getByName: () => ({ fetch }) } as never,
+          timing,
+        }),
+      ).resolves.toBeUndefined();
+      expect(timing).toEqual({});
+      expect(fetch).toHaveBeenCalledTimes(1);
+    }
+  });
+});
