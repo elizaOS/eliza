@@ -1,7 +1,7 @@
 /**
- * Exercises Qwen response-schema serialization through the real AI SDK and
- * provider client against a loopback HTTP endpoint. No live provider is used;
- * schema enforcement is asserted on the request, not simulated model behavior.
+ * Exercises response schemas and generation controls through the real AI SDK
+ * and provider client against a loopback HTTP endpoint. No live provider is
+ * used; request serialization is asserted, not simulated model behavior.
  */
 import { createServer, type Server } from "node:http";
 import type {
@@ -716,7 +716,7 @@ describe("Qwen3.8 response-schema wire contract", () => {
           ["seed", "seed"],
         ] as const) {
           const value = sample[input];
-          if (value === undefined) {
+          if (value === undefined || (Array.isArray(value) && value.length === 0)) {
             expect(sent).not.toHaveProperty(wire);
           } else expect(sent[wire]).toEqual(value);
         }
@@ -766,14 +766,18 @@ describe("Qwen3.8 response-schema wire contract", () => {
         await invoke({
           stream,
           model: "o3",
+          stopSequences: [],
           temperature: 0,
           topP: 0.7,
           frequencyPenalty: 0.5,
           presencePenalty: 0.5,
+          seed: 0,
         })
       ).toEqual(verdict);
       expect(requests).toHaveLength(1);
       expect(requests[0].model).toBe("o3");
+      expect(requests[0]).not.toHaveProperty("stop");
+      expect(requests[0].seed).toBe(0);
       expect(requests[0]).not.toHaveProperty("temperature");
       expect(requests[0]).not.toHaveProperty("top_p");
       expect(requests[0]).not.toHaveProperty("frequency_penalty");
