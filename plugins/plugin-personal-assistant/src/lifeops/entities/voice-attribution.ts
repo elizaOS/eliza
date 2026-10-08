@@ -121,14 +121,14 @@ const KIN_CLAIM_PATTERNS: ReadonlyArray<{
 }> = [
   {
     pattern: new RegExp(
-      `\\b([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s+${casedWord("is")}\\s+${casedWord("my")}\\s+(${KIN_LABEL_PATTERN})\\b`,
+      `\\b([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s+${casedWord("is")}\\s+${casedWord("my")}\\s+(${KIN_LABEL_PATTERN})\\b(?!['’]s\\b)`,
     ),
     nameGroup: 1,
     labelGroup: 2,
   },
   {
     pattern: new RegExp(
-      `\\b${casedWord("this")}\\s+${casedWord("is")}\\s+([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s*,\\s*${casedWord("my")}\\s+(${KIN_LABEL_PATTERN})\\b`,
+      `\\b${casedWord("this")}\\s+${casedWord("is")}\\s+([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s*,\\s*${casedWord("my")}\\s+(${KIN_LABEL_PATTERN})\\b(?!['’]s\\b)`,
     ),
     nameGroup: 1,
     labelGroup: 2,

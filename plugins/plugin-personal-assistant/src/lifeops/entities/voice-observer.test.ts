@@ -275,6 +275,20 @@ describe("extractKinClaim", () => {
     expect(claim?.name).toBe("Jill");
     expect(claim?.label).toBe("wife");
   });
+
+  it("does not treat a possessive kin label as a claim", () => {
+    expect(extractKinClaim("Today is my wife's birthday")).toBeNull();
+    expect(extractKinClaim("Tomorrow is my husband's surgery")).toBeNull();
+    expect(extractKinClaim("Saturday is my sister's wedding")).toBeNull();
+    expect(extractKinClaim("Jill is my wife's sister")).toBeNull();
+    expect(extractKinClaim("Today is my wife’s birthday")).toBeNull();
+  });
+
+  it("keeps a kin claim that ends with a period", () => {
+    const claim = extractKinClaim("Jill is my wife.");
+    expect(claim?.name).toBe("Jill");
+    expect(claim?.label).toBe("wife");
+  });
 });
 
 describe("extractSelfAffiliationClaim", () => {
