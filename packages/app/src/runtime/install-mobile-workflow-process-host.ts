@@ -184,6 +184,7 @@ export function installMobileWorkflowProcessHost(
       if (request.action !== "read") return response.result;
       const snapshot = response.result as {
         timeZone: string;
+        observedAt: string;
         events: Array<{ start: string; end: string; allDay: boolean }>;
         reminders: Array<{ dueAt: string }>;
       };
@@ -198,6 +199,7 @@ export function installMobileWorkflowProcessHost(
         );
       return {
         ...snapshot,
+        asOfDisplay: local(snapshot.observedAt),
         events: snapshot.events.map((event) => ({
           ...event,
           startDisplay: local(event.start, event.allDay),
