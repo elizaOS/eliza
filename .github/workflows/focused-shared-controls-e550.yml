@@ -24,7 +24,7 @@ jobs:
       - name: Checkout exact reviewed public source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
+          ref: 8ff6416e86c227719b97c8ef13c3bf43afda5eee
           fetch-depth: 1
           submodules: false
           persist-credentials: false
@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
+          test "$(git rev-parse HEAD)" = 8ff6416e86c227719b97c8ef13c3bf43afda5eee
           command -v timeout
           command -v unshare
           command -v ip
@@ -97,7 +97,7 @@ jobs:
           test -f plugins/plugin-google-workspace/dist/gmail-attachments.js
           test -f plugins/plugin-wallet/dist/lib/market-overview.js
           test -f plugins/plugin-elizacloud/dist/cloud-config/domain-contract.js
-          test "$(git rev-parse HEAD)" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
+          test "$(git rev-parse HEAD)" = 8ff6416e86c227719b97c8ef13c3bf43afda5eee
           git diff --quiet HEAD
       - name: Test exact five owning files in a loopback-only namespace
         shell: bash
@@ -116,7 +116,7 @@ jobs:
           task_node_version="$(node --version)"
           task_biome_version="$(node_modules/.bin/biome --version)"
           printf 'Focused source=%s bun=%s node=%s biome=%s\n' "$task_source_head" "$task_bun_version" "$task_node_version" "$task_biome_version"
-          test "$task_source_head" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
+          test "$task_source_head" = 8ff6416e86c227719b97c8ef13c3bf43afda5eee
           test "$task_bun_version" = 1.4.2
           test "$task_node_version" = v24.15.0
           test "$task_biome_version" = "Version: 2.5.14"
@@ -134,11 +134,15 @@ jobs:
             packages/cloud/api/__tests__/shared-runtime-failure-diagnostics.test.ts \
             packages/cloud/api/__tests__/shared-runtime-diagnostic-transport-trace.test.ts \
             packages/cloud/api/__tests__/shared-eliza-runtime.miniflare.test.ts \
-            packages/cloud/api/test/fixtures/shared-eliza-runtime-worker.ts
+            packages/cloud/api/test/fixtures/shared-eliza-runtime-worker.ts \
+            packages/cloud/api/__tests__/incoming-request-disconnect.miniflare.test.ts \
+            packages/cloud/api/__tests__/request-signal-config.test.ts \
+            packages/cloud/api/__tests__/shared-rest-request-signal.test.ts \
+            packages/cloud/api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/route.ts
           run_one() {
             task_name="$1"; task_cwd="$2"; shift 2
             task_limit=60
-            if [ "$task_name" = real-workerd ]; then task_limit=180; fi
+            if [[ "$task_name" == real-workerd* ]]; then task_limit=180; fi
             if timeout --kill-after=10s "${task_limit}s" bash -c 'cd "$1"; shift; exec bun test "$@"' _ "$task_cwd" "$@" > "$TASK_EVIDENCE/$task_name.log" 2>&1; then
               task_exit=0
             else
@@ -169,7 +173,20 @@ jobs:
           run_one rest-coordinator packages/cloud/api __tests__/shared-runtime-diagnostic-transport-trace.test.ts --timeout 60000
           run_one real-workerd packages/cloud/api __tests__/shared-eliza-runtime.miniflare.test.ts --test-name-pattern '/cancel-before-model|/cancel-at-dispatch|runs the production Shared adapter through the genuine runtime|retains canonical failure brands' --timeout 120000
           grep -Eq '^Ran 4 tests across 1 file' "$TASK_EVIDENCE/real-workerd.log"
-          test "$(git rev-parse HEAD)" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
+          run_one real-workerd-provider packages/cloud/api __tests__/shared-eliza-runtime.miniflare.test.ts --test-name-pattern 'synthetic failure without committing' --timeout 120000
+          run_one generic-rest packages/cloud/api __tests__/shared-rest-request-signal.test.ts --timeout 60000
+          run_one request-signal-config packages/cloud/api __tests__/request-signal-config.test.ts --timeout 60000
+          if timeout --kill-after=10s 60s node --experimental-strip-types --test --test-reporter=tap packages/cloud/api/__tests__/incoming-request-disconnect.miniflare.test.ts > "$TASK_EVIDENCE/incoming-http.log" 2>&1; then
+            grep -Eq '^# pass 1$' "$TASK_EVIDENCE/incoming-http.log"
+            grep -Eq '^# fail 0$' "$TASK_EVIDENCE/incoming-http.log"
+          else
+            task_exit=$?
+            test "$(wc -c < "$TASK_EVIDENCE/incoming-http.log")" -le 2097152
+            tail -100 "$TASK_EVIDENCE/incoming-http.log"
+            exit "$task_exit"
+          fi
+          tail -8 "$TASK_EVIDENCE/incoming-http.log"
+          test "$(git rev-parse HEAD)" = 8ff6416e86c227719b97c8ef13c3bf43afda5eee
           git diff --quiet HEAD
           SCRIPT
           # No fallback to the host network when namespace creation is unavailable.
@@ -194,7 +211,7 @@ jobs:
           cat > "$task_script" <<'SCRIPT'
           set -euo pipefail
           cd "$TASK_WORKSPACE"
-          test "$(git rev-parse HEAD)" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
+          test "$(git rev-parse HEAD)" = 8ff6416e86c227719b97c8ef13c3bf43afda5eee
           check() {
             task_name="$1"; shift
             if timeout --kill-after=10s 120s "$@" > "$TASK_EVIDENCE/$task_name.log" 2>&1; then
