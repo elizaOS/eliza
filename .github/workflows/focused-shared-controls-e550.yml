@@ -40,7 +40,7 @@ jobs:
           free -b
           nproc
           test "$(awk '/MemTotal:/ {print $2}' /proc/meminfo)" -ge 12582912
-          sudo -n unshare --net -- bash -c 'ip link set lo up; test "$(ls /sys/class/net | wc -l)" -eq 1; test -z "$(ip route show)"'
+          sudo -n unshare --net -- bash -c 'set -euo pipefail; ip link set lo up; test "$(ip -o link show | wc -l)" -eq 1; ip -o link show | grep -Eq "^[0-9]+: lo:"; test -z "$(ip route show)"'
       - uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: "1.4.2"
@@ -131,7 +131,8 @@ jobs:
           sudo -n unshare --net -- bash -c '
             set -euo pipefail
             ip link set lo up
-            test "$(ls /sys/class/net | wc -l)" -eq 1
+            test "$(ip -o link show | wc -l)" -eq 1
+            ip -o link show | grep -Eq "^[0-9]+: lo:"
             test -z "$(ip route show)"
             exec env -i PATH="$1" HOME="$2" CI=true NODE_ENV=test \
               WRANGLER_SEND_METRICS=false TURBO_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 \
