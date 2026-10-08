@@ -67,7 +67,19 @@ export interface UpdateNoteInput {
 
 /** Schema 2 stores the separator, if any, in the verbatim remainder. */
 export function reconstructNoteContent(
-  note: Pick<StickyNote, "title" | "body">,
+  note: Pick<StickyNote, "title" | "body"> & { bodySeparator?: "" | "\n" },
 ): string {
-  return note.title + note.body;
+  return note.title + (note.bodySeparator ?? "") + note.body;
+}
+
+/** Lossless model parts: remove only the codec's one framing LF, never authored whitespace. */
+export function projectNoteForModel<
+  T extends Pick<StickyNote, "title" | "body">,
+>(note: T): T & { bodySeparator: "" | "\n" } {
+  const bodySeparator = note.body.startsWith("\n") ? "\n" : "";
+  return {
+    ...note,
+    body: bodySeparator ? note.body.slice(1) : note.body,
+    bodySeparator,
+  };
 }
