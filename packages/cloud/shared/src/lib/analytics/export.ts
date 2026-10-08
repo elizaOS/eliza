@@ -266,7 +266,12 @@ export function formatNumber(value: unknown): string {
   const num = Number(value);
   if (isNaN(num)) return "0";
   if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+  if (num >= 1000) {
+    const thousands = (num / 1000).toFixed(1);
+    // 999950 is below one million, but one-decimal K text is "1000.0".
+    if (thousands === "1000.0") return `${(num / 1000000).toFixed(1)}M`;
+    return `${thousands}K`;
+  }
   return num.toString();
 }
 
