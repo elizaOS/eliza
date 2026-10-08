@@ -196,6 +196,8 @@ export const NATIVE_NOTIFICATION_PAGE_BYTES = 256 * 1024;
 /** The shape the notification stream carries over the agent event bus. */
 export interface NotificationEventData {
 	type: "notification" | "notification_update";
+	/** Authoritative single-item deletion hint; never a new OS arrival. */
+	removed?: boolean;
 	notification: AgentNotification;
 	/** Optional bounded native rail. Standard record contents stay unchanged. */
 	nativeNotification?: NativeNotification;

@@ -22,6 +22,7 @@ import type {
 import {
   DEFAULT_NOTIFICATION_CATEGORY,
   DEFAULT_NOTIFICATION_PRIORITY,
+  validateUuid,
 } from "@elizaos/core/protocol";
 import type { StewardSessionChangeDetail } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { STEWARD_SESSION_CHANGE_EVENT } from "@elizaos/plugin-elizacloud/steward-session-client";
@@ -111,6 +112,10 @@ let currentAuthorityBaseUrl: string | null = null;
 let authorityEpoch = 0;
 let lastStewardSessionEpoch = 0;
 let mutationRevision = 0;
+let clearMutationRevision = 0;
+let allReadMutationRevision = 0;
+let allReadMutationTimestamp = 0;
+let bulkMutationRevision = 0;
 const notificationMutationRevisions = new Map<string, number>();
 // Unsubscribes the currently-bound live WS notification handler; rebound on
 // every authority change so a handler closure from a superseded authority can
@@ -359,14 +364,37 @@ function handleWsAgentEvent(data: Record<string, unknown>): void {
           notification?: unknown;
           unreadCount?: unknown;
           type?: unknown;
+          removed?: unknown;
         })
       : undefined;
+  if (payload?.type === "notification_update" && payload.removed === true) {
+    const record = payload.notification;
+    const id =
+      record && typeof record === "object" && "id" in record
+        ? record.id
+        : undefined;
+    if (!validateUuid(id)) return;
+    mutationRevision += 1;
+    notificationMutationRevisions.set(id as string, mutationRevision);
+    liveEventRevision += 1;
+    const notifications = state.notifications.filter((n) => n.id !== id);
+    setState({
+      notifications,
+      unreadCount:
+        typeof payload.unreadCount === "number"
+          ? payload.unreadCount
+          : countUnread(notifications),
+    });
+    return;
+  }
   const notification = validateWsNotification(payload?.notification);
   if (!notification) return;
   const unreadCount =
     typeof payload?.unreadCount === "number" ? payload.unreadCount : undefined;
   const deliverUpdate = payload?.type !== "notification_update";
   liveEventRevision += 1;
+  mutationRevision += 1;
+  notificationMutationRevisions.set(notification.id, mutationRevision);
   ingest(notification, unreadCount, { deliver: deliverUpdate });
 }
 
@@ -422,6 +450,10 @@ function isAnonAuthorityKey(key: string | null): boolean {
  *  invalidateAuthorityForCredentialChange} (#18542). */
 function clearForAuthorityChange(): void {
   authorityEpoch += 1;
+  clearMutationRevision = 0;
+  allReadMutationRevision = 0;
+  allReadMutationTimestamp = 0;
+  bulkMutationRevision = 0;
   notificationMutationRevisions.clear();
   if (hydrationRetryTimer) {
     clearTimeout(hydrationRetryTimer);
@@ -544,10 +576,27 @@ export function compareNotificationsByRecency(
 
 function mergeHydratedNotifications(
   persisted: AgentNotification[],
+  revisionAtStart: number,
 ): AgentNotification[] {
-  const combined = [...state.notifications, ...persisted].sort(
-    compareNotificationsByRecency,
+  const changed = new Set(
+    [...notificationMutationRevisions]
+      .filter(([, revision]) => revision > revisionAtStart)
+      .map(([id]) => id),
   );
+  const snapshot =
+    clearMutationRevision > revisionAtStart
+      ? []
+      : persisted
+          .filter((n) => !changed.has(n.id))
+          .map((n) =>
+            allReadMutationRevision > revisionAtStart && !n.readAt
+              ? { ...n, readAt: allReadMutationTimestamp }
+              : n,
+          );
+  const combined = [
+    ...snapshot,
+    ...state.notifications.filter((n) => changed.has(n.id)),
+  ].sort(compareNotificationsByRecency);
   const seenIds = new Set<string>();
   const seenGroups = new Set<string>();
   const merged: AgentNotification[] = [];
@@ -604,6 +653,7 @@ function hydrationErrorMessage(error: unknown): string {
 async function runHydrationAttempt(generation: number): Promise<void> {
   const attempt = state.hydrationAttempts + 1;
   const liveRevisionAtStart = liveEventRevision;
+  const mutationAtStart = mutationRevision;
   if (attempt === 1) {
     hydrationReadinessDeadlineAt =
       Date.now() + HYDRATION_SERVICE_READINESS_BUDGET_MS;
@@ -614,22 +664,42 @@ async function runHydrationAttempt(generation: number): Promise<void> {
     hydrationAttempts: attempt,
   });
   try {
-    const res = await client.listNotifications({ limit: 100 });
+    const res = await client.listNotifications({ limit: 300 });
     if (generation !== hydrationGeneration) return;
     if (hydrationRetryTimer) {
       clearTimeout(hydrationRetryTimer);
       hydrationRetryTimer = null;
     }
-    const notifications = mergeHydratedNotifications(res.notifications);
+    const notifications = mergeHydratedNotifications(
+      res.notifications,
+      mutationAtStart,
+    );
     const hydrationStatus =
       res.serviceStatus === "disabled" ? "disabled" : "ready";
+    let unreadCount = res.unreadCount;
+    if (liveEventRevision !== liveRevisionAtStart)
+      unreadCount = state.unreadCount;
+    else if (allReadMutationRevision > mutationAtStart)
+      unreadCount = state.unreadCount;
+    else if (clearMutationRevision > mutationAtStart)
+      unreadCount = countUnread(notifications);
+    else {
+      const serverRows = new Map(res.notifications.map((n) => [n.id, n]));
+      const currentRows = new Map(notifications.map((n) => [n.id, n]));
+      for (const [id, revision] of notificationMutationRevisions) {
+        if (revision <= mutationAtStart) continue;
+        const before = serverRows.get(id),
+          after = currentRows.get(id);
+        unreadCount +=
+          countUnread(after ? [after] : []) -
+          countUnread(before ? [before] : []);
+      }
+      unreadCount = Math.max(0, unreadCount);
+    }
     hydrationReadinessDeadlineAt = 0;
     setState({
       notifications,
-      unreadCount:
-        liveEventRevision === liveRevisionAtStart
-          ? res.unreadCount
-          : state.unreadCount,
+      unreadCount,
       hydrated: true,
       hydrationStatus,
       hydrationError: null,
@@ -732,7 +802,7 @@ function requestHydration(): Promise<void> {
 
 /** Retry a terminal inbox load after a user or lifecycle recovery signal. */
 export function retryNotificationHydration(): Promise<void> {
-  if (state.hydrationStatus !== "failed") return Promise.resolve();
+  if (hydrationInFlight) return hydrationInFlight;
   hydrationReadinessDeadlineAt = 0;
   setState({
     hydrated: false,
@@ -828,6 +898,9 @@ export async function seedDevNotificationsIfEmpty(): Promise<void> {
 interface MutationSnapshot {
   authorityKey: string | null;
   authorityEpoch: number;
+  unreadCount: number;
+  liveRevision: number;
+  bulkRevision?: number;
   originals: Map<string, AgentNotification>;
   revisions: Map<string, number>;
 }
@@ -847,6 +920,8 @@ function snapshotForMutation(ids: readonly string[]): MutationSnapshot {
   return {
     authorityKey: currentAuthorityKey,
     authorityEpoch,
+    unreadCount: state.unreadCount,
+    liveRevision: liveEventRevision,
     originals,
     revisions,
   };
@@ -880,6 +955,16 @@ function revertMutation(
     );
     return;
   }
+  if (
+    snapshot.bulkRevision !== undefined &&
+    snapshot.bulkRevision !== bulkMutationRevision
+  ) {
+    logger.warn(
+      { err },
+      `[notification-store] ${op} failed after a newer bulk mutation; stale rollback discarded`,
+    );
+    return;
+  }
   const restoreIds = ids.filter(
     (id) =>
       snapshot.revisions.get(id) === notificationMutationRevisions.get(id),
@@ -891,10 +976,25 @@ function revertMutation(
     );
     for (const id of restoreIds) {
       const original = snapshot.originals.get(id);
-      if (original) restored.push(original);
+      if (original) {
+        restored.push(original);
+        mutationRevision += 1;
+        notificationMutationRevisions.set(id, mutationRevision);
+      }
     }
     restored.sort(compareNotificationsByRecency);
-    setState({ notifications: restored, unreadCount: countUnread(restored) });
+    const unreadCount =
+      op === "clearNotifications" || op === "markAllNotificationsRead"
+        ? liveEventRevision === snapshot.liveRevision
+          ? snapshot.unreadCount
+          : state.unreadCount
+        : Math.max(
+            0,
+            state.unreadCount +
+              countUnread(restored) -
+              countUnread(state.notifications),
+          );
+    setState({ notifications: restored, unreadCount });
   }
   logger.error({ err }, `[notification-store] ${op} failed; reverted`);
 }
@@ -905,7 +1005,14 @@ export async function markNotificationRead(id: string): Promise<void> {
   const notifications = state.notifications.map((n) =>
     n.id === id && !n.readAt ? { ...n, readAt: now } : n,
   );
-  setState({ notifications, unreadCount: countUnread(notifications) });
+  setState({
+    notifications,
+    unreadCount: Math.max(
+      0,
+      state.unreadCount -
+        (countUnread(state.notifications) - countUnread(notifications)),
+    ),
+  });
   try {
     await client.markNotificationRead(id);
   } catch (err) {
@@ -915,7 +1022,13 @@ export async function markNotificationRead(id: string): Promise<void> {
 
 export async function markAllNotificationsRead(): Promise<void> {
   const snapshot = snapshotForMutation(state.notifications.map((n) => n.id));
+  const previousAllReadRevision = allReadMutationRevision;
+  const previousAllReadTimestamp = allReadMutationTimestamp;
+  const ownBulkRevision = ++mutationRevision;
+  snapshot.bulkRevision = bulkMutationRevision = ownBulkRevision;
+  allReadMutationRevision = ownBulkRevision;
   const now = Date.now();
+  allReadMutationTimestamp = now;
   const notifications = state.notifications.map((n) =>
     n.readAt ? n : { ...n, readAt: now },
   );
@@ -923,6 +1036,14 @@ export async function markAllNotificationsRead(): Promise<void> {
   try {
     await client.markAllNotificationsRead();
   } catch (err) {
+    if (
+      snapshot.authorityKey === currentAuthorityKey &&
+      snapshot.authorityEpoch === authorityEpoch &&
+      allReadMutationRevision === ownBulkRevision
+    ) {
+      allReadMutationRevision = previousAllReadRevision;
+      allReadMutationTimestamp = previousAllReadTimestamp;
+    }
     revertMutation(snapshot, "markAllNotificationsRead", err);
   }
 }
@@ -930,7 +1051,14 @@ export async function markAllNotificationsRead(): Promise<void> {
 export async function removeNotification(id: string): Promise<void> {
   const snapshot = snapshotForMutation([id]);
   const notifications = state.notifications.filter((n) => n.id !== id);
-  setState({ notifications, unreadCount: countUnread(notifications) });
+  setState({
+    notifications,
+    unreadCount: Math.max(
+      0,
+      state.unreadCount -
+        (countUnread(state.notifications) - countUnread(notifications)),
+    ),
+  });
   if (ephemeralNotificationIds.delete(id)) return;
   try {
     await client.removeNotification(id);
@@ -947,7 +1075,14 @@ export async function removeNotifications(
   const idSet = new Set(ids);
   const snapshot = snapshotForMutation(ids);
   const notifications = state.notifications.filter((n) => !idSet.has(n.id));
-  setState({ notifications, unreadCount: countUnread(notifications) });
+  setState({
+    notifications,
+    unreadCount: Math.max(
+      0,
+      state.unreadCount -
+        (countUnread(state.notifications) - countUnread(notifications)),
+    ),
+  });
   const ephemeralIds = ids.filter((id) => ephemeralNotificationIds.delete(id));
   const ephemeralIdSet = new Set(ephemeralIds);
   const persistedIds = ids.filter((id) => !ephemeralIdSet.has(id));
@@ -971,14 +1106,24 @@ export async function removeNotifications(
 
 export async function clearNotifications(): Promise<void> {
   const snapshot = snapshotForMutation(state.notifications.map((n) => n.id));
+  const previousClearRevision = clearMutationRevision;
+  const ownClearRevision = ++mutationRevision;
+  clearMutationRevision = ownClearRevision;
+  snapshot.bulkRevision = bulkMutationRevision = ownClearRevision;
   const previousEphemeralIds = [...ephemeralNotificationIds];
   setState({ notifications: [], unreadCount: 0 });
   ephemeralNotificationIds.clear();
   try {
     await client.clearNotifications();
   } catch (err) {
-    if (snapshot.authorityKey === currentAuthorityKey) {
-      for (const id of previousEphemeralIds) ephemeralNotificationIds.add(id);
+    if (
+      snapshot.authorityKey === currentAuthorityKey &&
+      snapshot.authorityEpoch === authorityEpoch
+    ) {
+      if (clearMutationRevision === ownClearRevision)
+        clearMutationRevision = previousClearRevision;
+      if (bulkMutationRevision === ownClearRevision)
+        for (const id of previousEphemeralIds) ephemeralNotificationIds.add(id);
     }
     revertMutation(snapshot, "clearNotifications", err);
   }
@@ -1012,6 +1157,10 @@ export function __resetNotificationStoreForTests(): void {
   authorityEpoch = 0;
   lastStewardSessionEpoch = 0;
   mutationRevision = 0;
+  clearMutationRevision = 0;
+  allReadMutationRevision = 0;
+  allReadMutationTimestamp = 0;
+  bulkMutationRevision = 0;
   notificationMutationRevisions.clear();
   notificationEventUnsub?.();
   notificationEventUnsub = null;

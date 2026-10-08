@@ -87,8 +87,8 @@ describe("NotificationService", () => {
 	});
 
 	beforeEach(async () => {
-		emitted.length = 0;
 		await service.clear();
+		emitted.length = 0;
 	});
 
 	it("creates, stores, and returns a stamped notification", async () => {
@@ -178,6 +178,101 @@ describe("NotificationService", () => {
 		expect(event.data.unreadCount).toBe(1);
 	});
 
+	it("fans out durable single read and deletion without a new alert", async () => {
+		const record = await service.notify({ title: "Shared inbox record" });
+		emitted.length = 0;
+		expect(await service.markRead(record.id)).toBe(true);
+		expect(emitted).toHaveLength(1);
+		expect(emitted[0].data).toMatchObject({
+			type: "notification_update",
+			unreadCount: 0,
+		});
+		expect(
+			(emitted[0].data.notification as AgentNotification).readAt,
+		).toBeTypeOf("number");
+		expect(emitted[0].data.removed).toBeUndefined();
+		expect(await service.markRead(record.id)).toBe(false);
+		expect(emitted).toHaveLength(1);
+		expect(await service.remove(record.id)).toBe(true);
+		expect(emitted).toHaveLength(2);
+		expect(emitted[1].data).toMatchObject({
+			type: "notification_update",
+			removed: true,
+			unreadCount: 0,
+			notification: { id: record.id },
+		});
+		expect(await service.remove(record.id)).toBe(false);
+		expect(emitted).toHaveLength(2);
+	});
+
+	it.each(["markRead", "remove"] as const)(
+		"does not fan out %s before durable commit",
+		async (operation) => {
+			const record = await service.notify({ title: "Durability boundary" });
+			emitted.length = 0;
+			const original = runtime.setCache.bind(runtime);
+			runtime.setCache = async () => {
+				throw new Error("Rejected inbox mutation");
+			};
+			try {
+				await expect(service[operation](record.id)).rejects.toThrow(
+					"Rejected inbox mutation",
+				);
+				expect(emitted).toEqual([]);
+			} finally {
+				runtime.setCache = original;
+			}
+		},
+	);
+
+	it("fans out bulk read and clear only as committed updates", async () => {
+		const first = await service.notify({ title: "First" });
+		const second = await service.notify({ title: "Second" });
+		emitted.length = 0;
+		expect(await service.markAllRead()).toBe(2);
+		expect(emitted).toHaveLength(2);
+		for (const event of emitted) {
+			expect(event.data.type).toBe("notification_update");
+			expect(event.data.unreadCount).toBe(0);
+			expect(event.data.removed).toBeUndefined();
+		}
+		emitted.length = 0;
+		await service.clear();
+		expect(
+			emitted
+				.map((event) => (event.data.notification as AgentNotification).id)
+				.sort(),
+		).toEqual([first.id, second.id].sort());
+		for (const event of emitted) {
+			expect(event.data).toMatchObject({
+				type: "notification_update",
+				removed: true,
+				unreadCount: 0,
+			});
+			expect(event.data.nativeNotification).toBeUndefined();
+		}
+	});
+
+	it.each(["markAllRead", "clear"] as const)(
+		"does not fan out %s before durable bulk commit",
+		async (operation) => {
+			await service.notify({ title: "Bulk durability boundary" });
+			emitted.length = 0;
+			const original = runtime.setCache.bind(runtime);
+			runtime.setCache = async () => {
+				throw new Error("Rejected bulk mutation");
+			};
+			try {
+				await expect(service[operation]()).rejects.toThrow(
+					"Rejected bulk mutation",
+				);
+				expect(emitted).toEqual([]);
+			} finally {
+				runtime.setCache = original;
+			}
+		},
+	);
+
 	it("does not broadcast success when durable persistence rejects", async () => {
 		const originalSetCache = runtime.setCache.bind(runtime);
 		runtime.setCache = async () => {
@@ -206,6 +301,70 @@ describe("NotificationService", () => {
 		}
 		expect(emitted).toEqual([]);
 		expect(service.list()).toEqual([]);
+	});
+
+	it("keeps committed reads when observer lookup and diagnostics throw", async () => {
+		const record = await service.notify({ title: "Lookup boundary" });
+		const lookup = vi.spyOn(runtime, "getService").mockImplementation(() => {
+			throw new Error("Observer lookup failed");
+		});
+		const diagnostic = vi
+			.spyOn(runtime, "reportError")
+			.mockImplementation(() => {
+				throw new Error("Diagnostic failed");
+			});
+		try {
+			await expect(service.markRead(record.id)).resolves.toBe(true);
+			expect(service.list().find((n) => n.id === record.id)?.readAt).toBeTypeOf(
+				"number",
+			);
+		} finally {
+			lookup.mockRestore();
+			diagnostic.mockRestore();
+		}
+	});
+
+	it("keeps committed reads when native projection unexpectedly throws", async () => {
+		const record = await service.notify({ title: "Projection boundary" });
+		Object.defineProperty(service, "projectNative", {
+			configurable: true,
+			value: () => {
+				throw new TypeError("Unexpected projection failure");
+			},
+		});
+		try {
+			await expect(service.markRead(record.id)).resolves.toBe(true);
+		} finally {
+			Reflect.deleteProperty(service, "projectNative");
+		}
+		expect(service.list().find((n) => n.id === record.id)?.readAt).toBeTypeOf(
+			"number",
+		);
+	});
+
+	it("copies deleted records without asking for new native coordinates", async () => {
+		const record = await service.notify({
+			title: "Deleted coordinate boundary",
+		});
+		emitted.length = 0;
+		Object.defineProperty(service, "withNativeCoordinates", {
+			configurable: true,
+			value: () => {
+				throw new Error("Deleted record cannot acquire coordinates");
+			},
+		});
+		try {
+			await expect(service.remove(record.id)).resolves.toBe(true);
+		} finally {
+			Reflect.deleteProperty(service, "withNativeCoordinates");
+		}
+		expect(emitted).toHaveLength(1);
+		expect(emitted[0].data).toMatchObject({
+			type: "notification_update",
+			removed: true,
+			notification: { id: record.id },
+		});
+		expect(emitted[0].data.nativeNotification).toBeUndefined();
 	});
 
 	it("keeps durable success when a live listener throws", async () => {
@@ -416,6 +575,28 @@ describe("NotificationService", () => {
 		expect(stored).toHaveLength(301);
 		expect(stored?.[0]?.title).toBe("Existing 0");
 		expect(stored?.at(-1)?.title).toBe("Must not evict");
+	});
+
+	it("preserves reminder channel ownership in native live events and pages without exporting private data", async () => {
+		await service.notify({
+			title: "Reminder",
+			category: "reminder",
+			priority: "high",
+			data: {
+				ownerType: "occurrence",
+				privateContext: "not native presentation data",
+			},
+		});
+		expect(emitted.at(-1)?.data.nativeNotification).toMatchObject({
+			data: { ownerType: "occurrence" },
+		});
+		const page = await service.listNativePage();
+		expect(page.notifications[0].data).toEqual({ ownerType: "occurrence" });
+		await service.notify({
+			title: "Other owner",
+			data: { ownerType: "unapproved" },
+		});
+		expect(emitted.at(-1)?.data.nativeNotification).not.toHaveProperty("data");
 	});
 
 	it("shares durable coordinates across copies, restart, deletion and clear without changing stored records", async () => {
