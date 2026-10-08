@@ -247,13 +247,17 @@ export function getAttachmentFileName(media: Media): string {
 				}
 			}
 		} catch {
-			const lastDot = media.url.lastIndexOf(".");
-			const queryStart = media.url.indexOf("?", lastDot);
-			if (lastDot > 0 && (queryStart === -1 || queryStart > lastDot + 1)) {
-				const potentialExt = media.url.substring(
-					lastDot,
-					queryStart > -1 ? queryStart : undefined,
-				);
+			const relativePath = media.url.split(/[?#]/, 1)[0] ?? "";
+			const lastDot = relativePath.lastIndexOf(".");
+			if (
+				lastDot >
+				Math.max(
+					0,
+					relativePath.lastIndexOf("/"),
+					relativePath.lastIndexOf("\\"),
+				)
+			) {
+				const potentialExt = relativePath.slice(lastDot);
 				if (potentialExt.length > 1 && potentialExt.length <= 5) {
 					extension = potentialExt;
 				}

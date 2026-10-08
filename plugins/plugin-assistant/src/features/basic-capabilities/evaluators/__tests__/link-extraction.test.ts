@@ -190,6 +190,55 @@ describe("linkExtractionEvaluator", () => {
     );
   });
 
+  it("preserves quoted Open Graph titles and ignores similarly named attributes", async () => {
+    for (const [html, expected] of [
+      [
+        '<meta content="Alice\'s guide > notes" property = "og:title">',
+        "Alice's guide > notes",
+      ],
+      [
+        '<meta data-property="og:title" content="Wrong"><meta content="Right" property="og:title">',
+        "Right",
+      ],
+      ["<meta content=\"Noise property='og:title'\">", ""],
+    ]) {
+      stubPreviewFetch(
+        makeFetchResponse(`<html><head>${html}</head><body>body</body></html>`),
+      );
+      const result = await linkExtractionEvaluator.prepare?.(
+        makeContext(
+          makeRuntime(async () => "summary"),
+          makeMessage("see https://example.com/og"),
+        ),
+      );
+      expect(result?.links[0]?.title).toBe(expected);
+    }
+  });
+
+  it("reads an og:title when content comes before property", async () => {
+    stubPreviewFetch(
+      makeFetchResponse(
+        '<html><head><meta content="Hello World" property="og:title"></head><body><p>body</p></body></html>',
+      ),
+    );
+    const runtime = makeRuntime(async () => "summary");
+    const message = makeMessage("see https://example.com/og");
+    const prepared = await linkExtractionEvaluator.prepare?.(
+      makeContext(runtime, message),
+    );
+    expect(prepared?.links[0]?.title).toBe("Hello World");
+
+    stubPreviewFetch(
+      makeFetchResponse(
+        '<html><head><meta property="og:title" content="Common Order"></head><body><p>body</p></body></html>',
+      ),
+    );
+    const common = await linkExtractionEvaluator.prepare?.(
+      makeContext(runtime, makeMessage("see https://example.com/og-common")),
+    );
+    expect(common?.links[0]?.title).toBe("Common Order");
+  });
+
   it("decodes title entities once and strips browser-tokenized raw-text tags", async () => {
     stubPreviewFetch(
       makeFetchResponse(
