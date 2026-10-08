@@ -24,6 +24,12 @@
       "types": "./dist/api/client-calendar.d.ts",
       "import": "./dist/api/client-calendar.js",
       "default": "./dist/api/client-calendar.js"
+    },
+    "./format": {
+      "eliza-source": "./src/internal/format.ts",
+      "types": "./src/internal/format.ts",
+      "import": "./dist/internal/format.js",
+      "default": "./dist/internal/format.js"
     }
   },
   "scripts": {

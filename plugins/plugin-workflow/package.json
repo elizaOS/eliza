@@ -19,6 +19,12 @@
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./services/hosted-native-source": {
+      "eliza-source": "./src/services/hosted-native-source.ts",
+      "types": "./src/services/hosted-native-source.ts",
+      "import": "./dist/services/hosted-native-source.js",
+      "default": "./dist/services/hosted-native-source.js"
     }
   },
   "files": [

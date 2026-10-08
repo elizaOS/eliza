@@ -389,12 +389,22 @@ final class ElizaBionicInferenceServer {
                     lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
                     continue;
                 }
-                String responseJson = handleRequest(requestJson);
+                String responseJson;
+                if ("nativeSourceRead".equals(opOf(requestJson))) {
+                    try {
+                        JSONObject request = new JSONObject(requestJson);
+                        responseJson = new JSONObject().put("ok", true).put("result",
+                            NativeSourceHost.read(request.getJSONObject("request"),
+                                sock.getPeerCredentials().getUid(), android.os.Process.myUid())).toString();
+                    } catch (Exception unavailable) {
+                        responseJson = errorJson("Native selected source unavailable");
+                    }
+                } else responseJson = handleRequest(requestJson);
                 writeFrame(out, responseJson);
                 out.flush();
                 // Every op (generate/embed/tts/asr/image) touches the shared
                 // resident context — refresh the idle clock on completion (#11760).
-                if (!"networkPolicy".equals(opOf(requestJson))) {
+                if (!"networkPolicy".equals(opOf(requestJson)) && !"nativeSourceRead".equals(opOf(requestJson))) {
                     lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
                 }
             }
