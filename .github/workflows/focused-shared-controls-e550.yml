@@ -1,4 +1,4 @@
-name: Focused Shared controls e550 validation
+name: Focused Shared prewarm and TEI revision validation
 on:
   push:
     branches: [codex/validate-shared-controls-e550e1f]
@@ -24,7 +24,7 @@ jobs:
       - name: Checkout exact reviewed public source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 6eefe82931b7d51f5788879da3677c0cfbee891c
+          ref: 9a157be9ab900a1b40abe392b5c1027db05d7b0d
           fetch-depth: 1
           submodules: false
           persist-credentials: false
@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 6eefe82931b7d51f5788879da3677c0cfbee891c
+          test "$(git rev-parse HEAD)" = 9a157be9ab900a1b40abe392b5c1027db05d7b0d
           command -v timeout
           command -v unshare
           command -v ip
@@ -97,9 +97,9 @@ jobs:
           test -f plugins/plugin-google-workspace/dist/gmail-attachments.js
           test -f plugins/plugin-wallet/dist/lib/market-overview.js
           test -f plugins/plugin-elizacloud/dist/cloud-config/domain-contract.js
-          test "$(git rev-parse HEAD)" = 6eefe82931b7d51f5788879da3677c0cfbee891c
+          test "$(git rev-parse HEAD)" = 9a157be9ab900a1b40abe392b5c1027db05d7b0d
           git diff --quiet HEAD
-      - name: Test exact five owning files in a loopback-only namespace
+      - name: Test affected owning files and Shared runtime in a loopback-only namespace
         shell: bash
         run: |
           set -euo pipefail
@@ -116,29 +116,23 @@ jobs:
           task_node_version="$(node --version)"
           task_biome_version="$(node_modules/.bin/biome --version)"
           printf 'Focused source=%s bun=%s node=%s biome=%s\n' "$task_source_head" "$task_bun_version" "$task_node_version" "$task_biome_version"
-          test "$task_source_head" = 6eefe82931b7d51f5788879da3677c0cfbee891c
+          test "$task_source_head" = 9a157be9ab900a1b40abe392b5c1027db05d7b0d
           test "$task_bun_version" = 1.4.2
           test "$task_node_version" = v24.15.0
           test "$task_biome_version" = "Version: 2.5.15"
           mkdir -p "$TASK_EVIDENCE"
           node_modules/.bin/biome check --vcs-enabled=false \
-            packages/cloud/shared/src/lib/providers/language-model.ts \
-            packages/cloud/shared/src/lib/providers/language-model-interactive-cerebras-failover.test.ts \
-            packages/cloud/shared/src/lib/providers/language-model-fallback-policy.test.ts \
-            packages/cloud/shared/src/lib/services/shared-runtime/shared-eliza-runtime.ts \
-            packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-errors.ts \
-            packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts \
-            packages/cloud/shared/src/lib/services/shared-runtime/shared-rest-adapter.ts \
-            packages/cloud/api/src/shared-runtime-conversation.ts \
-            packages/cloud/api/internal/eliza-app/personal-shared/messages/route.ts \
-            packages/cloud/api/__tests__/shared-runtime-failure-diagnostics.test.ts \
-            packages/cloud/api/__tests__/shared-runtime-diagnostic-transport-trace.test.ts \
-            packages/cloud/api/__tests__/shared-eliza-runtime.miniflare.test.ts \
-            packages/cloud/api/test/fixtures/shared-eliza-runtime-worker.ts \
-            packages/cloud/api/__tests__/incoming-request-disconnect.miniflare.test.ts \
-            packages/cloud/api/__tests__/request-signal-config.test.ts \
-            packages/cloud/api/__tests__/shared-rest-request-signal.test.ts \
-            packages/cloud/api/v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/route.ts
+            packages/cloud/shared/src/lib/services/generations.ts \
+            packages/cloud/shared/src/lib/services/usage.ts \
+            packages/cloud/shared/src/lib/services/api-keys.ts \
+            packages/cloud/shared/src/lib/services/user-sessions.ts \
+            packages/cloud/shared/src/lib/services/organizations.ts \
+            packages/cloud/shared/src/lib/services/credits.ts \
+            packages/cloud/shared/src/lib/providers/tei-embeddings.ts \
+            packages/cloud/shared/src/lib/services/ai-pricing/refresh.ts \
+            packages/cloud/shared/src/__tests__/prewarm-repository-leaf-identity.test.ts \
+            packages/cloud/shared/src/lib/providers/tei-canonical-reuse.test.ts \
+            packages/cloud/shared/src/lib/services/ai-pricing/refresh-source-selection.test.ts
           run_one() {
             task_name="$1"; task_cwd="$2"; shift 2
             task_limit=60
@@ -159,34 +153,19 @@ jobs:
             grep -Eq '^[[:space:]]*0 fail[[:space:]]*$' "$TASK_EVIDENCE/$task_name.log"
             grep -Eq '^Ran [1-9][0-9]* tests? across ' "$TASK_EVIDENCE/$task_name.log"
             case "$task_name" in
-              sdk-cerebras) grep -E '\(pass\).*fourth Core hint' "$TASK_EVIDENCE/$task_name.log" > /dev/null; grep -E '\(pass\).*cancellation retains the primary SDK error before routing policy' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
-              sdk-routing) grep -E '\(pass\).*does not consult fallback policy after abort' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
-              closed-diagnostics) grep -E '\(pass\).*SDK zero with unknown provider detail' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
-              rest-coordinator) grep -E '\(pass\).*without moving account state or server trace' "$TASK_EVIDENCE/$task_name.log" > /dev/null; grep -E '\(pass\).*already-aborted caller' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
-              real-workerd) grep -E '\(pass\).*/cancel-before-model' "$TASK_EVIDENCE/$task_name.log" > /dev/null; grep -E '\(pass\).*/cancel-at-dispatch' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
+              repository-leaves) grep -E '\(pass\).*singleton identity' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
+              tei-revision) grep -E '\(pass\).*blocks incompatible identity' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
+              pricing-refresh-scope) grep -E '\(pass\).*omitted sources leave the selfhosted catalog untouched' "$TASK_EVIDENCE/$task_name.log" > /dev/null; grep -E '\(pass\).*explicit selfhosted selection' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
+              real-workerd) grep -E '\(pass\).*runs the production Shared adapter' "$TASK_EVIDENCE/$task_name.log" > /dev/null; grep -E '\(pass\).*retains canonical failure brands' "$TASK_EVIDENCE/$task_name.log" > /dev/null ;;
             esac
             tail -8 "$TASK_EVIDENCE/$task_name.log"
           }
-          run_one sdk-cerebras packages/cloud/shared src/lib/providers/language-model-interactive-cerebras-failover.test.ts --timeout 60000
-          run_one sdk-routing packages/cloud/shared src/lib/providers/language-model-fallback-policy.test.ts --timeout 60000
-          run_one closed-diagnostics packages/cloud/api __tests__/shared-runtime-failure-diagnostics.test.ts --timeout 60000
-          run_one rest-coordinator packages/cloud/api __tests__/shared-runtime-diagnostic-transport-trace.test.ts --timeout 60000
-          run_one real-workerd packages/cloud/api __tests__/shared-eliza-runtime.miniflare.test.ts --test-name-pattern '/cancel-before-model|/cancel-at-dispatch|runs the production Shared adapter through the genuine runtime|retains canonical failure brands' --timeout 120000
-          grep -Eq '^Ran 4 tests across 1 file' "$TASK_EVIDENCE/real-workerd.log"
-          run_one real-workerd-provider packages/cloud/api __tests__/shared-eliza-runtime.miniflare.test.ts --test-name-pattern 'synthetic failure without committing' --timeout 120000
-          run_one generic-rest packages/cloud/api __tests__/shared-rest-request-signal.test.ts --timeout 60000
-          run_one request-signal-config packages/cloud/api __tests__/request-signal-config.test.ts --timeout 60000
-          if timeout --kill-after=10s 60s node --experimental-strip-types --test --test-reporter=tap packages/cloud/api/__tests__/incoming-request-disconnect.miniflare.test.ts > "$TASK_EVIDENCE/incoming-http.log" 2>&1; then
-            grep -Eq '^# pass 1$' "$TASK_EVIDENCE/incoming-http.log"
-            grep -Eq '^# fail 0$' "$TASK_EVIDENCE/incoming-http.log"
-          else
-            task_exit=$?
-            test "$(wc -c < "$TASK_EVIDENCE/incoming-http.log")" -le 2097152
-            tail -100 "$TASK_EVIDENCE/incoming-http.log"
-            exit "$task_exit"
-          fi
-          tail -8 "$TASK_EVIDENCE/incoming-http.log"
-          test "$(git rev-parse HEAD)" = 6eefe82931b7d51f5788879da3677c0cfbee891c
+          run_one repository-leaves packages/cloud/shared src/__tests__/prewarm-repository-leaf-identity.test.ts --timeout 60000
+          run_one tei-revision packages/cloud/shared src/lib/providers/tei-canonical-reuse.test.ts --timeout 60000
+          run_one pricing-refresh-scope packages/cloud/shared src/lib/services/ai-pricing/refresh-source-selection.test.ts --timeout 60000
+          run_one real-workerd packages/cloud/api __tests__/shared-eliza-runtime.miniflare.test.ts --test-name-pattern 'runs the production Shared adapter through the genuine runtime|retains canonical failure brands' --timeout 120000
+          grep -Eq '^Ran 2 tests across 1 file' "$TASK_EVIDENCE/real-workerd.log"
+          test "$(git rev-parse HEAD)" = 9a157be9ab900a1b40abe392b5c1027db05d7b0d
           git diff --quiet HEAD
           SCRIPT
           # No fallback to the host network when namespace creation is unavailable.
@@ -211,7 +190,7 @@ jobs:
           cat > "$task_script" <<'SCRIPT'
           set -euo pipefail
           cd "$TASK_WORKSPACE"
-          test "$(git rev-parse HEAD)" = 6eefe82931b7d51f5788879da3677c0cfbee891c
+          test "$(git rev-parse HEAD)" = 9a157be9ab900a1b40abe392b5c1027db05d7b0d
           check() {
             task_name="$1"; shift
             if timeout --kill-after=10s 120s "$@" > "$TASK_EVIDENCE/$task_name.log" 2>&1; then
