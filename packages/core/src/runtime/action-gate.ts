@@ -5,6 +5,7 @@
  * top-level role gate in a fixed precedence.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { audienceAdmissionGateFailure } from "../access-control/audience-disclosure";
 import { ElizaError } from "../errors";
 import { checkSenderRole } from "../roles";
@@ -27,6 +28,7 @@ import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
 export type GateableAction = Pick<
 	Action,
 	| "name"
+	| "tags"
 	| "private"
 	| "contextGate"
 	| "contexts"
@@ -63,6 +65,25 @@ export type ActionGateRejectionKind =
 export interface ActionGateRejection {
 	kind: ActionGateRejectionKind;
 	reason: string;
+}
+
+/** Host-established request restrictions apply to discovery and execution alike. */
+const requestPolicy = new AsyncLocalStorage<
+	(action: GateableAction, context: ActionGateContext) => string | undefined
+>();
+export function withActionGatePolicy<T>(
+	policy: (
+		action: GateableAction,
+		context: ActionGateContext,
+	) => string | undefined,
+	run: () => Promise<T>,
+): Promise<T> {
+	const inherited = requestPolicy.getStore();
+	return requestPolicy.run(
+		(action, context) =>
+			inherited?.(action, context) ?? policy(action, context),
+		run,
+	);
 }
 
 /**
@@ -110,6 +131,9 @@ export function actionGateRejection(
 			reason: `Action ${action.name} is not allowed: ${disclosureFailure}`,
 		};
 	}
+
+	const requestFailure = requestPolicy.getStore()?.(action, ctx);
+	if (requestFailure) return { kind: "context", reason: requestFailure };
 
 	const policyRole = resolveActionRolePolicyRole(action);
 	if (policyRole) {
@@ -235,6 +259,7 @@ export async function resolveActionGateFailure(
 		ctx.evaluateContexts === false
 			? {
 					name: action.name,
+					tags: action.tags,
 					private: action.private,
 					roleGate: action.roleGate,
 					disclosureGate: action.disclosureGate,
