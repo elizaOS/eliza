@@ -1105,10 +1105,15 @@ describe("promoted Notes execution", () => {
     }
     expect(listed.effectReceipts).toBeUndefined();
     for (const result of [created, updated, deleted]) {
+      expect(result.data?.notesRevision).toEqual(expect.any(Number));
       expect(result.effectReceipts).toEqual([
         expect.objectContaining({
           outcome: "applied",
-          resource: { kind: "notes.note", id: created.data?.noteId },
+          resource: {
+            kind: "notes.note",
+            id: created.data?.noteId,
+            version: String(result.data?.notesRevision),
+          },
           commit: expect.objectContaining({ kind: "durable" }),
         }),
       ]);
