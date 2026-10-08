@@ -61,6 +61,8 @@ import {
 import { VoiceProfileStore } from "../../plugin-local-inference/src/services/voice/profile-store.js";
 import { WESPEAKER_RESNET34_LM_INT8_MODEL_ID } from "../../plugin-local-inference/src/services/voice/speaker/encoder.js";
 import { voiceSpeakerFromImprintMatch } from "../../plugin-local-inference/src/services/voice/speaker-imprint.js";
+import { SELF_ENTITY_ID } from "../src/lifeops/entities/types.js";
+import { VoiceObserver } from "../src/lifeops/entities/voice-observer.js";
 import { handleVoiceTurnObserved } from "../src/lifeops/entities/voice-observer-bridge.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 
@@ -212,6 +214,43 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
       ),
     ).toHaveLength(1);
   });
+  it("does not queue or persist kin relationships from ordinary owner phrases", async () => {
+    const relationshipStore = await new LifeOpsRepository(
+      runtime,
+    ).relationshipStore(runtime.agentId);
+    const observer = new VoiceObserver({ entityStore, relationshipStore });
+    const phrases = [
+      "my husband just called",
+      "Today is my wife's birthday",
+      "Tomorrow is my husband’s surgery",
+      "Saturday is my sister's wedding",
+      "Jill is my wife's sister",
+    ];
+    for (const [index, text] of phrases.entries()) {
+      const result = await observer.ingestTurn({
+        turnId: `turn-owner-ordinary-${index}`,
+        text,
+        imprintClusterId: "cluster_owner",
+        matchedEntityId: SELF_ENTITY_ID,
+        matchConfidence: 1,
+        isOwner: true,
+      });
+      expect(result.relationshipIds).toEqual([]);
+      expect(result.queuedPartnerClaims).toBe(0);
+      expect(observer.pendingRelationshipsCount).toBe(0);
+    }
+    const valid = await observer.ingestTurn({
+      turnId: "turn-owner-valid-kin",
+      text: "This is my wife Eleanor",
+      imprintClusterId: "cluster_owner",
+      matchedEntityId: SELF_ENTITY_ID,
+      matchConfidence: 1,
+      isOwner: true,
+    });
+    expect(valid.queuedPartnerClaims).toBe(1);
+    expect(observer.peekPending()[0]?.toName).toBe("Eleanor");
+  });
+
   it("IDENTIFY_SPEAKER binds the most recent unidentified voice by name", async () => {
     const profile = await store.createProfile({
       centroid: unit([0, 1, 0, 0]),
@@ -223,7 +262,7 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     expect(profile.entityId).toBeNull();
     const replies: string[] = [];
     const message = {
-      content: { text: "that was Sam" },
+      content: { text: "That was Sam on the phone" },
     } as unknown as Memory;
     const result = await identifySpeakerAction.handler(
       runtime,
@@ -240,7 +279,8 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     expect(bound?.entityId).toBeTruthy();
     const entity = await entityStore.get(bound?.entityId ?? "");
     expect(entity?.preferredName).toBe("Sam");
-    expect(replies.join(" ")).toContain("Sam");
+    expect(replies.join(" ")).toContain("Sam's voice");
+    expect(replies.join(" ")).not.toContain("Sam on the");
   });
   it("applies correction provenance and merges duplicate named entities", async () => {
     const firstSarah = await entityStore.upsert({
@@ -270,7 +310,7 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     });
     const result = await identifySpeakerAction.handler(runtime, {
       id: "turn_owner_correction_sarah",
-      content: { text: "that was Sarah" },
+      content: { text: "That was Sarah from work" },
     } as unknown as Memory);
     expect(result?.success).toBe(true);
     const sarahs = (await entityStore.list()).filter(
