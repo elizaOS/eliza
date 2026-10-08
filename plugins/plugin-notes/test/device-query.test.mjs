@@ -110,14 +110,23 @@ test("real persisted Notes query does not infer latest from order/pins or rewrit
       }).basis,
       "owner-choice-uncertain",
     );
-    assert.equal(
-      queryLocalNotes([], { kind: "latest", by: "created" }).candidates.length,
-      0,
-    );
-    assert.equal(
-      queryLocalNotes(store.list, { kind: "title", text: "missing" }).candidates
-        .length,
-      0,
+    for (const query of [
+      { kind: "latest", by: "created" },
+      { kind: "latest", by: "updated" },
+      { kind: "title", text: "missing" },
+    ])
+      assert.deepEqual(queryLocalNotes([], query), {
+        basis: "no-match",
+        candidates: [],
+        explanation: "No saved notes were found.",
+      });
+    assert.deepEqual(
+      queryLocalNotes(store.list, { kind: "title", text: "missing" }),
+      {
+        basis: "no-match",
+        candidates: [],
+        explanation: "No saved note matches this title.",
+      },
     );
     assert.equal(
       JSON.stringify(stampNoteChanges([unknown], [unknown], 999)[0]),

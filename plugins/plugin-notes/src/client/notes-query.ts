@@ -2,6 +2,7 @@ import type { NativeNotesQueryOperation } from "@elizaos/contracts/native-notes-
 import type { NoteRecord } from "./notes-store.ts";
 export interface LocalNotesQuery {
   basis:
+    | "no-match"
     | "title-match"
     | "latest-created"
     | "latest-updated"
@@ -15,11 +16,23 @@ export function queryLocalNotes(
   records: NoteRecord[],
   query: NativeNotesQueryOperation["query"],
 ): LocalNotesQuery {
+  if (records.length === 0)
+    return {
+      basis: "no-match",
+      candidates: [],
+      explanation: "No saved notes were found.",
+    };
   if (query.kind === "title") {
     const text = query.text.normalize("NFKC").trim().toLowerCase();
     const candidates = records.filter((note) =>
       note.title.normalize("NFKC").toLowerCase().includes(text),
     );
+    if (candidates.length === 0)
+      return {
+        basis: "no-match",
+        candidates,
+        explanation: "No saved note matches this title.",
+      };
     return {
       basis: "title-match",
       candidates,
