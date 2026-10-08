@@ -3213,7 +3213,7 @@ async function generateTextAtEndpoint(
 
   // Chat Completions is the default: broadest compatibility, and it works
   // against every OpenAI-compatible endpoint (Cerebras, local servers, proxies).
-  // gpt-5 / gpt-5-mini reasoning models ignore temperature/penalty/stop params.
+  // The SDK omits unsupported reasoning-model temperature and penalty settings.
   //
   // The explicitly configured equivalent model accepts the same strict schema
   // semantics. OpenRouter require_parameters prevents silent capability loss.
@@ -3416,7 +3416,7 @@ async function generateTextAtEndpoint(
       : { maxOutputTokens: params.maxTokens }),
     ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
     ...(params.topP !== undefined ? { topP: params.topP } : {}),
-    ...(params.stopSequences !== undefined
+    ...(params.stopSequences?.length
       ? { stopSequences: deepToWellFormedUnicode(params.stopSequences) }
       : {}),
     ...(params.frequencyPenalty !== undefined ? { frequencyPenalty: params.frequencyPenalty } : {}),
