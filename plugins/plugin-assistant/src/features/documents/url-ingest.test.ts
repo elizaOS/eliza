@@ -289,4 +289,20 @@ describe("url-ingest", () => {
       fetchDocumentFromUrl("https://youtu.be/short"),
     ).rejects.toThrow("Invalid YouTube URL: could not extract video ID");
   });
+
+  it("reads a YouTube Shorts link as that video id", async () => {
+    let requested = "";
+    __setDocumentUrlFetchImplForTests(async (input) => {
+      requested = input.url.toString();
+      return new Response("<html></html>", {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+
+    await expect(
+      fetchDocumentFromUrl("https://www.youtube.com/shorts/dQw4w9WgXcQ"),
+    ).rejects.toThrow("Could not fetch YouTube transcript");
+    expect(requested).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+  });
 });
