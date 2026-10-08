@@ -66,6 +66,16 @@ jobs:
           timeout --kill-after=10s 120s bun run --cwd plugins/plugin-native-inference build
           test -f plugins/plugin-native-inference/dist/model-catalog/bge-input.js
           test -f plugins/plugin-native-inference/dist/model-catalog/bge/tokenizer.json
+          timeout --kill-after=10s 120s bun run --cwd plugins/plugin-scheduling build:js
+          timeout --kill-after=10s 120s bun run --cwd plugins/plugin-todos build:js
+          timeout --kill-after=10s 120s bun run --cwd plugins/plugin-assistant build
+          timeout --kill-after=10s 120s bun run --cwd plugins/plugin-web-search build
+          timeout --kill-after=10s 120s bun run --cwd plugins/plugin-sqlite build
+          test -f plugins/plugin-scheduling/dist/index.js
+          test -f plugins/plugin-todos/dist/index.js
+          test -f plugins/plugin-assistant/dist/index.js
+          test -f plugins/plugin-web-search/dist/index.js
+          test -f plugins/plugin-sqlite/dist/portable.js
           test "$(git rev-parse HEAD)" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
           git diff --quiet HEAD
       - name: Test exact five owning files in a loopback-only namespace
