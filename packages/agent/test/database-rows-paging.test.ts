@@ -218,14 +218,24 @@ it("does not list or read a table that exists only outside the search path", asy
       ),
     ).toBe(true);
     expect(
-      listedBody.tables.some((table) => table.name === "closed_shelf"),
-    ).toBe(false);
-    const hidden = await fetch(
+      listedBody.tables.some(
+        (table) =>
+          table.schema === "hidden_shelf" && table.name === "closed_shelf",
+      ),
+    ).toBe(true);
+    const hiddenWithoutSchema = await fetch(
       `http://127.0.0.1:${port}/api/database/tables/closed_shelf/rows?limit=25&offset=0`,
     );
-    const hiddenBody = (await hidden.json()) as { error?: string };
-    expect(hidden.status).toBe(404);
-    expect(hiddenBody.error).toContain("closed_shelf");
+    expect(hiddenWithoutSchema.status).toBe(404);
+    const hidden = await fetch(
+      `http://127.0.0.1:${port}/api/database/tables/closed_shelf/rows?limit=25&offset=0&schema=hidden_shelf`,
+    );
+    const hiddenBody = (await hidden.json()) as {
+      rows?: Array<{ id: number }>;
+      error?: string;
+    };
+    expect(hidden.status).toBe(200);
+    expect(hiddenBody.rows?.map((row) => Number(row.id))).toEqual([1]);
     const visible = await fetch(
       `http://127.0.0.1:${port}/api/database/tables/open_shelf/rows?limit=25&offset=0`,
     );

@@ -150,6 +150,7 @@ describe("DatabaseView", () => {
       tables: [
         {
           name: "memories",
+          schema: "public",
           rowCount: 1,
           columns: [
             { name: "id", type: "text" },
@@ -172,7 +173,7 @@ describe("DatabaseView", () => {
     await waitFor(() => {
       expect(clientMock.getDatabaseRows).toHaveBeenCalledWith(
         "memories",
-        expect.objectContaining({ limit: 50, offset: 0 }),
+        expect.objectContaining({ limit: 50, offset: 0, schema: "public" }),
       );
     });
     // The fetched cell value renders in the results grid.

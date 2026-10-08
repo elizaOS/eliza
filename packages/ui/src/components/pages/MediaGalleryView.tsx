@@ -360,6 +360,7 @@ export function MediaGalleryView({
                 const result = await client.getDatabaseRows(tableName, {
                   offset: rowOffset,
                   limit: MEDIA_SCAN_PAGE_SIZE,
+                  schema: table.schema,
                   ...(sort ? { sort, order: "asc" as const } : {}),
                 });
                 if (!isCurrent()) return items;
