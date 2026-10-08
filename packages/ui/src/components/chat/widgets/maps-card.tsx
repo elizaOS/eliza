@@ -39,7 +39,9 @@ const TRAVEL_MODE_LABELS: Record<MapsTravelMode, string> = {
 };
 
 export function formatDistance(meters: number): string {
-  if (meters < 1_000) return `${Math.round(meters)} m`;
+  // Round before the unit check. 999.5 m rounds to 1000 m, which is 1 km.
+  const roundedMeters = Math.round(meters);
+  if (roundedMeters < 1_000) return `${roundedMeters} m`;
   const km = meters / 1_000;
   return `${km >= 100 ? Math.round(km) : Math.round(km * 10) / 10} km`;
 }

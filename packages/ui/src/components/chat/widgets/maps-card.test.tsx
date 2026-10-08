@@ -283,6 +283,9 @@ describe("MapsCardWidget", () => {
 describe("formatting helpers", () => {
   it("formats distance, duration, and share timestamps deterministically", () => {
     expect(formatDistance(850)).toBe("850 m");
+    expect(formatDistance(999.4)).toBe("999 m");
+    // 999.5 m rounds to 1000 m, which is already the kilometer boundary.
+    expect(formatDistance(999.5)).toBe("1 km");
     expect(formatDistance(1_500)).toBe("1.5 km");
     expect(formatDistance(120_000)).toBe("120 km");
     expect(formatDuration(50)).toBe("1 min");
