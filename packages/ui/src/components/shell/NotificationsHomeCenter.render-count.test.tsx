@@ -31,6 +31,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api/client", () => ({
   client: {
+    getBaseUrl: vi.fn(() => "http://localhost:3000"),
     listNotifications: vi.fn(async () => ({
       notifications: [],
       unreadCount: 0,
