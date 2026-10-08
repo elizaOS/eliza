@@ -262,6 +262,25 @@ describe("linkExtractionEvaluator", () => {
     ]);
   });
 
+  it("keeps an IPv6 host bracket and the path after it", async () => {
+    stubPreviewFetch(
+      makeFetchResponse("<html><title>doc</title><body>x</body></html>"),
+    );
+    const runtime = makeRuntime(async () => "ok summary");
+    const message = makeMessage(
+      "see http://[2001:db8::1]/docs and also https://example.com].",
+    );
+    const context = {
+      ...makeContext(runtime, message),
+      state: { values: {}, data: {}, text: "" } as State,
+    };
+    const prepared = await linkExtractionEvaluator.prepare?.(context);
+    expect(prepared?.links.map((link) => link.url)).toEqual([
+      "http://[2001:db8::1]/docs",
+      "https://example.com",
+    ]);
+  });
+
   it("prepare persists the URL even when fetch fails (no title/summary)", async () => {
     stubPreviewFetchFailure(new Error("network down"));
 
