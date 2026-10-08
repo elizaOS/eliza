@@ -11,12 +11,6 @@ Build from the repository root:
 bun run --cwd plugins/plugin-native-reminders build
 ```
 
-Test from the repository root:
-
-```bash
-bun run --cwd plugins/plugin-native-reminders test
-```
-
 ## Android candidate
 
 An additive [Android reminder engine](android/README.md) provides host-configured storage, scheduling, notification actions and a Capacitor base bridge. Its source ships in the package; generated Gradle outputs and the consumer fixture do not. The existing macOS entrypoint remains unchanged. See the [independent consumer](test/android-consumer/README.md) for build and qualification instructions. This candidate is not release-qualified.

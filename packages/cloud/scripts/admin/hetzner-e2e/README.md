@@ -5,10 +5,8 @@ an agent through the Cloud API, probe its bridge, and clean up the test server.
 They are manually invoked diagnostics. No repository workflow schedules this
 suite or its reaper, and no workflow concurrency group protects manual runs.
 
-For managed-agent staging acceptance, use the shared-agent and dedicated-agent
-lanes in [live-smoke.yml](../../../../../.github/workflows/live-smoke.yml).
-Those lanes cover managed-agent acceptance and do not exercise this directory's
-raw-provider server allocation and SSH bootstrap.
+Managed-agent staging certification is available through the protected
+[staging launch gate](../../../../../.github/workflows/staging-launch-gate.yml).
 
 ## Operator responsibility
 

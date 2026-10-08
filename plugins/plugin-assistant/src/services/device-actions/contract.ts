@@ -1,4 +1,12 @@
 import {
+  isNativeNotesQuery,
+  type NativeNotesQueryOperation,
+  NOTES_QUERY_CAPABILITY,
+  validateNativeNotesQuery,
+} from "@elizaos/contracts/native-notes-query";
+import {
+  CALENDAR_CREATE_CAPABILITY,
+  CALENDAR_NEXT_CAPABILITY,
   type CalendarOperation,
   validateCalendarOperation,
 } from "./calendar-contract.ts";
@@ -61,6 +69,7 @@ export type DeviceOperation =
   | MapsOperation
   | ReminderOperation
   | NotesOperation
+  | NativeNotesQueryOperation
   | CalendarOperation
   | WorkflowReadOperation
   | WorkflowPresentationOperation
@@ -74,6 +83,15 @@ export function deviceOperationSupportedByCapabilities(
   type: string,
   capabilities?: readonly string[],
 ): boolean {
+  if (type === "calendar_create_local")
+    return capabilities?.includes(CALENDAR_CREATE_CAPABILITY) === true;
+  if (type === "calendar_read_next")
+    return capabilities?.includes(CALENDAR_NEXT_CAPABILITY) === true;
+  if (type === "notes_query")
+    return (
+      capabilities?.includes(NOTES_QUERY_CAPABILITY) === true &&
+      capabilities.includes("notes.local-record.v1")
+    );
   if (type === "clock_alarm")
     return capabilities?.includes(CLOCK_ALARMS_CAPABILITY) === true;
   if (type === "clock_handoff")
@@ -174,6 +192,8 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch {
         throw new DeviceActionError("Invalid Notes operation");
       }
+    case "calendar_create_local":
+    case "calendar_read_next":
     case "calendar_create":
     case "calendar_read_selected":
     case "calendar_update":
@@ -198,6 +218,8 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
     case "read_selected_notes":
     case "read_calendar_range":
       return validateWorkflowReadOperation(p);
+    case "notes_query":
+      return validateNativeNotesQuery(p);
     case "create_note":
       exactKeys(p, ["type", "title", "body"]);
       return {
