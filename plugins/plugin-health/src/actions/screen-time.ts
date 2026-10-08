@@ -320,13 +320,24 @@ function resolveWindowMs(windowHours: number | undefined): number {
   return Math.round(clamped * 60 * 60 * 1000);
 }
 
-function normalizeDomain(value: string): string {
+export function normalizeDomain(value: string): string {
   const trimmed = value.trim().toLowerCase().replace(/\.+$/, "");
-  if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+  if (!trimmed) return "";
+  // "https://nytimes.com/section" already becomes the host. A bare
+  // "nytimes.com/section" must do the same, or the lookup misses the site.
+  const withScheme =
+    trimmed.startsWith("http://") || trimmed.startsWith("https://")
+      ? trimmed
+      : trimmed.includes("://") || trimmed.indexOf("/") <= 0
+        ? null
+        : `https://${trimmed}`;
+  if (withScheme === null) {
+    // "/section" and "ftp://host/x" must not become a made-up host.
+    if (trimmed.startsWith("/") || trimmed.includes("://")) return "";
     return trimmed;
   }
   try {
-    return new URL(trimmed).hostname.toLowerCase();
+    return new URL(withScheme).hostname.toLowerCase();
   } catch {
     // error-policy:J3 untrusted domain input; an unparseable URL yields the
     // empty invalid signal rather than a fabricated hostname.
