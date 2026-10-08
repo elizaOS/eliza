@@ -23,7 +23,7 @@ public final class SelectedCalendarReader {
  }
  public static void assertSourceIdentities(ContentResolver resolver,org.json.JSONArray selected)throws Exception {
   if(selected.length()>16)throw new IllegalArgumentException();
-  for(int i=0;i<selected.length();i++){org.json.JSONObject source=selected.getJSONObject(i);String revision=source.getString("revision");if(!revision.matches("[a-f0-9]{64}")||!revision.equals(ai.eliza.plugins.calendar.CalendarEventGuard.sourceIdentity(resolver,Long.parseLong(source.getString("id"))).getString("sourceRevision")))throw new IllegalStateException("Selected calendar account changed");}
+  for(int i=0;i<selected.length();i++){org.json.JSONObject source=selected.getJSONObject(i);String revision=source.getString("revision");if(!revision.matches("[a-f0-9]{64}")||!revision.equals(CalendarSourceIdentity.read(resolver,Long.parseLong(source.getString("id"))).getString("sourceRevision")))throw new IllegalStateException("Selected calendar account changed");}
  }
  private static org.json.JSONArray read(ContentResolver resolver,org.json.JSONArray selected,String start,String finish,Integer maximum,Long civilBegin,Long civilEnd)throws Exception {
 
