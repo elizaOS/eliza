@@ -26,10 +26,10 @@ function formatDateTime(value: string | number, timeZone: string): string {
   }).format(date);
 }
 
-function reminderTimingDescription(
+function presentReminderTiming(
   schedule: ReminderSchedule,
   timeZone: string,
-): string {
+): { description: string; summary: string } {
   const zone = schedule.recurrence?.zone ?? timeZone;
   const lines = [
     `Due ${formatDateTime(schedule.dueAt ?? schedule.at, zone)} (${zone}).`,
@@ -40,12 +40,13 @@ function reminderTimingDescription(
       `Alert ${formatDateTime(schedule.at, zone)}. Notification delivery may be approximate.`,
     );
   }
+  const summary = lines.join(" ");
   lines.push(
     schedule.recurrence
       ? `Repeats ${schedule.recurrence.rule === "weekdays" ? "on weekdays" : schedule.recurrence.rule} at ${schedule.recurrence.time} (${zone}).`
       : "Does not repeat.",
   );
-  return lines.join("\n");
+  return { description: lines.join("\n"), summary };
 }
 
 /** Use appliedSummary only after the existing native receipt proves application. */
@@ -62,6 +63,7 @@ export function presentDeviceRecordOperation(
   let title: string;
   let applied: string;
   let details = "";
+  let summaryDetails = "";
   switch (operation.type) {
     case "create_note":
     case "notes_update": {
@@ -71,6 +73,7 @@ export function presentDeviceRecordOperation(
       applied =
         operation.type === "create_note" ? "Saved note" : "Updated note";
       details = `“${fields.title}”\n${fields.body}`;
+      summaryDetails = fields.title.trim() ? `“${fields.title}”.` : "";
       break;
     }
     case "notes_read_selected":
@@ -93,9 +96,11 @@ export function presentDeviceRecordOperation(
         operation.type === "calendar_create"
           ? "Created event"
           : "Updated event";
+      const timing = `${formatDateTime(fields.start, fields.timeZone)} – ${formatDateTime(fields.end, fields.timeZone)} (${fields.timeZone})`;
+      summaryDetails = `“${fields.title}” — ${timing}.`;
       details = [
         `“${fields.title}”`,
-        `${formatDateTime(fields.start, fields.timeZone)} – ${formatDateTime(fields.end, fields.timeZone)} (${fields.timeZone})`,
+        timing,
         ...(fields.location.trim() ? [`Location: ${fields.location}`] : []),
         ...(fields.description.trim() ? [fields.description] : []),
       ].join("\n");
@@ -123,19 +128,22 @@ export function presentDeviceRecordOperation(
         operation.type === "reminder_create"
           ? "Created reminder"
           : "Updated reminder";
+      const timing = fields.schedule
+        ? presentReminderTiming(fields.schedule, timeZone)
+        : undefined;
       details = [
         `“${fields.title}”`,
         ...(fields.body.trim() ? [fields.body] : []),
-        fields.schedule
-          ? reminderTimingDescription(fields.schedule, timeZone)
-          : "Timing unchanged.",
+        timing?.description ?? "Timing unchanged.",
       ].join("\n");
+      summaryDetails = `“${fields.title}”. ${timing?.summary ?? "Timing unchanged."}`;
       break;
     }
     case "create_reminder":
       title = "Create reminder";
       applied = "Created reminder";
       details = `“${operation.title}”\nDue ${formatDateTime(operation.dueAt, timeZone)} (${timeZone}).\nNotification delivery may be approximate.`;
+      summaryDetails = `“${operation.title}”. Due ${formatDateTime(operation.dueAt, timeZone)} (${timeZone}). Alert requested; notification delivery may be approximate.`;
       break;
     case "reminder_read_selected":
       title = "Share selected reminder";
@@ -163,8 +171,8 @@ export function presentDeviceRecordOperation(
   return {
     title,
     description: `${title}\n${details}`,
-    appliedSummary: details.startsWith("“")
-      ? `${applied} ${details}`
+    appliedSummary: summaryDetails
+      ? `${applied} ${summaryDetails}`
       : `${applied}.`,
   };
 }

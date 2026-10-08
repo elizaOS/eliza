@@ -31,6 +31,8 @@ test("Calendar review and receipt use the event zone and omit empty fields and i
   expect(presentation.appliedSummary).toContain(
     "Created event “Calendar QA MAPLE-51”",
   );
+  expect(presentation.appliedSummary).toContain("9:00 AM PDT");
+  expect(presentation.appliedSummary).not.toContain(event.fields.description);
   expect(event).toEqual(before);
 });
 
@@ -68,6 +70,9 @@ test("Reminder review preserves message, due time, no-alert state and recurrence
   expect(oneShot.description).toContain("No alert; saved task only.");
   expect(oneShot.description).toContain("Does not repeat.");
   expect(oneShot.description).not.toMatch(/Alert October|\{|\}/);
+  expect(oneShot.appliedSummary).toContain("9:00 AM PDT (America/Los_Angeles)");
+  expect(oneShot.appliedSummary).toContain("No alert");
+  expect(oneShot.appliedSummary).not.toContain(reminder.fields.body);
   expect(reminder).toEqual(before);
   const repeated = presentDeviceRecordOperation(
     {
@@ -99,7 +104,7 @@ test("Reminder review preserves message, due time, no-alert state and recurrence
   );
 });
 
-test("Notes review and receipt preserve exact title and body without record identifiers", () => {
+test("Notes review preserves exact body while receipt confirms the title without repeating text", () => {
   const fields = {
     title: "  Blue folder  ",
     body:
@@ -124,8 +129,10 @@ test("Notes review and receipt preserve exact title and body without record iden
       `${creating ? "Create" : "Update"} note\n“${fields.title}”\n${fields.body}`,
     );
     expect(presentation.appliedSummary).toBe(
-      `${creating ? "Saved" : "Updated"} note “${fields.title}”\n${fields.body}`,
+      `${creating ? "Saved" : "Updated"} note “${fields.title}”.`,
     );
+    expect(presentation.appliedSummary).not.toContain(fields.body);
+    expect(presentation.appliedSummary).not.toContain("Keep this exact text.");
   }
   const shared = presentDeviceRecordOperation({
     type: "notes_read_selected",
