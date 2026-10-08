@@ -53,6 +53,45 @@ describe("Shared realtime request classification", () => {
     });
   }
 
+  for (const [message, location] of [
+    ["IM-WX-1008: What is the current weather in Springfield, Missouri? Include the city, current temperature, and conditions. Text only.", "Springfield, Missouri"],
+    ["current weather in Paris, France?", "Paris, France"],
+    ["weather in Springfield, Missouri, USA", "Springfield, Missouri, USA"],
+    ["current weather in Springfield, MO.", "Springfield, MO"],
+    ["weather in St. Louis, Missouri. Include temperature and conditions.", "St. Louis, Missouri"],
+    ["weather in Mt. Pleasant, Michigan.", "Mt. Pleasant, Michigan"],
+    ["weather in Springfield, Missouri. Text only.", "Springfield, Missouri"],
+    ["weather in Springfield, Missouri; include conditions", "Springfield, Missouri"],
+    ["weather in Springfield, Missouri include temperature and conditions", "Springfield, Missouri"],
+    ["weather in Springfield, Missouri and include temperature", "Springfield, Missouri"],
+    ["weather in Austin", "Austin"],
+  ] as const) {
+    test(`preserves bounded public weather location: ${message}`, () => {
+      expect(resolveSharedRealtimeRequirement(message, [])).toMatchObject({
+        domain: "weather",
+        query: `current public weather in ${location}`,
+      });
+    });
+  }
+
+  for (const message of [
+    "weather in Springfield, Missouri, USA, North America",
+    "weather in Springfield,",
+    "weather in , Missouri",
+    `weather in ${"A".repeat(81)}`,
+    `weather in ${"A".repeat(241)}`,
+    "weather in Springfield, Missouri\u0000",
+    "weather in Springfield, Missouri\u200b",
+    "weather in Springfield, Missouri\ninclude conditions",
+    "weather in 37.2090, -93.2923",
+    "weather at https://example.com/conditions",
+    "weather in my location",
+  ]) {
+    test(`rejects incomplete, overlong, or unsafe weather location: ${JSON.stringify(message)}`, () => {
+      expect(resolveSharedRealtimeRequirement(message, [])).toBeUndefined();
+    });
+  }
+
   test("does not force live lookup for static or explicitly historical facts", () => {
     expect(resolveSharedRealtimeRequirement("What is Bitcoin?", [])).toBeUndefined();
     expect(resolveSharedRealtimeRequirement("Explain proof of work", [])).toBeUndefined();
