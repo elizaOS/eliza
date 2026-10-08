@@ -268,6 +268,15 @@ describe("links", () => {
     );
     expect(extractUrlFromSlackLink("nope")).toBeNull();
   });
+
+  it("encodes a pipe in the url so Slack keeps the whole link", () => {
+    expect(formatSlackLink("https://example.com/a|b", "docs")).toBe(
+      "<https://example.com/a%7Cb|docs>",
+    );
+    expect(markdownToSlackMrkdwn("[docs](https://example.com/a|b)")).toBe(
+      "<https://example.com/a%7Cb|docs>",
+    );
+  });
 });
 
 describe("stripSlackFormatting", () => {

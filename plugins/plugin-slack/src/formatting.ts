@@ -30,6 +30,11 @@ function escapeSlackMrkdwnSegment(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
+/** Slack splits `<url|label>` on the first raw pipe, so a pipe in the URL must be encoded. */
+function escapeSlackLinkUrl(url: string): string {
+  return escapeSlackMrkdwnSegment(url.replaceAll("|", "%7C"));
+}
+
 /**
  * Checks if an angle-bracket token is an allowed Slack format
  */
@@ -232,9 +237,9 @@ function convertLinks(text: string): string {
       trimmedText === trimmedUrl ||
       trimmedText === trimmedUrl.replace(/^mailto:/, "")
     ) {
-      return `<${escapeSlackMrkdwnSegment(trimmedUrl)}>`;
+      return `<${escapeSlackLinkUrl(trimmedUrl)}>`;
     }
-    return `<${escapeSlackMrkdwnSegment(trimmedUrl)}|${escapeSlackMrkdwnSegment(trimmedText)}>`;
+    return `<${escapeSlackLinkUrl(trimmedUrl)}|${escapeSlackMrkdwnSegment(trimmedText)}>`;
   });
 }
 
@@ -587,7 +592,7 @@ export function formatSlackSpecialMention(
  * Formats a Slack link
  */
 export function formatSlackLink(url: string, text?: string): string {
-  const safeUrl = escapeSlackMrkdwnSegment(url);
+  const safeUrl = escapeSlackLinkUrl(url);
   if (text && text !== url) {
     return `<${safeUrl}|${escapeSlackMrkdwnSegment(text)}>`;
   }
