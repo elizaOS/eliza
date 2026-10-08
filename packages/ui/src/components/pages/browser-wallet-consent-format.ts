@@ -48,8 +48,9 @@ export function formatWeiForDisplay(weiDecimalString: string): string {
 export function decodeSignableMessage(message: string): string {
   // personal_sign hex is case-insensitive. "0X4869" is the same payload
   // as "0x4869"; a lowercase-only prefix leaves the consent dialog showing hex.
-  if (!/^0x/i.test(message) || message.length < 4) return message;
-  const hex = message.slice(2);
+  const trimmed = message.trim();
+  if (!/^0x/i.test(trimmed) || trimmed.length < 4) return message;
+  const hex = trimmed.slice(2);
   if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) return message;
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i += 1) {
