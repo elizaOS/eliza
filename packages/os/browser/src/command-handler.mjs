@@ -41,8 +41,14 @@ export function createCommandHandler(api) {
             "expiresAt",
             "targets",
             "revoked",
+            "assistantName",
           ].includes(key),
       ) ||
+      // Display name for the overlay cursor and marks; host configuration.
+      (binding.assistantName !== undefined &&
+        (typeof binding.assistantName !== "string" ||
+          !/^[^\p{Cc}\p{Cf}]{1,32}$/u.test(binding.assistantName) ||
+          !binding.assistantName.trim())) ||
       typeof binding.tabId !== "string" ||
       !/^\d+$/.test(binding.tabId) ||
       !Number.isSafeInteger(Number(binding.tabId)) ||
@@ -183,6 +189,7 @@ export function createCommandHandler(api) {
       expiresAt,
       guidanceScope: String(binding.bindingRevision),
       protectedValueKind: command.protectedValueKind,
+      assistantName: binding.assistantName,
     };
     return { command: copy, current };
   }
@@ -342,6 +349,7 @@ export function createCommandHandler(api) {
   };
   dispatch.recordManualActivity = (message, sender) =>
     activity.record(message, sender);
+  dispatch.answerGuide = (message, sender) => guidance.answer(message, sender);
   dispatch.disconnect = () => {
     for (const [tabId, binding] of bindings)
       bindings.set(tabId, { ...binding, revoked: true });
