@@ -461,6 +461,7 @@ test("locale matching reuses canonical aliases without selecting unsupported or 
       }),
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ language });
+    const body = (await response.json()) as { language: string | null };
+    expect(body).toEqual({ language });
   }
 });
