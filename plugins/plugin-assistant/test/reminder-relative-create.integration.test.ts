@@ -32,7 +32,10 @@ const operation = {
 };
 const message = {
   createdAt: 1,
-  content: { text: "Untrusted text is not parsed", metadata: { timestamp: 1 } },
+  content: {
+    text: "Untrusted text is not parsed",
+    metadata: { timestamp: 1, uiTimeZone: "America/Los_Angeles" },
+  },
 } as unknown as Memory;
 
 test("relative reminder uses one authenticated turn anchor and reuses its canonical SQL approval on retry", async () => {
@@ -53,8 +56,11 @@ test("relative reminder uses one authenticated turn anchor and reuses its canoni
       operationKey: randomUUID(),
       reason: "Owner requested one reminder in two minutes",
     };
-    const call = (p: ActionParameters = parameters) =>
-      proposeDeviceAction.handler(runtime, message, undefined, {
+    const call = (
+      p: ActionParameters = parameters,
+      requestMessage: Memory = message,
+    ) =>
+      proposeDeviceAction.handler(runtime, requestMessage, undefined, {
         parameters: p,
       });
     await expect(call()).rejects.toThrow("No authenticated phone");
@@ -166,9 +172,11 @@ test("relative reminder uses one authenticated turn anchor and reuses its canoni
             },
           },
         })) as ActionResult;
-        expect(noAlert.data?.reminderTiming).toEqual({
+        expect(noAlert.data?.reminderTiming).toMatchObject({
           dueAt: new Date(anchor + 120_000).toISOString(),
           alertAt: null,
+          timeZone: "America/Los_Angeles",
+          alertAtDisplay: null,
         });
         expect(noAlert.data?.approvalRequired).toBe(true);
         for (const recurrence of [
@@ -206,6 +214,55 @@ test("relative reminder uses one authenticated turn anchor and reuses its canoni
           expect(validateDevicePayload(saved?.payload).operation).toEqual(
             absolute,
           );
+        }
+        for (const [instant, expected] of [
+          ["2026-10-08T15:43:19.576Z", "October 8, 2026 at 8:43:19.576 AM PDT"],
+          ["2026-11-01T08:30:00.000Z", "November 1, 2026 at 1:30 AM PDT"],
+          ["2026-11-01T09:30:00.000Z", "November 1, 2026 at 1:30 AM PST"],
+        ]) {
+          const dueAt = Date.parse(instant);
+          const absolute = {
+            type: "reminder_create",
+            fields: {
+              title: "Exact display fixture",
+              body: "Keep native bytes",
+              schedule: { at: dueAt, dueAt, alertMinutes: 0, recurrence: null },
+            },
+          };
+          const result = (await call({
+            ...parameters,
+            operation: absolute,
+            operationKey: randomUUID(),
+          })) as ActionResult;
+          expect(result.data?.reminderTiming).toEqual({
+            dueAt: instant,
+            alertAt: instant,
+            timeZone: "America/Los_Angeles",
+            dueAtDisplay: expected,
+            alertAtDisplay: expected,
+          });
+          const saved = (await service.list(credential)).find(
+            (row) => row.id === result.data?.proposalId,
+          );
+          expect(validateDevicePayload(saved?.payload).operation).toEqual(
+            absolute,
+          );
+          expect(saved?.execution).toBeNull();
+        }
+        for (const uiTimeZone of [undefined, null, "Not/A_Time_Zone"]) {
+          const invalidZoneMessage = {
+            ...message,
+            content: { ...message.content, metadata: { uiTimeZone } },
+          } as Memory;
+          const result = (await call(
+            { ...parameters, operationKey: randomUUID() },
+            invalidZoneMessage,
+          )) as ActionResult;
+          expect(result.data?.reminderTiming).toEqual({
+            dueAt: new Date(anchor + 120_000).toISOString(),
+            alertAt: new Date(anchor + 120_000).toISOString(),
+          });
+          expect(result.data?.approvalRequired).toBe(true);
         }
       });
     } finally {

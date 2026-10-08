@@ -7,6 +7,7 @@ import {
   CLOCK_ALARMS_CAPABILITY,
   CLOCK_DAYS,
   CLOCK_REPEAT_CAPABILITY,
+  clockTimeZone,
   isClockOperation,
   validateClockResult,
 } from "./clock-contract.ts";
@@ -16,6 +17,7 @@ import {
   object,
   validateDevicePayload,
 } from "./contract.ts";
+import { formatDeviceRecordDateTime } from "./device-record-presentation.ts";
 import {
   deviceActionEffectReceipts,
   deviceApprovalPersistenceReceipt,
@@ -428,7 +430,7 @@ export const CLOCK_ALARM_GUIDANCE =
 export const proposeDeviceAction: Action = {
   name: "PROPOSE_DEVICE_ACTION",
   description:
-    "For a one-shot relative reminder use reminder_create_after with fields title, body and schedule {after: elapsed duration with units such as 2m, alertMinutes: 0 for one alert or null for no alert}. The server resolves exact instants from the authenticated turn start; do not calculate epoch timestamps. Requires reminders.create.v1. Use returned reminderTiming instants when describing the pending proposal. Create reviewed no-alert, lead or recurring reminders only with reminder_create and reminders.create.v1. The legacy create_reminder supports only title and dueAt and always requests an alert; never discard requested timing. reminder_create.fields requires title, body and schedule; schedule requires at, dueAt, alertMinutes (null means no alert), recurrence (null or exact repeat). at=dueAt-(alertMinutes??0)*60000; recurrence leadMinutes matches. No-alert creates pending, not delivered. Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Preserve target.timingVersion=2 when supplied by the phone. TimingVersion 2 targets and schedules with dueAt plus alertMinutes require reminders.local-record.v2. Supply both timing fields together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts require at=dueAt-alertMinutes*60000 and matching recurrence leadMinutes. No-alert tasks cannot be snoozed; only an explicitly reviewed schedule edit enables an alert. Cancel stops all future repeats; snooze is ten minutes. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve." +
+    "For a one-shot relative reminder use reminder_create_after with fields title, body and schedule {after: elapsed duration with units such as 2m, alertMinutes: 0 for one alert or null for no alert}. The server resolves exact instants from the authenticated turn start; do not calculate epoch timestamps. Requires reminders.create.v1. Use returned reminderTiming dueAtDisplay and alertAtDisplay verbatim when available; they already use the phone timezone. Otherwise keep the returned UTC instants explicit, without inventing a local timezone. Create reviewed no-alert, lead or recurring reminders only with reminder_create and reminders.create.v1. The legacy create_reminder supports only title and dueAt and always requests an alert; never discard requested timing. reminder_create.fields requires title, body and schedule; schedule requires at, dueAt, alertMinutes (null means no alert), recurrence (null or exact repeat). at=dueAt-(alertMinutes??0)*60000; recurrence leadMinutes matches. No-alert creates pending, not delivered. Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Preserve target.timingVersion=2 when supplied by the phone. TimingVersion 2 targets and schedules with dueAt plus alertMinutes require reminders.local-record.v2. Supply both timing fields together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts require at=dueAt-alertMinutes*60000 and matching recurrence leadMinutes. No-alert tasks cannot be snoozed; only an explicitly reviewed schedule edit enables an alert. Cancel stops all future repeats; snooze is ten minutes. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve." +
     " " +
     CLOCK_ALARM_GUIDANCE +
     " " +
@@ -549,6 +551,22 @@ export const proposeDeviceAction: Action = {
     );
     const request = outcome.request;
     const payload = validateDevicePayload(request.payload);
+    let phoneTimeZone: string | undefined;
+    if (isReminderCreate(payload.operation)) {
+      try {
+        phoneTimeZone = clockTimeZone(
+          metadata &&
+            typeof metadata === "object" &&
+            !Array.isArray(metadata) &&
+            "uiTimeZone" in metadata
+            ? metadata.uiTimeZone
+            : undefined,
+        );
+      } catch {
+        // Missing or invalid display context cannot alter the persisted proposal.
+        // Retain exact UTC instants without claiming a phone-local timezone.
+      }
+    }
     const reminderTiming = isReminderCreate(payload.operation)
       ? {
           dueAt: new Date(
@@ -558,6 +576,22 @@ export const proposeDeviceAction: Action = {
             payload.operation.fields.schedule.alertMinutes === null
               ? null
               : new Date(payload.operation.fields.schedule.at).toISOString(),
+          ...(phoneTimeZone
+            ? {
+                timeZone: phoneTimeZone,
+                dueAtDisplay: formatDeviceRecordDateTime(
+                  payload.operation.fields.schedule.dueAt,
+                  phoneTimeZone,
+                ),
+                alertAtDisplay:
+                  payload.operation.fields.schedule.alertMinutes === null
+                    ? null
+                    : formatDeviceRecordDateTime(
+                        payload.operation.fields.schedule.at,
+                        phoneTimeZone,
+                      ),
+              }
+            : {}),
         }
       : undefined;
     const receipt = request.execution?.providerReceipt;
