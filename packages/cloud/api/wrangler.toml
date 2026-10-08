@@ -507,6 +507,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 # =============================================================================
 
 [env.staging]
+compatibility_flags = ["nodejs_compat", "enable_request_signal"]
 name = "eliza-cloud-api-staging"
 workers_dev = false
 
@@ -835,6 +836,7 @@ namespace_id = "1615314"
 simple = { limit = 120, period = 60 }
 
 [env.production]
+compatibility_flags = ["nodejs_compat", "enable_request_signal"]
 name = "eliza-cloud-api-prod"
 
 # Use the explicitly measured region, rather than infer placement from the

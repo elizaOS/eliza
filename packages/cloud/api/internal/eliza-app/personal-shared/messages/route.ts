@@ -1943,6 +1943,7 @@ app.post("/", async (c) => {
           { type: ChannelType.GROUP, source: parsed.data.platform },
           undefined,
           c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers),
+          c.req.raw.signal,
         )
       : await sharedRestMessageSend(
           agent,
@@ -1960,6 +1961,7 @@ app.post("/", async (c) => {
           undefined,
           sharedFallback?.accountState,
           c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers),
+          c.req.raw.signal,
         );
     // The same values ship on `Server-Timing` below; a second uncorrelated
     // per-turn log on the hot path would only duplicate them.

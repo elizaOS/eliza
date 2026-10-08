@@ -46,10 +46,12 @@ mock.module("../models", () => ({
     FIXTURE_UNMAPPED_NATIVE_MODEL,
   ],
 }));
-const { APICallError, generateText, streamText } = await import("ai");
-const { getInteractiveCerebrasLanguageModel, ProviderConfigurationError } = await import(
-  "./language-model"
-);
+const { APICallError, generateText, jsonSchema, streamText } = await import("ai");
+const {
+  getInteractiveCerebrasLanguageModel,
+  ProviderConfigurationError,
+  ProviderFallbackRefusedError,
+} = await import("./language-model");
 
 function hostOf(url: RequestInfo | URL): "openrouter" | "cerebras" | "other" {
   const u = String(url);
@@ -500,4 +502,270 @@ describe("getInteractiveCerebrasLanguageModel without OpenRouter key", () => {
       if (priorKey !== undefined) process.env.OPENROUTER_API_KEY = priorKey;
     }
   });
+});
+
+describe("Core Qwen thinking-off control through the actual existing clients", () => {
+  function options(thinking: unknown = "off") {
+    return {
+      eliza: { thinking },
+      openai: { promptCacheKey: "core-cache-not-restored" },
+      cerebras: { prompt_cache_key: "core-room-not-restored" },
+    };
+  }
+  test.each(["qwen-3.8-27b", "cerebras/qwen-3.8-27b", "cerebras:qwen-3.8-27b:nitro"])(
+    "%s suppresses reasoning without restoring cache hints",
+    async (modelId) => {
+      const coreOptions = options();
+      const before = JSON.stringify(coreOptions);
+      const bodies: Array<Record<string, unknown>> = [];
+      globalThis.fetch = (async (_url, init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return completion("qwen-3.8-27b", "ready");
+      }) as typeof fetch;
+      await generateText({
+        model: getInteractiveCerebrasLanguageModel(modelId, undefined, undefined, coreOptions),
+        prompt: "unchanged",
+        maxRetries: 0,
+      });
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0]).toMatchObject({ model: "qwen-3.8-27b", reasoning_effort: "none" });
+      expect(bodies[0]).not.toHaveProperty("prompt_cache_key");
+      expect(bodies[0]).not.toHaveProperty("enable_thinking");
+      expect(bodies[0]).not.toHaveProperty("disable_reasoning");
+      expect(JSON.stringify(coreOptions)).toBe(before);
+    },
+  );
+  test.each([undefined, "on", "auto", false])(
+    "non-off Core hint %s keeps the existing wire",
+    async (hint) => {
+      const bodies: Array<Record<string, unknown>> = [];
+      globalThis.fetch = (async (_url, init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return completion("qwen-3.8-27b", "ready");
+      }) as typeof fetch;
+      await generateText({
+        model: getInteractiveCerebrasLanguageModel(
+          "qwen-3.8-27b",
+          undefined,
+          undefined,
+          hint === undefined ? undefined : options(hint),
+        ),
+        prompt: "unchanged",
+        maxRetries: 0,
+      });
+      expect(bodies[0]).not.toHaveProperty("reasoning_effort");
+    },
+  );
+  test("does not send an unsupported none control to the other Cerebras model", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return completion("gpt-oss-120b", "ready");
+    }) as typeof fetch;
+    await generateText({
+      model: getInteractiveCerebrasLanguageModel("gpt-oss-120b", undefined, undefined, options()),
+      prompt: "unchanged",
+      maxRetries: 0,
+    });
+    expect(bodies[0]).not.toHaveProperty("reasoning_effort");
+  });
+  test("an unreadable optional hint cannot change provider behavior", async () => {
+    const coreOptions = Object.defineProperty({}, "eliza", {
+      get() {
+        throw new Error("PRIVATE_HINT");
+      },
+    });
+    const bodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return completion("qwen-3.8-27b", "ready");
+    }) as typeof fetch;
+    await generateText({
+      model: getInteractiveCerebrasLanguageModel("qwen-3.8-27b", undefined, undefined, coreOptions),
+      prompt: "unchanged",
+      maxRetries: 0,
+    });
+    expect(bodies[0]).not.toHaveProperty("reasoning_effort");
+  });
+  for (const mode of ["generate", "stream"] as const) {
+    test(`${mode} preserves body/model/calls and the documented shorthand in real same-model fallback`, async () => {
+      const run = async (thinkingOff: boolean) => {
+        const requests: Array<{ host: string; body: Record<string, unknown> }> = [];
+        globalThis.fetch = (async (url, init) => {
+          const host = hostOf(url);
+          requests.push({ host, body: JSON.parse(String(init?.body)) });
+          if (host === "cerebras") return serverError();
+          if (host !== "openrouter") throw new Error("Unexpected provider");
+          return mode === "generate"
+            ? completion("qwen/qwen3.8-27b", "ready")
+            : streamedCompletion("qwen/qwen3.8-27b", "ready");
+        }) as typeof fetch;
+        const call = {
+          model: getInteractiveCerebrasLanguageModel(
+            "qwen-3.8-27b",
+            undefined,
+            undefined,
+            thinkingOff ? options() : undefined,
+          ),
+          messages: [
+            { role: "system" as const, content: "Trusted unchanged policy" },
+            { role: "user" as const, content: "same prompt" },
+          ],
+          tools: {
+            PROBE: {
+              inputSchema: jsonSchema({
+                type: "object",
+                properties: { value: { type: "string" } },
+                required: ["value"],
+              }),
+            },
+          },
+          toolChoice: "auto" as const,
+          maxOutputTokens: 64,
+          maxRetries: 0,
+        };
+        if (mode === "generate") await generateText(call);
+        else {
+          const result = streamText(call);
+          for await (const _part of result.fullStream) {
+          }
+          await result.usage;
+        }
+        return requests;
+      };
+      const before = await run(false);
+      const after = await run(true);
+      expect(after.map((r) => r.host)).toEqual(["cerebras", "openrouter"]);
+      expect(after.map((r) => r.body.model)).toEqual(["qwen-3.8-27b", "qwen/qwen3.8-27b"]);
+      expect(before).toHaveLength(after.length);
+      for (let i = 0; i < after.length; i += 1) {
+        const { reasoning_effort: effort, ...body } = after[i].body;
+        expect(effort).toBe("none");
+        expect(body).toEqual(before[i].body);
+        expect(after[i].body).not.toHaveProperty("prompt_cache_key");
+        expect(after[i].body).not.toHaveProperty("reasoning");
+      }
+    });
+    test(`${mode} retryable response racing cancellation never starts the fallback`, async () => {
+      const controller = new AbortController();
+      const hosts: string[] = [];
+      globalThis.fetch = (async (url) => {
+        const host = hostOf(url);
+        hosts.push(host);
+        if (host !== "cerebras") throw new Error("Cancelled call must not start fallback");
+        controller.abort(new DOMException("caller cancelled", "AbortError"));
+        return serverError();
+      }) as typeof fetch;
+      const call = {
+        model: getInteractiveCerebrasLanguageModel("qwen-3.8-27b", undefined, undefined, options()),
+        prompt: "same prompt",
+        maxRetries: 0,
+        abortSignal: controller.signal,
+      };
+      if (mode === "generate") await expect(generateText(call)).rejects.toThrow();
+      else {
+        const result = streamText(call);
+        const drain = (async () => {
+          for await (const _part of result.fullStream) {
+          }
+          return await result.usage;
+        })();
+        await expect(drain).rejects.toThrow();
+      }
+      expect(hosts).toEqual(["cerebras"]);
+    });
+  }
+});
+
+describe("public routing slot and cancellation before cross-provider fallback", () => {
+  for (const mode of ["generate", "stream"] as const) {
+    for (const thinkingOff of [false, true]) {
+      test(`${mode} keeps third routing policy authority with fourth Core hint ${thinkingOff}`, async () => {
+        const bodies: Array<Record<string, unknown>> = [];
+        const hosts: string[] = [];
+        const policyCalls: unknown[] = [];
+        const routing = {
+          fallbackPolicy: (context: unknown) => {
+            policyCalls.push(context);
+            return { allow: false as const, reason: "fixture routing refusal" };
+          },
+        };
+        globalThis.fetch = Object.assign(
+          async (url: RequestInfo | URL, init?: RequestInit) => {
+            hosts.push(hostOf(url));
+            bodies.push(JSON.parse(String(init?.body)));
+            return serverError();
+          },
+          { preconnect: ORIGINAL_FETCH.preconnect },
+        );
+        const model = getInteractiveCerebrasLanguageModel(
+          "qwen-3.8-27b",
+          undefined,
+          routing,
+          thinkingOff ? { eliza: { thinking: "off" } } : undefined,
+        );
+        const call = {
+          prompt: [
+            { role: "user" as const, content: [{ type: "text" as const, text: "unchanged" }] },
+          ],
+          maxOutputTokens: 64,
+        };
+        const work = mode === "generate" ? model.doGenerate(call) : model.doStream(call);
+        await expect(work).rejects.toBeInstanceOf(ProviderFallbackRefusedError);
+        expect(hosts).toEqual(["cerebras"]);
+        expect(policyCalls).toHaveLength(1);
+        expect(policyCalls[0]).toMatchObject({
+          model: "qwen-3.8-27b",
+          primary: "cerebras",
+          alternate: "openrouter",
+          operation: mode,
+          status: 503,
+        });
+        if (thinkingOff) expect(bodies[0].reasoning_effort).toBe("none");
+        else expect(bodies[0]).not.toHaveProperty("reasoning_effort");
+      });
+    }
+    test(`${mode} cancellation retains the primary SDK error before routing policy`, async () => {
+      const controller = new AbortController();
+      const policyCalls: unknown[] = [];
+      const hosts: string[] = [];
+      const routing = {
+        fallbackPolicy: (context: unknown) => {
+          policyCalls.push(context);
+          return { allow: true as const };
+        },
+      };
+      globalThis.fetch = Object.assign(
+        async (url: RequestInfo | URL) => {
+          hosts.push(hostOf(url));
+          controller.abort(new DOMException("cancelled fixture", "AbortError"));
+          return serverError();
+        },
+        { preconnect: ORIGINAL_FETCH.preconnect },
+      );
+      const model = getInteractiveCerebrasLanguageModel("qwen-3.8-27b", undefined, routing, {
+        eliza: { thinking: "off" },
+      });
+      const call = {
+        prompt: [
+          { role: "user" as const, content: [{ type: "text" as const, text: "unchanged" }] },
+        ],
+        abortSignal: controller.signal,
+      };
+      let failure: unknown;
+      try {
+        await (mode === "generate" ? model.doGenerate(call) : model.doStream(call));
+      } catch (error) {
+        failure = error;
+      }
+      expect(APICallError.isInstance(failure)).toBe(true);
+      if (!APICallError.isInstance(failure)) throw new Error("Original primary SDK error missing");
+      expect(failure.statusCode).toBe(503);
+      expect(failure.url).toContain("cerebras.ai");
+      expect(failure).not.toBeInstanceOf(ProviderFallbackRefusedError);
+      expect(hosts).toEqual(["cerebras"]);
+      expect(policyCalls).toEqual([]);
+      expect(controller.signal.aborted).toBe(true);
+    });
+  }
 });

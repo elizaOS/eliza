@@ -217,3 +217,119 @@ describe("closed Shared diagnostic transport", () => {
     expect(received.failureDiagnostic).toBeUndefined();
   });
 });
+
+describe("Personal Shared cancellation authority stays outside the RPC", () => {
+  test("stops the real REST and coordinator fetch without moving account state or server trace", async () => {
+    const controller = new AbortController();
+    const entered = Promise.withResolvers<AbortSignal>();
+    let stopped = false;
+    const bodies: Array<Record<string, unknown>> = [];
+    const namespace = {
+      getByName(_name: string) {
+        return {
+          async fetch(input: RequestInfo | URL, init?: RequestInit) {
+            const signal = init?.signal;
+            if (!signal)
+              throw new Error("Expected coordinator cancellation signal");
+            bodies.push(
+              (await new Request(input, init).json()) as Record<
+                string,
+                unknown
+              >,
+            );
+            entered.resolve(signal);
+            return await new Promise<Response>((_resolve, reject) => {
+              const stop = () => {
+                stopped = true;
+                reject(
+                  signal.reason ?? new DOMException("Aborted", "AbortError"),
+                );
+              };
+              if (signal.aborted) stop();
+              else signal.addEventListener("abort", stop, { once: true });
+            });
+          },
+        };
+      },
+    };
+    const pending = sharedRestMessageSend(
+      agent,
+      "room-fixture",
+      "hello",
+      "Eliza",
+      executionCtx,
+      namespace,
+      "cancelled-message",
+      "platform",
+      undefined,
+      "hello",
+      { type: ChannelType.DM, source: "telegram" },
+      accountState,
+      "cancelled-trace",
+      controller.signal,
+    );
+    pending.catch(() => undefined);
+    const signal = await entered.promise;
+    controller.abort(
+      new DOMException("Caller stopped this turn", "AbortError"),
+    );
+    await expect(pending).rejects.toThrow();
+    expect(signal.aborted).toBe(true);
+    expect(stopped).toBe(true);
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({
+      operation: "personal-bridge",
+      traceId: "cancelled-trace",
+      trustedAccountState: accountState,
+      channel: { type: ChannelType.DM, source: "telegram" },
+    });
+    const rpc = bodies[0].rpc as {
+      id: string;
+      params: Record<string, unknown>;
+    };
+    expect(rpc.id).toBe("cancelled-message");
+    expect(rpc.params.clientMessageId).toBe("cancelled-message");
+    expect(rpc.params).not.toHaveProperty("abortSignal");
+    expect(rpc.params).not.toHaveProperty("signal");
+    expect(rpc.params).not.toHaveProperty("traceId");
+    expect(rpc.params).not.toHaveProperty("trustedAccountState");
+    expect(bodies[0]).not.toHaveProperty("abortSignal");
+    expect(bodies[0]).not.toHaveProperty("signal");
+  });
+
+  test("an already-aborted caller reaches zero simulated coordinator work", async () => {
+    const controller = new AbortController();
+    controller.abort(new DOMException("Stopped before dispatch", "AbortError"));
+    let work = 0;
+    const namespace = {
+      getByName(_name: string) {
+        return {
+          async fetch(_input: RequestInfo | URL, init?: RequestInit) {
+            if (!init?.signal?.aborted) work++;
+            init?.signal?.throwIfAborted();
+            throw new Error("Aborted caller must not run provider work");
+          },
+        };
+      },
+    };
+    await expect(
+      sharedRestMessageSend(
+        agent,
+        "room-fixture",
+        "hello",
+        "Eliza",
+        executionCtx,
+        namespace,
+        "preaborted-message",
+        "platform",
+        undefined,
+        "hello",
+        undefined,
+        accountState,
+        "preaborted-trace",
+        controller.signal,
+      ),
+    ).rejects.toThrow();
+    expect(work).toBe(0);
+  });
+});
