@@ -33,12 +33,24 @@ import type { SELF_ENTITY_ID } from "./types.js";
 // scoped flag groups such as `(?-i:...)`.
 const NAME_PATTERN =
   "[A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2}";
+// A curly apostrophe is outside the name class, so "Jill’s" ends the name
+// at Jill. Reject possessives and prevent fallback to a shorter name prefix.
 const NAME_CLAIM_PATTERNS: RegExp[] = [
-  new RegExp(`\\b[Mm]y\\s+name\\s+is\\s+(${NAME_PATTERN})\\b`),
-  new RegExp(`\\b[Ii]\\s+am\\s+(${NAME_PATTERN})\\b`),
-  new RegExp(`\\b[Ii]['’]?m\\s+(${NAME_PATTERN})\\b`),
-  new RegExp(`\\b[Tt]his\\s+is\\s+(${NAME_PATTERN})\\b`),
-  new RegExp(`\\b[Ii]t['’]?s\\s+(${NAME_PATTERN})\\b`),
+  new RegExp(
+    `\\b[Mm]y\\s+name\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+  ),
+  new RegExp(
+    `\\b[Ii]\\s+am\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+  ),
+  new RegExp(
+    `\\b[Ii]['’]?m\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+  ),
+  new RegExp(
+    `\\b[Tt]his\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+  ),
+  new RegExp(
+    `\\b[Ii]t['’]?s\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+  ),
 ];
 
 export function extractSelfNameClaim(
@@ -49,7 +61,12 @@ export function extractSelfNameClaim(
     const m = pattern.exec(text);
     if (m?.[1]) {
       const cleaned = m[1].replace(/[.,;:!?]+$/, "").trim();
-      if (cleaned.length > 0) return cleaned;
+      // The name class includes `'`, so "Jill's" is captured whole. A token
+      // ending in `'s` is a possessive, not the speaker's name.
+      const possessive = cleaned
+        .split(/\s+/)
+        .some((token) => /['’]s$/u.test(token));
+      if (cleaned.length > 0 && !possessive) return cleaned;
     }
   }
   return null;
@@ -239,6 +256,14 @@ function cleanOrganization(raw: string): string | null {
   );
   if (clauseBreak > 0) cleaned = cleaned.slice(0, clauseBreak).trim();
   cleaned = cleaned.replace(/[.,;:!?]+$/, "").trim();
+  // "I work at Acme today" captures "Acme today". A trailing "today" is not
+  // part of the organization, and it also hides a one-word department
+  // ("accounting today" no longer counts as a single department token).
+  const orgWords = cleaned.split(" ");
+  if (orgWords.length > 1 && orgWords[orgWords.length - 1] === "today") {
+    orgWords.pop();
+    cleaned = orgWords.join(" ");
+  }
   if (cleaned.length < 2) return null;
   if (NAME_STOPWORDS.has(cleaned.toLowerCase())) return null;
   // Cap runaway captures: an org phrase longer than five words is almost

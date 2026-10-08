@@ -50,6 +50,17 @@ describe("splitMailboxLikeList", () => {
       splitMailboxLikeList('"Lovelace, Ada" <ada@x.com>, bob@y.com'),
     ).toEqual(['"Lovelace, Ada" <ada@x.com>', "bob@y.com"]);
   });
+
+  it("keeps a comma that sits inside an escaped quote in the display name", () => {
+    expect(
+      splitMailboxLikeList(
+        '"Joe \\"Hand, Tool\\" Smith" <joe@example.com>, jane@example.com',
+      ),
+    ).toEqual([
+      '"Joe \\"Hand, Tool\\" Smith" <joe@example.com>',
+      "jane@example.com",
+    ]);
+  });
 });
 
 describe("parseGmailRelativeDuration", () => {

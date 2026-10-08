@@ -202,6 +202,16 @@ class FakeRelationshipStore {
 // Pure extractor regression tests.
 // ---------------------------------------------------------------------------
 
+it("retains names followed by an unpunctuated first-person clause", () => {
+  expect(
+    extractSelfNameClaim("Hi it's Jill I wanted to ask about Monday"),
+  ).toBe("Jill");
+  expect(
+    extractSelfNameClaim("This is Alice I am calling about the invoice"),
+  ).toBe("Alice");
+  expect(extractSelfNameClaim("I'm Mary Jane’s friend")).toBeNull();
+});
+
 describe("extractSelfNameClaim", () => {
   it.each([
     ["I'm Jill", "Jill"],
@@ -226,6 +236,13 @@ describe("extractSelfNameClaim", () => {
 
   it("rejects lowercase names (heuristic anchor)", () => {
     expect(extractSelfNameClaim("i am jill")).toBeNull();
+  });
+
+  it("does not treat a possessive as the speaker name", () => {
+    expect(extractSelfNameClaim("Hi, it's Jill's birthday")).toBeNull();
+    expect(extractSelfNameClaim("This is Jill's husband")).toBeNull();
+    expect(extractSelfNameClaim("This is Jill's Birthday")).toBeNull();
+    expect(extractSelfNameClaim("I’m Jill’s friend")).toBeNull();
   });
 });
 
@@ -316,6 +333,15 @@ describe("extractSelfAffiliationClaim", () => {
     const claim = extractSelfAffiliationClaim(input);
     expect(claim?.name).toBeNull();
     expect(claim?.organization).toBe(organization);
+  });
+
+  it("drops a trailing time word from the organization", () => {
+    expect(
+      extractSelfAffiliationClaim("I work at Acme today")?.organization,
+    ).toBe("Acme");
+    expect(
+      extractSelfAffiliationClaim("I am John from accounting today"),
+    ).toEqual({ name: "John", organization: "accounting" });
   });
 
   it("rejects non-affiliation phrasing", () => {
