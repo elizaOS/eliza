@@ -21,6 +21,12 @@
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js",
       "default": "./dist/node.js"
+    },
+    "./native-notes-query": {
+      "eliza-source": "./src/native-notes-query.ts",
+      "types": "./dist/native-notes-query.d.ts",
+      "import": "./dist/native-notes-query.js",
+      "default": "./dist/native-notes-query.js"
     }
   },
   "scripts": {

@@ -21,6 +21,33 @@ public final class SelectedCalendarReader {
   org.json.JSONArray result=read(resolver,ids,start,finish,maximum,a.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli(),b.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli());
   assertSourceIdentities(resolver,identities);return result;
  }
+ /** Fixed foreground discovery: caller captures native time/zone and reviews the resulting single record. */
+ public static org.json.JSONObject next(ContentResolver resolver,org.json.JSONArray sources,long now,java.time.ZoneId zone)throws Exception {
+  if(now<0||sources==null||sources.length()>16)throw new IllegalArgumentException();
+  assertSourceIdentities(resolver,sources);
+  java.time.LocalDate day=java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate(),last=day.plusDays(30);
+  java.time.format.DateTimeFormatter utc=new java.time.format.DateTimeFormatterBuilder().appendInstant(3).toFormatter();
+  org.json.JSONObject best=null;long bestStart=Long.MAX_VALUE;java.util.Set<String> seen=new java.util.HashSet<>();
+  for(java.time.LocalDate first=day;first.isBefore(last)&&sources.length()>0;first=first.plusDays(6)){
+   java.time.LocalDate end=first.plusDays(6).isAfter(last)?last:first.plusDays(6);
+   String start=utc.format(first.equals(day)?java.time.Instant.ofEpochMilli(now):first.atStartOfDay(zone).toInstant()),finish=utc.format(end.atStartOfDay(zone).toInstant());
+   org.json.JSONArray rows=readOwnerDay(resolver,sources,start,finish,200,first.toString(),end.toString());
+   for(int i=0;i<rows.length();i++){
+    org.json.JSONObject row=rows.getJSONObject(i);if(!seen.add(row.getString("calendarId")+":"+row.getString("id")+":"+row.getString("start")+":"+row.getString("end")))continue;if(seen.size()>200)throw new IllegalStateException("Discovery exceeds reviewed count");
+    boolean allDay=row.getBoolean("allDay");long begin=java.time.Instant.parse(row.getString("start")).toEpochMilli();
+    if(allDay&&(begin%86400000!=0||java.time.Instant.parse(row.getString("end")).toEpochMilli()%86400000!=0||java.time.Instant.parse(row.getString("end")).toEpochMilli()<=begin))throw new IllegalStateException("Invalid all-day civil interval");
+    if(allDay)begin=java.time.Instant.ofEpochMilli(begin).atZone(java.time.ZoneOffset.UTC).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli();
+    else if(begin<now)continue; // A past timed start is not the next upcoming event.
+    if(begin<bestStart||(begin==bestStart&&row.getString("id").compareTo(best.getString("eventId"))<0)){
+     String revision=null;for(int j=0;j<sources.length();j++)if(sources.getJSONObject(j).getString("id").equals(row.getString("calendarId")))revision=sources.getJSONObject(j).getString("revision");
+     if(revision==null)throw new IllegalStateException();
+     best=new org.json.JSONObject().put("title",row.getString("title")).put("start",row.getString("start")).put("end",row.getString("end")).put("allDay",allDay).put("timing",allDay&&begin<now?"ongoing":"upcoming").put("timeZone",zone.getId()).put("sourceId",row.getString("calendarId")).put("sourceRevision",revision).put("eventId",row.getString("id"));bestStart=begin;
+    }
+   }
+  }
+  assertSourceIdentities(resolver,sources);
+  return new org.json.JSONObject().put("version",1).put("kind","calendar_read_next").put("window",new org.json.JSONObject().put("start",utc.format(java.time.Instant.ofEpochMilli(now))).put("end",utc.format(last.atStartOfDay(zone).toInstant())).put("timeZone",zone.getId())).put("event",best==null?org.json.JSONObject.NULL:best);
+ }
  public static void assertSourceIdentities(ContentResolver resolver,org.json.JSONArray selected)throws Exception {
   if(selected.length()>16)throw new IllegalArgumentException();
   for(int i=0;i<selected.length();i++){org.json.JSONObject source=selected.getJSONObject(i);String revision=source.getString("revision");if(!revision.matches("[a-f0-9]{64}")||!revision.equals(ai.eliza.plugins.calendar.CalendarEventGuard.sourceIdentity(resolver,Long.parseLong(source.getString("id"))).getString("sourceRevision")))throw new IllegalStateException("Selected calendar account changed");}

@@ -55,7 +55,10 @@ function presentReminderTiming(
 /** Use appliedSummary only after the existing native receipt proves application. */
 export function presentDeviceRecordOperation(
   operation:
-    | CalendarOperation
+    | Exclude<
+        CalendarOperation,
+        { type: "calendar_create_local" | "calendar_read_next" }
+      >
     | NotesOperation
     | ReminderOperation
     | ReminderCreateOperation

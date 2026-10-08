@@ -48,25 +48,26 @@ export function deviceRequestCredential(
     typeof capabilityHeader === "string"
       ? capabilityHeader.split(",").map((value) => value.trim())
       : [];
+  const allowedCapabilities = new Set([
+    "calendar.local-event.v1",
+    "calendar.create.v1",
+    "calendar.next-read.v1",
+    "notes.local-record.v1",
+    "notes.query.v1",
+    "reminders.local-record.v1",
+    "reminders.local-record.v2",
+    "reminders.create.v1",
+    "maps.selected-read.v1",
+    "clock.handoff.v1",
+    "clock.handoff.v2",
+    "clock.alarms.v1",
+  ]);
   if (
-    capabilities.length > 8 ||
+    capabilities.length > allowedCapabilities.size ||
     (capabilities.includes("reminders.local-record.v1") &&
       capabilities.includes("reminders.local-record.v2")) ||
     new Set(capabilities).size !== capabilities.length ||
-    capabilities.some(
-      (value) =>
-        ![
-          "calendar.local-event.v1",
-          "notes.local-record.v1",
-          "reminders.local-record.v1",
-          "reminders.local-record.v2",
-          "reminders.create.v1",
-          "maps.selected-read.v1",
-          "clock.handoff.v1",
-          "clock.handoff.v2",
-          "clock.alarms.v1",
-        ].includes(value),
-    )
+    capabilities.some((value) => !allowedCapabilities.has(value))
   )
     return null;
   return {
@@ -124,7 +125,10 @@ export async function handleDeviceActionRoutes(
           protocol: 1,
           capabilities: [
             "calendar.local-event.v1",
+            "calendar.create.v1",
+            "calendar.next-read.v1",
             "notes.local-record.v1",
+            "notes.query.v1",
             "reminders.local-record.v1",
             "reminders.local-record.v2",
             "reminders.create.v1",
