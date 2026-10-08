@@ -14,6 +14,9 @@ import type {
 } from "../approval/types.ts";
 import {
   CALENDAR_CAPABILITY,
+  CALENDAR_CREATE_CAPABILITY,
+  CALENDAR_NEXT_CAPABILITY,
+  calendarCapabilityAvailable,
   isCalendarOperation,
   validateCalendarResult,
 } from "./calendar-contract.ts";
@@ -114,7 +117,11 @@ export async function withDeviceActionTurn<T>(
           capabilities.includes(NOTES_CAPABILITY) &&
           tags.includes("resource:notes")
             ? "Notes"
-            : capabilities.includes(CALENDAR_CAPABILITY) &&
+            : [
+                  CALENDAR_CAPABILITY,
+                  CALENDAR_CREATE_CAPABILITY,
+                  CALENDAR_NEXT_CAPABILITY,
+                ].some((capability) => capabilities.includes(capability)) &&
                 tags.includes("resource:calendar-records")
               ? "Calendar"
               : (capabilities.includes(REMINDER_CAPABILITY) ||
@@ -214,6 +221,8 @@ export class DeviceActionService {
         userTextFormatVersion: 1,
         capabilities: [
           "calendar.local-event.v1",
+          CALENDAR_CREATE_CAPABILITY,
+          CALENDAR_NEXT_CAPABILITY,
           "notes.local-record.v1",
           REMINDER_CAPABILITY,
           REMINDER_TIMING_CAPABILITY,
@@ -398,7 +407,7 @@ export class DeviceActionService {
       throw new DeviceActionError("Notes capability unavailable");
     if (
       isCalendarOperation(validated) &&
-      !c.capabilities?.includes(CALENDAR_CAPABILITY)
+      !calendarCapabilityAvailable(validated.type, c.capabilities)
     )
       throw new DeviceActionError("Calendar capability unavailable");
     if (
@@ -419,6 +428,8 @@ export class DeviceActionService {
         "reminder_cancel",
         "open_view",
         "browser_navigate",
+        "calendar_create_local",
+        "calendar_read_next",
         "calendar_create",
         "calendar_read_selected",
         "calendar_update",
@@ -770,7 +781,7 @@ export class DeviceActionService {
       throw new DeviceActionError("Notes capability unavailable");
     if (
       isCalendarOperation(payload.operation) &&
-      !c.capabilities?.includes(CALENDAR_CAPABILITY)
+      !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
     )
       throw new DeviceActionError("Calendar capability unavailable");
     if (
@@ -878,6 +889,11 @@ export class DeviceActionService {
     return this.access(c, async (q, row) => {
       const request = await this.proposal(q, row, c, id, expectedDigest);
       const payload = validateDevicePayload(request.payload);
+      if (
+        isCalendarOperation(payload.operation) &&
+        !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
+      )
+        throw new DeviceActionError("Calendar capability unavailable");
       if (
         isClockOperation(payload.operation) &&
         !clockCapabilityAvailable(payload.operation, c.capabilities)
@@ -1043,6 +1059,11 @@ export class DeviceActionService {
     return this.access(c, async (q, row) => {
       const request = await this.proposal(q, row, c, id, expectedDigest);
       const payload = validateDevicePayload(request.payload);
+      if (
+        isCalendarOperation(payload.operation) &&
+        !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
+      )
+        throw new DeviceActionError("Calendar capability unavailable");
       if (
         isClockOperation(payload.operation) &&
         !clockCapabilityAvailable(payload.operation, c.capabilities)
