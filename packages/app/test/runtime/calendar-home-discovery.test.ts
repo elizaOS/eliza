@@ -109,6 +109,9 @@ test("real enrollment and SQL proposal gates require negotiated Calendar intents
         );
       expect(proposal.state).toBe("pending");
       expect(proposal.execution).toBeNull();
+      expect((await service.list(old)).map((item) => item.id)).not.toContain(
+        proposal.id,
+      );
       expect(
         (await service.propose(credential, operation, key, "Owner request")).id,
       ).toBe(proposal.id);

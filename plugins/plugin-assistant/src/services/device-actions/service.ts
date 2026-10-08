@@ -1,5 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  isNativeNotesQuery,
+  NOTES_QUERY_CAPABILITY,
+} from "@elizaos/contracts/native-notes-query";
 import type { IAgentRuntime } from "@elizaos/core";
 import { stableStringify, withActionGatePolicy } from "@elizaos/core";
 import {
@@ -51,6 +55,7 @@ import {
   NOTES_CAPABILITY,
   validateNotesResult,
 } from "./notes-contract.ts";
+import { validateNotesQueryResult } from "./notes-query-result.ts";
 import {
   isReminderOperation,
   REMINDER_CAPABILITY,
@@ -224,6 +229,7 @@ export class DeviceActionService {
           CALENDAR_CREATE_CAPABILITY,
           CALENDAR_NEXT_CAPABILITY,
           "notes.local-record.v1",
+          NOTES_QUERY_CAPABILITY,
           REMINDER_CAPABILITY,
           REMINDER_TIMING_CAPABILITY,
           REMINDER_CREATE_CAPABILITY,
@@ -401,6 +407,12 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Reminder capability unavailable");
     if (
+      isNativeNotesQuery(validated) &&
+      (!c.capabilities?.includes(NOTES_QUERY_CAPABILITY) ||
+        !c.capabilities.includes(NOTES_CAPABILITY))
+    )
+      throw new DeviceActionError("Notes query capability unavailable");
+    if (
       isNotesOperation(validated) &&
       !c.capabilities?.includes(NOTES_CAPABILITY)
     )
@@ -417,6 +429,7 @@ export class DeviceActionService {
         "create_note",
         "maps_read_selected",
         "notes_read_selected",
+        "notes_query",
         "notes_update",
         "notes_delete",
         "create_reminder",
@@ -720,20 +733,30 @@ export class DeviceActionService {
           state: null,
           action: "device_action",
         })
-      ).filter(
-        (request) =>
-          request.payload.action === "device_action" &&
-          request.payload.installationId === c.installationId &&
-          request.payload.enrollmentId === row.enrollment_id &&
-          (deviceOperationSupportedByCapabilities(
-            "open_view",
-            c.capabilities,
-          ) ||
-            deviceOperationSupportedByCapabilities(
-              validateDevicePayload(request.payload).operation.type,
-              c.capabilities,
-            )),
-      ),
+      ).filter((request) => {
+        if (
+          request.payload.action !== "device_action" ||
+          request.payload.installationId !== c.installationId ||
+          request.payload.enrollmentId !== row.enrollment_id
+        )
+          return false;
+        const operation = validateDevicePayload(request.payload).operation;
+        const supported = deviceOperationSupportedByCapabilities(
+          operation.type,
+          c.capabilities,
+        );
+        if (
+          (isNativeNotesQuery(operation) ||
+            operation.type === "calendar_create_local" ||
+            operation.type === "calendar_read_next") &&
+          !supported
+        )
+          return false;
+        return (
+          deviceOperationSupportedByCapabilities("open_view", c.capabilities) ||
+          supported
+        );
+      }),
     );
   }
   private async proposal(
@@ -774,6 +797,12 @@ export class DeviceActionService {
       !reminderCapabilityAvailable(payload.operation, c.capabilities)
     )
       throw new DeviceActionError("Reminder capability unavailable");
+    if (
+      isNativeNotesQuery(payload.operation) &&
+      (!c.capabilities?.includes(NOTES_QUERY_CAPABILITY) ||
+        !c.capabilities.includes(NOTES_CAPABILITY))
+    )
+      throw new DeviceActionError("Notes query capability unavailable");
     if (
       isNotesOperation(payload.operation) &&
       !c.capabilities?.includes(NOTES_CAPABILITY)
@@ -915,6 +944,12 @@ export class DeviceActionService {
       )
         throw new DeviceActionError("Reminder capability unavailable");
       if (
+        isNativeNotesQuery(payload.operation) &&
+        (!c.capabilities?.includes(NOTES_QUERY_CAPABILITY) ||
+          !c.capabilities.includes(NOTES_CAPABILITY))
+      )
+        throw new DeviceActionError("Notes query capability unavailable");
+      if (
         isNotesOperation(payload.operation) &&
         !c.capabilities?.includes(NOTES_CAPABILITY)
       )
@@ -969,6 +1004,18 @@ export class DeviceActionService {
           };
         } catch {
           throw new DeviceActionError("Invalid reminder receipt");
+        }
+      } else if (
+        isNativeNotesQuery(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateNotesQueryResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid Notes query receipt");
         }
       } else if (
         isNotesOperation(payload.operation) &&
@@ -1085,6 +1132,12 @@ export class DeviceActionService {
       )
         throw new DeviceActionError("Reminder capability unavailable");
       if (
+        isNativeNotesQuery(payload.operation) &&
+        (!c.capabilities?.includes(NOTES_QUERY_CAPABILITY) ||
+          !c.capabilities.includes(NOTES_CAPABILITY))
+      )
+        throw new DeviceActionError("Notes query capability unavailable");
+      if (
         isNotesOperation(payload.operation) &&
         !c.capabilities?.includes(NOTES_CAPABILITY)
       )
@@ -1136,6 +1189,18 @@ export class DeviceActionService {
           };
         } catch {
           throw new DeviceActionError("Invalid reminder receipt");
+        }
+      } else if (
+        isNativeNotesQuery(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateNotesQueryResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid Notes query receipt");
         }
       } else if (
         isNotesOperation(payload.operation) &&

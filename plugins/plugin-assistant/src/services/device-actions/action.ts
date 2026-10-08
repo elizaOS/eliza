@@ -1,3 +1,4 @@
+import { isNativeNotesQuery } from "@elizaos/contracts/native-notes-query";
 import type { Action, ActionParameterSchema } from "@elizaos/core";
 import {
   isCalendarOperation,
@@ -24,6 +25,7 @@ import {
 } from "./effect-receipts.ts";
 import { isMapsOperation, validateMapsResult } from "./maps-contract.ts";
 import { isNotesOperation, validateNotesResult } from "./notes-contract.ts";
+import { validateNotesQueryResult } from "./notes-query-result.ts";
 import {
   isReminderOperation,
   validateReminderResult,
@@ -154,6 +156,36 @@ const notesTargetSchema = {
     sourceRevision: { type: "string" },
     noteId: { type: "string" },
     revision: { type: "string" },
+  },
+};
+const notesQuerySchema: ActionParameterSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["type", "query"],
+  properties: {
+    type: { type: "string", enum: ["notes_query"] },
+    query: {
+      anyOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["kind", "text"],
+          properties: {
+            kind: { type: "string", enum: ["title"] },
+            text: { type: "string" },
+          },
+        },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["kind", "by"],
+          properties: {
+            kind: { type: "string", enum: ["latest"] },
+            by: { type: "string", enum: ["created", "updated"] },
+          },
+        },
+      ],
+    },
   },
 };
 const notesSchemas: ActionParameterSchema[] = [
@@ -445,6 +477,7 @@ export const CLOCK_ALARM_GUIDANCE =
 export const proposeDeviceAction: Action = {
   name: "PROPOSE_DEVICE_ACTION",
   description:
+    "Native Notes discovery from Home uses notes_query with query {kind: title, text: requested title} or {kind: latest, by: created|updated}, only with notes.query.v1. Candidates remain on the phone; the owner confirms exactly one note to share. Unknown chronology or ties require local owner choice; a returned owner-choice-uncertain basis does not prove latest. Never substitute backend Notes. " +
     "For a one-shot relative reminder use reminder_create_after with fields title, body and schedule {after: elapsed duration with units such as 2m, alertMinutes: 0 for one alert or null for no alert}. The server resolves exact instants from the authenticated turn start; do not calculate epoch timestamps. Requires reminders.create.v1. Use returned reminderTiming dueAtDisplay and alertAtDisplay verbatim when available; they already use the phone timezone. Otherwise keep the returned UTC instants explicit, without inventing a local timezone. Create reviewed no-alert, lead or recurring reminders only with reminder_create and reminders.create.v1. The legacy create_reminder supports only title and dueAt and always requests an alert; never discard requested timing. reminder_create.fields requires title, body and schedule; schedule requires at, dueAt, alertMinutes (null means no alert), recurrence (null or exact repeat). at=dueAt-(alertMinutes??0)*60000; recurrence leadMinutes matches. No-alert creates pending, not delivered. Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Preserve target.timingVersion=2 when supplied by the phone. TimingVersion 2 targets and schedules with dueAt plus alertMinutes require reminders.local-record.v2. Supply both timing fields together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts require at=dueAt-alertMinutes*60000 and matching recurrence leadMinutes. No-alert tasks cannot be snoozed; only an explicitly reviewed schedule edit enables an alert. Cancel stops all future repeats; snooze is ten minutes. For creation from Home use calendar_create_local with exact fields and calendar.create.v1; the phone resolves its default On this phone calendar and requires native confirmation. For next-event discovery use calendar_read_next with no guessed timestamps and calendar.next-read.v1; the native clock fixes a window from now through the next 30 owner-local days; the foreground native review discovers readable Calendar sources and shares only the approved next event, or an explicit no-events-in-window result. Never infer a source from arbitrary UI selection; no background access is granted. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve." +
     " " +
     CLOCK_ALARM_GUIDANCE +
@@ -482,6 +515,7 @@ export const proposeDeviceAction: Action = {
           },
           ...calendarSchemas,
           ...notesSchemas,
+          notesQuerySchema,
           ...reminderSchemas,
           reminderCreateSchema,
           reminderCreateAfterSchema,
@@ -646,27 +680,30 @@ export const proposeDeviceAction: Action = {
         isReminderOperation(payload.operation) ||
         isReminderCreate(payload.operation) ||
         isCalendarOperation(payload.operation) ||
-        isNotesOperation(payload.operation)) &&
+        isNotesOperation(payload.operation) ||
+        isNativeNotesQuery(payload.operation)) &&
       receipt &&
       typeof receipt === "object" &&
       !Array.isArray(receipt) &&
       receipt.outcome === "applied"
     ) {
-      const result = isMapsOperation(payload.operation)
-        ? validateMapsResult(payload.operation, receipt.result)
-        : isReminderCreate(payload.operation)
-          ? validateReminderCreateResult(
-              payload.operation,
-              receipt.result,
-              typeof receipt.operationId === "string"
-                ? receipt.operationId
-                : undefined,
-            )
-          : isReminderOperation(payload.operation)
-            ? validateReminderResult(payload.operation, receipt.result)
-            : isNotesOperation(payload.operation)
-              ? validateNotesResult(payload.operation, receipt.result)
-              : validateCalendarResult(payload.operation, receipt.result);
+      const result = isNativeNotesQuery(payload.operation)
+        ? validateNotesQueryResult(payload.operation, receipt.result)
+        : isMapsOperation(payload.operation)
+          ? validateMapsResult(payload.operation, receipt.result)
+          : isReminderCreate(payload.operation)
+            ? validateReminderCreateResult(
+                payload.operation,
+                receipt.result,
+                typeof receipt.operationId === "string"
+                  ? receipt.operationId
+                  : undefined,
+              )
+            : isReminderOperation(payload.operation)
+              ? validateReminderResult(payload.operation, receipt.result)
+              : isNotesOperation(payload.operation)
+                ? validateNotesResult(payload.operation, receipt.result)
+                : validateCalendarResult(payload.operation, receipt.result);
       return {
         success: true,
         transcriptVisibility: "internal",
@@ -788,7 +825,7 @@ export function deviceActionForCapabilities(
           (type) =>
             typeof type === "string" &&
             (capabilities === undefined
-              ? type !== "clock_alarm"
+              ? type !== "clock_alarm" && type !== "notes_query"
               : deviceOperationSupportedByCapabilities(
                   type === "reminder_create_after" ? "reminder_create" : type,
                   capabilities,

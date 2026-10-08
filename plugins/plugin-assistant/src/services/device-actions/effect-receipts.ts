@@ -138,6 +138,7 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
   switch (type) {
     case "maps_read_selected":
     case "notes_read_selected":
+    case "notes_query":
     case "reminder_read_selected":
     case "calendar_read_next":
     case "calendar_read_selected":
