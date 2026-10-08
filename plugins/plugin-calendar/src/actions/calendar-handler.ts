@@ -1716,11 +1716,22 @@ export function parseExplicitLocalDate(
     if (month === undefined) {
       return null;
     }
-    return {
-      year: monthNameMatch[3] ? Number(monthNameMatch[3]) : localToday.year,
-      month,
-      day: Number(monthNameMatch[2]),
-    };
+    const year = monthNameMatch[3]
+      ? Number(monthNameMatch[3])
+      : localToday.year;
+    const day = Number(monthNameMatch[2]);
+    // "2/30/2026" already returns null. "February 30, 2026" must not stay
+    // as a day that does not exist.
+    const candidate = new Date(0);
+    candidate.setUTCFullYear(year, month - 1, day);
+    const isRealDate =
+      day >= 1 &&
+      day <= 31 &&
+      candidate.getUTCFullYear() === year &&
+      candidate.getUTCMonth() + 1 === month &&
+      candidate.getUTCDate() === day;
+    if (!isRealDate) return null;
+    return { year, month, day };
   }
 
   const numericMatch = normalized.match(
