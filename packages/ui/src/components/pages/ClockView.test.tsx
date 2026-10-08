@@ -29,13 +29,19 @@ vi.mock("../../layouts/framed-page", () => ({
 vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: undefined, agentProps: {} }),
 }));
-vi.mock("../../hooks/useSharedNow", () => ({ useSharedNow: () => Date.now() }));
+const sharedNow = vi.hoisted(() => ({
+  read: (): number => Date.now(),
+}));
+vi.mock("../../hooks/useSharedNow", () => ({
+  useSharedNow: () => sharedNow.read(),
+}));
 
 beforeEach(() => {
   vi.spyOn(document, "hidden", "get").mockReturnValue(false);
 });
 
 afterEach(async () => {
+  sharedNow.read = () => Date.now();
   cleanup();
   const host = getClockHost();
   if (host) await retireClockHost(host);
@@ -127,3 +133,86 @@ it.each(["denied", "failed", "unknown"] as const)(
     expect(host.manageAlarm).toHaveBeenCalledOnce();
   },
 );
+
+function proposalHost(expiresAt: string): ClockHost {
+  const host = hostFixture();
+  host.status = async () => ({
+    supported: true,
+    agentBase: "https://agent.example",
+    reason: null,
+    capabilities: ["clock.handoff.v1"],
+    scope: "owner",
+    installationId: "phone",
+    context: null,
+  });
+  host.proposals = async () => ({
+    scope: "owner",
+    proposals: [
+      {
+        id: "request-1",
+        digest: "digest",
+        state: "pending",
+        expiresAt,
+        operation: {
+          type: "clock_handoff",
+          action: "set",
+          hour: 9,
+          minute: 0,
+          label: "Morning",
+          timeZone: "UTC",
+        },
+      },
+    ],
+  });
+  return host;
+}
+
+it("keeps a future request unreviewable until the shared clock leaves epoch", async () => {
+  sharedNow.read = () => 0;
+  configureClockHost(proposalHost("2026-12-01T00:00:00.000Z"));
+  render(<ClockView />);
+  const review = await screen.findByRole("button", {
+    name: "Review on this phone",
+  });
+  expect(review.hasAttribute("disabled")).toBe(true);
+  expect(
+    screen.queryByText("Request expired. Send a new request in chat."),
+  ).toBeNull();
+});
+
+it("keeps a past request unreviewable while the shared clock is unknown", async () => {
+  sharedNow.read = () => 0;
+  configureClockHost(proposalHost("2020-01-01T00:00:00.000Z"));
+  render(<ClockView />);
+  const review = await screen.findByRole("button", {
+    name: "Review on this phone",
+  });
+  expect(review.hasAttribute("disabled")).toBe(true);
+  expect(
+    screen.queryByText("Request expired. Send a new request in chat."),
+  ).toBeNull();
+});
+
+it("expires a past request once the shared clock is known", async () => {
+  sharedNow.read = () => Date.parse("2026-10-07T12:00:00.000Z");
+  configureClockHost(proposalHost("2020-01-01T00:00:00.000Z"));
+  render(<ClockView />);
+  expect(
+    await screen.findByText("Request expired. Send a new request in chat."),
+  ).toBeTruthy();
+  expect(
+    screen
+      .getByRole("button", { name: "Review on this phone" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+});
+
+it("offers review for a future request once the shared clock is known", async () => {
+  sharedNow.read = () => Date.parse("2026-10-07T12:00:00.000Z");
+  configureClockHost(proposalHost("2026-12-01T00:00:00.000Z"));
+  render(<ClockView />);
+  const review = await screen.findByRole("button", {
+    name: "Review on this phone",
+  });
+  expect(review.hasAttribute("disabled")).toBe(false);
+});

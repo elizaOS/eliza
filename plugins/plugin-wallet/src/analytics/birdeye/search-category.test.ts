@@ -97,9 +97,9 @@ describe("Birdeye search categories", () => {
                   network: "solana",
                   price: 172.23,
                   price_change_24h_percent: 1.5,
-                  volume_24h_usd: 1000000,
-                  market_cap: 75000000000,
-                  fdv: 90000000000,
+                  volume_24h_usd: 999_999,
+                  market_cap: 999_999_999,
+                  fdv: 999.999,
                 },
                 {
                   symbol: "SOLDOG",
@@ -141,6 +141,10 @@ describe("Birdeye search categories", () => {
     expect(result.results[0].tokens).toHaveLength(1);
     expect(result.text).toContain("birdeye_token_search:");
     expect(result.text).toContain("mode: symbol");
+    expect(result.text).toContain("$1.00M");
+    expect(result.text).toContain("$1.00B");
+    expect(result.text).toContain("$1.00K");
+    expect(result.text).not.toContain("$1000.00");
   });
 
   it("searches token intel by address", async () => {

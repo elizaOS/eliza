@@ -55,3 +55,42 @@ test("attachments validate exact bytes and type before deriving a review hash", 
     /Invalid attachment/,
   );
 });
+
+test("ZIP entry counts stop before the ZIP64 sentinel", async () => {
+  const bytes = new Uint8Array(0);
+  const entries = Array.from({ length: 65_534 }, (_, index) => ({
+    path: `file-${index}`,
+    bytes,
+  }));
+  const archive = new Uint8Array(await fileArchive(entries).arrayBuffer());
+  const view = new DataView(
+    archive.buffer,
+    archive.byteOffset,
+    archive.byteLength,
+  );
+  const eocd = archive.length - 22;
+  assert.equal(view.getUint32(eocd, true), 0x06054b50);
+  assert.equal(view.getUint16(eocd + 8, true), entries.length);
+  assert.equal(view.getUint16(eocd + 10, true), entries.length);
+  let offset = view.getUint32(eocd + 16, true);
+  for (const entry of entries) {
+    assert.equal(view.getUint32(offset, true), 0x02014b50);
+    const nameSize = view.getUint16(offset + 28, true);
+    assert.equal(
+      new TextDecoder().decode(
+        archive.subarray(offset + 46, offset + 46 + nameSize),
+      ),
+      entry.path,
+    );
+    offset +=
+      46 +
+      nameSize +
+      view.getUint16(offset + 30, true) +
+      view.getUint16(offset + 32, true);
+  }
+  assert.equal(offset, eocd);
+  assert.throws(
+    () => fileArchive([...entries, { path: "overflow", bytes }]),
+    /fewer than 65,535/,
+  );
+});

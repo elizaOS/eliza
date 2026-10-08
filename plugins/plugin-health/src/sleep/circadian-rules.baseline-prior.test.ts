@@ -82,3 +82,48 @@ describe("baselinePrior rule (bedtime 23:00, wake 07:00)", () => {
     ]);
   });
 });
+
+it("requires recent owner outbound activity for message awake evidence", () => {
+  const now = Date.parse("2026-06-02T21:00:00Z");
+  for (const [direction, ageMinutes, expected] of [
+    ["inbound", 1, false],
+    ["outbound_by_owner", 1, true],
+    ["outbound_by_owner", 11, false],
+  ] as const) {
+    const observedAt = new Date(now - ageMinutes * 60_000).toISOString();
+    const result = scoreCircadianRules({
+      nowMs: now,
+      timezone: "UTC",
+      windows: [],
+      baseline: null,
+      regularityClass: "very_regular",
+      hasCurrentSleepEpisode: false,
+      currentSleepStartedAtMs: null,
+      lastSleepEndedAtMs: null,
+      currentEpisodeLikelyNap: false,
+      signals: [
+        {
+          id: "message",
+          agentId: "agent",
+          source: "connector_activity",
+          platform: "telegram",
+          state: "active",
+          observedAt,
+          createdAt: observedAt,
+          idleState: null,
+          idleTimeSeconds: null,
+          onBattery: null,
+          health: null,
+          metadata: { eventType: "MESSAGE_RECEIVED", direction },
+        },
+      ],
+    });
+    expect(
+      result.firings.some(
+        (firing) =>
+          firing.name === "message.outboundRecent" &&
+          firing.contributes === "awake",
+      ),
+    ).toBe(expected);
+  }
+});

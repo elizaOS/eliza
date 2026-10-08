@@ -322,14 +322,25 @@ export const extractLimit = (text: string): number => {
 
 export const formatValue = (value?: number): string => {
   if (!value) return "N/A";
-  if (value && value >= 1_000_000_000) {
-    return `$${(value / 1_000_000_000).toFixed(2)}B`;
-  }
-  if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(2)}M`;
-  }
-  if (value >= 1_000) {
-    return `$${(value / 1_000).toFixed(2)}K`;
+  const abs = Math.abs(value);
+  const tiers: Array<[number, string]> = [
+    [1_000_000_000, "B"],
+    [1_000_000, "M"],
+    [1_000, "K"],
+    [1, ""],
+  ];
+  for (let i = 0; i < tiers.length; i++) {
+    const [threshold, suffix] = tiers[i];
+    if (abs >= threshold) {
+      const scaled = value / threshold;
+      // If rounding pushes the scaled value to 1000, promote to the next tier
+      // (e.g. 999999 -> "$1.00M", not "$1000.00K").
+      if (Math.abs(Number(scaled.toFixed(2))) >= 1000 && i > 0) {
+        const [higherThreshold, higherSuffix] = tiers[i - 1];
+        return `$${(value / higherThreshold).toFixed(2)}${higherSuffix}`;
+      }
+      return `$${scaled.toFixed(2)}${suffix}`;
+    }
   }
   return `$${value.toFixed(2)}`;
 };

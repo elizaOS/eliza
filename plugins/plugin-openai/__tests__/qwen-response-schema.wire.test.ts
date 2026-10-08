@@ -11,7 +11,8 @@ import type {
   PlannerTrajectory,
   ToolDefinition,
 } from "@elizaos/core";
-import { buildPlannerToolsFromActions, parseAndValidate } from "@elizaos/core";
+import { buildPlannerToolsFromActions, ModelType, parseAndValidate } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { jsonSchema, Output } from "ai";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtractorOutputSchema } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts";
@@ -19,6 +20,7 @@ import { factMemoryEvaluator } from "../../plugin-assistant/src/features/advance
 import { evaluatorSchema } from "../../plugin-assistant/src/prompts/evaluator.ts";
 import { runEvaluator } from "../../plugin-assistant/src/runtime/evaluator.ts";
 import { withTurnScopeToolArg } from "../../plugin-assistant/src/runtime/planner-loop.ts";
+import { openaiPlugin } from "../index";
 import { handleActionPlanner, handleResponseHandler, handleTextSmall } from "../models/text";
 
 interface WireRequest {
@@ -26,6 +28,10 @@ interface WireRequest {
   stream?: boolean;
   temperature?: number;
   top_p?: number;
+  stop?: string[];
+  frequency_penalty?: number;
+  presence_penalty?: number;
+  seed?: number;
   reasoning_effort?: string;
   messages: Array<{ role: string; content: string }>;
   tools?: unknown[];
@@ -166,6 +172,10 @@ async function invoke(options: {
   };
   temperature?: number;
   topP?: number;
+  stopSequences?: string[];
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+  seed?: number;
 }) {
   const chunks: string[] = [];
   const handler = options.actionPlanner
@@ -187,6 +197,12 @@ async function invoke(options: {
     stream: options.stream ?? false,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(options.topP !== undefined ? { topP: options.topP } : {}),
+    ...(options.stopSequences !== undefined ? { stopSequences: options.stopSequences } : {}),
+    ...(options.frequencyPenalty !== undefined
+      ? { frequencyPenalty: options.frequencyPenalty }
+      : {}),
+    ...(options.presencePenalty !== undefined ? { presencePenalty: options.presencePenalty } : {}),
+    ...(options.seed !== undefined ? { seed: options.seed } : {}),
     ...(options.providerOptions ? { providerOptions: options.providerOptions } : {}),
     onStreamChunk: (chunk: string) => chunks.push(chunk),
   } as never);
@@ -624,14 +640,144 @@ describe("Qwen3.8 response-schema wire contract", () => {
   );
 
   it.each([false, true])(
+    "preserves generation controls through registered runtime dispatch (stream=%s)",
+    async (stream) => {
+      vi.stubEnv("ELIZA_PROVIDER", "openai");
+      const agent = createSQLiteTestRuntime({
+        character: {
+          name: "generation-controls",
+          bio: "Keep caller output boundaries and sampling settings",
+          settings: {
+            ELIZA_PROVIDER: "openai",
+            OPENAI_API_KEY: "loopback-only-key",
+            OPENAI_BASE_URL: baseUrl,
+            OPENAI_SMALL_MODEL: "gpt-4o-mini",
+            OPENAI_LARGE_MODEL: "gpt-4o-mini",
+          },
+        },
+        plugins: [openaiPlugin],
+        logLevel: "fatal",
+      });
+      const stopSequences = ["END", "结束🛑"];
+      try {
+        await agent.initialize();
+        for (const modelType of [ModelType.TEXT_SMALL, ModelType.TEXT_LARGE]) {
+          const result = await agent.useModel(modelType, {
+            prompt: "Return the navigation verdict.",
+            stream,
+            stopSequences,
+            frequencyPenalty: 0,
+            presencePenalty: -0.4,
+            seed: 0,
+          });
+          if (typeof result === "string") expect(JSON.parse(result)).toEqual(verdict);
+          else if (result.textStream) {
+            let text = "";
+            for await (const chunk of result.textStream) text += chunk;
+            expect(JSON.parse(text)).toEqual(verdict);
+          } else expect(JSON.parse(await result.text)).toEqual(verdict);
+          expect(requests.at(-1)).toMatchObject({
+            model: "gpt-4o-mini",
+            stop: stopSequences,
+            frequency_penalty: 0,
+            presence_penalty: -0.4,
+            seed: 0,
+          });
+        }
+        expect(requests).toHaveLength(2);
+        expect(stopSequences).toEqual(["END", "结束🛑"]);
+      } finally {
+        await agent.stop();
+      }
+    }
+  );
+
+  it.each([false, true])(
+    "preserves independent controls and omission across calls (stream=%s)",
+    async (stream) => {
+      const samples = [
+        {},
+        { stopSequences: ["END", "结束"] },
+        { frequencyPenalty: 0 },
+        { presencePenalty: 0 },
+        { seed: 0 },
+        { frequencyPenalty: -0.5, presencePenalty: 0.7, seed: 42 },
+        { stopSequences: [] },
+        {},
+      ];
+      for (const sample of samples) {
+        expect(await invoke({ stream, ...sample })).toEqual(verdict);
+        const sent = requests.at(-1);
+        if (!sent) throw new Error("Expected outbound SDK request");
+        for (const [input, wire] of [
+          ["stopSequences", "stop"],
+          ["frequencyPenalty", "frequency_penalty"],
+          ["presencePenalty", "presence_penalty"],
+          ["seed", "seed"],
+        ] as const) {
+          const value = sample[input];
+          if (value === undefined) {
+            expect(sent).not.toHaveProperty(wire);
+          } else expect(sent[wire]).toEqual(value);
+        }
+      }
+      expect(requests).toHaveLength(samples.length);
+    }
+  );
+
+  it.each([false, true])(
+    "sanitizes stop text without changing caller data (stream=%s)",
+    async (stream) => {
+      const stopSequences = ["结束🛑", "broken\ud800"];
+      expect(await invoke({ stream, stopSequences })).toEqual(verdict);
+      expect(requests).toHaveLength(1);
+      expect(requests[0].stop).toEqual(["结束🛑", "broken\ufffd"]);
+      expect(stopSequences).toEqual(["结束🛑", "broken\ud800"]);
+    }
+  );
+
+  it.each([{ actionPlanner: true }, { responseHandler: true }])(
+    "preserves controls for the agent model slot %j",
+    async (slot) => {
+      expect(
+        await invoke({
+          ...slot,
+          stopSequences: ["END"],
+          frequencyPenalty: 0.4,
+          presencePenalty: 0,
+          seed: 42,
+        })
+      ).toEqual(verdict);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        stop: ["END"],
+        frequency_penalty: 0.4,
+        presence_penalty: 0,
+        seed: 42,
+      });
+    }
+  );
+
+  it.each([false, true])(
     "retains SDK omission for unsupported reasoning-model sampling (stream=%s)",
     async (stream) => {
       vi.stubEnv("ELIZA_PROVIDER", "openai");
-      expect(await invoke({ stream, model: "o3", temperature: 0, topP: 0.7 })).toEqual(verdict);
+      expect(
+        await invoke({
+          stream,
+          model: "o3",
+          temperature: 0,
+          topP: 0.7,
+          frequencyPenalty: 0.5,
+          presencePenalty: 0.5,
+        })
+      ).toEqual(verdict);
       expect(requests).toHaveLength(1);
       expect(requests[0].model).toBe("o3");
       expect(requests[0]).not.toHaveProperty("temperature");
       expect(requests[0]).not.toHaveProperty("top_p");
+      expect(requests[0]).not.toHaveProperty("frequency_penalty");
+      expect(requests[0]).not.toHaveProperty("presence_penalty");
     }
   );
 

@@ -268,4 +268,100 @@ describe("notificationTriageAction", () => {
     ).toHaveLength(30);
     expect(result.data).toMatchObject({ notificationLimit: null });
   });
+
+  it.each([403, 429])(
+    "reports the reset time when GitHub answers %i with no remaining quota",
+    async (status) => {
+      const rateLimitError = Object.assign(
+        new Error("API rate limit exceeded"),
+        {
+          status,
+          response: {
+            headers: {
+              "x-ratelimit-remaining": "0",
+              "x-ratelimit-reset": "1791374400",
+            },
+          },
+        },
+      );
+      const listNotificationsForAuthenticatedUser = vi
+        .fn()
+        .mockRejectedValueOnce(rateLimitError);
+      const runtime = {
+        getService: () => ({
+          getOctokit: () => ({
+            activity: { listNotificationsForAuthenticatedUser },
+          }),
+        }),
+      } as never;
+
+      const result = await notificationTriageAction.handler(
+        runtime,
+        {} as never,
+        undefined,
+        undefined,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(
+        "GitHub rate limit exhausted; resets at 2026-10-07T12:00:00.000Z",
+      );
+    },
+  );
+});
+
+it("returns browser links from the actual triage action without rewriting unrelated subjects", async () => {
+  const cases = [
+    [
+      "Issue",
+      "https://api.github.com/repos/ElizaOS/eliza/issues/7",
+      "https://github.com/ElizaOS/eliza/issues/7",
+    ],
+    [
+      "PullRequest",
+      "https://api.github.com/repos/elizaOS/eliza/pulls/8",
+      "https://github.com/elizaOS/eliza/pull/8",
+    ],
+    [
+      "Issue",
+      "https://api.github.com/repos/other/repo/issues/9",
+      "https://api.github.com/repos/other/repo/issues/9",
+    ],
+    [
+      "Commit",
+      "https://api.github.com/repos/elizaOS/eliza/commits/abc",
+      "https://api.github.com/repos/elizaOS/eliza/commits/abc",
+    ],
+  ];
+  const notifications = cases.map(([type, url], index) => ({
+    id: `link-${index}`,
+    reason: "comment",
+    updated_at: "2026-08-16T00:00:00Z",
+    subject: { title: `Link ${index}`, type, url },
+    repository: { full_name: "elizaOS/eliza", pushed_at: null },
+  }));
+  const runtime = {
+    getService: () => ({
+      getOctokit: () => ({
+        activity: {
+          listNotificationsForAuthenticatedUser: vi
+            .fn()
+            .mockResolvedValue({ data: notifications }),
+        },
+      }),
+    }),
+  } as never;
+  const result = await notificationTriageAction.handler(
+    runtime,
+    {} as never,
+    undefined,
+    undefined,
+  );
+  expect(result.success).toBe(true);
+  const links = (
+    result.data as { notifications: Array<{ id: string; url: string }> }
+  ).notifications;
+  expect(Object.fromEntries(links.map(({ id, url }) => [id, url]))).toEqual(
+    Object.fromEntries(cases.map(([, , url], index) => [`link-${index}`, url])),
+  );
 });

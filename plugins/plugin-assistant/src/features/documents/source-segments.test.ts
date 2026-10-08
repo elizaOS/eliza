@@ -107,6 +107,56 @@ describe("canonical document source segments", () => {
     expect(parts.join("")).toBe(text);
   });
 
+  it.each([
+    ["a line ending", `${"a".repeat(DOCUMENT_SOURCE_SEGMENT_MAX_BYTES)}\n`],
+    [
+      "the LF of a CRLF",
+      `${"a".repeat(DOCUMENT_SOURCE_SEGMENT_MAX_BYTES - 1)}\r\n`,
+    ],
+    [
+      "trailing spaces",
+      `${"a".repeat(DOCUMENT_SOURCE_SEGMENT_MAX_BYTES - 1)}   \n`,
+    ],
+    [
+      "part of a blank line",
+      `${"a".repeat(DOCUMENT_SOURCE_SEGMENT_MAX_BYTES - 2)}\n  \n`,
+    ],
+  ])(
+    "pages fragments exactly when a segment cut leaves only %s",
+    (_cut, head) => {
+      const text = `${head}tail\n\nnext\n`;
+      const projected = projection(text);
+      expect(projected.segments).toHaveLength(2);
+      const { total } = read(projected, {
+        unit: "fragment",
+        offset: 0,
+        limit: 1,
+      });
+      const pages = Array.from(
+        { length: total },
+        (_, offset) =>
+          read(projected, { unit: "fragment", offset, limit: 1 }).text,
+      );
+      expect(pages.at(-1)).toBe("next\n");
+      expect(pages.join("")).toBe(text);
+    },
+  );
+
+  it("starts an oversized fragment page after a cut line's whitespace tail", () => {
+    const head = `${"a".repeat(DOCUMENT_SOURCE_SEGMENT_MAX_BYTES)}\ntail\n\n`;
+    const projected = projection(
+      `${head}${"b".repeat(5 * DOCUMENT_SOURCE_SEGMENT_MAX_BYTES)}\n`,
+    );
+    // The adapter returns at most five rows covering fragment 1.
+    const page = read(
+      projected,
+      { unit: "fragment", offset: 1, limit: 1 },
+      projected.segments.slice(1, 6),
+    );
+    expect([page.unit, page.start]).toEqual(["byte", head.length]);
+    expect(page.text).toBe("b".repeat(3 * DOCUMENT_SOURCE_SEGMENT_MAX_BYTES));
+  });
+
   it.each(["line", "fragment"] as const)(
     "rejects a %s page whose first covering segment is missing",
     (unit) => {

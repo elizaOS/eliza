@@ -76,6 +76,8 @@ export interface X402TransactionLog {
   service: string;
   url: string;
   amount: bigint;
+  /** Protocol fee transferred in addition to `amount`, when non-zero. */
+  protocolFee?: bigint;
   token: Address;
   recipient: Address;
   txHash: Hash;

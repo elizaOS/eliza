@@ -264,3 +264,14 @@ describe("resolveChannelName", () => {
     expect(resolveChannelName("discord")).toBe("discord");
   });
 });
+
+it.each(["120363000000@g.us", "123456789@lid", "status@broadcast"])(
+  "does not invent a direct phone link for WhatsApp %s despite phone metadata",
+  (jid) => {
+    expect(
+      buildDeepLink("whatsapp", {
+        roomMeta: { jid, phoneNumber: "+15551234567" },
+      }),
+    ).toBeNull();
+  },
+);

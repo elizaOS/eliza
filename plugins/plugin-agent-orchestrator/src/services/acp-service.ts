@@ -120,6 +120,7 @@ import {
   type PreparedPiProviderRoute,
   preparePiProviderRoute,
 } from "./pi-provider-config.js";
+import { recordedPromptDurationMs } from "./prompt-duration.js";
 import {
   AcpSessionStore,
   InMemorySessionStore,
@@ -2687,7 +2688,10 @@ export class AcpService extends Service {
       response: result.finalText,
       finalText: result.finalText,
       stopReason,
-      durationMs: result.durationMs || Date.now() - startedAt,
+      durationMs: recordedPromptDurationMs(
+        result.durationMs,
+        Date.now() - startedAt,
+      ),
       exitCode: result.code,
       signal: result.signal,
       ...(result.terminalFailure

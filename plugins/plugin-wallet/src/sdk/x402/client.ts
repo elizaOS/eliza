@@ -31,6 +31,7 @@ import type {
 import { DEFAULT_SUPPORTED_NETWORKS } from "./types.js";
 
 export const DEFAULT_X402_FETCH_TIMEOUT_MS = 10_000;
+const X402_PROTOCOL_FEE_BPS = 77n;
 
 /**
  * [MAX-ADDED] x402 Payment Client for AgentWallet.
@@ -94,8 +95,10 @@ export class X402Client {
     // Check the budget and hold the amount until the payment is recorded or
     // abandoned, so concurrent payments can't all pass the same check
     const amount = BigInt(selected.amount);
+    const protocolFee = (amount * X402_PROTOCOL_FEE_BPS) / 10000n;
+    const chargedAmount = amount + protocolFee;
     const service = new URL(urlStr).hostname;
-    const reservation = this.budget.reserve(service, amount);
+    const reservation = this.budget.reserve(service, chargedAmount);
     if (!reservation.allowed) {
       throw new X402BudgetExceededError(reservation.reason, urlStr, selected);
     }
@@ -122,7 +125,7 @@ export class X402Client {
       approved = true;
 
       // Execute payment
-      paymentResult = await this.executePayment(selected, () => {
+      paymentResult = await this.executePayment(selected, protocolFee, () => {
         transferAttempted = true;
       });
     } catch (error) {
@@ -160,6 +163,7 @@ export class X402Client {
       service,
       url: urlStr,
       amount,
+      ...(protocolFee > 0n ? { protocolFee } : {}),
       token: resolvedToken,
       recipient: selected.payTo as Address,
       txHash: paymentResult.txHash,
@@ -276,6 +280,7 @@ export class X402Client {
    */
   private async executePayment(
     req: X402PaymentRequirements,
+    protocolFee: bigint,
     markTransferAttempted: () => void,
   ): Promise<{ txHash: Hash; token: Address }> {
     // Resolve the actual contract address for the requested asset
@@ -291,31 +296,30 @@ export class X402Client {
     const onChainBudget = await checkBudget(this.wallet, resolvedAddress);
     const amount = BigInt(req.amount);
 
-    if (amount > onChainBudget.perTxLimit) {
+    const chargedAmount = amount + protocolFee;
+    if (chargedAmount > onChainBudget.perTxLimit) {
       throw new X402PaymentError(
-        `Amount ${amount} exceeds on-chain per-tx limit ${onChainBudget.perTxLimit}`,
+        `Amount ${chargedAmount} including protocol fee exceeds on-chain per-tx limit ${onChainBudget.perTxLimit}`,
         req,
       );
     }
 
-    if (amount > onChainBudget.remainingInPeriod) {
+    if (chargedAmount > onChainBudget.remainingInPeriod) {
       throw new X402PaymentError(
-        `Amount ${amount} exceeds remaining period budget ${onChainBudget.remainingInPeriod}`,
+        `Amount ${chargedAmount} including protocol fee exceeds remaining period budget ${onChainBudget.remainingInPeriod}`,
         req,
       );
     }
 
-    // Calculate and transfer protocol fee (0.77% = 77 bps)
-    const X402_PROTOCOL_FEE_BPS = 77n;
+    // Transfer the protocol fee (0.77% = 77 bps) before the recipient amount.
     const FEE_COLLECTOR: Address = "0xff86829393C6C26A4EC122bE0Cc3E466Ef876AdD";
-    const feeAmount = (amount * X402_PROTOCOL_FEE_BPS) / 10000n;
 
     markTransferAttempted();
-    if (feeAmount > 0n) {
+    if (protocolFee > 0n) {
       await agentTransferToken(this.wallet, {
         token: resolvedAddress,
         to: FEE_COLLECTOR,
-        amount: feeAmount,
+        amount: protocolFee,
       });
     }
 

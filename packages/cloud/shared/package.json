@@ -738,7 +738,7 @@
     "expletives": "^0.1.5",
     "hono": "4.13.8",
     "jose": "^6.0.0",
-    "libphonenumber-js": "^1.12.42",
+    "libphonenumber-js": "^1.13.14",
     "nanoid": "^6.0.0",
     "nodemailer": "^10.0.12",
     "pg": "^8.23.0",
@@ -757,7 +757,7 @@
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.5.15",
     "@cloudflare/workers-types": "^4.20260429.1",
     "@types/node": "^25.6.0",
     "@types/pg": "^8.23.1",
@@ -768,7 +768,7 @@
     "ioredis-mock": "^8.13.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "@types/json-schema": "^7.0.15"
   },
   "elizaos": {

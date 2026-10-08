@@ -59,7 +59,7 @@
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.5.15",
     "@elizaos/core": "workspace:*",
     "@types/bun": "1.4.2",
     "@types/json-schema": "^7.0.15",
@@ -67,7 +67,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "uuid": "^14.0.0",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "@elizaos/testing": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
     "tsup": "^8.5.1"

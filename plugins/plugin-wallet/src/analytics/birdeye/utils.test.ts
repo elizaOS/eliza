@@ -14,6 +14,23 @@ import {
 } from "./utils.js";
 
 describe("formatValue", () => {
+  it.each([
+    [999.994, "$999.99"],
+    [999.999, "$1.00K"],
+    [999_999, "$1.00M"],
+    [999_999_999, "$1.00B"],
+    [-999.994, "$-999.99"],
+    [-999.999, "$-1.00K"],
+    [-999_999, "$-1.00M"],
+    [-999_999_999, "$-1.00B"],
+    [2.675, "$2.67"],
+    [-2.675, "$-2.67"],
+  ])(
+    "preserves toFixed rounding and promotes signed tiers for %s",
+    (value, expected) => {
+      expect(formatValue(value)).toBe(expected);
+    },
+  );
   it("scales to K/M/B with a $ prefix, N/A for falsy", () => {
     expect(formatValue(undefined)).toBe("N/A");
     expect(formatValue(0)).toBe("N/A");

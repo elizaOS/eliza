@@ -936,9 +936,14 @@ function ClockControls() {
               const freshReview = ["pending", "approved"].includes(
                 proposal.state,
               );
+              // The shared clock uses zero until its first subscription tick.
+              const clockReady = now > 0;
+              const deadlineMs = Date.parse(proposal.expiresAt);
               const expired =
                 freshReview &&
-                Date.parse(proposal.expiresAt) <= (now || Date.now());
+                clockReady &&
+                Number.isFinite(deadlineMs) &&
+                deadlineMs <= now;
               const supported = clockCapabilityAvailable(
                 proposal.operation,
                 native?.capabilities,
@@ -966,6 +971,7 @@ function ClockControls() {
                     variant="outline"
                     disabled={
                       reviewing !== null ||
+                      !clockReady ||
                       expired ||
                       !supported ||
                       scope === null
