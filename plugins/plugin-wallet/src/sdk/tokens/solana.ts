@@ -161,6 +161,22 @@ export function formatSplBalance(rawBalance: bigint, decimals: number): string {
 }
 
 /**
+ * Convert a SOL amount string into lamports.
+ * Nine decimal places. An extra dot is not part of the amount.
+ */
+export function parseSolLamports(amount: string): bigint {
+  // One optional dot. "1.5.2" used to keep only "1.5". "-1.5" used to
+  // become -0.5 SOL because the fraction was added to a negative integer.
+  if (!/^(?:\d+\.\d*|\d+|\.\d+)$/.test(amount)) {
+    throw new Error(`invalid SOL amount "${amount}"`);
+  }
+  const parts = amount.split(".");
+  const intPart = BigInt(parts[0] || "0");
+  const fracStr = (parts[1] ?? "").padEnd(9, "0").slice(0, 9);
+  return intPart * 1_000_000_000n + BigInt(fracStr);
+}
+
+/**
  * Solana wallet for native SOL and SPL token operations.
  * Uses @solana/web3.js (optional peer dependency, dynamically imported).
  */
@@ -290,16 +306,8 @@ export class SolanaWallet {
     const connection = await this.getConnection();
     const keypair = await this.getKeypair();
 
-    let lamports: bigint;
-    if (typeof amount === "string") {
-      // Parse SOL string (9 decimals)
-      const parts = amount.split(".");
-      const intPart = BigInt(parts[0] || "0");
-      const fracStr = (parts[1] ?? "").padEnd(9, "0").slice(0, 9);
-      lamports = intPart * 1_000_000_000n + BigInt(fracStr);
-    } else {
-      lamports = amount;
-    }
+    const lamports =
+      typeof amount === "string" ? parseSolLamports(amount) : amount;
 
     const transaction = new Transaction().add(
       SystemProgram.transfer({
