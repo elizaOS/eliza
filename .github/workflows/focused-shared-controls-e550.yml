@@ -174,3 +174,42 @@ jobs:
               NODE_OPTIONS=--max-old-space-size=8192 RUN_TURBO_CONCURRENCY=1 \
               TASK_WORKSPACE="$3" TASK_EVIDENCE="$4" bash "$5"
           ' _ "$task_runner_path" "$task_runner_home" "$task_workspace" "$RUNNER_TEMP/focused-shared-controls" "$task_script"
+      - name: Public types and whole Worker build in loopback-only namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_runner_path="$PATH"
+          task_runner_home="$HOME"
+          task_script="$RUNNER_TEMP/public-types-build.sh"
+          cat > "$task_script" <<'SCRIPT'
+          set -euo pipefail
+          cd "$TASK_WORKSPACE"
+          test "$(git rev-parse HEAD)" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
+          check() {
+            task_name="$1"; shift
+            if timeout --kill-after=10s 120s "$@" > "$TASK_EVIDENCE/$task_name.log" 2>&1; then
+              printf '%s: passed\n' "$task_name"
+            else
+              task_exit=$?
+              test "$(wc -c < "$TASK_EVIDENCE/$task_name.log")" -le 2097152
+              tail -100 "$TASK_EVIDENCE/$task_name.log"
+              exit "$task_exit"
+            fi
+          }
+          check public-api-types bun x --no-install tsc --project packages/cloud/api/tsconfig.json --noEmit --pretty false
+          check public-shared-types bun x --no-install tsc --project packages/cloud/shared/tsconfig.json --noEmit --pretty false
+          cd packages/cloud/api
+          check public-worker-build bun x --no-install wrangler deploy --env production --dry-run --outdir "$TASK_EVIDENCE/public-worker"
+          test -s "$TASK_EVIDENCE/public-worker/index.js"
+          cd "$TASK_WORKSPACE"
+          git diff --quiet HEAD
+          SCRIPT
+          sudo -n unshare --net -- bash -c '
+            set -euo pipefail
+            ip link set lo up
+            test "$(ip -o link show | wc -l)" -eq 1
+            test -z "$(ip route show)"
+            exec env -i PATH="$1" HOME="$2" CI=true NODE_ENV=test \
+              WRANGLER_SEND_METRICS=false TURBO_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 \
+              NODE_OPTIONS=--max-old-space-size=8192 TASK_WORKSPACE="$3" TASK_EVIDENCE="$4" bash "$5"
+          ' _ "$task_runner_path" "$task_runner_home" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/focused-shared-controls" "$task_script"
