@@ -32,12 +32,10 @@ export function formatWeiForDisplay(weiDecimalString: string): string {
   const whole = wei / ONE_ETH_WEI;
   const remainder = wei % ONE_ETH_WEI;
   if (remainder === 0n) return `${whole.toString()} ETH`;
-  // 6-digit precision is plenty for a confirm dialog; the full hex
-  // value goes through unchanged downstream.
-  const fractional = (remainder * 1_000_000n) / ONE_ETH_WEI;
-  const fractionalStr = fractional
+  // Consent must show the exact amount, including a single wei.
+  const fractionalStr = remainder
     .toString()
-    .padStart(6, "0")
+    .padStart(18, "0")
     .replace(/0+$/, "");
   return `${whole.toString()}.${fractionalStr || "0"} ETH`;
 }
@@ -48,8 +46,11 @@ export function formatWeiForDisplay(weiDecimalString: string): string {
  * when possible so the user sees the actual prompt rather than hex.
  */
 export function decodeSignableMessage(message: string): string {
-  if (!message.startsWith("0x") || message.length < 4) return message;
-  const hex = message.slice(2);
+  // personal_sign hex is case-insensitive. "0X4869" is the same payload
+  // as "0x4869"; a lowercase-only prefix leaves the consent dialog showing hex.
+  const trimmed = message.trim();
+  if (!/^0x/i.test(trimmed) || trimmed.length < 4) return message;
+  const hex = trimmed.slice(2);
   if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) return message;
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i += 1) {
