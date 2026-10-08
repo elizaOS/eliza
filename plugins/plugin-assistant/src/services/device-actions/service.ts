@@ -104,12 +104,8 @@ export async function withDeviceActionTurn<T>(
   const context = { runtime, credential, active: true, viewProfile };
   try {
     return await turn.run(context, () =>
-      withActionGatePolicy((action, gate) => {
-        if (
-          gate.message?.agentId !== runtime.agentId ||
-          action.name === "PROPOSE_DEVICE_ACTION"
-        )
-          return;
+      withActionGatePolicy((action) => {
+        if (action.name === "PROPOSE_DEVICE_ACTION") return;
         const capabilities = credential.capabilities ?? [];
         const tags = action.tags ?? [];
         const nativeDomain =

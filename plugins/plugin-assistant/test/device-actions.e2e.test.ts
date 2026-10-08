@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   type ActionResult,
+  actionGateFailure,
   activeCommittedEffectReceipts,
   ChannelType,
   executePlannedToolCall,
@@ -3880,10 +3881,14 @@ test("enrolled phone record authority blocks backend discovery and forced writes
       selectedContexts: ["general"],
       userRoles: ["OWNER"],
     }).map((action) => action.name);
-  const execute = (content: string) =>
+  const execute = (content: string, actionMessage: Memory = message) =>
     executePlannedToolCall(
       runtime,
-      { message, activeContexts: ["notes"], userRoles: ["OWNER"] },
+      {
+        message: actionMessage,
+        activeContexts: ["notes"],
+        userRoles: ["OWNER"],
+      },
       { name: "NOTES_CREATE", params: { content } },
     );
   try {
@@ -3910,6 +3915,41 @@ test("enrolled phone record authority blocks backend discovery and forced writes
           }),
         ).toBeUndefined();
       }
+      // The authenticated request scope owns this policy; optional message
+      // metadata must never disable it at discovery or the effect boundary.
+      for (const actionMessage of [
+        { ...message, agentId: undefined },
+        { ...message, agentId: randomUUID() },
+      ]) {
+        expect(
+          await execute("Must not bypass native ownership", actionMessage),
+        ).toMatchObject({ success: false });
+      }
+      for (const action of [
+        ...(notesPlugin.actions ?? []),
+        calendarAction,
+        standaloneCalendarAction,
+        ownerRemindersAction,
+      ]) {
+        for (const gateContext of [
+          { userRoles: ["OWNER"] as const, activeContexts: ["notes"] as const },
+          {
+            message: { ...message, agentId: undefined },
+            userRoles: ["OWNER"] as const,
+            activeContexts: ["notes"] as const,
+          },
+          {
+            message: { ...message, agentId: randomUUID() },
+            userRoles: ["OWNER"] as const,
+            activeContexts: ["notes"] as const,
+          },
+        ]) {
+          expect(actionGateFailure(action, gateContext)).toContain(
+            "authenticated phone owns",
+          );
+        }
+      }
+      expect(notes.listNotes()).toHaveLength(0);
       // Plan-step and non-CONTEXT hook execution skip context routing, but
       // must retain native-record authority at their final handler gate.
       for (const action of [
@@ -3932,9 +3972,12 @@ test("enrolled phone record authority blocks backend discovery and forced writes
       expect(notes.listNotes()).toHaveLength(0);
     });
     // Forged clientDevice metadata is not authority; an ordinary counter-request still writes its real store.
-    expect(await execute("Ordinary backend note")).toMatchObject({
-      success: true,
-    });
+    expect(
+      await execute("Ordinary backend note", {
+        ...message,
+        agentId: undefined,
+      }),
+    ).toMatchObject({ success: true });
     expect(notes.listNotes()).toHaveLength(1);
     await withDeviceActionTurn(
       runtime,
