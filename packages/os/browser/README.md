@@ -142,7 +142,25 @@ input, target, binding and per-command expiry. Cancel/dismissal or stale context
 prevents dispatch. The brief tap marker represents dispatch, not verified success;
 normal readback still determines the outcome. Raw task-guide calls cannot request
 an action pointer. Cleanup uses the same acknowledged removal/recovery path.
-Product Pause/Close integration remains required before enabling it in a product.
+
+With the `task-guide-label` capability a guide may add a `detail` line and a
+`tone` (`instruction`, `active`, `offer`, `success`). Success is drawn only when
+the host sends it. An `offer` carries host answers: two or three value cards or
+one Yes, plus one decline button. Values exist only as text in the closed shadow
+tree, never in page attributes, events or logs. A trusted tap, after 800 ms of
+stable visibility, sends only the answer ID. The worker accepts it once, for the
+current show, binding, transport, document and per-show key, then sends a
+`task-guide-answer` event to the host. Any new guide, cancel, pause, rebind or
+disconnect ends the offer. `pause` removes the label and answers and leaves a
+grey, show-only "<name> · paused" cursor; it cancels a pending action and is
+owner-bound like removal. Hosts use `pause` for product Pause and `hide` for Close.
+The cursor travels from where it was last seen, taps in the air and hides before
+the ring and label appear; an action cursor stays on its target, and the 800 ms
+readiness starts after it arrives. Reduced motion shows everything in place.
+The binding's optional `assistantName` (default "Eliza") names the cursor tag and
+label mark. `guide-font.mjs` bundles Figtree 500/700 (`figtree-OFL.txt`). The
+overlay adds it from bytes under a random family name and falls back to the
+system font if a page face claims that name.
 Run the actual Chromium renderer guidance tests. In Bash or Zsh, run:
 
 ```sh

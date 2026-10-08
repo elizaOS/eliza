@@ -231,6 +231,17 @@ export class NativeConnection {
     }
   }
 
+  /** Sends one extension-originated event on the registered transport generation. */
+  async notify(message) {
+    const state = this.current;
+    if (!state?.ready || state.closed)
+      throw new BridgeError(
+        "UNAVAILABLE",
+        "Native browser transport is not registered.",
+      );
+    await state.sender.send(message);
+  }
+
   stop() {
     this.stopped = true;
     if (this.current)
