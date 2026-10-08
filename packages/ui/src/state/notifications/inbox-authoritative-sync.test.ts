@@ -6,7 +6,7 @@ const fixture = vi.hoisted(() => ({
   clear: vi.fn(async () => ({})),
   readAll: vi.fn(async () => ({})),
   events: new Map<string, (event: never) => void>(),
-  authListeners: new Set<() => void>(),
+  authListeners: new Set<(status: unknown) => void>(),
   auth: {
     phase: "authenticated",
     identity: { id: "owner" },
@@ -35,7 +35,7 @@ vi.mock("../../api/client", () => ({
 }));
 vi.mock("../../hooks/useAuthStatus", () => ({
   getAuthStatusSnapshot: () => fixture.auth,
-  subscribeAuthStatus: (listener: () => void) => {
+  subscribeAuthStatus: (listener: (status: unknown) => void) => {
     fixture.authListeners.add(listener);
     return () => fixture.authListeners.delete(listener);
   },
@@ -423,7 +423,7 @@ it("queued old-owner writes cannot dispatch after an authority switch or delay i
     unreadCount: 1,
   });
   fixture.auth.identity.id = "successor-owner";
-  for (const listener of fixture.authListeners) listener();
+  for (const listener of fixture.authListeners) listener(fixture.auth);
   await vi.waitFor(() =>
     expect(__getStateForTests().notifications).toEqual([row(3)]),
   );
