@@ -54,16 +54,16 @@ describe("markdownToSlackMrkdwn", () => {
   });
 
   it("keeps whitespace-flanked asterisks literal", () => {
-    // Slack treats * as bold. A * with space beside it is not markdown italic,
-    // but the converter still wrapped the span, so "2 * 3 * 4" became italic.
-    expect(markdownToSlackMrkdwn("2 * 3 * 4")).toBe("2 \\* 3 \\* 4");
-    expect(markdownToSlackMrkdwn("* Use *this* now")).toBe(
-      "\\* Use _this_ now",
-    );
-    expect(markdownToSlackMrkdwn("*it* and * not *")).toBe(
-      "_it_ and \\* not \\*",
-    );
-    expect(markdownToSlackMrkdwn("5 * 2 = 10")).toBe("5 \\* 2 = 10");
+    // Slack mrkdwn has no backslash escape, and an unpaired * already
+    // renders literally. A * with space beside it must not become italic,
+    // and it must not gain a visible backslash.
+    expect(markdownToSlackMrkdwn("2 * 3 * 4")).toBe("2 * 3 * 4");
+    expect(markdownToSlackMrkdwn("* Use *this* now")).toBe("* Use _this_ now");
+    expect(markdownToSlackMrkdwn("*it* and * not *")).toBe("_it_ and * not *");
+    expect(markdownToSlackMrkdwn("5 * 2 = 10")).toBe("5 * 2 = 10");
+    expect(markdownToSlackMrkdwn("a*b")).toBe("a*b");
+    expect(markdownToSlackMrkdwn("rating: 5*")).toBe("rating: 5*");
+    expect(markdownToSlackMrkdwn("glob `*.ts` here")).toBe("glob `*.ts` here");
   });
 
   it("drops the whole opening info string and keeps a one-line fence body", () => {

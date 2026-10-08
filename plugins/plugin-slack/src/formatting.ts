@@ -149,15 +149,14 @@ function convertBold(text: string): string {
 function convertItalic(text: string): string {
   // Markdown uses single * for italic, Slack uses _.
   // A * followed by whitespace cannot open italic, and one preceded by
-  // whitespace cannot close it, so "2 * 3 * 4" stays literal. Slack still
-  // treats a bare * as bold, so escape leftovers before bold sentinels
-  // turn back into asterisks.
+  // whitespace cannot close it, so "2 * 3 * 4" stays literal.
+  // Slack mrkdwn has no backslash escape. An unpaired * already renders
+  // literally, so do not prefix leftovers with \.
   const converted = text.replace(
     /(?<!\*)\*(?!\*)(?!\s)(.+?)(?<!\s)(?<!\*)\*(?!\*)/g,
     "_$1_",
   );
-  const escaped = converted.replaceAll("*", "\\*");
-  return escaped.replaceAll(BOLD_SENTINEL, "*");
+  return converted.replaceAll(BOLD_SENTINEL, "*");
 }
 
 /**
