@@ -107,8 +107,7 @@ public abstract class CalendarPlugin extends Plugin {
     try{
     if(!workflowForeground()||!allowed()||!unlocked()){deleting.set(false);status(c,"unavailable");return;}
     String title=snapshot.event.getAsString("title"),zone=snapshot.event.getAsString("eventTimezone");
-    java.text.DateFormat format=new java.text.SimpleDateFormat("EEE, MMM d yyyy HH:mm z",java.util.Locale.getDefault());format.setTimeZone(TimeZone.getTimeZone(zone==null?"UTC":zone));
-    String message=(title==null?"Untitled event":title)+"\n"+configuration.displayName+" · "+configuration.accountName+"\n"+format.format(new java.util.Date(snapshot.event.getAsLong("dtstart")))+" — "+format.format(new java.util.Date(snapshot.event.getAsLong("dtend")))+"\nTime zone: "+zone+"\n\nDelete this one local event? This cannot be undone.";
+    String message=(title==null?"Untitled event":title)+"\n"+configuration.displayName+"\n"+eventTimeDescription(snapshot.event.getAsLong("dtstart"),snapshot.event.getAsLong("dtend"),zone)+"\n\nDelete this one local event? This cannot be undone.";
     deleteDialog=new android.app.AlertDialog.Builder(getActivity()).setTitle("Delete calendar event?").setMessage(message).setNegativeButton("Cancel",(dialog,which)->{}).setPositiveButton("Delete event",(dialog,which)->{
      resolved[0]=true;
      if(!allowed()||!unlocked()){outcome[0]=statusValue("permission-required");return;}
@@ -130,6 +129,12 @@ public abstract class CalendarPlugin extends Plugin {
  @PluginMethod public void prepareAgentSource(PluginCall c){
   if(!allowed()){status(c,"permission-required");return;}if(!workflowForeground()||!unlocked()){status(c,"unavailable");return;}
   try{long id=localCalendar();JSObject value=new JSObject();value.put("status","ready");value.put("sourceId",Long.toString(id));value.put("sourceRevision",CalendarEventGuard.sourceRevision(getContext().getContentResolver(),id,configuration.accountName,configuration.localCalendarName));c.resolve(value);}catch(Exception failure){status(c,"unavailable");}
+ }
+ private static String eventTimeDescription(long start,long end,String timeZone){
+  String zone=timeZone==null||timeZone.isEmpty()?"UTC":timeZone;
+  String pattern="EEE, MMM d yyyy h:mm"+(start%60000!=0||end%60000!=0?":ss":"")+(start%1000!=0||end%1000!=0?".SSS":"")+" a z";
+  java.text.DateFormat format=new java.text.SimpleDateFormat(pattern,java.util.Locale.getDefault());format.setTimeZone(TimeZone.getTimeZone(zone));
+  return format.format(new java.util.Date(start))+" — "+format.format(new java.util.Date(end))+"\nTime zone: "+zone;
  }
  private static void agentKeys(org.json.JSONObject value,String... keys)throws Exception{if(value==null||value.length()!=keys.length)throw new IllegalArgumentException();for(String key:keys)if(!value.has(key))throw new IllegalArgumentException();}
  private static String agentText(org.json.JSONObject value,String key,int maximum,boolean empty)throws Exception{Object raw=value.get(key);if(!(raw instanceof String))throw new IllegalArgumentException();String text=(String)raw;if(text.length()>maximum||(!empty&&text.trim().isEmpty())||text.indexOf(0)>=0)throw new IllegalArgumentException();return text;}
@@ -156,7 +161,11 @@ public abstract class CalendarPlugin extends Plugin {
    getActivity().runOnUiThread(()->{final java.util.concurrent.atomic.AtomicBoolean delivered=new java.util.concurrent.atomic.AtomicBoolean();final android.app.AlertDialog[] ownedDialog={null};final boolean[] resolved={false};final JSObject[] outcome={null};try{
     if(!workflowForeground()||!allowed()||!unlocked()||!operationId.equals(activeAgentOperation)){activeAgentOperation=null;deleting.set(false);status(c,"unavailable");return;}
     String action=create?"Create":update?"Update":remove?"Delete":"Share selected";
-    String message=configuration.displayName+" · "+configuration.accountName+"\nEvent: "+reviewed.optString("title")+"\n"+reviewed.optString("start")+" — "+reviewed.optString("end")+"\nTime zone: "+reviewed.optString("timeZone")+"\nLocation: "+reviewed.optString("location")+"\n\n"+reviewed.optString("description")+(read?"\n\nSend these exact event fields to the selected agent?":remove?"\n\nDelete this exact local event? This cannot be undone.":"\n\nApply these exact event fields?");
+    String message=configuration.displayName+"\n"+reviewed.optString("title")+"\n"+eventTimeDescription(agentInstant(reviewed,"start"),agentInstant(reviewed,"end"),reviewed.optString("timeZone"));
+    String location=reviewed.optString("location"),description=reviewed.optString("description");
+    if(!location.trim().isEmpty())message+="\nLocation: "+location;
+    if(!description.trim().isEmpty())message+="\n\n"+description;
+    message+=read?"\n\nShare this event with the connected agent?":remove?"\n\nDelete this event from this phone? This cannot be undone.":"\n\nSave this event on this phone?";
     android.widget.TextView text=new android.widget.TextView(getActivity());text.setText(message);text.setPadding(32,16,32,16);android.widget.ScrollView scroll=new android.widget.ScrollView(getActivity());scroll.addView(text);
     deleteDialog=new android.app.AlertDialog.Builder(getActivity()).setTitle(action+" calendar event?").setView(scroll).setNegativeButton("Cancel",(dialog,which)->{}).setPositiveButton(read?"Share with agent":action+" event",(dialog,which)->{
      resolved[0]=true;if(!allowed()||!unlocked()||!operationId.equals(activeAgentOperation)){outcome[0]=statusValue("permission-required");return;}
