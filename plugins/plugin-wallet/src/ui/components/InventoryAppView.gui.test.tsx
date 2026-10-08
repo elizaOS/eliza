@@ -74,8 +74,20 @@ vi.mock("@elizaos/ui", () => {
       React.createElement("button", { type: "button", ...props }),
     Avatar: (props: React.HTMLAttributes<HTMLSpanElement>) =>
       React.createElement("span", props),
-    AvatarImage: (props: React.ImgHTMLAttributes<HTMLImageElement>) =>
-      React.createElement("img", props),
+    AvatarImage: ({
+      onLoadingStatusChange,
+      onError,
+      ...props
+    }: React.ImgHTMLAttributes<HTMLImageElement> & {
+      onLoadingStatusChange?: (status: "error") => void;
+    }) =>
+      React.createElement("img", {
+        ...props,
+        onError: (event: React.SyntheticEvent<HTMLImageElement>) => {
+          onError?.(event);
+          onLoadingStatusChange?.("error");
+        },
+      }),
     AvatarFallback: (props: React.HTMLAttributes<HTMLSpanElement>) =>
       React.createElement("span", props),
     Badge: ({
