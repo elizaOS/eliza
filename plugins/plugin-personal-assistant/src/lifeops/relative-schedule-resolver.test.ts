@@ -90,6 +90,19 @@ describe("resolveNextRelativeScheduleInstant — negative-offset projection", ()
     });
     expect(resolved).toBe("2026-07-01T12:00:00.000Z");
   });
+
+  // Today's 21:00 fire has passed on 31 January. Tomorrow is 1 February.
+  // Passing day 32 to the timezone resolver throws, so the night workflow
+  // never gets a next due time.
+  it("projects a passed night window onto the first day of the next month", () => {
+    const resolved = resolveNextRelativeScheduleInstant({
+      schedule: duringNight,
+      state: mergedState,
+      cursorIso: null,
+      nowMs: Date.parse("2026-01-31T22:30:00.000Z"),
+    });
+    expect(resolved).toBe("2026-02-01T21:00:00.000Z");
+  });
 });
 
 type Schedule = Parameters<
