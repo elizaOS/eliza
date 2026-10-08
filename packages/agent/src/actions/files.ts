@@ -47,7 +47,12 @@ function normalizeOp(params: FilesParams): FilesOp | undefined {
 
 function humanSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024) {
+    const kilobytes = (bytes / 1024).toFixed(1);
+    // 1048575 bytes is still under 1 MB, but one decimal rounds to "1024.0".
+    if (kilobytes === "1024.0") return "1.0 MB";
+    return `${kilobytes} KB`;
+  }
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
