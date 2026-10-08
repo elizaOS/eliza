@@ -98,6 +98,7 @@ import {
   CalendarLocalTimeError,
   getWeekdayForLocalDate,
   getZonedDateParts,
+  isRealCalendarDay,
 } from "../internal/time.js";
 import { isMicrosoftCalendarGrantId } from "../microsoft/accounts.js";
 import { CalendarService } from "../service/CalendarService.js";
@@ -1672,20 +1673,6 @@ function parseRelativeDayOffset(text: string): number | null {
   if (/\byesterday\b/.test(text)) return -1;
   if (/\btoday\b/.test(text)) return 0;
   return null;
-}
-
-function isRealCalendarDay(year: number, month: number, day: number): boolean {
-  const candidate = new Date(0);
-  candidate.setUTCFullYear(year, month - 1, day);
-  return (
-    month >= 1 &&
-    month <= 12 &&
-    day >= 1 &&
-    day <= 31 &&
-    candidate.getUTCFullYear() === year &&
-    candidate.getUTCMonth() + 1 === month &&
-    candidate.getUTCDate() === day
-  );
 }
 
 export function parseExplicitLocalDate(

@@ -1483,11 +1483,11 @@ wheels = [
 
 [[package]]
 name = "fsspec"
-version = "2026.7.0"
+version = "2026.6.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/00/78/f34251dadb8f3921264a1d9b8946f5e542014ee2614b285261b4e40e6775/fsspec-2026.7.0.tar.gz", hash = "sha256:c803c40f4cf860b49dea58ee3e1c33cb9c790520e233537e1340049f89b82a88", size = 317040, upload-time = "2026-07-28T16:34:51.052Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/a1/ae4e3e5003468d6391d2c77b6fa1cd73bd5d13511d81c642d7b28ac90ed4/fsspec-2026.6.0.tar.gz", hash = "sha256:f5bac145310fe30e16e1471bd6840b2d990d609e872251d7e674241822abf01a", size = 313646, upload-time = "2026-06-16T01:57:28.105Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/3c/6a2bf344106328fd04963664a60b9bb6496fc25df8e962fcdc1367285fb9/fsspec-2026.7.0-py3-none-any.whl", hash = "sha256:b57ddbafedfaef7018c1ecab32aa200a9d7ca26b77965f64e48b70061249d279", size = 206583, upload-time = "2026-07-28T16:34:49.538Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/22/4222d7ddf3da30f363edaa98e329c2bce6c65497c9cb2810931c8b2c0fbc/fsspec-2026.6.0-py3-none-any.whl", hash = "sha256:02e0b71817df9b2169dc30a16832045764def1191b43dcff5bb85bdee212d2a1", size = 203949, upload-time = "2026-06-16T01:57:26.358Z" },
 ]
 
 [package.optional-dependencies]
@@ -1556,7 +1556,7 @@ dependencies = [
     { name = "google-auth" },
     { name = "googleapis-common-protos" },
     { name = "proto-plus" },
-    { name = "protobuf" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" } },
     { name = "requests" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/16/ce/502a57fb0ec752026d24df1280b162294b22a0afb98a326084f9a979138b/google_api_core-2.30.3.tar.gz", hash = "sha256:e601a37f148585319b26db36e219df68c5d07b6382cff2d580e83404e44d641b", size = 177001, upload-time = "2026-04-10T00:41:28.035Z" }
@@ -1582,7 +1582,8 @@ name = "googleapis-common-protos"
 version = "1.75.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "protobuf" },
+    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 's390x' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 's390x' and extra == 'extra-14-eliza-training-serve') or extra == 'extra-14-eliza-training-rl' or (extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b5/c8/f439cffde755cffa462bfbb156278fa6f9d09119719af9814b858fd4f81f/googleapis_common_protos-1.75.0.tar.gz", hash = "sha256:53a062ff3c32552fbd62c11fe23768b78e4ddf0494d5e5fd97d3f4689c75fbbd", size = 151035, upload-time = "2026-05-07T08:04:49.423Z" }
 wheels = [
@@ -2136,7 +2137,7 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.104.1"
+version = "1.104.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2158,15 +2159,15 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizers", version = "0.22.2", source = { registry = "https://pypi.org/simple" } },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/00/5d/37b6d082f9d441e79e4a89c099a6ae0f1b945ded54e92ed4bf0fb10101ca/litellm-1.104.1.tar.gz", hash = "sha256:c06d0aeef8b3f14dd6c9c6f128a7c0722bfd190f9d127e1477577fd9f0b0f37d", size = 19696266, upload-time = "2026-10-07T20:13:04.7Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/55/9f/7cc04ca18e936ef9b61b99f25164c71ca1ae0b586c1a3f52ec9397d603a2/litellm-1.104.0.tar.gz", hash = "sha256:df550ab471974edefd7cb0cc6b88b42db453f0de6b91db3cc570f5e1e8d8b173", size = 19695442, upload-time = "2026-10-03T22:43:30.728Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/48/b7189a0ab98d04608e8726c7c884835e428b5d84d8229f29de31eff51011/litellm-1.104.1-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:0958540cd261a7c7cb8f941ccf506dc6a95675633af0345bf07f34089735467b", size = 36191479, upload-time = "2026-10-07T20:12:39.441Z" },
-    { url = "https://files.pythonhosted.org/packages/d9/48/01cae9ad6f30f3a7f5b282d30a9be29bcf3595336290b5f6be851e38e387/litellm-1.104.1-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:de28daced45385ad073a54492ebab5e69e973eca3f01e817ad38ab10d712ac84", size = 34646397, upload-time = "2026-10-07T20:12:43.112Z" },
-    { url = "https://files.pythonhosted.org/packages/c2/59/a671414b845320613b803328a5b1e6ca32040285a4e141f35e0588a523e0/litellm-1.104.1-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:c56bb45611f86e55d69b9feeca73781c6f609055b323cef357ca2b2fb10e5d29", size = 35911519, upload-time = "2026-10-07T20:12:46.618Z" },
-    { url = "https://files.pythonhosted.org/packages/24/d8/5f753b88051cc3a4789e384255d8e757e3be5a92b451d8c066778d3f9821/litellm-1.104.1-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:d43ec32ce02420a0edb0addd51f528b4f5a2de755f56a42800a5851fce00c7f3", size = 36832034, upload-time = "2026-10-07T20:12:50.064Z" },
-    { url = "https://files.pythonhosted.org/packages/b5/69/b34fdb64425b6a162b43e3876c71eed64e80c68bbcbb1aae2ede94c450f1/litellm-1.104.1-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:580eb84144bcc775d30879d3126b9e87b8efc2adb4e1f40455486c78ca4be944", size = 36005282, upload-time = "2026-10-07T20:12:53.649Z" },
-    { url = "https://files.pythonhosted.org/packages/a0/b2/b1f1d24f2a19bc4ad486b48c90313495e41b39c128c705cf4eef9baad0be/litellm-1.104.1-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:bea8edd7ebeb9886f731e9c8b4230ef96e4bb3ea112ce74c4de5d205ee9fd904", size = 36970467, upload-time = "2026-10-07T20:12:57.316Z" },
-    { url = "https://files.pythonhosted.org/packages/ed/6a/e78b1b746baba51538375c07a239ca95b887f3d37211f29c9beb3018d6a5/litellm-1.104.1-cp310-abi3-win_amd64.whl", hash = "sha256:6a5b0afd85b4aa1282759ef364c572d49b7fad8a9020ddd53a30449117544afc", size = 37609023, upload-time = "2026-10-07T20:13:01.263Z" },
+    { url = "https://files.pythonhosted.org/packages/73/e9/a98bb9df6f66c54526129656857c7d0dcdbd96fb1d50220c63018f0372ab/litellm-1.104.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:574acb77ed62ca2b2a751f7182e2fa1055dbbf047fabfa03d8e8af6d5502636d", size = 36188373, upload-time = "2026-10-03T22:42:59.518Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/fb/f703b98f03cba9df6af291ca6b15fab3ff6af4b849b0d4b1168dbad3b85b/litellm-1.104.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:5494970a1f035db8557aa87fd5e289757a26b204f25e53430c181e608a42a864", size = 34643294, upload-time = "2026-10-03T22:43:04.692Z" },
+    { url = "https://files.pythonhosted.org/packages/07/4c/6206fc1119f42cbd00d39e6098d51a0028932ed464350fd2e34520a91869/litellm-1.104.0-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:98fd18c8fdb3074f130e01e95c5848906f42860ca45c376fcb6a5e0cc8755f9f", size = 35908415, upload-time = "2026-10-03T22:43:08.819Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/44/fd2733a47dbe201819ddfe61078d7b3e26fc9a0a20ec93bae72219dcfaa9/litellm-1.104.0-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:b0a690d18b0d25f907d08329027ca57b03f0173a4824b89b8f91528490d10bde", size = 36828930, upload-time = "2026-10-03T22:43:13.323Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/a3/9ceea12f47cc2728cef090e8bdd0f2e1ebf65035636498e0391faab4019d/litellm-1.104.0-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:3c4a15692a9dd259033195c5d4ca1697a14e6bd50d679435a799a9028e99b453", size = 36002177, upload-time = "2026-10-03T22:43:17.731Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/79/a5e907a87f14c67cc032b4163f86835db4f13ab230fe98c0d36864143876/litellm-1.104.0-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:6ffed0207c6fba822fa484754f8fea40d8e9705673189d4bb6f18fa866e59a8e", size = 36967363, upload-time = "2026-10-03T22:43:22.482Z" },
+    { url = "https://files.pythonhosted.org/packages/59/80/03920dc49bf92adfc80ad568df229007a76428abd340eef2b53e22edb3fb/litellm-1.104.0-cp310-abi3-win_amd64.whl", hash = "sha256:414d31b0bda41aa8fb8696c78d5f728a446e37a34476c6f5f2b6fa17ddd66ee4", size = 37605934, upload-time = "2026-10-03T22:43:27.164Z" },
 ]
 
 [[package]]
@@ -2939,7 +2940,8 @@ dependencies = [
     { name = "numpy" },
     { name = "nvidia-cuda-nvdisasm" },
     { name = "nvidia-cutlass-dsl-libs-core" },
-    { name = "protobuf" },
+    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 's390x' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 's390x' and extra == 'extra-14-eliza-training-serve') or extra == 'extra-14-eliza-training-rl' or (extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
     { name = "typing-extensions" },
 ]
 wheels = [
@@ -2957,7 +2959,8 @@ dependencies = [
     { name = "cuda-python" },
     { name = "numpy" },
     { name = "nvidia-cuda-nvdisasm" },
-    { name = "protobuf" },
+    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 's390x' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 's390x' and extra == 'extra-14-eliza-training-serve') or extra == 'extra-14-eliza-training-rl' or (extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
     { name = "typing-extensions" },
 ]
 wheels = [
@@ -2973,7 +2976,8 @@ dependencies = [
     { name = "numpy" },
     { name = "nvidia-cuda-nvdisasm" },
     { name = "nvidia-cutlass-dsl-libs-base" },
-    { name = "protobuf" },
+    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 's390x' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 's390x' and extra == 'extra-14-eliza-training-serve') or extra == 'extra-14-eliza-training-rl' or (extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
     { name = "typing-extensions" },
 ]
 wheels = [
@@ -2992,7 +2996,8 @@ dependencies = [
     { name = "numpy" },
     { name = "nvidia-cuda-nvdisasm" },
     { name = "nvidia-cutlass-dsl-libs-base" },
-    { name = "protobuf" },
+    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 's390x' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 's390x' and extra == 'extra-14-eliza-training-serve') or extra == 'extra-14-eliza-training-rl' or (extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
     { name = "typing-extensions" },
 ]
 wheels = [
@@ -3094,7 +3099,8 @@ dependencies = [
     { name = "flatbuffers" },
     { name = "numpy" },
     { name = "packaging" },
-    { name = "protobuf" },
+    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 's390x' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 's390x' or extra == 'extra-14-eliza-training-rl' or extra != 'extra-14-eliza-training-serve' or (extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d4/81/29a9eb470994a75eb7b3ccf32be314d7c66675a00ac7b50294816cc2db27/onnxruntime-1.26.0-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:ee1109ef4ef27cad90e823399e61e03b3c6c7bfe0fb820b4baf3678c15be8b3c", size = 18005108, upload-time = "2026-05-08T19:08:11.728Z" },
@@ -3261,7 +3267,8 @@ name = "opentelemetry-proto"
 version = "1.44.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "protobuf" },
+    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 's390x' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 's390x' and extra == 'extra-14-eliza-training-serve') or extra == 'extra-14-eliza-training-rl' or (extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/64/01/40ac4ae9a149263cc52c2cee200ddd80cb6d8db1a4610abf8eabce0fe771/opentelemetry_proto-1.44.0.tar.gz", hash = "sha256:c547a79c2f8c0c515d31509154682e5921c7cfd5ca67b70e1f9266e2c3e103f3", size = 46488, upload-time = "2026-07-16T15:25:45.34Z" }
 wheels = [
@@ -3637,7 +3644,7 @@ name = "proto-plus"
 version = "1.28.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "protobuf" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" } },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c9/56/e647b0c675392d2da368da7b6f158f7368b18542fd6f7d7400a2f39de000/proto_plus-1.28.0.tar.gz", hash = "sha256:38e5696342835b08fc116f30a25665b29531cda9d5d5643e9b81fc312385abd9", size = 57221, upload-time = "2026-05-07T08:04:50.811Z" }
 wheels = [
@@ -3646,8 +3653,133 @@ wheels = [
 
 [[package]]
 name = "protobuf"
+version = "6.33.6"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'win32'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'darwin'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'win32'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'darwin'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
+sdist = { url = "https://files.pythonhosted.org/packages/66/70/e908e9c5e52ef7c3a6c7902c9dfbb34c7e29c25d2f81ade3856445fd5c94/protobuf-6.33.6.tar.gz", hash = "sha256:a6768d25248312c297558af96a9f9c929e8c4cee0659cb07e780731095f38135", size = 444531, upload-time = "2026-03-18T19:05:00.988Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fc/9f/2f509339e89cfa6f6a4c4ff50438db9ca488dec341f7e454adad60150b00/protobuf-6.33.6-cp310-abi3-win32.whl", hash = "sha256:7d29d9b65f8afef196f8334e80d6bc1d5d4adedb449971fefd3723824e6e77d3", size = 425739, upload-time = "2026-03-18T19:04:48.373Z" },
+    { url = "https://files.pythonhosted.org/packages/76/5d/683efcd4798e0030c1bab27374fd13a89f7c2515fb1f3123efdfaa5eab57/protobuf-6.33.6-cp310-abi3-win_amd64.whl", hash = "sha256:0cd27b587afca21b7cfa59a74dcbd48a50f0a6400cfb59391340ad729d91d326", size = 437089, upload-time = "2026-03-18T19:04:50.381Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/01/a3c3ed5cd186f39e7880f8303cc51385a198a81469d53d0fdecf1f64d929/protobuf-6.33.6-cp39-abi3-macosx_10_9_universal2.whl", hash = "sha256:9720e6961b251bde64edfdab7d500725a2af5280f3f4c87e57c0208376aa8c3a", size = 427737, upload-time = "2026-03-18T19:04:51.866Z" },
+    { url = "https://files.pythonhosted.org/packages/ee/90/b3c01fdec7d2f627b3a6884243ba328c1217ed2d978def5c12dc50d328a3/protobuf-6.33.6-cp39-abi3-manylinux2014_aarch64.whl", hash = "sha256:e2afbae9b8e1825e3529f88d514754e094278bb95eadc0e199751cdd9a2e82a2", size = 324610, upload-time = "2026-03-18T19:04:53.096Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/ca/25afc144934014700c52e05103c2421997482d561f3101ff352e1292fb81/protobuf-6.33.6-cp39-abi3-manylinux2014_s390x.whl", hash = "sha256:c96c37eec15086b79762ed265d59ab204dabc53056e3443e702d2681f4b39ce3", size = 339381, upload-time = "2026-03-18T19:04:54.616Z" },
+    { url = "https://files.pythonhosted.org/packages/16/92/d1e32e3e0d894fe00b15ce28ad4944ab692713f2e7f0a99787405e43533a/protobuf-6.33.6-cp39-abi3-manylinux2014_x86_64.whl", hash = "sha256:e9db7e292e0ab79dd108d7f1a94fe31601ce1ee3f7b79e0692043423020b0593", size = 323436, upload-time = "2026-03-18T19:04:55.768Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/72/02445137af02769918a93807b2b7890047c32bfb9f90371cbc12688819eb/protobuf-6.33.6-py3-none-any.whl", hash = "sha256:77179e006c476e69bf8e8ce866640091ec42e1beb80b213c3900006ecfba6901", size = 170656, upload-time = "2026-03-18T19:04:59.826Z" },
+]
+
+[[package]]
+name = "protobuf"
 version = "7.36.1"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "(python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 's390x' and sys_platform == 'linux' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train') or (python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "(python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 's390x' and sys_platform == 'linux' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train') or (python_full_version < '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+    "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
+]
 sdist = { url = "https://files.pythonhosted.org/packages/86/73/f66c748df06e7fe24e658eddd600d19c4b40bad836c97ce2d0ad9851fb6b/protobuf-7.36.1.tar.gz", hash = "sha256:d0f6470f0ce2b84e3feaea2d4b816378b37ba4d4aa08a274305373de93e2d524", size = 512499, upload-time = "2026-08-31T22:40:04.667Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f7/6c/3a54a58f2948b0f485df9ecdd06590f15d0a7abf46a89d50c3de709ff4ff/protobuf-7.36.1-cp310-abi3-macosx_10_9_universal2.whl", hash = "sha256:3cf2ee25d006cee57294a1196ea43b37feb78e0dcd1e8af5c1aeddb777655aca", size = 456046, upload-time = "2026-08-31T22:39:56.865Z" },
@@ -4178,7 +4310,7 @@ dependencies = [
     { name = "jsonschema" },
     { name = "msgpack" },
     { name = "packaging" },
-    { name = "protobuf" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" } },
     { name = "pyyaml" },
     { name = "requests" },
 ]
@@ -4759,7 +4891,8 @@ dependencies = [
     { name = "networkx" },
     { name = "numpy" },
     { name = "platformdirs" },
-    { name = "protobuf" },
+    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 's390x' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 's390x' or extra == 'extra-14-eliza-training-rl' or extra != 'extra-14-eliza-training-serve' or (extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
     { name = "requests" },
     { name = "torch" },
     { name = "tqdm" },
@@ -4833,7 +4966,7 @@ dependencies = [
     { name = "numpy" },
     { name = "packaging" },
     { name = "pillow" },
-    { name = "protobuf" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" } },
     { name = "setuptools" },
     { name = "tensorboard-data-server" },
     { name = "werkzeug" },
@@ -4985,7 +5118,8 @@ dependencies = [
     { name = "httpx", extra = ["http2"], marker = "extra == 'extra-14-eliza-training-rl-tinker' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
     { name = "numpy" },
     { name = "orjson" },
-    { name = "protobuf" },
+    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 's390x' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
     { name = "pydantic" },
     { name = "rich" },
     { name = "sniffio" },
@@ -5899,7 +6033,8 @@ dependencies = [
     { name = "pillow" },
     { name = "prometheus-client" },
     { name = "prometheus-fastapi-instrumentator" },
-    { name = "protobuf" },
+    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 's390x' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 's390x' and extra == 'extra-14-eliza-training-serve') or extra == 'extra-14-eliza-training-rl' or (extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
     { name = "psutil" },
     { name = "py-cpuinfo" },
     { name = "pybase64" },
@@ -5948,7 +6083,8 @@ dependencies = [
     { name = "gitpython" },
     { name = "packaging" },
     { name = "platformdirs" },
-    { name = "protobuf" },
+    { name = "protobuf", version = "6.33.6", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 's390x' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "protobuf", version = "7.36.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 's390x' and extra == 'extra-14-eliza-training-train') or extra == 'extra-14-eliza-training-rl' or (extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "requests" },

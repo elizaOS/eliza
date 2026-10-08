@@ -10,7 +10,11 @@ import type {
   LifeOpsRegularityClass,
   LifeOpsScheduleRegularity,
 } from "../contracts/health.js";
-import { buildUtcDateFromLocalParts, getZonedDateParts } from "../util/time.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+} from "../util/time.js";
 import type { SleepRecap } from "./sleep-recap.js";
 export const MORNING_CHECKIN_WINDOW_MINUTES = 6 * 60;
 export const NIGHT_CHECKIN_LEAD_MINUTES = 3 * 60;
@@ -72,7 +76,7 @@ export function minutesUntilLocalBedtime(args: {
     second: 0,
   }).getTime();
   const nowMs = args.now.getTime();
-  const tomorrow = nextLocalCalendarDate(nowParts);
+  const tomorrow = addDaysToLocalDate(nowParts, 1);
   const candidateMs =
     todayInstant >= nowMs
       ? todayInstant
@@ -85,24 +89,6 @@ export function minutesUntilLocalBedtime(args: {
           second: 0,
         }).getTime();
   return Math.round((candidateMs - nowMs) / 60000);
-}
-/**
- * The next civil date. Adding 1 to the day number is not a real date on the
- * 31st (or on February 28), and the timezone resolver rejects that day.
- */
-function nextLocalCalendarDate(parts: {
-  year: number;
-  month: number;
-  day: number;
-}): { year: number; month: number; day: number } {
-  const shifted = new Date(
-    Date.UTC(parts.year, parts.month - 1, parts.day + 1, 12),
-  );
-  return {
-    year: shifted.getUTCFullYear(),
-    month: shifted.getUTCMonth() + 1,
-    day: shifted.getUTCDate(),
-  };
 }
 
 function isIrregular(

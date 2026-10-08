@@ -32,6 +32,7 @@ import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
   getZonedDateParts,
+  isRealCalendarDay,
 } from "./internal/time.js";
 import { CalendarService } from "./service/CalendarService.js";
 
@@ -51,27 +52,6 @@ const VALIDATION_CODE = "CALENDAR_VIEW_VALIDATION_FAILED";
 const SERVICE_UNAVAILABLE_CODE = "CALENDAR_VIEW_SERVICE_UNAVAILABLE";
 const LIST_ITEM_LIMIT = 20;
 const DATE_ONLY = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
-
-/** A YYYY-MM-DD match can still be February 30. Reject that before the resolver throws. */
-function isRealCivilDate(year: number, month: number, day: number): boolean {
-  if (
-    year < 1 ||
-    year > 9999 ||
-    month < 1 ||
-    month > 12 ||
-    day < 1 ||
-    day > 31
-  ) {
-    return false;
-  }
-  const probe = new Date(0);
-  probe.setUTCFullYear(year, month - 1, day);
-  return (
-    probe.getUTCFullYear() === year &&
-    probe.getUTCMonth() + 1 === month &&
-    probe.getUTCDate() === day
-  );
-}
 
 function validationError(message: string, field: string): ElizaError {
   return new ElizaError(message, {
@@ -192,7 +172,11 @@ function feedWindow(
       month: Number(match[2]),
       day: Number(match[3]),
     };
-    if (!isRealCivilDate(startDate.year, startDate.month, startDate.day)) {
+    if (
+      startDate.year < 1 ||
+      startDate.year > 9999 ||
+      !isRealCalendarDay(startDate.year, startDate.month, startDate.day)
+    ) {
       throw validationError(
         '"date" must be a real calendar day in YYYY-MM-DD.',
         "date",

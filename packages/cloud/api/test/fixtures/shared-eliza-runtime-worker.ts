@@ -436,7 +436,8 @@ const worker = {
           rejected = true;
           thrownReasonUnchanged = error === reason;
           modelFailurePresent = Boolean(
-            new SharedRuntimeTurnError("Fixture cancellation", error).failureDiagnostic?.modelFailure,
+            new SharedRuntimeTurnError("Fixture cancellation", error)
+              .failureDiagnostic?.modelFailure,
           );
         }
         return Response.json({
@@ -567,7 +568,8 @@ const worker = {
               failureName: failure.failureName,
               retryable: failure.retryable,
               modelFailurePresent: Boolean(
-                new SharedRuntimeTurnError("Fixture provider failure", error).failureDiagnostic?.modelFailure,
+                new SharedRuntimeTurnError("Fixture provider failure", error)
+                  .failureDiagnostic?.modelFailure,
               ),
               rootFailureCode:
                 error.cause instanceof ElizaError

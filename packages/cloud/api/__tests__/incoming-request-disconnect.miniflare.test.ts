@@ -28,7 +28,9 @@ export default {
 };
 `;
 
-test("a real incoming HTTP disconnect aborts Workerd Request.signal only with its flag", { timeout: 20000 }, async () => {
+test("a real incoming HTTP disconnect aborts Workerd Request.signal only with its flag", {
+  timeout: 20000,
+}, async () => {
   for (const enabled of [false, true]) {
     const mf = new Miniflare({
       host: "127.0.0.1",
@@ -42,23 +44,29 @@ test("a real incoming HTTP disconnect aborts Workerd Request.signal only with it
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
       const origin = (await mf.ready).origin;
-      const response = await fetch(`${origin}/stream`, { signal: caller.signal });
+      const response = await fetch(`${origin}/stream`, {
+        signal: caller.signal,
+      });
       assert.equal(response.status, 200);
       reader = response.body!.getReader();
-      assert.equal(new TextDecoder().decode((await reader.read()).value), "ready\n");
+      assert.equal(
+        new TextDecoder().decode((await reader.read()).value),
+        "ready\n",
+      );
       // This closes the client HTTP transport; no signal is injected into fetch().
       caller.abort();
       await assert.rejects(reader.read(), { name: "AbortError" });
       let receipt = { aborts: 0, cancellations: 0 };
       const deadline = Date.now() + 3000;
       do {
-        receipt = await (await fetch(`${origin}/receipt`)).json() as typeof receipt;
+        receipt = (await (
+          await fetch(`${origin}/receipt`)
+        ).json()) as typeof receipt;
         if (enabled && receipt.aborts === 1) break;
         if (!enabled && receipt.cancellations > 0) break;
         await new Promise((resolve) => setTimeout(resolve, 20));
       } while (Date.now() < deadline);
       assert.equal(receipt.aborts, enabled ? 1 : 0);
-
     } finally {
       caller.abort();
       reader?.releaseLock();
