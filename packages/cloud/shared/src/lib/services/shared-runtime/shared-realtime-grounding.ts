@@ -193,10 +193,7 @@ function publicWeatherLocation(value: string | undefined): string | undefined {
   // A period ends the location sentence, except common place-name abbreviations.
   const sentence = value.split(/(?<!\bSt)(?<!\bMt)\.(?:\s|$)/iu, 1)[0];
   const location = sentence
-    .split(
-      /(?:\s+and)?\s+(?=(?:include|provide|return|answer|respond)\b|text\s+only\b)/iu,
-      1,
-    )[0]
+    .split(/(?:\s+and)?\s+(?=(?:include|provide|return|answer|respond)\b|text\s+only\b)/iu, 1)[0]
     .trim();
   if (!location || location.length > 80) return undefined;
   const parts = location.split(",");
