@@ -237,10 +237,13 @@ function convertLinks(text: string): string {
  * Uses a sentinel to prevent headings from being matched by italic converter
  */
 function convertHeadings(text: string): string {
-  return text.replace(
-    /^#{1,6}\s+(.+)$/gm,
-    `${BOLD_SENTINEL}$1${BOLD_SENTINEL}`,
-  );
+  return text.replace(/^#{1,6}\s+(.+)$/gm, (_match, content: string) => {
+    // A heading is one Slack bold span. Leaving ** inside that span lets the
+    // later bold pass insert more asterisks, so "## **Bold** header" is sent
+    // as "**Bold* header*".
+    const flattened = content.replace(/\*\*(.+?)\*\*/g, "$1");
+    return `${BOLD_SENTINEL}${flattened}${BOLD_SENTINEL}`;
+  });
 }
 
 /**

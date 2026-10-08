@@ -53,6 +53,12 @@ describe("markdownToSlackMrkdwn", () => {
     expect(markdownToSlackMrkdwn("")).toBe("");
   });
 
+  it("makes a heading one bold span when the title already contains bold", () => {
+    expect(markdownToSlackMrkdwn("# **Summary**")).toBe("*Summary*");
+    expect(markdownToSlackMrkdwn("## **Bold** header")).toBe("*Bold header*");
+    expect(markdownToSlackMrkdwn("# Title")).toBe("*Title*");
+  });
+
   it("drops the whole opening info string and keeps a one-line fence body", () => {
     expect(markdownToSlackMrkdwn("```c++\nint x = 1;\n```")).toBe(
       "```\nint x = 1;\n```",
