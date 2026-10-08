@@ -1,4 +1,4 @@
-/** Default refresh retains the platform-owned tariff alongside provider catalogs. */
+/** Scheduled argument-free refresh includes the platform-owned selfhosted tariff. */
 import { beforeEach, expect, mock, test } from "bun:test";
 
 const loadedSources: string[] = [];
@@ -46,7 +46,7 @@ beforeEach(() => {
   loadedSources.length = 0;
 });
 
-test("omitted sources refresh the selfhosted catalog as well", async () => {
+test("omitted sources refresh the selfhosted catalog for the scheduled caller", async () => {
   const result = await refreshPricingCatalog();
   expect(loadedSources).toEqual(["selfhosted", "bitrouter", "fal", "elevenlabs", "vast"]);
   expect(result.results.map((entry) => entry.source)).toEqual(loadedSources);
