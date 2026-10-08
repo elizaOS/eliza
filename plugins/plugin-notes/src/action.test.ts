@@ -40,7 +40,11 @@ import {
   NotesService,
 } from "./service.js";
 import { NotesStore } from "./store.js";
-import { reconstructNoteContent, type StickyNote } from "./types.js";
+import {
+  projectNoteForModel,
+  reconstructNoteContent,
+  type StickyNote,
+} from "./types.js";
 
 const tmpDirs: string[] = [];
 
@@ -2679,17 +2683,21 @@ describe("Notes model-bound content representation", () => {
       const projected = projectToolResultForModel(
         actionResultToPlannerToolResult(result),
       );
-      expect(projected.data).toEqual(result.data);
+      expect(result.promptDataMode).toBe("replace-data");
+      expect(projected.data).toEqual(result.promptData);
+      expect(projected.data?.note).toEqual(projectNoteForModel(note));
+      expect(reconstructNoteContent(projected.data?.note as StickyNote)).toBe(
+        content,
+      );
       expect(projected.effectReceipts).toEqual(result.effectReceipts);
-      expect(projected.promptData).toEqual(result.promptData);
-      expect(projected.promptData?.noteContentFormat).toContain(
-        "title + body exactly",
-      );
-      expect(projected.promptData?.noteContentFormat).toContain(
-        "additional whitespace is content",
-      );
+      expect(projected.promptData).toBeUndefined();
       expect(projected.promptDataMode).toBeUndefined();
-      expect(JSON.stringify(projected.promptData)).not.toContain(content);
+      expect(projected.data?.noteContentFormat).toContain(
+        "title + bodySeparator + body",
+      );
+      expect(result.data?.notesRevision).toBe(
+        getNotesService(runtime).snapshot().revision,
+      );
       expect(result).toEqual(before);
       const service = getNotesService(runtime);
       expect(service.getNote(note.id)).toEqual(note);
@@ -2702,11 +2710,18 @@ describe("Notes model-bound content representation", () => {
         const wire = projectToolResultForModel(
           actionResultToPlannerToolResult(read),
         );
-        expect(wire.promptData).toEqual(result.promptData);
-        expect(wire.data).toEqual(read.data);
-        expect(wire.data?.notes).toEqual([
+        expect(read.data?.notes).toEqual([
           { ...note, sourceNote: service.sourceReference(note) },
         ]);
+        expect(wire.data).toEqual(read.promptData);
+        expect(wire.data?.notes).toEqual([
+          {
+            ...projectNoteForModel(note),
+            sourceNote: service.sourceReference(note),
+          },
+        ]);
+        const projectedNotes = wire.data?.notes as StickyNote[];
+        expect(reconstructNoteContent(projectedNotes[0])).toBe(content);
         expect(wire.data?.notesRevision).toBe(snapshot.revision);
       }
       expect(service.snapshot()).toEqual(snapshot);
@@ -2716,11 +2731,15 @@ describe("Notes model-bound content representation", () => {
   it("labels a structured body replacement without discarding an additional user newline", async () => {
     const runtime = await executorHarness();
     const service = getNotesService(runtime);
-    const note = await service.createNote({ content: "Title\nOriginal" });
+    const created = await execute(runtime, {
+      name: "NOTES_CREATE",
+      params: { content: "Title\nOriginal" },
+    });
+    const note = created.data?.note as StickyNote;
     const result = await execute(runtime, {
       name: "NOTES_PATCH",
       params: {
-        expectedRevision: service.snapshot().revision,
+        expectedRevision: created.data?.notesRevision,
         target: { kind: "id", value: note.id },
         changes: [{ field: "body", value: "\nKeep  this blank line.  " }],
       },
@@ -2734,7 +2753,14 @@ describe("Notes model-bound content representation", () => {
     const wire = projectToolResultForModel(
       actionResultToPlannerToolResult(result),
     );
-    expect(wire.data).toEqual(result.data);
-    expect(wire.promptData?.noteContentFormat).toContain("verbatim remainder");
+    expect(wire.data).toEqual(result.promptData);
+    expect(wire.data?.note).toMatchObject({
+      bodySeparator: "\n",
+      body: "\nKeep  this blank line.  ",
+    });
+    expect(result.data?.notesRevision).toBe(service.snapshot().revision);
+    expect(reconstructNoteContent(wire.data?.note as StickyNote)).toBe(
+      reconstructNoteContent(updated),
+    );
   });
 });

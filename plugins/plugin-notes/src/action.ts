@@ -28,7 +28,11 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { getNotesService, type NotesService } from "./service.js";
-import { reconstructNoteContent } from "./types.js";
+import {
+  projectNoteForModel,
+  reconstructNoteContent,
+  type StickyNote,
+} from "./types.js";
 import { parseNoteDateRange, parseNoteFieldPatch } from "./validation.js";
 
 const NOTES_OPS = [
@@ -141,13 +145,21 @@ function committed(data: Record<string, unknown>): ActionResult {
   const op = typeof data.op === "string" ? data.op : "commit";
   const noteId = typeof data.noteId === "string" ? data.noteId : undefined;
   const replayed = data.replayed === true;
+  const notesRevision =
+    typeof data.notesRevision === "number" ? data.notesRevision : undefined;
   const observedAt = new Date().toISOString();
   const effectReceipts = noteId
     ? [
         normalizeEffectReceipt({
           receiptId: stringToUuid(`notes:${op}:${noteId}:${observedAt}`),
           operation: `notes.note.${op}`,
-          resource: { kind: "notes.note", id: noteId },
+          resource: {
+            kind: "notes.note",
+            id: noteId,
+            ...(notesRevision === undefined
+              ? {}
+              : { version: String(notesRevision) }),
+          },
           artifacts: [],
           idempotency: { key: replayed ? noteId : null, replayed },
           observedAt,
@@ -164,6 +176,17 @@ function committed(data: Record<string, unknown>): ActionResult {
         }),
       ]
     : undefined;
+  const modelData: Record<string, unknown> = { actionName: "NOTES", ...data };
+  const project = (value: unknown) =>
+    isObjectRecord(value) &&
+    typeof value.title === "string" &&
+    typeof value.body === "string"
+      ? projectNoteForModel(
+          value as Record<string, unknown> & Pick<StickyNote, "title" | "body">,
+        )
+      : value;
+  if (data.note) modelData.note = project(data.note);
+  if (Array.isArray(data.notes)) modelData.notes = data.notes.map(project);
   return {
     success: true,
     transcriptVisibility: "internal",
@@ -177,9 +200,11 @@ function committed(data: Record<string, unknown>): ActionResult {
     ...(data.note || Array.isArray(data.notes)
       ? {
           promptData: {
+            ...modelData,
             noteContentFormat:
-              "Stored note content is title + body exactly. title is the prefix; body is the verbatim remainder, including any separator. Separate title/body input is joined by a newline; additional whitespace is content. Compare complete content, not the stored remainder alone, with the requested note. Timestamp fields are UTC instants, not local calendar-date labels. Use noteTimestampDisplay or selection.display for local dates. If the user did not ask for a date, omit an extra date label; preserve the exact user-authored title.",
+              "Model note parts reconstruct exact content as title + bodySeparator + body. bodySeparator is the codec's framing LF, not an authored blank line. body excludes only that framing LF; any leading LF still in body is authored content and must remain. Compare body with a separately requested body and complete content with a requested complete note. An empty bodySeparator with a nonempty body is a continuation of a length-limited title prefix; preserve it through complete content or literal textEdit, not a structured body replacement. notesRevision comes from the same complete commit/read snapshot as these records; any later Notes mutation requires a fresh complete read and reconciliation before PATCH. Timestamp fields are UTC instants, not local calendar-date labels. Use noteTimestampDisplay or selection.display for local dates. If the user did not ask for a date, omit an extra date label; preserve the exact user-authored title.",
           },
+          promptDataMode: "replace-data" as const,
         }
       : {}),
   };
@@ -224,6 +249,7 @@ async function updateNoteResult(
       op: "update",
       noteId: updated.value.id,
       note: updated.value,
+      notesRevision: updated.snapshot.revision,
       consolidatedCount: updated.consolidatedIds.length,
     });
   } catch (error) {
@@ -631,6 +657,7 @@ export const notesAction: Action = {
         op,
         noteId: note.id,
         note,
+        notesRevision: created.snapshot.revision,
         replayed: created.replayed,
       });
     }
@@ -644,6 +671,7 @@ export const notesAction: Action = {
         op,
         noteId: removed.value.id,
         note: removed.value,
+        notesRevision: removed.snapshot.revision,
         removedCount: removed.removedCount,
       });
     }
@@ -697,7 +725,7 @@ export const notesAction: Action = {
     {
       name: "expectedRevision",
       description:
-        "Required for every PATCH, including textEdit, and for UPDATE replacementContent: copy notesRevision from the same complete note read/provider content used to prepare the edit. Never guess or refresh only the token. A conflict requires re-reading and reconciling. Only UPDATE literal textEdit may omit it.",
+        "Required for every PATCH, including textEdit, and for UPDATE replacementContent: copy notesRevision from the same complete note commit/read/provider content used to prepare the edit. CREATE returns its exact transaction revision with the complete created note. Never guess or refresh only the token. Any later mutation or conflict requires re-reading and reconciling. Only UPDATE literal textEdit may omit it.",
       subactions: ["update", "patch"],
       required: false,
       requiredForSubactions: ["patch"],
@@ -762,7 +790,7 @@ export const notesAction: Action = {
     {
       name: "changes",
       description:
-        "Requested title/body replacements. Use [] with textEdit for exact substring substitution; otherwise supply at least one entry. Never combine nonempty changes with textEdit. Preserve exact wording.",
+        "Requested title/body replacements. Body value is the user-visible body after the title line: the store adds one framing LF, so copy projected body, not bodySeparator + body. Preserve every authored leading LF and space in the value. Empty body clears it. If bodySeparator is empty with a nonempty body, use complete-note UPDATE or literal textEdit to preserve that continuation. Use [] with textEdit for exact substring substitution; otherwise supply at least one entry. Never combine nonempty changes with textEdit.",
       required: false,
       subactions: ["patch"],
       requiredForSubactions: ["patch"],
