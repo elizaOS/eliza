@@ -14,6 +14,9 @@ If a text block parses as the same JSON data, it is used without adding a
 second copy. Its whitespace, formatting, and key order are retained.
 JSON embedded in prose remains ordinary text.
 
+Tool resource links retain their URI and complete metadata in the result text.
+Eliza does not read the linked resource until the agent requests a resource read.
+
 Successful resource reads return the complete processed content in
 `ActionResult.data.output`, so later planner steps can use the resource data.
 The existing analysis response and resource memory remain available.
