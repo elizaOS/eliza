@@ -127,6 +127,36 @@ describe("resolveLifeOpsRelativeTime local-day boundaries", () => {
     expect(relativeTime.dayBoundaryStartAt).toBe("2011-12-29T10:00:00.000Z");
     expect(relativeTime.dayBoundaryEndAt).toBe("2011-12-30T10:00:00.000Z");
   });
+
+  // A stale 23:00 bedtime is more than 18 hours behind 19:00 on the
+  // spring-forward day. Adding 24 absolute hours lands at midnight, not 23:00.
+  it("keeps a rolled bedtime on 23:00 local across the spring-forward", () => {
+    const relativeTime = resolveLifeOpsRelativeTime({
+      nowMs: Date.parse("2026-03-08T23:00:00.000Z"),
+      timezone: "America/New_York",
+      schedule: {
+        ...schedule,
+        circadianState: "awake",
+        regularity: {
+          ...schedule.regularity,
+          regularityClass: "very_regular",
+        },
+        baseline: {
+          medianWakeLocalHour: 7,
+          medianBedtimeLocalHour: 23,
+          medianSleepDurationMin: 480,
+          bedtimeStddevMin: 20,
+          wakeStddevMin: 20,
+          sampleCount: 20,
+          windowDays: 28,
+        },
+        wakeAt: "2026-03-07T11:00:00.000Z",
+      },
+    });
+
+    expect(relativeTime.bedtimeTargetAt).toBe("2026-03-09T03:00:00.000Z");
+    expect(relativeTime.minutesUntilBedtimeTarget).toBe(240);
+  });
 });
 describe("parseLocalDateKey", () => {
   it("accepts real calendar days and rejects rolled-over or malformed keys", () => {
