@@ -53,7 +53,7 @@ export function ConfirmDialog({
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="pr-6">{title}</DialogTitle>
           <DialogDescription className="whitespace-pre-line text-muted-strong">
             {message}
           </DialogDescription>

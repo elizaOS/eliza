@@ -62,11 +62,14 @@ function taskFrom(value: unknown): TaskView | null {
   };
 }
 
+/** "close" pauses the task and tells the host that the user closed its surface. */
+export type TaskLifecycleCommand = "pause" | "close" | "resume" | "cancel";
+
 /** Renderer state is a projection, never a task authorization or checkpoint. */
 export class TaskLifecycle {
   private generation = 0;
   private starting: Promise<TaskView | null> | null = null;
-  private lastCommand: "pause" | "resume" | "cancel" = "pause";
+  private lastCommand: TaskLifecycleCommand = "pause";
   private state: TaskLifecycleState = { task: null, pending: false, error: "" };
   private readonly messages: TaskLifecycleMessages;
   private request: TaskLifecycleRequest;
@@ -136,7 +139,7 @@ export class TaskLifecycle {
       /* A disconnected runtime is reported by its connection controls. */
     }
   }
-  async control(command: "pause" | "resume" | "cancel"): Promise<boolean> {
+  async control(command: TaskLifecycleCommand): Promise<boolean> {
     if (this.state.pending && command === "resume") return false;
     this.lastCommand = command;
     const ticket = ++this.generation;
@@ -158,17 +161,22 @@ export class TaskLifecycle {
         this.publish({ task: null, pending: false, error: "" });
         return true;
       }
+      // Close still reaches a paused task, so the host can remove its paused guide.
       if (
-        command === "pause" &&
-        ["paused", "completed", "cancelled"].includes(task.status)
+        (command === "pause" && task.status === "paused") ||
+        ((command === "pause" || command === "close") &&
+          ["completed", "cancelled"].includes(task.status))
       ) {
         this.publish({ task, pending: false, error: "" });
         return true;
       }
       const result = taskFrom(
-        await this.request(`/tasks/${encodeURIComponent(task.id)}/${command}`, {
-          expectedRevision: task.revision,
-        }),
+        await this.request(
+          `/tasks/${encodeURIComponent(task.id)}/${command === "close" ? "pause" : command}`,
+          command === "close"
+            ? { expectedRevision: task.revision, reason: "close" }
+            : { expectedRevision: task.revision },
+        ),
       );
       if (ticket !== this.generation) return false;
       if (
@@ -178,7 +186,12 @@ export class TaskLifecycle {
         result.epoch < task.epoch ||
         (command !== "resume" && result.epoch <= task.epoch) ||
         result.status !==
-          { pause: "paused", resume: "active", cancel: "cancelled" }[command]
+          {
+            pause: "paused",
+            close: "paused",
+            resume: "active",
+            cancel: "cancelled",
+          }[command]
       )
         throw new Error("Invalid task transition");
       this.publish({ task: result, pending: false, error: "" });
@@ -188,7 +201,7 @@ export class TaskLifecycle {
         this.publish({
           ...this.state,
           pending: false,
-          error: this.messages[command],
+          error: this.messages[command === "close" ? "pause" : command],
         });
       return false;
     }
