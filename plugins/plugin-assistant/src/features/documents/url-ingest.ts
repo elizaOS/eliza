@@ -401,6 +401,10 @@ function extractYouTubeVideoId(url: string): string | null {
   const vMatch = url.match(/\/v\/([a-zA-Z0-9_-]{11})/);
   if (vMatch) return vMatch[1];
 
+  // Handle youtube.com/shorts/VIDEO_ID
+  const shortsMatch = url.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
+  if (shortsMatch) return shortsMatch[1];
+
   return null;
 }
 
