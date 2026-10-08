@@ -538,14 +538,16 @@ async function opGetTable(
     `SELECT * FROM ${relation} ${orderClause}${limit === undefined ? "" : ` LIMIT ${limit}`}${offset === 0 ? "" : ` OFFSET ${offset}`}`,
   );
 
+  const qualifiedName = `${resolved.schema}.${tableName}`;
   return {
     success: true,
-    text: `Returned ${result.rows.length} row(s) from "${tableName}" (total: ${total}).`,
+    text: `Returned ${result.rows.length} row(s) from "${qualifiedName}" (total: ${total}).`,
     values: { rowCount: result.rows.length, total },
     data: {
       actionName: "DATABASE",
       op: "get_table",
       tableName,
+      schema: resolved.schema,
       rows: result.rows,
       columns: result.columns,
       total,

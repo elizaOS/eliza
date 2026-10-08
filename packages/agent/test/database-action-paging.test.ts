@@ -135,6 +135,10 @@ it("returns every tied row once and ignores another schema's primary key", async
       undefined,
     );
     expect(named.success, named.text).toBe(true);
+    expect(named.text).toContain('from "hidden_ns.only_here"');
+    expect((named.data as { schema?: string } | undefined)?.schema).toBe(
+      "hidden_ns",
+    );
     const namedRows = (
       named.data as { rows?: Array<{ id: number }> } | undefined
     )?.rows;
@@ -186,6 +190,7 @@ it("returns every tied row once and ignores another schema's primary key", async
       undefined,
     );
     expect(copied.success, copied.text).toBe(true);
+    expect(copied.text).toContain('from "hidden_ns.only_here"');
     const copiedRows = (
       copied.data as { rows?: Array<{ id: number }> } | undefined
     )?.rows;
