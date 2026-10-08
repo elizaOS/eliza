@@ -20,13 +20,15 @@ export function formatUptime(seconds?: number, verbose?: boolean): string {
     if (d > 0) parts.push(`${d}d`);
     if (h > 0) parts.push(`${h}h`);
     if (m > 0) parts.push(`${m}m`);
-    if (parts.length === 0) parts.push(`${s}s`);
+    // 90 seconds is "1m 30s", not "1m". Seconds are a real unit.
+    if (s > 0 || parts.length === 0) parts.push(`${s}s`);
     return parts.join(" ");
   }
 
   if (d > 0) return `${d}d ${h}h`;
   if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m`;
+  // The two most-significant units. Under an hour, seconds are the second.
+  if (m > 0) return s > 0 ? `${m}m ${s}s` : `${m}m`;
   return `${s}s`;
 }
 
