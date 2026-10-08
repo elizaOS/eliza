@@ -292,8 +292,10 @@ function localWindowStartIso(days: number, timeZone: string): string {
   }).toISOString();
 }
 
-function formatSeconds(seconds: number): string {
+export function formatSeconds(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
+  // 45 seconds used to print "0m", which reads as no screen time.
+  if (s > 0 && s < 60) return `${s}s`;
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
