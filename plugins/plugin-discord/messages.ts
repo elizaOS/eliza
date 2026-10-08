@@ -3411,6 +3411,10 @@ export class MessageManager {
 				fullMatch,
 				`Code Block (${attachmentId})`,
 			);
+			// The global regex keeps lastIndex from the string before the
+			// replacement. A long fence makes that index sit past the next
+			// fence in the shorter text, so the later block stays raw.
+			codeBlockRegex.lastIndex = 0;
 			match = codeBlockRegex.exec(processedContent);
 		}
 

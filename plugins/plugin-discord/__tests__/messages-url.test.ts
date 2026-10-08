@@ -111,6 +111,21 @@ describe("MessageManager URL enrichment", () => {
 
 		expect(first.attachments[0]?.id).toBe(second.attachments[0]?.id);
 	});
+
+	it("keeps a later code block when the first fence is long", async () => {
+		const result = await managerFor(runtime()).processMessage(
+			discordMessage(
+				`${"```"}${"x".repeat(80)}${"```"} then ${"```"}y${"```"}`,
+			),
+		);
+		const code = result.attachments.filter(
+			(attachment) => attachment.source === "Code",
+		);
+
+		expect(code).toHaveLength(2);
+		expect(code[1]?.text).toBe("y");
+		expect(result.processedContent).not.toContain("```");
+	});
 });
 
 describe("hasActiveTaskAgentWorkForMessage", () => {
