@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { VoiceError } from "./errors";
 import { RuntimeHttpVoiceAdapter } from "./voice-runtime-adapter";
 import { VoiceService } from "./voice-service";
+import { VoiceStreamCoordinator } from "./voice-stream-coordinator";
 
 const ENV = {
 	ELIZA_VOICE_LIVE_RUNTIME: "1",
@@ -90,4 +91,32 @@ describe("VoiceService streaming runtime handoff", () => {
 		expect(messagePosts()[1]).toMatch(/\/messages$/);
 		expect(turn.responseText).toBe("buffered reply");
 	});
+});
+
+describe("Voice stream speech delivery", () => {
+	it.each([
+		[40, 41, `${"a".repeat(40)}😀tail`],
+		[1, 1, "😀tail"],
+		[2, 3, "aa😀tail"],
+	])(
+		"preserves complete Unicode through chunk size %i/%i",
+		async (min, max, text) => {
+			const coordinator = new VoiceStreamCoordinator({
+				pipelineId: "unicode-stream",
+				env: {
+					ELIZA_VOICE_TTS_CHUNK_MIN_CHARS: String(min),
+					ELIZA_VOICE_TTS_CHUNK_MAX_CHARS: String(max),
+					ELIZA_VOICE_TTS_CHUNK_FLUSH_ON_PUNCTUATION: "false",
+				},
+			});
+			await coordinator.startTurn();
+			const result = await coordinator.handleRuntimeDelta(String(text));
+			const chunks = [
+				...result.chunks,
+				...(await coordinator.handleRuntimeDone()),
+			];
+			expect(chunks.map((chunk) => chunk.text).join("")).toBe(text);
+			for (const chunk of chunks) expect(chunk.text.isWellFormed()).toBe(true);
+		},
+	);
 });

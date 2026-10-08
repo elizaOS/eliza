@@ -190,6 +190,7 @@ export {
 	canActionRun,
 	resolveActionCallerRoles,
 	resolveActionGateFailure,
+	withActionGatePolicy,
 } from "./runtime/action-gate";
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
 export { isLocalProvider } from "./runtime/action-model-routing";
@@ -505,6 +506,7 @@ export {
 	shouldIncludeByContext,
 } from "./utils/context-routing";
 export { createHash } from "./utils/crypto-compat.ts";
+export { parseDurationMs } from "./utils/duration.ts";
 export {
 	isEnvDisabled,
 	isExactTrueEnvFlag,

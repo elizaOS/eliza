@@ -2,6 +2,8 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { actionToTool } from "@elizaos/core";
+import { parseTrajectorySemanticStage } from "@elizaos/core/protocol";
 import {
   TrajectoriesService,
   trajectoriesPlugin,
@@ -9,6 +11,7 @@ import {
 } from "@elizaos/plugin-assistant";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { proposeDeviceAction } from "../../../plugins/plugin-assistant/src/services/device-actions/action.ts";
 import { runtimeTrajectoriesEnabled } from "../src/runtime/native-runtime-features.ts";
 import {
   createBaseTrajectory,
@@ -67,6 +70,8 @@ beforeAll(async () => {
         res.end(String(error));
       });
   });
+  // Keep the loopback fixture alive across the long export test; teardown owns closure.
+  server.keepAliveTimeout = 0;
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }, 120_000);
@@ -588,4 +593,105 @@ it("retains the parent revision conflict before any child can be written", async
   expect(await loadTrajectoryById(fixture.runtime, trajectory.id)).toEqual(
     before,
   );
+});
+
+it("persists and reads complete planner stages with the canonical native proposal schema", async () => {
+  const trajectoryId = await direct.startTrajectory(fixture.runtime.agentId, {
+    source: "semantic-schema-acceptance",
+    roomId: randomUUID(),
+  });
+  const stepId = direct.startStep(trajectoryId, { kind: "llm" });
+  await direct.flushWriteQueue(trajectoryId);
+  const schema = actionToTool(proposeDeviceAction).function.parameters;
+  const messages = [
+    {
+      role: "user" as const,
+      content: "Complete input " + "x".repeat(120_000) + " FINAL-INPUT",
+    },
+  ];
+  const providerOptions = {
+    eliza: { plannerActionSchemas: { PROPOSE_DEVICE_ACTION: schema } },
+  };
+  bridge.logSemanticStage({
+    stepId,
+    stage: {
+      stageId: "native-schema-planner",
+      kind: "planner",
+      startedAt: 1,
+      endedAt: 2,
+      latencyMs: 1,
+      model: {
+        modelType: "TEXT_LARGE",
+        messages,
+        providerOptions,
+        response: "Recorded without removing inputs",
+      },
+    },
+  });
+  await bridge.flushWriteQueue(trajectoryId);
+  const detail = await bridge.getTrajectoryDetail(trajectoryId);
+  const semantic = detail?.steps?.flatMap((step) => step.semanticStages ?? []);
+  expect(semantic).toHaveLength(1);
+  expect(semantic?.[0].payload.model).toMatchObject({
+    messages,
+    providerOptions,
+  });
+  const directDetail = await direct.getTrajectoryDetail(trajectoryId);
+  expect(directDetail).toEqual(detail);
+  const response = await fetch(`${origin}/api/trajectories/${trajectoryId}`);
+  expect(response.status).toBe(200);
+  const read = await response.json();
+  expect(JSON.stringify(read)).toContain("FINAL-INPUT");
+  expect(JSON.stringify(read)).toContain(JSON.stringify(schema));
+});
+
+it("validates deep semantic JSON without stack limits while retaining type, prototype and cycle guards", () => {
+  const envelope = (model: unknown) => ({
+    schemaVersion: 1,
+    stageId: "deep-stage",
+    kind: "planner",
+    startedAt: 1,
+    endedAt: 2,
+    latencyMs: 1,
+    payload: { model },
+  });
+  let deep: unknown = "deepest-input";
+  for (let index = 0; index < 25_000; index++) deep = { child: deep };
+  const parsed = parseTrajectorySemanticStage(envelope(deep));
+  expect(parsed.payload.model).toBe(deep);
+  const shared = { value: [null, true, 3, "complete"] };
+  const aliases = parseTrajectorySemanticStage(
+    envelope({ left: shared, right: shared }),
+  );
+  expect(aliases.payload.model).toEqual({ left: shared, right: shared });
+  const cycle: Record<string, unknown> = {};
+  cycle.self = cycle;
+  const arrayCycle: unknown[] = [];
+  arrayCycle.push(arrayCycle);
+  for (const invalid of [
+    cycle,
+    arrayCycle,
+    NaN,
+    Infinity,
+    undefined,
+    1n,
+    Symbol("not-json"),
+    () => 1,
+    new Date(),
+    new Map(),
+    Object.create({ inherited: true }),
+  ]) {
+    expect(() =>
+      parseTrajectorySemanticStage(envelope({ nested: invalid })),
+    ).toThrowError(
+      expect.objectContaining({ code: "TRAJECTORY_SEMANTIC_STAGE_INVALID" }),
+    );
+  }
+  const ownProto = JSON.parse(
+    '{"__proto__":{"preserved":"data"},"constructor":"data"}',
+  );
+  const safe = parseTrajectorySemanticStage(envelope(ownProto));
+  expect(safe.payload.model).toBe(ownProto);
+  expect(Object.getPrototypeOf(ownProto)).toBe(Object.prototype);
+  expect(Object.hasOwn(ownProto, "__proto__")).toBe(true);
 });

@@ -85,6 +85,7 @@
     "audit:surface-realm-writers": "node scripts/scan-reserved-storage-writers.ts",
     "audit:design": "node scripts/audit-design.ts",
     "design:build": "vite build --config stories/vite.config.ts",
+    "test:node": "node --test --experimental-transform-types src/components/pages/browser-wallet-consent-format.node.test.ts",
     "test:progressive-speech-e2e": "node src/voice/__e2e__/run-progressive-speech.mjs"
   },
   "exports": {

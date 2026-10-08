@@ -311,6 +311,30 @@ test("a q=0 accept-language tag is excluded and does not shadow region routing",
   expect(body).toEqual({ language: "ko" });
 });
 
+test("an uppercase Q=0 accept-language tag is excluded and does not shadow region routing", async () => {
+  const app = await createApp({ requestPath: "/api/i18n/locale" });
+  const response = await app.fetch(
+    new Request("https://api.example.test/api/i18n/locale", {
+      headers: {
+        "accept-language": "ja;Q=0",
+        "cf-ipcountry": "KR",
+        "cf-connecting-ip": "203.0.113.11",
+      },
+    }),
+    environment({
+      async limit() {
+        return { success: true };
+      },
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  // HTTP parameter names are case-insensitive. `ja;Q=0` is not acceptable,
+  // so the country geo hint must decide.
+  const body = (await response.json()) as { language: string | null };
+  expect(body).toEqual({ language: "ko" });
+});
+
 test("a Chinese Accept-Language tag wins over a lower-priority English tag", async () => {
   const app = await createApp({ requestPath: "/api/i18n/locale" });
   const response = await app.fetch(
@@ -329,6 +353,31 @@ test("a Chinese Accept-Language tag wins over a lower-priority English tag", asy
   expect(response.status).toBe(200);
   const body = (await response.json()) as { language: string | null };
   expect(body).toEqual({ language: "zh-CN" });
+});
+
+test("a Traditional Chinese Accept-Language tag selects the Chinese UI", async () => {
+  const app = await createApp({ requestPath: "/api/i18n/locale" });
+  for (const header of [
+    "zh-TW,en;q=0.8",
+    "zh-HK,en;q=0.8",
+    "zh-Hant,en;q=0.8",
+  ]) {
+    const response = await app.fetch(
+      new Request("https://api.example.test/api/i18n/locale", {
+        headers: { "accept-language": header },
+      }),
+      environment({
+        async limit() {
+          return { success: true };
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    // Browsers send zh-TW / zh-HK / zh-Hant. The only Chinese UI is zh-CN.
+    const body = (await response.json()) as { language: string | null };
+    expect(body).toEqual({ language: "zh-CN" });
+  }
 });
 
 test("only model-dispatch surfaces bypass the legacy Railway Redis guard", () => {

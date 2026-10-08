@@ -1,6 +1,7 @@
 package ai.elizaos.app;
 
 import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -52,6 +53,19 @@ public final class NativeNotificationInboxTest {
             box.acceptPage(page(2, 2, true, new JSONArray().put(record(1)).put(record(2))), box.pageCursor());
             throw new AssertionError();
         }
+        // A real page fits the HTTP budget even when Android re-encoding expands its text.
+        JSONArray linkRecords = new JSONArray();
+        for (int i = 1; i <= 56; i++) linkRecords.put(record(i).put("body", "</".repeat(2000)));
+        JSONObject linkPage = page(56, 56, true, linkRecords);
+        String encoded = linkPage.toString();
+        String raw = encoded.replace("\\/", "/");
+        check(raw.getBytes(StandardCharsets.UTF_8).length <= 262144);
+        check(encoded.getBytes(StandardCharsets.UTF_8).length > 262144);
+        AtomicInteger linkEffects = new AtomicInteger(); Path linkRoot = root();
+        var linkInbox = inbox(linkRoot, OWNER, linkEffects);
+        check(linkInbox.acceptPage(new JSONObject(raw), linkInbox.pageCursor()));
+        check(linkEffects.get() == 0);
+        check(inbox(linkRoot, OWNER, linkEffects).pageCursor().getLong("afterSequence") == 56);
         AtomicInteger effects = new AtomicInteger(); Path root = root(); var box = inbox(root, OWNER, effects);
         box.beginBaseline(); box.acceptLive(record(2));
         check(box.status().getInt("pendingBuffered") == 1);
