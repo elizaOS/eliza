@@ -28,7 +28,10 @@ function formatBackupSize(sizeBytes: number): string {
   if (sizeBytes >= 1024 * 1024) {
     return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
   }
-  return `${Math.max(1, Math.ceil(sizeBytes / 1024))} KB`;
+  const kb = Math.max(1, Math.ceil(sizeBytes / 1024));
+  // 1023.001 KB ceils to 1024. The backup list must not print "1024 KB".
+  if (kb === 1024) return "1.0 MB";
+  return `${kb} KB`;
 }
 
 function backupErrorMessage(err: unknown, fallback: string): string {

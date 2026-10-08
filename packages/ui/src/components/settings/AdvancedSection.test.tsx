@@ -139,6 +139,31 @@ describe("AdvancedSection agent backups", () => {
     expect(screen.getByText(/1234567890ab/)).toBeTruthy();
   });
 
+  it("shows a backup just under 1 MB as 1.0 MB", async () => {
+    clientMock.listLocalAgentBackups.mockResolvedValue([
+      {
+        ...backup,
+        fileName: "almost-one-mb.agent-backup.json",
+        sizeBytes: 1024 * 1024 - 1,
+      },
+      {
+        ...backup,
+        fileName: "still-kb.agent-backup.json",
+        sizeBytes: 1023 * 1024,
+      },
+    ]);
+    render(<AdvancedSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Back up agent/i }));
+
+    await waitFor(() =>
+      expect(clientMock.listLocalAgentBackups).toHaveBeenCalledTimes(1),
+    );
+    expect(screen.getByText(/1\.0 MB/)).toBeTruthy();
+    expect(screen.queryByText(/1024 KB/)).toBeNull();
+    expect(screen.getByText(/1023 KB/)).toBeTruthy();
+  });
+
   it("creates a backup through the API and refreshes the list", async () => {
     clientMock.listLocalAgentBackups
       .mockResolvedValueOnce([])
