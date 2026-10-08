@@ -84,7 +84,7 @@ export function parseCalendarDate(value: string): string | undefined {
   }
 
   const dayFirst =
-    /^(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.? (\d{4})$/i.exec(
+    /^(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?,? (\d{4})$/i.exec(
       text,
     );
   if (dayFirst) {
