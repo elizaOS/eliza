@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { fetchManagedGoogleGmailSearch } from "./gmail";
+import { fetchManagedGoogleGmailSearch, normalizeManagedGmailBodyText } from "./gmail";
 import * as shared from "./shared";
 
 const input = {
@@ -96,4 +96,9 @@ test("managed search never substitutes mailbox zero for missing Google identity"
     } as shared.ManagedGoogleConnectorStatus),
   );
   expect((await fetchManagedGoogleGmailSearch(input)).messages[0].htmlLink).toBeNull();
+});
+
+test("HTML mail decodes a hexadecimal apostrophe entity", () => {
+  expect(normalizeManagedGmailBodyText("<p>It&#x27;s due</p>")).toBe("It's due");
+  expect(normalizeManagedGmailBodyText("<p>It&#39;s due</p>")).toBe("It's due");
 });
