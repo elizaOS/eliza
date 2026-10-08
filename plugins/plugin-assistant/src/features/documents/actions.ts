@@ -283,7 +283,34 @@ const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 ]);
 const DOCUMENT_SCOPE_OPTIONS = [...DOCUMENT_SCOPES, "all-visible"] as const;
 
-const URL_PATTERN = /https?:\/\/[^\s)]+/i;
+// Include ")" and sentence punctuation, then trim them. A ")" that closes
+// "(" in the URL stays, so "Mercury_(planet)" is not cut off.
+const URL_PATTERN = /https?:\/\/\S+/i;
+
+function stripTrailingUrlPunctuation(url: string): string {
+  let depth = 0;
+  let end = 0;
+  for (let i = 0; i < url.length; i++) {
+    const char = url[i];
+    if (char === "(") depth++;
+    else if (char === ")") {
+      // "https://x.com/a),next" must stop at the ")". Skipping it and
+      // then reading "next" keeps the ")" inside the saved URL.
+      if (depth === 0) break;
+      depth--;
+    } else if (/[.,;:!?]/u.test(char)) continue;
+    end = i + 1;
+  }
+  return url.slice(0, end);
+}
+
+/** URL taken from a chat line when the action has no explicit url parameter. */
+export function extractDocumentUrlFromText(text: string): string | null {
+  const match = text.match(URL_PATTERN)?.[0];
+  if (!match) return null;
+  const trimmed = stripTrailingUrlPunctuation(match);
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 function isDocumentPathCharacter(char: string, windows: boolean): boolean {
   const code = char.charCodeAt(0);
@@ -642,7 +669,7 @@ function getUrl(
   if (typeof params.url === "string" && params.url.trim()) {
     return params.url.trim();
   }
-  return unwrapUserMessageText(message).match(URL_PATTERN)?.[0] ?? null;
+  return extractDocumentUrlFromText(unwrapUserMessageText(message));
 }
 
 async function scopedAddOptions(
