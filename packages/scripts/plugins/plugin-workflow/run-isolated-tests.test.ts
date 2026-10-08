@@ -18,6 +18,7 @@ import {
 const hosted = [
   "__tests__/integration/hosted-digests-http.test.ts",
   "__tests__/integration/hosted-live-google-http.test.ts",
+  "__tests__/integration/hosted-native-source-http.test.ts",
 ];
 function fixture() {
   const dir = mkdtempSync(path.join(os.tmpdir(), "workflow-runner-test-"));
@@ -65,17 +66,17 @@ test("all discovered suites remain scheduled and mixed runners emit merged JUnit
       .trim()
       .split("\n")
       .map((x) => JSON.parse(x));
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 4);
     assert.deepEqual(calls[0].slice(0, 2), ["test", "--isolate"]);
     assert.ok(calls[0].some((x) => x.startsWith("--reporter-outfile=")));
-    for (let i = 1; i < 3; i++) {
+    for (let i = 1; i < 4; i++) {
       assert.ok(calls[i][0].endsWith("/packages/scripts/run-vitest.ts"));
       assert.deepEqual(calls[i].slice(1, 4), [
         "run",
         "--config",
-        i === 1
-          ? "vitest.hosted-digests.config.ts"
-          : "vitest.hosted-live-google.config.ts",
+        i === 2
+          ? "vitest.hosted-live-google.config.ts"
+          : "vitest.hosted-digests.config.ts",
       ]);
       assert.ok(calls[i].includes(hosted[i - 1]));
       assert.ok(calls[i].some((x) => x.startsWith("--outputFile=")));
@@ -83,9 +84,9 @@ test("all discovered suites remain scheduled and mixed runners emit merged JUnit
     const xml = readFileSync(output, "utf8");
     assert.match(
       xml,
-      /<testsuites tests="3" errors="0" failures="0" skipped="0">/,
+      /<testsuites tests="4" errors="0" failures="0" skipped="0">/,
     );
-    assert.equal((xml.match(/<testcase /g) || []).length, 3);
+    assert.equal((xml.match(/<testcase /g) || []).length, 4);
     assert.doesNotMatch(xml, /NaN|assertions=/);
   } finally {
     f.cleanup();
