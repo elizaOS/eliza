@@ -195,11 +195,17 @@ function resolveDueAt(
   if (/\btomorrow\b/i.test(text)) {
     return dueAtOnLocalDate(addDaysToLocalDate(observedDay, 1), timeZone);
   }
-  const weekdayPattern = new RegExp(
-    `\\b(?:by|before|on|next)?\\s*(${WEEKDAYS.join("|")})\\b`,
-    "i",
-  );
-  const weekday = text.match(weekdayPattern)?.[1];
+  const weekdayNames = WEEKDAYS.join("|");
+  // An optional prefix made the first bare weekday win, so "the Monday
+  // report by Friday" was due on Monday. Prefer the last explicit deadline.
+  const explicitWeekday = [
+    ...text.matchAll(
+      new RegExp(`\\b(?:by|before|on|next)\\s+(${weekdayNames})\\b`, "gi"),
+    ),
+  ].at(-1)?.[1];
+  const weekday =
+    explicitWeekday ??
+    text.match(new RegExp(`\\b(${weekdayNames})\\b`, "i"))?.[1];
   if (!weekday) return null;
   const target = WEEKDAYS.indexOf(
     weekday.toLowerCase() as (typeof WEEKDAYS)[number],
