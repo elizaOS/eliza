@@ -62,6 +62,10 @@ jobs:
           set -euo pipefail
           node packages/scripts/ensure-workspace-symlinks.ts
           timeout --kill-after=10s 600s bun packages/scripts/run-turbo.ts run build --filter=@elizaos/core
+          # Official TS/catalog build only: no native engine compilation or model download.
+          timeout --kill-after=10s 120s bun run --cwd plugins/plugin-native-inference build
+          test -f plugins/plugin-native-inference/dist/model-catalog/bge-input.js
+          test -f plugins/plugin-native-inference/dist/model-catalog/bge/tokenizer.json
           test "$(git rev-parse HEAD)" = e550e1fe7cd5a0ccd54fd4cf86258b8036d64fde
           git diff --quiet HEAD
       - name: Test exact five owning files in a loopback-only namespace
