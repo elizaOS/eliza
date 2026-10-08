@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { isValidReturnUrl } from "./route";
+import { isSafeRelativeRedirectPath } from "@elizaos/cloud-shared/lib/security/redirect-validation";
 
 const requestUrl = "https://cloud.eliza.app/api/auth/create-anonymous-session";
 
 function redirectTarget(returnUrl: string): URL {
-  const chosen = isValidReturnUrl(returnUrl) ? returnUrl : "/";
+  const chosen = isSafeRelativeRedirectPath(returnUrl) ? returnUrl : "/";
   return new URL(chosen, requestUrl);
 }
 
