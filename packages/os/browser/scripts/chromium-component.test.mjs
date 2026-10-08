@@ -12,6 +12,7 @@ import {
   EXTENSION_ID,
   generateComponentOverlay,
   pin,
+  protectionAssetNames,
   sha256,
 } from "./chromium-component.mjs";
 
@@ -33,6 +34,10 @@ function assets() {
     "background.mjs": Buffer.from('import "./commands.mjs";\n'),
     "command-handler.mjs": Buffer.from("export const cancellation = true;\n"),
     "commands.mjs": Buffer.from('export const context = "完整🙂";\n'),
+    "figtree-OFL.txt": Buffer.from("SIL Open Font License, Version 1.1\n"),
+    "guide-font.mjs": Buffer.from(
+      'export const guideFonts = [{ weight: 500, data: "d09GMgAB" }];\n',
+    ),
     "manual-activity.mjs": Buffer.from("export const manualActivity = true;\n"),
     "native-connection.mjs": Buffer.from("export const recovery = true;\n"),
     "task-guidance.mjs": Buffer.from("export const admission = true;\n"),
@@ -120,6 +125,16 @@ test("pinned Chromium sources produce deterministic component and narrow native 
       sha256(first.files[`chrome/browser/resources/eliza_browser/${name}`]),
       first.report.resources[name].sha256,
     );
+  const grit =
+    first.files["chrome/browser/resources/component_extension_resources.grd"];
+  assert.match(
+    grit,
+    /"IDR_ELIZA_BROWSER_GUIDE_FONT" file="eliza_browser\/guide-font\.mjs"/,
+  );
+  assert.match(
+    grit,
+    /"IDR_ELIZA_BROWSER_GUIDE_FONT_LICENSE" file="eliza_browser\/figtree-OFL\.txt"/,
+  );
 });
 
 test("both owned platforms serialize each Blink generator action without changing its inputs or outputs", async () => {
@@ -194,6 +209,13 @@ test("source mutations, unsupported revisions, identity changes, and unexpected 
   unexpected["unreviewed.mjs"] = Buffer.from("code");
   await assert.rejects(
     generateComponentOverlay({ ...request(), assets: unexpected }),
+    /inventory changed/,
+  );
+  // The bundled guide font ships only with its licence.
+  const unlicensed = assets();
+  delete unlicensed["figtree-OFL.txt"];
+  await assert.rejects(
+    generateComponentOverlay({ ...request(), assets: unlicensed }),
     /inventory changed/,
   );
   const wrongKey = assets();
@@ -359,8 +381,12 @@ test("Linux and Android resource additions fit the reviewed GRIT allocation", as
     /"chrome\/browser\/resources\/component_extension_resources.grd":\s*\{\s*"includes": \[(\d+)\],\s*"structures": \[(\d+)\]/,
   );
   assert.ok(allocation);
-  assert.ok(count <= Number(allocation[2]) - Number(allocation[1]));
-  assert.equal(count, 21); // Includes both optional Hangouts entries, conservatively.
+  // Optional protection resources must fit the same reserved range.
+  assert.ok(
+    count + protectionAssetNames.length <=
+      Number(allocation[2]) - Number(allocation[1]),
+  );
+  assert.equal(count, 23); // Includes both optional Hangouts entries, conservatively.
   const structures = [
     ...overlay.files[
       "chrome/browser/resources/component_extension_resources.grd"
