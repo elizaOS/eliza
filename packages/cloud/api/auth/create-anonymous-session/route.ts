@@ -25,8 +25,11 @@ import {
 
 const ANON_SESSION_COOKIE = "eliza-anon-session";
 
-function isValidReturnUrl(url: string): boolean {
-  return url.startsWith("/") && !url.startsWith("//");
+export function isValidReturnUrl(url: string): boolean {
+  // WHATWG URL parsing treats `\` as `/` and drops ASCII tab, LF, and CR,
+  // so `/\evil.example` and `/\t/evil.example` are both `//evil.example`.
+  const normalized = url.replace(/[\t\n\r]/g, "").replaceAll("\\", "/");
+  return normalized.startsWith("/") && !normalized.startsWith("//");
 }
 
 const app = new Hono<AppEnv>();
