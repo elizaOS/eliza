@@ -32,8 +32,8 @@ export type CharacterDefinition = {
    */
   templates?: StylePreset["templates"];
   messageExamples: StylePreset["messageExamples"];
-  variants: Partial<Record<CharacterLanguage, CharacterVariant>> & {
-    en: CharacterVariant;
+  variants: Record<Exclude<CharacterLanguage, "ja">, CharacterVariant> & {
+    ja?: CharacterVariant;
   };
 };
 export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
