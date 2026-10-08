@@ -582,11 +582,8 @@ describe("personal Shared messaging deliveries", () => {
       },
     );
     const trace = "33333333333343338333333333333333";
-    const pending = request(
-      valid,
-      "Bearer test-secret",
-      trace,
-      controller.signal,
+    const pending = Promise.resolve(
+      request(valid, "Bearer test-secret", trace, controller.signal),
     );
     pending.catch(() => undefined);
     const signal = await started.promise;
