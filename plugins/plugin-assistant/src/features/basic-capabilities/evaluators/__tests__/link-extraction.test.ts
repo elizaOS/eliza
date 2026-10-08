@@ -190,6 +190,31 @@ describe("linkExtractionEvaluator", () => {
     );
   });
 
+  it("preserves quoted Open Graph titles and ignores similarly named attributes", async () => {
+    for (const [html, expected] of [
+      [
+        '<meta content="Alice\'s guide > notes" property = "og:title">',
+        "Alice's guide > notes",
+      ],
+      [
+        '<meta data-property="og:title" content="Wrong"><meta content="Right" property="og:title">',
+        "Right",
+      ],
+      ["<meta content=\"Noise property='og:title'\">", ""],
+    ]) {
+      stubPreviewFetch(
+        makeFetchResponse(`<html><head>${html}</head><body>body</body></html>`),
+      );
+      const result = await linkExtractionEvaluator.prepare?.(
+        makeContext(
+          makeRuntime(async () => "summary"),
+          makeMessage("see https://example.com/og"),
+        ),
+      );
+      expect(result?.links[0]?.title).toBe(expected);
+    }
+  });
+
   it("reads an og:title when content comes before property", async () => {
     stubPreviewFetch(
       makeFetchResponse(

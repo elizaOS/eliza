@@ -91,11 +91,21 @@ function extractTitle(html: string): string {
 }
 
 function extractOpenGraphTitle(html: string): string {
-  for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
-    const tag = match[0];
-    if (!/\bproperty=["']og:title["']/i.test(tag)) continue;
-    const content = /\bcontent=["']([^"']+)["']/i.exec(tag);
-    if (content?.[1]) return content[1];
+  for (const match of html.matchAll(
+    /<meta(?=[\s/>])(?:"[^"]*"|'[^']*'|[^'">])*>/gi,
+  )) {
+    let property: string | undefined;
+    let content: string | undefined;
+    // Consume complete quoted values so title text cannot masquerade as an attribute.
+    for (const attribute of match[0].matchAll(
+      /\s([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g,
+    )) {
+      const name = attribute[1].toLowerCase();
+      const value = attribute[2] ?? attribute[3] ?? attribute[4];
+      if (name === "property") property ??= value;
+      if (name === "content") content ??= value;
+    }
+    if (property?.toLowerCase() === "og:title" && content) return content;
   }
   return "";
 }

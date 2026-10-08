@@ -64,6 +64,20 @@ describe("getAttachmentFileName", () => {
 			),
 		).toBe("photo.jpeg");
 	});
+	it("uses only a relative path filename extension, excluding directories and query data", () => {
+		for (const [url, expected] of [
+			["x.y/z", "photo.png"],
+			["x.y/z?format=.jpg", "photo.png"],
+			["x.y/pic.jpeg?next=/q", "photo.jpeg"],
+			["x.y/pic.jpeg#view", "photo.jpeg"],
+		]) {
+			expect(
+				getAttachmentFileName(
+					media({ url, title: "photo", contentType: ContentType.IMAGE }),
+				),
+			).toBe(expected);
+		}
+	});
 });
 
 describe("buildOutboundDiscordAttachment", () => {
