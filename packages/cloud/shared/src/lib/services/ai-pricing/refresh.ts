@@ -128,7 +128,7 @@ async function refreshSourceEntries(
 }
 
 export async function refreshPricingCatalog(
-  sources: PricingRefreshSource[] = ["bitrouter", "fal", "elevenlabs", "vast"],
+  sources: PricingRefreshSource[] = ["selfhosted", "bitrouter", "fal", "elevenlabs", "vast"],
 ) {
   const results = [];
 

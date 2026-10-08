@@ -1,4 +1,4 @@
-/** Default refresh preserves its prior catalog scope; selfhosted remains explicit opt-in. */
+/** Default refresh retains the platform-owned tariff alongside provider catalogs. */
 import { beforeEach, expect, mock, test } from "bun:test";
 
 const loadedSources: string[] = [];
@@ -46,9 +46,9 @@ beforeEach(() => {
   loadedSources.length = 0;
 });
 
-test("omitted sources leave the selfhosted catalog untouched", async () => {
+test("omitted sources refresh the selfhosted catalog as well", async () => {
   const result = await refreshPricingCatalog();
-  expect(loadedSources).toEqual(["bitrouter", "fal", "elevenlabs", "vast"]);
+  expect(loadedSources).toEqual(["selfhosted", "bitrouter", "fal", "elevenlabs", "vast"]);
   expect(result.results.map((entry) => entry.source)).toEqual(loadedSources);
   expect(result.results.every((entry) => !entry.success)).toBe(true);
 });
