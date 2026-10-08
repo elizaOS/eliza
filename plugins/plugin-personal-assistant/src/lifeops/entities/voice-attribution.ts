@@ -94,19 +94,10 @@ function kinTypeForLabel(label: string): KinClaimType {
   return SIBLING_LABELS.includes(label) ? "sibling_of" : "partner_of";
 }
 
-// Case only the first letter. A whole-pattern `i` flag would also make the
-// name class match lowercase words ("the update is my husband").
-function casedWord(value: string): string {
-  const chars = [...value];
-  const first = chars[0];
-  if (!first) return "";
-  const upper = first.toUpperCase();
-  const lower = first.toLowerCase();
-  const head = upper === lower ? first : `[${upper}${lower}]`;
-  return `${head}${chars.slice(1).join("")}`;
-}
-
-const KIN_LABEL_PATTERN = KIN_LABELS.map(casedWord).join("|");
+// Preserve name casing while accepting sentence-case relationship labels.
+const KIN_LABEL_PATTERN = KIN_LABELS.map((label) =>
+  label.replace(/^./, (first) => `[${first.toUpperCase()}${first}]`),
+).join("|");
 
 export interface KinClaim {
   name: string;
@@ -121,14 +112,14 @@ const KIN_CLAIM_PATTERNS: ReadonlyArray<{
 }> = [
   {
     pattern: new RegExp(
-      `\\b([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s+${casedWord("is")}\\s+${casedWord("my")}\\s+(${KIN_LABEL_PATTERN})\\b(?!['’]s\\b)`,
+      `\\b([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s+[Ii]s\\s+[Mm]y\\s+(${KIN_LABEL_PATTERN})\\b(?!['’]s\\b)`,
     ),
     nameGroup: 1,
     labelGroup: 2,
   },
   {
     pattern: new RegExp(
-      `\\b${casedWord("this")}\\s+${casedWord("is")}\\s+([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s*,\\s*${casedWord("my")}\\s+(${KIN_LABEL_PATTERN})\\b(?!['’]s\\b)`,
+      `\\b[Tt]his\\s+[Ii]s\\s+([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s*,\\s*[Mm]y\\s+(${KIN_LABEL_PATTERN})\\b(?!['’]s\\b)`,
     ),
     nameGroup: 1,
     labelGroup: 2,
@@ -138,7 +129,7 @@ const KIN_CLAIM_PATTERNS: ReadonlyArray<{
   // following verb ("my husband Bob just called" → "Bob", not "Bob just").
   {
     pattern: new RegExp(
-      `\\b(?:${casedWord("this")}\\s+${casedWord("is")}\\s+)?${casedWord("my")}\\s+(${KIN_LABEL_PATTERN})\\s+([A-Z][A-Za-z'.-]{1,40})\\b`,
+      `\\b(?:[Tt]his\\s+[Ii]s\\s+)?[Mm]y\\s+(${KIN_LABEL_PATTERN})\\s+([A-Z][A-Za-z'.-]{1,40})\\b`,
     ),
     nameGroup: 2,
     labelGroup: 1,
