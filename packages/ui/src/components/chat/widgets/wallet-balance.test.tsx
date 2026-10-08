@@ -178,6 +178,32 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     expect(text).not.toContain("500"); // no holding value leaked
     expect(text).not.toContain("2,000");
   });
+  it("hides a 24h change that rounds to 0.0%", async () => {
+    getWalletBalances.mockResolvedValue(
+      balances([
+        { symbol: "USDC", valueUsd: "500" },
+        { symbol: "WBTC", valueUsd: "2000" },
+        { symbol: "ETH", valueUsd: "800" },
+      ]),
+    );
+    getWalletMarketOverview.mockResolvedValue(
+      overview([
+        { symbol: "USDC", priceUsd: 1, change24hPct: -0.02 },
+        { symbol: "WBTC", priceUsd: 64000, change24hPct: 0.05 },
+        { symbol: "ETH", priceUsd: 3000, change24hPct: -0.5 },
+      ]),
+    );
+    render(<WalletBalanceWidget spanClassName="col-span-2 row-span-1" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("wallet-price-row-USDC")).toBeTruthy(),
+    );
+    const usdc = screen.getByTestId("wallet-price-row-USDC").textContent ?? "";
+    const wbtc = screen.getByTestId("wallet-price-row-WBTC").textContent ?? "";
+    const eth = screen.getByTestId("wallet-price-row-ETH").textContent ?? "";
+    expect(usdc).not.toContain("-0.0%");
+    expect(wbtc).toContain("+0.1%");
+    expect(eth).toContain("-0.5%");
+  });
   it("skips holdings under $1 and renders nothing when none qualify", async () => {
     getWalletBalances.mockResolvedValue(
       balances([{ symbol: "SHIB", valueUsd: "0.40" }]),
