@@ -196,15 +196,21 @@ function resolveDueAt(
     return dueAtOnLocalDate(addDaysToLocalDate(observedDay, 1), timeZone);
   }
   const weekdayNames = WEEKDAYS.join("|");
-  // An optional prefix made the first bare weekday win, so "the Monday
-  // report by Friday" was due on Monday. Prefer the last explicit deadline.
-  const explicitWeekday = [
+  // "by Friday ... on Monday" is a Friday deadline. A later "on"/"next"
+  // day must not override an earlier "by"/"before" day.
+  const deadlineWeekday = [
     ...text.matchAll(
-      new RegExp(`\\b(?:by|before|on|next)\\s+(${weekdayNames})\\b`, "gi"),
+      new RegExp(`\\b(?:by|before)\\s+(${weekdayNames})\\b`, "gi"),
+    ),
+  ].at(-1)?.[1];
+  const scheduledWeekday = [
+    ...text.matchAll(
+      new RegExp(`\\b(?:on|next)\\s+(${weekdayNames})\\b`, "gi"),
     ),
   ].at(-1)?.[1];
   const weekday =
-    explicitWeekday ??
+    deadlineWeekday ??
+    scheduledWeekday ??
     text.match(new RegExp(`\\b(${weekdayNames})\\b`, "i"))?.[1];
   if (!weekday) return null;
   const target = WEEKDAYS.indexOf(
