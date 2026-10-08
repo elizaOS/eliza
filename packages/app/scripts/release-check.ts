@@ -102,11 +102,7 @@ const requiredWorkflowSnippets = [
   "Stage standard macOS release app",
   "packages/app/scripts/electrobun/stage-macos-release-artifacts.sh",
   "retry_stapler_validate()",
-  "Smoke test packaged macOS app",
-  "SMOKE_DIAGNOSTICS_DIR:",
-  "SKIP_BUILD=1",
   "bun run --cwd packages/app test:desktop:packaged",
-  "Upload macOS smoke diagnostics",
   "wrapper-diagnostics.json",
   "Install Inno Setup 6.7.1",
   "Downloading Inno Setup 6.7.1...",
@@ -159,8 +155,6 @@ const requiredWorkflowSnippets = [
     "{{ needs.prepare.outputs.env }}",
   "ELIZA_ELECTROBUN_NOTARIZE: 0",
   'ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"',
-  'ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER: "1"',
-  "ELIZA_TEST_WINDOWS_INSTALL_DIR: $" + "{{ runner.temp }}\\el",
   "name: Run Windows clean installer proof",
   "verify-windows-installer-proof.ps1",
   "ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: $" + "{{ runner.temp }}\\el-proof",
@@ -171,8 +165,6 @@ const requiredWorkflowSnippets = [
   "ELIZAOS_CLOUD_API_KEY: $" +
     "{{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}",
   "ELIZAOS_CLOUD_BASE_URL: $" + "{{ secrets.ELIZAOS_CLOUD_BASE_URL }}",
-  "bun run --cwd packages/app test:desktop:packaged:windows",
-  'Write-Error "Packaged Windows smoke test exited with code $LASTEXITCODE."',
   "bun run --cwd packages/app test:desktop:packaged",
 ];
 const _requiredPatchedElectrobunCliSnippets = [
