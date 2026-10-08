@@ -541,3 +541,5 @@ export * from "./validation";
 // Node-specific exports
 export const isBrowser = false;
 export const isNode = true;
+
+export { BGE_SMALL_VECTOR_SPACE } from "./embedding-vector-space";

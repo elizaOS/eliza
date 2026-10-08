@@ -1,3 +1,4 @@
+import { ElizaError } from "@elizaos/core";
 /**
  * Verifies only explicit caller/auth/rate-limit rejections qualify for a
  * known-zero settlement after provider dispatch.
@@ -70,5 +71,20 @@ describe("isKnownUnacceptedProviderError", () => {
         new Error("turn failed", { cause: gatewayTimeout }),
       ),
     ).toBe(false);
+  });
+});
+
+
+describe("canonical TEI acceptance boundary", () => {
+  test.each(["EMBEDDING_PROVIDER_IDENTITY_MISMATCH","EMBEDDING_PROVIDER_PREFLIGHT_FAILED"])("%s is known zero even when preflight transport failed",code=>{
+    const failure=new ElizaError("fixture preflight",{code,cause:providerError(503)});
+    expect(isKnownUnacceptedProviderError(failure)).toBe(true);expect(isKnownUnacceptedProviderError(new Error("context",{cause:failure}))).toBe(true);
+  });
+  test("later rejected batch does not make an accepted prefix free",()=>{
+    const failure=new ElizaError("fixture accepted prefix",{code:"EMBEDDING_BATCH_PARTIALLY_ACCEPTED",cause:providerError(429)});
+    expect(isKnownUnacceptedProviderError(failure)).toBe(false);expect(isKnownUnacceptedProviderError(new Error("context",{cause:failure}))).toBe(false);
+  });
+  test("plain user-like code text cannot claim an authenticated local preflight",()=>{
+    const failure=Object.assign(new Error("fixture arbitrary"),{code:"EMBEDDING_PROVIDER_PREFLIGHT_FAILED"});expect(isKnownUnacceptedProviderError(failure)).toBe(false);
   });
 });

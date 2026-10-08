@@ -41,7 +41,12 @@ interface CapturedRequest {
 
 function stubEmbeddingsFetch(captured: CapturedRequest[]): void {
   globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+    if (String(url).endsWith("/info")) return Response.json({model_id:"BAAI/bge-small-en-v1.5",model_sha:"5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",model_type:{embedding:{pooling:"cls"}},max_input_length:512});
     const body = JSON.parse(String(init?.body)) as { model: string };
+    if (String(url).endsWith("/embed")) {
+      captured.push({url:String(url),model:LOCAL_EMBEDDING_MODEL_ID,authorization:new Headers(init?.headers).get("authorization")});
+      return Response.json([Array(384).fill(1)]);
+    }
     captured.push({
       url: String(url),
       model: body.model,
@@ -78,8 +83,8 @@ describe("getTextEmbeddingModel local-sidecar routing", () => {
       value: "hi",
     });
 
-    expect(result.embedding.length).toBe(3);
-    expect(captured[0]?.url).toBe("http://tei.internal:8080/v1/embeddings");
+    expect(result.embedding.length).toBe(384);
+    expect(captured[0]?.url).toBe("http://tei.internal:8080/embed");
     expect(captured[0]?.model).toBe(LOCAL_EMBEDDING_MODEL_ID);
   });
 
@@ -95,7 +100,7 @@ describe("getTextEmbeddingModel local-sidecar routing", () => {
     });
 
     // The /v1 suffix is not doubled and the upstream id is always the local one.
-    expect(captured[0]?.url).toBe("http://tei.internal:8080/v1/embeddings");
+    expect(captured[0]?.url).toBe("http://tei.internal:8080/embed");
     expect(captured[0]?.model).toBe(LOCAL_EMBEDDING_MODEL_ID);
   });
 

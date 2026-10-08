@@ -33,3 +33,5 @@ export {
 	redactSecrets,
 	redactSensitiveText,
 } from "./security/redact";
+
+export { BGE_SMALL_VECTOR_SPACE } from "./embedding-vector-space";

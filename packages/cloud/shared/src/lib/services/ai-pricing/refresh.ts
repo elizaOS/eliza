@@ -8,6 +8,10 @@ import { toDbEntry } from "./dimensions";
 import { fetchBitRouterCatalogEntries } from "./providers/bitrouter";
 import { fetchElevenLabsEntries } from "./providers/elevenlabs";
 import { fetchFalCatalogEntries } from "./providers/fal";
+import {
+  fetchSelfHostedEmbeddingEntries,
+  SELF_HOSTED_EMBEDDING_PRICING_SOURCE_URL,
+} from "./providers/selfhosted";
 import { fetchSunoEntries } from "./providers/suno";
 import { fetchVastSnapshotEntries } from "./providers/vast";
 import {
@@ -127,6 +131,14 @@ export async function refreshPricingCatalog(
   sources: PricingRefreshSource[] = ["bitrouter", "fal", "elevenlabs", "vast"],
 ) {
   const results = [];
+
+  if (sources.includes("selfhosted")) {
+    results.push(
+      await refreshSourceEntries("selfhosted", SELF_HOSTED_EMBEDDING_PRICING_SOURCE_URL, async () =>
+        fetchSelfHostedEmbeddingEntries(),
+      ),
+    );
+  }
 
   if (sources.includes("bitrouter")) {
     results.push(

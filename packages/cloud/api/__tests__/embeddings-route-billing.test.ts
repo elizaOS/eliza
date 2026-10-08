@@ -1,3 +1,5 @@
+import { ElizaError } from "@elizaos/core";
+import { APICallError } from "ai";
 /**
  * Tests for POST /api/v1/embeddings — the per-call latency cuts (#47).
  *
@@ -67,10 +69,11 @@ mock.module("@/lib/services/inference-auth-context", () => ({
 
 // Provider config: pretend an embedding provider is configured and hand back a
 // dummy model object (the embed mock ignores it).
+let embeddingSource: "openai" | "selfhosted" = "openai";
 mock.module("@/lib/providers/language-model", () => ({
   hasTextEmbeddingProviderConfigured: () => true,
-  getTextEmbeddingModel: () => ({}) as never,
-  resolveEmbeddingProviderSource: () => "openai",
+  getTextEmbeddingModel: () => (embeddingSource === "selfhosted" ? {embeddingSpace:"BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1"} : {}) as never,
+  resolveEmbeddingProviderSource: (model?: string) => embeddingSource === "selfhosted" && model !== "bge-small-en-v1.5" ? "openai" : embeddingSource,
   getAiProviderConfigurationError: () => "AI services are not configured",
   resolvePassthroughEmbeddingsUpstream: () => null,
 }));
@@ -172,6 +175,7 @@ function post(body: unknown, ctx?: ExecutionContext) {
 }
 
 beforeEach(() => {
+  embeddingSource = "openai";
   requireUserOrApiKeyWithOrg.mockReset();
   resolveInferenceAuthContext.mockReset();
   validateApiKey.mockReset();
@@ -400,5 +404,43 @@ describe("POST /api/v1/embeddings — returned vectors unchanged", () => {
     expect(body.data[1].index).toBe(1);
     expect(embedMany).toHaveBeenCalledTimes(1);
     expect(embed).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("canonical BGE reuses the organization admission and settlement chain", () => {
+  test("publishes canonical identity, reserves retained tokens, disables BGE SDK retries", async () => {
+    embeddingSource = "selfhosted";
+    embed.mockResolvedValue({embedding:Array(384).fill(1/Math.sqrt(384)),usage:{tokens:3}});
+    const {ctx,scheduled}=makeExecutionCtx();const res=await post({model:"bge-small-en-v1.5",input:"hello",dimensions:384},ctx);const body=await res.json() as {embedding_space?: string};await Promise.all(scheduled);
+    expect(res.status).toBe(200);expect(body.embedding_space).toBe("BAAI/bge-small-en-v1.5:cls:l2:384:hf-bert-v1:tail-v1");expect(reserveCredits.mock.calls[0]?.[0]).toMatchObject({provider:"selfhosted",billingSource:"selfhosted"});expect(reserveCredits.mock.calls[0]?.[1]).toBe(3);expect(embed.mock.calls[0]?.[0].maxRetries).toBe(0);expect(billUsage).toHaveBeenCalledTimes(1);
+  });
+  test("rejects wrong BGE width before reserving or dispatching", async () => {
+    embeddingSource="selfhosted";const {ctx,scheduled}=makeExecutionCtx();const res=await post({model:"bge-small-en-v1.5",input:"hello",dimensions:1536},ctx);await Promise.all(scheduled);
+    expect(res.status).toBe(400);expect(reserveCredits).not.toHaveBeenCalled();expect(embed).not.toHaveBeenCalled();
+  });
+  test("missing BGE credits stop inference before dispatch", async () => {
+    embeddingSource="selfhosted";reserveCredits.mockRejectedValue(new aiBillingActual.InsufficientCreditsError(0.01,0));const {ctx,scheduled}=makeExecutionCtx();const res=await post({model:"bge-small-en-v1.5",input:"hello"},ctx);await Promise.all(scheduled);
+    expect(res.status).toBe(402);expect(embed).not.toHaveBeenCalled();
+  });
+  test("OpenAI receives no BGE identity or retry override", async () => {
+    const {ctx,scheduled}=makeExecutionCtx();const res=await post({model:"text-embedding-3-small",input:"hello"},ctx);const body=await res.json() as {embedding_space?: string};await Promise.all(scheduled);
+    expect(body.embedding_space).toBeUndefined();expect(embed.mock.calls[0]?.[0].maxRetries).toBeUndefined();expect(reserveCredits.mock.calls[0]?.[0]).toMatchObject({provider:"openai",billingSource:"openai"});
+  });
+});
+
+
+describe("BGE failed inference retains the exact existing settlement owner",()=>{
+  test("typed preflight failure settles zero exactly once",async()=>{
+    embeddingSource="selfhosted";const reconcile=mock(async(_cost:number)=>undefined);reserveCredits.mockResolvedValue({reservedAmount:0.01,reconcile});
+    embed.mockRejectedValue(new ElizaError("fixture preflight",{code:"EMBEDDING_PROVIDER_PREFLIGHT_FAILED",cause:new TypeError("fixture network failure")}));
+    const {ctx,scheduled}=makeExecutionCtx();const response=await post({model:"bge-small-en-v1.5",input:"hello"},ctx);await Promise.all(scheduled);
+    expect(response.status).toBeGreaterThanOrEqual(400);expect(reconcile).toHaveBeenCalledTimes(1);expect(reconcile).toHaveBeenLastCalledWith(0);expect(billUsage).not.toHaveBeenCalled();
+  });
+  test("accepted prefix followed by429 retains conservative reservation once",async()=>{
+    embeddingSource="selfhosted";const reconcile=mock(async(_cost:number)=>undefined);reserveCredits.mockResolvedValue({reservedAmount:0.01,reconcile});
+    embedMany.mockRejectedValue(new ElizaError("fixture accepted prefix",{code:"EMBEDDING_BATCH_PARTIALLY_ACCEPTED",context:{acceptedValues:100},cause:new APICallError({message:"fixture later rejection",url:"https://fixture.invalid/embed",requestBodyValues:{},statusCode:429})}));
+    const {ctx,scheduled}=makeExecutionCtx();const response=await post({model:"bge-small-en-v1.5",input:Array(101).fill("hello")},ctx);await Promise.all(scheduled);
+    expect(response.status).toBeGreaterThanOrEqual(400);expect(reconcile).toHaveBeenCalledTimes(1);expect(reconcile).toHaveBeenLastCalledWith(0.01);expect(billUsage).not.toHaveBeenCalled();
   });
 });

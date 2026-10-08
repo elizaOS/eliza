@@ -1,7 +1,7 @@
 /** Exercises malformed request input with deterministic route collaborators. */
 import { describe, expect, mock, test } from "bun:test";
 
-const refreshPricingCatalog = mock(async () => ({
+const refreshPricingCatalog = mock(async (_sources?: string[]) => ({
   success: true,
   refreshed: 1,
 }));
@@ -66,4 +66,11 @@ describe("POST /api/v1/admin/ai-pricing malformed JSON", () => {
     expect(response.status).toBe(400);
     expect(createManualOverride).not.toHaveBeenCalled();
   });
+});
+
+
+test("admin can refresh only the existing selfhosted pricing partition", async () => {
+  refreshPricingCatalog.mockClear();
+  const response=await app.request("/",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({sources:["selfhosted"]})});
+  expect(response.status).toBe(200);expect(refreshPricingCatalog).toHaveBeenCalledTimes(1);expect(refreshPricingCatalog).toHaveBeenLastCalledWith(["selfhosted"]);expect(createManualOverride).not.toHaveBeenCalled();
 });

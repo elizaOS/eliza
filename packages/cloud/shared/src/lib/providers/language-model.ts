@@ -1,3 +1,4 @@
+import { createTeiEmbeddingModel } from "./tei-embeddings";
 // Defines cloud shared language model behavior for backend service consumers.
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -57,11 +58,6 @@ let vastClients = new Map<string, ReturnType<typeof createOpenAI>>();
 let openAIClient: {
   apiKey: string;
   baseURL?: string;
-  client: ReturnType<typeof createOpenAI>;
-} | null = null;
-let localEmbeddingsClient: {
-  apiKey: string;
-  baseURL: string;
   client: ReturnType<typeof createOpenAI>;
 } | null = null;
 let cerebrasClient: ReturnType<typeof createOpenAI> | null = null;
@@ -139,25 +135,6 @@ function isLocalEmbeddingsForced(): boolean {
 function isLocalEmbeddingRoutingActive(model: string): boolean {
   if (!getLocalEmbeddingsBaseURL()) return false;
   return isLocalEmbeddingsForced() || model === LOCAL_EMBEDDING_MODEL_ID;
-}
-
-function getLocalEmbeddingsClient(baseURL: string) {
-  // TEI serves unauthenticated unless the sidecar sets API_KEY; the SDK client
-  // requires a bearer value, so an unauthenticated deployment sends a dummy.
-  const apiKey = getProviderKey("LOCAL_EMBEDDINGS_API_KEY") ?? "local";
-  if (
-    !localEmbeddingsClient ||
-    localEmbeddingsClient.apiKey !== apiKey ||
-    localEmbeddingsClient.baseURL !== baseURL
-  ) {
-    localEmbeddingsClient = {
-      apiKey,
-      baseURL,
-      client: createOpenAI({ apiKey, baseURL }),
-    };
-  }
-
-  return localEmbeddingsClient.client;
 }
 
 function getCerebrasClient() {
@@ -975,7 +952,7 @@ export function getTextEmbeddingModel(model: string) {
   // sidecar embeds with its one loaded model regardless of requested spelling.
   const localBaseURL = getLocalEmbeddingsBaseURL();
   if (localBaseURL && (isLocalEmbeddingsForced() || model === LOCAL_EMBEDDING_MODEL_ID)) {
-    return getLocalEmbeddingsClient(localBaseURL).textEmbeddingModel(LOCAL_EMBEDDING_MODEL_ID);
+    return createTeiEmbeddingModel(localBaseURL, getProviderKey("LOCAL_EMBEDDINGS_API_KEY") ?? "local");
   }
 
   // Only the sidecar can serve the local id — OpenAI would 404 it, so a

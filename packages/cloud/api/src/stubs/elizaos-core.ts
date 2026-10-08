@@ -2316,3 +2316,6 @@ export function toWellFormedUnicode(text: string): string {
   }
   return output;
 }
+
+// Pure provider identity shared with the canonical BGE encoder.
+export { BGE_SMALL_VECTOR_SPACE } from "../../../../core/src/embedding-vector-space";

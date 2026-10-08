@@ -1,3 +1,5 @@
+import { ElizaError } from "@elizaos/core";
+import { validateBgeInput } from "@/lib/providers/bge-embeddings";
 /**
  * POST /api/v1/embeddings
  *
@@ -327,9 +329,9 @@ app.post("/", async (c) => {
     providerModel = model;
     const provider = getProviderFromModel(model);
     const normalizedModel = normalizeModelName(model);
-    const billingSource = resolveEmbeddingProviderSource();
+    const billingSource = resolveEmbeddingProviderSource(model);
 
-    if (!hasTextEmbeddingProviderConfigured() || !billingSource) {
+    if (!hasTextEmbeddingProviderConfigured(model) || !billingSource) {
       return c.json(
         {
           error: {
@@ -345,7 +347,18 @@ app.post("/", async (c) => {
     const inputText = Array.isArray(request.input)
       ? request.input.join(" ")
       : request.input;
-    const estimatedInputTokens = estimateTokens(inputText);
+    let retainedBgeTokens: number | undefined;
+    if (model === "bge-small-en-v1.5" && billingSource === "selfhosted") {
+      if (request.dimensions !== undefined && request.dimensions !== 384)
+        return c.json({ error: { message: "BGE requires exactly 384 dimensions", type: "invalid_request_error", param: "dimensions", code: "invalid_value" } }, 400);
+      try {
+        retainedBgeTokens = (Array.isArray(request.input) ? request.input : [request.input]).reduce((sum, text) => sum + validateBgeInput(text), 0);
+      } catch (error) {
+        if (!(error instanceof ElizaError) || !["EMBEDDING_INPUT_UNREPRESENTABLE", "EMBEDDING_INPUT_INVALID"].includes(error.code)) throw error;
+        return c.json({ error: { message: "BGE input cannot satisfy its canonical token-tail contract", type: "invalid_request_error", param: "input", code: "EMBEDDING_INPUT_UNREPRESENTABLE" } }, 400);
+      }
+    }
+    const estimatedInputTokens = retainedBgeTokens ?? estimateTokens(inputText);
 
     const requestId = crypto.randomUUID();
     providerRequestId = requestId;
@@ -494,6 +507,7 @@ app.post("/", async (c) => {
     });
 
     let embeddings: number[][] = [];
+    let embeddingSpace: string | undefined;
     let actualTokens = 0;
 
     // #15512 pass-through fast path: when OpenAI serves the model directly,
@@ -504,7 +518,7 @@ app.post("/", async (c) => {
     let passthroughBody: ArrayBuffer | null = null;
     const passthroughUpstream =
       isPassthroughEmbeddingsEnabled() &&
-      resolveEmbeddingProviderSource() === "openai"
+      resolveEmbeddingProviderSource(model) === "openai"
         ? resolvePassthroughEmbeddingsUpstream(model)
         : null;
 
@@ -544,6 +558,7 @@ app.post("/", async (c) => {
       actualTokens = parsed.usage?.prompt_tokens || estimatedInputTokens;
     } else if (Array.isArray(request.input)) {
       const embeddingModel = getTextEmbeddingModel(model);
+      if ("embeddingSpace" in embeddingModel && typeof embeddingModel.embeddingSpace === "string") embeddingSpace = embeddingModel.embeddingSpace;
       await markProviderDispatched?.();
       providerDispatched = true;
       const result = await bindGatewayHandoffTelemetry(
@@ -551,12 +566,14 @@ app.post("/", async (c) => {
         embedMany,
       )({
         model: embeddingModel,
+        ...(model === "bge-small-en-v1.5" ? { maxRetries: 0 } : {}),
         values: request.input,
       });
       embeddings = result.embeddings;
       actualTokens = result.usage?.tokens || estimatedInputTokens;
     } else {
       const embeddingModel = getTextEmbeddingModel(model);
+      if ("embeddingSpace" in embeddingModel && typeof embeddingModel.embeddingSpace === "string") embeddingSpace = embeddingModel.embeddingSpace;
       await markProviderDispatched?.();
       providerDispatched = true;
       const result = await bindGatewayHandoffTelemetry(
@@ -564,6 +581,7 @@ app.post("/", async (c) => {
         embed,
       )({
         model: embeddingModel,
+        ...(model === "bge-small-en-v1.5" ? { maxRetries: 0 } : {}),
         value: request.input,
       });
       embeddings = [result.embedding];
@@ -675,6 +693,7 @@ app.post("/", async (c) => {
     return attachTelemetry(
       c.json({
         object: "list",
+        ...(embeddingSpace ? { embedding_space: embeddingSpace } : {}),
         data: embeddings.map((embedding, index) => ({
           object: "embedding",
           embedding,

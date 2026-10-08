@@ -129,3 +129,5 @@ export * from "./validation";
 export const isBrowser = false;
 export const isNode = false;
 export const isEdge = true;
+
+export { BGE_SMALL_VECTOR_SPACE } from "./embedding-vector-space";
