@@ -94,6 +94,20 @@ function kinTypeForLabel(label: string): KinClaimType {
   return SIBLING_LABELS.includes(label) ? "sibling_of" : "partner_of";
 }
 
+// Case only the first letter. A whole-pattern `i` flag would also make the
+// name class match lowercase words ("the update is my husband").
+function casedWord(value: string): string {
+  const chars = [...value];
+  const first = chars[0];
+  if (!first) return "";
+  const upper = first.toUpperCase();
+  const lower = first.toLowerCase();
+  const head = upper === lower ? first : `[${upper}${lower}]`;
+  return `${head}${chars.slice(1).join("")}`;
+}
+
+const KIN_LABEL_PATTERN = KIN_LABELS.map(casedWord).join("|");
+
 export interface KinClaim {
   name: string;
   label: string;
@@ -107,16 +121,14 @@ const KIN_CLAIM_PATTERNS: ReadonlyArray<{
 }> = [
   {
     pattern: new RegExp(
-      `\\b([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s+is\\s+my\\s+(${KIN_LABELS.join("|")})\\b`,
-      "i",
+      `\\b([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s+${casedWord("is")}\\s+${casedWord("my")}\\s+(${KIN_LABEL_PATTERN})\\b(?!['’]s\\b)`,
     ),
     nameGroup: 1,
     labelGroup: 2,
   },
   {
     pattern: new RegExp(
-      `\\bthis\\s+is\\s+([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s*,\\s*my\\s+(${KIN_LABELS.join("|")})\\b`,
-      "i",
+      `\\b${casedWord("this")}\\s+${casedWord("is")}\\s+([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s*,\\s*${casedWord("my")}\\s+(${KIN_LABEL_PATTERN})\\b(?!['’]s\\b)`,
     ),
     nameGroup: 1,
     labelGroup: 2,
@@ -126,8 +138,7 @@ const KIN_CLAIM_PATTERNS: ReadonlyArray<{
   // following verb ("my husband Bob just called" → "Bob", not "Bob just").
   {
     pattern: new RegExp(
-      `\\b(?:this\\s+is\\s+)?my\\s+(${KIN_LABELS.join("|")})\\s+([A-Z][A-Za-z'.-]{1,40})\\b`,
-      "i",
+      `\\b(?:${casedWord("this")}\\s+${casedWord("is")}\\s+)?${casedWord("my")}\\s+(${KIN_LABEL_PATTERN})\\s+([A-Z][A-Za-z'.-]{1,40})\\b`,
     ),
     nameGroup: 2,
     labelGroup: 1,
@@ -135,9 +146,9 @@ const KIN_CLAIM_PATTERNS: ReadonlyArray<{
 ];
 
 // Words that a name regex can capture but that never denote a real person.
-// Applied to the captured NAME so a matched-but-invalid candidate (e.g.
-// "this is my wife Jill" matching name="this" via the "<name> is my <label>"
-// pattern) is skipped and the loop continues to a better pattern.
+// Applied to each token of the captured name so a matched-but-invalid
+// candidate (e.g. "this is my wife Jill" matching name="this", or "The
+// update is my husband") is skipped and the loop continues.
 const NAME_STOPWORDS = new Set([
   "this",
   "that",
@@ -165,7 +176,11 @@ export function extractKinClaim(
     if (m?.[nameGroup] && m[labelGroup]) {
       const name = m[nameGroup].replace(/[.,;:!?]+$/, "").trim();
       const label = m[labelGroup].toLowerCase();
-      if (name.length > 0 && !NAME_STOPWORDS.has(name.toLowerCase())) {
+      const nameTokens = name.split(/\s+/);
+      if (
+        name.length > 0 &&
+        nameTokens.every((token) => !NAME_STOPWORDS.has(token.toLowerCase()))
+      ) {
         return { name, label, type: kinTypeForLabel(label) };
       }
     }
