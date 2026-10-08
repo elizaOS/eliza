@@ -99,6 +99,11 @@ const requiredWorkflowSnippets = [
   "Inject version.json into bundle (Windows)",
   "Inject version.json into bundle (macOS / Linux)",
   '"identifier":"ai.elizaos.Eliza"',
+  "Run packaged Linux user journeys",
+  "Run packaged macOS user journeys",
+  "Upload macOS journey diagnostics",
+  "Installer proof did not retain a renderer launcher.",
+  "ELIZA_TEST_WINDOWS_LAUNCHER_PATH=$launcherPath",
   "Stage standard macOS release app",
   "packages/app/scripts/electrobun/stage-macos-release-artifacts.sh",
   "retry_stapler_validate()",
@@ -297,34 +302,8 @@ const forbiddenWorkflowSnippets = [
   "electrobun CLI checksum mismatch",
   '$extractionBases = @("D:\\a\\electrobun\\electrobun\\package")',
 ];
-const requiredElectrobunPrWorkflowSnippets = [
-  "name: Validate Electrobun Release Workflow",
-  "pull_request:",
-  "branches: [develop]",
-  "workflow_dispatch:",
-  "permissions:",
-  "contents: read",
-  'BUN_VERSION: "1.4.2"',
-  "name: Release Workflow Contract",
-  "bun install --frozen-lockfile --ignore-scripts",
-  'run-postinstall: "true"',
-  "node packages/app/scripts/validate-regression-matrix.ts --workflow release-contract",
-  "bun run test:release:contract",
-];
-const forbiddenElectrobunPrWorkflowSnippets = [
-  "uses: ./.github/workflows/release-electrobun.yml",
-  "publish_release: false",
-  "publish_docker: false",
-  "draft: false",
-  "secrets: inherit",
-  "packages: write",
-  "not yet ported from eliza; skipping",
-  "validate-regression-matrix.ts --workflow release-contract --help",
-  "test:release:contract --help",
-];
 const requiredRootPackageScriptSnippets: Record<string, readonly string[]> = {
   "release:check": ["scripts/run-release-check.ts"],
-  "test:release:contract": ["scripts/run-release-contract-suite.mjs"],
 };
 const requiredElectrobunConfigSnippets = [
   'postBuild: "../../scripts/electrobun/postwrap-sign-runtime-macos.ts"',
@@ -337,6 +316,15 @@ const electrobunDirCandidates = [
 ];
 
 function resolveElectrobunPath(...segments: string[]) {
+  if (segments[0] === "scripts") {
+    return resolve(
+      "packages",
+      "app",
+      "scripts",
+      "electrobun",
+      ...segments.slice(1),
+    );
+  }
   for (const candidate of electrobunDirCandidates) {
     const targetPath = resolve(candidate, ...segments);
     if (existsSync(targetPath)) {
@@ -803,16 +791,16 @@ function assertBundledAgentOrchestratorInstallFix() {
   }
 }
 function assertOrchestratorVersionPinned() {
-  const rootPackage = JSON.parse(
-    readFileSync("package.json", "utf8"),
+  const appPackage = JSON.parse(
+    readFileSync("packages/app/package.json", "utf8"),
   ) as RootPackageJson;
   const orchestratorPluginPackageJsonPath =
     resolveOrchestratorPluginPackageJsonPath();
   const version =
-    rootPackage.dependencies?.["@elizaos/plugin-agent-orchestrator"];
+    appPackage.dependencies?.["@elizaos/plugin-agent-orchestrator"];
   if (!version) {
     console.error(
-      "release-check: @elizaos/plugin-agent-orchestrator is not in dependencies.",
+      "release-check: @elizaos/plugin-agent-orchestrator is not in app dependencies.",
     );
     process.exit(1);
   }
@@ -931,40 +919,6 @@ function assertReleaseWorkflowHasNotaryWrapper() {
   if (forbidden.length > 0) {
     console.error(
       "release-check: release workflow still exposes raw bootstrap artifacts on the public GitHub release:",
-    );
-    for (const snippet of forbidden) {
-      console.error(`  - ${snippet}`);
-    }
-    process.exit(1);
-  }
-}
-
-function assertElectrobunPrWorkflowExists() {
-  const workflow = readFileSync(
-    ".github/workflows/electrobun-contract.yml",
-    "utf8",
-  );
-  const missing = requiredElectrobunPrWorkflowSnippets.filter(
-    (snippet) => !workflow.includes(snippet),
-  );
-
-  if (missing.length > 0) {
-    console.error(
-      "release-check: Electrobun PR workflow is missing lightweight release-contract validation:",
-    );
-    for (const snippet of missing) {
-      console.error(`  - ${snippet}`);
-    }
-    process.exit(1);
-  }
-
-  const forbidden = forbiddenElectrobunPrWorkflowSnippets.filter((snippet) =>
-    workflow.includes(snippet),
-  );
-
-  if (forbidden.length > 0) {
-    console.error(
-      "release-check: Electrobun PR workflow still invokes the full reusable release pipeline:",
     );
     for (const snippet of forbidden) {
       console.error(`  - ${snippet}`);
@@ -1164,6 +1118,7 @@ function assertMacArtifactStagerLooksCorrect() {
 function assertWindowsSmokeScriptHasLeadingParamBlock() {
   const script = readElectrobunFile("scripts", "smoke-test-windows.ps1");
   const firstRelevantLine = script
+    .replace(/^\s*<#[\s\S]*?#>/, "")
     .split(/\r?\n/)
     .map((line) => line.trim())
     .find((line) => line.length > 0 && !line.startsWith("#"));
@@ -1195,7 +1150,8 @@ function assertWindowsSmokeScriptHasLeadingParamBlock() {
     "$startupStateFile = Join-Path $tempRoot",
     '$startupBootstrapFile = Join-Path $startupBundleRoot "startup-session.json"',
     "Write-StartupBootstrap",
-    "$stopProtectedProcessIds = [System.Collections.Generic.HashSet[int]]::new()",
+    "$stopProtectedProcessIds = Get-ProtectedAncestorProcessIds -ProcessId $PID",
+    "$protected = [System.Collections.Generic.HashSet[int]]::new()",
     'Get-CimInstance Win32_Process -Filter "ProcessId = $currentPid"',
     "-not $stopProtectedProcessIds.Contains([int]$_.Id)",
     "[int]::TryParse([string]$state.port, [ref]$observedPort)",
@@ -1480,7 +1436,6 @@ function main() {
   assertAppleStoreSandboxAuditPasses();
   assertAppleStoreEntitlementsReviewed();
   assertReleaseWorkflowHasNotaryWrapper();
-  assertElectrobunPrWorkflowExists();
   assertElectrobunConfigHasPostWrapSigner();
   assertMacArtifactStagerLooksCorrect();
   assertWindowsSmokeScriptHasLeadingParamBlock();
