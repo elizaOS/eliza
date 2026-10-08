@@ -122,7 +122,7 @@ export async function fetchBrowserWorkspaceTrackedResponse(
       route.status !== null ||
       Object.keys(route.headers).length > 0)
   ) {
-    const response = new Response(route?.body ?? "", {
+    const response = new Response(route.body, {
       headers: route?.headers,
       status: route?.status ?? 200,
     });
