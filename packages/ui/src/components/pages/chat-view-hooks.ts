@@ -73,6 +73,8 @@ export function mapUiLanguageToSpeechLocale(uiLanguage: string): string {
   switch (uiLanguage) {
     case "zh-CN":
       return "zh-CN";
+    case "ja":
+      return "ja-JP";
     case "ko":
       return "ko-KR";
     case "es":

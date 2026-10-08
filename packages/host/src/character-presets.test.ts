@@ -33,6 +33,16 @@ describe("character preset resolution with a shared avatarIndex", () => {
     expect(sibling?.avatarIndex).toBe(defaultDefinition?.avatarIndex);
   });
 
+  it("keeps Japanese reply rules while using available preset copy", () => {
+    for (const definition of CHARACTER_DEFINITIONS) {
+      const preset = resolveStylePresetById(definition.id, "ja-JP");
+      expect(preset?.system).toContain("natural Japanese");
+      expect(preset?.system).toContain(definition.system);
+      expect(preset?.catchphrase).toBe(definition.variants.en.catchphrase);
+      expect(preset?.postExamples).toEqual(definition.variants.en.postExamples);
+    }
+  });
+
   it("resolves every preset to its own persona by id", () => {
     for (const definition of CHARACTER_DEFINITIONS) {
       const preset = resolveStylePresetById(definition.id);

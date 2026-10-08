@@ -210,6 +210,17 @@ describe("useChatVoiceController voice playback unlock", () => {
     vi.clearAllMocks();
   });
 
+  it("passes Japanese speech locale through the controller and updates it on language change", () => {
+    const { rerender } = renderHook(
+      ({ uiLanguage }) =>
+        useChatVoiceController({ ...baseOptions, uiLanguage }),
+      { initialProps: { uiLanguage: "ja" as "ja" | "en" } },
+    );
+    expect(useVoiceChatMock.mock.calls.at(-1)?.[0].lang).toBe("ja-JP");
+    rerender({ uiLanguage: "en" });
+    expect(useVoiceChatMock.mock.calls.at(-1)?.[0].lang).toBe("en-US");
+  });
+
   it("does not cancel speech queued by the same user gesture that unlocks audio", () => {
     const { rerender } = renderHook(() => useChatVoiceController(baseOptions));
     const stopSpeaking = vi.mocked(voiceState.stopSpeaking);
@@ -758,6 +769,7 @@ describe("chat-view hook helpers", () => {
 
   it("maps every supported UI language to its speech locale", () => {
     expect(mapUiLanguageToSpeechLocale("zh-CN")).toBe("zh-CN");
+    expect(mapUiLanguageToSpeechLocale("ja")).toBe("ja-JP");
     expect(mapUiLanguageToSpeechLocale("ko")).toBe("ko-KR");
     expect(mapUiLanguageToSpeechLocale("es")).toBe("es-ES");
     expect(mapUiLanguageToSpeechLocale("pt")).toBe("pt-BR");
