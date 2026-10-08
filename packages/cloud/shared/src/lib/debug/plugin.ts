@@ -306,8 +306,10 @@ async function handleModelCallEnd(
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`;
-  return `${(ms / 60000).toFixed(2)}m`;
+  const secondsText = (ms / 1000).toFixed(2);
+  // 59996 ms is still under a minute, but toFixed(2) prints "60.00".
+  if (ms < 60_000 && secondsText !== "60.00") return `${secondsText}s`;
+  return `${(ms / 60_000).toFixed(2)}m`;
 }
 
 // ============================================================================
