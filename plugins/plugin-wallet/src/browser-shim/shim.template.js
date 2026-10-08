@@ -480,7 +480,7 @@
               );
             }
             var parsedChain = parseInt(trimmedChain.slice(2), 16);
-            if (!(parsedChain > 0)) {
+            if (!Number.isSafeInteger(parsedChain) || parsedChain <= 0) {
               return Promise.reject(
                 new Error(
                   "wallet_switchEthereumChain requires a valid chainId.",

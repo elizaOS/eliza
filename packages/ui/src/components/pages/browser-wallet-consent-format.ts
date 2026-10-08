@@ -32,16 +32,10 @@ export function formatWeiForDisplay(weiDecimalString: string): string {
   const whole = wei / ONE_ETH_WEI;
   const remainder = wei % ONE_ETH_WEI;
   if (remainder === 0n) return `${whole.toString()} ETH`;
-  // 6-digit precision is plenty for a confirm dialog; the full hex
-  // value goes through unchanged downstream.
-  const fractional = (remainder * 1_000_000n) / ONE_ETH_WEI;
-  // Six digits cannot show 1 wei. "0.0 ETH" would hide a non-zero transfer.
-  if (whole === 0n && fractional === 0n && remainder > 0n) {
-    return "<0.000001 ETH";
-  }
-  const fractionalStr = fractional
+  // Consent must show the exact amount, including a single wei.
+  const fractionalStr = remainder
     .toString()
-    .padStart(6, "0")
+    .padStart(18, "0")
     .replace(/0+$/, "");
   return `${whole.toString()}.${fractionalStr || "0"} ETH`;
 }

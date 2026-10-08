@@ -90,11 +90,7 @@ export async function readWalletChainId(
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   if (!trimmed.startsWith("0x")) return null;
-  const hex = trimmed.slice(2);
-  // parseInt("1g", 16) is 1, and parseInt("2105g", 16) is Base (8453).
-  // Junk must not select a login chain.
-  if (!/^[0-9a-fA-F]+$/.test(hex)) return null;
-  const parsed = Number.parseInt(hex, 16);
+  const parsed = Number(trimmed);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
   return parsed;
 }

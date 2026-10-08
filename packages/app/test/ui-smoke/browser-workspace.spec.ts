@@ -6,6 +6,7 @@
  */
 import { type APIRequestContext, expect, test } from "@playwright/test";
 import {
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -1040,3 +1041,166 @@ test("mobile browser menu keeps its gesture when a loading iframe takes focus", 
     releaseLoad();
   }
 });
+
+// Real renderer consent flow. Native child transport and financial endpoints are synthetic.
+for (const viewport of [
+  { name: "desktop", width: 1280, height: 900 },
+  { name: "mobile", width: 393, height: 852 },
+])
+  test(`wallet consent ${viewport.name}`, async ({ page }, info) => {
+    await page.setViewportSize(viewport);
+    await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
+    await installDefaultAppRoutes(page);
+    await page.addInitScript(() => {
+      const replies: Array<{ id: number; payload: { error?: string } }> = [];
+      Reflect.set(window, "__walletReplies", replies);
+      class NativeTab extends HTMLElement {
+        on(name: string, handler: EventListener) {
+          this.addEventListener(name, handler);
+        }
+        off(name: string, handler: EventListener) {
+          this.removeEventListener(name, handler);
+        }
+        executeJavascript(js: string) {
+          const prefix = "window.__elizaWalletReply(";
+          if (!js.startsWith(prefix)) return;
+          const [id, payload] = JSON.parse(
+            `[${js.slice(prefix.length, js.lastIndexOf(")"))}]`,
+          );
+          replies.push({ id, payload });
+        }
+        syncDimensions() {}
+        toggleHidden() {}
+        togglePassthrough() {}
+        loadURL() {}
+        reload() {}
+      }
+      customElements.define("electrobun-webview", NativeTab);
+    });
+    const json = (body: unknown) => ({
+      contentType: "application/json",
+      body: JSON.stringify(body),
+    });
+    const address = "0x1234567890abcdef1234567890abcdef12345678";
+    await page.route("**/api/browser-workspace", (route) =>
+      route.fulfill(
+        json({
+          mode: "desktop",
+          tabs: [
+            {
+              id: "review-tab",
+              title: "Wallet review",
+              url: "https://wallet-review.invalid",
+              partition: "user",
+              visible: true,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              lastFocusedAt: new Date().toISOString(),
+            },
+          ],
+        }),
+      ),
+    );
+    await page.route("**/api/wallet/config", (route) =>
+      route.fulfill(
+        json({
+          configured: true,
+          evmConfigured: true,
+          evmAddress: address,
+          evmSigningCapability: "local",
+          executionReady: true,
+          wallets: [{ chain: "evm", source: "local", address }],
+          primary: { evm: "local" },
+          warnings: [],
+        }),
+      ),
+    );
+    await page.route("**/api/wallet/steward-status", (route) =>
+      route.fulfill(
+        json({ available: false, configured: false, connected: false }),
+      ),
+    );
+    const effects: unknown[] = [];
+    await page.route("**/api/wallet/browser-transaction", (route) => {
+      effects.push(route.request().postDataJSON());
+      return route.fulfill(json({ txHash: "synthetic-receipt" }));
+    });
+    await page.route("**/api/wallet/browser-sign-message", (route) => {
+      effects.push(route.request().postDataJSON());
+      return route.fulfill(json({ signature: "synthetic-signature" }));
+    });
+    await openAppPath(page, "/browser");
+    await hideChatOverlay(page);
+    const tab = page.locator("electrobun-webview");
+    await expect(tab).toHaveCount(1);
+    const send = async (id: number, method: string, params: unknown) =>
+      tab.evaluate(
+        (el, arg) =>
+          el.dispatchEvent(
+            new CustomEvent("host-message", {
+              detail: {
+                type: "__elizaWalletRequest",
+                requestId: arg.id,
+                protocol: "evm",
+                method: arg.method,
+                params: arg.params,
+                hostname: "wallet-review.invalid",
+              },
+            }),
+          ),
+        { id, method, params },
+      );
+    await send(1, "eth_sendTransaction", [
+      { to: address, value: "1", chainId: "0x1" },
+    ]);
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Value: 0.000000000000000001 ETH");
+    await page.screenshot({
+      path: info.outputPath(`${viewport.name}-amount.png`),
+    });
+    await dialog.getByRole("button", { name: "Reject", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    expect(effects).toEqual([]);
+    await send(2, "personal_sign", ["0X4869", address]);
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Hi");
+    await page.screenshot({
+      path: info.outputPath(`${viewport.name}-message.png`),
+    });
+    await dialog.getByRole("button", { name: "Reject", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    expect(effects).toEqual([]);
+    await send(3, "eth_sendTransaction", [
+      { to: address, value: "1", chainId: "0x1g" },
+    ]);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              Reflect.get(window, "__walletReplies") as Array<{
+                id: number;
+                payload: { error?: string };
+              }>
+            ).find((r) => r.id === 3)?.payload.error,
+        ),
+      )
+      .toMatch(/valid chainId/);
+    await expect(dialog).toBeHidden();
+    expect(effects).toEqual([]);
+    await send(4, "eth_sendTransaction", [
+      { to: address, value: "1", chainId: "0x1" },
+    ]);
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => effects.length).toBe(1);
+    expect(effects[0]).toMatchObject({ to: address, value: "1", chainId: 1 });
+    await expect(dialog).toBeHidden();
+    await send(5, "personal_sign", ["0X4869", address]);
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Sign", exact: true }).click();
+    await expect.poll(() => effects.length).toBe(2);
+    expect(effects[1]).toEqual({ message: "0X4869" });
+    await expect(dialog).toBeHidden();
+  });

@@ -280,21 +280,9 @@ export function isBrowserWorkspaceWalletRequest(
   );
 }
 export function parseBrowserWorkspaceEvmChainId(value: unknown): number | null {
-  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
-    return value;
-  }
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith("0x")) {
-    const hex = trimmed.slice(2);
-    // parseInt("1g", 16) is 1. A trailing junk character must not select chain 1.
-    if (!/^[0-9a-fA-F]+$/.test(hex)) return null;
-    const parsed = Number.parseInt(hex, 16);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-  }
-  const parsed = Number(trimmed);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  const parsed = typeof value === "string" ? Number(value.trim()) : value;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 export function formatBrowserWorkspaceEvmChainId(chainId: number): string {
   return `0x${chainId.toString(16)}`;

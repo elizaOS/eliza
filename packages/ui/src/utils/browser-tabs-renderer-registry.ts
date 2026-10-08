@@ -550,21 +550,9 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
     const SUPPORTED_EVM_CHAIN_IDS = Object.keys(DEFAULT_EVM_RPCS);
     let evmChainId = 1;
     const parseChainId = (value) => {
-      if (typeof value === "number") {
-        return Number.isInteger(value) && value > 0 ? value : null;
-      }
-      if (typeof value !== "string") return null;
-      const trimmed = value.trim();
-      if (!trimmed) return null;
-      if (trimmed.startsWith("0x")) {
-        const hex = trimmed.slice(2);
-        // parseInt("1g", 16) is 1. Junk must not select Ethereum mainnet.
-        if (!/^[0-9a-fA-F]+$/.test(hex)) return null;
-        const parsed = Number.parseInt(hex, 16);
-        return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-      }
-      const parsed = Number(trimmed);
-      return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+      if (typeof value !== "number" && typeof value !== "string") return null;
+      const parsed = typeof value === "string" ? Number(value.trim()) : value;
+      return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
     };
     const formatChainId = (value) => "0x" + value.toString(16);
     const isSupportedEvmChainId = (value) => SUPPORTED_EVM_CHAIN_IDS.indexOf(String(value)) >= 0;
