@@ -380,32 +380,38 @@ async function readResponseBodyWithLimit(
   return output;
 }
 
-export function isYouTubeUrl(url: string): boolean {
-  return /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)/.test(url);
+function parseYouTubeUrl(value: string): URL | null {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "https:" || url.protocol === "http:") &&
+      ["youtube.com", "www.youtube.com", "youtu.be"].includes(url.hostname)
+      ? url
+      : null;
+  } catch {
+    // error-policy:J3 Classification rejects malformed input; the fetch boundary
+    // still reports invalid URLs through its existing validation path.
+    return null;
+  }
 }
 
-function extractYouTubeVideoId(url: string): string | null {
-  // Handle youtu.be/VIDEO_ID
-  const shortMatch = url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
-  if (shortMatch) return shortMatch[1];
+export function isYouTubeUrl(url: string): boolean {
+  return parseYouTubeUrl(url) !== null;
+}
 
-  // Handle youtube.com/watch?v=VIDEO_ID
-  const watchMatch = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-  if (watchMatch) return watchMatch[1];
-
-  // Handle youtube.com/embed/VIDEO_ID
-  const embedMatch = url.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
-  if (embedMatch) return embedMatch[1];
-
-  // Handle youtube.com/v/VIDEO_ID
-  const vMatch = url.match(/\/v\/([a-zA-Z0-9_-]{11})/);
-  if (vMatch) return vMatch[1];
-
-  // Handle youtube.com/shorts/VIDEO_ID
-  const shortsMatch = url.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
-  if (shortsMatch) return shortsMatch[1];
-
-  return null;
+function extractYouTubeVideoId(value: string): string | null {
+  const url = parseYouTubeUrl(value);
+  if (!url) return null;
+  const videoId =
+    url.hostname === "youtu.be"
+      ? url.pathname.slice(1).replace(/\/$/, "")
+      : url.pathname === "/watch"
+        ? url.searchParams.get("v")
+        : url.pathname.match(
+            /^\/(?:embed|v|shorts|live)\/([a-zA-Z0-9_-]{11})\/?$/,
+          )?.[1];
+  return typeof videoId === "string" && /^[a-zA-Z0-9_-]{11}$/.test(videoId)
+    ? videoId
+    : null;
 }
 
 async function fetchYouTubeTranscript(videoId: string): Promise<string | null> {
