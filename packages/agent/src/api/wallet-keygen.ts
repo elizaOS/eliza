@@ -20,7 +20,9 @@ function generateEvmPrivateKey(): string {
   return `0x${crypto.randomBytes(32).toString("hex")}`;
 }
 export function deriveEvmAddress(privateKeyHex: string): string {
-  const cleaned = privateKeyHex.startsWith("0x")
+  // 0X is the same key as 0x. A lowercase-only strip leaves the X in the
+  // hex body, and Buffer.from then yields 0 bytes.
+  const cleaned = /^0x/i.test(privateKeyHex)
     ? privateKeyHex.slice(2)
     : privateKeyHex;
   // Use @noble/curves — works in Node, Bun, and browsers.
