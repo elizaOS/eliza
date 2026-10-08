@@ -72,6 +72,23 @@ describe("/search", () => {
 		);
 	});
 
+	it("keeps every match when the limit is negative", async () => {
+		const search = getRegisteredCommands().get("search");
+		if (!search) throw new Error("search command not registered");
+		const interaction = makeSearchInteraction("hello", -1);
+		const runtime = {
+			getMemories: vi.fn(async () => [
+				{ content: { text: "hello one" }, createdAt: Date.now() },
+				{ content: { text: "hello two" }, createdAt: Date.now() },
+				{ content: { text: "hello three" }, createdAt: Date.now() },
+			]),
+		};
+
+		await search.execute(interaction as never, runtime as never);
+
+		expect(interaction.edits[0].content).toContain("hello three");
+	});
+
 	it("reports the error message when getMemories throws", async () => {
 		const search = getRegisteredCommands().get("search");
 		if (!search) throw new Error("search command not registered");
