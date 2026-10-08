@@ -37,12 +37,20 @@ const NAME_PATTERN =
 // at Jill. Reject possessives and prevent fallback to a shorter name prefix.
 const NAME_CLAIM_PATTERNS: RegExp[] = [
   new RegExp(
-    `\\b[Mm]y\\s+name\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z])`,
+    `\\b[Mm]y\\s+name\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
   ),
-  new RegExp(`\\b[Ii]\\s+am\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z])`),
-  new RegExp(`\\b[Ii]['’]?m\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z])`),
-  new RegExp(`\\b[Tt]his\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z])`),
-  new RegExp(`\\b[Ii]t['’]?s\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z])`),
+  new RegExp(
+    `\\b[Ii]\\s+am\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+  ),
+  new RegExp(
+    `\\b[Ii]['’]?m\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+  ),
+  new RegExp(
+    `\\b[Tt]his\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+  ),
+  new RegExp(
+    `\\b[Ii]t['’]?s\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z][A-Za-z'.-])`,
+  ),
 ];
 
 export function extractSelfNameClaim(

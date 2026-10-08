@@ -202,6 +202,16 @@ class FakeRelationshipStore {
 // Pure extractor regression tests.
 // ---------------------------------------------------------------------------
 
+it("retains names followed by an unpunctuated first-person clause", () => {
+  expect(
+    extractSelfNameClaim("Hi it's Jill I wanted to ask about Monday"),
+  ).toBe("Jill");
+  expect(
+    extractSelfNameClaim("This is Alice I am calling about the invoice"),
+  ).toBe("Alice");
+  expect(extractSelfNameClaim("I'm Mary Jane’s friend")).toBeNull();
+});
+
 describe("extractSelfNameClaim", () => {
   it.each([
     ["I'm Jill", "Jill"],
