@@ -1035,16 +1035,14 @@ async function applyAddCurrent(
       strengthened: await applyStrengthenForMemory(ctx, dedupTarget),
     };
   }
+  const messageCreatedAt = ctx.message.createdAt;
   const validAt =
     typeof op.valid_at === "string" && op.valid_at.length > 0
       ? op.valid_at
-      : ctx.extraction
-        ? new Date(
-            typeof ctx.message.createdAt === "number" &&
-              Number.isFinite(ctx.message.createdAt)
-              ? ctx.message.createdAt
-              : 0,
-          ).toISOString()
+      : ctx.extraction &&
+          typeof messageCreatedAt === "number" &&
+          Number.isFinite(messageCreatedAt)
+        ? new Date(messageCreatedAt).toISOString()
         : nowIso();
   const factId = await insertFact(ctx, {
     claim: op.claim,
