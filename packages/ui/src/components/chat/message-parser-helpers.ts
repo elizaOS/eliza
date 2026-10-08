@@ -22,7 +22,10 @@
  */
 
 import type { ConfigUiHint } from "@elizaos/contracts";
-import { stripAssistantStageDirections } from "@elizaos/core/protocol";
+import {
+  REASONING_TAG_NAMES,
+  stripAssistantStageDirections,
+} from "@elizaos/core/protocol";
 import type {
   JsonSchemaObject,
   ConfigUiPatchOp as PatchOp,
@@ -116,11 +119,13 @@ export const FENCED_CODE_RE = /```([^\n`]*)\n([\s\S]*?)```/g;
  */
 export const INLINE_CODE_RE = /`([^`\n]+)`/g;
 export const FORM_SUBMIT_DISPLAY_RE = /^\[form:submit\s+([^\]\s]+)\]/;
-// thinking, reflection, thought, and antthinking are reasoning tags too.
-// Leaving them out shows the hidden text in the chat bubble:
-// "Visible answer.<thought>secret plan</thought> More."
-export const HIDDEN_TAG_BLOCK_RE =
-  /<(think|thinking|analysis|reasoning|reflection|thought|antthinking|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
+const HIDDEN_TAG_NAMES = [...REASONING_TAG_NAMES, "tool_calls?", "tools?"].join(
+  "|",
+);
+export const HIDDEN_TAG_BLOCK_RE = new RegExp(
+  `<(${HIDDEN_TAG_NAMES})\\b[^>]*>[\\s\\S]*?(?:<\\/\\1>|$)`,
+  "gi",
+);
 /**
  * Strip trailing partial hidden tags at the end of a streaming text chunk.
  * During streaming, the buffer may end mid-tag (e.g. `"Hello<thi"`,

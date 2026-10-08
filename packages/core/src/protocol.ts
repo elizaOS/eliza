@@ -543,6 +543,7 @@ export {
 } from "./utils/permission-deep-links.js";
 export {
 	hasReasoningResidue,
+	REASONING_TAG_NAMES,
 	stripReasoningPrefixes,
 } from "./utils/reasoning-tags.ts";
 export * from "./utils/reference-echo";

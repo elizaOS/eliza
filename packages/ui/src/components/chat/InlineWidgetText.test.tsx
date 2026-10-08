@@ -43,6 +43,11 @@ const { clientMock } = vi.hoisted(() => ({
 vi.mock("../../api/client", () => ({ client: clientMock }));
 
 import { InlineWidgetText } from "./InlineWidgetText";
+import { parseSegments } from "./message-parser-helpers";
+import {
+  parseSegmentsStreaming,
+  type StreamingParseCache,
+} from "./message-parser-incremental";
 // The task widget is plugin-owned (registered by plugin-agent-orchestrator at
 // boot, not a built-in); register it here so this surface renders it too.
 import { registerTaskWidget } from "./widgets/task-widget";
@@ -216,16 +221,35 @@ describe("InlineWidgetText", () => {
     expect(container.textContent ?? "").not.toContain("<think>");
   });
 
-  it("strips hidden <thought> reasoning blocks", () => {
-    const { container } = withApp(
-      <InlineWidgetText
-        content={"Visible answer.<thought>secret plan</thought> More."}
-      />,
-    );
-    expect(container.textContent ?? "").toContain("Visible answer.");
-    expect(container.textContent ?? "").toContain("More.");
-    expect(container.textContent ?? "").not.toContain("secret plan");
-    expect(container.textContent ?? "").not.toContain("<thought>");
+  it("keeps canonical reasoning hidden in rendered and incremental replies", () => {
+    for (const tag of [
+      "think",
+      "thinking",
+      "analysis",
+      "reasoning",
+      "reflection",
+      "thought",
+      "antthinking",
+    ]) {
+      const content = `Visible answer.\n<${tag} detail="fixture">Hidden reasoning fixture\ncontinues here</${tag}>\nMore helpful detail.`;
+      const { container, unmount } = withApp(
+        <InlineWidgetText content={content} />,
+      );
+      expect(container.textContent).toContain("Visible answer.");
+      expect(container.textContent).toContain("More helpful detail.");
+      expect(container.textContent).not.toContain("Hidden reasoning fixture");
+      let cache: StreamingParseCache | null = null;
+      for (let end = 1; end <= content.length; end++) {
+        const prefix = content.slice(0, end);
+        const result = parseSegmentsStreaming(prefix, false, cache);
+        expect(result.segments).toEqual(parseSegments(prefix, false));
+        expect(JSON.stringify(result.segments)).not.toContain(
+          "Hidden reasoning fixture",
+        );
+        cache = result.cache;
+      }
+      unmount();
+    }
   });
 
   it("renders a complete model table with a surplus closing brace without another model call", () => {
