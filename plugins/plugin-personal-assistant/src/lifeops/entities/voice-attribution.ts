@@ -34,13 +34,15 @@ import type { SELF_ENTITY_ID } from "./types.js";
 const NAME_PATTERN =
   "[A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2}";
 // A curly apostrophe is outside the name class, so "Jill’s" ends the name
-// at Jill. Reject `'s` / `’s` after that boundary.
+// at Jill. Reject possessives and prevent fallback to a shorter name prefix.
 const NAME_CLAIM_PATTERNS: RegExp[] = [
-  new RegExp(`\\b[Mm]y\\s+name\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b)`),
-  new RegExp(`\\b[Ii]\\s+am\\s+(${NAME_PATTERN})\\b(?!['’]s\\b)`),
-  new RegExp(`\\b[Ii]['’]?m\\s+(${NAME_PATTERN})\\b(?!['’]s\\b)`),
-  new RegExp(`\\b[Tt]his\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b)`),
-  new RegExp(`\\b[Ii]t['’]?s\\s+(${NAME_PATTERN})\\b(?!['’]s\\b)`),
+  new RegExp(
+    `\\b[Mm]y\\s+name\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z])`,
+  ),
+  new RegExp(`\\b[Ii]\\s+am\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z])`),
+  new RegExp(`\\b[Ii]['’]?m\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z])`),
+  new RegExp(`\\b[Tt]his\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z])`),
+  new RegExp(`\\b[Ii]t['’]?s\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+[A-Z])`),
 ];
 
 export function extractSelfNameClaim(
