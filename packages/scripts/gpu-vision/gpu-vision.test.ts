@@ -155,6 +155,9 @@ test("formatBytes renders GiB and MiB", () => {
   assert.equal(formatBytes(2 * 1024 ** 3), "2.00 GiB");
   assert.equal(formatBytes(512 * 1024 ** 2), "512.0 MiB");
   assert.equal(formatBytes(Number.NaN), "unknown");
+  // 1 byte under 1 GiB is still the MiB branch, but one decimal rounds to 1024.0.
+  assert.equal(formatBytes(1024 ** 3 - 1), "1.00 GiB");
+  assert.equal(formatBytes(1_073_689_395), "1023.9 MiB");
 });
 
 test("ensureFile skip-if-present path still enforces the lockfile sha256 gate", async (t) => {

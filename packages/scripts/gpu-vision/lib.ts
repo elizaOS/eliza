@@ -256,8 +256,10 @@ export function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return "unknown";
   const gib = bytes / 1024 ** 3;
   if (gib >= 1) return `${gib.toFixed(2)} GiB`;
-  const mib = bytes / 1024 ** 2;
-  return `${mib.toFixed(1)} MiB`;
+  const mibText = (bytes / 1024 ** 2).toFixed(1);
+  // 1024**3 - 1 bytes is still under 1 GiB, but one decimal rounds to "1024.0".
+  if (mibText === "1024.0") return "1.00 GiB";
+  return `${mibText} MiB`;
 }
 
 /**
