@@ -53,6 +53,19 @@ describe("markdownToSlackMrkdwn", () => {
     expect(markdownToSlackMrkdwn("")).toBe("");
   });
 
+  it("keeps whitespace-flanked asterisks literal", () => {
+    // Slack treats * as bold. A * with space beside it is not markdown italic,
+    // but the converter still wrapped the span, so "2 * 3 * 4" became italic.
+    expect(markdownToSlackMrkdwn("2 * 3 * 4")).toBe("2 \\* 3 \\* 4");
+    expect(markdownToSlackMrkdwn("* Use *this* now")).toBe(
+      "\\* Use _this_ now",
+    );
+    expect(markdownToSlackMrkdwn("*it* and * not *")).toBe(
+      "_it_ and \\* not \\*",
+    );
+    expect(markdownToSlackMrkdwn("5 * 2 = 10")).toBe("5 \\* 2 = 10");
+  });
+
   it("drops the whole opening info string and keeps a one-line fence body", () => {
     expect(markdownToSlackMrkdwn("```c++\nint x = 1;\n```")).toBe(
       "```\nint x = 1;\n```",
