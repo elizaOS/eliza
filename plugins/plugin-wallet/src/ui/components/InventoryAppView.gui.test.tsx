@@ -1436,6 +1436,51 @@ describe("InventoryView GUI — progressive insights", () => {
     expect(screen.queryByText("Agent NFT")).toBeNull();
   });
 
+  it("does not sign a mover change that rounds to 0.0%", async () => {
+    walletClient.getWalletMarketOverview.mockResolvedValue({
+      ...marketOverview,
+      movers: [
+        {
+          id: "flat-up",
+          symbol: "FLAT",
+          name: "Flat Up",
+          priceUsd: 1,
+          change24hPct: 0.04,
+          marketCapRank: 20,
+          imageUrl: null,
+        },
+        {
+          id: "flat-down",
+          symbol: "DIP",
+          name: "Flat Down",
+          priceUsd: 2,
+          change24hPct: -0.04,
+          marketCapRank: 21,
+          imageUrl: null,
+        },
+        {
+          id: "solana",
+          symbol: "SOL",
+          name: "Solana",
+          priceUsd: 150,
+          change24hPct: 7.5,
+          marketCapRank: 5,
+          imageUrl: null,
+        },
+      ],
+    });
+    appHooks.useApp.mockReturnValue(makeAppState());
+    render(React.createElement(InventoryAppView));
+    await screen.findByTestId("wallets-sidebar");
+    fireEvent.click(screen.getByRole("tab", { name: "Markets" }));
+    const text =
+      screen.getByRole("tabpanel", { name: "Markets" }).textContent ?? "";
+    expect(text).not.toContain("+0.0%");
+    expect(text).not.toContain("-0.0%");
+    expect(text).toContain("0.0%");
+    expect(text).toContain("+7.5%");
+  });
+
   it("renders empty states + error banner when data is empty/failing", async () => {
     walletClient.getWalletTradingProfile.mockResolvedValue({
       ...tradingProfile,

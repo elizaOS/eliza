@@ -293,7 +293,9 @@ function formatPercentDelta(value: number): string {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   });
-  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  // 0.04% and -0.04% round to "0.0". A signed zero is not a move.
+  if (magnitude === "0.0") return "0.0%";
+  const sign = value > 0 ? "+" : "-";
   return `${sign}${magnitude}%`;
 }
 
@@ -826,7 +828,8 @@ function MarketMoverList({
   return (
     <div className="divide-y divide-border/60">
       {movers.map((mover) => {
-        const isPositive = mover.change24hPct >= 0;
+        const change = formatPercentDelta(mover.change24hPct);
+        const isLoss = change.startsWith("-");
         return (
           <div key={mover.id} className="flex min-w-0 items-center gap-3 p-3">
             <MarketAvatar imageUrl={mover.imageUrl} label={mover.symbol} />
@@ -852,10 +855,10 @@ function MarketMoverList({
               <div
                 className={cn(
                   "text-xs font-semibold",
-                  isPositive ? "text-txt" : "text-danger",
+                  isLoss ? "text-danger" : "text-txt",
                 )}
               >
-                {formatPercentDelta(mover.change24hPct)}
+                {change}
               </div>
             </div>
           </div>
