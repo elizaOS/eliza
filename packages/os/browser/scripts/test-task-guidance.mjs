@@ -308,7 +308,9 @@ try {
     ),
     "G",
   );
-  await new Promise((resolve) => setTimeout(resolve, 850));
+  // Wait for the 300ms entrance transition, the visibility observer report,
+  // and then the complete 800ms continuously unobscured consent interval.
+  await new Promise((resolve) => setTimeout(resolve, 1400));
   await page.screenshot({ path: join(output, "offer.png") });
   const card = await evaluate(
     "(()=>{const r=globalThis.__elizaPageGuidanceV1.shadow.querySelectorAll('.card')[1].getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2]})()",
