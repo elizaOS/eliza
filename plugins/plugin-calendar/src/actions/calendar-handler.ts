@@ -1684,11 +1684,26 @@ export function parseExplicitLocalDate(
 
   const isoMatch = normalized.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
   if (isoMatch) {
-    return {
-      year: Number(isoMatch[1]),
-      month: Number(isoMatch[2]),
-      day: Number(isoMatch[3]),
-    };
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    // The slash form already drops Feb 30. An ISO day must do the same,
+    // or "2026-02-30" is stored as a day that does not exist.
+    const candidate = new Date(0);
+    candidate.setUTCFullYear(year, month - 1, day);
+    const isRealDate =
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= 31 &&
+      candidate.getUTCFullYear() === year &&
+      candidate.getUTCMonth() + 1 === month &&
+      candidate.getUTCDate() === day;
+    if (isRealDate) {
+      return { year, month, day };
+    }
+    // "2023-02-29" is not 29 Feb of a later leap year. Stop here.
+    return null;
   }
 
   const monthNameMatch = normalized.match(MONTH_NAME_PATTERN);
