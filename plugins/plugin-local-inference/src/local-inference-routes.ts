@@ -686,7 +686,7 @@ function isNoSpaceMessage(value: unknown): boolean {
 		message,
 	);
 }
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
 	if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
 	const units = ["B", "KB", "MB", "GB", "TB"];
 	let value = bytes;
@@ -696,7 +696,13 @@ function formatBytes(bytes: number): string {
 		unitIndex += 1;
 	}
 	const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
-	return `${value.toFixed(precision)} ${units[unitIndex]}`;
+	const text = value.toFixed(precision);
+	const larger = units[unitIndex + 1];
+	// 1023.5 MB rounds to "1024". The chat line must not print "1024 MB".
+	if (text === "1024" && larger) {
+		return `1.0 ${larger}`;
+	}
+	return `${text} ${units[unitIndex]}`;
 }
 function progressForJob(
 	job: DownloadJob,
