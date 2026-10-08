@@ -72,19 +72,39 @@ export function minutesUntilLocalBedtime(args: {
     second: 0,
   }).getTime();
   const nowMs = args.now.getTime();
+  const tomorrow = nextLocalCalendarDate(nowParts);
   const candidateMs =
     todayInstant >= nowMs
       ? todayInstant
       : buildUtcDateFromLocalParts(args.timezone, {
-          year: nowParts.year,
-          month: nowParts.month,
-          day: nowParts.day + 1,
+          year: tomorrow.year,
+          month: tomorrow.month,
+          day: tomorrow.day,
           hour: parts.hour,
           minute: parts.minute,
           second: 0,
         }).getTime();
   return Math.round((candidateMs - nowMs) / 60000);
 }
+/**
+ * The next civil date. Adding 1 to the day number is not a real date on the
+ * 31st (or on February 28), and the timezone resolver rejects that day.
+ */
+function nextLocalCalendarDate(parts: {
+  year: number;
+  month: number;
+  day: number;
+}): { year: number; month: number; day: number } {
+  const shifted = new Date(
+    Date.UTC(parts.year, parts.month - 1, parts.day + 1, 12),
+  );
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+  };
+}
+
 function isIrregular(
   regularityClass: LifeOpsRegularityClass | undefined,
 ): boolean {
