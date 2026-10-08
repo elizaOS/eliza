@@ -49,7 +49,10 @@ final class NativeNotificationWire {
 
     static JSONObject page(JSONObject input, JSONObject cursor) throws Exception {
         pagePath(cursor);
-        if (input.toString().getBytes(StandardCharsets.UTF_8).length > 262144) throw new IllegalArgumentException("Notification page too large");
+        // The HTTP reader already rejects a raw body over 256 KiB. Measuring
+        // JSONObject.toString() again is wrong: Android's JSONStringer writes
+        // "/" as "\/", so a page of links that fit the server budget fails
+        // here and the cursor never advances.
         JSONObject page = new JSONObject(input.toString());
         if (!"ready".equals(page.getString("serviceStatus"))) throw new IllegalArgumentException("Notification service is not ready");
         String epoch = page.getString("nativeEpoch");

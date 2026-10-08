@@ -148,11 +148,17 @@ function isBoundConnectorPayload(
 	while (offset >= 0) {
 		const prefix = rendered.slice(0, offset);
 		const suffix = rendered.slice(offset + payload.length);
+		// Guild names and thread titles may contain "]". The tag closes at the
+		// "]" before " @sender". The envelope always ends the header with the
+		// weekday timestamp, so a colon inside the user text is not a second
+		// header. Reply display names may contain ")".
 		const startsAtFieldBoundary =
-			/^\[Discord [^\r\n\]]+\] @[^\r\n]+(?: \([^\r\n)]*\))?:\s*$/u.test(prefix);
+			/^\[Discord [^\r\n]+\] @[^\r\n]+ \((?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{2}\/\d{2}\/\d{4} \d{2}:\d{2} [^)\r\n]+\):\s*$/u.test(
+				prefix,
+			);
 		const endsAtFieldBoundary =
 			suffix.length === 0 ||
-			/^\r?\n\[platform_reply_reference\]\r?\n[\s\S]*\r?\n\[\/platform_reply_reference\]\r?\n\(in reply to @[^\r\n)]*\)$/u.test(
+			/^\r?\n\[platform_reply_reference\]\r?\n[\s\S]*\r?\n\[\/platform_reply_reference\]\r?\n\(in reply to @[^\r\n]*\)$/u.test(
 				suffix,
 			);
 		if (startsAtFieldBoundary && endsAtFieldBoundary) return true;
