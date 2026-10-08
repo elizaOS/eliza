@@ -126,14 +126,19 @@ export class InteractiveTaskRuntime {
   private startCleanup(id: string, reason?: TaskCleanupReason) {
     const quiesce = this.options.actuator.quiesce;
     if (!quiesce) return;
+    const previous = this.cleanup.get(id);
     const entry = { failed: false, promise: Promise.resolve(), reason };
-    entry.promise = Promise.resolve().then(() =>
-      quiesce.call(this.options.actuator, {
-        owner: this.owner,
-        taskId: id,
-        ...(reason ? { reason } : {}),
-      }),
-    );
+    // Finish the older cleanup before a newer reason changes host presentation.
+    // Only the new acknowledgement can supersede an earlier cleanup failure.
+    entry.promise = (previous?.promise ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() =>
+        quiesce.call(this.options.actuator, {
+          owner: this.owner,
+          taskId: id,
+          ...(reason ? { reason } : {}),
+        }),
+      );
     this.cleanup.set(id, entry);
     // Observe rejection now; settle() still reports it to the requesting host.
     void entry.promise.catch(() => {

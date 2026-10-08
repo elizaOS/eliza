@@ -439,8 +439,13 @@ it("HTTP control waits for cleanup and retries only cleanup after a missing ackn
     await entered.promise;
     expect(runtime.get("task-1").status).toBe("paused");
     expect(completed).toBe(false);
+    // A host may close a task while its earlier Pause cleanup still awaits an ack.
+    runtime.control("task-1", runtime.get("task-1").revision, "close");
+    await Promise.resolve();
+    const beforePauseAcknowledged = [...reasons];
     release.resolve();
     expect((await pending).status).toBe(200);
+    expect(beforePauseAcknowledged).toEqual(["pause"]);
     // Close is a pause; only the host cleanup reason differs.
     for (const body of [
       { expectedRevision: 1, reason: "pause" },
@@ -456,7 +461,7 @@ it("HTTP control waits for cleanup and retries only cleanup after a missing ackn
       ).status,
     ).toBe(400);
     const closed = await http.call("/tasks/task-1/pause", {
-      expectedRevision: 1,
+      expectedRevision: runtime.get("task-1").revision,
       reason: "close",
     });
     expect(closed.status).toBe(200);
@@ -475,9 +480,9 @@ it("HTTP control waits for cleanup and retries only cleanup after a missing ackn
     expect(refreshed.status).toBe(200);
     expect(await refreshed.json()).toEqual({ task: null });
     expect(runtime.get("task-1").revision).toBe(revision);
-    expect(calls).toBe(4);
+    expect(calls).toBe(5);
     // A retried cleanup keeps the reason of the control that started it.
-    expect(reasons).toEqual(["pause", "close", "cancel", "cancel"]);
+    expect(reasons).toEqual(["pause", "close", "close", "cancel", "cancel"]);
   } finally {
     release.resolve();
     await http.close();
