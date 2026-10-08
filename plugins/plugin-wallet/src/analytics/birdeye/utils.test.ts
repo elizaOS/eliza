@@ -45,7 +45,9 @@ describe("formatPrice", () => {
   it("uses exponential below 0.01, two decimals otherwise", () => {
     expect(formatPrice(undefined)).toBe("N/A");
     expect(formatPrice(0)).toBe("N/A");
-    expect(formatPrice(0.005)).toBe("5.00e-3");
+    expect(formatPrice(0.00499)).toBe("4.99e-3");
+    expect(formatPrice(0.005)).toBe("0.01");
+    expect(formatPrice(0.009949)).toBe("0.01");
     expect(formatPrice(0.009999)).toBe("0.01");
     expect(formatPrice(12.5)).toBe("12.50");
   });

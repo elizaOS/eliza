@@ -352,11 +352,11 @@ export const formatTimestamp = (timestamp?: number): string => {
 export const formatPrice = (price?: number): string => {
   if (!price) return "N/A";
   if (price < 0.01) {
-    const exponential = price.toExponential(2);
-    // 0.009999 is below one cent, but two-digit exponential text is "1.00e-2",
-    // which is one cent. Show the two-decimal form used at and above 0.01.
-    if (exponential === "1.00e-2") return price.toFixed(2);
-    return exponential;
+    const cents = price.toFixed(2);
+    // 0.005 and 0.009949 are below one cent, but two-decimal text is "0.01".
+    // Keep exponential form only when that text is still "0.00".
+    if (cents === "0.01") return cents;
+    return price.toExponential(2);
   }
   return price.toFixed(2);
 };
