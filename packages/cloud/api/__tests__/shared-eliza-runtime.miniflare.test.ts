@@ -1025,6 +1025,8 @@ describe("Shared Eliza runtime in Workerd", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
         rejected: true,
+        thrownReasonUnchanged: true,
+        modelFailurePresent: false,
         dispatches: expectedDispatches,
         signalAborted: true,
         abortReasonUnchanged: true,
@@ -1221,6 +1223,7 @@ describe("Shared Eliza runtime in Workerd", () => {
       };
       expect(payload).toMatchObject({
         success: false,
+        modelFailurePresent: true,
         code,
         failureKind,
         failureName: retryable

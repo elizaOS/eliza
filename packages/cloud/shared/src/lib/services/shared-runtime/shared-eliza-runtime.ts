@@ -632,6 +632,15 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     const modelCall = timing.prepareModelCall();
     let failureReported = false;
     const reportModelFailure = (error: unknown, operation: "resolve" | "generate" | "stream") => {
+      // Caller cancellation is an aborted turn, not a failed provider call.
+      if (
+        input.abortSignal?.aborted &&
+        (error === input.abortSignal.reason ||
+          (params.signal?.aborted && error === params.signal.reason) ||
+          (error instanceof Error && error.name === "AbortError"))
+      ) {
+        return;
+      }
       if (failureReported) return;
       failureReported = true;
       // error-policy:J7 content-free diagnostics must not replace the original

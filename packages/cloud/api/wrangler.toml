@@ -507,6 +507,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 # =============================================================================
 
 [env.staging]
+compatibility_flags = ["nodejs_compat", "enable_request_signal"]
 name = "eliza-cloud-api-staging"
 workers_dev = false
 

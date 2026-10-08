@@ -405,6 +405,8 @@ const worker = {
         );
         let dispatches = 0;
         let rejected = false;
+        let thrownReasonUnchanged = false;
+        let modelFailurePresent = false;
         const outcomes: string[] = [];
         if (url.pathname === "/cancel-before-model") controller.abort(reason);
         try {
@@ -430,11 +432,17 @@ const worker = {
               roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
             },
           });
-        } catch {
+        } catch (error) {
           rejected = true;
+          thrownReasonUnchanged = error === reason;
+          modelFailurePresent = Boolean(
+            new SharedRuntimeTurnError("Fixture cancellation", error).failureDiagnostic?.modelFailure,
+          );
         }
         return Response.json({
           rejected,
+          thrownReasonUnchanged,
+          modelFailurePresent,
           dispatches,
           signalAborted: controller.signal.aborted,
           abortReasonUnchanged: controller.signal.reason === reason,
@@ -558,6 +566,9 @@ const worker = {
               code: error.code,
               failureName: failure.failureName,
               retryable: failure.retryable,
+              modelFailurePresent: Boolean(
+                new SharedRuntimeTurnError("Fixture provider failure", error).failureDiagnostic?.modelFailure,
+              ),
               rootFailureCode:
                 error.cause instanceof ElizaError
                   ? error.cause.code

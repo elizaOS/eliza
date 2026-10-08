@@ -235,6 +235,8 @@ app.post("/", async (c) => {
       text,
       undefined,
       target.accountState,
+      c.get("traceId"),
+      c.req.raw.signal,
     );
   } catch (error) {
     // error-policy:J1 route boundary translates bridge/billing failures to HTTP responses.
