@@ -572,6 +572,36 @@ describe("buildCheckinSummaryPrompt", () => {
     expect(p).toContain("regularity class: irregular");
   });
 
+  it("carries a rounded 60 minute sleep duration into the next hour", () => {
+    // 59.5 rounds to 60, so the recap printed "60m" instead of "1h".
+    const p = buildCheckinSummaryPrompt(
+      baseReport({
+        kind: "night",
+        sleepRecap: {
+          medianBedtimeLocalHour: 23,
+          medianSleepDurationMin: 59.5,
+          sri: 72,
+          regularityClass: "regular",
+        } as CheckinReport["sleepRecap"],
+      }),
+    );
+    expect(p).toContain("typical sleep duration: 1h");
+    expect(p).not.toContain("typical sleep duration: 60m");
+    const long = buildCheckinSummaryPrompt(
+      baseReport({
+        kind: "night",
+        sleepRecap: {
+          medianBedtimeLocalHour: 23,
+          medianSleepDurationMin: 119.5,
+          sri: 72,
+          regularityClass: "regular",
+        } as CheckinReport["sleepRecap"],
+      }),
+    );
+    expect(long).toContain("typical sleep duration: 2h");
+    expect(long).not.toContain("1h60m");
+  });
+
   it("drops bedtime/duration bullets when those medians are null but keeps SRI", () => {
     const p = buildCheckinSummaryPrompt(
       baseReport({
