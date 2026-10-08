@@ -42,7 +42,9 @@ export function convertToTelegramMarkdown(text: string): string {
 
   let result = escapeMarkdownV2(text);
   result = result.replace(/\\\*\\\*([^*]+)\\\*\\\*/g, "*$1*");
-  result = result.replace(/\\_([^_]+)\\_/g, "_$1_");
+  // Only a real `_italic_` span. `hello_world_test` also has two underscores,
+  // and un-escaping those makes Telegram reject the message.
+  result = result.replace(/(?<![\p{L}\p{N}])\\_([^_]+)\\_(?![\p{L}\p{N}])/gu, "_$1_");
   result = result.replace(/\\`([^`]+)\\`/g, "`$1`");
 
   return result;

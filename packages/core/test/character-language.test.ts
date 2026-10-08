@@ -12,4 +12,13 @@ describe("normalizeCharacterLanguage", () => {
 			"natural Japanese",
 		);
 	});
+
+	it("maps Traditional Chinese tags to the Chinese reply language", () => {
+		expect(normalizeCharacterLanguage("zh-TW")).toBe("zh-CN");
+		expect(normalizeCharacterLanguage("zh-HK")).toBe("zh-CN");
+		expect(normalizeCharacterLanguage("zh-Hant")).toBe("zh-CN");
+		expect(addLanguageRule("Stay helpful.", "zh-CN")).toContain(
+			"simplified Chinese",
+		);
+	});
 });

@@ -168,7 +168,7 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     // full round trip (merge engine → VOICE_ENTITY_BOUND → bindEntity) has
     // completed when this resolves.
     await emitVoiceTurnObserved(runtime, {
-      text: "Hey there, I'm Jill",
+      text: "Hi it's Jill I'm calling about Monday",
       imprintClusterId: "cluster_jill",
       matchConfidence: 0.92,
       matchedEntityId: null,
@@ -190,6 +190,35 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     expect((await reloaded.get(profile.profileId))?.entityId).toBe(
       bound?.entityId,
     );
+  });
+  it("does not persist a speaker name from a multi-word possessive", async () => {
+    for (const [index, text] of [
+      "I’m Mary Jane’s friend",
+      "This is Mary Jane’s birthday",
+    ].entries()) {
+      const cluster = `cluster_possessive_${index}`;
+      await store.createProfile({
+        centroid: unit([1, 1, 0, 0]),
+        embeddingModel: MODEL,
+        imprintClusterId: cluster,
+        confidence: 0.9,
+        durationMs: 4000,
+      });
+      await emitVoiceTurnObserved(runtime, {
+        text,
+        imprintClusterId: cluster,
+        matchConfidence: 0.92,
+        matchedEntityId: null,
+      });
+      const entities = await entityStore.list();
+      expect(
+        entities.some(
+          (entity) =>
+            entity.preferredName === "Mary" ||
+            entity.preferredName === "Mary Jane",
+        ),
+      ).toBe(false);
+    }
   });
   it("re-observing the same cluster resolves to the same entity (cross-session memory)", async () => {
     const before = await store.get(
