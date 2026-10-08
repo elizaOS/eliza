@@ -280,6 +280,7 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
     error?: unknown;
     failureName?: unknown;
     retryable?: unknown;
+    failureDiagnostic?: unknown;
   } | null = null;
   try {
     const parsed: unknown = await response.clone().json();
@@ -295,7 +296,11 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
     body?.code === "shared_runtime_turn_failed" &&
     (response.status === 500 || response.status === 503)
   ) {
-    const turnError = SharedRuntimeTurnError.fromClassification(body.failureName, body.retryable);
+    const turnError = SharedRuntimeTurnError.fromClassification(
+      body.failureName,
+      body.retryable,
+      body.failureDiagnostic,
+    );
     const statusMatchesDisposition =
       (response.status === 503 && turnError.retryable) ||
       (response.status === 500 && !turnError.retryable);

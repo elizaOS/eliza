@@ -1941,6 +1941,8 @@ app.post("/", async (c) => {
           groupTrustedDelivery,
           capabilityText,
           { type: ChannelType.GROUP, source: parsed.data.platform },
+          undefined,
+          c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers),
         )
       : await sharedRestMessageSend(
           agent,
@@ -1957,6 +1959,7 @@ app.post("/", async (c) => {
           capabilityText,
           undefined,
           sharedFallback?.accountState,
+          c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers),
         );
     // The same values ship on `Server-Timing` below; a second uncorrelated
     // per-turn log on the hot path would only duplicate them.
@@ -2011,6 +2014,9 @@ app.post("/", async (c) => {
       stage,
       errorName,
       ...(failureCauseName ? { failureCauseName } : {}),
+      ...(error instanceof SharedRuntimeTurnError && error.failureDiagnostic
+        ? { failureDiagnostic: error.failureDiagnostic }
+        : {}),
       retryable,
       ...(error instanceof PersonalDeliveryAccountResolutionError
         ? { projectionFailure: error.projectionFailure }
