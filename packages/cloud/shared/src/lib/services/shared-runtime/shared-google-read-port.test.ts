@@ -53,6 +53,25 @@ describe("server-owned Shared Google read seam", () => {
     expect(calls).toHaveLength(0);
   });
 
+  test("invalid request kinds and shapes cannot authorize or dispatch a service", async () => {
+    const { calls, deps } = fixture();
+    let authorizations = 0;
+    const port = createSharedGoogleReadPort({
+      organizationId: "org", userId: "owner", grantId: "grant",
+      authorizePrivateRead: async () => { authorizations += 1; },
+    }, deps);
+    for (const request of [
+      { kind: "other", timeMin: "2026-10-08", timeMax: "2026-10-09", timeZone: "UTC" },
+      { kind: "calendar", timeMin: "2026-10-08", timeMax: "2026-10-09" },
+      { kind: "gmail_search", query: 42 },
+      null,
+    ]) {
+      await expect(port.read(request)).rejects.toThrow("SHARED_GOOGLE_INVALID_INPUT");
+    }
+    expect(authorizations).toBe(0);
+    expect(calls).toHaveLength(0);
+  });
+
   test("read pins owner side and selected grant, bounds search, and excludes write methods", async () => {
     const { calls, deps } = fixture();
     const port = createSharedGoogleReadPort({
