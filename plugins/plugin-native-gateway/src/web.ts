@@ -340,7 +340,7 @@ export class GatewayWeb extends WebPlugin {
       } else {
         // A reconnect handshake has no connect() promise to reject. Closing
         // the owned socket routes it through the established retry policy.
-        this.ws?.close(1011, error.message);
+        this.ws?.close(1000, error.message);
       }
     }, CONNECT_TIMEOUT_MS);
 
