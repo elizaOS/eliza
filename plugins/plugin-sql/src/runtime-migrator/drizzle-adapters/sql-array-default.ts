@@ -117,7 +117,11 @@ function renderArray(
             max: MAX_SQL_ARRAY_DEFAULT_CHARS,
           });
         }
-        rendered = `"${value}"`;
+        // Escape backslashes and quotes for the array literal, as the
+        // object branch above already does for quotes. A raw quote makes
+        // the literal malformed, and a raw backslash is read as an escape
+        // by the array parser, silently changing the stored value.
+        rendered = `"${String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
       }
       reserveChars(budget, rendered.length);
       values[index] = rendered;
