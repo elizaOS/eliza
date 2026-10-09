@@ -2367,29 +2367,169 @@ describe("native completed-action navigation", () => {
     expect(f.frames).toHaveLength(0);
   });
   it.each([
-    { disposition: "planning", plan: {}, stale: false },
+    { disposition: "planning", plan: {} },
     {
       disposition: "direct",
-      plan: { intents: ["Open Notes", "Read a personal record"] },
-      stale: false,
+      plan: { intents: ["Read condition", "Open Notes only when true"] },
     },
-    { disposition: "direct", plan: {}, stale: true },
   ])(
-    "does not turn conditional/compound/stale metadata into a direct handoff: %j",
-    async ({ disposition, plan, stale }) => {
+    "keeps conditional/compound native navigation in planning without an automatic effect: %j",
+    async ({ disposition, plan }) => {
       const f = await fixture(0, undefined, undefined, true);
       const input = clientMessage();
       input.content.metadata = {
         viewClientId: "origin-client",
         viewDelivery: "completed-action",
       };
-      await selectNavigation(f, input, { disposition }, plan);
-      if (stale) input.content.metadata.viewClientId = "rotated-client";
-      expect(await show(f.runtime, "notes", input)).toMatchObject({
-        success: false,
-      });
+      const selected = await selectNavigation(f, input, { disposition }, plan);
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+      expect(f.kernelRequests()).toBe(0);
       expect(f.requests()).toBe(0);
       expect(f.frames).toHaveLength(0);
     },
   );
+
+  it("allows direct Notes falling through mixed routing candidates to prepare via the real promoted planner action", async () => {
+    const f = await fixture(0, undefined, undefined, true);
+    vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+    };
+    const selected = await selectNavigation(
+      f,
+      input,
+      {},
+      {
+        candidateActions: ["PROPOSE_DEVICE_ACTION", "VIEWS"],
+        parentActionHints: ["PROPOSE_DEVICE_ACTION"],
+      },
+    );
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    expect(selected.plan.candidateActions).toContain("PROPOSE_DEVICE_ACTION");
+    expect(f.kernelRequests()).toBe(0);
+    const navigation = createElizaPlugin().actions?.find(
+      (action) => action.name === "VIEWS_SHOW",
+    );
+    if (!navigation?.handler) throw Error("Missing promoted navigation action");
+    const received: unknown[] = [];
+    await runPlannerLoop({
+      context: {
+        id: String(input.id),
+        metadata: { roomId: input.roomId, messageId: input.id },
+        events: [],
+      },
+      runtime: {
+        useModel: async (): Promise<GenerateTextResult> => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "planned-notes",
+              name: "VIEWS_SHOW",
+              arguments: { view: "notes", eliza_turn_scope: "final" },
+            },
+          ],
+        }),
+      },
+      executeToolCall: async (call) => {
+        expect(call.name).toBe("VIEWS_SHOW");
+        const result = await navigation.handler(f.runtime, input, undefined, {
+          parameters: call.params,
+        });
+        if (!result || typeof result === "boolean")
+          throw Error("Missing action result");
+        received.push(result);
+        return result as never;
+      },
+      evaluate: async () => ({
+        success: true,
+        decision: "FINISH",
+        thought: "Only preparation is proved.",
+        messageToUser: "Opening Notes.",
+        raw: {},
+      }),
+    });
+    expect(received).toEqual([
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          navigation: expect.objectContaining({ status: "prepared" }),
+        }),
+        values: expect.objectContaining({
+          navigationPrepared: true,
+          completedActionDelivered: false,
+        }),
+      }),
+    ]);
+    expect(f.kernelRequests()).toBe(1);
+    expect(f.frames).toHaveLength(0);
+    expect(
+      getCurrentViewState(f.runtime, {
+        hostKey: f.hostKey,
+        clientId: "origin-client",
+      }),
+    ).toBeNull();
+  });
+
+  it("does not auto-execute conditional navigation when the planner prerequisite is false", async () => {
+    const f = await fixture(0, undefined, undefined, true);
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+    };
+    const selected = await selectNavigation(
+      f,
+      input,
+      { disposition: "planning" },
+      {
+        intents: [
+          "Check prerequisite",
+          "Open Notes only when prerequisite is true",
+        ],
+        candidateActions: ["VIEWS", "CHECK_CONDITION"],
+      },
+    );
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    const executed: string[] = [];
+    await runPlannerLoop({
+      context: {
+        id: String(input.id),
+        metadata: { roomId: input.roomId, messageId: input.id },
+        events: [],
+      },
+      runtime: {
+        useModel: async (): Promise<GenerateTextResult> => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "condition",
+              name: "CHECK_CONDITION",
+              arguments: { eliza_turn_scope: "final" },
+            },
+          ],
+        }),
+      },
+      executeToolCall: async (call) => {
+        executed.push(call.name);
+        return {
+          success: true,
+          data: { condition: false },
+          text: "Condition is false.",
+        };
+      },
+      evaluate: async () => ({
+        success: true,
+        decision: "FINISH",
+        thought: "Prerequisite false; do not navigate.",
+        messageToUser: "The condition was not met.",
+        raw: {},
+      }),
+    });
+    expect(executed).toEqual(["CHECK_CONDITION"]);
+    expect(f.kernelRequests()).toBe(0);
+    expect(f.requests()).toBe(0);
+    expect(f.frames).toHaveLength(0);
+  });
 });

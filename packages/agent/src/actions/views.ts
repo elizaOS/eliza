@@ -16,7 +16,6 @@ import {
 } from "@elizaos/host/protocol";
 import { dispatchApiRoute } from "../api/in-process-api.ts";
 import { listViews } from "../api/views-registry.ts";
-import { consumeDirectViewNavigation } from "../runtime/view-navigation.ts";
 
 export const viewsAction: Action = {
   name: "VIEWS",
@@ -129,14 +128,6 @@ export const viewsAction: Action = {
     const completedAction =
       isObjectRecord(message.content.metadata) &&
       message.content.metadata.viewDelivery === "completed-action";
-    if (
-      completedAction &&
-      !consumeDirectViewNavigation(runtime, message, view.id)
-    )
-      return fail(
-        "planning-required",
-        "This renderer handoff requires the current direct, single-destination navigation judgment. Conditional and compound work must remain in planning.",
-      );
     const delivery = completedAction
       ? "completed-action"
       : "originating-client";

@@ -37,30 +37,8 @@ const decisions = new WeakMap<
     senderRole: string;
     clientId: string | undefined;
     value: Navigation;
-    direct?: boolean;
-    directViewId?: string;
   }
 >();
-
-/** Same-turn classifier proof, never a renderer-supplied navigation permission. */
-export function consumeDirectViewNavigation(
-  runtime: IAgentRuntime,
-  message: Memory,
-  viewId: string,
-): boolean {
-  const staged = decisions.get(message);
-  decisions.delete(message);
-  return (
-    staged?.direct === true &&
-    staged.directViewId === viewId &&
-    staged.runtime === runtime &&
-    staged.messageId === message.id &&
-    staged.roomId === message.roomId &&
-    staged.actorId === message.entityId &&
-    staged.text === getUserMessageText(message) &&
-    staged.clientId === readViewInteractionClientId(message)
-  );
-}
 
 export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
   name: "visualContinuation",
@@ -171,7 +149,6 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
     getStreamingContext()?.abortSignal?.throwIfAborted();
     if (
       !staged ||
-      staged.direct !== undefined ||
       staged.runtime !== runtime ||
       staged.messageId !== message.id ||
       staged.roomId !== message.roomId ||
@@ -287,14 +264,6 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
       (plan.parentActionHints ?? []).every(
         (name) => name === "VIEWS" || name === "VIEWS_SHOW",
       );
-    staged.direct = direct;
-    if (direct) staged.directViewId = matches[0]?.id;
-    if (
-      direct &&
-      isObjectRecord(message.content.metadata) &&
-      message.content.metadata.viewDelivery === "completed-action"
-    )
-      decisions.set(message, staged);
     if (!direct)
       return {
         requiresTool: true,
