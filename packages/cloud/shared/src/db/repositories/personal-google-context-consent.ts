@@ -5,17 +5,18 @@ import {
   isGooglePersonalContextConsent,
   selectedGoogleContextConsent,
 } from "../../lib/services/shared-runtime/shared-google-consent";
-import { dbWrite } from "../client";
+import { type Database, type DbTransaction, dbWrite } from "../client";
 import { organizations } from "../schemas/organizations";
 import { platformCredentials } from "../schemas/platform-credentials";
 import { users } from "../schemas/users";
 
-/** Primary authorization read; cached user/profile snapshots cannot grant private context. */
-export async function readPersonalGoogleContextOwner(args: {
-  organizationId: string;
-  userId: string;
-}) {
-  const [row] = await dbWrite
+type PersonalGoogleOwnerScope = { organizationId: string; userId: string };
+
+function personalGoogleOwnerQuery(
+  executor: Pick<Database, "select">,
+  args: PersonalGoogleOwnerScope,
+) {
+  return executor
     .select({ user: users })
     .from(users)
     .innerJoin(organizations, eq(organizations.id, users.organization_id))
@@ -29,9 +30,23 @@ export async function readPersonalGoogleContextOwner(args: {
         eq(organizations.account_lifecycle_state, "active"),
         isNull(organizations.account_deletion_request_id),
       ),
-    )
-    .limit(1);
+    );
+}
+
+/** Primary authorization read; cached user/profile snapshots cannot grant private context. */
+export async function readPersonalGoogleContextOwner(args: PersonalGoogleOwnerScope) {
+  const [row] = await personalGoogleOwnerQuery(dbWrite, args).limit(1);
   return row?.user;
+}
+
+/** Lock both owner and organization lifecycle until grant and consent publication commits. */
+export async function lockPersonalGoogleContextOwner(
+  tx: DbTransaction,
+  args: PersonalGoogleOwnerScope,
+) {
+  const [row] = await personalGoogleOwnerQuery(tx, args).for("update").limit(1);
+  if (!row) throw new Error("GOOGLE_PERSONAL_CONTEXT_OWNER_CHANGED");
+  return row.user;
 }
 
 /** Recheck selected consent and exact active grant before every private token use. */
@@ -76,12 +91,15 @@ export async function authorizePersonalGoogleContextRead(args: {
   return consent?.grantId === args.grantId;
 }
 
-export async function bindPersonalGoogleContextConsent(args: {
-  organizationId: string;
-  userId: string;
-  grantId: string;
-  consent: GooglePersonalContextConsent;
-}) {
+export async function bindPersonalGoogleContextConsent(
+  args: {
+    organizationId: string;
+    userId: string;
+    grantId: string;
+    consent: GooglePersonalContextConsent;
+  },
+  executor: Pick<DbTransaction, "update"> = dbWrite,
+) {
   if (!isGooglePersonalContextConsent(args.consent))
     throw new Error("GOOGLE_PERSONAL_CONTEXT_CONSENT_INVALID");
   const value = JSON.stringify({
@@ -93,7 +111,7 @@ export async function bindPersonalGoogleContextConsent(args: {
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/calendar.readonly",
   ]);
-  const [updated] = await dbWrite
+  const [updated] = await executor
     .update(users)
     .set({
       preferences: sql`(COALESCE(NULLIF(${users.preferences}, ''), '{}')::jsonb

@@ -216,6 +216,7 @@ jobs:
           for suite in \
             src/db/repositories/personal-google-context-consent.pglite.test.ts \
             src/lib/services/oauth/oauth2.personal-context.test.ts \
+            src/lib/services/oauth/oauth2.personal-context-publication.pglite.test.ts \
             src/lib/services/agent-google-connector/calendar.pagination.test.ts \
             src/lib/services/shared-runtime/shared-google-consent.test.ts \
             src/lib/services/shared-runtime/shared-google-owner-binding.test.ts \

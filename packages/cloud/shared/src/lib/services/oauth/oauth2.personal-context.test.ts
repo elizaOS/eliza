@@ -53,6 +53,13 @@ mock.module("../../../db/repositories/personal-google-context-consent", () => ({
       ? { id: args.userId, organization_id: args.organizationId }
       : undefined;
   },
+  lockPersonalGoogleContextOwner: async (
+    _tx: unknown,
+    args: { userId: string; organizationId: string },
+  ) => {
+    if (ownerReadsRemaining < 0) throw new Error("GOOGLE_PERSONAL_CONTEXT_OWNER_CHANGED");
+    return { id: args.userId, organization_id: args.organizationId };
+  },
   bindPersonalGoogleContextConsent: async (args: { userId: string }) => {
     boundConsentCalls.push(args);
     return { id: args.userId };
