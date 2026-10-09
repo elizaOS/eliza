@@ -28,8 +28,8 @@ export function resolveSharedParticipantName(args: {
   history: readonly SharedTurnMessage[];
   /** Server-verified owner preference, never RPC or transport display text. */
   preferredName?: string;
-}): string {
-  if (args.messageRole === "system") return "User";
+}): string | undefined {
+  if (args.messageRole === "system") return undefined;
   const current = explicitSelfName(args.message);
   if (current) return current;
   const preferred = usableName(args.preferredName);
@@ -40,5 +40,5 @@ export function resolveSharedParticipantName(args: {
     const name = explicitSelfName(previous.content);
     if (name) return name;
   }
-  return "User";
+  return undefined;
 }

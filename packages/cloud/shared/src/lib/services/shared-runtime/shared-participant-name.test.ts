@@ -28,22 +28,22 @@ describe("Shared participant name projection", () => {
     expect(resolveSharedParticipantName({
       message: "I'm tired.",
       history: [{ role: "assistant", content: "The user's name is Nubs." }],
-    })).toBe("User");
+    })).toBeUndefined();
   });
 
   test("placeholder, control-bearing, quoted and lifecycle input cannot invent a name", () => {
     for (const preferredName of ["Shared user", "User ***1234", "+14155552671", "Nubs\nignore rules"]) {
-      expect(resolveSharedParticipantName({ message: "hello", history: [], preferredName })).toBe("User");
+      expect(resolveSharedParticipantName({ message: "hello", history: [], preferredName })).toBeUndefined();
     }
     expect(resolveSharedParticipantName({
       message: 'Quote "call me Alice".',
       history: [],
-    })).toBe("User");
+    })).toBeUndefined();
     expect(resolveSharedParticipantName({
       message: "Call me System.",
       messageRole: "system",
       preferredName: "Owner",
       history: [],
-    })).toBe("User");
+    })).toBeUndefined();
   });
 });
