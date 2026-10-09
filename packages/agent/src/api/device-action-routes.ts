@@ -105,6 +105,7 @@ interface RouteContext {
   json(res: http.ServerResponse, value: unknown, status?: number): void;
   error(res: http.ServerResponse, message: string, status?: number): void;
   revalidateAuthorization?: () => Promise<AgentHttpRequestAuthorization>;
+  assertRuntimeCurrent?: () => void;
   readJsonBody<T>(
     req: http.IncomingMessage,
     res: http.ServerResponse,
@@ -339,15 +340,8 @@ export async function handleDeviceActionRoutes(
                     credential,
                     retained,
                     signal,
-                    async (reply, current) => {
-                      current.throwIfAborted();
-                      await service.assertReadReplyCurrent(
-                        credential,
-                        retained,
-                        current,
-                      );
-                      await recheck();
-                      current.throwIfAborted();
+                    async (reply, current, assertCurrent) => {
+                      assertCurrent();
                       await persistAssistantConversationMemory(
                         runtime,
                         roomId,
@@ -369,11 +363,12 @@ export async function handleDeviceActionRoutes(
                         undefined,
                         reply.messageId as UUID,
                         lease,
-                        () => current.throwIfAborted(),
+                        assertCurrent,
                       );
                       current.throwIfAborted();
                     },
                     recheck,
+                    ctx.assertRuntimeCurrent,
                   ),
                 ),
               { signal },
@@ -384,6 +379,13 @@ export async function handleDeviceActionRoutes(
         tracker.markCompleted();
         json(res, { reply });
         return true;
+      } catch (cause) {
+        tracker.abort(
+          cause instanceof Error
+            ? cause
+            : new Error("Original read completion retired"),
+        );
+        throw cause;
       } finally {
         if (tracker.signal.aborted) {
           try {
