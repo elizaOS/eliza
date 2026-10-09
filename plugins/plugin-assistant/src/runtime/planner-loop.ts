@@ -10614,6 +10614,7 @@ export function actionResultToPlannerToolResult(
     data.values = result.values;
   }
   const plannerResult: PlannerToolResult = {
+    emptyTrackedState: result.emptyTrackedState,
     success: result.success,
     verification: result.verification,
     text: result.text,

@@ -679,6 +679,11 @@ export class MessageProcessor {
       }
       const proposedText = event.text.trim();
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+        currentScope: {
+          agentId: runtime.agentId,
+          entityId: message.entityId,
+          id: message.id,
+        },
         providers: state.data.providers,
         request: getUserMessageText(message),
         reply: proposedText,
