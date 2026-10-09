@@ -794,6 +794,10 @@ const worker = {
         url.pathname === "/bounded-general-search" ||
         url.pathname === "/bounded-private-search"
       ) {
+        const message =
+          url.pathname === "/bounded-general-search"
+            ? 'Search the web for C# "shared-general-owned-qa" installation documentation?'
+            : "Search the web for my inbox messages";
         const result = await runSharedAgentTurn({
           character: {
             name: "Shared Eliza Workerd Probe",
@@ -801,10 +805,8 @@ const worker = {
             model: "local/shared-runtime-probe",
           },
           history: [],
-          message:
-            url.pathname === "/bounded-general-search"
-              ? 'Search the web for C# "shared-general-owned-qa" installation documentation?'
-              : "Search the web for my inbox messages",
+          message,
+          capabilityText: message,
           execution: {
             authenticatedPersonalSharedUser: true,
             channel: { type: ChannelType.DM, source: "shared-runtime" },

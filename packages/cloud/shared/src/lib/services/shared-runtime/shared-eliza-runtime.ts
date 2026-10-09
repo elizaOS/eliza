@@ -74,6 +74,7 @@ import type {
 } from "./run-shared-agent-turn";
 import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
 import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
+import { resolveSharedCapabilityIntent } from "./shared-capability-wall";
 import type { OwnerModelCapture } from "./shared-owner-model-capture";
 import { observeOwnerCapture } from "./shared-owner-model-capture";
 import { resolveSharedParticipantName } from "./shared-participant-name";
