@@ -23,6 +23,20 @@ export type ThreadSummary = {
 
 const INBOUND_SMS_TYPE = 1;
 
+/**
+ * Message and thread ids are numeric provider row ids carried as strings.
+ * A lexicographic compare orders "9" after "10", which breaks the date
+ * tie-breaks below; compare numerically when both ids parse as numbers.
+ */
+function compareIds(a: string, b: string): number {
+  const aNum = Number(a);
+  const bNum = Number(b);
+  if (Number.isFinite(aNum) && Number.isFinite(bNum) && a.trim() !== "" && b.trim() !== "") {
+    return aNum - bNum;
+  }
+  return a.localeCompare(b);
+}
+
 export function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
   const byThread = new Map<string, SmsMessageSummary[]>();
   for (const message of messages) {
@@ -38,7 +52,7 @@ export function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
           typeof a.date === "number" && Number.isFinite(a.date) ? a.date : 0;
         const bDate =
           typeof b.date === "number" && Number.isFinite(b.date) ? b.date : 0;
-        return aDate - bDate || a.id.localeCompare(b.id);
+        return aDate - bDate || compareIds(a.id, b.id);
       });
       const lastMessage = sorted[sorted.length - 1] ?? threadMessages[0];
       return {
@@ -63,7 +77,7 @@ export function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
         Number.isFinite(a.lastMessage.date)
           ? a.lastMessage.date
           : 0;
-      return bDate - aDate || a.id.localeCompare(b.id);
+      return bDate - aDate || compareIds(a.id, b.id);
     });
 }
 
