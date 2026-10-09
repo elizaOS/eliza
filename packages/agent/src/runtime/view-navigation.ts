@@ -171,6 +171,7 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
     getStreamingContext()?.abortSignal?.throwIfAborted();
     if (
       !staged ||
+      staged.direct !== undefined ||
       staged.runtime !== runtime ||
       staged.messageId !== message.id ||
       staged.roomId !== message.roomId ||
@@ -288,7 +289,12 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
       );
     staged.direct = direct;
     if (direct) staged.directViewId = matches[0]?.id;
-    if (direct) decisions.set(message, staged);
+    if (
+      direct &&
+      isObjectRecord(message.content.metadata) &&
+      message.content.metadata.viewDelivery === "completed-action"
+    )
+      decisions.set(message, staged);
     if (!direct)
       return {
         requiresTool: true,
