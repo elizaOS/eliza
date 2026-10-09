@@ -164,15 +164,19 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-for (const viewport of VIEWPORTS) {
-  test(`Network phone sign-in waits for account switch at ${viewport.name}`, async ({
+for (const { viewport, networkHandoff } of VIEWPORTS.flatMap((viewport) =>
+  [false, true].map((networkHandoff) => ({ viewport, networkHandoff })),
+)) {
+  test(`Network phone sign-in waits for account switch at ${viewport.name}${networkHandoff ? " with staging site handoff" : ""}`, async ({
     page,
     baseURL,
   }, testInfo) => {
     await page.setViewportSize(viewport);
     if (!baseURL) throw new Error("Missing local renderer URL");
     const managed = new URL(baseURL);
-    managed.hostname = "cloud.eliza.app";
+    managed.hostname = networkHandoff
+      ? "cloud-staging.eliza.app"
+      : "cloud.eliza.app";
     managed.protocol = "https:";
     managed.port = "";
     await page.route(`${managed.origin}/**`, async (route) => {
@@ -185,11 +189,13 @@ for (const viewport of VIEWPORTS) {
         response: await route.fetch({ url: source.toString() }),
       });
     });
-    await page.route("https://api.eliza.app/**", (route) =>
-      route.fulfill({
-        status: 503,
-        json: { error: "Outside this local sign-in fixture" },
-      }),
+    await page.route(
+      `https://${networkHandoff ? "api-staging" : "api"}.eliza.app/**`,
+      (route) =>
+        route.fulfill({
+          status: 503,
+          json: { error: "Outside this local sign-in fixture" },
+        }),
     );
 
     await seedStewardSession(page, {
@@ -242,10 +248,67 @@ for (const viewport of VIEWPORTS) {
         await route.fulfill({ status: 401, json: { error: "No session" } });
       }
     });
-    try {
-      await page.goto(
-        `${managed.origin}/network/sign-in?switchAccount=1&returnTo=%2Fbilling`,
+    const destination = "http://127.0.0.1:54302";
+    const state = "a".repeat(64);
+    const challenge = "b".repeat(64);
+    const handoffCode = `enso_${"c".repeat(64)}`;
+    let mints = 0;
+    if (networkHandoff) {
+      await page.route("**/api/auth/sso-bridge/mint", async (route) => {
+        expect(syncs).toHaveLength(1);
+        expect(route.request().headers().authorization).toBe(`Bearer ${token}`);
+        expect(route.request().postDataJSON()).toEqual({
+          codeChallenge: challenge,
+          destination,
+        });
+        mints++;
+        await route.fulfill({
+          json: { ok: true, code: handoffCode, expiresIn: 60 },
+        });
+      });
+      await page.route(
+        `${destination}/api/auth/cloud/callback?**`,
+        async (route) => {
+          const url = new URL(route.request().url());
+          expect(url.searchParams.get("code")).toBe(handoffCode);
+          expect(url.searchParams.get("state")).toBe(state);
+          await route.fulfill({
+            contentType: "text/html",
+            body: "<h1>Network callback received</h1><p>Local browser handoff fixture</p>",
+          });
+        },
       );
+    }
+    const parameters = networkHandoff
+      ? new URLSearchParams({
+          switchAccount: "1",
+          networkSite: destination,
+          state,
+          challenge,
+        })
+      : new URLSearchParams({ switchAccount: "1", returnTo: "/billing" });
+    try {
+      if (networkHandoff) {
+        const invalid = new URLSearchParams({
+          networkSite: "https://example.invalid",
+          state,
+          challenge,
+        });
+        await page.goto(`${managed.origin}/network/sign-in?${invalid}`);
+        await page
+          .getByRole("textbox", { name: "Phone number" })
+          .fill("2025550123");
+        await page.getByRole("button", { name: "Text me a code" }).click();
+        await expect(
+          page.getByText(
+            "This Network sign-in link is invalid. Start again from The Network.",
+          ),
+        ).toBeVisible();
+        expect(sent).toBe(0);
+        expect(syncs).toHaveLength(0);
+        expect(mints).toBe(0);
+      }
+      await page.goto(`${managed.origin}/network/sign-in?${parameters}`);
       await expect.poll(() => logoutStarted).toBe(true);
       await expect(
         page.getByRole("heading", { name: "Sign in to The Network" }),
@@ -288,7 +351,16 @@ for (const viewport of VIEWPORTS) {
       await page.getByRole("button", { name: "Sign in", exact: true }).click();
       await expect.poll(() => syncs.length).toBe(1);
       expect(syncs[0]).toMatchObject({ token, verifiedPhone: "+12025550123" });
-      await expect(page).toHaveURL(/\/join(?:[?#]|$)/);
+      if (networkHandoff) {
+        await expect(
+          page.getByRole("heading", { name: "Network callback received" }),
+        ).toBeVisible();
+        expect(mints).toBe(1);
+        expect(new URL(page.url()).origin).toBe(destination);
+      } else {
+        await expect(page).toHaveURL(/\/join(?:[?#]|$)/);
+        expect(mints).toBe(0);
+      }
       expect(sent).toBe(1);
       expect(attempts).toBe(2);
       await screenshot(page, testInfo, `${viewport.name}-network-join-handoff`);
