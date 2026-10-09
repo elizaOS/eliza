@@ -2434,8 +2434,17 @@ describe("native completed-action navigation", () => {
       },
       executeToolCall: async (call) => {
         expect(call.name).toBe("VIEWS_SHOW");
+        const parameters = call.params;
+        if (
+          typeof parameters?.view !== "string" ||
+          typeof parameters.eliza_turn_scope !== "string"
+        )
+          throw Error("Missing planned navigation parameters");
         const result = await navigation.handler(f.runtime, input, undefined, {
-          parameters: call.params,
+          parameters: {
+            view: parameters.view,
+            eliza_turn_scope: parameters.eliza_turn_scope,
+          },
         });
         if (!result || typeof result === "boolean")
           throw Error("Missing action result");
