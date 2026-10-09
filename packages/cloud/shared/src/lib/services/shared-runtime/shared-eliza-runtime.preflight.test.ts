@@ -15,6 +15,7 @@ import type { RuntimeR2Bucket } from "../../storage/r2-runtime-binding";
 import { resetKmsClientForTests } from "../../../db/crypto/kms-client";
 import type { SharedTurnMessage, RunSharedAgentTurnResult } from "./run-shared-agent-turn";
 import { SharedRuntimeTurnError } from "./shared-runtime-errors";
+import { encodeSharedPublicWebGrounding } from "./shared-runtime-history-policy";
 
 const SOURCE_URL = "https://api.weather.gov/stations/KSGF/observations/latest";
 const CLAIM = "Springfield, Missouri is 69.8°F and Clear.";
@@ -65,7 +66,7 @@ afterEach(() => {
   else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
 });
 
-type Mode = { measureShape?: boolean; sdkFailure?: boolean; general?: boolean; history?: SharedTurnMessage[]; compound?: boolean; deny?: boolean; ordinary?: boolean; unavailable?: boolean; expectGroundingFailure?: boolean };
+type Mode = { messageIds?: { user: string; assistant: string }; expectedPriorGrounding?: RunSharedAgentTurnResult["internalGrounding"]; measureShape?: boolean; sdkFailure?: boolean; general?: boolean; history?: SharedTurnMessage[]; compound?: boolean; deny?: boolean; ordinary?: boolean; unavailable?: boolean; expectGroundingFailure?: boolean };
 function modelResponse(content: string | null, calls: Array<{ name: string; args: object }> = []) {
   return Response.json({
     id: "offline-preflight",
@@ -91,6 +92,9 @@ function modelResponse(content: string | null, calls: Array<{ name: string; args
 
 async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerModelCapture) {
   clearCurrentWeatherMetadataCacheForTests();
+  const messageIds = mode.messageIds ?? { user: USER_MESSAGE_ID, assistant: "3639b50e-f237-4b9a-99fa-75d890c1f97d" };
+  const priorEncoded = mode.expectedPriorGrounding ? encodeSharedPublicWebGrounding(mode.expectedPriorGrounding) : undefined;
+  const receiptCopies: Array<{ ordinal: number; priorEncodedReceiptMessages: number; priorEncodedReceiptChars: number; freshActionReceiptMessages: number; freshActionReceiptChars: number; freshActionSourceObjectsMatchPrior: number }> = [];
   let publicHttpCalls = 0;
   const participantNames: Array<string | undefined> = [];
   const publicHttpHops: string[] = [];
@@ -198,7 +202,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
   const stop = AgentRuntime.prototype.stop;
   const stopping = spyOn(AgentRuntime.prototype, "stop").mockImplementation(
     async function (this: AgentRuntime, ...args) {
-      legacyCacheCountAtStop = this.getActionResults(USER_MESSAGE_ID as UUID).length;
+      legacyCacheCountAtStop = this.getActionResults(messageIds.user as UUID).length;
       return await stop.apply(this, args);
     },
   );
@@ -284,6 +288,23 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
         toolDescriptionChars: (tools ?? []).reduce((n, tool) => n + (typeof tool.function?.description === "string" ? tool.function.description.length : 0), 0),
         repeatedWithinBytes, repeatedEarlierCallBytes });
     }
+    if (priorEncoded) {
+      let priorEncodedReceiptMessages = 0, freshActionReceiptMessages = 0, freshActionReceiptChars = 0, freshActionSourceObjectsMatchPrior = 0;
+      for (const message of request.messages ?? []) {
+        if (typeof message.content !== "string") continue;
+        if (message.content.includes(priorEncoded)) priorEncodedReceiptMessages += 1;
+        if (message.role !== "tool") continue;
+        let value: unknown;
+        try { value = JSON.parse(message.content); } catch { continue; }
+        const result = value as { success?: unknown; data?: { actionName?: unknown; query?: unknown; sources?: unknown } } | null;
+        if (result?.success === true && result.data?.actionName === "WEB_SEARCH" && result.data.query === GENERAL_TOPIC) {
+          freshActionReceiptMessages += 1;
+          freshActionReceiptChars += message.content.length;
+          if (mode.expectedPriorGrounding?.kind === "web_search" && JSON.stringify(result.data.sources) === JSON.stringify(mode.expectedPriorGrounding.sources)) freshActionSourceObjectsMatchPrior += 1;
+        }
+      }
+      receiptCopies.push({ ordinal: modelCalls, priorEncodedReceiptMessages, priorEncodedReceiptChars: priorEncoded.length, freshActionReceiptMessages, freshActionReceiptChars, freshActionSourceObjectsMatchPrior });
+    }
     if (modelCalls > 12) throw new Error("Offline model-dispatch count bound exceeded");
     const names = request.tools?.map((tool) => tool.function?.name) ?? [];
     advertisedSdkTools.push((request.tools ?? []).flatMap((tool) => typeof tool.function?.name === "string" ? [{ name: tool.function.name, parameters: tool.function.parameters }] : []));
@@ -364,10 +385,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
       history: mode.history ?? [],
       message: mode.general ? GENERAL_PROMPT : mode.ordinary ? "Hello there" : mode.compound ? `${PROMPT} Also perform the other operation.` : PROMPT,
       ...(mode.ordinary ? {} : { capabilityText: mode.general ? GENERAL_PROMPT : mode.compound ? `${PROMPT} Also perform the other operation.` : PROMPT }),
-      messageIds: {
-        user: USER_MESSAGE_ID,
-        assistant: "3639b50e-f237-4b9a-99fa-75d890c1f97d",
-      },
+      messageIds,
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         authenticatedPersonalSharedUser: true,
@@ -429,7 +447,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
     publicHttpCalls, publicHttpHops, modelCalls, modelChronology, legacyCacheCountAtStop, coreResultCount: coreActionResults.length,
     failed, failureCategory: failureCategory ?? null,
   });
-  return { coreShapes, wireShapes, advertisedSdkTools, participantNames, result, failed, failureCategory, publicHttpCalls, publicHttpHops, modelCalls, modelChronology, freeSelectionsBeforeAction, validations, otherActions, actions, coreActionResults, legacyCacheCountAtStop, registeredShortcut };
+  return { receiptCopies, coreShapes, wireShapes, advertisedSdkTools, participantNames, result, failed, failureCategory, publicHttpCalls, publicHttpHops, modelCalls, modelChronology, freeSelectionsBeforeAction, validations, otherActions, actions, coreActionResults, legacyCacheCountAtStop, registeredShortcut };
 }
 
 const CAPTURE_SCOPE = {
@@ -627,7 +645,7 @@ test("general Gmail documentation uses canonical query and source footer after r
   }
   const encoded = JSON.stringify(summary);
   for (const privateValue of [GENERAL_TOPIC, GENERAL_SOURCE, PROMPT, USER_MESSAGE_ID, "offline-preflight-test-key", "QA Owner", "thought", "parameters"]) expect(encoded).not.toContain(privateValue);
-  console.info("[offline-request-shape-numeric]", summary);
+  console.info("[offline-request-shape-numeric]", JSON.stringify(summary));
 });
 
 
@@ -662,4 +680,33 @@ test("numeric model audit records actual SDK usage and failures without content"
   } finally {
     info.mockRestore();
   }
+});
+
+
+test("repeated general search measures persisted and fresh evidence in the same SDK request", async () => {
+  const reply = `Each project can use 1.2 million quota units per minute, and each user can use 6k quota units per minute. [[SOURCE_URL:${GENERAL_SOURCE}]]`;
+  const first = await exercise({ general: true, measureShape: true }, reply);
+  expect(first.failed).toBe(false);
+  expect(first.result?.internalGrounding?.kind).toBe("web_search");
+  if (!first.result || first.result.internalGrounding?.kind !== "web_search") throw new Error("Actual first general receipt unavailable");
+  const repeated = await exercise({ general: true, measureShape: true, history: first.result.history,
+    expectedPriorGrounding: first.result.internalGrounding,
+    messageIds: { user: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", assistant: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
+  }, reply);
+  expect(repeated.failed).toBe(false);
+  expect(repeated.actions).toEqual([{ query: GENERAL_TOPIC, success: true }]);
+  expect(repeated.result?.reply).toContain("1.2 million");
+  expect(repeated.receiptCopies).toHaveLength(repeated.modelCalls);
+  expect(repeated.receiptCopies.every((row) => row.priorEncodedReceiptMessages > 0)).toBe(true);
+  expect(repeated.receiptCopies.some((row) => row.priorEncodedReceiptMessages > 0 && row.freshActionReceiptMessages > 0 && row.freshActionSourceObjectsMatchPrior > 0)).toBe(true);
+  const summary = { minimumComparedChars: 128, first: { core: first.coreShapes, wire: first.wireShapes }, repeated: { core: repeated.coreShapes, wire: repeated.wireShapes, receipts: repeated.receiptCopies } };
+  const pending: unknown[] = [summary];
+  while (pending.length) {
+    const value = pending.pop();
+    if (typeof value === "string") expect(["RESPONSE_HANDLER", "ACTION_PLANNER", "TEXT_SMALL", "TEXT_LARGE", "other"]).toContain(value);
+    else if (typeof value === "number") expect(Number.isFinite(value) && value >= 0).toBe(true);
+    else if (value && typeof value === "object") pending.push(...Object.values(value));
+    else throw new Error("Numeric repeated-search projection contains an unexpected leaf");
+  }
+  console.info("[offline-repeated-general-numeric]", JSON.stringify(summary));
 });
