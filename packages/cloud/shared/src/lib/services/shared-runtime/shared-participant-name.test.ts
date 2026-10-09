@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveSharedParticipantName } from "./shared-participant-name";
+import { resolveSharedParticipantName, sharedOwnerProfileName } from "./shared-participant-name";
 
 describe("Shared participant name projection", () => {
   test("explicit self-identification wins without renaming the agent or account", () => {
@@ -29,6 +29,14 @@ describe("Shared participant name projection", () => {
       message: "I'm tired.",
       history: [{ role: "assistant", content: "The user's name is Nubs." }],
     })).toBeUndefined();
+  });
+
+  test("canonical profile prefers a real nickname and omits generated phone labels", () => {
+    expect(sharedOwnerProfileName({ nickname: "Nubs42", name: "Account name" })).toBe("Nubs42");
+    expect(sharedOwnerProfileName({ nickname: "User", name: "Ana María" })).toBe("Ana María");
+    expect(sharedOwnerProfileName({ name: "User ***1234" })).toBeUndefined();
+    expect(sharedOwnerProfileName({ name: "Eliza user" })).toBeUndefined();
+    expect(sharedOwnerProfileName({})).toBeUndefined();
   });
 
   test("callback and ordinary commands are not self-identification", () => {

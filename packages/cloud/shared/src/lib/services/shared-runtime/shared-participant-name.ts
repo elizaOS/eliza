@@ -15,9 +15,14 @@ function usableName(value: string | undefined): string | undefined {
     /[\p{C}]/u.test(value ?? "") ||
     !/[\p{L}]/u.test(name) ||
     !/^[@\p{L}\p{M}\p{N}][\p{L}\p{M}\p{N}_'’.-]*(?: [\p{L}\p{M}\p{N}][\p{L}\p{M}\p{N}_'’.-]*){0,3}$/u.test(name) ||
-    /^(?:shared user|shared lifecycle|user|anonymous|unknown)$/iu.test(name)
+    /^(?:shared user|shared lifecycle|eliza user|user|anonymous|unknown)$/iu.test(name)
   ) return undefined;
   return name;
+}
+
+/** Only the canonical owner's saved nickname/display name, excluding placeholders. */
+export function sharedOwnerProfileName(profile: { nickname?: string | null; name?: string | null }): string | undefined {
+  return usableName(profile.nickname ?? undefined) ?? usableName(profile.name ?? undefined);
 }
 
 function explicitSelfName(message: string): string | undefined {
