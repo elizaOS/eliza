@@ -116,8 +116,7 @@ export function resolveBusyVsPaused(
   memberText: string,
 ): NetworkMemberState {
   if (state !== "paused") return state;
-  let own = sanitize(memberText);
-  for (const q of quotedSpans(memberText)) own = own.replace(q, " ");
+  const own = ownWords(memberText);
   return BUSY_CUE.test(own) && !EXPLICIT_PAUSE.test(own) ? "busy" : state;
 }
 
@@ -148,7 +147,10 @@ const ORDINAL_RE = /\b(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b/gi;
 /** Member's own words with quoted third-party spans removed. */
 export function ownWords(memberText: string): string {
   let own = sanitize(memberText);
-  for (const q of quotedSpans(memberText)) own = own.replace(q, " ");
+  // Find and remove quotes in the same normalized representation. Otherwise a
+  // zero-width or compatibility character removed by sanitize() makes the raw
+  // quote impossible to find, and third-party text survives as the member's.
+  for (const q of quotedSpans(own)) own = own.replace(q, " ");
   return own;
 }
 

@@ -45,10 +45,27 @@ test("canonical CI requires reusable OS verification and propagates failure", ()
   for (const result of ["success", "failure", "cancelled", "skipped"]) {
     const execute = () =>
       execFileSync("bash", ["-e", "-c", aggregate.run], {
-        env: { ...process.env, RESULTS: `quality=success os=${result}` },
+        env: {
+          ...process.env,
+          RESULTS: `quality=success:true os=${result}:true`,
+        },
         stdio: "pipe",
       });
     if (result === "success") assert.doesNotThrow(execute);
+    else assert.throws(execute, (error) => error.status === 1);
+  }
+  for (const [results, passes] of [
+    ["quality=success:true os=skipped:false", true],
+    ["quality=success:true os=success:false", false],
+    ["quality=success:true os=skipped", false],
+    ["quality=success:true os=success:", false],
+  ] as const) {
+    const execute = () =>
+      execFileSync("bash", ["-e", "-c", aggregate.run], {
+        env: { ...process.env, RESULTS: results },
+        stdio: "pipe",
+      });
+    if (passes) assert.doesNotThrow(execute);
     else assert.throws(execute, (error) => error.status === 1);
   }
   const sharedCheck = "bash scripts/linux/verify-debian-packaging.sh";

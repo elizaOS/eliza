@@ -7,7 +7,6 @@ Systemd units remain in `packages/cloud/scripts/admin` and set the deployed envi
 From the repository root:
 
 ```sh
-bun run --cwd packages/cloud/services/provisioning-worker test
 bun run --cwd packages/cloud/services/provisioning-worker typecheck
 bun run --cwd packages/cloud/services/provisioning-worker start
 bun run --cwd packages/cloud/services/provisioning-worker start:apps
@@ -15,3 +14,6 @@ bun run --cwd packages/cloud/services/provisioning-worker start:apps
 
 Starting a worker performs infrastructure operations. Use the existing development
 configuration and isolated resources for local execution.
+
+This package has no local test suite. Shared worker health checks are covered by
+[`provisioning-worker-health-connections.test.ts`](../../shared/src/lib/services/provisioning-worker-health-connections.test.ts).
