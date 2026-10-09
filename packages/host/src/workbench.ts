@@ -29,6 +29,10 @@ export function normalizeWorkbenchTags(value: unknown): string[] {
 
 function normalizeTimestamp(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "bigint") {
+    const numeric = Number(value);
+    return Number.isSafeInteger(numeric) ? numeric : undefined;
+  }
   if (value instanceof Date) return value.getTime();
   if (typeof value === "string") {
     const asNumber = Number(value);
@@ -40,8 +44,11 @@ function normalizeTimestamp(value: unknown): number | undefined {
 }
 
 function isoFromTimestamp(value: unknown): string | null {
+  if (typeof value === "string" && value.trim() === "") return null;
   const ms = normalizeTimestamp(value);
-  return ms === undefined ? null : new Date(ms).toISOString();
+  if (ms === undefined) return null;
+  const date = new Date(ms);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 export function parseWorkbenchTodoPriority(value: unknown): number | null {
