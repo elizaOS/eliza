@@ -109,7 +109,7 @@ it("uses only the registered service and checks its baseline before a model requ
   expect(requests).toHaveLength(4);
 });
 
-it("states the batch-scope rule once for an optimized template and retains a resolvable pointer on every tool", async () => {
+it("names required native scope in the system rule and keeps its meaning on every tool", async () => {
   const root = await mkdtemp(join(tmpdir(), "planner-batch-scope-backstop-"));
   roots.push(root);
   vi.stubEnv("ELIZA_STATE_DIR", root);
@@ -138,7 +138,10 @@ it("states the batch-scope rule once for an optimized template and retains a res
     messages?: Array<{ role?: string; content?: unknown }>;
     tools?: Array<{
       name: string;
-      parameters?: { properties?: Record<string, { description?: string }> };
+      parameters?: {
+        required?: string[];
+        properties?: Record<string, { description?: string; enum?: string[] }>;
+      };
     }>;
   }> = [];
   const runtime = {
@@ -187,18 +190,23 @@ it("states the batch-scope rule once for an optimized template and retains a res
   expect(
     instructions.split(`- Batch scope: ${plannerBatchScopeDescription}`),
   ).toHaveLength(2);
-  // The first tool retains the complete pointer; identical descriptions refer
-  // to that actual tool and parameter within this same model request.
   const tools = requests[0]?.tools ?? [];
   expect(tools.map(({ name }) => name)).toEqual(["SETTINGS", "REPLY"]);
-  expect(tools[0]?.parameters?.properties?.[TURN_SCOPE_ARG]?.description).toBe(
-    "Follow the shared Batch scope instruction. Use the same scope on every call in this batch. Stripped before execution.",
-  );
-  expect(tools[1]?.parameters?.properties?.[TURN_SCOPE_ARG]?.description).toBe(
-    `Use the identical full description of parameter "${TURN_SCOPE_ARG}" on tool SETTINGS.`,
+  expect(instructions).toContain(
+    'Every native tool call must include "eliza_turn_scope"',
   );
   for (const tool of tools) {
     const scope = tool.parameters?.properties?.[TURN_SCOPE_ARG];
+    expect(tool.parameters?.required).toContain(TURN_SCOPE_ARG);
+    expect(scope?.enum).toEqual(["final", "more_work_pending"]);
+    expect(scope?.description).toContain("Required on every native call");
+    expect(scope?.description).toContain(
+      '"final": this batch covers the remaining operations',
+    );
+    expect(scope?.description).toContain(
+      '"more_work_pending": results must ground a later operation',
+    );
+    expect(scope?.description).not.toContain("on tool ");
     expect(scope?.description).not.toContain(plannerBatchScopeDescription);
   }
 });
