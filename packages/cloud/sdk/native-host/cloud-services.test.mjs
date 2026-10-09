@@ -67,6 +67,13 @@ test("independent host selects its plan and speech policy without exposing autho
                 amountCents: 1000,
                 currency: "eur",
                 interval: "year",
+                allowance: {
+                  amountUsd: "25.000000",
+                  fundingClass: "allowance_eligible",
+                  rollover: false,
+                  expiresAt: "billing_period_end",
+                  internalNote: "never relayed",
+                },
               },
               {
                 active: true,
@@ -118,6 +125,14 @@ test("independent host selects its plan and speech policy without exposing autho
       plans.plans.map((p) => p.key),
       ["annual_team"],
     );
+    // The allowance terms come through as the catalog states them, and
+    // nothing else does.
+    assert.deepEqual(plans.plans[0].allowance, {
+      amountUsd: "25.000000",
+      fundingClass: "allowance_eligible",
+      rollover: false,
+      expiresAt: "billing_period_end",
+    });
     const speech = await (
       await post("/voice/stt", {
         audioBase64: Buffer.from("fixture").toString("base64"),
@@ -711,7 +726,16 @@ function googleHost(t, google) {
           grantedCapabilities: ["google.gmail.triage"],
           grantedScopes: google.scopes ?? [READ_SCOPE, "openid"],
         });
+      if (path === "/api/v1/eliza/google/accounts")
+        return Response.json(
+          (google.accounts ?? []).map((connectionId) => ({ connectionId })),
+        );
       if (path === "/api/v1/eliza/google/disconnect") {
+        const { connectionId } = JSON.parse(init.body);
+        if (google.accounts && connectionId) {
+          google.accounts = google.accounts.filter((id) => id !== connectionId);
+          return Response.json({ ok: true });
+        }
         google.connectionId = null;
         return Response.json({ ok: true });
       }
@@ -974,4 +998,43 @@ test("native auth learns whether Google account linking is ready, off by default
     });
     assert.equal(options.accountLinkReady, expected);
   }
+});
+
+test("after a new Google grant, every other owner connection is removed", async (t) => {
+  const google = { connectionId: GRANT_B, accounts: [GRANT_A, GRANT_B] };
+  const { post, calls } = googleHost(t, google);
+  // Only the connection Cloud reports as current can be kept.
+  assert.equal(
+    (await post("/cloud/gmail/disconnect-others", { connectionId: GRANT_A }))
+      .status,
+    409,
+  );
+  assert.equal(
+    (await post("/cloud/gmail/disconnect-others", { connectionId: "bad id" }))
+      .status,
+    400,
+  );
+  assert.equal(
+    calls.some((c) => c.url.endsWith("/google/disconnect")),
+    false,
+  );
+  const response = await post("/cloud/gmail/disconnect-others", {
+    connectionId: GRANT_B,
+  });
+  assert.deepEqual(await response.json(), { disconnected: 1 });
+  const sent = calls.filter((c) => c.url.endsWith("/google/disconnect"));
+  assert.deepEqual(
+    sent.map((c) => JSON.parse(c.init.body)),
+    [{ side: "owner", connectionId: GRANT_A }],
+  );
+  assert.deepEqual(google.accounts, [GRANT_B]);
+});
+
+test("a task port reports the connected Google address with its grant", async (t) => {
+  const { routes } = googleHost(t, { connectionId: GRANT_A });
+  const port = routes.googleForAccount({ actorId: "owner", retryDelaysMs: [] });
+  assert.deepEqual(await port.currentAccount(), {
+    accountId: GRANT_A,
+    email: "owner@example.test",
+  });
 });

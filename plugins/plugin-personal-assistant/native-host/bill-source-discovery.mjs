@@ -9,6 +9,7 @@ export const BILL_SOURCE_FAILURE_REASONS = Object.freeze([
   "cloud_sign_in_required",
   "insufficient_scope",
   "account_changed",
+  "account_mismatch",
   "unavailable",
   "timeout",
 ]);
@@ -64,11 +65,49 @@ function scope(input) {
     throw unavailable();
   if (c.accountEmail !== undefined && !email(c.accountEmail))
     throw unavailable();
+  // Bills go to the configured recipient. Another connected Google account
+  // cannot find them; say so instead of reporting no bill.
+  if (
+    c.accountEmail !== undefined &&
+    !sameAccountAddress(c.accountEmail, c.recipient)
+  )
+    throw unavailable("account_mismatch");
   const url = new URL(c.providerOrigin);
   if (url.protocol !== "https:" || url.origin !== c.providerOrigin)
     throw unavailable();
   Object.freeze(c.senders);
   return Object.freeze(c);
+}
+/**
+ * The connected Google account can receive mail for the configured recipient.
+ * Either side may be shown masked (for example `m•••@example.org`); a mask
+ * character stands for one or more hidden characters of the local part.
+ */
+export function sameAccountAddress(account, recipient) {
+  if (typeof account !== "string" || typeof recipient !== "string")
+    return false;
+  const split = (value) => {
+    const at = value.lastIndexOf("@");
+    return at > 0
+      ? [value.slice(0, at).toLowerCase(), value.slice(at + 1).toLowerCase()]
+      : null;
+  };
+  const a = split(account),
+    b = split(recipient);
+  if (!a || !b || a[1] !== b[1]) return false;
+  const mask = /[*\u2022\u00b7]+/u;
+  const pattern = (local) =>
+    new RegExp(
+      `^${local
+        .split(mask)
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".+")}$`,
+      "u",
+    );
+  if (mask.test(a[0]) && mask.test(b[0])) return false;
+  if (mask.test(a[0])) return pattern(a[0]).test(b[0]);
+  if (mask.test(b[0])) return pattern(b[0]).test(a[0]);
+  return a[0] === b[0];
 }
 // Domains are case-insensitive; local parts retain the host's exact sender grants.
 function sameAddress(a, b) {
@@ -182,10 +221,14 @@ function candidate(
         }
       : {}),
   };
+  // A link names the full mailbox address, never a masked one.
+  const unmasked = [c.accountEmail, c.recipient].find(
+    (value) => value !== undefined && !/[*\u2022\u00b7]/u.test(value),
+  );
   const url = gmailSourceLink(
     detail.message.htmlLink,
     detail.message.threadId,
-    c.accountEmail ?? c.recipient,
+    unmasked,
   );
   return {
     billId,
@@ -208,6 +251,7 @@ export class BillSourceDiscovery {
   constructor({
     google,
     authorize,
+    authorizeReceipt = authorize,
     parse,
     attachmentPolicy,
     parseAttachment,
@@ -224,6 +268,7 @@ export class BillSourceDiscovery {
       throw unavailable();
     this.google = google;
     this.authorize = authorize;
+    this.authorizeReceipt = authorizeReceipt;
     this.parse = parse;
     this.attachmentPolicy = attachmentPolicy;
     this.parseAttachment = parseAttachment;
@@ -231,6 +276,71 @@ export class BillSourceDiscovery {
   }
   revoke() {
     this.#generation++;
+  }
+  /**
+   * After an outcome, look once for its receipt email: from the bill's
+   * senders, to the bill's recipient, after the outcome, naming its provider
+   * reference. Only one such message counts as found; none or several do not.
+   * The search reads at most one page of 10 messages.
+   */
+  async findReceipt(input, outcome, signal) {
+    try {
+      if (
+        typeof outcome?.reference !== "string" ||
+        !/^[A-Za-z0-9][A-Za-z0-9._/-]{2,127}$/.test(outcome.reference) ||
+        !Number.isSafeInteger(outcome.observedAt)
+      )
+        return false;
+      const after = outcome.observedAt - 10 * 60 * 1000;
+      // The task's own mailbox scope is what is authorized; only the time
+      // window of this search is narrowed to after the outcome.
+      const authorizedScope = scope(input);
+      const c = scope({ ...input, after, before: Date.now() + 60 * 1000 }),
+        generation = this.#generation;
+      const check = async () => {
+        signal.throwIfAborted();
+        if (
+          generation !== this.#generation ||
+          !(await this.authorizeReceipt(authorizedScope)) ||
+          generation !== this.#generation
+        )
+          throw unavailable();
+        signal.throwIfAborted();
+      };
+      await check();
+      const result = await this.google.searchGmailMessagesPage({
+        accountId: c.accountId,
+        query: `{${c.senders.map((sender) => `from:${sender}`).join(" ")}} "${outcome.reference}" after:${Math.floor(after / 1000)}`,
+        pageSize: 10,
+      });
+      await check();
+      if (!Array.isArray(result?.messages) || result.messages.length > 10)
+        throw unavailable();
+      // More than one page is more than one possible receipt.
+      if (result.nextPageToken) return false;
+      const named = new RegExp(
+        `(?:^|[^A-Za-z0-9])${outcome.reference.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}(?:$|[^A-Za-z0-9])`,
+      );
+      let found = 0;
+      for (const message of result.messages) {
+        if (!matches(message, c)) continue;
+        const detail = await this.google.getGmailMessageDetail({
+          accountId: c.accountId,
+          messageId: message.externalId,
+        });
+        await check();
+        if (
+          detail?.message?.externalId !== message.externalId ||
+          !matches(detail.message, c) ||
+          typeof detail.bodyText !== "string"
+        )
+          throw unavailable();
+        if (named.test(detail.bodyText)) found++;
+      }
+      return found === 1;
+    } catch (error) {
+      throw unavailable(failureReason(error));
+    }
   }
   async discover(input, signal) {
     try {
