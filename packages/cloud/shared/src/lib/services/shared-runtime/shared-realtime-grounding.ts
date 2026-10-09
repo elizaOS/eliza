@@ -920,6 +920,7 @@ function supportedRealtimeReply(
   | {
       reply: string;
       selectedUrls: string[];
+      selectedDisplayUrls: string[];
       omittedUnsupported: boolean;
       omittedSubstantive: boolean;
     }
@@ -937,6 +938,7 @@ function supportedRealtimeReply(
   };
   const segments: string[] = [];
   const selectedUrls: string[] = [];
+  const selectedDisplayUrls: string[] = [];
   for (const marker of reply.matchAll(SOURCE_MARKER)) {
     diagnostic.markerCount = Math.min(1000, diagnostic.markerCount + 1);
     const source = sourceForUrl(grounding, marker[1]);
@@ -951,6 +953,25 @@ function supportedRealtimeReply(
     ) {
       segments.push(claim);
       selectedUrls.push(marker[1]);
+      let displayUrl = marker[1];
+      const preferred = new URL(source.url);
+      if (
+        preferred.hostname === "developers.google.cn" &&
+        preferred.searchParams.getAll("hl").length === 1 &&
+        preferred.searchParams.get("hl") === "en"
+      ) {
+        preferred.hostname = "developers.google.com";
+        preferred.searchParams.delete("hl");
+        const canonicalSource = sourceForUrl(grounding, preferred.href);
+        if (
+          canonicalSource &&
+          (mode === "general_public"
+            ? generalPublicClaimSupported(claim, canonicalSource, { failedPredicateMask: 0 })
+            : claimSupported(claim, canonicalSource))
+        )
+          displayUrl = canonicalSource.url;
+      }
+      selectedDisplayUrls.push(displayUrl);
       lastSegmentAccepted = true;
     } else {
       omittedUnsupported = true;
@@ -991,6 +1012,7 @@ function supportedRealtimeReply(
             ? validatedReply.replace(/\n[ \t]*([.!?,;:…]+)(?=[ \t]*(?:\n|$))/gu, "$1")
             : validatedReply,
         selectedUrls,
+        selectedDisplayUrls,
         omittedUnsupported,
         omittedSubstantive,
       }
@@ -1002,7 +1024,11 @@ function sourceDisplayIdentity(canonical: string): string {
   const url = new URL(canonical);
   // The English Google documentation display variant adds no page identity.
   // Other locales, hosts and query parameters can select different evidence.
-  if (url.hostname === "developers.google.com" && url.searchParams.get("hl") === "en")
+  if (
+    url.hostname === "developers.google.com" &&
+    url.searchParams.getAll("hl").length === 1 &&
+    url.searchParams.get("hl") === "en"
+  )
     url.searchParams.delete("hl");
   return url.href;
 }
@@ -1022,7 +1048,7 @@ export function finalizeSharedRealtimeReply(
     return "I couldn’t verify an answer from the sources I found. Please try rephrasing your question.";
   const seen = new Set<string>();
   const sources: string[] = [];
-  for (const url of supported.selectedUrls) {
+  for (const url of supported.selectedDisplayUrls) {
     const canonical = canonicalPublicUrl(url);
     if (!canonical) throw new TypeError("Validated Shared realtime source became invalid");
     const identity = sourceDisplayIdentity(canonical);

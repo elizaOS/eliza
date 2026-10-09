@@ -1091,10 +1091,16 @@ test("deduplicates localized display links while retaining exact source authorit
     truncated: false,
     text: evidence,
     sourceUrls: [url, localized, different, mirror],
-    sources: [url, localized, different, mirror].map((source) => ({ url: source, text: evidence })),
+    sources: [url, localized, different, mirror].map((source) => ({
+      url: source,
+      text: source === mirror ? "The allowance is 6,000 units." : evidence,
+    })),
   };
   const draft = [url, localized, different, mirror]
-    .map((source) => `${evidence} [[SOURCE_URL:${source}]]`)
+    .map(
+      (source) =>
+        `${source === mirror ? "The allowance is 6,000 units." : evidence} [[SOURCE_URL:${source}]]`,
+    )
     .join("\n");
   const before = JSON.stringify(receipt);
   const reply = finalizeSharedRealtimeReply(draft, receipt, undefined, "general_public");
@@ -1163,5 +1169,47 @@ test.each(["realtime", "general_public"] as const)(
     );
     expect(unsupported).toContain("couldn’t verify an answer");
     expect(unsupported).not.toContain("I found part of the answer");
+  },
+);
+
+test.each(["realtime", "general_public"] as const)(
+  "%s prefers a canonical Google link only when it independently supports the same cited claim",
+  (mode) => {
+    const canonical = "https://developers.google.com/workspace/gmail/api/reference/quota";
+    const mirror = "https://developers.google.cn/workspace/gmail/api/reference/quota?hl=en";
+    const common = "The limit is 1,200 units.";
+    const distinct = "The allowance is 6,000 units.";
+    const receipt: SharedRuntimePublicGrounding = {
+      kind: "web_search",
+      query: "public API limits",
+      provider: "parallel",
+      observedAt,
+      truncated: false,
+      text: `${common} ${distinct}`,
+      sourceUrls: [canonical, mirror],
+      sources: [
+        { url: canonical, text: common },
+        { url: mirror, text: `${common} ${distinct}` },
+      ],
+    };
+    const before = JSON.stringify(receipt);
+    const duplicated = finalizeSharedRealtimeReply(
+      `${common} [[SOURCE_URL:${canonical}]] ${common} [[SOURCE_URL:${mirror}]]`,
+      receipt,
+      undefined,
+      mode,
+    );
+    expect(duplicated).toContain(`Source: ${canonical}`);
+    expect(duplicated).not.toContain(mirror);
+    const distinctReply = finalizeSharedRealtimeReply(
+      `${common} [[SOURCE_URL:${canonical}]] ${distinct} [[SOURCE_URL:${mirror}]]`,
+      receipt,
+      undefined,
+      mode,
+    );
+    expect(distinctReply).toContain(`Sources: ${canonical}\n${mirror}`);
+    expect(distinctReply).toContain(distinct);
+    expect(distinctReply).not.toContain("I found part of the answer");
+    expect(JSON.stringify(receipt)).toBe(before);
   },
 );
