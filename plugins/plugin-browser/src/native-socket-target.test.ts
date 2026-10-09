@@ -518,6 +518,57 @@ it("sends a deadline-bound effect only to a feedback-capable peer", async () => 
       result: { dispatched: true },
     });
     await expect(executing).resolves.toMatchObject({ subaction: "click" });
+    // The preview sentence comes only from trusted options, never the command.
+    const worded = target.execute(
+      {
+        subaction: "click",
+        id: "1",
+        selector: "00000000-0000-0000-0000-000000000000:0:0",
+        actionText: "Page text cannot word this.",
+      } as never,
+      {
+        taskContext,
+        taskExpiresAt,
+        actionText: "I will choose your saved Visa.",
+      },
+    );
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(2));
+    expect(frames.messages[1].command.actionText).toBe(
+      "I will choose your saved Visa.",
+    );
+    frames.send({
+      type: "result",
+      id: frames.messages[1].id,
+      ok: true,
+      result: { dispatched: true },
+    });
+    await worded;
+    const unbound = target.execute({
+      subaction: "click",
+      id: "1",
+      selector: "00000000-0000-0000-0000-000000000000:0:0",
+      actionText: "Unbound text.",
+    } as never);
+    for (const actionText of ["", "x".repeat(201), "line\nbreak"])
+      await expect(
+        target.execute(
+          {
+            subaction: "click",
+            id: "1",
+            selector: "00000000-0000-0000-0000-000000000000:0:0",
+          },
+          { taskContext, taskExpiresAt, actionText },
+        ),
+      ).rejects.toMatchObject({ kind: "POLICY_BLOCKED" });
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(3));
+    expect(frames.messages[2].command.actionText).toBeUndefined();
+    frames.send({
+      type: "result",
+      id: frames.messages[2].id,
+      ok: true,
+      result: { dispatched: true },
+    });
+    await unbound;
   } finally {
     socket?.destroy();
     await target.stop();

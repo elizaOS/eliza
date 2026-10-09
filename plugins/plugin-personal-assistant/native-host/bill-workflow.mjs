@@ -90,7 +90,7 @@ export class BillWorkflow {
       throw new BillHostError("Task authorization changed");
     }
     try {
-      await this.actuator.showGuidance(
+      const shown = await this.actuator.showGuidance(
         this.taskId,
         this.runtime.owner,
         {
@@ -103,7 +103,17 @@ export class BillWorkflow {
       );
       if (!(await this.stillAuthorized()))
         throw new BillHostError("Task authorization changed");
-      return { ...decision, guidance: { instruction, available: true } };
+      return {
+        ...decision,
+        guidance: {
+          instruction,
+          available: true,
+          // The renderer checks the website again before the guide expires.
+          ...(Number.isSafeInteger(shown?.expiresAt)
+            ? { expiresAt: shown.expiresAt }
+            : {}),
+        },
+      };
     } catch {
       // Preserve the instruction; failed removal still fails the whole request.
       await this.clearGuidance();
@@ -340,7 +350,11 @@ export class BillWorkflow {
   /** Explicit choice commit, after a fresh observation. It selects a saved method only. */
   async chooseExistingMethod(
     expectedReviewKey,
-    { operationId = randomUUID(), isCurrent = () => true } = {},
+    {
+      operationId = randomUUID(),
+      isCurrent = () => true,
+      relocated = false,
+    } = {},
   ) {
     const decision = await this.refresh();
     if (decision.kind !== "choose-existing-method") {
@@ -405,11 +419,19 @@ export class BillWorkflow {
       );
     }
     const result = await this.runtime.execute(task.id, task.revision, proposal);
-    if (
-      result.operations.find(
-        (operation) => operation.proposal.id === operationId,
-      )?.status !== "succeeded"
-    )
+    const status = result.operations.find(
+      (operation) => operation.proposal.id === operationId,
+    )?.status;
+    // A failed selection was resolved without an uncertain effect, for
+    // example when the page moved before the click. Observe and find the
+    // control once more for the same reviewed details.
+    if (status === "failed" && !relocated)
+      return this.chooseExistingMethod(expectedReviewKey, {
+        operationId: `${operationId}.relocated`,
+        isCurrent,
+        relocated: true,
+      });
+    if (status !== "succeeded")
       return {
         kind: "unknown-outcome",
         message:

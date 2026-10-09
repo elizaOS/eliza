@@ -7,6 +7,8 @@ import {
   type InteractiveTask,
   type TaskActionProposal,
   type TaskObservation,
+  TASK_ACTION_NOT_DISPATCHED,
+  TASK_ACTION_NOT_DISPATCHED_REF,
   type TaskOwner,
   transitionInteractiveTask,
 } from "@elizaos/core/protocol";
@@ -410,9 +412,14 @@ export class InteractiveTaskRuntime {
           },
           { type: "result", operationId: proposal.id, ...outcome },
         );
-      } catch {
+      } catch (error) {
         // Lost/error replies are not proof that an effect failed to occur.
-        outcome = { status: "unknown" };
+        // Only a typed refusal from before the effect resolves the operation.
+        outcome =
+          (error as { code?: unknown } | null)?.code ===
+          TASK_ACTION_NOT_DISPATCHED
+            ? { status: "failed", evidenceRef: TASK_ACTION_NOT_DISPATCHED_REF }
+            : { status: "unknown" };
       }
       if (!isCurrent()) return this.get(id);
       return this.options.store.transition(
