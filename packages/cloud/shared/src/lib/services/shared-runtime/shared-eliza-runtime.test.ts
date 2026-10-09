@@ -1173,10 +1173,11 @@ describe("Shared Eliza Workerd runtime", () => {
     const searchRequests: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
       if (String(url) === "https://search.parallel.ai/mcp") {
-        searchRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        const searchRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        searchRequests.push(searchRequest);
         return Response.json({
           jsonrpc: "2.0",
-          id: "shared-web-search",
+          id: searchRequest.id,
           result: {
             content: [
               {
@@ -1320,6 +1321,7 @@ describe("Shared Eliza Workerd runtime", () => {
 
     expect(searchRequests).toHaveLength(1);
     expect(searchRequests[0]).toMatchObject({
+      id: 1,
       method: "tools/call",
       params: {
         name: "web_search",
