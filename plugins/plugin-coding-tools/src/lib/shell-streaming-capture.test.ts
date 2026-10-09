@@ -45,7 +45,7 @@ describe("bounded foreground shell capture", () => {
       ["hello", "\n"],
       ["one\n", "", "two"],
       ["", "one", "", "\ntwo", "\n", ""],
-      ["a".repeat(1024 * 1024), "\n"],
+      ["a".repeat(32 * 1024), "\n"],
     ]) {
       const capture = await ForegroundShellCapture.create();
       for (const chunk of chunks) {

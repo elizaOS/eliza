@@ -61,7 +61,14 @@ export function updateShellStreamMetrics(
   if (chunk.length === 0) return priorEndedWithNewline;
   metrics.characters += chunk.length;
   metrics.bytes += Buffer.byteLength(chunk, "utf8");
-  const newlines = chunk.match(/\n/g)?.length ?? 0;
+  let newlines = 0;
+  for (
+    let index = chunk.indexOf("\n");
+    index !== -1;
+    index = chunk.indexOf("\n", index + 1)
+  ) {
+    newlines += 1;
+  }
   if (metrics.characters === chunk.length) {
     metrics.lines = newlines + (chunk.endsWith("\n") ? 0 : 1);
   } else {
