@@ -11,19 +11,22 @@ function readPage(selector) {
       "script,style,template,noscript,input,textarea,select,[hidden],[aria-hidden=true]";
     const visible = (element) => {
       if (element.closest(excluded)) return false;
+      // visibility is inherited but overridable: a descendant that sets
+      // visibility:visible renders even inside a hidden subtree, and the
+      // element's own computed style already resolves that. Judge it on
+      // the element alone — walking ancestors for it drops text the page
+      // actually shows. display and opacity cannot be overridden by a
+      // descendant, so those keep the ancestor walk.
+      const own = getComputedStyle(element);
+      if (own.visibility === "hidden" || own.visibility === "collapse")
+        return false;
       for (
         let ancestor = element;
         ancestor;
         ancestor = ancestor.parentElement
       ) {
         const style = getComputedStyle(ancestor);
-        if (
-          style.display === "none" ||
-          style.visibility === "hidden" ||
-          style.visibility === "collapse" ||
-          style.opacity === "0"
-        )
-          return false;
+        if (style.display === "none" || style.opacity === "0") return false;
       }
       return element.getClientRects().length > 0;
     };
