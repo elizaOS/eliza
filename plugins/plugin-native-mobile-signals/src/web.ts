@@ -356,11 +356,23 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
   async startMonitoring(
     options: MobileSignalsStartOptions = {},
   ): Promise<MobileSignalsStartResult> {
-    if (!this.monitoring) {
-      this.monitoring = true;
-      this.generation += 1;
-      this.attachListeners();
+    if (this.monitoring) {
+      // Already monitoring: both native bridges resolve the start result
+      // immediately, without emitting. Falling through to the initial emit
+      // below delivered a duplicate snapshot pair to every listener on
+      // each resume-driven re-start.
+      const snapshot = await buildSnapshot("start");
+      return {
+        enabled: true,
+        supported: true,
+        platform: snapshot.platform,
+        snapshot,
+        healthSnapshot: buildHealthSnapshot("start"),
+      };
     }
+    this.monitoring = true;
+    this.generation += 1;
+    this.attachListeners();
 
     const generation = this.generation;
     const snapshot = await buildSnapshot("start");
