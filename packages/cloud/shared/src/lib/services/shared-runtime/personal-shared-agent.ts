@@ -17,13 +17,16 @@ const PERSONAL_SHARED_DISCORD_GUILD_NAMESPACE = "b9ea4ce5-636d-4ec4-bc75-6308188
 import {
   type PersonalSharedAccountIdentity,
   personalSharedAgentId,
+  personalSharedProjectScope,
 } from "./personal-shared-identity";
 
 export {
   isCanonicalPersonalSharedAgent,
   isPersonalSharedAgentId,
+  NETWORK_PERSONAL_SHARED_PROJECT,
   type PersonalSharedAccountIdentity,
   personalSharedAgentId,
+  personalSharedProjectScope,
 } from "./personal-shared-identity";
 
 /**
@@ -132,6 +135,7 @@ export function personalDedicatedClientApiBase(
 /** Build the rowless runtime projection for the authenticated account. */
 export function personalSharedAgent(identity: PersonalSharedAccountIdentity): SharedRuntimeAgent {
   const character = getDefaultElizaCharacterData();
+  const project = personalSharedProjectScope(identity.project);
   return {
     id: personalSharedAgentId(identity),
     organization_id: identity.organizationId,
@@ -141,5 +145,8 @@ export function personalSharedAgent(identity: PersonalSharedAccountIdentity): Sh
     agent_name: character.name,
     agent_config: { character },
     execution_tier: "shared",
+    // The trusted turn keeps its product capabilities while sharing the
+    // existing account identity, history, todos and reminders.
+    ...(project ? { project } : {}),
   };
 }

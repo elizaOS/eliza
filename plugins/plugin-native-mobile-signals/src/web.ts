@@ -194,15 +194,20 @@ async function buildSnapshot(reason: string): Promise<MobileSignalsSnapshot> {
 }
 
 function buildHealthSnapshot(reason: string): MobileSignalsHealthSnapshot {
+  const platform = getPlatform();
   return {
     source: "mobile_health",
-    platform: getPlatform(),
+    platform,
     state: "idle",
     observedAt: Date.now(),
     idleState: null,
     idleTimeSeconds: null,
     onBattery: null,
-    healthSource: "healthkit",
+    // The source pairs with the platform everywhere in this plugin:
+    // Android snapshots report health_connect, iOS reports healthkit.
+    // A hardcoded healthkit mislabeled Android web snapshots, and the
+    // value is persisted verbatim by the activity-signals capture.
+    healthSource: platform === "android" ? "health_connect" : "healthkit",
     screenTime: buildScreenTimeStatus(
       "Web fallback has no Family Controls or DeviceActivity access.",
     ),
@@ -356,7 +361,8 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
   async startMonitoring(
     options: MobileSignalsStartOptions = {},
   ): Promise<MobileSignalsStartResult> {
-    if (!this.monitoring) {
+    const starting = !this.monitoring;
+    if (starting) {
       this.monitoring = true;
       this.generation += 1;
       this.attachListeners();
@@ -371,7 +377,7 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
     // after a resolved stop, and report `enabled` from that same active state
     // so the return value never contradicts what was delivered.
     const active = this.monitoring && this.generation === generation;
-    if (active && (options.emitInitial ?? true)) {
+    if (active && starting && (options.emitInitial ?? true)) {
       this.notifyListeners("signal", snapshot);
       this.notifyListeners("signal", healthSnapshot);
     }

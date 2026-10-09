@@ -1,8 +1,68 @@
 import { randomUUID } from "node:crypto";
+import {
+  closeSync,
+  fsyncSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { BillHostError } from "./errors.mjs";
+
+/**
+ * Append-only file, independent of the database. An observed outcome is
+ * written here before its INSERT, so a failed INSERT or a process exit does
+ * not lose the provider reference.
+ */
+function outcomeJournal(path) {
+  const append = (entry) => {
+    const fd = openSync(path, "a", 0o600);
+    try {
+      writeFileSync(fd, `${JSON.stringify(entry)}\n`);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  };
+  const read = () => {
+    let text;
+    try {
+      text = readFileSync(path, "utf8");
+    } catch (error) {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    }
+    const entries = [];
+    const lines = text.split("\n");
+    // An append is acknowledged only after its newline and fsync. Preserve
+    // every complete record; only an unfinished final append can be ignored.
+    lines.pop();
+    for (const line of lines) {
+      try {
+        entries.push(JSON.parse(line));
+      } catch {
+        throw new BillHostError("Invalid outcome journal");
+      }
+    }
+    return entries;
+  };
+  const replace = (entries) => {
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    const fd = openSync(temporary, "wx", 0o600);
+    try {
+      writeFileSync(fd, entries.map((e) => `${JSON.stringify(e)}\n`).join(""));
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(temporary, path);
+  };
+  return { append, read, replace };
+}
+
 /** Minimal product outcome records. No page bodies, tokens, or permanent transcripts. */
-export function createBillOutcomeStore(db, tasks) {
+export function createBillOutcomeStore(db, tasks, { journalPath } = {}) {
   db.exec(
     "CREATE TABLE IF NOT EXISTS bill_outcomes_v1 (task_id TEXT PRIMARY KEY, owner_key TEXT NOT NULL, document TEXT NOT NULL)",
   );
@@ -17,6 +77,7 @@ export function createBillOutcomeStore(db, tasks) {
   );
   const pending = new Map();
   const pendingAttempts = new Map();
+  const journal = journalPath ? outcomeJournal(journalPath) : null;
   const key = (owner) =>
     JSON.stringify([
       owner.agentId,
@@ -24,6 +85,21 @@ export function createBillOutcomeStore(db, tasks) {
       owner.connector.source,
       owner.connector.accountId,
     ]);
+  // The owner a stored key names, to ask the task store whether its task
+  // still exists.
+  const ownerOf = (ownerKey) => {
+    const value = JSON.parse(ownerKey);
+    if (
+      !Array.isArray(value) ||
+      value.length !== 4 ||
+      !value.every((part) => typeof part === "string")
+    )
+      throw new BillHostError("Invalid outcome owner");
+    const [agentId, actorId, source, accountId] = value;
+    return { agentId, actorId, connector: { source, accountId } };
+  };
+  const taskExists = (ownerKey, taskId) =>
+    Boolean(tasks.get(taskId, ownerOf(ownerKey)));
   function validateAttempt(record, task) {
     if (
       !record ||
@@ -113,7 +189,11 @@ export function createBillOutcomeStore(db, tasks) {
       // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters in provider references.
       /[\x00-\x1f\x7f]/.test(record.decision.reference) ||
       typeof record.decision.billSource !== "string" ||
-      record.decision.billSource.length > 512
+      record.decision.billSource.length > 512 ||
+      (record.decision.company != null &&
+        (typeof record.decision.company !== "string" ||
+          !record.decision.company.trim() ||
+          record.decision.company.length > 300))
     )
       throw new BillHostError("Invalid outcome record");
     const d = record.decision;
@@ -144,6 +224,38 @@ export function createBillOutcomeStore(db, tasks) {
     )
       throw new BillHostError("Outcome source must be a canonical HTTPS page");
     return record;
+  }
+  // Recover outcomes whose INSERT never committed. They are offered again as
+  // pending records; nothing is sent to the website.
+  if (journal) {
+    const unsaved = [];
+    for (const entry of journal.read()) {
+      if (
+        !entry ||
+        typeof entry.taskId !== "string" ||
+        typeof entry.ownerKey !== "string"
+      )
+        throw new BillHostError("Invalid outcome journal entry");
+      const record = validate(entry.record);
+      const row = db
+        .prepare(
+          "SELECT document FROM bill_outcomes_v1 WHERE task_id=? AND owner_key=?",
+        )
+        .get(entry.taskId, entry.ownerKey);
+      if (row) {
+        if (!isDeepStrictEqual(validate(JSON.parse(row.document)), record))
+          throw new BillHostError(
+            "Outcome journal conflicts with saved record",
+          );
+        continue;
+      }
+      // A task that no longer exists (its data was erased) keeps no outcome
+      // here, so it never warns a later task about a prior payment.
+      if (!taskExists(entry.ownerKey, entry.taskId)) continue;
+      pending.set(JSON.stringify([entry.ownerKey, entry.taskId]), record);
+      unsaved.push(entry);
+    }
+    journal.replace(unsaved);
   }
   return {
     latest(owner) {
@@ -219,6 +331,68 @@ export function createBillOutcomeStore(db, tasks) {
               "The website outcome was observed. Finishing its local record failed. Retry saving the reference; do not submit another payment.",
           };
         }
+      };
+      // History from other tasks of this owner for this bill. Includes writes
+      // awaiting retry.
+      const priorPayment = (bill, outcomesOnly) => {
+        requireOwned();
+        if (
+          !bill ||
+          typeof bill.sourceRef !== "string" ||
+          !bill.sourceRef ||
+          new URL(bill.origin).origin !== bill.origin
+        )
+          throw new BillHostError("Invalid bill identity");
+        const matches = (record, outcome = false) => {
+          const data = outcome
+            ? validate(record).decision
+            : validateAttempt(record, {
+                allowedOrigins: [new URL(record.source).origin],
+              });
+          return (
+            data.billSource === bill.sourceRef &&
+            new URL(data.source).origin === bill.origin
+          );
+        };
+        // Include writes awaiting retry: a new task must not bypass an in-process
+        // warning merely because the previous task could not persist its record.
+        for (const [entry, record] of outcomesOnly ? [] : pendingAttempts) {
+          const [entryOwner, entryTask] = JSON.parse(entry);
+          if (
+            entryOwner === ownerKey &&
+            entryTask !== taskId &&
+            matches(record) &&
+            taskExists(entryOwner, entryTask)
+          )
+            return true;
+        }
+        for (const [entry, record] of pending) {
+          const [entryOwner, entryTask] = JSON.parse(entry);
+          if (
+            entryOwner === ownerKey &&
+            entryTask !== taskId &&
+            matches(record, true) &&
+            taskExists(entryOwner, entryTask)
+          )
+            return true;
+        }
+        for (const row of outcomesOnly
+          ? []
+          : db
+              .prepare(
+                "SELECT document FROM bill_attempts_v1 WHERE owner_key=? AND task_id<>?",
+              )
+              .all(ownerKey, taskId)) {
+          if (matches(JSON.parse(row.document))) return true;
+        }
+        for (const row of db
+          .prepare(
+            "SELECT document FROM bill_outcomes_v1 WHERE owner_key=? AND task_id<>?",
+          )
+          .all(ownerKey, taskId)) {
+          if (matches(JSON.parse(row.document), true)) return true;
+        }
+        return false;
       };
       return {
         load,
@@ -360,60 +534,11 @@ export function createBillOutcomeStore(db, tasks) {
             throw new BillHostError("Payment review record conflict");
         },
         hasPriorPayment(bill) {
-          requireOwned();
-          if (
-            !bill ||
-            typeof bill.sourceRef !== "string" ||
-            !bill.sourceRef ||
-            new URL(bill.origin).origin !== bill.origin
-          )
-            throw new BillHostError("Invalid bill identity");
-          const matches = (record, outcome = false) => {
-            const data = outcome
-              ? validate(record).decision
-              : validateAttempt(record, {
-                  allowedOrigins: [new URL(record.source).origin],
-                });
-            return (
-              data.billSource === bill.sourceRef &&
-              new URL(data.source).origin === bill.origin
-            );
-          };
-          // Include writes awaiting retry: a new task must not bypass an in-process
-          // warning merely because the previous task could not persist its record.
-          for (const [entry, record] of pendingAttempts) {
-            const [entryOwner, entryTask] = JSON.parse(entry);
-            if (
-              entryOwner === ownerKey &&
-              entryTask !== taskId &&
-              matches(record)
-            )
-              return true;
-          }
-          for (const [entry, record] of pending) {
-            const [entryOwner, entryTask] = JSON.parse(entry);
-            if (
-              entryOwner === ownerKey &&
-              entryTask !== taskId &&
-              matches(record, true)
-            )
-              return true;
-          }
-          for (const row of db
-            .prepare(
-              "SELECT document FROM bill_attempts_v1 WHERE owner_key=? AND task_id<>?",
-            )
-            .all(ownerKey, taskId)) {
-            if (matches(JSON.parse(row.document))) return true;
-          }
-          for (const row of db
-            .prepare(
-              "SELECT document FROM bill_outcomes_v1 WHERE owner_key=? AND task_id<>?",
-            )
-            .all(ownerKey, taskId)) {
-            if (matches(JSON.parse(row.document), true)) return true;
-          }
-          return false;
+          return priorPayment(bill, false);
+        },
+        /** An earlier task already saved an outcome for this bill. */
+        hasPriorOutcome(bill) {
+          return priorPayment(bill, true);
         },
         loadAttempt() {
           const task = requireOwned();
@@ -509,9 +634,23 @@ export function createBillOutcomeStore(db, tasks) {
               paymentDate: decision.paymentDate ?? null,
               currency: decision.currency ?? null,
               currencyDigits: decision.currencyDigits ?? null,
+              company: decision.company ?? null,
             },
           });
           pending.set(pendingKey, record);
+          // Journal before the INSERT. If the journal write fails, the outcome
+          // stays pending in memory and the person is told to retry saving.
+          try {
+            journal?.append({ taskId, ownerKey, record });
+          } catch {
+            return {
+              ...structuredClone(record.decision),
+              observedAt: record.observedAt,
+              saveStatus: "pending",
+              message:
+                "The website outcome was observed. Finishing its local record failed. Retry saving the reference; do not submit another payment.",
+            };
+          }
           return finish(record);
         },
       };

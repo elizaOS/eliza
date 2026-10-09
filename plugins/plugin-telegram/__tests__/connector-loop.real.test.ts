@@ -141,6 +141,42 @@ describe("telegram connector loop (keyless)", () => {
     ).toBe(chatId);
   }, 60_000);
 
+  it("delivers escaped Markdown and adjacent emphasis without changing visible characters", async () => {
+    const cases = [
+      [String.raw`\*literal\*`, String.raw`\*literal\*`],
+      [String.raw`\\*italic*`, String.raw`\\_italic_`],
+      [String.raw`\**not bold**`, String.raw`\*_not bold_\*`],
+      [String.raw`**a\**`, String.raw`\*_a\*_`],
+      [
+        String.raw`\**not bold** then **bold**`,
+        String.raw`\*_not bold_\* then *bold*`,
+      ],
+      [String.raw`\\**bold**`, String.raw`\\*bold*`],
+      [String.raw`\\\*literal\*`, String.raw`\\\*literal\*`],
+      ["***nested***", "_*nested*_"],
+      [String.raw`\*literal\* and *real*`, String.raw`\*literal\* and _real_`],
+      ["2 * 3 * 4", String.raw`2 \* 3 \* 4`],
+    ];
+    const { delivered, chatId } = await driveTelegramTurn({
+      inboundText: "Send the requested formatting examples exactly.",
+      fixtures: [
+        {
+          name: "escaped-markdown-reply",
+          match: { modelType: ModelType.RESPONSE_HANDLER },
+          response: {
+            contexts: ["simple"],
+            intents: [],
+            candidateActionNames: [],
+            replyText: cases.map(([input]) => input).join("\n"),
+          },
+        },
+      ],
+    });
+    expect(delivered).toEqual([
+      { chatId, text: cases.map(([, output]) => output).join("\n") },
+    ]);
+  }, 60_000);
+
   it("delivers a drifted tool-call reply to the Telegram wire seam already sanitized (#15888)", async () => {
     const { delivered, chatId } = await driveTelegramTurn({
       inboundText: "Say hello and describe your plan.",

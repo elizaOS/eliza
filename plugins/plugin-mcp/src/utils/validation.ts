@@ -1,8 +1,8 @@
 /**
  * Validators for model-produced tool/resource selections and the feedback prompts
- * used to re-prompt on failure. A selection must target a connected server and an
- * existing tool/resource, and tool arguments must satisfy the tool's own input
- * schema; an explicit noTool/noResourceAvailable signal is accepted as valid.
+ * used to re-prompt on failure. Selections target a connected server. Tools must
+ * exist and their arguments must satisfy the tool schema; resource URIs are
+ * resolved by the server. Explicit noTool/noResourceAvailable signals are valid.
  */
 
 import { createRequire } from "node:module";
@@ -311,8 +311,28 @@ export async function validateToolSelectionArgument(
   }
   return { success: true, data };
 }
-export function validateResourceSelection(selection: unknown): ValidationResult<ResourceSelection> {
-  return validateMcpResourceSelection(selection) as ValidationResult<ResourceSelection>;
+export function validateResourceSelection(
+  selection: unknown,
+  state: State
+): ValidationResult<ResourceSelection> {
+  const basicResult = validateMcpResourceSelection(
+    selection
+  ) as ValidationResult<ResourceSelection>;
+  if (basicResult.success === false || basicResult.data.noResourceAvailable) {
+    return basicResult;
+  }
+  const data = basicResult.data;
+  // Resource links and template-derived URIs need not appear in resources/list.
+  // Validate the selected connection here; the server resolves the resource.
+  const mcpData = (state.values.mcp ?? {}) as Record<string, McpServerInfo>;
+  const name = data.serverName ?? "";
+  if (!Object.hasOwn(mcpData, name) || mcpData[name]?.status !== "connected") {
+    return {
+      success: false,
+      error: `Server "${data.serverName}" not found or not connected`,
+    };
+  }
+  return basicResult;
 }
 interface ToolDescription {
   readonly description?: string;

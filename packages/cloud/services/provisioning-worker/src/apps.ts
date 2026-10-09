@@ -1,4 +1,5 @@
 #!/usr/bin/env -S npx tsx
+
 /**
  * Apps-control provisioning worker (Eliza Cloud Apps / Product 2).
  *
@@ -40,6 +41,7 @@ import { fileURLToPath } from "node:url";
 import { loadCloudLocalEnv } from "@elizaos/cloud-services-common/node";
 import { APPS_JOB_TYPES } from "@elizaos/cloud-shared/agent-contracts";
 import type { ProcessingResult } from "@elizaos/cloud-shared/node";
+import { parsePositiveInt } from "./config-integer";
 
 type WorkerLogger =
   typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
@@ -61,12 +63,6 @@ const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_BATCH_SIZE = 3;
 const workerStartedAt = new Date();
 
-function parsePositiveInt(value: string | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
 function hasFlag(argv: readonly string[], flag: string): boolean {
   return argv.includes(flag);
 }
@@ -79,8 +75,13 @@ export function readAppsWorkerConfig(
     pollIntervalMs: parsePositiveInt(
       env.WORKER_POLL_INTERVAL,
       DEFAULT_POLL_INTERVAL_MS,
+      "WORKER_POLL_INTERVAL",
     ),
-    batchSize: parsePositiveInt(env.WORKER_BATCH_SIZE, DEFAULT_BATCH_SIZE),
+    batchSize: parsePositiveInt(
+      env.WORKER_BATCH_SIZE,
+      DEFAULT_BATCH_SIZE,
+      "WORKER_BATCH_SIZE",
+    ),
     runOnce: env.WORKER_RUN_ONCE === "1" || hasFlag(argv, "--once"),
   };
 }

@@ -2,9 +2,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   isNativeNotesQuery,
+  type NativeNotesReadReplyOrigin,
   NOTES_QUERY_CAPABILITY,
+  validateNativeNotesReadReply,
 } from "@elizaos/contracts/native-notes-query";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { ContextObject, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { stableStringify, withActionGatePolicy } from "@elizaos/core";
 import {
   executeRawSqlTx,
@@ -57,6 +59,23 @@ import {
 } from "./notes-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import {
+  assertDeviceReadCompletionCurrent,
+  bindDeviceCompletion,
+  captureDeviceReadReplyOrigin,
+  completionHint,
+  completionOrigin,
+  completionReplyId,
+  type DeviceReadCompletion,
+  type DeviceReadCompletionHint,
+  deviceReadHostContextRevision,
+  deviceReadResult,
+  isCompletableNotesRead,
+  originalReadRequestMatches,
+  readDeviceCompletion,
+  synthesizeDeviceReadReply,
+  transitionDeviceCompletion,
+} from "./read-completion.ts";
+import {
   isReminderOperation,
   REMINDER_CAPABILITY,
   REMINDER_TIMING_CAPABILITY,
@@ -73,7 +92,6 @@ import {
   enabledDeviceViews,
   storedDeviceViewProfile,
 } from "./view-profile.ts";
-
 import {
   validateWorkflowBinding,
   validateWorkflowReadResult,
@@ -96,11 +114,41 @@ interface DeviceTurn {
   credential: DeviceCredential;
   active: boolean;
   viewProfile: DeviceViewProfile | null;
+  replyContext?: { message: Memory; context: ContextObject };
+  replyConversation?: { id: string; roomId: UUID };
 }
 const turn = new AsyncLocalStorage<DeviceTurn>();
 export function getDeviceActionTurn(): DeviceTurn | undefined {
   const current = turn.getStore();
   return current?.active ? current : undefined;
+}
+/** Called by the owning conversation host after canonical room admission. */
+export function setDeviceReadReplyConversation(
+  runtime: IAgentRuntime,
+  id: string,
+  roomId: UUID,
+): void {
+  const current = getDeviceActionTurn();
+  if (!current || current.runtime !== runtime) return;
+  if (
+    current.replyConversation &&
+    (current.replyConversation.id !== id ||
+      current.replyConversation.roomId !== roomId)
+  )
+    throw new DeviceActionError("Original read conversation changed");
+  current.replyConversation = { id, roomId };
+}
+/** Called only by the canonical authenticated OWNER message pipeline. */
+export function setDeviceReadReplyContext(
+  runtime: IAgentRuntime,
+  message: Memory,
+  context: ContextObject,
+): void {
+  const current = getDeviceActionTurn();
+  if (!current || current.runtime !== runtime) return;
+  if (current.replyContext && current.replyContext.message.id !== message.id)
+    throw new DeviceActionError("Device read origin changed");
+  current.replyContext = { message, context };
 }
 export async function withDeviceActionTurn<T>(
   runtime: IAgentRuntime,
@@ -179,6 +227,19 @@ export function deviceProposalDigest(request: ApprovalRequest): string {
     expiresAt: request.expiresAt.toISOString(),
   });
 }
+const readReplyControllers = new WeakMap<
+  IAgentRuntime,
+  Map<
+    string,
+    {
+      ownerId: string;
+      installationId: string;
+      enrollmentId: string;
+      digest: string;
+      controller: AbortController;
+    }
+  >
+>();
 export class DeviceActionService {
   constructor(private readonly runtime: IAgentRuntime) {}
   private database(): TransactionDatabase {
@@ -189,6 +250,495 @@ export class DeviceActionService {
         "DEVICE_STORE_UNAVAILABLE",
       );
     return db;
+  }
+  /** Insert original-read binding in the SAME transaction as a new proposal. */
+  private async bindNewReadCompletion(
+    tx: TransactionalDb,
+    row: Record<string, unknown>,
+    c: DeviceCredential,
+    outcome: ApprovalEnqueueResult,
+    parameters: Record<string, unknown>,
+  ): Promise<void> {
+    const active = getDeviceActionTurn();
+    if (
+      outcome.reused ||
+      !active?.replyContext ||
+      !active.replyConversation ||
+      active.replyConversation.roomId !== active.replyContext.message.roomId ||
+      active.runtime !== this.runtime ||
+      active.credential !== c ||
+      !isCompletableNotesRead(outcome.request)
+    )
+      return;
+    const origin = captureDeviceReadReplyOrigin(
+      this.runtime,
+      active.replyContext.message,
+      active.replyContext.context,
+      {
+        id: `approved-read:${outcome.request.id}`,
+        name: "PROPOSE_DEVICE_ACTION",
+        params: parameters,
+      },
+      active.replyConversation.id,
+    );
+    if (!origin) return;
+    const request = outcome.request,
+      payload = validateDevicePayload(request.payload);
+    if (
+      request.state !== "pending" ||
+      request.subjectUserId !== c.subjectUserId ||
+      request.requestedBy !== this.runtime.agentId ||
+      payload.installationId !== c.installationId ||
+      payload.enrollmentId !== row.enrollment_id ||
+      request.expiresAt.getTime() <= Date.now()
+    )
+      throw new DeviceActionError("Original read proposal changed");
+    await bindDeviceCompletion(tx, {
+      version: 1,
+      purpose: "original_notes_read_reply",
+      agentId: this.runtime.agentId,
+      ownerId: c.subjectUserId,
+      installationId: c.installationId,
+      enrollmentId: payload.enrollmentId,
+      proposalId: request.id,
+      digest: deviceProposalDigest(request),
+      expiresAt: request.expiresAt.toISOString(),
+      origin,
+      state: "pending",
+    });
+  }
+  private async boundReadCompletion(
+    q: PgApprovalQueue,
+    row: Record<string, unknown>,
+    tx: TransactionalDb,
+    c: DeviceCredential,
+    id: string,
+    digest: string,
+    attemptId: string,
+  ) {
+    const request = await this.proposal(q, row, c, id, digest);
+    const binding = await readDeviceCompletion(
+      tx,
+      this.runtime.agentId,
+      c.subjectUserId,
+      id,
+    );
+    if (!binding) return null;
+    if (
+      binding.installationId !== c.installationId ||
+      binding.enrollmentId !== row.enrollment_id ||
+      binding.digest !== digest ||
+      binding.expiresAt !== request.expiresAt.toISOString() ||
+      binding.origin.original.agentId !== this.runtime.agentId ||
+      binding.origin.hostContextRevision !==
+        deviceReadHostContextRevision(this.runtime) ||
+      request.execution?.attemptId !== attemptId
+    )
+      throw new DeviceActionError("Original read binding changed");
+    deviceReadResult(request);
+    return { request, binding };
+  }
+  async readReplyOrigin(
+    c: DeviceCredential,
+    id: string,
+    digest: string,
+  ): Promise<NativeNotesReadReplyOrigin | undefined> {
+    return this.access(c, async (q, row, tx) => {
+      await this.proposal(q, row, c, id, digest);
+      const binding = await readDeviceCompletion(
+        tx,
+        this.runtime.agentId,
+        c.subjectUserId,
+        id,
+      );
+      return binding &&
+        binding.state === "pending" &&
+        binding.origin.hostContextRevision ===
+          deviceReadHostContextRevision(this.runtime) &&
+        Date.parse(binding.expiresAt) > Date.now()
+        ? completionOrigin(binding)
+        : undefined;
+    });
+  }
+  /** Safe correlation only; never exposes private original context or credentials. */
+  async readCompletionHint(
+    c: DeviceCredential,
+    id: string,
+    digest: string,
+    attemptId: string,
+  ): Promise<DeviceReadCompletionHint | undefined> {
+    return this.access(c, async (q, row, tx) => {
+      const bound = await this.boundReadCompletion(
+        q,
+        row,
+        tx,
+        c,
+        id,
+        digest,
+        attemptId,
+      );
+      if (
+        !bound ||
+        !["pending", "prepared", "delivered"].includes(bound.binding.state) ||
+        Date.parse(bound.binding.expiresAt) <= Date.now()
+      )
+        return undefined;
+      return completionHint(bound.binding, attemptId);
+    });
+  }
+  async readCompletionRoom(
+    c: DeviceCredential,
+    hint: DeviceReadCompletionHint,
+  ): Promise<UUID> {
+    return this.access(c, async (q, row, tx) => {
+      const current = await this.boundReadCompletion(
+        q,
+        row,
+        tx,
+        c,
+        hint.proposalId,
+        hint.digest,
+        hint.attemptId,
+      );
+      if (
+        !current ||
+        !["pending", "prepared", "delivered"].includes(current.binding.state) ||
+        current.binding.origin.requestId !== hint.requestId ||
+        current.binding.origin.conversationId !== hint.conversationId ||
+        current.binding.origin.original.id !== hint.inReplyTo ||
+        Date.parse(current.binding.expiresAt) <= Date.now()
+      )
+        throw new DeviceActionError("Original read room changed");
+      return current.binding.origin.original.roomId;
+    });
+  }
+  /** Claim before inference. A lost/uncertain claim is never inferred again. */
+  async prepareReadReply(
+    c: DeviceCredential,
+    hint: DeviceReadCompletionHint,
+    signal: AbortSignal,
+    recheck?: () => Promise<void>,
+    assertHostCurrent?: () => void,
+  ): Promise<DeviceReadCompletion["reply"]> {
+    signal.throwIfAborted();
+    const claimed = await this.access(c, async (q, row, tx) => {
+      const bound = await this.boundReadCompletion(
+        q,
+        row,
+        tx,
+        c,
+        hint.proposalId,
+        hint.digest,
+        hint.attemptId,
+      );
+      if (
+        !bound ||
+        bound.binding.origin.requestId !== hint.requestId ||
+        bound.binding.origin.conversationId !== hint.conversationId ||
+        bound.binding.origin.original.id !== hint.inReplyTo ||
+        Date.parse(bound.binding.expiresAt) <= Date.now()
+      )
+        throw new DeviceActionError(
+          "Original read completion expired or changed",
+        );
+      const { binding } = bound;
+      if (binding.state === "prepared" || binding.state === "delivered")
+        return { ...bound, cached: true };
+      if (binding.state !== "pending")
+        throw new DeviceActionError("Original read completion already claimed");
+      signal.throwIfAborted();
+      const next: DeviceReadCompletion = {
+        ...binding,
+        state: "claimed",
+        attemptId: hint.attemptId,
+      };
+      await transitionDeviceCompletion(tx, binding, next);
+      return { ...bound, binding: next, cached: false };
+    });
+    signal.throwIfAborted();
+    if (claimed.cached) {
+      const original = await this.runtime.getMemoryById(
+        claimed.binding.origin.original.id,
+      );
+      await recheck?.();
+      const assertCurrent = await this.assertReadReplyCurrent(
+        c,
+        hint,
+        signal,
+        assertHostCurrent,
+      );
+      assertCurrent();
+      if (!originalReadRequestMatches(claimed.binding, original))
+        throw new DeviceActionError("Original read request changed");
+      return claimed.binding.reply;
+    }
+    let binding = claimed.binding;
+    try {
+      signal.throwIfAborted();
+      const saved = await this.runtime.getMemoryById(
+        binding.origin.original.id,
+      );
+      if (!originalReadRequestMatches(binding, saved))
+        throw new DeviceActionError("Original read request changed");
+      await this.access(c, async (q, row, tx) => {
+        const current = await this.boundReadCompletion(
+          q,
+          row,
+          tx,
+          c,
+          hint.proposalId,
+          hint.digest,
+          hint.attemptId,
+        );
+        if (
+          !current ||
+          current.binding.state !== "claimed" ||
+          Date.parse(current.binding.expiresAt) <= Date.now()
+        )
+          throw new DeviceActionError("Original read completion retired");
+      });
+      signal.throwIfAborted();
+      const text = await synthesizeDeviceReadReply(
+        this.runtime,
+        binding,
+        claimed.request,
+        signal,
+        async () => {
+          await recheck?.();
+          await this.assertReadReplyCurrent(
+            c,
+            hint,
+            signal,
+            assertHostCurrent,
+            ["claimed"],
+          );
+        },
+        assertHostCurrent,
+      );
+      assertDeviceReadCompletionCurrent(
+        this.runtime,
+        binding,
+        signal,
+        assertHostCurrent,
+      );
+      return await this.access(c, async (q, row, tx) => {
+        const current = await this.boundReadCompletion(
+          q,
+          row,
+          tx,
+          c,
+          hint.proposalId,
+          hint.digest,
+          hint.attemptId,
+        );
+        if (
+          !current ||
+          current.binding.state !== "claimed" ||
+          Date.parse(current.binding.expiresAt) <= Date.now()
+        )
+          throw new DeviceActionError("Original read completion retired");
+        signal.throwIfAborted();
+        const reply = validateNativeNotesReadReply({
+          ...completionOrigin(binding),
+          messageId: completionReplyId(binding, hint.attemptId),
+          text,
+        });
+        const next: DeviceReadCompletion = {
+          ...current.binding,
+          state: "prepared",
+          reply,
+        };
+        await transitionDeviceCompletion(tx, current.binding, next);
+        binding = next;
+        return reply;
+      });
+    } catch (cause) {
+      try {
+        await this.access(c, async (_q, _row, tx) => {
+          const current = await readDeviceCompletion(
+            tx,
+            this.runtime.agentId,
+            c.subjectUserId,
+            hint.proposalId,
+          );
+          if (current?.state === "claimed")
+            await transitionDeviceCompletion(tx, current, {
+              ...current,
+              state: signal.aborted ? "cancelled" : "unknown",
+            });
+        });
+      } catch {
+        this.runtime.reportError(
+          "DeviceReadCompletion",
+          new Error("Completion retirement could not be confirmed"),
+          {
+            code: "DEVICE_READ_COMPLETION_RETIREMENT_UNCONFIRMED",
+            proposalId: hint.proposalId,
+          },
+        );
+      }
+      throw cause;
+    }
+  }
+  /** Host callback carries the supplied synchronous fence through the canonical
+   * same-room writer's lookup and room-lease waits, up to actual createMemory. */
+  async completeReadReply(
+    c: DeviceCredential,
+    hint: DeviceReadCompletionHint,
+    signal: AbortSignal,
+    persist: (
+      reply: NonNullable<DeviceReadCompletion["reply"]>,
+      signal: AbortSignal,
+      assertCurrent: () => void,
+    ) => Promise<void>,
+    recheck?: () => Promise<void>,
+    assertHostCurrent?: () => void,
+  ): Promise<NonNullable<DeviceReadCompletion["reply"]>> {
+    await this.readCompletionRoom(c, hint);
+    const enrollmentId = (await this.context(c)).enrollmentId;
+    await recheck?.();
+    signal.throwIfAborted();
+    let controllers = readReplyControllers.get(this.runtime);
+    if (!controllers) {
+      controllers = new Map();
+      readReplyControllers.set(this.runtime, controllers);
+    }
+    if (controllers.has(hint.proposalId))
+      throw new DeviceActionError("Original read reply is already running");
+    const owned = {
+      ownerId: c.subjectUserId,
+      installationId: c.installationId,
+      enrollmentId,
+      digest: hint.digest,
+      controller: new AbortController(),
+    };
+    controllers.set(hint.proposalId, owned);
+    const current = AbortSignal.any([signal, owned.controller.signal]);
+    try {
+      const reply = await this.prepareReadReply(
+        c,
+        hint,
+        current,
+        recheck,
+        assertHostCurrent,
+      );
+      current.throwIfAborted();
+      if (!reply)
+        throw new DeviceActionError("Original read reply unavailable");
+      await recheck?.();
+      const assertCurrent = await this.assertReadReplyCurrent(
+        c,
+        hint,
+        current,
+        assertHostCurrent,
+      );
+      assertCurrent();
+      await persist(reply, current, assertCurrent);
+      current.throwIfAborted();
+      await this.finishReadReply(c, hint, current);
+      current.throwIfAborted();
+      return reply;
+    } finally {
+      if (controllers.get(hint.proposalId) === owned)
+        controllers.delete(hint.proposalId);
+    }
+  }
+  async assertReadReplyCurrent(
+    c: DeviceCredential,
+    hint: DeviceReadCompletionHint,
+    signal: AbortSignal,
+    assertHostCurrent?: () => void,
+    states: readonly DeviceReadCompletion["state"][] = [
+      "prepared",
+      "delivered",
+    ],
+  ): Promise<() => void> {
+    const binding = await this.access(c, async (q, row, tx) => {
+      const current = await this.boundReadCompletion(
+        q,
+        row,
+        tx,
+        c,
+        hint.proposalId,
+        hint.digest,
+        hint.attemptId,
+      );
+      if (
+        !current ||
+        !states.includes(current.binding.state) ||
+        current.binding.origin.requestId !== hint.requestId ||
+        current.binding.origin.conversationId !== hint.conversationId ||
+        current.binding.origin.original.id !== hint.inReplyTo ||
+        Date.parse(current.binding.expiresAt) <= Date.now()
+      )
+        throw new DeviceActionError("Original read completion retired");
+      signal.throwIfAborted();
+      return current.binding;
+    });
+    const assertCurrent = () =>
+      assertDeviceReadCompletionCurrent(
+        this.runtime,
+        binding,
+        signal,
+        assertHostCurrent,
+      );
+    assertCurrent();
+    return assertCurrent;
+  }
+  async finishReadReply(
+    c: DeviceCredential,
+    hint: DeviceReadCompletionHint,
+    signal: AbortSignal,
+  ): Promise<void> {
+    await this.access(c, async (q, row, tx) => {
+      const current = await this.boundReadCompletion(
+        q,
+        row,
+        tx,
+        c,
+        hint.proposalId,
+        hint.digest,
+        hint.attemptId,
+      );
+      if (
+        !current ||
+        !["prepared", "delivered"].includes(current.binding.state) ||
+        Date.parse(current.binding.expiresAt) <= Date.now()
+      )
+        throw new DeviceActionError("Original read completion retired");
+      signal.throwIfAborted();
+      if (current.binding.state === "prepared")
+        await transitionDeviceCompletion(tx, current.binding, {
+          ...current.binding,
+          state: "delivered",
+        });
+    });
+  }
+  async cancelReadReply(
+    c: DeviceCredential,
+    id: string,
+    digest: string,
+  ): Promise<void> {
+    await this.access(c, async (q, row, tx) => {
+      await this.proposal(q, row, c, id, digest);
+      const current = await readDeviceCompletion(
+        tx,
+        this.runtime.agentId,
+        c.subjectUserId,
+        id,
+      );
+      if (
+        current &&
+        !["delivered", "cancelled", "unknown"].includes(current.state)
+      )
+        await transitionDeviceCompletion(tx, current, {
+          ...current,
+          state: "cancelled",
+        });
+    });
+    const owned = readReplyControllers.get(this.runtime)?.get(id);
+    if (owned?.ownerId === c.subjectUserId && owned.digest === digest)
+      owned.controller.abort(new Error("Original read completion cancelled"));
   }
   async register(
     c: DeviceCredential,
@@ -209,7 +759,7 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Unsupported workflow device protocol");
     const hash = keyHash(c.deviceKey);
-    return this.database().transaction(async (tx) => {
+    const registered = await this.database().transaction(async (tx) => {
       await executeRawSqlTx(
         tx,
         `INSERT INTO client_devices (agent_id, subject_user_id, installation_id, enrollment_id, key_hash, label) VALUES (${sqlText(this.runtime.agentId)}, ${sqlText(text(c.subjectUserId, 256))}, ${sqlText(identifier(c.installationId))}, ${sqlText(randomUUID())}, ${sqlText(hash)}, ${sqlText(text(label, 128))}) ON CONFLICT DO NOTHING`,
@@ -222,8 +772,8 @@ export class DeviceActionService {
       return {
         installationId: c.installationId,
         enrollmentId: String(row.enrollment_id),
-        viewProfileVersion: 1,
-        userTextFormatVersion: 1,
+        viewProfileVersion: 1 as const,
+        userTextFormatVersion: 1 as const,
         capabilities: [
           "calendar.local-event.v1",
           CALENDAR_CREATE_CAPABILITY,
@@ -240,6 +790,17 @@ export class DeviceActionService {
         ],
       };
     });
+    // Idempotent registration preserves the same lease. A committed replacement
+    // retires only the previous enrollment for this exact owner/installation.
+    for (const held of readReplyControllers.get(this.runtime)?.values() ?? []) {
+      if (
+        held.ownerId === c.subjectUserId &&
+        held.installationId === c.installationId &&
+        held.enrollmentId !== registered.enrollmentId
+      )
+        held.controller.abort(new Error("Original read enrollment replaced"));
+    }
+    return registered;
   }
   private async lock(
     tx: TransactionalDb,
@@ -352,12 +913,23 @@ export class DeviceActionService {
       );
   }
   async revoke(c: DeviceCredential): Promise<void> {
-    await this.access(c, async (_q, _row, tx) => {
+    const enrollmentId = await this.access(c, async (_q, row, tx) => {
       await executeRawSqlTx(
         tx,
         `UPDATE client_devices SET revoked = TRUE WHERE ${scope(c, this.runtime.agentId)}`,
       );
+      return String(row.enrollment_id);
     });
+    // Retire after the canonical change commits, including a writer currently
+    // held in its prewrite lookup. Never cancel a foreign or newer enrollment.
+    for (const held of readReplyControllers.get(this.runtime)?.values() ?? []) {
+      if (
+        held.ownerId === c.subjectUserId &&
+        held.installationId === c.installationId &&
+        held.enrollmentId === enrollmentId
+      )
+        held.controller.abort(new Error("Original read enrollment revoked"));
+    }
   }
   async propose(
     c: DeviceCredential,
@@ -545,6 +1117,11 @@ export class DeviceActionService {
         },
         tx,
       );
+      await this.bindNewReadCompletion(tx, row, c, result, {
+        operation: validated,
+        operationKey,
+        reason: text(reason, 1000),
+      });
       return result;
     });
   }

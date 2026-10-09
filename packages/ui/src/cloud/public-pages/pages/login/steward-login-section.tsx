@@ -71,6 +71,7 @@ import {
   SelectTrigger,
 } from "../../../../components/ui/select";
 import { openExternalUrl } from "../../../../utils/openExternalUrl";
+import { appModeNavigation } from "../../../app-mode/app-mode";
 import { hasHydratableStewardToken } from "../../../lib/steward-session";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
@@ -79,12 +80,16 @@ import {
 } from "../../../shell/steward-config";
 import { resolveBrowserStewardApiUrl } from "../../../shell/steward-url";
 import {
+  burnSsoBridgeCode,
   clearSsoLoggedOut,
   isSsoLoggedOut,
+  mintSsoCode,
+  parseNetworkSiteHandoff,
 } from "../../../sso-bridge/sso-bridge";
 import { getErrorMessage } from "../../lib/error-message";
 import {
   consumePendingOAuthReturnTo,
+  defaultLoginReturnTo,
   resolveLoginReturnTo,
   storePendingOAuthReturnTo,
 } from "../../lib/login-return-to";
@@ -601,14 +606,19 @@ function loadStewardProvidersWithTimeout(auth: {
   });
 }
 
-export default function StewardLoginSection() {
+export default function StewardLoginSection({
+  phoneOnly = false,
+}: {
+  phoneOnly?: boolean;
+}) {
   // Resolve the build-time test switches for each mounted section. Vite still
   // replaces these values in production builds, while tests can exercise each
   // supported configuration without invalidating React's module instance.
   const PLAYWRIGHT_TEST_AUTH_ENABLED =
-    import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
-    (typeof process !== "undefined" &&
-      process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
+    !phoneOnly &&
+    (import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
+      (typeof process !== "undefined" &&
+        process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true"));
   const LOCAL_DEDICATED_TEST_API_KEY = readLocalDedicatedTestApiKey();
   const LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED =
     PLAYWRIGHT_TEST_AUTH_ENABLED && LOCAL_DEDICATED_TEST_API_KEY !== null;
@@ -728,7 +738,9 @@ export default function StewardLoginSection() {
   // as the login flashing back to the sign-in options after a successful
   // callback. Cleared only if the exchange fails, so the error + retry surface.
   const [completingCallback, setCompletingCallback] = useState<boolean>(() =>
-    PLAYWRIGHT_TEST_AUTH_ENABLED ? false : hasStewardOAuthCallbackInUrl(),
+    phoneOnly || PLAYWRIGHT_TEST_AUTH_ENABLED
+      ? false
+      : hasStewardOAuthCallbackInUrl(),
   );
   // Capture ownership before the callback effect removes the URL fragment.
   // Neither passive recovery nor StrictMode's effect replay may replace this
@@ -786,13 +798,14 @@ export default function StewardLoginSection() {
     providers !== null &&
     providers.passkey !== false &&
     passkeyCapability?.usable === true;
-  const hasUsableNonWalletProvider =
-    providers !== null &&
-    (emailEnabled ||
-      providers.sms === true ||
-      showPasskey ||
-      hasIdentityProviders ||
-      LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED);
+  const hasUsableNonWalletProvider = phoneOnly
+    ? providers?.sms === true
+    : providers !== null &&
+      (emailEnabled ||
+        providers.sms === true ||
+        showPasskey ||
+        hasIdentityProviders ||
+        LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED);
 
   const abortSharedEmailSessionRecovery = useCallback(() => {
     const pending = sharedSessionRecoveryRef.current;
@@ -940,7 +953,7 @@ export default function StewardLoginSection() {
   }, []);
 
   useEffect(() => {
-    if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
+    if (phoneOnly || PLAYWRIGHT_TEST_AUTH_ENABLED) return;
 
     let cancelled = false;
     resolveWebPasskeyCapability().then((capability) => {
@@ -950,9 +963,14 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, [PLAYWRIGHT_TEST_AUTH_ENABLED]);
+  }, [phoneOnly, PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
+    if (phoneOnly) {
+      stripLegacyTokenParamsFromAddressBar();
+      stripLegacyTokenHashFromAddressBar();
+      return;
+    }
     if (callbackHandledRef.current) return;
     callbackHandledRef.current = true;
     const code = consumeStewardCodeFromQuery();
@@ -1027,7 +1045,7 @@ export default function StewardLoginSection() {
     stripLegacyTokenParamsFromAddressBar();
     stripLegacyTokenHashFromAddressBar();
     setCompletingCallback(false);
-  }, [searchParams, t]);
+  }, [phoneOnly, searchParams, t]);
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
@@ -1066,8 +1084,15 @@ export default function StewardLoginSection() {
   }, [navigate, pathname, searchParams, PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
-    if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
+    // The old cookie must be retired before either login mode starts a new OTP.
     if (searchParams.get("switchAccount") === "1") return;
+    if (phoneOnly) {
+      // A generic stored/cookie session is not proof of this phone. Network
+      // entry always completes the existing SMS verification and phone sync.
+      setSessionRecoveryComplete(true);
+      return;
+    }
+    if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
     if (callbackOwnsSessionRef.current || searchParams.get("code")) {
       setSessionRecoveryComplete(true);
       return;
@@ -1148,7 +1173,7 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, [searchParams, PLAYWRIGHT_TEST_AUTH_ENABLED]);
+  }, [phoneOnly, searchParams, PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
     const errorCode = searchParams.get("error");
@@ -1336,6 +1361,11 @@ export default function StewardLoginSection() {
     refreshToken?: string | null,
     options?: { verifiedPhone: string },
   ) {
+    const network = phoneOnly
+      ? parseNetworkSiteHandoff(searchParams, window.location.hostname)
+      : null;
+    if (network && !options?.verifiedPhone)
+      throw new Error("Network sign-in requires phone verification.");
     setPasskeyEmailGrant(null);
     setShowPasskeyEnrollmentRecovery(false);
     if (options) {
@@ -1347,9 +1377,43 @@ export default function StewardLoginSection() {
     // Otherwise StewardProviderRuntime can race a second unhinted sync against
     // phone-account promotion.
     await persistStewardToken(token);
+    if (network) {
+      let code: string | null = null;
+      try {
+        const minted = await mintSsoCode(
+          window.location.hostname,
+          network.challenge,
+          fetch,
+          { ...network, expectedToken: token },
+        );
+        if (!minted.ok)
+          throw new Error(
+            "Could not continue to The Network. Start again from the Network site.",
+          );
+        code = minted.code;
+        if (readStoredStewardToken() !== token)
+          throw new Error(
+            "The signed-in account changed. Start again from The Network.",
+          );
+        const callback = new URL(
+          "/api/auth/cloud/callback",
+          network.destination,
+        );
+        callback.searchParams.set("code", code);
+        callback.searchParams.set("state", network.state);
+        appModeNavigation.replace(callback.href);
+        code = null;
+        return;
+      } finally {
+        if (code)
+          burnSsoBridgeCode(code, window.location.hostname, fetch, true);
+      }
+    }
     toast.success("Signed in!");
     setRedirectTo(
-      resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
+      phoneOnly
+        ? defaultLoginReturnTo()
+        : resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
     );
     setStep("success");
   }
@@ -1635,6 +1699,14 @@ export default function StewardLoginSection() {
   }
 
   async function handleSendSms() {
+    if (loading !== null) return;
+    try {
+      if (phoneOnly)
+        parseNetworkSiteHandoff(searchParams, window.location.hostname);
+    } catch (error) {
+      setError(getErrorMessage(error, "This Network sign-in link is invalid."));
+      return;
+    }
     const normalizedPhone = normalizePhoneForCountry(phone, phoneCountry);
     if (!normalizedPhone) {
       const selectedCountry = PHONE_COUNTRY_OPTIONS.find(
@@ -1674,6 +1746,7 @@ export default function StewardLoginSection() {
   }
 
   async function handleVerifySms() {
+    if (loading !== null) return;
     const code = sanitizeOneTimeCode(smsCode);
     if (code.length !== 6) {
       setError("Enter the six-digit code from the text message.");
@@ -1933,9 +2006,13 @@ export default function StewardLoginSection() {
         <div className="flex flex-col items-center gap-4" role="status">
           <div className="size-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
           <p className="text-sm text-muted">
-            {t("cloud.login.redirecting", {
-              defaultValue: "Redirecting to Eliza...",
-            })}
+            {phoneOnly
+              ? t("cloud.login.openingAssistant", {
+                  defaultValue: "Opening your assistant…",
+                })
+              : t("cloud.login.redirecting", {
+                  defaultValue: "Redirecting to Eliza...",
+                })}
           </p>
         </div>
       </ReservedLoginFrame>
@@ -2014,9 +2091,11 @@ export default function StewardLoginSection() {
           ) : (
             <Phone className="size-4" aria-hidden="true" />
           )}{" "}
-          {t("cloud.login.smsCode.verify", {
-            defaultValue: "Verify phone",
-          })}
+          {phoneOnly
+            ? t("cloud.login.signIn", { defaultValue: "Sign in" })
+            : t("cloud.login.smsCode.verify", {
+                defaultValue: "Verify phone",
+              })}
         </Button>
 
         <div className="flex items-center justify-between text-sm">
@@ -2039,7 +2118,11 @@ export default function StewardLoginSection() {
             className="hosted-signin-focus-emphasis"
             onClick={cancelSmsLogin}
           >
-            {t("cloud.login.backToLogin", { defaultValue: "Back to login" })}
+            {phoneOnly
+              ? t("cloud.login.changePhoneNumber", {
+                  defaultValue: "Change phone number",
+                })
+              : t("cloud.login.backToLogin", { defaultValue: "Back to login" })}
           </Button>
         </div>
       </div>
@@ -2435,6 +2518,18 @@ export default function StewardLoginSection() {
   // stack's exact geometry, so the real options materialize in place with no
   // card resize (#18256) instead of replacing a short spinner block.
   if (!providersLoaded || !sessionRecoveryComplete) {
+    if (phoneOnly)
+      return (
+        <p
+          role="status"
+          aria-busy="true"
+          className="py-6 text-center text-sm text-muted"
+        >
+          {t("cloud.login.loadingPhoneSignIn", {
+            defaultValue: "Loading phone sign-in…",
+          })}
+        </p>
+      );
     return (
       <div
         role="status"
@@ -2462,6 +2557,25 @@ export default function StewardLoginSection() {
     providers === null ||
     (providerDiscoveryError !== null && !hasUsableNonWalletProvider)
   ) {
+    if (phoneOnly)
+      return (
+        <div className="space-y-4" role="alert">
+          <p className="text-sm text-muted">
+            {t("cloud.login.phoneSignInLoadError", {
+              defaultValue: "Phone sign-in couldn't load. Please try again.",
+            })}
+          </p>
+          <Button
+            type="button"
+            className="hosted-signin-focus-emphasis w-full"
+            onClick={retryProviderDiscovery}
+          >
+            {t("cloud.login.accountSwitch.retry", {
+              defaultValue: "Try again",
+            })}
+          </Button>
+        </div>
+      );
     return (
       <ReservedLoginFrame>
         <div
@@ -2506,6 +2620,150 @@ export default function StewardLoginSection() {
   const selectedPhoneCountry =
     PHONE_COUNTRY_OPTIONS.find((option) => option.code === phoneCountry) ??
     PHONE_COUNTRY_OPTIONS.find((option) => option.code === "US");
+
+  const phoneControls = providers.sms ? (
+    <>
+      <div className="space-y-2">
+        <label
+          htmlFor="steward-login-phone"
+          className="block text-center text-sm font-medium text-txt"
+        >
+          {t("cloud.login.phoneLabel", { defaultValue: "Phone number" })}
+        </label>
+        <div className="flex w-full min-h-touch overflow-hidden rounded-md border border-input bg-bg-elevated transition-colors hover:border-border-strong">
+          <Select
+            name="phone-country"
+            value={phoneCountry}
+            onValueChange={(value) => setPhoneCountry(value as CountryCode)}
+            disabled={isLoading}
+          >
+            <SelectTrigger
+              aria-label={t("cloud.login.phoneCountryLabel", {
+                defaultValue: "Country calling code",
+              })}
+              className="hosted-signin-focus-emphasis h-auto min-h-touch w-24 shrink-0 rounded-none border-0 border-r border-input bg-bg-elevated px-3 text-sm font-medium text-txt outline-none disabled:opacity-50"
+            >
+              <span className="truncate">
+                {selectedPhoneCountry?.code ?? phoneCountry} +
+                {selectedPhoneCountry?.dialCode ?? "1"}
+              </span>
+            </SelectTrigger>
+            <SelectContent
+              position="popper"
+              align="start"
+              collisionPadding={16}
+              className="!max-h-72 !w-[min(20rem,calc(100vw-2rem))] border-border-strong bg-card text-txt [&_[data-radix-select-viewport]]:!w-full [&_[data-radix-select-viewport]]:!max-w-none [&_[data-radix-select-viewport]]:overscroll-contain"
+            >
+              {PHONE_COUNTRY_OPTIONS.map((option) => (
+                <SelectItem
+                  key={option.code}
+                  value={option.code}
+                  className="cursor-pointer data-[highlighted]:bg-bg-hover data-[highlighted]:text-txt-strong"
+                >
+                  {option.code} +{option.dialCode} — {option.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            variant="embeddedSearch"
+            density="relaxed"
+            ref={phoneInputRef}
+            id="steward-login-phone"
+            aria-invalid={fieldError?.field === "phone" || undefined}
+            aria-describedby={
+              fieldError?.field === "phone"
+                ? "steward-login-phone-error"
+                : undefined
+            }
+            type="tel"
+            name="phone"
+            inputMode="tel"
+            autoComplete="tel-national"
+            placeholder={t("cloud.login.phonePlaceholder", {
+              defaultValue: "Phone number",
+            })}
+            value={phone}
+            onChange={(event) => {
+              setPhone(event.target.value);
+              if (fieldError?.field === "phone") setFieldError(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") handleSendSms();
+            }}
+            disabled={isLoading}
+            className="hosted-signin-focus-emphasis flex-1"
+          />
+        </div>
+        {fieldError?.field === "phone" ? (
+          <p
+            id="steward-login-phone-error"
+            role="alert"
+            className="text-center text-sm text-destructive"
+          >
+            {fieldError.message}
+          </p>
+        ) : null}
+      </div>
+      <Button
+        variant="default"
+        type="button"
+        onClick={handleSendSms}
+        disabled={isLoading}
+        className="hosted-signin-focus-emphasis w-full"
+      >
+        {loading === "sms" ? (
+          <Spinner />
+        ) : (
+          <Phone className="size-4" aria-hidden="true" />
+        )}{" "}
+        {t("cloud.login.button.sms", { defaultValue: "Text me a code" })}
+      </Button>
+      {!phoneOnly && (
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-border" />
+          <span aria-hidden="true" className="text-xs text-muted">
+            {t("cloud.login.orContinueWith", {
+              defaultValue: "or continue with",
+            })}
+          </span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+      )}
+    </>
+  ) : null;
+
+  if (phoneOnly)
+    return (
+      <div className="space-y-5">
+        {!providers.sms ? (
+          <div className="space-y-4" role="alert">
+            <p className="text-sm text-muted">
+              {t("cloud.login.phoneSignInUnavailable", {
+                defaultValue:
+                  "Phone sign-in is unavailable right now. Please try again.",
+              })}
+            </p>
+            <Button
+              type="button"
+              className="hosted-signin-focus-emphasis w-full"
+              onClick={retryProviderDiscovery}
+            >
+              {t("cloud.login.accountSwitch.retry", {
+                defaultValue: "Try again",
+              })}
+            </Button>
+          </div>
+        ) : (
+          phoneControls
+        )}
+        {error && (
+          <p className="text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    );
 
   return (
     <div className="space-y-4">
@@ -2560,115 +2818,7 @@ export default function StewardLoginSection() {
         </div>
       )}
 
-      {providers.sms && (
-        <>
-          <div className="space-y-2">
-            <label
-              htmlFor="steward-login-phone"
-              className="block text-center text-sm font-medium text-txt"
-            >
-              {t("cloud.login.phoneLabel", { defaultValue: "Phone number" })}
-            </label>
-            <div className="flex w-full min-h-touch overflow-hidden rounded-md border border-input bg-bg-elevated transition-colors hover:border-border-strong">
-              <Select
-                name="phone-country"
-                value={phoneCountry}
-                onValueChange={(value) => setPhoneCountry(value as CountryCode)}
-                disabled={isLoading}
-              >
-                <SelectTrigger
-                  aria-label={t("cloud.login.phoneCountryLabel", {
-                    defaultValue: "Country calling code",
-                  })}
-                  className="hosted-signin-focus-emphasis h-auto min-h-touch w-24 shrink-0 rounded-none border-0 border-r border-input bg-bg-elevated px-3 text-sm font-medium text-txt outline-none disabled:opacity-50"
-                >
-                  <span className="truncate">
-                    {selectedPhoneCountry?.code ?? phoneCountry} +
-                    {selectedPhoneCountry?.dialCode ?? "1"}
-                  </span>
-                </SelectTrigger>
-                <SelectContent
-                  position="popper"
-                  align="start"
-                  collisionPadding={16}
-                  className="!max-h-72 !w-[min(20rem,calc(100vw-2rem))] border-border-strong bg-card text-txt [&_[data-radix-select-viewport]]:!w-full [&_[data-radix-select-viewport]]:!max-w-none [&_[data-radix-select-viewport]]:overscroll-contain"
-                >
-                  {PHONE_COUNTRY_OPTIONS.map((option) => (
-                    <SelectItem
-                      key={option.code}
-                      value={option.code}
-                      className="cursor-pointer data-[highlighted]:bg-bg-hover data-[highlighted]:text-txt-strong"
-                    >
-                      {option.code} +{option.dialCode} — {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                variant="embeddedSearch"
-                density="relaxed"
-                ref={phoneInputRef}
-                id="steward-login-phone"
-                aria-invalid={fieldError?.field === "phone" || undefined}
-                aria-describedby={
-                  fieldError?.field === "phone"
-                    ? "steward-login-phone-error"
-                    : undefined
-                }
-                type="tel"
-                name="phone"
-                inputMode="tel"
-                autoComplete="tel-national"
-                placeholder={t("cloud.login.phonePlaceholder", {
-                  defaultValue: "Phone number",
-                })}
-                value={phone}
-                onChange={(event) => {
-                  setPhone(event.target.value);
-                  if (fieldError?.field === "phone") setFieldError(null);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") handleSendSms();
-                }}
-                disabled={isLoading}
-                className="hosted-signin-focus-emphasis flex-1"
-              />
-            </div>
-            {fieldError?.field === "phone" ? (
-              <p
-                id="steward-login-phone-error"
-                role="alert"
-                className="text-center text-sm text-destructive"
-              >
-                {fieldError.message}
-              </p>
-            ) : null}
-          </div>
-          <Button
-            variant="default"
-            type="button"
-            onClick={handleSendSms}
-            disabled={isLoading}
-            className="hosted-signin-focus-emphasis w-full"
-          >
-            {loading === "sms" ? (
-              <Spinner />
-            ) : (
-              <Phone className="size-4" aria-hidden="true" />
-            )}{" "}
-            {t("cloud.login.button.sms", { defaultValue: "Text me a code" })}
-          </Button>
-          <div className="flex items-center gap-3">
-            <div className="h-px flex-1 bg-border" />
-            <span aria-hidden="true" className="text-xs text-muted">
-              {t("cloud.login.orContinueWith", {
-                defaultValue: "or continue with",
-              })}
-            </span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-        </>
-      )}
+      {phoneControls}
 
       <div className="space-y-2">
         <label

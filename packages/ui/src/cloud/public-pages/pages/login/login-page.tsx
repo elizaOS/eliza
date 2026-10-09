@@ -44,7 +44,13 @@ function StewardLoginSectionFallback() {
   );
 }
 
-function LoginBackground({ children }: { children: React.ReactNode }) {
+export function LoginBackground({
+  children,
+  plain = false,
+}: {
+  children: React.ReactNode;
+  plain?: boolean;
+}) {
   return (
     <div className="theme-cloud relative isolate h-[100dvh] min-h-0 overflow-hidden bg-bg text-txt">
       {/* SAFE-AREA FILL (installed iOS PWA): the `bg-bg` fill is a `fixed
@@ -79,7 +85,13 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
             1080×1240) where the OAuth / wallet rows fell below an unscrollable
             fold — see login-page.safe-area.test.tsx. */}
         <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto">
-          <div className="my-auto w-full max-w-lg shrink-0 rounded-2xl border border-border bg-card p-6 text-txt shadow-[0_32px_96px_-40px_rgba(16,10,5,0.58)] sm:p-8 motion-safe:animate-[shell-overlay-in_320ms_cubic-bezier(0.16,1,0.3,1)]">
+          <div
+            className={
+              plain
+                ? "my-auto w-full max-w-sm shrink-0 py-8 text-txt"
+                : "my-auto w-full max-w-lg shrink-0 rounded-2xl border border-border bg-card p-6 text-txt shadow-[0_32px_96px_-40px_rgba(16,10,5,0.58)] sm:p-8 motion-safe:animate-[shell-overlay-in_320ms_cubic-bezier(0.16,1,0.3,1)]"
+            }
+          >
             {children}
           </div>
         </div>

@@ -1116,10 +1116,9 @@ function buildNativeRequestBody(
   const userReasoningEffort = resolveUserReasoningEffort(runtime, modelName);
   if (userReasoningEffort) {
     requestBody.reasoning_effort = userReasoningEffort;
-  } else if (normalizeCerebrasModelId(modelName) === "qwen-3.8-27b") {
-    // Qwen defaults to high reasoning upstream; interactive Cloud calls use
-    // the same non-reasoning default as direct Cerebras calls unless pinned.
-    requestBody.reasoning_effort = "none";
+  } else if (resolveCerebrasThinkingOffReasoningEffort(modelName) !== undefined) {
+    // Use the highest supported Cerebras effort unless the caller selects one.
+    requestBody.reasoning_effort = "high";
   }
   // The runtime signals "don't reason" via providerOptions.eliza.thinking="off"
   // (e.g. the Stage-1 RESPONSE_HANDLER formatting call), but

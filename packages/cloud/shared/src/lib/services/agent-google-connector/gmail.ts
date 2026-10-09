@@ -414,6 +414,7 @@ async function fetchManagedGoogleGmailMessages(args: {
   userId: string;
   side: OAuthConnectionRole;
   grantId?: string;
+  personalContextRead?: true;
   maxResults: number;
   selfEmail: string | null;
   query?: string;
@@ -442,6 +443,7 @@ async function fetchManagedGoogleGmailMessages(args: {
     userId: args.userId,
     side: args.side,
     grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
     url: `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}?${listParams.toString()}`,
   });
   const listed = (await listResponse.json()) as GoogleGmailListResponse;
@@ -472,6 +474,7 @@ async function fetchManagedGoogleGmailMessages(args: {
         userId: args.userId,
         side: args.side,
         grantId: args.grantId,
+        personalContextRead: args.personalContextRead,
         url: `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(messageId)}?${params.toString()}`,
       });
       const parsed = (await response.json()) as GoogleGmailMetadataResponse;
@@ -533,6 +536,7 @@ export async function fetchManagedGoogleGmailSearch(args: {
   userId: string;
   side: OAuthConnectionRole;
   grantId?: string;
+  personalContextRead?: true;
   query: string;
   maxResults: number;
   pageToken?: string;
@@ -548,6 +552,7 @@ export async function fetchManagedGoogleGmailSearch(args: {
     userId: args.userId,
     side: args.side,
     grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
   });
   if (!hasGmailBodyReadScope(connectorStatus.grantedScopes)) {
     fail(
@@ -566,6 +571,7 @@ export async function fetchManagedGoogleGmailSearch(args: {
       userId: args.userId,
       side: args.side,
       grantId: args.grantId,
+      personalContextRead: args.personalContextRead,
       maxResults,
       selfEmail,
       query,
@@ -651,6 +657,7 @@ export async function readManagedGoogleGmailMessage(args: {
   userId: string;
   side: OAuthConnectionRole;
   grantId?: string;
+  personalContextRead?: true;
   messageId: string;
 }): Promise<ManagedGoogleGmailReadResult> {
   const connectorStatus = await getManagedGoogleConnectorStatus({
@@ -658,6 +665,7 @@ export async function readManagedGoogleGmailMessage(args: {
     userId: args.userId,
     side: args.side,
     grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
   });
   if (!hasGmailBodyReadScope(connectorStatus.grantedScopes)) {
     fail(
@@ -674,6 +682,7 @@ export async function readManagedGoogleGmailMessage(args: {
     userId: args.userId,
     side: args.side,
     grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
     url: `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(args.messageId)}?format=full`,
     maxResponseBytes: Math.ceil(MAX_GMAIL_ATTACHMENT_BYTES / 3) * 4 + 65536,
   });

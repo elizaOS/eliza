@@ -3,6 +3,10 @@
  * for amplitude visualization, and stops/cancels the audio context cleanly.
  */
 import { encodeMonoPcm16Wav } from "./pcm-wave";
+import {
+  createVoiceActivityDetector,
+  DEFAULT_VOICE_ACTIVITY,
+} from "./voice-activity";
 
 export { encodeMonoPcm16Wav } from "./pcm-wave";
 
@@ -276,91 +280,33 @@ export function isSilentPcmAudio(pcm: Float32Array): boolean {
  * barge-in) still clears the raised bar. 4x lifts the default RMS gate from
  * 0.003 to 0.012 and the peak gate from 0.012 to 0.048.
  */
-export const POST_TTS_ECHO_THRESHOLD_MULTIPLIER = 4;
+export { POST_TTS_ECHO_THRESHOLD_MULTIPLIER } from "./voice-activity";
+
 const AUTO_STOP_PRE_ROLL_MS = 200;
-
-export const DEFAULT_LOCAL_ASR_AUTO_STOP: LocalAsrAutoStopConfig = {
-  startGraceMs: 250,
-  minSpeechMs: 180,
-  // Trailing-silence window that ends a hands-free turn (#voice-V6). 900 → 650:
-  // still shaves ~250ms off every turn's speech-end → capture-stop leg, but keeps
-  // headroom for natural inter-clause pauses (per review on #15267: 550 risks
-  // clipping slow/deliberate speakers, and mid-sentence pauses routinely exceed
-  // 550ms). The user override still wins: `loadVadAutoStop()` reads a persisted
-  // `silenceMs` first and only falls back to this default. On-device tuning can
-  // move this again once false-cutoff behavior is verified on the installed PWA.
-  silenceMs: 650,
-  maxSpeechMs: 12_000,
-  speechRmsThreshold: 0.003,
-  speechPeakThreshold: 0.012,
-};
-
+export const DEFAULT_LOCAL_ASR_AUTO_STOP = DEFAULT_VOICE_ACTIVITY;
 export function createLocalAsrAutoStopDetector(
   options: LocalAsrAutoStopOptions | undefined,
   startedAtMs = nowMs(),
 ):
   | ((pcm: Float32Array, sampleTimeMs?: number) => LocalAsrAutoStopUpdate)
   | null {
-  if (!options) return null;
-
-  const config: LocalAsrAutoStopConfig = {
-    ...DEFAULT_LOCAL_ASR_AUTO_STOP,
-    ...options,
-  };
-  const cooldownMs = options.postTtsCooldownMs ?? DEFAULT_POST_TTS_COOLDOWN_MS;
-  const echoGateActive =
-    options.isTtsEchoGateActive ??
-    ((atMs: number) => sharedTtsEchoGateActive(atMs, cooldownMs));
-  let firstSpeechAtMs: number | null = null;
-  let lastSpeechAtMs: number | null = null;
-  let stopped = false;
-
-  return (pcm: Float32Array, sampleTimeMs = nowMs()) => {
-    if (stopped) return { shouldBuffer: false, shouldStop: false };
-
-    const elapsedMs = Math.max(0, sampleTimeMs - startedAtMs);
-    if (elapsedMs < config.startGraceMs) {
-      return { shouldBuffer: false, shouldStop: false };
-    }
-
-    const stats = measurePcmAudio(pcm);
-    // Echo gate (#12256 layer 1): while the agent's TTS is playing (and for a
-    // short cooldown after), demand louder speech before treating the frame as
-    // a turn — the agent's own tail must not self-trigger an ASR submission,
-    // but a loud, close interjection (real barge-in) still clears the bar.
-    const gateMultiplier = echoGateActive(sampleTimeMs)
-      ? POST_TTS_ECHO_THRESHOLD_MULTIPLIER
-      : 1;
-    const speechDetected =
-      stats.rms >= config.speechRmsThreshold * gateMultiplier ||
-      stats.peak >= config.speechPeakThreshold * gateMultiplier;
-
-    if (speechDetected) {
-      if (firstSpeechAtMs === null) firstSpeechAtMs = sampleTimeMs;
-      lastSpeechAtMs = sampleTimeMs;
-      if (sampleTimeMs - firstSpeechAtMs >= config.maxSpeechMs) {
-        stopped = true;
-        return { shouldBuffer: true, shouldStop: true };
-      }
-      return { shouldBuffer: true, shouldStop: false };
-    }
-
-    if (firstSpeechAtMs === null || lastSpeechAtMs === null) {
-      return { shouldBuffer: false, shouldStop: false };
-    }
-
-    const speechDurationMs = lastSpeechAtMs - firstSpeechAtMs;
-    const silenceDurationMs = sampleTimeMs - lastSpeechAtMs;
-    if (
-      speechDurationMs >= config.minSpeechMs &&
-      silenceDurationMs >= config.silenceMs
-    ) {
-      stopped = true;
-      return { shouldBuffer: false, shouldStop: true };
-    }
-
-    return { shouldBuffer: true, shouldStop: false };
-  };
+  const detector = createVoiceActivityDetector(
+    options
+      ? {
+          ...options,
+          isTtsEchoGateActive:
+            options.isTtsEchoGateActive ??
+            ((at) =>
+              sharedTtsEchoGateActive(
+                at,
+                options.postTtsCooldownMs ?? DEFAULT_POST_TTS_COOLDOWN_MS,
+              )),
+        }
+      : undefined,
+    startedAtMs,
+    nowMs,
+  );
+  return detector ? (pcm, at) => detector(measurePcmAudio(pcm), at) : null;
 }
 
 /**

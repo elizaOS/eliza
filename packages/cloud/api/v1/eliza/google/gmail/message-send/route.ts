@@ -4,7 +4,10 @@
  * Sends a new Gmail message via the managed Google connector.
  */
 
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
@@ -42,6 +45,7 @@ app.post("/", async (c) => {
       );
     }
 
+    if (parsed.data.side !== "agent") await requirePrivateOwnerAccess(c, user);
     await sendManagedGoogleMessage({
       organizationId: user.organization_id,
       userId: user.id,

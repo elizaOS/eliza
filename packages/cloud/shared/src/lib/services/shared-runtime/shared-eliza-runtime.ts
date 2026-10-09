@@ -1,3 +1,8 @@
+import {
+  createSharedGoogleContextPlugin,
+  GOOGLE_CONTEXT_ACTION,
+  isSharedGoogleContextRequest,
+} from "./shared-google-context-plugin";
 /**
  * Runs one Shared turn through the genuine Eliza message pipeline in Workerd.
  * Durable Object history remains authoritative; each turn projects that history
@@ -40,6 +45,7 @@ import {
 } from "@elizaos/core";
 import type { AgentCapabilityTransport } from "@elizaos/core/protocol";
 import { createAssistantPlugin, generateMediaAction } from "@elizaos/plugin-assistant";
+import { createNetworkEdgePlugin, NETWORK_ACTION_FIELD } from "@elizaos/plugin-network";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos";
@@ -72,7 +78,11 @@ import type {
   SharedReminderOperation,
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
-import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
+import {
+  appendSharedInput,
+  appendSharedTurn,
+  NETWORK_DEFAULT_ROUTING,
+} from "./run-shared-agent-turn";
 import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
 import { resolveSharedCapabilityIntent } from "./shared-capability-wall";
 import type { OwnerModelCapture } from "./shared-owner-model-capture";
@@ -80,6 +90,7 @@ import { observeOwnerCapture } from "./shared-owner-model-capture";
 import { resolveSharedParticipantName } from "./shared-participant-name";
 import {
   createMatchingRealtimeSearchRunner,
+  finalizeSharedRealtimeReply,
   normalizedRealtimeQuery,
   requireTraceableRealtimeSearch,
   resolveSharedPublicSearchIntent,
@@ -299,12 +310,15 @@ function createRuntime(options: {
   mediaPlugin?: Plugin;
   reminderPlugin?: Plugin;
   todoPlugin?: Plugin;
+  googlePlugin?: Plugin;
+  networkPlugin?: Plugin;
 }): AgentRuntime {
   const capabilityPlugin = createSharedRuntimeCapabilitiesPlugin({
     agentId: options.agentKey,
     webSearch: options.webSearchEnabled,
     reminders: options.actionsEnabled && Boolean(options.reminderPlugin),
     todos: options.actionsEnabled && Boolean(options.todoPlugin),
+    googleContext: options.actionsEnabled && Boolean(options.googlePlugin),
     media: options.actionsEnabled && Boolean(options.mediaPlugin),
     transport: options.transport,
   });
@@ -340,6 +354,10 @@ function createRuntime(options: {
       ...(options.actionsEnabled && options.mediaPlugin ? [options.mediaPlugin] : []),
       ...(options.actionsEnabled && options.reminderPlugin ? [options.reminderPlugin] : []),
       ...(options.actionsEnabled && options.todoPlugin ? [options.todoPlugin] : []),
+      ...(options.actionsEnabled && options.googlePlugin ? [options.googlePlugin] : []),
+      // SPIKE (The Network): host-injected store + member authority. Providers
+      // and evaluators stay on lifecycle turns; actions only when enabled.
+      ...(options.networkPlugin ? [options.networkPlugin] : []),
     ],
     logLevel: "error",
   });
@@ -1034,7 +1052,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const modelPlugin = sharedModelPlugin(modelHandler, Boolean(input.ownerCapture));
   const actionsEnabled = input.messageRole !== "system";
   const realtimeRequirement =
-    actionsEnabled && input.capabilityText
+    actionsEnabled && input.capabilityText && !isSharedGoogleContextRequest(input.capabilityText)
       ? resolveSharedRealtimeRequirement(input.capabilityText, input.history)
       : undefined;
   const privateCapabilityIntent =
@@ -1042,13 +1060,24 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     resolveSharedCapabilityIntent(input.capabilityText, {
       reminders: Boolean(input.execution?.reminders),
       todos: Boolean(input.execution?.todos),
+      googleContext: Boolean(input.execution?.google),
     });
   const publicSearchIntent = realtimeRequirement
     ? { kind: "prefetched" as const, requirement: realtimeRequirement }
-    : actionsEnabled && input.capabilityText && !privateCapabilityIntent
+    : actionsEnabled &&
+        input.capabilityText &&
+        !isSharedGoogleContextRequest(input.capabilityText) &&
+        !privateCapabilityIntent
       ? resolveSharedPublicSearchIntent(input.capabilityText, input.history)
       : undefined;
-  const webSearchEnabled = Boolean(publicSearchIntent);
+  const preflightWebSearchResult = input.preflightActionResults?.find(
+    (result) => result.data?.actionName === "WEB_SEARCH",
+  );
+  // Recognized current-data turns require the server's preflight receipt.
+  // Missing receipts must not fall back to an unbound public network action.
+  const webSearchEnabled = Boolean(
+    publicSearchIntent && (publicSearchIntent.kind === "general" || preflightWebSearchResult),
+  );
   const reminderPlugin =
     actionsEnabled && input.execution?.reminders
       ? createSharedRemindersEdgePlugin({
@@ -1069,15 +1098,20 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       : undefined;
   const mediaPlugin =
     actionsEnabled && input.execution?.media ? sharedMediaPlugin(input.execution.media) : undefined;
+  const networkPlugin = input.execution?.network
+    ? createNetworkEdgePlugin({
+        store: input.execution.network.store,
+        authority: { memberId: input.execution.network.memberId },
+        routing: input.execution.network.routing ?? NETWORK_DEFAULT_ROUTING,
+        actionsEnabled,
+      })
+    : undefined;
   const userEntityId =
     input.execution?.todos?.scope.entityId ?? stringToUuid(`${input.agentKey}:owner`);
   const lifecycleEntityId = stringToUuid(`${input.agentKey}:system-lifecycle`);
   const incomingEntityId = actionsEnabled ? userEntityId : lifecycleEntityId;
   const authenticatedPersonalSharedUser =
     actionsEnabled && input.execution?.authenticatedPersonalSharedUser === true;
-  const preflightWebSearchResult = input.preflightActionResults?.find(
-    (result) => result.data?.actionName === "WEB_SEARCH",
-  );
   const webSearchPlugin = preflightWebSearchResult
     ? createWebSearchEdgePlugin(createMatchingRealtimeSearchRunner(preflightWebSearchResult))
     : publicSearchIntent?.kind === "general"
@@ -1092,12 +1126,19 @@ async function executeMeasuredSharedElizaRuntimeTurn(
               data: { actionName: "WEB_SEARCH" },
             };
           }
-          const result = await runWebSearchEdge(query, options);
-          const traceable = requireTraceableRealtimeSearch(result, query);
+          // Core/SDK capture retains the model's attempted arguments. The
+          // provider dispatch and result.data.query use only server-owned bytes;
+          // equivalent model casing/spacing is not an outbound data channel.
+          const result = await runWebSearchEdge(publicSearchIntent.topic, options);
+          const traceable = requireTraceableRealtimeSearch(result, publicSearchIntent.topic);
           return traceable.success === true
             ? { ...traceable, modelReplyRequired: true }
             : traceable;
         })
+      : undefined;
+  const googlePlugin =
+    actionsEnabled && input.execution?.google && !publicSearchIntent
+      ? createSharedGoogleContextPlugin(input.execution.google)
       : undefined;
   if (webSearchPlugin && publicSearchIntent?.kind === "general") {
     webSearchPlugin.responseHandlerEvaluators = [
@@ -1105,10 +1146,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         name: "shared.explicit_public_search",
         priority: 999,
         deterministicActions: ["WEB_SEARCH"],
-        shouldRun: ({ messageHandler }) =>
-          messageHandler.processMessage === "RESPOND" && !messageHandler.plan.deterministicToolCall,
+        shouldRun: ({ messageHandler }) => messageHandler.processMessage === "RESPOND",
         evaluate: () => ({
           requiresTool: true,
+          setContexts: ["general"],
+          clearCandidateActions: true,
           addCandidateActions: ["WEB_SEARCH"],
           clearReply: true,
           deterministicToolCall: {
@@ -1154,6 +1196,8 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     mediaPlugin,
     reminderPlugin,
     todoPlugin,
+    googlePlugin,
+    networkPlugin,
   });
   exposeRuntime(runtime);
   if (input.ownerCapture) {
@@ -1234,8 +1278,41 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ) {
         throw new Error("Eliza Shared runtime initialized without its REMINDERS action");
       }
+      if (
+        googlePlugin &&
+        !runtime.actions.some((action) => action.name === GOOGLE_CONTEXT_ACTION)
+      ) {
+        throw new Error("Eliza Shared runtime initialized without its owner Google action");
+      }
+      if (
+        publicSearchIntent &&
+        runtime.actions.some((action) => action.name === GOOGLE_CONTEXT_ACTION)
+      ) {
+        throw new ElizaError(
+          "Eliza Shared public-search runtime must not register private Google actions",
+          { code: "SHARED_PUBLIC_SEARCH_PRIVATE_ACTION" },
+        );
+      }
       if (input.execution?.todos && !runtime.actions.some((action) => action.name === "TODO")) {
         throw new Error("Eliza Shared runtime initialized without its TODO action");
+      }
+      // Planner routing executes availability changes through the SET_STATE
+      // action; structured routing (the default) only through the authorized
+      // networkAction field evaluator, and deliberately registers no SET_STATE
+      // action (a planner SET_STATE there would bypass its authz).
+      if (input.execution?.network) {
+        const structured =
+          (input.execution.network.routing ?? NETWORK_DEFAULT_ROUTING) === "structured";
+        const ready = structured
+          ? runtime.responseHandlerFieldEvaluators.some(
+              (evaluator) => evaluator.name === NETWORK_ACTION_FIELD,
+            )
+          : runtime.actions.some((action) => action.name === "SET_STATE");
+        if (!ready) {
+          throw new Error(
+            `Eliza Shared runtime initialized without its Network ${structured ? "networkAction field evaluator" : "SET_STATE action"}`,
+          );
+        }
       }
       if (
         input.execution?.media &&
@@ -1243,6 +1320,35 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ) {
         throw new Error("Eliza Shared runtime initialized without its GENERATE_MEDIA action");
       }
+    }
+    if (
+      publicSearchIntent?.kind === "prefetched" &&
+      !preflightWebSearchResult &&
+      !privateCapabilityIntent
+    ) {
+      // A missing server receipt is not permission to search from private history
+      // or read Google instead. No model/public/private provider has dispatched.
+      const reply = finalizeSharedRealtimeReply("", undefined);
+      return {
+        reply,
+        responded: true,
+        history: appendSharedTurn(
+          input.history,
+          input.message.trim(),
+          reply,
+          input.messageIds,
+          input.messageRole,
+        ),
+        model: input.model,
+        degraded: false,
+        usage: {
+          promptTokens: 0,
+          completionTokens: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+        },
+      };
     }
     const roomId = sharedRuntimeConversationRoomId(trustedRoomKey);
     const participantName =

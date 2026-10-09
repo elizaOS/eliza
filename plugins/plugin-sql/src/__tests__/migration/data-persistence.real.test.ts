@@ -40,6 +40,39 @@ describe("Data Persistence Through Migrations", () => {
     await pgClient.close();
   });
 
+  it("preserves quoted text and JSON array defaults through migration and restart", async () => {
+    const values = [
+      "plain",
+      'say "hello"',
+      "C:\\agents\\data",
+      "O'Brien",
+      "",
+      "NULL",
+      "comma,value",
+    ];
+    const objects = [{ path: "C:\\agents\\data", quote: 'say "hello"', owner: "O'Brien" }];
+    const defaults = pgTable("array_defaults", {
+      id: serial("id").primaryKey(),
+      labels: text("labels").array().default(values),
+      payloads: jsonb("payloads").array().default(objects),
+    });
+    await migrator.migrate("@elizaos/plugin-sql", { defaults });
+    await pgClient.exec("INSERT INTO array_defaults DEFAULT VALUES");
+    expect((await pgClient.query("SELECT labels, payloads FROM array_defaults")).rows).toEqual([
+      { labels: values, payloads: objects },
+    ]);
+    const restarted = new RuntimeMigrator(db);
+    await restarted.initialize();
+    await restarted.migrate("@elizaos/plugin-sql", { defaults });
+    await pgClient.exec("INSERT INTO array_defaults DEFAULT VALUES");
+    expect(
+      (await pgClient.query("SELECT labels, payloads FROM array_defaults ORDER BY id")).rows
+    ).toEqual([
+      { labels: values, payloads: objects },
+      { labels: values, payloads: objects },
+    ]);
+  });
+
   describe("Critical Data Persistence Scenarios", () => {
     it("should preserve ALL data through column additions", async () => {
       await db.execute(sql`

@@ -11,7 +11,10 @@
  * can share it without resorting to fake `params: Promise<...>` shapes.
  */
 
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import {
   failureResponse,
   ApiError as WorkerApiError,
@@ -144,6 +147,9 @@ export async function handleGenericOAuthInitiate(
         400,
       );
     }
+
+    if (provider.id === "google" && connectionRole !== "agent")
+      await requirePrivateOwnerAccess(c, user);
 
     logger.info(`[OAuth ${platform}] Initiating auth`, {
       organizationId,

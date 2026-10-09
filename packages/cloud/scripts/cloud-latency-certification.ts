@@ -78,7 +78,7 @@ export function parseCertificationArgs(argv) {
       "deploy-sha": { type: "string" },
       "output-dir": { type: "string" },
       "acknowledged-contract-digest": { type: "string", default: "" },
-      "probe-case": { type: "string", default: "qwen-3.8-27b@none@512" },
+      "probe-case": { type: "string", default: "qwen-3.8-27b@high@max" },
       auth: { type: "boolean", default: false },
       suspended: { type: "boolean", default: false },
     },
@@ -531,7 +531,7 @@ async function runPaired({
   placementPolicy,
   outputDir,
   env,
-  probeCase = "qwen-3.8-27b@none@512",
+  probeCase = "qwen-3.8-27b@high@max",
 }) {
   requirePairedSecrets(env);
   const outputPath = join(outputDir, "paired.jsonl");

@@ -2,7 +2,7 @@
  * Keyless OWNER_GOALS e2e (#8801, gap 5 — per-plugin harness adoption).
  *
  * Drives the goals plugin's primary action (`OWNER_GOALS`) end-to-end through
- * the deterministic deterministic model provider with `createTestRuntimeWithModelProvider()` and NO API keys. The
+ * the deterministic model provider with `createTestRuntimeWithModelProvider()` and NO API keys. The
  * action resolves its subaction + params via `resolveActionArgs`, which makes a
  * single `TEXT_LARGE` extraction call answered here by a declared fixture (the
  * JSON envelope `{action, params, missing, confidence}`). The handler's

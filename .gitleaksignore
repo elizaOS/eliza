@@ -650,3 +650,6 @@ dfc0e413cecb2c8ee6d43ec0bffbb71bdfcecba8:packages/testing/package.json:generic-a
 # Quoted empty assignments triggered the same variable-name false positives.
 659da6db1a80d06efd9e10f0a8ad90317d2a6221:packages/testing/package.json:generic-api-key:52
 659da6db1a80d06efd9e10f0a8ad90317d2a6221:packages/testing/package.json:generic-api-key:53
+
+# Synthetic signed-route test SECRET; only this historical finding is excluded.
+e4f98fb91068c971a16a71f38697518bd5bd7c5f:packages/cloud/api/internal/network/deliver/route.test.ts:generic-api-key:10

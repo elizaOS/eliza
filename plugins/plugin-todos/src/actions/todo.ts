@@ -230,6 +230,7 @@ function parseTodoList(
 }
 
 interface ScopeContext {
+  messageId: string | null;
   entityId: string;
   agentId: string;
   roomId: string | null;
@@ -253,6 +254,7 @@ function readScope(
     runtime.getSetting(PARENT_TRAJECTORY_STEP_ENV_KEY),
   );
   return {
+    messageId: readString(message.id) ?? null,
     entityId,
     agentId,
     roomId: readString(message.roomId) ?? null,
@@ -777,16 +779,49 @@ async function actionList({
   };
   if (hasLimit) filter.limit = rawLimit as number;
   const todos = await service.list(filter);
-  const text = renderMarkdown(todos);
+  const observedAgentId = validateUuid(scope.agentId);
+  const observedEntityId = validateUuid(scope.entityId);
+  const observedMessageId = validateUuid(scope.messageId);
+  const text =
+    todos.length === 0
+      ? includeCompleted
+        ? "You have no todos."
+        : "You have no active todos."
+      : renderMarkdown(todos);
   return {
     success: true,
     text,
     modelReplyRequired: true,
+    // Reuse the successful scoped list; no extra snapshot query or fake revision.
+    ...(todos.length === 0 &&
+    observedAgentId &&
+    observedEntityId &&
+    observedMessageId
+      ? {
+          // Sanction this domain-owned read projection; diagnostic text alone
+          // must not be echoed through the planner's raw-tool-output boundary.
+          userFacingText: text,
+          emptyTrackedState: {
+            resource: "todos" as const,
+            scope: includeCompleted
+              ? ("entire_current_inventory" as const)
+              : ("active_current_inventory" as const),
+            count: 0 as const,
+            agentId: observedAgentId,
+            entityId: observedEntityId,
+            messageId: observedMessageId,
+            observedAt: new Date().toISOString(),
+          },
+        }
+      : {}),
     data: {
       actionName: "TODO",
       action: "list" as const,
       op: "list" as const,
+      readOnlyOperation: true,
+      agentId: scope.agentId,
       entityId: scope.entityId,
+      includeCompleted,
       todos,
     },
   };
@@ -886,6 +921,8 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
     contextGate: { anyOf: [...TODOS_CONTEXTS] },
     tags: [
       "domain:todos",
+      "resource:tracked-work",
+      "resource:todos",
       "capability:read",
       "capability:write",
       "capability:update",

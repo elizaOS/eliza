@@ -415,8 +415,9 @@ function importOptionalPlugin<T = unknown>(specifier: string): Promise<T> {
 }
 async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   if (browserPluginModule) return browserPluginModule;
-  browserPluginModulePromise ??= importOptionalPlugin<BrowserPluginModule>(
-    "@elizaos/plugin-browser",
+  // The native-client decoder must resolve inside the node_modules-free bundle.
+  browserPluginModulePromise ??= import(
+    /* @vite-ignore */ "@elizaos/plugin-browser"
   ).then((browser) => {
     browserPluginModule = browser;
     return browser;
@@ -608,7 +609,8 @@ const optionalPluginImports = {
   cloud: () => importOptionalPlugin(optionalPluginSpecifiers.cloud),
   imessage: () => importOptionalPlugin(optionalPluginSpecifiers.imessage),
   mcp: () => importOptionalPlugin(optionalPluginSpecifiers.mcp),
-  workflow: () => importOptionalPlugin(optionalPluginSpecifiers.workflow),
+  workflow: () =>
+    import(/* @vite-ignore */ "@elizaos/plugin-workflow/trigger-routes"),
 };
 type LocalInferenceServerApi = LocalInferenceRouteApi &
   LocalInferenceVoiceRouteApi;
@@ -2600,13 +2602,41 @@ async function handleRequestForViewClient(
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
 
   if (pathname.startsWith("/api/client-devices")) {
+    const admittedRuntime = state.runtime ?? null;
+    const authorization = await resolveHostSessionAuthorization();
+    if ((state.runtime ?? null) !== admittedRuntime) {
+      error(res, "Agent changed during device admission", 503);
+      return;
+    }
     await handleDeviceActionRoutes({
       req,
       res,
       method,
       pathname,
-      runtime: state.runtime ?? null,
-      authorization: await resolveHostSessionAuthorization(),
+      runtime: admittedRuntime,
+      authorization,
+      assertRuntimeCurrent: () => {
+        if (!admittedRuntime || state.runtime !== admittedRuntime)
+          throw new ElizaError("Original read runtime retired", {
+            code: "DEVICE_READ_COMPLETION_RUNTIME_RETIRED",
+          });
+      },
+      revalidateAuthorization: async () => {
+        const denied: AgentHttpRequestAuthorization = {
+          ok: false,
+          role: "NONE",
+        };
+        if (!admittedRuntime || state.runtime !== admittedRuntime)
+          return denied;
+        const resolve = getAgentHostBridge().resolveHttpRequestAuthorization;
+        if (!resolve) return denied;
+        const fresh = await resolve(req, admittedRuntime, {
+          allowCookieAuth: allowHostCookieAuth,
+          allowTrustedLocalBypass: false,
+          allowBearerAuth: true,
+        });
+        return state.runtime === admittedRuntime ? fresh : denied;
+      },
       json,
       error,
       readJsonBody,

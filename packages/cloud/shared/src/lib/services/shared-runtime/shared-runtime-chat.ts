@@ -1,3 +1,7 @@
+import {
+  createOwnerBoundSharedGooglePort,
+  isPersonalGooglePrivateAudience,
+} from "./shared-google-owner-binding";
 import type { OwnerModelCapture } from "./shared-owner-model-capture";
 /**
  * Cache-only shared-tier chat execution for Cloudflare Workers.
@@ -26,6 +30,7 @@ import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheTTL } from "../../cache/keys";
 import { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } from "../../middleware/rate-limit";
+import { serviceNetworkStoreFactory, sharedNetworkExecution } from "../../network/member-store";
 import { getProviderFromModel } from "../../pricing";
 import {
   collectVideoProviderApiKeys,
@@ -114,7 +119,7 @@ import {
   parseSharedReminderActionProvenance,
   sharedRuntimeModelHistoryMessages,
 } from "./shared-runtime-history-policy";
-import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
+import { sharedRuntimeRoomKey, stableUuid } from "./shared-runtime-room-identity";
 import {
   replayedSharedProviderTiming,
   type SharedProviderTimingReceipt,
@@ -378,6 +383,8 @@ export interface SharedRuntimeChatOptions {
   trustedAccountState?: PersonalSharedFallbackAccountState;
   /** Server-resolved Network observation; RPC params cannot supply it. */
   trustedNetworkContext?: NetworkSharedTurnObservation;
+  /** Authenticated Network service admission from the server coordinator. */
+  trustedNetworkTurn?: unknown;
   mobilePushDispatch?: NonNullable<
     NonNullable<RunSharedAgentTurnInput["execution"]>["mobilePush"]
   >["dispatch"];
@@ -600,7 +607,7 @@ function personalSharedMediaPort(
   };
 }
 
-function sharedElizaRuntimeExecution(
+export function sharedElizaRuntimeExecution(
   agent: SharedRuntimeAgent,
   roomId: string,
   turnKey: string | undefined,
@@ -609,6 +616,7 @@ function sharedElizaRuntimeExecution(
   _executionCtx: BridgeExecutionContext | undefined,
   mobilePushDispatch?: SharedRuntimeChatOptions["mobilePushDispatch"],
   channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"],
+  trustedNetworkTurn?: unknown,
 ): NonNullable<RunSharedAgentTurnInput["execution"]> {
   const personalShared = funding === "platform" && isCanonicalPersonalSharedAgent(agent);
   const runtimeChannel = channel ?? {
@@ -617,6 +625,12 @@ function sharedElizaRuntimeExecution(
   };
   const reminderDelivery = personalShared ? trustedReminderDelivery(params) : undefined;
   const media = personalShared ? personalSharedMediaPort(agent, roomId, turnKey) : undefined;
+  const network = sharedNetworkExecution(
+    agent,
+    personalShared,
+    runtimeChannel.type !== ChannelType.DM || roomId !== sharedRuntimeRoomKey(agent.id, agent.id),
+    serviceNetworkStoreFactory(personalShared ? trustedNetworkTurn : undefined),
+  );
   return {
     agentKey: agent.id,
     roomKey: roomId,
@@ -626,6 +640,11 @@ function sharedElizaRuntimeExecution(
     ...(personalShared ? { authenticatedPersonalSharedUser: true as const } : {}),
     ...(personalShared && runtimeChannel.type === ChannelType.DM && agent.owner_name
       ? { participantName: agent.owner_name }
+      : {}),
+    ...(personalShared &&
+    isPersonalGooglePrivateAudience(agent, runtimeChannel, params) &&
+    roomId === sharedRuntimeRoomKey(agent.id, agent.id)
+      ? { google: () => createOwnerBoundSharedGooglePort(agent, runtimeChannel, params) }
       : {}),
     todos: {
       scope: sharedTodoStorageScope({
@@ -650,6 +669,9 @@ function sharedElizaRuntimeExecution(
       : {}),
     ...(mobilePushDispatch ? { mobilePush: { dispatch: mobilePushDispatch } } : {}),
     ...(media ? { media } : {}),
+    // Only a service-admitted Network turn in the canonical Personal room
+    // receives the per-turn service store.
+    ...(network ? { network } : {}),
   };
 }
 
@@ -792,15 +814,7 @@ function combinedTurnContext(
   return parts.length ? parts.join("\n\n") : undefined;
 }
 
-function stableUuid(raw: string): string {
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
-    return raw;
-  }
-  const hash = crypto.createHash("sha256").update(raw).digest("hex");
-  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
-}
-
-/** Client content identity; server observations can change between retries. */
+/** Content identity for conflict detection: same key + different text is rejected. */
 function sharedTurnPayloadHash(text: string): string {
   return crypto.createHash("sha256").update(text).digest("hex");
 }
@@ -841,18 +855,11 @@ function turnMessageIds(
   };
 }
 
-export function sharedRuntimeChannelId(agentId: string, roomId: string): string {
-  const room = roomId.trim() || "default";
-  return stableUuid(`cloud-bridge-channel:${agentId}:${room}`);
-}
-
-export { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
-
-/** Storage-safe runtime room key derived from the coordinator's canonical room label. */
-export function sharedRuntimeRoomKey(agentId: string, roomId?: unknown, userId?: unknown): string {
-  const room = normalizeSharedRuntimeRoom(roomId, userId);
-  return sharedRuntimeChannelId(agentId, room);
-}
+export {
+  normalizeSharedRuntimeRoom,
+  sharedRuntimeChannelId,
+  sharedRuntimeRoomKey,
+} from "./shared-runtime-room-identity";
 
 function isTurn(value: unknown): value is SharedTurnMessage {
   const candidate = record(value);
@@ -1413,6 +1420,16 @@ export class SharedRuntimeChatService {
       };
     }
     const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
+    if (
+      isCanonicalPersonalSharedAgent(agent) &&
+      options.channel &&
+      options.channel.type !== ChannelType.DM &&
+      roomId === sharedRuntimeRoomKey(agent.id, agent.id)
+    ) {
+      throw new ElizaError("Canonical Personal history requires a private DM audience", {
+        code: "SHARED_PRIVATE_PERSONAL_ROOM_REQUIRED",
+      });
+    }
     const messageRole = options.trustedMessageRole ?? "user";
     if (
       options.trustedNetworkContext &&
@@ -1518,6 +1535,7 @@ export class SharedRuntimeChatService {
           options.executionCtx,
           options.mobilePushDispatch,
           options.channel,
+          options.trustedNetworkTurn,
         ),
       });
     } catch (error) {
@@ -1653,6 +1671,16 @@ export class SharedRuntimeChatService {
     const text = stringValue(params.text);
     if (!text) return sseError("message.send requires params.text");
     const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
+    if (
+      isCanonicalPersonalSharedAgent(agent) &&
+      options.channel &&
+      options.channel.type !== ChannelType.DM &&
+      roomId === sharedRuntimeRoomKey(agent.id, agent.id)
+    ) {
+      throw new ElizaError("Canonical Personal history requires a private DM audience", {
+        code: "SHARED_PRIVATE_PERSONAL_ROOM_REQUIRED",
+      });
+    }
     const messageRole = options.trustedMessageRole ?? "user";
     if (
       options.trustedNetworkContext &&
@@ -1830,6 +1858,7 @@ export class SharedRuntimeChatService {
             options.executionCtx,
             options.mobilePushDispatch,
             options.channel,
+            options.trustedNetworkTurn,
           ),
         }),
       );

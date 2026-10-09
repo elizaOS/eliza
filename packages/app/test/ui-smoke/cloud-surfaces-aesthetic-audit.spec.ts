@@ -689,6 +689,144 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
     ).toBe(true);
   });
 
+  for (const viewport of VIEWPORTS) {
+    test(`personal Google consent recovery and disconnect ${viewport.name}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await seedStewardSession(page, {
+        jwt: true,
+        subject: "cloud-audit-smoke-user",
+        email: "cloud-audit-smoke@agent.local",
+      });
+      await installCloudApiStubs(page);
+      const purpose = "personal_google_context_v1";
+      let connected = false;
+      const mutations: { path: string; body: unknown }[] = [];
+      await page.route("**/api/v1/eliza/google/**", async (route) => {
+        const request = route.request();
+        const pathname = new URL(request.url()).pathname;
+        if (pathname.endsWith("/status")) {
+          await route.fulfill({
+            json: {
+              purpose,
+              selectedConnectionId: connected ? "selected-owned" : null,
+              status: connected
+                ? {
+                    connected: true,
+                    configured: true,
+                    reason: "connected",
+                    connectionId: "selected-owned",
+                    identity: { email: "personal@example.test" },
+                    grantedScopes: [
+                      "https://www.googleapis.com/auth/gmail.readonly",
+                      "https://www.googleapis.com/auth/calendar.readonly",
+                    ],
+                  }
+                : null,
+            },
+          });
+          return;
+        }
+        mutations.push({ path: pathname, body: request.postDataJSON() });
+        if (pathname.endsWith("/connect/initiate")) {
+          await route.fulfill({
+            status: 503,
+            json: { error: "Synthetic OAuth unavailable" },
+          });
+          return;
+        }
+        expect(pathname).toBe("/api/v1/eliza/google/disconnect");
+        connected = false;
+        await route.fulfill({ json: { success: true } });
+      });
+      await page.goto("/cloud/connectors", { waitUntil: "domcontentloaded" });
+      await page
+        .getByRole("button", {
+          name: "Set up Google for personal chat",
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByText(
+          /Requested content is processed by Eliza’s configured AI providers/,
+        ),
+      ).toBeVisible();
+      const captureDir = path.join(outputDir, viewport.name);
+      await mkdir(captureDir, { recursive: true });
+      await page.screenshot({
+        path: path.join(captureDir, "google-personal-disclosure.png"),
+        fullPage: true,
+      });
+      await page
+        .getByRole("button", { name: "Connect personal context", exact: true })
+        .click();
+      await expect(
+        page.getByText(
+          "Couldn’t start the Google connection. Please try again.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      expect(mutations).toEqual([
+        {
+          path: "/api/v1/eliza/google/connect/initiate",
+          body: { side: "owner", purpose },
+        },
+      ]);
+      await expect(page).toHaveURL(/\/cloud\/connectors$/);
+      // Synthetic OAuth callback outcome: live Google consent is separately qualified.
+      connected = true;
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page
+        .getByRole("button", {
+          name: "Manage Google for personal chat",
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByText("personal@example.test", { exact: true }),
+      ).toBeVisible();
+      await page.screenshot({
+        path: path.join(captureDir, "google-personal-connected.png"),
+        fullPage: true,
+      });
+      await page
+        .getByRole("button", {
+          name: "Disconnect personal context",
+          exact: true,
+        })
+        .click();
+      const dialog = page.getByRole("alertdialog");
+      await expect(dialog).toBeVisible();
+      await page.screenshot({
+        path: path.join(captureDir, "google-personal-disconnect.png"),
+        fullPage: true,
+      });
+      await dialog
+        .getByRole("button", {
+          name: "Disconnect personal context",
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByRole("button", {
+          name: "Set up Google for personal chat",
+          exact: true,
+        }),
+      ).toBeVisible();
+      expect(mutations.at(-1)).toEqual({
+        path: "/api/v1/eliza/google/disconnect",
+        body: { side: "owner", connectionId: "selected-owned" },
+      });
+      expect(mutations).toHaveLength(2);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+      ).toBe(true);
+    });
+  }
+
   // Coverage guard: every registered cloud route must appear in the audit
   // table, so a newly-registered surface fails the audit until it is walked.
   // The registry is read from the RUNNING production bundle (the same
@@ -1138,6 +1276,23 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         // Let late skeleton → content transitions settle before sampling.
         await page.waitForTimeout(750);
         readableChars = await readPaintAfterNavigation(10);
+
+        if (auditCase.slug === "cloud-analytics") {
+          // Real wheel input must reach analytics content below the fold.
+          // scrollIntoView would also move an overflow-hidden element.
+          const scrollRegion = page.locator(
+            '[data-shell-scroll-region="true"]',
+          );
+          await expect(scrollRegion).toHaveCount(1);
+          await page.mouse.move(vp.width / 2, vp.height / 2);
+          await page.mouse.wheel(0, 1200);
+          await expect
+            .poll(() => scrollRegion.evaluate((el) => el.scrollTop))
+            .toBeGreaterThan(0);
+          await scrollRegion.evaluate((el) => {
+            el.scrollTop = 0;
+          });
+        }
 
         const restPath = path.join(shotDir, `${auditCase.slug}.png`);
         const fullPage = auditCase.fullPageEvidence ?? false;

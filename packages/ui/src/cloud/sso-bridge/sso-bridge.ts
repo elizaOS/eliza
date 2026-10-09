@@ -63,6 +63,61 @@ import {
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../shell/steward-url";
 /** Client route (registered on every host; role-switched by hostname). */
 export const SSO_BRIDGE_PATH = "/auth/bridge";
+
+export interface NetworkSiteHandoff {
+  destination: string;
+  state: string;
+  challenge: string;
+}
+
+/** Navigation context only. The server independently authorizes the exact destination. */
+export function parseNetworkSiteHandoff(
+  params: URLSearchParams,
+  hostname: string,
+): NetworkSiteHandoff | null {
+  if (!["networkSite", "state", "challenge"].some((key) => params.has(key)))
+    return null;
+  const invalid = () =>
+    new Error(
+      "This Network sign-in link is invalid. Start again from The Network.",
+    );
+  if (
+    hostname.toLowerCase() !==
+      new URL(ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin).hostname ||
+    [...params.keys()].some(
+      (key) =>
+        !["networkSite", "state", "challenge", "switchAccount"].includes(key),
+    ) ||
+    (params.has("switchAccount") &&
+      (params.getAll("switchAccount").length !== 1 ||
+        params.get("switchAccount") !== "1")) ||
+    ["networkSite", "state", "challenge"].some(
+      (key) => params.getAll(key).length !== 1,
+    )
+  )
+    throw invalid();
+  const destination = params.get("networkSite");
+  if (destination === null) throw invalid();
+  const state = params.get("state");
+  const challenge = params.get("challenge");
+  let origin: URL;
+  try {
+    origin = new URL(destination);
+  } catch {
+    throw invalid();
+  }
+  if (
+    origin.protocol !== "http:" ||
+    !["127.0.0.1", "localhost", "[::1]"].includes(origin.hostname) ||
+    destination !== origin.origin ||
+    origin.username ||
+    origin.password ||
+    !isWellFormedSsoState(state) ||
+    !isWellFormedSsoChallenge(challenge)
+  )
+    throw invalid();
+  return { destination, state, challenge };
+}
 /**
  * The two deployed origin pairs. Staging must bridge to staging — a staging
  * app host minting against the production auth origin would splice sessions
@@ -418,8 +473,12 @@ const SSO_CODE_RE = /^esso_[0-9a-f]{64}$/;
 /** Both legs validate the code's shape before trusting it in a URL / POST. */
 export function isWellFormedSsoCode(
   value: string | null | undefined,
+  network = false,
 ): value is string {
-  return typeof value === "string" && SSO_CODE_RE.test(value);
+  return (
+    typeof value === "string" &&
+    (network ? /^enso_[0-9a-f]{64}$/ : SSO_CODE_RE).test(value)
+  );
 }
 export type SsoMintResult =
   | {
@@ -442,14 +501,34 @@ export async function mintSsoCode(
   hostname: string,
   challenge: string,
   fetchFn: typeof fetch = fetch,
+  network?: NetworkSiteHandoff & { expectedToken: string },
 ): Promise<SsoMintResult> {
   const base = apiBaseForHostname(hostname);
   if (!base) return { ok: false, error: "Host cannot mint SSO codes" };
   if (!isWellFormedSsoChallenge(challenge)) {
     return { ok: false, error: "Malformed code challenge" };
   }
+  if (network) {
+    try {
+      const parsed = parseNetworkSiteHandoff(
+        new URLSearchParams({
+          networkSite: network.destination,
+          state: network.state,
+          challenge: network.challenge,
+        }),
+        hostname,
+      );
+      if (!parsed || parsed.challenge !== challenge)
+        return { ok: false, error: "Malformed Network handoff" };
+    } catch {
+      return { ok: false, error: "Malformed Network handoff" };
+    }
+  }
   const token = readStoredStewardToken();
   if (!token) return { ok: false, error: "No local session" };
+  if (network && (!network.expectedToken || token !== network.expectedToken)) {
+    return { ok: false, error: "The phone sign-in session changed" };
+  }
   try {
     const res = await fetchFn(`${base}/api/auth/sso-bridge/mint`, {
       method: "POST",
@@ -458,7 +537,10 @@ export async function mintSsoCode(
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ codeChallenge: challenge }),
+      body: JSON.stringify({
+        codeChallenge: challenge,
+        ...(network ? { destination: network.destination } : {}),
+      }),
     });
     if (!res.ok)
       return { ok: false, error: `Mint failed (HTTP ${res.status})` };
@@ -466,7 +548,7 @@ export async function mintSsoCode(
       code?: unknown;
     } | null;
     const code = typeof body?.code === "string" ? body.code : null;
-    if (!code || !isWellFormedSsoCode(code)) {
+    if (!code || !isWellFormedSsoCode(code, Boolean(network))) {
       return { ok: false, error: "Mint returned no usable code" };
     }
     return { ok: true, code };
@@ -575,9 +657,10 @@ export function burnSsoBridgeCode(
   code: string,
   hostname: string = window.location.hostname,
   fetchFn: typeof fetch = fetch,
+  network = false,
 ): void {
   const base = apiBaseForHostname(hostname);
-  if (!base || !isWellFormedSsoCode(code)) return;
+  if (!base || !isWellFormedSsoCode(code, network)) return;
   try {
     void fetchFn(`${base}/api/auth/sso-bridge/burn`, {
       method: "POST",

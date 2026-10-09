@@ -80,7 +80,10 @@ import {
 import { createJsonFileTrajectoryRecorder } from "../../runtime/trajectory-recorder";
 import { deviceActionForCapabilities } from "../device-actions/action.ts";
 import { deviceOperationSupportedByCapabilities } from "../device-actions/contract.ts";
-import { getDeviceActionTurn } from "../device-actions/service.ts";
+import {
+  getDeviceActionTurn,
+  setDeviceReadReplyContext,
+} from "../device-actions/service.ts";
 import type { EvaluatorService } from "../evaluator";
 import {
   buildRuntimeActionLookup,
@@ -899,6 +902,11 @@ export async function runV5MessageRuntimeStage1(
         replyIsModelVoice = false;
       }
       const directReplyEgressDecision = evaluatePlannedReplyEgress({
+        currentScope: {
+          agentId: args.runtime.agentId,
+          entityId: args.message.entityId,
+          id: args.message.id,
+        },
         providers: args.state.data.providers,
         request: getUserMessageText(args.message),
         reply: protectedReply
@@ -1020,6 +1028,11 @@ export async function runV5MessageRuntimeStage1(
       // waits for the normal grounded final path. Never fabricate a substitute.
       if (!replyClaimsInProgressWork(earlyReplyText)) earlyReplyText = "";
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+        currentScope: {
+          agentId: args.runtime.agentId,
+          entityId: args.message.entityId,
+          id: args.message.id,
+        },
         pendingWork: prePatchStageOneReplyEffectStatus === "pending",
         providers: args.state.data.providers,
         request: getUserMessageText(args.message),
@@ -1806,6 +1819,12 @@ export async function runV5MessageRuntimeStage1(
             ". Do not repeat it. Send only additional follow-up text if the planner or tool work adds something new.",
         })
       : effectivePlannerContext;
+    if (senderRole === "OWNER")
+      setDeviceReadReplyContext(
+        args.runtime,
+        args.message,
+        plannerContextAfterEarlyReply,
+      );
     const evaluatorEffects: EvaluatorEffects = {
       copyToClipboard: false,
       messageToUser: () => undefined,
@@ -2055,6 +2074,11 @@ export async function runV5MessageRuntimeStage1(
           }
           const groundedModelReplyEgress = groundedModelReply
             ? evaluatePlannedReplyEgress({
+                currentScope: {
+                  agentId: args.runtime.agentId,
+                  entityId: args.message.entityId,
+                  id: args.message.id,
+                },
                 providers: plannerState.data.providers,
                 request: getUserMessageText(args.message),
                 reply: groundedModelReply,
@@ -2578,6 +2602,11 @@ export async function runV5MessageRuntimeStage1(
       args.codingMode === true
         ? ({ verdict: "allow" } as const)
         : evaluatePlannedReplyEgress({
+            currentScope: {
+              agentId: args.runtime.agentId,
+              entityId: args.message.entityId,
+              id: args.message.id,
+            },
             providers: plannerState.data.providers,
             request: getUserMessageText(args.message),
             reply: String(plannerResult.finalMessage ?? ""),

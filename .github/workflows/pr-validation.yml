@@ -1,6 +1,6 @@
 # This workflow is the sole pull-request and merge-candidate validation authority.
 # It checks mergeability and workflow syntax, then builds and
-# statically validates the affected workspace closure. A narrow, mock-backed
+# statically validates the selected workspace closure. A narrow, mock-backed
 # billing replay E2E, path-scoped real PostgreSQL subscription-authority proof,
 # and the bounded synthetic-world transaction suite are the affected-path test
 # exceptions. Provider, device, deployment, and destructive-effect lanes remain
@@ -175,11 +175,20 @@ jobs:
         if: steps.core_scope.outputs.core_bootstrap_required == 'true'
         run: bun run build:core
 
-      - name: Build affected workspace closure
+      - name: Build selected workspace closure
         if: steps.affected.outputs.source == 'true'
         env:
-          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.ts run build --concurrency=4 --affected --output-logs=errors-only
+          RUN_TURBO_AFFECTED: ${{ steps.affected.outputs.full == 'false' && '1' || '0' }}
+          TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
+        run: node packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
+
+      - name: Verify personal Shared chat entry without paid activation
+        if: steps.affected.outputs.app == 'true'
+        timeout-minutes: 1
+        run: >-
+          node node_modules/vitest/vitest.mjs run --config vitest.config.ts
+          packages/ui/src/cloud/join/lib/run-join-flow.test.ts
+          --maxWorkers=1 --no-file-parallelism --testTimeout=10000 --hookTimeout=10000
 
       - name: Verify Shared general search with real Workerd and SQLite
         if: steps.affected.outputs.cloud == 'true'
@@ -205,19 +214,58 @@ jobs:
         working-directory: packages/cloud/shared
         run: bun --conditions=eliza-source test ./src/lib/services/shared-runtime/run-shared-agent-turn.realtime-audit.test.ts --timeout 30000
 
+      - name: Verify owner-consented Google backend boundaries
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 3
+        working-directory: packages/cloud/shared
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset SHARED_ELIZA_LIVE_MODEL_URL SHARED_ELIZA_LIVE_MODEL_ID SHARED_ELIZA_LIVE_WEB_SEARCH
+          for suite in \
+            src/db/repositories/personal-google-context-consent.pglite.test.ts \
+            src/lib/services/oauth/oauth2.personal-context.test.ts \
+            src/lib/services/oauth/oauth2.personal-context-publication.pglite.test.ts \
+            src/lib/services/agent-google-connector/calendar.pagination.test.ts \
+            src/lib/services/shared-runtime/shared-google-consent.test.ts \
+            src/lib/services/shared-runtime/shared-google-owner-binding.test.ts \
+            src/lib/services/shared-runtime/shared-google-read-port.test.ts \
+            src/lib/services/shared-runtime/shared-google-context-plugin.test.ts \
+            src/lib/services/shared-runtime/shared-eliza-runtime.google.test.ts; do
+            bun --conditions=eliza-source test "$suite" --timeout 30000
+          done
+
+      - name: Verify selected Google owner status through Hono and PostgreSQL
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 1
+        working-directory: packages/cloud/api
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset SHARED_ELIZA_LIVE_MODEL_URL SHARED_ELIZA_LIVE_MODEL_ID SHARED_ELIZA_LIVE_WEB_SEARCH
+          bun --conditions=eliza-source test ./v1/eliza/google/status/route.personal-context.test.ts --timeout 30000
+          bun --conditions=eliza-source test ./__tests__/private-owner-credential.pglite.test.ts --timeout 30000
+
+      - name: Verify personal Google cards and account-switch behavior
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 2
+        working-directory: packages/ui
+        run: bun run test:e2e src/cloud/connectors/__e2e__/google-personal-context.test.tsx
+
       - name: Run synthetic-world transaction tests
         if: steps.diff.outputs.synthetic_world_changed == 'true'
         run: bun run --cwd packages/testing test:synthetic-world
 
-      - name: Lint and typecheck affected workspaces in parallel
+      - name: Lint and typecheck selected workspaces in parallel
         if: steps.affected.outputs.source == 'true'
         env:
-          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
+          RUN_TURBO_AFFECTED: ${{ steps.affected.outputs.full == 'false' && '1' || '0' }}
+          TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
         run: |
           set -euo pipefail
-          NODE_OPTIONS=--max-old-space-size=2048 node packages/scripts/run-turbo.ts run lint:check --concurrency=1 --affected &
+          NODE_OPTIONS=--max-old-space-size=2048 node packages/scripts/run-turbo.ts run lint:check --concurrency=1 &
           lint_pid=$!
-          node packages/scripts/run-turbo.ts run typecheck --concurrency=1 --affected &
+          node packages/scripts/run-turbo.ts run typecheck --concurrency=1 &
           types_pid=$!
           status=0
           wait "$lint_pid" || status=$?

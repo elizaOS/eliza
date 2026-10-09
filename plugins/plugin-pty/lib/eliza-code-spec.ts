@@ -71,7 +71,13 @@ export function resolveElizaCodeCloudTuple(input?: {
     authority: null,
     enabled: true,
     apiKey: trimmed(input?.apiKey),
-    baseUrl: trimmed(input?.baseUrl) ?? ELIZA_CLOUD_DEFAULT_BASE_URL,
+    // The tuple contract is the inference base on every branch: convert
+    // the canonical control-plane base here too, as the authority branch
+    // above does. Returning the operator input verbatim pointed the
+    // child's inference calls at the control-plane path.
+    baseUrl:
+      toElizaCodeInferenceBaseUrl(input?.baseUrl) ??
+      ELIZA_CLOUD_DEFAULT_BASE_URL,
   };
 }
 function isAuthorityControlledChildEnvKey(key: string): boolean {

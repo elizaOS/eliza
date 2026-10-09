@@ -60,6 +60,12 @@
 			"types": "./dist/protocol.d.ts",
 			"import": "./dist/protocol.js",
 			"default": "./dist/protocol.js"
+		},
+		"./speech": {
+			"eliza-source": "./src/speech.ts",
+			"types": "./dist/speech.d.ts",
+			"import": "./dist/speech.js",
+			"default": "./dist/speech.js"
 		}
 	},
 	"files": [

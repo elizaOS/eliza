@@ -4,7 +4,10 @@
  * List all OAuth connections for the authenticated organization.
  */
 
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import {
   failureResponse,
   ApiError as WorkerApiError,
@@ -66,6 +69,8 @@ app.get("/", async (c) => {
       }
     }
     platform = requestedPlatform || undefined;
+    if ((!platform || platform === "google") && connectionRole !== "agent")
+      await requirePrivateOwnerAccess(c, user);
 
     logger.debug("[API] GET /api/v1/oauth/connections", {
       organizationId,

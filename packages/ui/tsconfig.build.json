@@ -45,6 +45,7 @@
     "src/api/task-lifecycle.ts",
     "src/voice/pcm-wave.ts",
     "src/voice/microphone-capture.ts",
+    "src/voice/batch-conversation.ts",
     "src/**/*.d.ts"
   ]
 }

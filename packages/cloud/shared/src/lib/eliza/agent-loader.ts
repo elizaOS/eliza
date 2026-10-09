@@ -1,4 +1,4 @@
-// Wires hosted Eliza agent agent loader behavior for cloud runtime services.
+// Wires hosted Eliza agent loader behavior for cloud runtime services.
 import {
   type Action,
   type Character,

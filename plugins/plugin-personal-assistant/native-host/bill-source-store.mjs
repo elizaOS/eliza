@@ -20,6 +20,8 @@ const ownerKey = (owner) =>
     owner.connector.source,
     owner.connector.accountId,
   ]);
+// Equal to BILL_SOURCE_CONFLICT_FIELDS in bill-source-discovery.mjs.
+const CONFLICT_FIELDS = ["company", "accountLabel", "origin"];
 const text = (value) =>
   typeof value === "string" && value.length > 0 && value.length <= 300;
 const date = (value) =>
@@ -45,7 +47,13 @@ function validateCandidate(value, task) {
     !Number.isInteger(f.currencyDigits) ||
     f.currencyDigits < 0 ||
     f.currencyDigits > 4 ||
-    !date(f.dueDate)
+    (f.dueDate !== undefined && !date(f.dueDate)) ||
+    // Offers saved before arrival times were recorded have none.
+    (c.receivedAt !== undefined &&
+      (typeof c.receivedAt !== "string" ||
+        !Number.isFinite(Date.parse(c.receivedAt)) ||
+        new Date(c.receivedAt).toISOString() !== c.receivedAt)) ||
+    (c.mostRecent !== undefined && c.mostRecent !== true)
   )
     throw fail();
   if (
@@ -61,7 +69,15 @@ function validateCandidate(value, task) {
   if (
     Object.keys(c).some(
       (k) =>
-        !["billId", "candidateId", "sourceRef", "facts", "sources"].includes(k),
+        ![
+          "billId",
+          "candidateId",
+          "sourceRef",
+          "receivedAt",
+          "mostRecent",
+          "facts",
+          "sources",
+        ].includes(k),
     ) ||
     Object.keys(f).some(
       (k) =>
@@ -125,25 +141,60 @@ function validateCandidate(value, task) {
 function validateResult(result, task) {
   if (
     !result ||
-    !["candidate", "ambiguous", "missing", "incomplete"].includes(
-      result.status,
-    ) ||
+    ![
+      "candidate",
+      "ambiguous",
+      "missing",
+      "incomplete",
+      "conflicting-source",
+    ].includes(result.status) ||
     !Array.isArray(result.candidates)
   )
     throw fail();
   const candidates = result.candidates.map((c) => validateCandidate(c, task));
+  if (result.conflicts !== undefined && !Array.isArray(result.conflicts))
+    throw fail();
+  // Look-alike messages: only which identity facts differ. Their own
+  // company, account and website come from an untrusted email.
+  const conflicts = result.conflicts?.map((c) => {
+    if (
+      !c ||
+      Object.keys(c).join(",") !== "differs" ||
+      !Array.isArray(c.differs) ||
+      !c.differs.length ||
+      c.differs.join(",") !==
+        CONFLICT_FIELDS.filter((key) => c.differs.includes(key)).join(",")
+    )
+      throw fail();
+    return { differs: [...c.differs] };
+  });
   if (
     new Set(candidates.map((c) => c.candidateId)).size !== candidates.length ||
     (result.status === "candidate" && candidates.length !== 1) ||
-    (["missing", "incomplete"].includes(result.status) &&
+    (["missing", "incomplete", "conflicting-source"].includes(result.status) &&
       candidates.length !== 0) ||
-    (result.reason !== undefined && result.reason !== "conflicting-invoice")
+    (result.status === "conflicting-source" && !conflicts?.length) ||
+    (result.unreadable !== undefined &&
+      (!Number.isSafeInteger(result.unreadable) || result.unreadable < 1)) ||
+    candidates.filter((c) => c.mostRecent).length > 1 ||
+    new Set(conflicts?.map((c) => c.differs.join(","))).size !==
+      (conflicts?.length ?? 0) ||
+    (result.reason !== undefined &&
+      !(
+        (result.status === "ambiguous" &&
+          result.reason === "conflicting-invoice") ||
+        (result.status === "incomplete" &&
+          result.reason === "newer-unreadable" &&
+          result.unreadable >= 1)
+      ))
   )
     throw fail();
   return {
     status: result.status,
     ...(result.reason ? { reason: result.reason } : {}),
     candidates,
+    ...(result.unreadable ? { unreadable: result.unreadable } : {}),
+    ...(conflicts?.length ? { conflicts } : {}),
   };
 }
 function fingerprint(result) {

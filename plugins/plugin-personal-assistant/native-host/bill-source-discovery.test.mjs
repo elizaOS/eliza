@@ -243,18 +243,105 @@ test("account revocation, cancellation and changed task context suppress late re
     code: "BILL_SOURCES_UNAVAILABLE",
   });
 });
-test("malformed money, dates, duplicate fields and provider errors never become candidates", async () => {
+test("malformed money, dates and duplicate fields are skipped, never candidates", async () => {
   for (const text of [
     body.replace("23.45", "9007199254740993.00"),
     body.replace("2026-09-30", "2026-02-30"),
     body + "Amount: USD 1.00\n",
-    body.replace("https://water.example", "https://lookalike.example"),
   ]) {
-    await assert.rejects(
-      fixture({ text: () => text }).discovery.discover(context, signal()),
-      { code: "BILL_SOURCES_UNAVAILABLE" },
+    assert.deepEqual(
+      await fixture({ text: () => text }).discovery.discover(context, signal()),
+      { status: "incomplete", candidates: [], unreadable: 1 },
     );
+    // One unreadable message does not hide a readable bill, and is reported.
+    const mixed = await fixture({
+      messages: [message("m1"), message("m2")],
+      text: (id) => (id === "m2" ? text : body),
+    }).discovery.discover(context, signal());
+    assert.equal(mixed.status, "candidate");
+    assert.equal(mixed.unreadable, 1);
+    assert.equal(mixed.candidates[0].sources.length, 1);
   }
+});
+test("a look-alike bill is reported only by which facts differ, never its own website", async () => {
+  const lookalike = body.replace(
+    "https://water.example",
+    "https://lookalike.example",
+  );
+  const only = await fixture({ text: () => lookalike }).discovery.discover(
+    context,
+    signal(),
+  );
+  assert.deepEqual(only, {
+    status: "conflicting-source",
+    candidates: [],
+    conflicts: [{ differs: ["origin"] }],
+  });
+  assert.equal(JSON.stringify(only).includes("SEP-1"), false);
+  assert.equal(JSON.stringify(only).includes("lookalike"), false);
+  const both = await fixture({
+    messages: [message("m1"), message("m2")],
+    text: (id) => (id === "m2" ? lookalike : body),
+  }).discovery.discover(context, signal());
+  assert.equal(both.status, "candidate");
+  assert.equal(both.candidates[0].facts.origin, "https://water.example");
+  assert.equal(both.conflicts.length, 1);
+  const all = await fixture({
+    messages: Array.from({ length: 6 }, (_, i) => message(`other${i}`)),
+    text: (id) => body.replace("Water Test", `Other ${id}`),
+  }).discovery.discover(context, signal());
+  // Six look-alikes that differ the same way are one report, and no
+  // company name from those emails is passed on.
+  assert.deepEqual(all.conflicts, [{ differs: ["company"] }]);
+  assert.equal(JSON.stringify(all).includes("Other"), false);
+});
+test("an older bill is not offered when a newer email from the biller cannot be read", async () => {
+  const dated = (id) =>
+    id === "m2"
+      ? { ...message("m2"), receivedAt: "2026-09-25T00:00:00Z" }
+      : { ...message(id), receivedAt: "2026-09-05T00:00:00Z" };
+  const run = (newer) => {
+    const f = fixture({
+      messages: [dated("m1"), dated("m2")],
+      text: (id) => (id === "m2" ? newer : body),
+    });
+    f.google.getGmailMessageDetail = async (input) => ({
+      message: dated(input.messageId),
+      bodyText: input.messageId === "m2" ? newer : body,
+    });
+    return f.discovery.discover(context, signal());
+  };
+  // The newer bill's amount is rejected by the parser.
+  assert.deepEqual(await run(body.replace("23.45", "9007199254740993.00")), {
+    status: "incomplete",
+    reason: "newer-unreadable",
+    candidates: [],
+    unreadable: 1,
+  });
+  // The newer bill repeats a field the parser must reject.
+  assert.deepEqual(await run(`${body}Amount: USD 1.00\n`), {
+    status: "incomplete",
+    reason: "newer-unreadable",
+    candidates: [],
+    unreadable: 1,
+  });
+  // An older unreadable message does not hide the newest readable bill.
+  const f = fixture({
+    messages: [dated("m1"), dated("m2")],
+  });
+  f.google.getGmailMessageDetail = async (input) => ({
+    message: dated(input.messageId),
+    bodyText:
+      input.messageId === "m1"
+        ? body.replace("23.45", "9007199254740993.00")
+        : body,
+  });
+  const newest = await f.discovery.discover(context, signal());
+  assert.equal(newest.status, "candidate");
+  assert.equal(newest.unreadable, 1);
+  assert.equal(newest.candidates[0].mostRecent, true);
+});
+test("provider read failures still fail the whole search with a typed reason", async () => {
   const f = fixture({
     text: () => {
       throw new Error("private token and full message");
@@ -262,7 +349,56 @@ test("malformed money, dates, duplicate fields and provider errors never become 
   });
   await assert.rejects(
     f.discovery.discover(context, signal()),
-    (error) => !error.message.includes("private"),
+    (error) =>
+      !error.message.includes("private") &&
+      error.code === "BILL_SOURCES_UNAVAILABLE" &&
+      error.reason === "unavailable",
+  );
+  for (const reason of [
+    "reauth_required",
+    "cloud_sign_in_required",
+    "insufficient_scope",
+    "account_changed",
+    "timeout",
+  ]) {
+    const g = fixture();
+    g.google.searchGmailMessagesPage = async () => {
+      throw Object.assign(new Error("provider text"), { code: reason });
+    };
+    await assert.rejects(g.discovery.discover(context, signal()), {
+      code: "BILL_SOURCES_UNAVAILABLE",
+      reason,
+    });
+  }
+});
+test("a bill without a due date is a candidate; candidates come newest first", async () => {
+  const noDue = await fixture({
+    text: () => body.replace("Due date: 2026-09-30\n", ""),
+  }).discovery.discover(context, signal());
+  assert.equal(noDue.status, "candidate");
+  assert.equal(noDue.candidates[0].facts.dueDate, undefined);
+  const f = fixture({
+    messages: [
+      message("m1"),
+      { ...message("m2"), receivedAt: "2026-09-20T00:00:00Z" },
+    ],
+    text: (id) => (id === "m2" ? body.replace("SEP-1", "SEP-2") : body),
+  });
+  f.google.getGmailMessageDetail = async (input) => ({
+    message:
+      input.messageId === "m2"
+        ? { ...message("m2"), receivedAt: "2026-09-20T00:00:00Z" }
+        : message(input.messageId),
+    bodyText: input.messageId === "m2" ? body.replace("SEP-1", "SEP-2") : body,
+  });
+  const ranked = await f.discovery.discover(context, signal());
+  assert.equal(ranked.status, "ambiguous");
+  assert.deepEqual(
+    ranked.candidates.map((c) => [c.receivedAt, c.mostRecent]),
+    [
+      ["2026-09-20T00:00:00.000Z", true],
+      ["2026-09-10T00:00:00.000Z", undefined],
+    ],
   );
 });
 test("scope inputs are frozen across provider awaits and optional periods are preserved", async () => {

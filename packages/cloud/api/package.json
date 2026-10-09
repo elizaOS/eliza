@@ -70,6 +70,7 @@
     "pg": "^8.23.0",
     "typescript": "^6.0.3",
     "ws": "^8.21.3",
-    "@elizaos/plugin-sqlite": "workspace:*"
+    "@elizaos/plugin-sqlite": "workspace:*",
+    "@elizaos/plugin-network": "workspace:*"
   }
 }

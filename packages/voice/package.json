@@ -15,6 +15,12 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./turn": {
+      "eliza-source": "./src/turn.ts",
+      "types": "./dist/turn.d.ts",
+      "import": "./dist/turn.js",
+      "default": "./dist/turn.js"
     }
   },
   "scripts": {

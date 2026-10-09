@@ -672,7 +672,12 @@
     "./lib/services/shared-runtime/shared-owner-model-capture": "./src/lib/services/shared-runtime/shared-owner-model-capture.ts",
     "./lib/services/shared-runtime/shared-owner-model-capture-store": "./src/lib/services/shared-runtime/shared-owner-model-capture-store.ts",
     "./lib/services/shared-runtime/shared-runtime-room-identity": "./src/lib/services/shared-runtime/shared-runtime-room-identity.ts",
-    "./lib/services/shared-runtime/shared-runtime-storage-identity": "./src/lib/services/shared-runtime/shared-runtime-storage-identity.ts"
+    "./lib/services/shared-runtime/shared-runtime-storage-identity": "./src/lib/services/shared-runtime/shared-runtime-storage-identity.ts",
+    "./lib/services/shared-runtime/shared-google-consent": "./src/lib/services/shared-runtime/shared-google-consent.ts",
+    "./db/repositories/personal-google-context-consent": "./src/db/repositories/personal-google-context-consent.ts",
+    "./lib/auth/private-owner-credential": "./src/lib/auth/private-owner-credential.ts",
+    "./lib/network/member-store": "./src/lib/network/member-store.ts",
+    "./lib/network/gateway-delivery-receipt": "./src/lib/network/gateway-delivery-receipt.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",
@@ -726,6 +731,7 @@
     "@elizaos/plugin-sqlite": "workspace:*",
     "@elizaos/plugin-todos": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
+    "@elizaos/plugin-network": "workspace:*",
     "@elizaos/plugin-web-search": "workspace:*",
     "@fal-ai/client": "^1.10.1",
     "@modelcontextprotocol/sdk": "^1.29.0",

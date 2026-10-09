@@ -20,6 +20,7 @@ import {
 } from "./contract.ts";
 import { formatDeviceRecordDateTime } from "./device-record-presentation.ts";
 import {
+  DEVICE_APPROVAL_REVIEW_TEXT,
   deviceActionEffectReceipts,
   deviceApprovalPersistenceReceipt,
 } from "./effect-receipts.ts";
@@ -568,7 +569,12 @@ export const proposeDeviceAction: Action = {
       required: true,
       description:
         "Generate a fresh UUID for each new user-requested operation. Reuse a prior key only for an exact retry with unchanged operation fields and reason. Never reuse keys based only on a title, action type, date, or wording; a conflicting key cannot be repaired by changing an existing approval.",
-      schema: { type: "string" },
+      schema: {
+        type: "string",
+        minLength: 1,
+        maxLength: 128,
+        pattern: "^[A-Za-z0-9][A-Za-z0-9_-]*$",
+      },
     },
     {
       name: "reason",
@@ -757,6 +763,9 @@ export const proposeDeviceAction: Action = {
                 ? "Your snooze request is queued for your phone. It isn’t confirmed yet."
                 : "Your stop request is queued for your phone. It isn’t confirmed yet.",
           }
+        : {}),
+      ...(!pendingRingingControl && request.state === "pending"
+        ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
         : {}),
       text: pendingRingingControl
         ? "Alarm control request recorded and pending for the phone. The phone may request manual review under its native policy. Pending state and approval/pause flags do not prove a visible approval dialog. This tool has performed no device operation. Await an applied native receipt before claiming completion."

@@ -53,7 +53,8 @@ describe("slack connector loop (keyless)", () => {
             response: {
               contexts: ["simple"],
               intents: [],
-              replyText: "Hello from the deterministic model provider.",
+              replyText:
+                "Read [Function](https://en.wikipedia.org/wiki/Function_(mathematics)).",
               candidateActionNames: [],
             },
           },
@@ -203,6 +204,10 @@ describe("slack connector loop (keyless)", () => {
       delivered[0]?.channel,
       "the reply went back to the inbound Slack channel",
     ).toBe(CHANNEL_ID);
+
+    expect(delivered[0]?.text).toContain(
+      "<https://en.wikipedia.org/wiki/Function_(mathematics)|Function>",
+    );
 
     // The real inbound→Memory pipeline reconciled a room: ensureRoomExists
     // resolved the connector's own room id and persisted a room bound to the

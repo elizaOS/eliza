@@ -189,13 +189,21 @@ function stripCodeFences(markdown) {
 }
 
 function slugifyHeading(heading) {
-  return heading
-    .replace(/<[^>]*>/g, "")
-    .replace(/[`*_~[\]]/g, "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s-]/gu, "")
-    .replace(/\s+/g, "-");
+  return (
+    heading
+      .replace(/<[^>]*>/g, "")
+      .replace(/[`*~[\]]/g, "")
+      // Underscores between word characters are literal in the rendered
+      // heading, and GitHub keeps them in the anchor (run_receipt ->
+      // #run_receipt); only emphasis-delimiter underscores at word
+      // boundaries disappear. Stripping every underscore made the gate
+      // report GitHub-valid anchor links as broken.
+      .replace(/(?<![\p{L}\p{N}_])_+|_+(?![\p{L}\p{N}_])/gu, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}_\s-]/gu, "")
+      .replace(/\s+/g, "-")
+  );
 }
 
 function anchorsFor(markdown) {
@@ -390,7 +398,12 @@ function checkLinks({ repoRoot, docFiles, contentByFile }) {
     if (!anchorCache.has(filePath)) {
       const markdown =
         contentByFile.get(filePath) ?? fs.readFileSync(filePath, "utf8");
-      anchorCache.set(filePath, anchorsFor(markdown));
+      // Anchors live in rendered markdown: a "heading" inside a code
+      // fence creates no anchor on the rendered page, and it must not
+      // consume a duplicate-heading number either. The link side of
+      // this checker already strips fences before parsing; the anchor
+      // side must apply the same view of the document.
+      anchorCache.set(filePath, anchorsFor(stripCodeFences(markdown)));
     }
     return anchorCache.get(filePath);
   }

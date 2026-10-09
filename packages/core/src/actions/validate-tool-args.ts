@@ -302,20 +302,15 @@ export function validateSchema(
 				return value;
 			}
 			const normalized = validateEnum(schema, value, path, errors) as string;
-			if (
-				schema.minLength !== undefined &&
-				normalized.length < schema.minLength
-			) {
+			const length = [...normalized].length;
+			if (schema.minLength !== undefined && length < schema.minLength) {
 				errors.push(
-					`Argument '${formatPath(path)}' length ${normalized.length} is below minimum ${schema.minLength}`,
+					`Argument '${formatPath(path)}' length ${length} is below minimum ${schema.minLength}`,
 				);
 			}
-			if (
-				schema.maxLength !== undefined &&
-				normalized.length > schema.maxLength
-			) {
+			if (schema.maxLength !== undefined && length > schema.maxLength) {
 				errors.push(
-					`Argument '${formatPath(path)}' length ${normalized.length} exceeds maximum ${schema.maxLength}`,
+					`Argument '${formatPath(path)}' length ${length} exceeds maximum ${schema.maxLength}`,
 				);
 			}
 			if (schema.pattern !== undefined) {

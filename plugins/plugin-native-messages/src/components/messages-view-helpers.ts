@@ -23,6 +23,12 @@ export type ThreadSummary = {
 
 const INBOUND_SMS_TYPE = 1;
 
+// Numeric collation orders provider row IDs without losing 64-bit precision.
+// It also gives mixed numeric/text IDs a consistent ordering.
+function compareIds(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true });
+}
+
 export function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
   const byThread = new Map<string, SmsMessageSummary[]>();
   for (const message of messages) {
@@ -38,7 +44,7 @@ export function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
           typeof a.date === "number" && Number.isFinite(a.date) ? a.date : 0;
         const bDate =
           typeof b.date === "number" && Number.isFinite(b.date) ? b.date : 0;
-        return aDate - bDate || a.id.localeCompare(b.id);
+        return aDate - bDate || compareIds(a.id, b.id);
       });
       const lastMessage = sorted[sorted.length - 1] ?? threadMessages[0];
       return {
@@ -63,7 +69,7 @@ export function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
         Number.isFinite(a.lastMessage.date)
           ? a.lastMessage.date
           : 0;
-      return bDate - aDate || a.id.localeCompare(b.id);
+      return bDate - aDate || compareIds(a.id, b.id);
     });
 }
 

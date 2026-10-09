@@ -207,11 +207,13 @@ export class GatewayWeb extends WebPlugin {
   }
 
   /**
-   * Settle a failed initial handshake: reject the pending connect() promise,
-   * tear down the socket, and stop the reconnect loop. A gateway that never
-   * completes its first handshake must not spawn sockets forever behind a
-   * promise the caller can neither observe nor cancel except via disconnect().
-   * Post-connect drops keep the normal reconnect behavior and never reach here.
+   * Settle a failed handshake: reject the pending connect() promise if one
+   * exists, tear down the socket, and stop the reconnect loop. A gateway
+   * that never completes its first handshake must not spawn sockets forever
+   * behind a promise the caller can neither observe nor cancel except via
+   * disconnect(), and a gateway that explicitly refuses a reconnect
+   * handshake has ended the session just as finally. Post-connect drops keep
+   * the normal reconnect behavior and never reach here.
    */
   private failConnect(error: Error): void {
     const reject = this.connectReject;
@@ -228,14 +230,11 @@ export class GatewayWeb extends WebPlugin {
     this.closed = true;
     const socket = this.ws;
     this.ws = null;
-    for (const pending of this.pending.values()) {
-      clearTimeout(pending.timeout);
-    }
-    this.pending.clear();
+    this.rejectPending(error);
     this.resetSessionState();
     // Detach before close: browser and test WebSockets may emit `close`
     // synchronously, and that stale event must not re-enter this failure path.
-    socket?.close(1000, error.message);
+    socket?.close(1000);
     this.notifyStateChange("disconnected", error.message);
     reject?.(error);
   }
@@ -341,7 +340,7 @@ export class GatewayWeb extends WebPlugin {
       } else {
         // A reconnect handshake has no connect() promise to reject. Closing
         // the owned socket routes it through the established retry policy.
-        this.ws?.close(1011, error.message);
+        this.ws?.close(1000, error.message);
       }
     }, CONNECT_TIMEOUT_MS);
 
@@ -353,14 +352,10 @@ export class GatewayWeb extends WebPlugin {
           this.connectReject = null;
           this.connectResolve = null;
         } else {
-          // A gateway that answers the handshake with an error is as fatal to
-          // the initial connect as a dropped socket: reject and stop retrying.
+          // Explicit refusal ends the session, including during reconnect.
+          // A silent timeout above retains the existing retry policy.
           const error = new Error(result.error?.message || "Connection failed");
-          if (this.connectReject) {
-            this.failConnect(error);
-          } else {
-            this.ws?.close(1011, error.message);
-          }
+          this.failConnect(error);
         }
       },
       reject: (error) => {

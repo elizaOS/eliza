@@ -887,7 +887,7 @@ def valid_symbol_name(name):
     Returns
     --------
       valid :  bool
-        whether name is a a valid symbol name
+        whether name is a valid symbol name
 
     This checks for Python reserved words and that the name matches
     the regular expression ``[a-zA-Z_][a-zA-Z0-9_]``

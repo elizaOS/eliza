@@ -1,3 +1,4 @@
+import { sharedPublicGoogleProductQuery } from "./shared-realtime-grounding";
 /** Keeps Shared honest and returns a resumable setup handoff for unavailable work. */
 
 import { ElizaError } from "@elizaos/core";
@@ -74,7 +75,7 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
     capability: "calendar",
     label: "Calendar",
     pattern:
-      /\b(?:(?:add|create|book|schedule|cancel|delete|move|reschedule)\b[\s\S]{0,36}\b(?:calendar|events?|appointments?|meetings?)|(?:check|show|list|open)\b\s+(?:me\s+)?(?:(?:my|our|the|upcoming|next|today(?:'s)?|tomorrow(?:'s)?)\s+){0,2}(?:calendar|events?|appointments?|meetings?)|(?:check|show)\b\s+(?:me\s+)?(?:if|whether)\s+(?:(?:i|we)\s+have|there\s+(?:is|are))\s+(?:(?:any|some|an?)\s+)?(?:events?|appointments?|meetings?))\b/i,
+      /\b(?:(?:add|create|book|schedule|cancel|delete|move|reschedule)\b[\s\S]{0,36}\b(?:calendar|events?|appointments?|meetings?)|(?:check|show|list|open|read)\b\s+(?:me\s+)?(?:(?:my|our|the|upcoming|next|today(?:'s)?|tomorrow(?:'s)?)\s+){0,2}(?:calendar|events?|appointments?|meetings?)|(?:check|show)\b\s+(?:me\s+)?(?:if|whether)\s+(?:(?:i|we)\s+have|there\s+(?:is|are))\s+(?:(?:any|some|an?)\s+)?(?:events?|appointments?|meetings?))\b/i,
     constraint:
       "No calendar account or calendar action is available in this runtime, so it cannot read or change calendar data.",
   },
@@ -114,7 +115,7 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
     capability: "cloud-apps",
     label: "Cloud apps",
     pattern:
-      /\b(?:connect|open|read|send|search|manage|update|upload|download)\b[\s\S]{0,36}\b(?:gmail|google\s+drive|google\s+docs?|slack|notion|dropbox|microsoft\s+365|outlook)\b/i,
+      /\b(?:connect|open|read|send|search|manage|update|upload|download)\b[\s\S]{0,36}\b(?:gmail|google\s+calendar|google\s+drive|google\s+docs?|slack|notion|dropbox|microsoft\s+365|outlook)\b/i,
     constraint:
       "No external app account is connected in this runtime, so it cannot access or act inside one.",
   },
@@ -151,7 +152,7 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
 
 export function resolveSharedCapabilityWall(
   message: string | undefined,
-  capabilities: { reminders?: boolean; todos?: boolean } = {},
+  capabilities: { reminders?: boolean; todos?: boolean; googleContext?: boolean } = {},
 ): SharedCapabilityWall | null {
   const resolution = resolveSharedCapabilityIntent(message, capabilities);
   if (!resolution) return null;
@@ -169,9 +170,20 @@ type CapabilityMatch = {
 
 function isEnabled(
   match: CapabilityMatch,
-  capabilities: { reminders?: boolean; todos?: boolean },
+  capabilities: { reminders?: boolean; todos?: boolean; googleContext?: boolean },
+  text: string,
 ): boolean {
+  const matched = text.slice(match.index, match.end);
+  const googleRead =
+    capabilities.googleContext === true &&
+    !/\b(?:send|manage|update|upload|download|add|create|book|schedule|cancel|delete|move|reschedule)\b/iu.test(
+      matched,
+    ) &&
+    ((match.rule.capability === "cloud-apps" && /\b(?:gmail|google calendar)\b/iu.test(matched)) ||
+      (match.rule.capability === "calendar" &&
+        /\b(?:check|show|list|open|read)\b/iu.test(matched)));
   return (
+    googleRead ||
     (match.rule.capability === "reminders" && capabilities.reminders === true) ||
     (match.rule.capability === "todos" && capabilities.todos === true)
   );
@@ -222,16 +234,19 @@ function beginsSeparateClause(text: string, primary: CapabilityMatch, candidate:
 /** Resolve enabled primary intents without hiding unsupported later clauses. */
 export function resolveSharedCapabilityIntent(
   message: string | undefined,
-  capabilities: { reminders?: boolean; todos?: boolean } = {},
+  capabilities: { reminders?: boolean; todos?: boolean; googleContext?: boolean } = {},
 ): SharedCapabilityResolution | null {
   const text = (message ?? "").trim();
   if (!text || hasTrailingSharedActionCancellation(text)) return null;
-  const matches = RULES.flatMap((rule, priority) => matchesForRule(rule, priority, text)).sort(
-    (left, right) => left.index - right.index || left.priority - right.priority,
-  );
+  const publicGoogleProduct = Boolean(sharedPublicGoogleProductQuery(text));
+  const matches = RULES.flatMap((rule, priority) =>
+    publicGoogleProduct && (rule.capability === "cloud-apps" || rule.capability === "calendar")
+      ? []
+      : matchesForRule(rule, priority, text),
+  ).sort((left, right) => left.index - right.index || left.priority - right.priority);
   const primary = matches[0];
   if (!primary) return null;
-  if (!isEnabled(primary, capabilities)) {
+  if (!isEnabled(primary, capabilities, text)) {
     return { kind: "blocked-primary", blocked: wallFor(primary) };
   }
   const blockedCapabilities = new Set<SharedDedicatedCapability>();
@@ -239,7 +254,7 @@ export function resolveSharedCapabilityIntent(
     .slice(1)
     .filter(
       (candidate) =>
-        !isEnabled(candidate, capabilities) && beginsSeparateClause(text, primary, candidate),
+        !isEnabled(candidate, capabilities, text) && beginsSeparateClause(text, primary, candidate),
     )
     .flatMap((candidate) => {
       if (blockedCapabilities.has(candidate.rule.capability)) return [];
