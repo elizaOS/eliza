@@ -73,8 +73,11 @@ import type {
 } from "./run-shared-agent-turn";
 import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
 import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
+import { resolveSharedCapabilityIntent } from "./shared-capability-wall";
 import {
   createMatchingRealtimeSearchRunner,
+  hasTraceableRealtimeGrounding,
+  isMatchingRealtimeSearchResult,
   resolveSharedRealtimeRequirement,
 } from "./shared-realtime-grounding";
 import {
@@ -881,11 +884,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
 
   const modelPlugin = sharedModelPlugin(modelHandler);
   const actionsEnabled = input.messageRole !== "system";
-  const webSearchEnabled =
-    actionsEnabled &&
-    Boolean(
-      input.capabilityText && resolveSharedRealtimeRequirement(input.capabilityText, input.history),
-    );
+  const realtimeRequirement = actionsEnabled && input.capabilityText
+    ? resolveSharedRealtimeRequirement(input.capabilityText, input.history)
+    : undefined;
+  const webSearchEnabled = Boolean(realtimeRequirement);
   const reminderPlugin =
     actionsEnabled && input.execution?.reminders
       ? createSharedRemindersEdgePlugin({
@@ -916,6 +918,55 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const preflightWebSearchResult = input.preflightActionResults?.find(
     (result) => result.data?.actionName === "WEB_SEARCH",
   );
+  const executablePreflightWebSearchResult = preflightWebSearchResult
+    ? { ...preflightWebSearchResult }
+    : undefined;
+  const webSearchPlugin = executablePreflightWebSearchResult
+    ? createWebSearchEdgePlugin(createMatchingRealtimeSearchRunner(executablePreflightWebSearchResult))
+    : undefined;
+  if (
+    webSearchPlugin &&
+    executablePreflightWebSearchResult &&
+    preflightWebSearchResult?.success === true &&
+    realtimeRequirement &&
+    hasTraceableRealtimeGrounding(input.realtimeGrounding) &&
+    isMatchingRealtimeSearchResult(preflightWebSearchResult, realtimeRequirement.query) &&
+    isMatchingRealtimeSearchResult(preflightWebSearchResult, input.realtimeGrounding.query) &&
+    !resolveSharedCapabilityIntent(input.capabilityText, {
+      reminders: Boolean(input.execution.reminders),
+      todos: Boolean(input.execution.todos),
+    })
+  ) {
+    // Cost: reuse this turn's existing read; no additional search or initial
+    // free-query planner selection. Canonical post-tool synthesis stays enabled.
+    webSearchPlugin.responseHandlerEvaluators = [{
+      name: "shared.verified_public_preflight",
+      priority: 1000,
+      deterministicActions: ["WEB_SEARCH"],
+      shouldRun: ({ messageHandler }) => {
+        const plan = messageHandler.plan;
+        return messageHandler.processMessage === "RESPOND" &&
+          !plan.deterministicToolCall &&
+          (plan.intents?.length ?? 0) <= 1 &&
+          plan.candidateActions?.length === 1 &&
+          plan.candidateActions[0]?.trim().toUpperCase() === "WEB_SEARCH" &&
+          plan.contexts.every((context) => ["simple", "general", "web"].includes(context));
+      },
+      evaluate: () => {
+        // Structured read evidence still needs a model-authored answer. Set
+        // this only when selected, leaving compound/failure paths unchanged.
+        executablePreflightWebSearchResult.modelReplyRequired = true;
+        return {
+          requiresTool: true,
+          setContexts: ["general"],
+          clearCandidateActions: true,
+          addCandidateActions: ["WEB_SEARCH"],
+          deterministicToolCall: { name: "WEB_SEARCH", params: { query: realtimeRequirement.query } },
+          clearReply: true,
+        };
+      },
+    }];
+  }
   // A group turn labels each speaker `Participant <n>` (see
   // `group-participant-labels.ts`). That is a slot, not a name, so the model
   // needs one line telling it where real names come from; scoping it to the
@@ -931,13 +982,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ? { ...input.character, system: withGroupTurnNamingRule(input.character.system) }
       : input.character,
     modelPlugin,
-    ...(preflightWebSearchResult
-      ? {
-          webSearchPlugin: createWebSearchEdgePlugin(
-            createMatchingRealtimeSearchRunner(preflightWebSearchResult),
-          ),
-        }
-      : {}),
+    ...(webSearchPlugin ? { webSearchPlugin } : {}),
     transport: sharedCapabilityTransportForSource(
       input.execution.channel.source,
       input.execution.channel.type,
