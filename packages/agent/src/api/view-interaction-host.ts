@@ -59,20 +59,28 @@ export class ViewInteractionHost {
     if (this.closed)
       throw new ElizaError("View host is closed", { code: "VIEW_HOST_CLOSED" });
     assertRuntimeViewEntry(this.runtime, entry);
-    if (binding.navigation)
-      for (const [id, prior] of this.callers) {
-        if (
+    if (binding.navigation) {
+      const priorNavigations = [...this.callers].filter(
+        ([, prior]) =>
           prior.navigation &&
           prior.clientId === clientId &&
-          prior.ownerId === binding.ownerId
-        )
-          this.cancel(
-            id,
-            new ElizaError("Navigation was superseded", {
-              code: "VIEW_NAVIGATION_SUPERSEDED",
-            }),
-          );
-      }
+          prior.ownerId === binding.ownerId,
+      );
+      // A claim has already authorized renderer execution. Reject another
+      // preparation until it settles rather than revoke its acknowledgment or
+      // allow two claimed destinations to commit out of order.
+      if (priorNavigations.some(([, prior]) => prior.claimId))
+        throw new ElizaError("A navigation is already being applied", {
+          code: "VIEW_NAVIGATION_BUSY",
+        });
+      for (const [id] of priorNavigations)
+        this.cancel(
+          id,
+          new ElizaError("Navigation was superseded", {
+            code: "VIEW_NAVIGATION_SUPERSEDED",
+          }),
+        );
+    }
     const caller = { clientId, entry, ...binding };
     this.callers.set(requestId, caller);
     return this.pending.waitFor(requestId, timeoutMs).finally(() => {
