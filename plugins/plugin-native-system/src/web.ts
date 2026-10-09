@@ -91,6 +91,8 @@ export class SystemWeb extends WebPlugin implements SystemPlugin {
         { stream: "ring", current: 4, max: 7 },
         { stream: "alarm", current: 4, max: 7 },
         { stream: "notification", current: 4, max: 7 },
+        { stream: "system", current: 4, max: 7 },
+        { stream: "voiceCall", current: 4, max: 5 },
       ],
     };
   }
