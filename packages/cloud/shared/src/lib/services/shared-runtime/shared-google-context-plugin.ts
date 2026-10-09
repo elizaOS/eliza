@@ -110,12 +110,13 @@ export function createSharedGoogleContextPlugin(
         };
       } catch (error) {
         // No provider payload, private body or credential is projected into failure text.
-        const calendarLimit =
-          error instanceof AgentGoogleConnectorError &&
-          /^Google Calendar feed exceeded \d+ events; narrow the requested time range\.$/u.test(
-            error.message,
-          );
-        const code = calendarLimit ? "GOOGLE_CONTEXT_LIMIT_EXCEEDED" : "GOOGLE_CONTEXT_UNAVAILABLE";
+        const contextLimit =
+          (error instanceof ElizaError && error.code === "SHARED_GOOGLE_CONTENT_LIMIT_EXCEEDED") ||
+          (error instanceof AgentGoogleConnectorError &&
+            /^(?:Google Calendar feed exceeded \d+ events|Google Calendar returned more events than the requested page limit); narrow the requested time range\.$/u.test(
+              error.message,
+            ));
+        const code = contextLimit ? "GOOGLE_CONTEXT_LIMIT_EXCEEDED" : "GOOGLE_CONTEXT_UNAVAILABLE";
         _runtime.reportError(
           "SharedGoogleContext",
           new ElizaError("Google personal context operation failed", { code }),
@@ -123,8 +124,8 @@ export function createSharedGoogleContextPlugin(
         );
         return {
           success: false,
-          text: calendarLimit
-            ? "Google Calendar context exceeded the event limit. No partial result was returned. Request a narrower time range."
+          text: contextLimit
+            ? "Selected Google context exceeded a content or page limit. No partial result was returned. Request fewer or smaller messages, or a narrower time range."
             : "Google personal context could not be read. Check the selected account's connection and consent, or retry the request. No successful read is claimed.",
           data: {
             actionName: GOOGLE_CONTEXT_ACTION,

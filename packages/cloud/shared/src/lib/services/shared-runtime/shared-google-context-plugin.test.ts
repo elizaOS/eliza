@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, type Memory } from "@elizaos/core";
 import { AgentGoogleConnectorError } from "../agent-google-connector";
 import { buildSharedCapabilityCatalog } from "./shared-capability-catalog";
 import { resolveSharedCapabilityWall } from "./shared-capability-wall";
@@ -166,10 +166,26 @@ describe("Google Shared action/capability bridge", () => {
       success: false,
       data: { code: "GOOGLE_CONTEXT_LIMIT_EXCEEDED" },
     });
+    failure = new ElizaError("Selected Google message body exceeds 8000 characters.", {
+      code: "SHARED_GOOGLE_CONTENT_LIMIT_EXCEEDED",
+    });
+    expect(await run()).toMatchObject({
+      success: false,
+      text: expect.stringContaining("fewer or smaller messages"),
+      data: { code: "GOOGLE_CONTEXT_LIMIT_EXCEEDED" },
+    });
+    failure = new AgentGoogleConnectorError(
+      502,
+      "Google Calendar returned more events than the requested page limit; narrow the requested time range.",
+    );
+    expect(await run()).toMatchObject({
+      success: false,
+      data: { code: "GOOGLE_CONTEXT_LIMIT_EXCEEDED" },
+    });
     failure = new Error("private-message-and-token-sentinel");
     const result = await run();
     expect(result).toMatchObject({ success: false, data: { code: "GOOGLE_CONTEXT_UNAVAILABLE" } });
-    expect(reports).toHaveLength(2);
+    expect(reports).toHaveLength(4);
     expect(JSON.stringify([reports, result])).not.toContain(failure.message);
   });
 });

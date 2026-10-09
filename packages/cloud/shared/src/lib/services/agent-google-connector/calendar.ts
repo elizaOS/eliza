@@ -334,6 +334,9 @@ export async function fetchManagedGoogleCalendarFeed(args: {
   do {
     pages += 1;
     const params = new URLSearchParams(baseParams);
+    if (args.limits) {
+      params.set("maxResults", String(Math.min(2500, args.limits.maxEvents - events.length)));
+    }
     if (pageToken) {
       params.set("pageToken", pageToken);
     }
@@ -349,6 +352,12 @@ export async function fetchManagedGoogleCalendarFeed(args: {
       items?: GoogleCalendarApiEvent[];
       nextPageToken?: string;
     };
+    if (args.limits && (parsed.items?.length ?? 0) > Number(params.get("maxResults"))) {
+      fail(
+        502,
+        "Google Calendar returned more events than the requested page limit; narrow the requested time range.",
+      );
+    }
     const normalizedPage = (parsed.items ?? [])
       .map((event) => normalizeGoogleCalendarEvent(args.calendarId, event, args.timeZone))
       .filter((event): event is ManagedGoogleCalendarEvent => event !== null);
@@ -358,13 +367,7 @@ export async function fetchManagedGoogleCalendarFeed(args: {
         `Google Calendar feed exceeded ${MAX_GOOGLE_CALENDAR_FEED_EVENTS} events; narrow the requested time range.`,
       );
     }
-    if (args.limits) {
-      const remaining = args.limits.maxEvents - events.length;
-      events.push(...normalizedPage.slice(0, remaining));
-      truncated ||= normalizedPage.length > remaining;
-    } else {
-      events.push(...normalizedPage);
-    }
+    events.push(...normalizedPage);
     const nextPageToken = parsed.nextPageToken?.trim() || undefined;
     if (nextPageToken && seenPageTokens.has(nextPageToken)) {
       fail(502, "Google Calendar feed pagination repeated a page token.");

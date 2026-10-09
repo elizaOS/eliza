@@ -34,6 +34,24 @@ function bounded(value: string, maximum: number): string {
   return result;
 }
 
+function requireCompleteText(value: string, maximum: number, field: string): void {
+  if (value.length > maximum) {
+    throw new ElizaError(
+      `Selected Google ${field} exceeds ${maximum} characters. No partial content was returned. Narrow the selection or choose a smaller item.`,
+      { code: "SHARED_GOOGLE_CONTENT_LIMIT_EXCEEDED" },
+    );
+  }
+}
+
+function requirePageLimit(count: number, maximum: number): void {
+  if (count > maximum) {
+    throw new ElizaError(
+      "Google returned more records than the requested page limit. No partial result was returned. Narrow the selection.",
+      { code: "SHARED_GOOGLE_CONTENT_LIMIT_EXCEEDED" },
+    );
+  }
+}
+
 function validateReadRequest(value: unknown): SharedGoogleReadRequest {
   if (!value || typeof value !== "object")
     throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", {
@@ -131,26 +149,24 @@ export function createSharedGoogleReadPort(
           query: request.query,
           maxResults: 5,
         });
-        const hasMore = Boolean(result.nextPageToken) || result.messages.length > 5;
-        const selectedMessages = result.messages.slice(0, 5);
+        requirePageLimit(result.messages.length, 5);
+        for (const message of result.messages) {
+          requireCompleteText(message.subject, 256, "message subject");
+          requireCompleteText(message.from, 256, "message sender");
+          requireCompleteText(message.snippet, 512, "message snippet");
+        }
+        const hasMore = Boolean(result.nextPageToken);
         return {
           kind: "private_google_gmail_search" as const,
           untrustedContent: true as const,
           observedAt: result.syncedAt,
           hasMore,
-          truncated:
-            hasMore ||
-            selectedMessages.some(
-              (message) =>
-                message.subject.length > 256 ||
-                message.from.length > 256 ||
-                message.snippet.length > 512,
-            ),
-          messages: selectedMessages.map((message) => ({
+          truncated: hasMore,
+          messages: result.messages.map((message) => ({
             id: message.externalId,
-            subject: message.subject.slice(0, 256),
-            from: message.from.slice(0, 256),
-            snippet: message.snippet.slice(0, 512),
+            subject: message.subject,
+            from: message.from,
+            snippet: message.snippet,
             receivedAt: message.receivedAt,
           })),
         };
@@ -160,13 +176,15 @@ export function createSharedGoogleReadPort(
           ...selected,
           messageId: bounded(request.messageId, 256),
         });
+        requireCompleteText(result.message.subject, 256, "message subject");
+        requireCompleteText(result.bodyText, 8_000, "message body");
         return {
           kind: "private_google_gmail_message" as const,
           untrustedContent: true as const,
           id: result.message.externalId,
-          subject: result.message.subject.slice(0, 256),
-          bodyText: result.bodyText.slice(0, 8_000),
-          truncated: result.bodyText.length > 8_000 || result.message.subject.length > 256,
+          subject: result.message.subject,
+          bodyText: result.bodyText,
+          truncated: false,
         };
       }
       const result = await deps.fetchManagedGoogleCalendarFeed({
@@ -178,24 +196,24 @@ export function createSharedGoogleReadPort(
         timeMax: request.timeMax,
         timeZone: request.timeZone,
       });
+      requirePageLimit(result.events.length, 20);
+      for (const event of result.events) {
+        requireCompleteText(event.title, 256, "event title");
+        requireCompleteText(event.location, 256, "event location");
+      }
       return {
         kind: "private_google_calendar" as const,
         untrustedContent: true as const,
         observedAt: result.syncedAt,
-        hasMore: result.truncated === true || result.events.length > 20,
-        truncated:
-          result.truncated === true ||
-          result.events.length > 20 ||
-          result.events
-            .slice(0, 20)
-            .some((event) => event.title.length > 256 || event.location.length > 256),
-        events: result.events.slice(0, 20).map((event) => ({
+        hasMore: result.truncated === true,
+        truncated: result.truncated === true,
+        events: result.events.map((event) => ({
           id: event.externalId,
-          title: event.title.slice(0, 256),
+          title: event.title,
           startAt: event.startAt,
           endAt: event.endAt,
           isAllDay: event.isAllDay,
-          location: event.location.slice(0, 256),
+          location: event.location,
         })),
       };
     },

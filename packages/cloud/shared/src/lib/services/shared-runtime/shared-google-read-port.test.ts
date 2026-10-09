@@ -146,8 +146,8 @@ describe("server-owned Shared Google read seam", () => {
         events: [
           {
             externalId: "e1",
-            title: "t".repeat(300),
-            location: "l".repeat(300),
+            title: "t".repeat(256),
+            location: "l".repeat(256),
             startAt: "2026-11-01",
             endAt: "2026-11-02",
             isAllDay: true,
@@ -186,6 +186,34 @@ describe("server-owned Shared Google read seam", () => {
         limits: { maxEvents: 20, maxPages: 1 },
       },
     });
+    const originalFeed = deps.fetchManagedGoogleCalendarFeed;
+    for (const field of ["title", "location"] as const) {
+      deps.fetchManagedGoogleCalendarFeed = async (args) => {
+        const result = await originalFeed(args);
+        result.events[0][field] = "x".repeat(257);
+        return result;
+      };
+      await expect(
+        port.read({
+          kind: "calendar",
+          timeMin: "2026-10-08",
+          timeMax: "2026-11-09",
+          timeZone: "UTC",
+        }),
+      ).rejects.toThrow(`event ${field} exceeds 256 characters`);
+    }
+    deps.fetchManagedGoogleCalendarFeed = async (args) => {
+      const result = await originalFeed(args);
+      return { ...result, events: Array.from({ length: 21 }, () => result.events[0]) };
+    };
+    await expect(
+      port.read({
+        kind: "calendar",
+        timeMin: "2026-10-08",
+        timeMax: "2026-11-09",
+        timeZone: "UTC",
+      }),
+    ).rejects.toThrow("requested page limit");
   });
 
   test("read pins owner side and selected grant and excludes write methods", async () => {
@@ -230,13 +258,13 @@ describe("server-owned Shared Google read seam", () => {
     ]);
     expect(Object.keys(port).sort()).toEqual(["connect", "read"]);
   });
-  test("search uses one five-message page and declares partial bounded projection", async () => {
+  test("search preserves selected fields and declares unrequested remaining pages", async () => {
     const { deps } = fixture();
     const message = {
       externalId: "m1",
-      subject: "s".repeat(300),
-      from: "f".repeat(300),
-      snippet: "x".repeat(900),
+      subject: "s".repeat(256),
+      from: "f".repeat(256),
+      snippet: "x".repeat(512),
       receivedAt: "2026-10-08",
       extraPrivateMetadata: "must not enter model context",
     } as Awaited<ReturnType<typeof deps.fetchManagedGoogleGmailSearch>>["messages"][number];
@@ -246,7 +274,7 @@ describe("server-owned Shared Google read seam", () => {
       expect(args.maxResults).toBe(5);
       expect(args.pageToken).toBeUndefined();
       return {
-        messages: Array.from({ length: 6 }, () => message),
+        messages: Array.from({ length: 5 }, () => message),
         syncedAt: "now",
         nextPageToken: "next",
       };
@@ -272,15 +300,34 @@ describe("server-owned Shared Google read seam", () => {
       receivedAt: "2026-10-08",
     });
     expect(pages).toBe(1);
+    for (const [field, limit] of [
+      ["subject", 256],
+      ["from", 256],
+      ["snippet", 512],
+    ] as const) {
+      const original = message[field];
+      message[field] = "x".repeat(limit + 1);
+      await expect(port.read({ kind: "gmail_search", query: "meeting" })).rejects.toThrow(
+        "No partial content was returned",
+      );
+      message[field] = original;
+    }
+    deps.fetchManagedGoogleGmailSearch = async () => ({
+      messages: Array.from({ length: 6 }, () => message),
+      syncedAt: "now",
+    });
+    await expect(port.read({ kind: "gmail_search", query: "meeting" })).rejects.toThrow(
+      "requested page limit",
+    );
   });
 
-  test("message body is bounded and reports truncation without dumping metadata", async () => {
+  test("message body is complete or explicitly rejected without dumping metadata", async () => {
     const { deps } = fixture();
     const result = {
-      message: { externalId: "m1", subject: "s".repeat(300) } as Awaited<
+      message: { externalId: "m1", subject: "s".repeat(256) } as Awaited<
         ReturnType<typeof deps.readManagedGoogleGmailMessage>
       >["message"],
-      bodyText: `${"x".repeat(9000)}complete ending`,
+      bodyText: `${"x".repeat(7985)}complete ending`,
       attachments: [],
     };
     deps.readManagedGoogleGmailMessage = async () => result;
@@ -298,8 +345,17 @@ describe("server-owned Shared Google read seam", () => {
       untrustedContent: true,
       id: "m1",
       subject: "s".repeat(256),
-      bodyText: "x".repeat(8000),
-      truncated: true,
+      bodyText: result.bodyText,
+      truncated: false,
     });
+    result.bodyText = "private-sentinel" + "x".repeat(8000);
+    await expect(port.read({ kind: "gmail_message", messageId: "m1" })).rejects.toThrow(
+      "message body exceeds 8000 characters",
+    );
+    result.bodyText = "complete body";
+    result.message.subject = "x".repeat(257);
+    await expect(port.read({ kind: "gmail_message", messageId: "m1" })).rejects.toThrow(
+      "message subject exceeds 256 characters",
+    );
   });
 });
