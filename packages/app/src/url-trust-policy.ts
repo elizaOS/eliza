@@ -66,7 +66,11 @@ export function isPrivateOrLoopbackApiHost(host: string): boolean {
     (normalized.includes(":") &&
       (normalized.startsWith("fc") ||
         normalized.startsWith("fd") ||
-        normalized.startsWith("fe80:"))) ||
+        // IPv6 link-local is fe80::/10, not just fe80::: the first
+        // segment runs fe80-febf. The repo's other host classifiers
+        // (core SSRF guard, agent database API, orchestrator SSRF
+        // guard) all test the full /10 range.
+        /^fe[89ab][0-9a-f]:/.test(normalized))) ||
     isTrustedPrivateHttpHost(normalized)
   );
 }
