@@ -76,11 +76,14 @@ export interface StreamingParseResult {
  * cleanly there — `core(raw) === core(raw.slice(0,c)) + core(raw.slice(c))` —
  * and stays clean as raw grows at its tail. `normalizeDisplayCore`'s passes only
  * reach across a boundary via whitespace, an open `(`, a dangling `<`, an
- * unterminated `*`/`_` span, or an unclosed hidden block; a cut right after a
- * newline whose next char is non-whitespace and not `)`, with the prefix free of
- * dangling `<` and open/spanning hidden blocks, blocks all of them (proven by
- * the seam property test). Scans only `raw[fromCut..]` — `fromCut` is a prior
- * safe cut, so no hidden block spans it and no `<` dangles into it.
+ * unterminated `*`/`_` span, an unclosed hidden block, or an open backtick code
+ * span (prose normalization leaves code-span content untouched, so a cut inside
+ * a span would strip `*…*` text the full parse preserves as code); a cut right
+ * after a newline whose next char is non-whitespace and not `)`, with the
+ * prefix free of dangling `<`, open/spanning hidden blocks, and unmatched
+ * backtick runs, blocks all of them (proven by the seam property test). Scans
+ * only `raw[fromCut..]` — `fromCut` is a prior safe cut, so no hidden block
+ * spans it, no `<` dangles into it, and no code span is open at it.
  */
 export function computeSafeNormCut(raw: string, fromCut: number): number {
   // Hidden blocks intersecting [fromCut, end) all start at ≥ fromCut (fromCut is
@@ -114,9 +117,37 @@ export function computeSafeNormCut(raw: string, fromCut: number): number {
   // whitespace into a separate window would strand `(\n…`. Mirrors the `)`
   // guard below (which blocks the symmetric `\s+\)` back-collapse).
   let openParenAt = -1;
+  // Backtick code-span state, mirroring how the full parse pairs runs: a run
+  // opens a span, a later run of the same length closes it, and runs never
+  // pair across a blank line (block boundaries delimit inline code). While a
+  // run is unmatched, prose normalization in the full parse leaves the span's
+  // content alone, so no cut may land inside it — normalizing the window on
+  // its own would leave the opening run unmatched there too and strip `*…*`
+  // text the full parse preserves as code.
+  let openBacktickRun = 0; // length of the unmatched opening run; 0 = outside
+  let pendingRun = 0; // backticks in the run that has not ended yet
+  let lineHasContent = false; // current line holds a non-whitespace char
   let bestCut = fromCut;
   for (let i = fromCut + 1; i < raw.length; i++) {
     const prev = raw[i - 1];
+    if (prev === "`") {
+      pendingRun += 1;
+      lineHasContent = true;
+    } else {
+      if (pendingRun > 0) {
+        if (openBacktickRun === 0) openBacktickRun = pendingRun;
+        else if (pendingRun === openBacktickRun) openBacktickRun = 0;
+        pendingRun = 0;
+      }
+      if (prev === "\n") {
+        // A blank line ends the block: an unmatched run before it is literal
+        // text there, and later runs open spans of their own.
+        if (!lineHasContent) openBacktickRun = 0;
+        lineHasContent = false;
+      } else if (prev !== " " && prev !== "\t" && prev !== "\r") {
+        lineHasContent = true;
+      }
+    }
     if (prev === "<") openLtAt = i - 1;
     else if (prev === ">") openLtAt = -1;
     if (prev === "(") openParenAt = i - 1;
@@ -135,6 +166,7 @@ export function computeSafeNormCut(raw: string, fromCut: number): number {
     if (next === "*" || next === "_") continue;
     if (openLtAt !== -1) continue;
     if (openParenAt !== -1) continue;
+    if (openBacktickRun !== 0) continue;
     if (insideClosedBlock(i)) continue;
     if (i > unclosedFrom) break;
     bestCut = i;
