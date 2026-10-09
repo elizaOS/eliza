@@ -2,6 +2,7 @@
 import { beforeEach, expect, mock, test } from "bun:test";
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
 import { svcSign } from "@elizaos/plugin-network/svc-auth";
+import { Hono } from "hono";
 
 const SECRET = "deliver-route-secret-0123456789abcdef";
 const users: Record<string, { id: string; organization_id: string }> = {
@@ -16,6 +17,11 @@ mock.module("@elizaos/cloud-shared/db/repositories/users", () => ({
 }));
 const { default: route } = await import("./route");
 const { default: receiptRoute } = await import("./receipt/route");
+const deliveryPath = "/api/internal/network/deliver";
+const receiptPath = `${deliveryPath}/receipt`;
+const app = new Hono()
+  .route(deliveryPath, route)
+  .route(receiptPath, receiptRoute);
 const dispatches: Array<{ name: string; body: Record<string, unknown> }> = [];
 let ownerResponse = () =>
   Response.json({
@@ -41,17 +47,19 @@ async function post(
     id?: string;
     enabled?: string;
     receipt?: boolean;
+    signedPath?: string;
   } = {},
 ) {
+  const path = options.receipt ? receiptPath : deliveryPath;
   const body = JSON.stringify(payload);
   const signed = await svcSign(options.secret ?? SECRET, {
     method: "POST",
-    path: "/",
+    path: options.signedPath ?? path,
     id: options.id ?? String(payload.id),
     body,
   });
-  const response = await (options.receipt ? receiptRoute : route).request(
-    "/",
+  const response = await app.request(
+    path,
     {
       method: "POST",
       headers: { "content-type": "application/json", ...signed },
@@ -149,6 +157,19 @@ test("invalid signatures, mismatched keys, malformed input and disabled activati
     (await post(intro, { secret: "another-secret-0123456789abcdefXYZ" }))
       .status,
   ).toBe(401);
+  // Full mounted paths are signed. A signature for the other endpoint or
+  // the unmounted root cannot enter either owner operation.
+  for (const receipt of [false, true]) {
+    expect(
+      (
+        await post(intro, {
+          receipt,
+          signedPath: receipt ? deliveryPath : receiptPath,
+        })
+      ).status,
+    ).toBe(401);
+    expect((await post(intro, { receipt, signedPath: "/" })).status).toBe(401);
+  }
   expect((await post(intro, { id: "other-id" })).status).toBe(400);
   expect((await post({ ...intro, to: "4155550801" })).status).toBe(400);
   expect((await post({ ...intro, app: "foreign" })).status).toBe(400);
