@@ -322,22 +322,14 @@ export function validateResourceSelection(
     return basicResult;
   }
   const data = basicResult.data;
-  // Mirror validateToolSelectionName: the module contract requires the
-  // selection to target a connected server and an existing resource.
-  // Without this, a hallucinated server or URI passes validation and the
-  // read fails later, outside the retry-and-feedback loop.
+  // Resource links and template-derived URIs need not appear in resources/list.
+  // Validate the selected connection here; the server resolves the resource.
   const mcpData = (state.values.mcp ?? {}) as Record<string, McpServerInfo>;
-  const server = mcpData[data.serverName ?? ""];
-  if (server?.status !== "connected") {
+  const name = data.serverName ?? "";
+  if (!Object.hasOwn(mcpData, name) || mcpData[name]?.status !== "connected") {
     return {
       success: false,
       error: `Server "${data.serverName}" not found or not connected`,
-    };
-  }
-  if (!data.uri || !server.resources?.[data.uri]) {
-    return {
-      success: false,
-      error: `Resource "${data.uri}" not found on server "${data.serverName}"`,
     };
   }
   return basicResult;
