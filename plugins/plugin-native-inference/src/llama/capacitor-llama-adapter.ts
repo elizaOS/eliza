@@ -250,6 +250,16 @@ function toPlainLlamaCppPlugin(plugin: LlamaCppPluginLike): LlamaCppPluginLike {
               variant?: string;
             }>
         : undefined,
+    // Without this forward the wrapper hid the native chat-template
+    // renderer, so formatChat() always saw a non-function and returned
+    // null even when the native plugin and the model both support it.
+    getFormattedChat:
+      typeof plugin.getFormattedChat === "function"
+        ? (options) =>
+            plugin.getFormattedChat?.(options) as Promise<{
+              prompt: string | null;
+            }>
+        : undefined,
     addListener: (event, listener) => plugin.addListener(event, listener),
   };
 }
@@ -1244,18 +1254,26 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       content: string;
     }[],
   ): Promise<string | null> {
-    if (!this.plugin || !this.loadedPath) {
-      throw new Error("No model loaded. Call load() first.");
-    }
-    if (typeof this.plugin.getFormattedChat !== "function") {
-      return null;
-    }
-    const result = await this.plugin.getFormattedChat({
-      contextId: this.requireContextId(),
-      messages: JSON.stringify(messages),
-      params: { jinja: true },
+    return this.serializeLifecycle(async () => {
+      if (!this.plugin || !this.loadedPath) {
+        throw new Error("No model loaded. Call load() first.");
+      }
+      if (typeof this.plugin.getFormattedChat !== "function") {
+        return null;
+      }
+      try {
+        const result = await this.plugin.getFormattedChat({
+          contextId: this.requireContextId(),
+          messages: JSON.stringify(messages),
+          params: { jinja: true },
+        });
+        return result.prompt ?? null;
+      } catch (error) {
+        // Capacitor proxies expose functions even for absent native methods.
+        if (isObject(error) && error.code === "UNIMPLEMENTED") return null;
+        throw error;
+      }
     });
-    return result.prompt ?? null;
   }
   async embed(options: EmbedOptions): Promise<EmbedResult> {
     // Admission and inference must finish before a queued unload releases their context.
