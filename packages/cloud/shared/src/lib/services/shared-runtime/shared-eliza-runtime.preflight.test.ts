@@ -612,6 +612,14 @@ test("general Gmail documentation uses canonical query and source footer after r
   expect(actual.coreShapes.some((row) => Object.keys(row.segments).some((key) => key.endsWith("stage_instructions")))).toBe(true);
   expect(actual.wireShapes.every((row) => row.requestJSONChars > 0 && row.toolCount > 0)).toBe(true);
   const summary = { minimumComparedChars: 128, weather: { core: prior.coreShapes, wire: prior.wireShapes }, general: { core: actual.coreShapes, wire: actual.wireShapes } };
+  const pending: unknown[] = [summary];
+  while (pending.length) {
+    const value = pending.pop();
+    if (typeof value === "string") expect(["RESPONSE_HANDLER", "ACTION_PLANNER", "TEXT_SMALL", "TEXT_LARGE", "other"]).toContain(value);
+    else if (typeof value === "number") expect(Number.isFinite(value) && value >= 0).toBe(true);
+    else if (value && typeof value === "object") pending.push(...Object.values(value));
+    else throw new Error("Numeric request-shape projection contains an unexpected leaf");
+  }
   const encoded = JSON.stringify(summary);
   for (const privateValue of [GENERAL_TOPIC, GENERAL_SOURCE, PROMPT, USER_MESSAGE_ID, "offline-preflight-test-key", "QA Owner", "thought", "parameters"]) expect(encoded).not.toContain(privateValue);
   console.info("[offline-request-shape-numeric]", summary);
