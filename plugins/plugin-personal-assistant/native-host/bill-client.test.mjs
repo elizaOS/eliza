@@ -736,10 +736,25 @@ test("a hold for a question stops re-checks and sends a waiting command only aft
   calls[1].resolve(guided);
   assert.equal(await shown, true);
   assert.equal(pending.length, 1, "re-checks resume");
+  // A hold can start while a command is waiting behind an in-flight check.
+  pending.shift().callback();
+  await tick();
+  assert.equal(calls.length, 3);
+  const queued = client.restoreGuidance();
+  await tick();
+  client.hold();
+  calls[2].resolve(guided);
+  await tick();
+  assert.equal(calls.length, 3, "a later hold fences the queued command");
+  client.release();
+  await tick();
+  assert.equal(calls.length, 4);
+  calls[3].resolve(guided);
+  assert.equal(await queued, true);
   // A command waiting in a hold is dropped when the task stops.
   client.hold();
   const dropped = client.refresh();
   client.stop();
   assert.equal(await dropped, false);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 4);
 });

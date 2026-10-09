@@ -37,7 +37,9 @@ a task action pauses the task. A website that already shows the bill paid or
 scheduled ends the task with a kept `bill_prior_outcomes_v1` record; it is never
 this task's payment. After a saved outcome, a host with bill discovery looks up
 to three times for exactly one receipt email that names the provider reference
-and then reports `receiptInEmail`. The code coordinator never fills a code field
+and then reports `receiptInEmail`. Each lookup reserves a durable attempt before
+the provider read; failed reads share the same budget and one-minute cooldown.
+The code coordinator never fills a code field
 the person has typed in and reports fixed Google reasons (`codeReason`). Bill
 search fails with `account_mismatch` when the connected Google address cannot
 receive the configured recipient's mail (masked addresses are matched by their

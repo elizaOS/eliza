@@ -740,6 +740,7 @@ test("a form she sent while the website was hers, before any review, leads to a 
     current.effectViolation = "submit";
     const paused = await workflow.refresh();
     assert.equal(paused.kind, "paused");
+    assert.doesNotMatch(paused.message, /nothing was sent/i);
     assert.deepEqual(actions, ["pause"]);
   } finally {
     db.close();
@@ -823,6 +824,30 @@ test("a saved outcome says its receipt is in email only after one receipt was fo
     const failed = await workflow.refresh();
     assert.equal(failed.saveStatus, "saved");
     assert.equal(failed.receiptInEmail, undefined);
+    const afterFailure = looks.length;
+    await workflow.refresh();
+    assert.equal(
+      looks.length,
+      afterFailure,
+      "failed searches obey the cooldown",
+    );
+    for (let i = 0; i < 5; i++) {
+      db.prepare(
+        "UPDATE bill_receipt_checks_v1 SET document=json_set(document,'$.checkedAt',0)",
+      ).run();
+      await workflow.refresh();
+    }
+    assert.equal(
+      looks.length,
+      afterFailure + 2,
+      "failures consume the three-attempt budget",
+    );
+    const restarted = createBillOutcomeStore(db, tasks).forTask(
+      runtime,
+      task.id,
+    );
+    assert.equal(restarted.loadReceiptCheck().checks, 3);
+    db.exec("DELETE FROM bill_receipt_checks_v1");
     // At most three searches for one outcome.
     answer = false;
     for (let i = 0; i < 5; i++) {
@@ -832,6 +857,29 @@ test("a saved outcome says its receipt is in email only after one receipt was fo
       await workflow.refresh();
     }
     assert.equal(outcomes.loadReceiptCheck().checks, 3);
+    // Concurrent looks reserve one attempt before either provider read completes.
+    db.exec("DELETE FROM bill_receipt_checks_v1");
+    let release;
+    answer = new Promise((resolve) => {
+      release = resolve;
+    });
+    const beforeConcurrent = looks.length;
+    const concurrent = [workflow.refresh(), workflow.refresh()];
+    await new Promise((resolve) => setImmediate(resolve));
+    release(false);
+    await Promise.all(concurrent);
+    assert.equal(looks.length, beforeConcurrent + 1);
+    // A restart after reservation cannot immediately replay that lookup.
+    const resumed = createBillOutcomeStore(db, tasks).forTask(runtime, task.id);
+    assert.equal(resumed.beginReceiptCheck(), null);
+    // If durable reservation fails, no provider request is made.
+    db.exec("DELETE FROM bill_receipt_checks_v1");
+    db.exec(
+      "CREATE TEMP TRIGGER reject_receipt_attempt BEFORE INSERT ON bill_receipt_checks_v1 BEGIN SELECT RAISE(ABORT, 'test storage unavailable'); END",
+    );
+    const beforeStorageFailure = looks.length;
+    assert.equal((await workflow.refresh()).saveStatus, "saved");
+    assert.equal(looks.length, beforeStorageFailure);
   } finally {
     db.close();
   }

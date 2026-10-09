@@ -628,20 +628,33 @@ export function createBillOutcomeStore(db, tasks, { journalPath } = {}) {
             throw new BillHostError("Invalid receipt check record");
           return record;
         },
-        recordReceiptCheck(found) {
+        beginReceiptCheck() {
           requireOwned();
           if (!load()) throw new BillHostError("No outcome for a receipt");
-          const previous = this.loadReceiptCheck();
-          // A found receipt stays found.
+          this.loadReceiptCheck();
+          const now = Date.now();
           const record = {
-            found: previous?.found === true || found === true,
-            checks: (previous?.checks ?? 0) + 1,
-            checkedAt: Date.now(),
+            found: false,
+            checks: 1,
+            checkedAt: now,
           };
+          // Reserve durably before the provider read. Failures, restarts and
+          // concurrent looks consume the same bounded attempt budget.
+          const claimed = db
+            .prepare(
+              "INSERT INTO bill_receipt_checks_v1 VALUES (?,?,?) ON CONFLICT(task_id) DO UPDATE SET document=json_set(document,'$.checks',json_extract(document,'$.checks')+1,'$.checkedAt',?) WHERE owner_key=excluded.owner_key AND json_extract(document,'$.found')=0 AND json_extract(document,'$.checks')<3 AND json_extract(document,'$.checkedAt')<=? RETURNING document",
+            )
+            .get(taskId, ownerKey, JSON.stringify(record), now, now - 60000);
+          return claimed ? this.loadReceiptCheck() : null;
+        },
+        confirmReceiptCheck() {
+          requireOwned();
+          if (!load() || !this.loadReceiptCheck())
+            throw new BillHostError("No receipt check to confirm");
           db.prepare(
-            "INSERT INTO bill_receipt_checks_v1 VALUES (?,?,?) ON CONFLICT(task_id) DO UPDATE SET document=excluded.document WHERE owner_key=excluded.owner_key",
-          ).run(taskId, ownerKey, JSON.stringify(record));
-          return record;
+            "UPDATE bill_receipt_checks_v1 SET document=json_set(document,'$.found',json('true')) WHERE task_id=? AND owner_key=?",
+          ).run(taskId, ownerKey);
+          return this.loadReceiptCheck();
         },
         loadPriorOutcome() {
           const task = requireOwned();

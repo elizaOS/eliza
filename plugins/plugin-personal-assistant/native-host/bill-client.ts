@@ -703,14 +703,14 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
     this.state.error = null;
     this.publish();
     try {
+      // Let an already-sent background check settle before rechecking holds.
+      const background = this.background.get(taskId);
+      if (background) await background;
       // While a question is answered, wait; then send under the same ticket.
       while (this.hold_) {
         await this.hold_.released;
         if (!this.current(ticket)) return false;
       }
-      // Let a background check that is already sent settle first.
-      const background = this.background.get(taskId);
-      if (background) await background;
       if (!this.current(ticket)) return false;
       const reply = await this.request(
         `/tasks/${encodeURIComponent(taskId)}/bill`,

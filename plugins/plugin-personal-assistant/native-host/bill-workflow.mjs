@@ -57,7 +57,9 @@ export class BillWorkflow {
       outcome?.kind !== "outcome" ||
       outcome.saveStatus !== "saved" ||
       typeof this.receipts?.find !== "function" ||
-      typeof this.outcomes?.loadReceiptCheck !== "function"
+      typeof this.outcomes?.loadReceiptCheck !== "function" ||
+      typeof this.outcomes?.beginReceiptCheck !== "function" ||
+      typeof this.outcomes?.confirmReceiptCheck !== "function"
     )
       return outcome;
     let check = this.outcomes.loadReceiptCheck();
@@ -67,6 +69,9 @@ export class BillWorkflow {
       Date.now() - (check?.checkedAt ?? 0) >= 60000
     )
       try {
+        const attempt = this.outcomes.beginReceiptCheck();
+        if (!attempt) return outcome;
+        check = attempt;
         const found = await this.receipts.find(
           {
             reference: outcome.reference,
@@ -74,9 +79,9 @@ export class BillWorkflow {
           },
           this.signal,
         );
-        check = this.outcomes.recordReceiptCheck(found === true);
+        if (found === true) check = this.outcomes.confirmReceiptCheck();
       } catch {
-        // Try again on a later look.
+        // The reserved attempt remains counted; a later look may retry.
       }
     return check?.found ? { ...outcome, receiptInEmail: true } : outcome;
   }
@@ -252,7 +257,7 @@ export class BillWorkflow {
         kind: "paused",
         taskId: this.taskId,
         message:
-          "The website tried to send a form after my last step. I stopped it, and nothing was sent. Check the website, then resume the task.",
+          "The website tried to submit or leave the page after my last step. I paused the task. Check the website to confirm what happened before resuming.",
       };
     }
     const decision = this.deriveBillDecision(this.bill, snapshot);
