@@ -228,10 +228,11 @@ test("a selection refused before the click is found again once, then reported", 
   );
   const proposals = [];
   let results = ["failed", "succeeded"];
+  let evidenceRef = "not-dispatched";
   runtime.execute = async (_id, _rev, proposal) => {
     proposals.push(proposal.id);
     return {
-      operations: [{ proposal, status: results.shift() }],
+      operations: [{ proposal, status: results.shift(), evidenceRef }],
     };
   };
   const workflow = new BillWorkflow({
@@ -272,6 +273,19 @@ test("a selection refused before the click is found again once, then reported", 
     });
     assert.equal(stopped.kind, "unknown-outcome");
     assert.deepEqual(proposals, ["second", "second.relocated"]);
+    // A failed post-click verification is not proof that no effect occurred.
+    evidenceRef = "evidence:post-click";
+    results = ["failed", "succeeded"];
+    proposals.length = 0;
+    refreshes = 0;
+    const failedAfterClick = await workflow.chooseExistingMethod(
+      decision.reviewKey,
+      {
+        operationId: "after-click",
+      },
+    );
+    assert.equal(failedAfterClick.kind, "unknown-outcome");
+    assert.deepEqual(proposals, ["after-click"]);
   } finally {
     db.close();
   }

@@ -441,6 +441,10 @@ async function actuatorFixture(t, { leaseMs = 60000 } = {}) {
         resolveValue: async () => {
           throw new Error("No values used");
         },
+        describeAction: () => {
+          state.beforeDispatch?.();
+          return undefined;
+        },
         verify: async () => "succeeded",
         recordEvidence: async () => "evidence:test",
       }),
@@ -522,4 +526,15 @@ test("observing after the browser lease expires renews it with a new binding rev
     (await f.click("after-renewal")).operations.at(-1).status,
     "succeeded",
   );
+});
+
+test("a pause while preparing the action sentence prevents dispatch", async (t) => {
+  const f = await actuatorFixture(t);
+  f.state.beforeDispatch = () => {
+    const task = f.runtime.current();
+    f.runtime.control(task.id, task.revision, "pause");
+  };
+  const task = await f.click("paused-before-dispatch");
+  assert.equal(task.status, "paused");
+  assert.equal(f.state.effects, 0);
 });

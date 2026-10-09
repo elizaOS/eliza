@@ -494,6 +494,13 @@ export class NativeTaskActuator {
       protectedValueKind,
       actionText,
     } = prepared;
+    // Preparation awaits host callbacks; authority may end before this continuation.
+    if (
+      !current() ||
+      this.now() >= proposal.expiresAt ||
+      binding.expiresAt <= this.now()
+    )
+      notDispatched(new Error("Action authority ended before dispatch"));
     try {
       await this.options.target.execute(command, {
         taskContext: binding.context,

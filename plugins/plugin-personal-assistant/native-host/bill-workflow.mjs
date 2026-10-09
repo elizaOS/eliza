@@ -444,13 +444,18 @@ export class BillWorkflow {
       );
     }
     const result = await this.runtime.execute(task.id, task.revision, proposal);
-    const status = result.operations.find(
+    const operation = result.operations.find(
       (operation) => operation.proposal.id === operationId,
-    )?.status;
+    );
+    const status = operation?.status;
     // A failed selection was resolved without an uncertain effect, for
     // example when the page moved before the click. Observe and find the
     // control once more for the same reviewed details.
-    if (status === "failed" && !relocated)
+    if (
+      status === "failed" &&
+      operation.evidenceRef === "not-dispatched" &&
+      !relocated
+    )
       return this.chooseExistingMethod(expectedReviewKey, {
         operationId: `${operationId}.relocated`,
         isCurrent,
