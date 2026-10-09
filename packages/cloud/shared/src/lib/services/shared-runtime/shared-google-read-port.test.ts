@@ -3,7 +3,7 @@ import { createSharedGoogleReadPort } from "./shared-google-read-port";
 
 function fixture() {
   const calls: Array<{ name: string; args: unknown }> = [];
-  const deps = {
+  const deps: NonNullable<Parameters<typeof createSharedGoogleReadPort>[1]> = {
     initiateManagedGoogleConnection: async (args: unknown) => {
       calls.push({ name: "connect", args });
       return { provider: "google" as const, side: "owner" as const, mode: "cloud_managed" as const,
@@ -13,7 +13,7 @@ function fixture() {
       calls.push({ name: "status", args });
       return { provider: "google" as const, side: "owner" as const, mode: "cloud_managed" as const,
         configured: true, connected: true, reason: "connected" as const, identity: null,
-        grantedCapabilities: ["google.gmail.triage", "google.calendar.read"] as const,
+        grantedCapabilities: ["google.gmail.triage", "google.calendar.read"],
         grantedScopes: [], expiresAt: null, hasRefreshToken: true, connectionId: "grant",
         linkedAt: null, lastUsedAt: null };
     },

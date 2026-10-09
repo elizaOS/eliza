@@ -42,6 +42,7 @@ export function createSharedGoogleReadPort(
   },
   deps: typeof google = google,
 ) {
+  const grantId = owner.grantId;
   const scope = {
     organizationId: owner.organizationId,
     userId: owner.userId,
@@ -55,12 +56,12 @@ export function createSharedGoogleReadPort(
       redirectUrl: "/cloud/connectors",
     }),
     async read(request: SharedGoogleReadRequest) {
-      if (!owner.grantId) throw new Error("SHARED_GOOGLE_EXPLICIT_GRANT_REQUIRED");
+      if (!grantId) throw new Error("SHARED_GOOGLE_EXPLICIT_GRANT_REQUIRED");
       await owner.authorizePrivateRead(request);
-      const selected = { ...scope, grantId: owner.grantId };
+      const selected = { ...scope, grantId };
       const status = await deps.getManagedGoogleConnectorStatus(selected);
       const capability = request.kind === "calendar" ? "google.calendar.read" : "google.gmail.triage";
-      if (!status.connected || status.connectionId !== owner.grantId ||
+      if (!status.connected || status.connectionId !== grantId ||
           !status.grantedCapabilities.includes(capability)) {
         throw new Error("SHARED_GOOGLE_READ_NOT_GRANTED");
       }
