@@ -12,11 +12,6 @@ import type {
   WatchLocationOptions,
 } from "./definitions";
 
-/**
- * Web implementation of the Location Plugin
- *
- * Uses the browser Geolocation API.
- */
 /** Great-circle distance in meters between two coordinates (haversine). */
 function distanceMeters(
   lat1: number,
@@ -30,7 +25,9 @@ function distanceMeters(
   const dLon = toRadians(lon2 - lon1);
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
+    Math.cos(toRadians(lat1)) *
+      Math.cos(toRadians(lat2)) *
+      Math.sin(dLon / 2) ** 2;
   return 2 * earthRadiusMeters * Math.asin(Math.sqrt(a));
 }
 
@@ -139,8 +136,11 @@ export class LocationWeb extends WebPlugin {
     // them delivered every raw fix to listeners.
     const minDistance = options?.minDistance ?? 0;
     const minInterval = options?.minInterval ?? 0;
-    let lastDelivered: { latitude: number; longitude: number; timestamp: number } | null =
-      null;
+    let lastDelivered: {
+      latitude: number;
+      longitude: number;
+      timestamp: number;
+    } | null = null;
 
     const nativeWatchId = geolocation.watchPosition(
       (position) => {
@@ -212,10 +212,8 @@ export class LocationWeb extends WebPlugin {
 
   async clearWatch(options: { watchId: string }): Promise<void> {
     const watchId = typeof options?.watchId === "string" ? options.watchId : "";
-    // Both native bridges reject a missing or blank watchId; resolving
-    // silently here makes a failed cleanup indistinguishable from a
-    // stopped watch for callers that rely on rejection.
-    if (!watchId) {
+    // Reject missing IDs and whitespace-only IDs, matching Android cleanup.
+    if (!watchId.trim()) {
       throw new Error("Missing watchId");
     }
     const nativeWatchId = this.watches.get(watchId);
