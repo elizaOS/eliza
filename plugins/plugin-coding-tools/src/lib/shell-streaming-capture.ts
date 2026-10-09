@@ -98,6 +98,12 @@ function updateMetrics(
     if (priorEndedWithNewline && chunk.length > 0 && !chunk.endsWith("\n")) {
       metrics.lines += 1;
     }
+    if (!priorEndedWithNewline && chunk.endsWith("\n")) {
+      // The first newline in this chunk terminates the partial line the
+      // previous chunk already counted. Counting it again would make the
+      // line total depend on where the pipe split the output.
+      metrics.lines -= 1;
+    }
   }
   return chunk.endsWith("\n");
 }
