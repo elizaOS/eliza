@@ -422,9 +422,25 @@ export class DesktopWeb extends WebPlugin {
   async writeToClipboard(options: {
     text?: string;
     html?: string;
+    image?: string;
+    rtf?: string;
   }): Promise<void> {
     if (options.text) {
       await navigator.clipboard.writeText(options.text);
+      return;
+    }
+    if (options.image) {
+      // The contract carries the image as base64 (the native host decodes
+      // it the same way). Without this branch an image-only write fell
+      // through and resolved having written nothing.
+      const bytes = Uint8Array.from(atob(options.image), (ch) =>
+        ch.charCodeAt(0),
+      );
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "image/png": new Blob([bytes], { type: "image/png" }),
+        }),
+      ]);
       return;
     }
     if (options.html) {
