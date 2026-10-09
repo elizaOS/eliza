@@ -25,6 +25,8 @@ import { queryLocalNotes } from "../../plugin-notes/src/client/notes-query.ts";
 import { NotesStore } from "../../plugin-notes/src/client/notes-store.ts";
 import { proposeDeviceAction } from "../src/services/device-actions/action.ts";
 
+const APPROVED_BODY = "  Chosen approved body.\nSecond line!\n\n";
+
 it("pauses the real original HTTP request, then Share alone quotes its selected immutable snapshot in the same public conversation", async () => {
   const stateDir = await mkdtemp(
     path.join(tmpdir(), "approved-note-pipeline-"),
@@ -174,7 +176,7 @@ it("pauses the real original HTTP request, then Share alone quotes its selected 
         return JSON.stringify({
           completed: true,
           toolCalls: [],
-          messageToUser: "The selected note says: “Chosen approved body.”",
+          messageToUser: [{ kind: "source", value: "approved_note_body" }],
         }) as never;
       }
       throw Error(`Unexpected model after ${phase}: ${type}`);
@@ -287,7 +289,7 @@ it("pauses the real original HTTP request, then Share alone quotes its selected 
           id: "owned-b",
           kind: "text",
           title: "Synthetic shared title B",
-          body: "Chosen approved body.",
+          body: APPROVED_BODY,
           createdAt: 200,
         },
       ],
@@ -370,7 +372,7 @@ it("pauses the real original HTTP request, then Share alone quotes its selected 
       conversationId,
       requestId: clientMessageId,
       inReplyTo: rootMessage!.id,
-      text: "The selected note says: “Chosen approved body.”",
+      text: APPROVED_BODY,
     });
     expect(replyCalls).toBe(1);
     const memory = await runtime.getMemoryById(completion.body.reply.messageId);
