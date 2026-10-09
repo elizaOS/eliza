@@ -5,7 +5,6 @@
  */
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realAuth from "@elizaos/cloud-shared/auth";
-import * as realApps from "@elizaos/cloud-shared/lib/services/apps";
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
 import { parseOwnerCapturePolicy } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-owner-model-capture-store";
 import { sharedRuntimeRoomKey } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
@@ -15,23 +14,21 @@ import type { Context, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 
 const originalAuthExports = { ...realAuth };
-const originalAppsExports = { ...realApps };
 let apiKeyId: string | undefined;
 let appScopedKey = false;
-mock.module("@elizaos/cloud-shared/lib/services/apps", () => ({
-  ...originalAppsExports,
-  appsService: {
-    ...realApps.appsService,
-    getByApiKeyId: async () =>
-      appScopedKey ? { id: "capture-reader-app" } : null,
-  },
-}));
 let reader = "33333333-3333-4333-8333-333333333333";
 let authFailure: 401 | 403 | undefined;
 let readerOrganization: string;
 let adminFailure: boolean;
 let adminCalls = 0;
 mock.module("@elizaos/cloud-shared/auth", () => ({
+  ...originalAuthExports,
+  requirePrivateOwnerAccess: async () => {
+    if (appScopedKey)
+      throw new HTTPException(403, {
+        message: "Synthetic private-owner admission denial",
+      });
+  },
   requireUserOrApiKeyWithOrg: async (c: Context<AppEnv>) => {
     if (authFailure)
       throw new HTTPException(authFailure, {
@@ -166,10 +163,6 @@ beforeEach(() => {
 afterAll(() => {
   globalThis.fetch = savedFetch;
   mock.module("@elizaos/cloud-shared/auth", () => originalAuthExports);
-  mock.module(
-    "@elizaos/cloud-shared/lib/services/apps",
-    () => originalAppsExports,
-  );
   mock.restore();
 });
 

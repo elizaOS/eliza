@@ -1,13 +1,15 @@
+import { ApiError as PrivateOwnerApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requirePrivateOwnerCredential } from "@elizaos/cloud-shared/lib/auth/private-owner-credential";
 // Handles v1 cloud API v1 eliza google calendar calendars route traffic with route-local auth expectations.
 
 import { agentGoogleRouteDeps } from "@elizaos/cloud-shared/lib/services/agent-google-route-deps";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
-async function __hono_GET(request: Request) {
+async function __hono_GET(request: Request, env: AppEnv["Bindings"]) {
   try {
-    const { user } =
-      await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
+    const auth = await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
+    const { user } = auth;
     const searchParams = new URL(request.url).searchParams;
     const rawSide = searchParams.get("side");
     const grantId = searchParams.get("grantId")?.trim() || undefined;
@@ -18,6 +20,15 @@ async function __hono_GET(request: Request) {
       );
     }
 
+    if (rawSide !== "agent")
+      await requirePrivateOwnerCredential({
+        userId: user.id,
+        organizationId: user.organization_id,
+        authMethod: auth.authMethod,
+        apiKeyId: auth.apiKey?.id,
+        apiKeyHash: auth.apiKey?.key_hash,
+        env,
+      });
     return Response.json(
       await agentGoogleRouteDeps.listManagedGoogleCalendars({
         organizationId: user.organization_id,
@@ -27,6 +38,8 @@ async function __hono_GET(request: Request) {
       }),
     );
   } catch (error) {
+    if (error instanceof PrivateOwnerApiError)
+      return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
@@ -43,5 +56,5 @@ async function __hono_GET(request: Request) {
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.get("/", async (c) => __hono_GET(c.req.raw));
+__hono_app.get("/", async (c) => __hono_GET(c.req.raw, c.env));
 export default __hono_app;

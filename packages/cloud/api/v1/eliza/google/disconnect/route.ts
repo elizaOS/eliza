@@ -5,7 +5,10 @@
  * the active connection when `connectionId` is omitted or null).
  */
 
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
@@ -48,6 +51,7 @@ app.post("/", async (c) => {
       );
     }
 
+    if (parsed.data.side !== "agent") await requirePrivateOwnerAccess(c, user);
     await disconnectManagedGoogleConnection({
       organizationId: user.organization_id,
       userId: user.id,

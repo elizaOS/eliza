@@ -5,7 +5,10 @@
  * managed Google connection (with optional capability scopes).
  */
 
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
@@ -19,6 +22,7 @@ const app = new Hono<AppEnv>();
 
 const requestSchema = z.object({
   side: z.enum(["owner", "agent"]).optional(),
+  purpose: z.literal("personal_google_context_v1").optional(),
   redirectUrl: z.string().trim().min(1).optional(),
   capabilities: z
     .array(
@@ -68,12 +72,17 @@ app.post("/", async (c) => {
         400,
       );
     }
+    if (parsed.data.side !== "agent" || parsed.data.purpose)
+      await requirePrivateOwnerAccess(c, user);
     const result = await initiateManagedGoogleConnection({
       organizationId: user.organization_id,
       userId: user.id,
       side: parsed.data.side ?? "owner",
       redirectUrl: parsed.data.redirectUrl,
       capabilities: parsed.data.capabilities,
+      ...(parsed.data.purpose
+        ? { personalContextPurpose: parsed.data.purpose }
+        : {}),
     });
     return c.json(result);
   } catch (error) {

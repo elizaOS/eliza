@@ -161,8 +161,8 @@ function classifyPublicStandalone(text: string): SharedRealtimeDomain | undefine
   return isSharedPublicSearchSafe(text) ? classifyPublicIntent(text) : undefined;
 }
 
-/** Denies Shared public-network tools when the authenticated utterance is private or sensitive. */
-export function isSharedPublicSearchSafe(message: string): boolean {
+/** All literal/control/network guards remain independent of product or private-tool intent. */
+function isSharedPublicSearchLiteralSafe(message: string): boolean {
   if (INVISIBLE_OR_CONTROL.test(message)) return false;
   const normalized = message.normalize("NFKC");
   const networkLiteral = normalized.match(NETWORK_TARGET_LITERAL)?.[0];
@@ -172,18 +172,74 @@ export function isSharedPublicSearchSafe(message: string): boolean {
       .replace(/^\[/u, "")
       .split(/[\]/?#]/u)[0]
       .split(":")[0];
-    // Canonical helpers remain the authority for private/blocked network
-    // targets; public network literals are also denied because user-supplied
-    // targets must never become an SSRF-capable search-provider query.
     if (isBlockedHostname(hostname) || isPrivateIpAddress(hostname)) return false;
     return false;
   }
   return (
-    !PRIVATE_STATE.test(normalized) &&
     !SENSITIVE_LITERAL.test(normalized) &&
     !PHONE_LITERAL.test(normalized) &&
     !STREET_ADDRESS_LITERAL.test(normalized) &&
     !COORDINATE_LITERAL.test(normalized)
+  );
+}
+
+/** Complete public product topic from this utterance only; private/mixed intent wins. */
+export function sharedPublicGoogleProductQuery(message: string): string | undefined {
+  const text = message.normalize("NFKC").trim();
+  if (!isSharedPublicSearchLiteralSafe(text) || !/\b(?:gmail|google calendar)\b/iu.test(text))
+    return undefined;
+  const rest = text.replace(/\b(?:gmail|google calendar)\b/giu, "");
+  if (
+    PRIVATE_STATE.test(rest) ||
+    /\b(?:your|their|his|her)\b/iu.test(rest) ||
+    /(?:\band\b|\bthen\b|[;.!?])\s*(?:connect|link|send|manage|update|delete|cancel|create|book|schedule|move|reschedule)\b/iu.test(
+      rest,
+    )
+  )
+    return undefined;
+  // A provider-directed inbox/account operation is not a public documentation query.
+  if (
+    /\b(?:connect|link)\s+(?:gmail|google calendar)\b/iu.test(text) ||
+    /\b(?:read|search|find|check|show|list|summari[sz]e)\s+(?:gmail|google calendar)\s+(?:for|in|inbox|mail|emails?|messages?|events?)\b/iu.test(
+      text,
+    )
+  )
+    return undefined;
+  const explicitWeb =
+    /\b(?:search|find|look up|check|read)\b[^.!?]{0,60}\b(?:web|internet|online)\b/iu.test(text);
+  const publicProductTopic =
+    /\b(?:api|docs?|documentation|sdk|pricing|prices?|help|support|tutorials?|features?|limits?|quotas?|reviews?|news)\b/iu.test(
+      text,
+    );
+  if (!explicitWeb && !publicProductTopic) return undefined;
+  const topic = (text.match(EXPLICIT_PUBLIC_SEARCH)?.[1] ?? text)
+    .trim()
+    .replace(/[.!?]+$/u, "")
+    .trim();
+  return boundedPublicSearchTopic(topic);
+}
+
+/** One private-Google recognizer shared by registration and public-network admission. */
+export function isSharedPrivateGoogleContextRequest(message: string): boolean {
+  const text = message.normalize("NFKC").trim();
+  if (sharedPublicGoogleProductQuery(text)) return false;
+  return (
+    /\b(?:connect|link|read|search|find|check|show|list|summari[sz]e)\b[^.!?]{0,80}\b(?:gmail|google calendar)\b/iu.test(
+      text,
+    ) ||
+    /\b(?:what|when|which|read|search|find|check|show|list|summari[sz]e)\b[^.!?]{0,60}\bmy (?:[\p{L}\p{N}]+ ){0,3}(?:inbox|mail|emails?|calendar)\b/iu.test(
+      text,
+    )
+  );
+}
+
+/** Denies private/sensitive material; the product exception changes no literal/network guard. */
+export function isSharedPublicSearchSafe(message: string): boolean {
+  const normalized = message.normalize("NFKC");
+  return (
+    isSharedPublicSearchLiteralSafe(normalized) &&
+    !isSharedPrivateGoogleContextRequest(normalized) &&
+    (!PRIVATE_STATE.test(normalized) || Boolean(sharedPublicGoogleProductQuery(normalized)))
   );
 }
 
@@ -301,6 +357,8 @@ export function resolveSharedPublicSearchIntent(
 ): SharedPublicSearchIntent | undefined {
   const normalized = message.normalize("NFKC").trim();
   if (!isSharedPublicSearchSafe(normalized)) return undefined;
+  const googlePublicTopic = sharedPublicGoogleProductQuery(normalized);
+  if (googlePublicTopic) return { kind: "general", topic: googlePublicTopic };
   const requirement = resolveSharedRealtimeRequirement(normalized, history);
   if (requirement) return { kind: "prefetched", requirement };
   // Preserve unsupported/missing-location current-data gates instead of broadening them.
@@ -332,7 +390,9 @@ export function hasSharedRealtimeIntent(
 ): boolean {
   const normalized = message.normalize("NFKC").trim();
   return Boolean(
-    classifyPublicIntent(normalized) || sharedSelectedGroundingMetadata(history, normalized),
+    (isSharedPublicSearchSafe(normalized) && sharedPublicGoogleProductQuery(normalized)) ||
+      classifyPublicIntent(normalized) ||
+      sharedSelectedGroundingMetadata(history, normalized),
   );
 }
 
@@ -343,6 +403,8 @@ export function resolveSharedRealtimeRequirement(
 ): SharedRealtimeRequirement | undefined {
   const normalized = message.normalize("NFKC").trim();
   if (!isSharedPublicSearchSafe(normalized)) return undefined;
+  // Public Google product queries use the canonical complete-topic general path.
+  if (sharedPublicGoogleProductQuery(normalized)) return undefined;
   const direct = classifyPublicStandalone(normalized);
   const correction = CORRECTION.test(normalized);
   if (direct) {

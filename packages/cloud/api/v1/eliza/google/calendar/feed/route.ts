@@ -5,7 +5,10 @@
  * managed Google connector.
  */
 
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
@@ -20,6 +23,7 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const rawSide = c.req.query("side") ?? null;
+    if (rawSide !== "agent") await requirePrivateOwnerAccess(c, user);
     const grantId = c.req.query("grantId")?.trim() || undefined;
     const calendarId = c.req.query("calendarId")?.trim() || "primary";
     const timeMin = c.req.query("timeMin")?.trim();

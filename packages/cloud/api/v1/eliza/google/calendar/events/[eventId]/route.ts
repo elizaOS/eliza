@@ -1,3 +1,5 @@
+import { ApiError as PrivateOwnerApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requirePrivateOwnerCredential } from "@elizaos/cloud-shared/lib/auth/private-owner-credential";
 /** Updates and deletes managed Google Calendar events. */
 
 import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
@@ -29,10 +31,11 @@ const patchRequestSchema = z.object({
 async function __hono_PATCH(
   request: Request,
   { params }: RouteContext<{ eventId: string }>,
+  env: AppEnv["Bindings"],
 ) {
   try {
-    const { user } =
-      await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
+    const auth = await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
+    const { user } = auth;
     const { eventId } = await params;
     const decodedRawBody = await decodeRequestJson(request);
     if (!decodedRawBody.ok) {
@@ -51,6 +54,15 @@ async function __hono_PATCH(
       );
     }
 
+    if (parsed.data.side !== "agent")
+      await requirePrivateOwnerCredential({
+        userId: user.id,
+        organizationId: user.organization_id,
+        authMethod: auth.authMethod,
+        apiKeyId: auth.apiKey?.id,
+        apiKeyHash: auth.apiKey?.key_hash,
+        env,
+      });
     return Response.json(
       await agentGoogleRouteDeps.updateManagedGoogleCalendarEvent({
         organizationId: user.organization_id,
@@ -69,6 +81,8 @@ async function __hono_PATCH(
       }),
     );
   } catch (error) {
+    if (error instanceof PrivateOwnerApiError)
+      return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
@@ -87,10 +101,11 @@ async function __hono_PATCH(
 async function __hono_DELETE(
   request: Request,
   { params }: RouteContext<{ eventId: string }>,
+  env: AppEnv["Bindings"],
 ) {
   try {
-    const { user } =
-      await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
+    const auth = await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
+    const { user } = auth;
     const { eventId } = await params;
     const sideRaw = new URL(request.url).searchParams.get("side");
     const grantId =
@@ -109,6 +124,15 @@ async function __hono_DELETE(
       );
     }
 
+    if (sideRaw !== "agent")
+      await requirePrivateOwnerCredential({
+        userId: user.id,
+        organizationId: user.organization_id,
+        authMethod: auth.authMethod,
+        apiKeyId: auth.apiKey?.id,
+        apiKeyHash: auth.apiKey?.key_hash,
+        env,
+      });
     return Response.json(
       await agentGoogleRouteDeps.deleteManagedGoogleCalendarEvent({
         organizationId: user.organization_id,
@@ -120,6 +144,8 @@ async function __hono_DELETE(
       }),
     );
   } catch (error) {
+    if (error instanceof PrivateOwnerApiError)
+      return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
@@ -137,13 +163,21 @@ async function __hono_DELETE(
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.patch("/", async (c) =>
-  __hono_PATCH(c.req.raw, {
-    params: Promise.resolve({ eventId: c.req.param("eventId")! }),
-  }),
+  __hono_PATCH(
+    c.req.raw,
+    {
+      params: Promise.resolve({ eventId: c.req.param("eventId")! }),
+    },
+    c.env,
+  ),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, {
-    params: Promise.resolve({ eventId: c.req.param("eventId")! }),
-  }),
+  __hono_DELETE(
+    c.req.raw,
+    {
+      params: Promise.resolve({ eventId: c.req.param("eventId")! }),
+    },
+    c.env,
+  ),
 );
 export default __hono_app;
