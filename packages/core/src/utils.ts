@@ -10,6 +10,7 @@ import type { ModelRegistrationMetadata } from "./types/model";
 import { type Content, ContentType, type JsonValue } from "./types/primitives";
 import type { IAgentRuntime } from "./types/runtime";
 import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
+import { createFirstSentenceScanner } from "./utils/text-splitting";
 import { formatTimestamp as formatTimestampBase } from "./utils/time-format";
 import { toWellFormedUnicode, truncateWellFormed } from "./utils/unicode.js";
 
@@ -647,12 +648,26 @@ export function truncateToCompleteSentence(
 		return truncateWellFormed(text, maxLength);
 	}
 
-	// Attempt to truncate at the last period within the limit
-	const lastPeriodIndex = text.lastIndexOf(".", maxLength - 1);
-	if (lastPeriodIndex !== -1) {
-		const truncatedAtPeriod = text.slice(0, lastPeriodIndex + 1).trim();
-		if (truncatedAtPeriod.length > 0) {
-			return truncatedAtPeriod;
+	// Attempt to truncate at the last sentence end within the limit. The
+	// boundary must be a real sentence end: a search for the last period
+	// also matches the point inside a number ("3.5") and abbreviation
+	// periods ("e.g."), and cutting there fabricates a sentence end
+	// mid-token. Walk the package's sentence scanner over the window and
+	// keep the latest boundary it confirms.
+	let sentenceEnd = -1;
+	for (let pos = 0; pos < maxLength; ) {
+		const boundary = createFirstSentenceScanner().push(
+			text.slice(pos, maxLength),
+			true,
+		);
+		if (boundary === undefined || boundary <= 0) break;
+		sentenceEnd = pos + boundary;
+		pos = sentenceEnd;
+	}
+	if (sentenceEnd !== -1) {
+		const truncatedAtSentence = text.slice(0, sentenceEnd).trim();
+		if (truncatedAtSentence.length > 0) {
+			return truncatedAtSentence;
 		}
 	}
 
