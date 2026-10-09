@@ -792,6 +792,7 @@
         "@biomejs/biome": "2.5.15",
         "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/plugin-todos": "workspace:*",
+        "@elizaos/plugin-network": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
         "@types/pg": "^8.23.1",
         "@types/ws": "^8.18.1",
@@ -970,6 +971,7 @@
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-network": "workspace:*",
         "@upstash/redis": "^1.37.0",
         "hashring": "^3.2.0",
         "hono": "4.13.8",
@@ -1043,6 +1045,7 @@
         "@elizaos/plugin-google-workspace": "workspace:*",
         "@elizaos/plugin-mcp": "workspace:*",
         "@elizaos/plugin-native-inference": "workspace:*",
+        "@elizaos/plugin-network": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/plugin-sqlite": "workspace:*",
@@ -2725,6 +2728,19 @@
         "react-dom": "^19.0.0",
       },
     },
+    "plugins/plugin-network": {
+      "name": "@elizaos/plugin-network",
+      "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/cloud-services-common": "workspace:*",
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.3",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+      },
+    },
     "plugins/plugin-notes": {
       "name": "@elizaos/plugin-notes",
       "version": "2.0.0",
@@ -3975,6 +3991,8 @@
     "@elizaos/plugin-native-settings": ["@elizaos/plugin-native-settings@workspace:plugins/plugin-native-settings"],
 
     "@elizaos/plugin-native-wifi": ["@elizaos/plugin-native-wifi@workspace:plugins/plugin-native-wifi"],
+
+    "@elizaos/plugin-network": ["@elizaos/plugin-network@workspace:plugins/plugin-network"],
 
     "@elizaos/plugin-notes": ["@elizaos/plugin-notes@workspace:plugins/plugin-notes"],
 

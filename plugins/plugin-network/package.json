@@ -1,0 +1,56 @@
+{
+  "name": "@elizaos/plugin-network",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Network's conversation layer for the shared Eliza agent: member context, availability state (structured routing with authz), post-turn signals, and the signed service-to-service contract with the Network service (turn, deliver, set-state, signals, updates).",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./contract": {
+      "eliza-source": "./src/backend/contract.ts",
+      "types": "./src/backend/contract.ts",
+      "import": "./src/backend/contract.ts",
+      "default": "./src/backend/contract.ts"
+    },
+    "./svc-auth": {
+      "eliza-source": "./src/backend/svc-auth.ts",
+      "types": "./src/backend/svc-auth.ts",
+      "import": "./src/backend/svc-auth.ts",
+      "default": "./src/backend/svc-auth.ts"
+    },
+    "./client": {
+      "eliza-source": "./src/backend/client.ts",
+      "types": "./src/backend/client.ts",
+      "import": "./src/backend/client.ts",
+      "default": "./src/backend/client.ts"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@elizaos/cloud-services-common": "workspace:*",
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "@types/node": "^25.0.3"
+  },
+  "scripts": {
+    "build": "tsc6 -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check ."
+  }
+}
