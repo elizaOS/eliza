@@ -4,8 +4,8 @@
  */
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 
-const EXPLICIT_SELF_NAME = /^(?:my(?: preferred)? name is|i go by)\s+(.+?)[.!?]?$/iu;
-const QUOTED_SELF_NAME = /^(?:please\s+)?(?:call me|you can call me)\s+["“]([^"”]+)["”][.!?]?$/iu;
+const EXPLICIT_SELF_NAME = /^my(?: preferred)? name is\s+(.+?)[.!?]?$/iu;
+const QUOTED_SELF_NAME = /^(?:please\s+)?(?:call me|you can call me|i go by)\s+["“]([^"”]+)["”][.!?]?$/iu;
 
 function usableName(value: string | undefined): string | undefined {
   const name = value?.normalize("NFKC").trim().replace(/\s+/gu, " ");
