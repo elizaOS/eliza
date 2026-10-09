@@ -9,7 +9,7 @@
 name = "eliza-cloud-api"
 main = "src/index.ts"
 compatibility_date = "2026-04-01"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = ["nodejs_compat", "enable_request_signal"]
 account_id = "23cf6feaeaa541f6a0675053c33da768"
 workers_dev = false
 minify = true
