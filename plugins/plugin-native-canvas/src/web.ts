@@ -155,6 +155,24 @@ function assertQuality(
   return numberValue / 100;
 }
 
+// Snapshot quality is a 0..1 fraction on every platform (both native
+// bridges default to 0.82 and treat values above 1 as invalid or
+// clamped). It must not go through assertQuality: that helper is the
+// 0..100 percent scale toImage uses, and dividing a fraction by 100
+// again hands the encoder ~1% quality for the contract value 0.82.
+function assertFractionQuality(
+  value: unknown,
+  label: string,
+  fallback: number,
+): number {
+  if (value === undefined) return fallback;
+  const numberValue = assertFiniteNumber(value, label);
+  if (numberValue < 0 || numberValue > 1) {
+    throw new Error(`${label} must be between 0 and 1`);
+  }
+  return numberValue;
+}
+
 function assertLayerInput(
   layer: Omit<CanvasLayer, "id">,
 ): Omit<CanvasLayer, "id"> {
@@ -1029,7 +1047,7 @@ export class CanvasWeb extends WebPlugin {
     }
 
     const format: SnapshotFormat = options?.format || "png";
-    const quality = assertQuality(options?.quality, "quality", 0.85);
+    const quality = assertFractionQuality(options?.quality, "quality", 0.85);
 
     const iframeRect = this.webViewIframe.getBoundingClientRect();
     let width = Math.round(iframeRect.width) || 800;
