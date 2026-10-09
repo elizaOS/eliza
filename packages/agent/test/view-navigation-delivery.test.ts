@@ -1,5 +1,9 @@
 /** Real loopback HTTP and registered-view delivery, with actor roles and renderer targets isolated. */
-import { createServer } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 import {
   type Action,
@@ -54,14 +58,19 @@ import { notesPlugin } from "../../../plugins/plugin-notes/src/plugin.ts";
 import { briefAction } from "../../../plugins/plugin-personal-assistant/src/actions/brief.ts";
 import { createTrackedWorkRecapDirectRoutingRule } from "../../../plugins/plugin-personal-assistant/src/lifeops/briefing/direct-routing.ts";
 import { viewsAction } from "../src/actions/views.ts";
+import { registerInProcessApi } from "../src/api/in-process-api.ts";
 import { normalizeWsClientId } from "../src/api/server-helpers-auth.ts";
+import { closeViewInteractionHost } from "../src/api/view-interaction-host.ts";
 import {
   closeRuntimeViewRegistry,
   getView,
   registerBuiltinViews,
   registerPluginViews,
 } from "../src/api/views-registry.ts";
-import { handleViewsRoutes } from "../src/api/views-routes.ts";
+import {
+  getCurrentViewState,
+  handleViewsRoutes,
+} from "../src/api/views-routes.ts";
 import { createElizaPlugin } from "../src/runtime/eliza-plugin.ts";
 import { installPromptOptimizations } from "../src/runtime/prompt-optimization.ts";
 import {
@@ -91,9 +100,11 @@ async function fixture(
   delivered = 1,
   suppliedRuntime?: IAgentRuntime,
   handleTurn?: () => Promise<unknown>,
+  inProcess = false,
 ) {
   const frames: Array<{ client: string; frame: object }> = [];
   let requests = 0;
+  let kernelRequests = 0;
   const runtime =
     suppliedRuntime ??
     ({
@@ -133,9 +144,15 @@ async function fixture(
     { pluginDir: process.cwd(), indexEmbeddings: false },
   );
   const hostKey = {};
-  const server = createServer((req, res) => {
+  const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
     requests++;
-    if (req.headers.authorization !== "Bearer local-navigation-test") {
+    const otherOwner =
+      inProcess &&
+      req.headers.authorization === "Bearer other-navigation-owner";
+    if (
+      req.headers.authorization !== "Bearer local-navigation-test" &&
+      !otherOwner
+    ) {
       res.writeHead(401).end();
       return;
     }
@@ -154,7 +171,7 @@ async function fixture(
         .catch((error) => res.writeHead(500).end(String(error)));
       return;
     }
-    void handleViewsRoutes({
+    await handleViewsRoutes({
       req,
       res,
       method: req.method ?? "GET",
@@ -162,7 +179,11 @@ async function fixture(
       url,
       hostKey,
       runtime,
-      callerAuthorization: { ok: true, role: "OWNER", identityId: owner },
+      callerAuthorization: {
+        ok: true,
+        role: "OWNER",
+        identityId: otherOwner ? "55555555-5555-4555-8555-555555555555" : owner,
+      },
       json: (response, body) => {
         response.writeHead(200, { "Content-Type": "application/json" });
         response.end(JSON.stringify(body));
@@ -181,11 +202,24 @@ async function fixture(
     }).catch((error) => {
       res.writeHead(500).end(String(error));
     });
+  };
+  const server = createServer((req, res) => {
+    void handleRequest(req, res);
   });
+  const unregister = inProcess
+    ? registerInProcessApi(runtime, {
+        handle: async (req, res) => {
+          kernelRequests++;
+          await handleRequest(req, res);
+        },
+      })
+    : undefined;
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   vi.stubEnv("ELIZA_API_PORT", String((server.address() as AddressInfo).port));
   vi.stubEnv("ELIZA_API_TOKEN", "local-navigation-test");
   cleanup.push(async () => {
+    unregister?.();
+    closeViewInteractionHost(hostKey);
     closeRuntimeViewRegistry(runtime);
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -194,6 +228,7 @@ async function fixture(
     runtime,
     frames,
     requests: () => requests,
+    kernelRequests: () => kernelRequests,
     hostKey,
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
   };
@@ -2188,6 +2223,171 @@ describe("inferred visual scope invalidation", () => {
           expect(x.f.frames).toHaveLength(0);
         },
       );
+    },
+  );
+});
+
+describe("native completed-action navigation", () => {
+  it("retires an unclaimed prepared navigation with its owning host", async () => {
+    const f = await fixture(0, undefined, undefined, true);
+    vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+    };
+    await selectNavigation(f, input);
+    const result = await show(f.runtime, "notes", input);
+    if (!result || typeof result === "boolean" || !result.values)
+      throw Error("Missing prepared result");
+    closeViewInteractionHost(f.hostKey);
+    const response = await fetch(f.url + "/api/views/interact-claim", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer local-navigation-test",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(result.values.navigationBinding),
+    });
+    expect(response.ok).toBe(false);
+    expect(
+      getCurrentViewState(f.runtime, {
+        hostKey: f.hostKey,
+        clientId: "origin-client",
+      }),
+    ).toBeNull();
+    expect(f.frames).toHaveLength(0);
+  });
+
+  it("prepares through the registered kernel and commits only an exact owner/renderer claim and switch result", async () => {
+    const f = await fixture(0, undefined, undefined, true);
+    vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+      uiView: "chat",
+    };
+    await selectNavigation(f, input);
+    const result = await show(f.runtime, "notes", input);
+    expect(result).toMatchObject({
+      success: true,
+      verifiedUserFacing: true,
+      data: { navigation: { status: "prepared" } },
+      values: { navigationPrepared: true, completedActionDelivered: false },
+    });
+    expect(
+      result && typeof result !== "boolean" && result.userFacingText,
+    ).not.toContain("Opened");
+    expect(f.kernelRequests()).toBe(1);
+    expect(f.frames).toHaveLength(0);
+    const scope = { hostKey: f.hostKey, clientId: "origin-client" };
+    expect(getCurrentViewState(f.runtime, scope)).toBeNull();
+    if (
+      !result ||
+      typeof result === "boolean" ||
+      !result.values ||
+      !isObjectRecord(result.values.navigationBinding)
+    )
+      throw Error("Missing prepared binding");
+    const binding = result.values.navigationBinding;
+    const post = (
+      path: string,
+      body: unknown,
+      authorization = "Bearer local-navigation-test",
+    ) =>
+      fetch(f.url + path, {
+        method: "POST",
+        headers: { authorization, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect(
+      (
+        await post(
+          "/api/views/interact-claim",
+          binding,
+          "Bearer other-navigation-owner",
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await post("/api/views/interact-claim", {
+          ...binding,
+          clientId: "other-client",
+        })
+      ).status,
+    ).toBe(409);
+    const claimed = await post("/api/views/interact-claim", binding);
+    expect(claimed.status).toBe(200);
+    const { claimId } = await claimed.json();
+    const settled = {
+      ...binding,
+      claimId,
+      success: true,
+      result: { switched: true },
+    };
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...settled,
+          claimId: "wrong",
+        })
+      ).json(),
+    ).toMatchObject({ accepted: false });
+    expect(
+      await (
+        await post(
+          "/api/views/interact-result",
+          settled,
+          "Bearer other-navigation-owner",
+        )
+      ).json(),
+    ).toMatchObject({ accepted: false });
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...settled,
+          result: { switched: true, personalText: "not authorized" },
+        })
+      ).json(),
+    ).toMatchObject({ accepted: false });
+    expect(getCurrentViewState(f.runtime, scope)).toBeNull();
+    expect(
+      await (await post("/api/views/interact-result", settled)).json(),
+    ).toMatchObject({ accepted: true });
+    await vi.waitFor(() =>
+      expect(getCurrentViewState(f.runtime, scope)?.viewId).toBe("notes"),
+    );
+    expect(
+      await (await post("/api/views/interact-result", settled)).json(),
+    ).toMatchObject({ accepted: false });
+    expect(f.frames).toHaveLength(0);
+  });
+  it.each([
+    { disposition: "planning", plan: {}, stale: false },
+    {
+      disposition: "direct",
+      plan: { intents: ["Open Notes", "Read a personal record"] },
+      stale: false,
+    },
+    { disposition: "direct", plan: {}, stale: true },
+  ])(
+    "does not turn conditional/compound/stale metadata into a direct handoff: %j",
+    async ({ disposition, plan, stale }) => {
+      const f = await fixture(0, undefined, undefined, true);
+      const input = clientMessage();
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        viewDelivery: "completed-action",
+      };
+      await selectNavigation(f, input, { disposition }, plan);
+      if (stale) input.content.metadata.viewClientId = "rotated-client";
+      expect(await show(f.runtime, "notes", input)).toMatchObject({
+        success: false,
+      });
+      expect(f.requests()).toBe(0);
+      expect(f.frames).toHaveLength(0);
     },
   );
 });

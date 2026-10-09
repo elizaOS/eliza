@@ -14,7 +14,9 @@ import {
   createSelfApiRequestHeaders,
   resolveSelfApiBaseUrl,
 } from "@elizaos/host/protocol";
+import { dispatchApiRoute } from "../api/in-process-api.ts";
 import { listViews } from "../api/views-registry.ts";
+import { consumeDirectViewNavigation } from "../runtime/view-navigation.ts";
 
 export const viewsAction: Action = {
   name: "VIEWS",
@@ -124,41 +126,78 @@ export const viewsAction: Action = {
         "No originating renderer is bound to this turn.",
       );
     const handoffId = randomUUID();
-    const delivery = "originating-client";
+    const completedAction =
+      isObjectRecord(message.content.metadata) &&
+      message.content.metadata.viewDelivery === "completed-action";
+    if (
+      completedAction &&
+      !consumeDirectViewNavigation(runtime, message, view.id)
+    )
+      return fail(
+        "planning-required",
+        "This renderer handoff requires the current direct, single-destination navigation judgment. Conditional and compound work must remain in planning.",
+      );
+    const delivery = completedAction
+      ? "completed-action"
+      : "originating-client";
     const apiBase = resolveSelfApiBaseUrl(process.env);
     try {
-      const response = await fetch(
-        `${apiBase}/api/views/${encodeURIComponent(view.id)}/navigate`,
-        {
+      const path = `/api/views/${encodeURIComponent(view.id)}/navigate`;
+      const requestBody = {
+        clientId,
+        delivery,
+        completedActionHandoffId: handoffId,
+        viewType: "gui",
+        ...(completedAction ? { prepareOnly: true } : {}),
+      };
+      let status: number;
+      let body: unknown;
+      if (process.env.ELIZA_LOCAL_AGENT_TRANSPORT === "filesystem-v1") {
+        const response = await dispatchApiRoute({
+          runtime,
+          inProcess: true,
+          isAuthorized: () => caller.isOwner,
+          method: "POST",
+          path,
+          headers: {
+            "Content-Type": "application/json",
+            ...createSelfApiRequestHeaders(),
+          },
+          body: requestBody,
+          signal,
+        });
+        status = response.status;
+        body = response.body;
+      } else {
+        const response = await fetch(`${apiBase}${path}`, {
           method: "POST",
           redirect: "error",
           headers: {
             "Content-Type": "application/json",
             ...createSelfApiRequestHeaders(),
           },
-          body: JSON.stringify({
-            clientId,
-            delivery,
-            completedActionHandoffId: handoffId,
-            viewType: "gui",
-          }),
+          body: JSON.stringify(requestBody),
           signal: signal
             ? AbortSignal.any([signal, AbortSignal.timeout(5000)])
             : AbortSignal.timeout(5000),
-        },
-      );
-      if (!response.ok)
+        });
+        status = response.status;
+        body =
+          status >= 200 && status < 300 ? await response.json() : undefined;
+      }
+      if (status < 200 || status >= 300)
         return fail(
-          response.status === 403 ? "forbidden" : "not-delivered",
-          `Navigation route rejected delivery (HTTP ${response.status}).`,
+          status === 403 ? "forbidden" : "not-delivered",
+          `Navigation route rejected delivery (HTTP ${status}).`,
         );
-      const body: unknown = await response.json();
       if (
         !isObjectRecord(body) ||
         body.ok !== true ||
         body.viewId !== view.id ||
         body.completedActionHandoffId !== handoffId ||
-        body.completedActionDelivered !== true
+        (completedAction
+          ? body.status !== "prepared"
+          : body.completedActionDelivered !== true)
       )
         return fail(
           "not-delivered",
@@ -171,7 +210,7 @@ export const viewsAction: Action = {
         );
       const receipt = {
         effect: "view_navigation",
-        status: "delivered",
+        status: completedAction ? "prepared" : "delivered",
         viewId: view.id,
         path: view.path,
         label: view.label,
@@ -185,15 +224,27 @@ export const viewsAction: Action = {
         success: true,
         text: JSON.stringify(receipt),
         transcriptVisibility: "internal",
-        modelReplyRequired: true,
+        ...(completedAction
+          ? {
+              userFacingText:
+                "Navigation prepared; waiting for this screen to apply it.",
+              verifiedUserFacing: true,
+            }
+          : { modelReplyRequired: true }),
         values: {
           mode: "show",
           viewId: view.id,
           viewPath: view.path,
           viewType: "gui",
           label: view.label,
-          completedActionDelivered: true,
+          completedActionDelivered: !completedAction,
           completedActionHandoffId: handoffId,
+          ...(completedAction
+            ? {
+                navigationPrepared: true,
+                navigationBinding: body.navigationBinding,
+              }
+            : {}),
         },
         data: {
           view,

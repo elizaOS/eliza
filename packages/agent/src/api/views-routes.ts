@@ -51,6 +51,7 @@ import {
   getViewClientScope,
   type ViewClientScope,
 } from "../runtime/view-client-context.ts";
+import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import type { ViewInteractResult } from "./pending-request-map.ts";
 import {
   detectClientPlatform,
@@ -345,6 +346,20 @@ export interface ViewsRouteContext
 }
 function callerRoles(ctx: ViewsRouteContext): RoleGateRole[] {
   return ctx.callerAuthorization?.ok ? [ctx.callerAuthorization.role] : [];
+}
+function navigationOwner(
+  ctx: ViewsRouteContext,
+  runtime: IAgentRuntime,
+): string | undefined {
+  const authority = ctx.callerAuthorization;
+  if (!authority?.ok || authority.role !== "OWNER") return undefined;
+  // Preserve a verified session principal. The existing single-owner native
+  // boundary may instead supply OWNER alone; use its canonical runtime owner.
+  return (
+    authority.identityId ??
+    authority.principal ??
+    resolveHostSessionAccessContext(authority, runtime)?.requesterEntityId
+  );
 }
 const PREFIX = "/api/views";
 export async function handleViewsRoutes(
@@ -823,6 +838,78 @@ export async function handleViewsRoutes(
     // completed-action has a caller-scoped terminal fallback, so sanitized
     // canonical state can commit immediately. Voice/originating-client has no
     // fallback and commits only after its targeted renderer accepts delivery.
+    if (body?.delivery === "completed-action" && body.prepareOnly === true) {
+      const ownerId = navigationOwner(ctx, viewRuntime);
+      const handoffId = normalizeCompletedActionHandoffId(
+        body.completedActionHandoffId,
+      );
+      // A prepared navigation is not an active view and grants no view interaction.
+      if (
+        !ownerId ||
+        !originatingClientId ||
+        !entry ||
+        !handoffId ||
+        resolvedViewType !== "gui" ||
+        Object.keys(body).some(
+          (key) =>
+            ![
+              "clientId",
+              "delivery",
+              "completedActionHandoffId",
+              "viewType",
+              "prepareOnly",
+            ].includes(key),
+        ) ||
+        action ||
+        subview ||
+        alwaysOnTop ||
+        layoutViews ||
+        layout ||
+        placement ||
+        payload !== undefined
+      ) {
+        error(
+          res,
+          "Navigation preparation requires an owner, renderer and plain registered destination",
+          409,
+        );
+        return true;
+      }
+      const settled = viewInteractionHost(viewRuntime, ctx.hostKey).waitFor(
+        handoffId,
+        originatingClientId,
+        entry,
+        120000,
+        { ownerId, navigation: true },
+      );
+      // Return the handoff before waiting for its renderer; awaiting here deadlocks.
+      void settled
+        .then((result) => {
+          if (!result.success) return;
+          assertRuntimeViewEntry(viewRuntime, entry);
+          commitCurrentViewState(entry.path ?? null);
+        })
+        .catch((error) => {
+          viewRuntime.reportError("VIEWS.preparedNavigation", error, {
+            viewId: id,
+            handoffId,
+          });
+        });
+      json(res, {
+        ok: true,
+        status: "prepared",
+        viewId: id,
+        completedActionHandoffId: handoffId,
+        navigationBinding: {
+          requestId: handoffId,
+          clientId: originatingClientId,
+          viewId: id,
+          viewType: resolvedViewType,
+          installationId: entry.installationId,
+        },
+      });
+      return true;
+    }
     if (body?.delivery !== "originating-client") {
       commitCurrentViewState(committedViewPath);
     }
@@ -1114,6 +1201,7 @@ export async function handleViewsRoutes(
         installationId: body.installationId,
       },
       callerRoles(ctx),
+      navigationOwner(ctx, viewRuntime),
     );
     if (!claimId) {
       error(
@@ -1157,8 +1245,12 @@ export async function handleViewsRoutes(
       error(res, "Missing client id for view interaction result", 400);
       return true;
     }
-    viewInteractionHost(viewRuntime, ctx.hostKey).resolve(clientId, result);
-    json(res, { ok: true });
+    const accepted = viewInteractionHost(viewRuntime, ctx.hostKey).resolve(
+      clientId,
+      result,
+      navigationOwner(ctx, viewRuntime),
+    );
+    json(res, { ok: true, accepted });
     return true;
   }
   // ── POST /api/views/:id/interact ──────────────────────────────────────────
