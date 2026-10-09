@@ -143,6 +143,8 @@ export interface InitiateAuthParams {
   scopes?: string[];
   /** Logical Agent-side role for the connection */
   connectionRole?: OAuthConnectionRole;
+  /** Server-set only by the disclosed managed Google context endpoint. */
+  personalGoogleContext?: import("../shared-runtime/shared-google-consent").GooglePersonalContextConsent;
 }
 
 /**

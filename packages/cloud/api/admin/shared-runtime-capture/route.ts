@@ -2,6 +2,7 @@
 
 import {
   requireAdmin,
+  requirePrivateOwnerAccess,
   requireUserOrApiKeyWithOrg,
 } from "@elizaos/cloud-shared/auth";
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
@@ -35,15 +36,7 @@ app.on(["GET", "POST"], "/read", bodyLimit({ maxSize: 4096 }), async (c) => {
   if (!policy) return c.json({ error: "Capture session unavailable" }, 404);
   if (user.id !== policy.readerUserId)
     return c.json({ error: "Capture reader not authorized" }, 403);
-  // An app-issued key identifies its issuer but grants no private capture access.
-  const apiKeyId = c.get("apiKeyId");
-  if (apiKeyId) {
-    const { appsService } = await import(
-      "@elizaos/cloud-shared/lib/services/apps"
-    );
-    if (await appsService.getByApiKeyId(apiKeyId))
-      return c.json({ error: "Capture reader not authorized" }, 403);
-  }
+  await requirePrivateOwnerAccess(c, user);
   const ownerReader = user.id === policy.userId;
   if (ownerReader) {
     if (user.organization_id !== policy.organizationId) {

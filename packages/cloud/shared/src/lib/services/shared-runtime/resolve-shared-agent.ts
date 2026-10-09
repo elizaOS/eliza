@@ -296,7 +296,9 @@ export async function resolveSharedAgent(
   // indistinguishable from a missing agent.
   if (isPersonalSharedAgentId(agentId)) {
     try {
-      const { requireUserOrApiKeyWithOrg } = await import("../../auth/workers-hono-auth");
+      const { requireUserOrApiKeyWithOrg, requirePrivateOwnerAccess } = await import(
+        "../../auth/workers-hono-auth"
+      );
       const user = await requireUserOrApiKeyWithOrg(c);
       const agent = personalSharedAgent({
         userId: user.id,
@@ -305,6 +307,7 @@ export async function resolveSharedAgent(
       if (agent.id !== agentId) {
         return { error: "Agent not found", status: 404 };
       }
+      await requirePrivateOwnerAccess(c, user);
       return {
         agent,
         agentId,
