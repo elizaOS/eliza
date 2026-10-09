@@ -457,7 +457,9 @@ const worker = {
             channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:70000000-0000-5000-8000-000000000095",
             roomKey: "personal:70000000-0000-5000-8000-000000000095",
-            network: { memberId: "mem_ada", store },
+            // Design A: the planner executes SET_STATE (structured routing,
+            // the default, registers no SET_STATE action).
+            network: { memberId: "mem_ada", store, routing: "planner" },
           },
         });
         return Response.json({

@@ -39,7 +39,7 @@ import { type AgentCapabilityTransport } from "@elizaos/core/capability-catalog"
 import { createAssistantPlugin, generateMediaAction } from "@elizaos/plugin-assistant";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
-import { createNetworkEdgePlugin } from "@thenetwork/plugin-network";
+import { createNetworkEdgePlugin, NETWORK_ACTION_FIELD } from "@thenetwork/plugin-network";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos";
 import {
   createWebSearchEdgePlugin,
@@ -907,11 +907,23 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       if (input.execution?.todos && !runtime.actions.some((action) => action.name === "TODO")) {
         throw new Error("Eliza Shared runtime initialized without its TODO action");
       }
-      if (
-        input.execution?.network &&
-        !runtime.actions.some((action) => action.name === "SET_STATE")
-      ) {
-        throw new Error("Eliza Shared runtime initialized without its Network SET_STATE action");
+      // Planner routing executes availability changes through the SET_STATE
+      // action; structured routing (the default) only through the authorized
+      // networkAction field evaluator, and deliberately registers no SET_STATE
+      // action (a planner SET_STATE there would bypass its authz).
+      if (input.execution?.network) {
+        const structured =
+          (input.execution.network.routing ?? NETWORK_DEFAULT_ROUTING) === "structured";
+        const ready = structured
+          ? runtime.responseHandlerFieldEvaluators.some(
+              (evaluator) => evaluator.name === NETWORK_ACTION_FIELD,
+            )
+          : runtime.actions.some((action) => action.name === "SET_STATE");
+        if (!ready) {
+          throw new Error(
+            `Eliza Shared runtime initialized without its Network ${structured ? "networkAction field evaluator" : "SET_STATE action"}`,
+          );
+        }
       }
       if (
         input.execution?.media &&

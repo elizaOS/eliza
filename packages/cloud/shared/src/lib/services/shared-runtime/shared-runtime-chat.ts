@@ -25,7 +25,7 @@ import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheTTL } from "../../cache/keys";
 import { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } from "../../middleware/rate-limit";
-import { sharedNetworkExecution } from "../../network/member-store";
+import { serviceNetworkStoreFactory, sharedNetworkExecution } from "../../network/member-store";
 import { getProviderFromModel } from "../../pricing";
 import {
   collectVideoProviderApiKeys,
@@ -597,6 +597,7 @@ function sharedElizaRuntimeExecution(
     agent,
     personalShared,
     runtimeChannel.type !== ChannelType.DM || roomId.startsWith("group:"),
+    serviceNetworkStoreFactory(personalShared ? params.trustedNetworkTurn : undefined),
   );
   return {
     agentKey: agent.id,

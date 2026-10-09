@@ -306,6 +306,9 @@ const sharedMessageSchema = z.union([
         .min(1)
         .max(MAX_INBOUND_MEDIA_IMAGES)
         .optional(),
+      // The Network takeover: the service's open-turn context, attached by
+      // the gateway (internal auth). Validated strictly downstream.
+      networkTurn: z.unknown().optional(),
     })
     .refine(
       (input) => input.platform === "blooio" || input.mediaUrls === undefined,
@@ -2015,6 +2018,10 @@ app.post("/", async (c) => {
           "platform",
           trustedDelivery,
           capabilityText,
+          undefined,
+          networkProject && "networkTurn" in parsed.data
+            ? parsed.data.networkTurn
+            : undefined,
         );
     // The same values ship on `Server-Timing` below; a second uncorrelated
     // per-turn log on the hot path would only duplicate them.

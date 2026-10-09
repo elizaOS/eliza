@@ -920,6 +920,7 @@
       "dependencies": {
         "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@thenetwork/plugin-network": "file:../../../../../packages/plugin-network",
         "@upstash/redis": "^1.37.0",
         "hashring": "^3.2.0",
         "hono": "4.13.8",
@@ -9394,7 +9395,7 @@
 
     "@elizaos/capacitor-websiteblocker/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
-    "@elizaos/cloud-api/@thenetwork/plugin-network": ["@thenetwork/plugin-network@file:../packages/plugin-network", { "devDependencies": { "@elizaos/core": "workspace:*", "@elizaos/plugin-assistant": "workspace:*", "@elizaos/plugin-sqlite": "workspace:*", "@elizaos/testing": "workspace:*", "typescript": "^6.0.3" }, "peerDependencies": { "@elizaos/core": "*" } }],
+    "@elizaos/cloud-api/@thenetwork/plugin-network": ["@thenetwork/plugin-network@file:../packages/plugin-network", { "devDependencies": { "typescript": "^6.0.3" }, "peerDependencies": { "@elizaos/core": "*" }, "optionalPeers": ["@elizaos/core"] }],
 
     "@elizaos/cloud-api/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
 
@@ -9402,7 +9403,7 @@
 
     "@elizaos/cloud-infra/yaml": ["yaml@2.9.1", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw=="],
 
-    "@elizaos/cloud-shared/@thenetwork/plugin-network": ["@thenetwork/plugin-network@file:../packages/plugin-network", { "devDependencies": { "@elizaos/core": "workspace:*", "@elizaos/plugin-assistant": "workspace:*", "@elizaos/plugin-sqlite": "workspace:*", "@elizaos/testing": "workspace:*", "typescript": "^6.0.3" }, "peerDependencies": { "@elizaos/core": "*" } }],
+    "@elizaos/cloud-shared/@thenetwork/plugin-network": ["@thenetwork/plugin-network@file:../packages/plugin-network", { "devDependencies": { "typescript": "^6.0.3" }, "peerDependencies": { "@elizaos/core": "*" }, "optionalPeers": ["@elizaos/core"] }],
 
     "@elizaos/cloud-shared/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
 
@@ -9413,6 +9414,8 @@
     "@elizaos/core/yaml": ["yaml@2.9.1", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw=="],
 
     "@elizaos/gateway-discord/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
+
+    "@elizaos/gateway-webhook/@thenetwork/plugin-network": ["@thenetwork/plugin-network@file:../packages/plugin-network", { "devDependencies": { "typescript": "^6.0.3" }, "peerDependencies": { "@elizaos/core": "*" }, "optionalPeers": ["@elizaos/core"] }],
 
     "@elizaos/gateway-webhook/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
 

@@ -19,7 +19,13 @@ import type {
   SetStateExecution,
   SetStateInput,
 } from "@thenetwork/plugin-network";
+import {
+  createServiceNetworkStore,
+  NetworkServiceClient,
+  parseServiceTurn,
+} from "@thenetwork/plugin-network";
 import { type SQL, sql } from "drizzle-orm";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { personalSharedProjectScope } from "../services/shared-runtime/personal-shared-identity";
 import type { SharedRuntimeAgent } from "../services/shared-runtime/shared-runtime-agent";
 
@@ -213,6 +219,25 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
       return { recorded: inserted.length };
     },
   };
+}
+
+/**
+ * The Network takeover: a store backed by the Network service for this turn,
+ * when the gateway attached a valid open-turn context and the service is
+ * configured (NETWORK_SERVICE_URL, SERVICE_TURN_SECRET). Otherwise undefined,
+ * and the turn uses the Cloud Postgres store.
+ */
+export function serviceNetworkStoreFactory(
+  trustedNetworkTurn: unknown,
+  env: Record<string, string | undefined> = getCloudAwareEnv() as Record<string, string | undefined>,
+): (() => NetworkStore) | undefined {
+  if (trustedNetworkTurn === undefined) return undefined;
+  const turn = parseServiceTurn(trustedNetworkTurn);
+  const baseUrl = env.NETWORK_SERVICE_URL?.trim();
+  const secret = env.SERVICE_TURN_SECRET;
+  if (!turn || !baseUrl || !secret) return undefined;
+  const client = new NetworkServiceClient({ baseUrl, secret });
+  return () => createServiceNetworkStore(client, turn);
 }
 
 /** Production store over Cloud's request-scoped (Hyperdrive) write connection. */

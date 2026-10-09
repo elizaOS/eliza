@@ -593,6 +593,8 @@ export async function sharedRestMessageSend(
   trustedDelivery?: SharedReminderDelivery,
   trustedUserUtterance?: string,
   trustedChannel?: SharedRuntimeChannel,
+  /** The Network service's open-turn context (takeover); read only for personal shared turns. */
+  trustedNetworkTurn?: unknown,
 ): Promise<{
   text: string;
   agentName: string;
@@ -610,6 +612,7 @@ export async function sharedRestMessageSend(
       roomId: conversationId,
       ...(clientMessageId ? { clientMessageId } : {}),
       ...(trustedDelivery ? { trustedDelivery } : {}),
+      ...(trustedNetworkTurn !== undefined ? { trustedNetworkTurn } : {}),
     },
   };
   // The production coordinator and Worker lifetime are required together so a

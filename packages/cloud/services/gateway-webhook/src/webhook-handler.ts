@@ -42,6 +42,11 @@ import {
   redisNetworkConsentLedger,
   sendWithTwilioReplyFence,
 } from "./network-compliance";
+import {
+  type NetworkOpenTurn,
+  networkServiceFromEnv,
+  runNetworkServiceTurn,
+} from "./network-service";
 import type { GatewayRedis } from "./redis";
 import {
   forwardToServer,
@@ -134,6 +139,11 @@ interface HandlerDeps {
   reacquireAuthHeader?: () => Promise<Record<string, string>>;
   /** Network consent ledger; defaults to the Redis ledger on `redis`. */
   networkConsentLedger?: NetworkConsentLedger;
+  /**
+   * The Network service (takeover). Defaults to `networkServiceFromEnv()`;
+   * `null` forces the legacy gateway-only keyword path.
+   */
+  networkService?: Parameters<typeof runNetworkServiceTurn>[0] | null;
 }
 
 function networkConsentLedger(deps: HandlerDeps): NetworkConsentLedger {
@@ -892,9 +902,58 @@ async function processMessage(
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
 
-  // The Network: carrier keywords (STOP/HELP/START) and the consent ledger
-  // run before any identity, account, or agent work. Other projects skip this.
-  if (isNetworkProject(project)) {
+  // The Network takeover: a direct message goes to the Network service's
+  // deterministic loop first (routing, STOP/HELP/START, join, onboarding).
+  // A handled turn is answered here with no model call; an open turn carries
+  // the service's member context into the agent turn.
+  let networkTurn: NetworkOpenTurn | undefined;
+  const networkService =
+    deps.networkService === undefined ? networkServiceFromEnv() : deps.networkService;
+  const isDirect = !(event.chatType === "group" || event.chatType === "supergroup");
+  if (isNetworkProject(project) && networkService && isDirect && !event.membershipChange) {
+    let outcome: Awaited<ReturnType<typeof runNetworkServiceTurn>>;
+    try {
+      outcome = await runNetworkServiceTurn(
+        networkService,
+        networkConsentLedger(deps),
+        project,
+        event,
+      );
+    } catch (error) {
+      // error-policy:J2 nothing has been sent; the provider retries and the
+      // service replays its stored result for this messageId.
+      throw new PersonalSharedPreEgressError("network service unavailable", {
+        cause: error,
+      });
+    }
+    if (outcome.kind === "reply") {
+      // One provider send per inbound: the reply fences (Twilio tombstone,
+      // Blooio idempotency) are keyed by the inbound message id, so several
+      // service replies go out as one message.
+      if (outcome.texts.length > 0) {
+        await sendDirectReply(
+          adapter,
+          config,
+          event,
+          deps,
+          project,
+          outcome.texts.join("\n\n"),
+          deliveryHooks,
+        );
+      }
+      logger.info("Network service handled turn", {
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        reason: outcome.reason,
+        replies: outcome.texts.length,
+      });
+      return;
+    }
+    if (outcome.kind === "open") networkTurn = outcome.turn;
+  } else if (isNetworkProject(project)) {
+  // The Network (legacy, no service): carrier keywords (STOP/HELP/START) and
+  // the consent ledger run before any identity, account, or agent work.
     let compliance: NetworkInboundCompliance;
     try {
       compliance = await handleNetworkInboundCompliance(
@@ -982,6 +1041,7 @@ async function processMessage(
         project,
         trace.traceId,
         deliveryHooks,
+        networkTurn,
       );
       logger.info("Personal Eliza connector message completed", {
         project,
@@ -1326,6 +1386,7 @@ async function sendPersonalSharedReply(
   project: string,
   traceId: string,
   deliveryHooks?: TelegramDeliveryHooks,
+  networkTurn?: NetworkOpenTurn,
 ): Promise<PersonalSharedDeliveryTiming> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
@@ -1452,6 +1513,8 @@ async function sendPersonalSharedReply(
                   phoneNumber: event.senderId,
                   messageId: `${adapter.platform}:${project}:${event.messageId}`,
                   message: event.text,
+                  // The Network service's open-turn context (takeover only).
+                  ...(networkTurn ? { networkTurn } : {}),
                   // Only Blooio media URLs are provider-hosted and fetchable
                   // by the cloud vision path; other platforms keep text-only.
                   ...(isMediaTurn && event.mediaUrls?.length
