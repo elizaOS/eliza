@@ -916,7 +916,14 @@ function supportedRealtimeReply(
   grounding: AvailableGrounding,
   onRefusal: ((diagnostic: SharedRealtimeBindingDiagnostic) => void) | undefined,
   mode: "realtime" | "general_public",
-): { reply: string; selectedUrls: string[]; omittedUnsupported: boolean } | undefined {
+):
+  | {
+      reply: string;
+      selectedUrls: string[];
+      omittedUnsupported: boolean;
+      omittedSubstantive: boolean;
+    }
+  | undefined {
   if (!hasTraceableRealtimeGrounding(grounding)) return undefined;
   SOURCE_MARKER.lastIndex = 0;
   let cursor = 0;
