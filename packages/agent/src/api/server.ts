@@ -608,7 +608,8 @@ const optionalPluginImports = {
   cloud: () => importOptionalPlugin(optionalPluginSpecifiers.cloud),
   imessage: () => importOptionalPlugin(optionalPluginSpecifiers.imessage),
   mcp: () => importOptionalPlugin(optionalPluginSpecifiers.mcp),
-  workflow: () => importOptionalPlugin(optionalPluginSpecifiers.workflow),
+  workflow: () =>
+    import(/* @vite-ignore */ "@elizaos/plugin-workflow/trigger-routes"),
 };
 type LocalInferenceServerApi = LocalInferenceRouteApi &
   LocalInferenceVoiceRouteApi;
