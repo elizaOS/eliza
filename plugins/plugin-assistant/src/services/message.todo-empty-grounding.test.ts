@@ -123,6 +123,17 @@ test("actual scoped empty TODO read grounds production compound reply without re
     }),
   ).toEqual({ text: reply, effectReceiptIds: [] });
   expect(f.verdict("Your todo list is empty.", [active])).toBe("reject");
+  for (const mixedScopeReply of [
+    "You have no active todos and no todos.",
+    "You have no todos and no active todos.",
+    "No active todos and no todos.",
+    "No todos and no active todos.",
+    "You have no active todos and your todo list is empty.",
+    "Your todo list is empty and you have no active todos.",
+    "You have no active todos and no completed todos.",
+    "You have no active todos and no entire todo list entries.",
+  ])
+    expect(f.verdict(mixedScopeReply, [active])).toBe("reject");
   expect(
     f.verdict(reply, [active], {
       ...f.currentScope,
@@ -171,6 +182,14 @@ test("TODO proof is scoped read evidence, invalidated by later matching or unkno
   for (const data of [
     { actionName: "TODO", op: "create", entityId: f.currentScope.entityId },
     { actionName: "TODO", op: "update" },
+    { actionName: "TODO", op: "create", agentId: null, entityId: null },
+    { actionName: "TODO", op: "create", agentId: "", entityId: "" },
+    {
+      actionName: "TODO",
+      op: "create",
+      agentId: "malformed",
+      entityId: stringToUuid("other-owner"),
+    },
     {
       actionName: "TODO",
       op: "clear",
@@ -187,6 +206,7 @@ test("TODO proof is scoped read evidence, invalidated by later matching or unkno
         data: {
           actionName: "TODO",
           op: "create",
+          agentId: f.currentScope.agentId,
           entityId: stringToUuid("other-owner"),
         },
       },

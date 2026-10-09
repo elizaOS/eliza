@@ -37,6 +37,7 @@ import {
   segmentBlock,
   selectCompletionContext,
   stripEffectDeliveryBinding,
+  validateUuid,
 } from "@elizaos/core";
 import type { EvaluatorOutput } from "../../runtime/evaluator";
 import { renderActionResultsForModel } from "../../runtime/planner-rendering";
@@ -362,12 +363,15 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
             later.data?.readOnlyOperation === true
           )
             return false;
-          // Missing owner scope is not evidence that a later mutation is unrelated.
+          // Only a fully valid, distinct scope proves this mutation unrelated.
+          // Null, empty and malformed identity values are unknown, not distinct.
+          const laterAgentId = validateUuid(later.data?.agentId);
+          const laterEntityId = validateUuid(later.data?.entityId);
           return (
-            (later.data?.agentId === undefined ||
-              later.data.agentId === observation.agentId) &&
-            (later.data?.entityId === undefined ||
-              later.data.entityId === observation.entityId)
+            !laterAgentId ||
+            !laterEntityId ||
+            (laterAgentId === observation.agentId &&
+              laterEntityId === observation.entityId)
           );
         })
       )

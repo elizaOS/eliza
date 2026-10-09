@@ -720,10 +720,12 @@ export function replyClaimsCompletedSideEffect(
 // Bob in this thread") passes through; chat-recall stays owned by the
 // visible-context-recall exception.
 const EMPTY_TRACKED_STATE_CLAIM_PATTERNS: readonly RegExp[] = [
+  // Standalone/coordinated TODO absence clauses each own their qualifier.
+  /(?:^|[.!?\n;,]|\band\s+)\s*(?:no|zero)\s+(?:(?:active|open|pending|completed|cancelled|canceled|entire)\s+)?(?:todos?|to[- ]dos?)\b/gi,
   // Possessive collection assertions need proof even without a date qualifier.
   /\byou\s+(?:(?:currently|presently)\s+)?(?:have\s+(?:no|zero)|(?:do\s+not|don['’]t)\s+have\s+(?:any|a|an))\s+(?:(?:new|saved|tracked|recorded|active|open|pending)\s+)?(?:notes?|tasks?|todos?|to[- ]dos?|reminders?|habits?|goals?|entries)\b/gi,
   // "your task list is empty", "the todo list looks clear"
-  /\b(?:task|todo|to[- ]do|reminder|goal|habit)s?\s+list\s+(?:is|looks|seems|appears)\s+(?:empty|clear|blank)\b/gi,
+  /\b(?:(?:active|open|pending)\s+)?(?:task|todo|to[- ]do|reminder|goal|habit)s?\s+list\s+(?:is|looks|seems|appears)\s+(?:empty|clear|blank)\b/gi,
   // "no notes, tasks, or messages from earlier today", "no tasks logged"
   /\b(?:no|zero)\s+(?:new\s+)?(?:notes?|tasks?|todos?|to[- ]dos?|reminders?|habits?|goals?|entries)\b[^.!?\n]*\b(?:today|tonight|this\s+morning|this\s+afternoon|this\s+evening|so\s+far|earlier|logged|recorded|saved|tracked|on\s+file)\b/gi,
   // "I don't have today's log (in front of me)", "I don't have your task list"
@@ -852,13 +854,19 @@ export function emptyTrackedStateClaimScopes(
         !/\b(?:yesterday|last|previous|earlier|before|ever|never|deleted)\b/iu.test(
           sentence,
         );
+      // Qualify the first TODO noun in this matched absence, never a later
+      // clause in the same sentence ("no active todos and no todos").
+      const todoNoun = /\b(?:todos?|to[- ]dos?)\b/iu.exec(match[0]);
+      const activeTodoHead =
+        todoNoun !== null &&
+        /\b(?:active|open|pending)\s*$/iu.test(
+          match[0].slice(0, todoNoun.index),
+        );
       scopes.push(
         noteOnly
           ? "notes"
           : todoOnly
-            ? /\b(?:active|open|pending)\s+(?:todos?|to[- ]dos?)\b/iu.test(
-                sentence,
-              )
+            ? activeTodoHead
               ? "todos_active"
               : "todos_all"
             : "unsupported",
