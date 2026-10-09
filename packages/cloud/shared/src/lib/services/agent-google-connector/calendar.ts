@@ -3,7 +3,10 @@
  * handlers, including compatible IANA local-time normalization at the service
  * boundary.
  */
-import { applyTimeZone, getZonedDateParts } from "../../utils/google-mcp-shared";
+import {
+  applyTimeZone,
+  getZonedDateParts,
+} from "../../utils/google-mcp-shared";
 import type { OAuthConnectionRole } from "../oauth/types";
 import {
   fail,
@@ -12,7 +15,8 @@ import {
   type ManagedGoogleCalendarSummary,
 } from "./shared";
 
-const GOOGLE_CALENDAR_EVENTS_ENDPOINT = "https://www.googleapis.com/calendar/v3/calendars";
+const GOOGLE_CALENDAR_EVENTS_ENDPOINT =
+  "https://www.googleapis.com/calendar/v3/calendars";
 const GOOGLE_CALENDAR_LIST_ENDPOINT =
   "https://www.googleapis.com/calendar/v3/users/me/calendarList";
 const MAX_GOOGLE_CALENDAR_FEED_EVENTS = 10_000;
@@ -93,7 +97,8 @@ function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
     second: "2-digit",
     hour12: false,
   }).formatToParts(date);
-  const token = parts.find((part) => part.type === "timeZoneName")?.value?.trim() ?? "GMT";
+  const token =
+    parts.find((part) => part.type === "timeZoneName")?.value?.trim() ?? "GMT";
   if (token === "GMT" || token === "UTC") {
     return 0;
   }
@@ -106,10 +111,20 @@ function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
 }
 
 function localPartsToEpochMs(parts: LocalDateTimeParts): number {
-  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+  );
 }
 
-function sameZonedParts(left: LocalDateTimeParts, right: LocalDateTimeParts): boolean {
+function sameZonedParts(
+  left: LocalDateTimeParts,
+  right: LocalDateTimeParts,
+): boolean {
   return (
     left.year === right.year &&
     left.month === right.month &&
@@ -123,10 +138,15 @@ function sameZonedParts(left: LocalDateTimeParts, right: LocalDateTimeParts): bo
 /**
  * Resolves local calendar parts with Temporal-compatible disambiguation.
  */
-export function buildUtcDateFromLocalParts(timeZone: string, parts: LocalDateTimeParts): Date {
+export function buildUtcDateFromLocalParts(
+  timeZone: string,
+  parts: LocalDateTimeParts,
+): Date {
   const baseUtcMs = localPartsToEpochMs(parts);
   if (!Number.isFinite(baseUtcMs)) {
-    throw new RangeError(`Local date-time cannot be resolved in timezone ${timeZone}`);
+    throw new RangeError(
+      `Local date-time cannot be resolved in timezone ${timeZone}`,
+    );
   }
   const offsets = new Set(
     OFFSET_SAMPLE_HOURS.map((hours) =>
@@ -154,7 +174,9 @@ export function buildUtcDateFromLocalParts(timeZone: string, parts: LocalDateTim
     .map((candidate) => {
       let wallDeltaMs: number;
       try {
-        wallDeltaMs = localPartsToEpochMs(getZonedDateParts(candidate, timeZone)) - baseUtcMs;
+        wallDeltaMs =
+          localPartsToEpochMs(getZonedDateParts(candidate, timeZone)) -
+          baseUtcMs;
       } catch {
         wallDeltaMs = Number.NaN;
       }
@@ -162,7 +184,9 @@ export function buildUtcDateFromLocalParts(timeZone: string, parts: LocalDateTim
     })
     .filter(
       ({ wallDeltaMs, candidate }) =>
-        Number.isFinite(wallDeltaMs) && wallDeltaMs > 0 && Number.isFinite(candidate.getTime()),
+        Number.isFinite(wallDeltaMs) &&
+        wallDeltaMs > 0 &&
+        Number.isFinite(candidate.getTime()),
     )
     .sort(
       (left, right) =>
@@ -175,7 +199,9 @@ export function buildUtcDateFromLocalParts(timeZone: string, parts: LocalDateTim
     return shiftedForward[0].candidate;
   }
 
-  throw new RangeError(`Local date-time cannot be resolved in timezone ${timeZone}`);
+  throw new RangeError(
+    `Local date-time cannot be resolved in timezone ${timeZone}`,
+  );
 }
 
 function normalizeGoogleDateOnly(
@@ -234,7 +260,11 @@ function readConferenceLink(event: GoogleCalendarApiEvent): string | null {
   if (event.hangoutLink?.trim()) {
     return event.hangoutLink.trim();
   }
-  return event.conferenceData?.entryPoints?.find((entry) => entry.uri?.trim())?.uri?.trim() || null;
+  return (
+    event.conferenceData?.entryPoints
+      ?.find((entry) => entry.uri?.trim())
+      ?.uri?.trim() || null
+  );
 }
 
 function normalizeGoogleCalendarEvent(
@@ -244,7 +274,10 @@ function normalizeGoogleCalendarEvent(
 ): ManagedGoogleCalendarEvent | null {
   const externalId = event.id?.trim();
   const start = readGoogleEventInstant(event.start, fallbackTimeZone);
-  const end = readGoogleEventInstant(event.end, start?.timeZone ?? fallbackTimeZone);
+  const end = readGoogleEventInstant(
+    event.end,
+    start?.timeZone ?? fallbackTimeZone,
+  );
   if (!externalId || !start || !end) {
     return null;
   }
@@ -295,16 +328,32 @@ export async function fetchManagedGoogleCalendarFeed(args: {
   timeMin: string;
   timeMax: string;
   timeZone: string;
+  /** Optional caller budget; omitted preserves the general dashboard feed. */
+  limits?: { maxEvents: number; maxPages: number };
 }): Promise<{
+  truncated?: boolean;
   calendarId: string;
   events: ManagedGoogleCalendarEvent[];
   syncedAt: string;
 }> {
+  if (
+    args.limits &&
+    (!Number.isSafeInteger(args.limits.maxEvents) ||
+      args.limits.maxEvents < 1 ||
+      args.limits.maxEvents > MAX_GOOGLE_CALENDAR_FEED_EVENTS ||
+      !Number.isSafeInteger(args.limits.maxPages) ||
+      args.limits.maxPages < 1 ||
+      args.limits.maxPages > 10)
+  ) {
+    fail(400, "Invalid Google Calendar read budget.");
+  }
   const baseParams = new URLSearchParams({
     singleEvents: "true",
     orderBy: "startTime",
     showDeleted: "false",
-    maxResults: "2500",
+    maxResults: String(
+      args.limits ? Math.min(2500, args.limits.maxEvents) : 2500,
+    ),
     timeMin: args.timeMin,
     timeMax: args.timeMax,
     fields:
@@ -315,7 +364,10 @@ export async function fetchManagedGoogleCalendarFeed(args: {
   const events: ManagedGoogleCalendarEvent[] = [];
   let pageToken: string | undefined;
   const seenPageTokens = new Set<string>();
+  let pages = 0;
+  let truncated = false;
   do {
+    pages += 1;
     const params = new URLSearchParams(baseParams);
     if (pageToken) {
       params.set("pageToken", pageToken);
@@ -333,15 +385,26 @@ export async function fetchManagedGoogleCalendarFeed(args: {
       nextPageToken?: string;
     };
     const normalizedPage = (parsed.items ?? [])
-      .map((event) => normalizeGoogleCalendarEvent(args.calendarId, event, args.timeZone))
+      .map((event) =>
+        normalizeGoogleCalendarEvent(args.calendarId, event, args.timeZone),
+      )
       .filter((event): event is ManagedGoogleCalendarEvent => event !== null);
-    if (events.length + normalizedPage.length > MAX_GOOGLE_CALENDAR_FEED_EVENTS) {
+    if (
+      events.length + normalizedPage.length >
+      MAX_GOOGLE_CALENDAR_FEED_EVENTS
+    ) {
       fail(
         502,
         `Google Calendar feed exceeded ${MAX_GOOGLE_CALENDAR_FEED_EVENTS} events; narrow the requested time range.`,
       );
     }
-    events.push(...normalizedPage);
+    if (args.limits) {
+      const remaining = args.limits.maxEvents - events.length;
+      events.push(...normalizedPage.slice(0, remaining));
+      truncated ||= normalizedPage.length > remaining;
+    } else {
+      events.push(...normalizedPage);
+    }
     const nextPageToken = parsed.nextPageToken?.trim() || undefined;
     if (nextPageToken && seenPageTokens.has(nextPageToken)) {
       fail(502, "Google Calendar feed pagination repeated a page token.");
@@ -350,11 +413,19 @@ export async function fetchManagedGoogleCalendarFeed(args: {
       seenPageTokens.add(nextPageToken);
     }
     pageToken = nextPageToken;
+    if (
+      args.limits &&
+      (pages >= args.limits.maxPages || events.length >= args.limits.maxEvents)
+    ) {
+      truncated ||= Boolean(pageToken);
+      break;
+    }
   } while (pageToken);
 
   return {
     calendarId: args.calendarId,
     events,
+    ...(args.limits ? { truncated } : {}),
     syncedAt: new Date().toISOString(),
   };
 }
@@ -391,7 +462,8 @@ export async function listManagedGoogleCalendars(args: {
     if (!calendarId) continue;
     calendars.push({
       calendarId,
-      summary: item.summaryOverride?.trim() || item.summary?.trim() || calendarId,
+      summary:
+        item.summaryOverride?.trim() || item.summary?.trim() || calendarId,
       description: item.description?.trim() || null,
       primary: Boolean(item.primary),
       accessRole: item.accessRole?.trim() || "reader",
@@ -443,7 +515,11 @@ export async function createManagedGoogleCalendarEvent(args: {
     },
   });
   const parsed = (await response.json()) as GoogleCalendarApiEvent;
-  const event = normalizeGoogleCalendarEvent(args.calendarId, parsed, args.timeZone);
+  const event = normalizeGoogleCalendarEvent(
+    args.calendarId,
+    parsed,
+    args.timeZone,
+  );
   if (!event) {
     fail(502, "Google Calendar returned a partial event payload.");
   }
@@ -520,7 +596,11 @@ async function fetchManagedGoogleCalendarEvent(args: {
     url: `${GOOGLE_CALENDAR_EVENTS_ENDPOINT}/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(args.eventId)}?${params.toString()}`,
   });
   const parsed = (await response.json()) as GoogleCalendarApiEvent;
-  return normalizeGoogleCalendarEvent(args.calendarId, parsed, args.fallbackTimeZone);
+  return normalizeGoogleCalendarEvent(
+    args.calendarId,
+    parsed,
+    args.fallbackTimeZone,
+  );
 }
 
 export async function updateManagedGoogleCalendarEvent(args: {
@@ -544,7 +624,8 @@ export async function updateManagedGoogleCalendarEvent(args: {
 }): Promise<{ event: ManagedGoogleCalendarEvent }> {
   const ONE_HOUR_MS = 60 * 60 * 1000;
   const needsExistingEventContext =
-    Boolean(args.startAt || args.endAt) && (!args.timeZone || !args.startAt || !args.endAt);
+    Boolean(args.startAt || args.endAt) &&
+    (!args.timeZone || !args.startAt || !args.endAt);
   const existingEvent = needsExistingEventContext
     ? await fetchManagedGoogleCalendarEvent({
         organizationId: args.organizationId,
@@ -556,7 +637,8 @@ export async function updateManagedGoogleCalendarEvent(args: {
         fallbackTimeZone: args.timeZone,
       })
     : null;
-  const effectiveTimeZone = args.timeZone ?? existingEvent?.timezone ?? undefined;
+  const effectiveTimeZone =
+    args.timeZone ?? existingEvent?.timezone ?? undefined;
   let normalizedStartAt = normalizeManagedCalendarDateTimeInTimeZone(
     args.startAt,
     "startAt",
@@ -598,18 +680,26 @@ export async function updateManagedGoogleCalendarEvent(args: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...(args.title !== undefined ? { summary: args.title } : {}),
-        ...(args.description !== undefined ? { description: args.description } : {}),
+        ...(args.description !== undefined
+          ? { description: args.description }
+          : {}),
         ...(args.location !== undefined ? { location: args.location } : {}),
         ...(normalizedStartAt
           ? { start: applyTimeZone(normalizedStartAt, effectiveTimeZone) }
           : {}),
-        ...(normalizedEndAt ? { end: applyTimeZone(normalizedEndAt, effectiveTimeZone) } : {}),
+        ...(normalizedEndAt
+          ? { end: applyTimeZone(normalizedEndAt, effectiveTimeZone) }
+          : {}),
         ...(args.attendees !== undefined ? { attendees: args.attendees } : {}),
       }),
     },
   });
   const parsed = (await response.json()) as GoogleCalendarApiEvent;
-  const event = normalizeGoogleCalendarEvent(args.calendarId, parsed, effectiveTimeZone);
+  const event = normalizeGoogleCalendarEvent(
+    args.calendarId,
+    parsed,
+    effectiveTimeZone,
+  );
   if (!event) {
     fail(502, "Google Calendar returned a partial event payload.");
   }
