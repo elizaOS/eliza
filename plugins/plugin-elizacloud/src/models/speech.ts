@@ -120,11 +120,30 @@ function resolveVoiceId(
   }
   const voice = options.voice?.trim();
   if (!voice) return undefined;
-  // "nova" is the OpenAI default — treat as unset so the upstream falls back
-  // to the cloud default voice instead of being forwarded as an opaque alias.
-  if (voice === "nova") return undefined;
+  // OpenAI-style voice names are not ElevenLabs voice ids. The docblock
+  // above states the rule for all of them, but only "nova" was actually
+  // rejected — and only in exact case — so "alloy", "Nova", and the rest
+  // were forwarded upstream as opaque ids. The cloud-config normalizer
+  // in this plugin keeps the same alias set and compares case-insensitively;
+  // mirror it here: treat every alias as unset so the upstream falls back
+  // to the cloud default voice.
+  if (OPENAI_STYLE_VOICE_ALIASES.has(voice.toLowerCase())) return undefined;
   return voice;
 }
+
+/** OpenAI-style voice names — never valid ElevenLabs voice ids. Mirrors
+ * `OPENAI_STYLE_VOICE_ALIASES` in `../cloud-config/server-cloud-tts.ts`. */
+const OPENAI_STYLE_VOICE_ALIASES = new Set([
+  "alloy",
+  "ash",
+  "ballad",
+  "coral",
+  "echo",
+  "nova",
+  "sage",
+  "shimmer",
+  "verse",
+]);
 
 async function fetchTextToSpeech(
   runtime: IAgentRuntime,
