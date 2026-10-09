@@ -82,20 +82,25 @@ describe("webSearchEdgePlugin", () => {
 
     it("keeps complete structured URLs and balanced prose citation paths", () => {
         const exact = "https://example.com/path).";
-        const structured = webSearchSourceEvidence(JSON.stringify({
-            results: [{ url: exact, text: "Exact published path" }],
-        }));
+        const structured = webSearchSourceEvidence(
+            JSON.stringify({
+                results: [{ url: exact, text: "Exact published path" }],
+            })
+        );
         expect(structured.sourceUrls).toEqual([exact]);
         expect(structured.sources[0]?.url).toBe(exact);
-        expect(webSearchSourceUrls(
-            "Source: (https://en.wikipedia.org/wiki/Function_(mathematics)). " +
-            "Nested: https://example.com/a_(b_(c)));"
-        )).toEqual([
+        expect(
+            webSearchSourceUrls(
+                "Source: (https://en.wikipedia.org/wiki/Function_(mathematics)). " +
+                    "Nested: https://example.com/a_(b_(c)));"
+            )
+        ).toEqual([
             "https://en.wikipedia.org/wiki/Function_(mathematics)",
             "https://example.com/a_(b_(c))",
         ]);
-        expect(webSearchSourceUrls(`https://example.com/path${")".repeat(50000)}`))
-            .toEqual(["https://example.com/path"]);
+        expect(webSearchSourceUrls(`https://example.com/path${")".repeat(50000)}`)).toEqual([
+            "https://example.com/path",
+        ]);
     });
 
     it("rejects loopback and private-network citation URLs", () => {
