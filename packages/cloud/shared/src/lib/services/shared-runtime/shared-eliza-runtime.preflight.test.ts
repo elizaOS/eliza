@@ -201,7 +201,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
       throw new Error("Unexpected network boundary in offline Core test");
     }
     const request = JSON.parse(body) as {
-      tools?: Array<{ function?: { name?: string; parameters?: unknown } }>; 
+      tools?: Array<{ function?: { name?: string; parameters?: unknown } }>;
       messages?: Array<Record<string, unknown>>;
     };
     modelCalls += 1;
