@@ -75,6 +75,14 @@ interface DelayCandidate {
   invalidComposition: boolean;
 }
 
+function isWordApostrophe(text: string, index: number): boolean {
+  return (
+    (text[index] === "'" || text[index] === "’") &&
+    /[\p{L}\p{N}]/u.test(text[index - 1] ?? "") &&
+    /[\p{L}\p{N}]/u.test(text[index + 1] ?? "")
+  );
+}
+
 function maskQuotedText(text: string): string {
   const closingQuote = new Map([
     ['"', '"'],
@@ -87,13 +95,17 @@ function maskQuotedText(text: string): string {
   let cursor = 0;
   while (cursor < text.length) {
     const closer = closingQuote.get(text[cursor] ?? "");
-    if (!closer) {
+    if (!closer || isWordApostrophe(text, cursor)) {
       out.push(text[cursor] ?? "");
       cursor += 1;
       continue;
     }
     let end = cursor + 1;
-    while (end < text.length && text[end] !== "\n" && text[end] !== closer) {
+    while (
+      end < text.length &&
+      text[end] !== "\n" &&
+      (text[end] !== closer || isWordApostrophe(text, end))
+    ) {
       end += 1;
     }
     if (text[end] === closer) {
