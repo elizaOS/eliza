@@ -129,6 +129,11 @@ export const viewsAction: Action = {
     const completedAction =
       isObjectRecord(message.content.metadata) &&
       message.content.metadata.viewDelivery === "completed-action";
+    if (!completedAction && view.available === false)
+      return fail(
+        "unavailable",
+        "This destination has no available hosted view for the originating renderer.",
+      );
     const delivery = completedAction
       ? "completed-action"
       : "originating-client";
