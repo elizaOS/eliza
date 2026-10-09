@@ -1,9 +1,8 @@
 /** Keeps Shared honest and returns a resumable setup handoff for unavailable work. */
 
-import { sharedPublicGoogleProductQuery } from "./shared-realtime-grounding";
-
 import { ElizaError } from "@elizaos/core/edge";
 import { type CapabilityHandoffRequest, capabilityHandoffTargetAgentId } from "@elizaos/shared";
+import { sharedPublicGoogleProductQuery } from "./shared-realtime-grounding";
 
 export type SharedDedicatedCapability =
   | "calendar"
@@ -230,9 +229,7 @@ export function resolveSharedCapabilityIntent(
     publicGoogleProduct && (rule.capability === "cloud-apps" || rule.capability === "calendar")
       ? []
       : matchesForRule(rule, priority, text),
-  ).sort(
-    (left, right) => left.index - right.index || left.priority - right.priority,
-  );
+  ).sort((left, right) => left.index - right.index || left.priority - right.priority);
   const primary = matches[0];
   if (!primary) return null;
   if (!isEnabled(primary, capabilities)) {
