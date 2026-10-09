@@ -15,6 +15,7 @@ import {
   currentNwsObservationSource,
   isVerifiedCurrentNwsObservation,
 } from "./shared-current-weather";
+import { formatSharedMessageText } from "./shared-message-style";
 import { sharedSelectedGroundingMetadata } from "./shared-runtime-history-policy";
 
 export type SharedRealtimeDomain = "markets" | "weather" | "news" | "sports" | "mutable_fact";
@@ -985,7 +986,17 @@ function supportedRealtimeReply(
     : undefined;
 }
 
-/** Produces Telegram-safe attribution or an honest deterministic recovery. */
+/** Display identity only: exact receipt URLs remain authoritative for validation. */
+function sourceDisplayIdentity(canonical: string): string {
+  const url = new URL(canonical);
+  // The English Google documentation display variant adds no page identity.
+  // Other locales, hosts and query parameters can select different evidence.
+  if (url.hostname === "developers.google.com" && url.searchParams.get("hl") === "en")
+    url.searchParams.delete("hl");
+  return url.href;
+}
+
+/** Produces conversational attribution after the unchanged source validators. */
 export function finalizeSharedRealtimeReply(
   reply: string,
   grounding: SharedRuntimePublicGrounding | undefined,
@@ -993,27 +1004,22 @@ export function finalizeSharedRealtimeReply(
   mode: "realtime" | "general_public" = "realtime",
 ): string {
   if (!hasTraceableRealtimeGrounding(grounding)) {
-    return "I can’t verify the current value from a complete, traceable live source right now, so I won’t guess. Please try again shortly.";
+    return "I couldn’t check that right now. Please try again in a moment.";
   }
   const supported = supportedRealtimeReply(reply, grounding, onRefusal, mode);
-  if (!supported) {
-    return `I found live public results, but I couldn’t safely bind the requested claim to one complete source, so I won’t guess.\n\nSource provider: ${grounding.provider} (checked ${new Date(grounding.observedAt).toISOString()})`;
-  }
-  const sources = [...new Set(supported.selectedUrls)].map((url) => {
+  if (!supported)
+    return "I couldn’t verify an answer from the sources I found. Please try rephrasing your question.";
+  const seen = new Set<string>();
+  const sources: string[] = [];
+  for (const url of supported.selectedUrls) {
     const canonical = canonicalPublicUrl(url);
     if (!canonical) throw new TypeError("Validated Shared realtime source became invalid");
-    const observed =
-      grounding.provider === "nws" && grounding.weatherObservation
-        ? `, observation ${grounding.weatherObservation.timestamp}`
-        : "";
-    return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}${observed}, checked ${new Date(grounding.observedAt).toISOString()})`;
-  });
-  const omission = supported.omittedUnsupported
-    ? mode === "general_public"
-      ? "\n\nI couldn’t verify the rest."
-      : "\n\nI left out part of the draft because it was not supported by the live source."
-    : "";
-  return `${supported.reply}${omission}\n\n${sources.join("\n")}`;
+    const identity = sourceDisplayIdentity(canonical);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    sources.push(canonical);
+  }
+  return `${formatSharedMessageText(supported.reply)}\n\n${sources.length === 1 ? "Source" : "Sources"}: ${sources.join("\n")}`;
 }
 
 /** System-only policy; actual provider results remain untrusted data messages. */

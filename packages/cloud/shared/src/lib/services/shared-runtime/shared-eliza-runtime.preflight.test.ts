@@ -85,6 +85,7 @@ type Mode = {
   messageIds?: { user: string; assistant: string };
   expectedPriorGrounding?: RunSharedAgentTurnResult["internalGrounding"];
   measureShape?: boolean;
+  messaging?: boolean;
   sdkFailure?: boolean;
   general?: boolean;
   history?: SharedTurnMessage[];
@@ -144,6 +145,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
   const participantNames: Array<string | undefined> = [];
   const publicHttpHops: string[] = [];
   let modelCalls = 0;
+  let messagingStyleObserved = false;
   // Test-only numeric observers. Full strings exist only in RAM for exact
   // equality comparisons and are never returned, logged or hashed.
   const seenSegments = new Set<string>();
@@ -534,6 +536,8 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
       .filter((message) => message.role === "system" && typeof message.content === "string")
       .map((message) => message.content as string)
       .join("\n");
+    messagingStyleObserved ||=
+      system.includes("Messaging reply style:") && system.includes("conversational plain text");
     const signals = [
       ...(names.includes("HANDLE_RESPONSE") ? ["stage1"] : []),
       ...(names.includes("FACTS_AND_RELATIONSHIPS_VALIDATE") ? ["facts"] : []),
@@ -667,7 +671,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
           }),
       messageIds,
       execution: {
-        channel: { type: ChannelType.DM, source: "shared-runtime" },
+        channel: { type: ChannelType.DM, source: mode.messaging ? "blooio" : "shared-runtime" },
         authenticatedPersonalSharedUser: true,
         participantName: "QA Owner",
         agentKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
@@ -756,6 +760,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
     failureCategory: failureCategory ?? null,
   });
   return {
+    messagingStyleObserved,
     receiptCopies,
     coreShapes,
     wireShapes,
@@ -949,8 +954,7 @@ test("canonical denial and unsupported source claims retain their gates", async 
       throw new Error("Unsupported claim returned without the genuine current grounding");
     }
     expect(unsupported.result?.reply).toBe(
-      "I found live public results, but I couldn’t safely bind the requested claim to one complete source, so I won’t guess.\n\n" +
-        `Source provider: ${grounding.provider} (checked ${new Date(grounding.observedAt).toISOString()})`,
+      "I couldn’t verify an answer from the sources I found. Please try rephrasing your question.",
     );
     expect(unsupported.result?.reply).not.toContain("69.8°C");
   }
@@ -981,7 +985,7 @@ test("canonical denial and unsupported source claims retain their gates", async 
   if (denied.failed) {
     expect(denied.failureCategory).toBe("canonical_action_denied");
   } else {
-    expect(denied.result?.reply).toMatch(/couldn’t safely bind|can’t verify|denied/i);
+    expect(denied.result?.reply).toMatch(/couldn’t verify|couldn’t check|denied/i);
   }
 });
 
@@ -1009,7 +1013,7 @@ test("ordinary chat and unavailable preflight keep their existing paths", async 
   if (unavailable.failed) {
     expect(unavailable.failureCategory).toBe("canonical_search_unavailable");
   } else {
-    expect(unavailable.result?.reply).toContain("can’t verify the current value");
+    expect(unavailable.result?.reply).toContain("couldn’t check");
   }
 });
 
@@ -1020,7 +1024,7 @@ test("general Gmail documentation uses canonical query and source footer after r
   const paraphrase =
     "Each project can use 1.2 million quota units per minute, and each user can use 6k quota units per minute.";
   const actual = await exercise(
-    { general: true, measureShape: true, history: prior.result.history },
+    { general: true, messaging: true, measureShape: true, history: prior.result.history },
     `${paraphrase} [[SOURCE_URL:${GENERAL_SOURCE}]]`,
   );
   expect(actual.failed).toBe(false);
@@ -1033,7 +1037,8 @@ test("general Gmail documentation uses canonical query and source footer after r
     success: true,
   });
   expect(actual.result?.reply).toContain(paraphrase);
-  expect(actual.result?.reply).toContain(`Source: developers.google.com — ${GENERAL_SOURCE}`);
+  expect(actual.result?.reply).toContain(`Source: ${GENERAL_SOURCE}`);
+  expect(actual.messagingStyleObserved).toBe(true);
   expect(actual.result?.reply).not.toContain("SOURCE_URL:");
   expect(actual.result?.reply).not.toContain("Springfield");
   expect(actual.coreShapes).toHaveLength(actual.modelCalls);

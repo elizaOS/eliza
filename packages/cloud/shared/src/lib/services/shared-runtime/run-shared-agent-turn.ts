@@ -60,6 +60,7 @@ import {
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
 import type { SharedMemoryStore } from "./shared-memory-store";
+import { formatSharedMessageText, SHARED_MESSAGE_STYLE } from "./shared-message-style";
 import {
   finalizeSharedRealtimeReply,
   hasSharedRealtimeIntent,
@@ -374,6 +375,8 @@ function buildSharedRuntimeSystem(
     character.name,
   ).trim();
   if (system) parts.push(system);
+  if (capabilities.transport === "sms" || capabilities.transport === "telegram")
+    parts.push(SHARED_MESSAGE_STYLE);
   const catalog = buildSharedCapabilityCatalog(capabilities);
   parts.push(
     `Shared runtime capabilities:\n${formatSharedCapabilityCatalogForPrompt(catalog)}\n` +
@@ -1465,6 +1468,20 @@ export async function runSharedAgentTurn(
   // The durable memory commit runs OUTSIDE the provider try/catch: its failure
   // is a storage fault on an already-landed reply and must not be re-labeled
   // as a provider outcome for the caller's settlement classification.
+  if (
+    !publicSearchIntent &&
+    ["sms", "telegram"].includes(
+      sharedCapabilityTransportForSource(execution.channel.source, execution.channel.type),
+    )
+  ) {
+    const reply = formatSharedMessageText(turn.reply);
+    if (reply !== turn.reply) {
+      const history = [...turn.history];
+      const index = history.findLastIndex((entry) => entry.role === "assistant");
+      if (index >= 0) history[index] = { ...history[index], content: reply };
+      turn = { ...turn, reply, history };
+    }
+  }
   turn = withReminderActionProvenance(turn, input);
   await commitSharedTurnMemory(input, turn.reply);
   return turn;

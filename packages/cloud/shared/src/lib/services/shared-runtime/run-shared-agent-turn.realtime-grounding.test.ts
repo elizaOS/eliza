@@ -137,7 +137,7 @@ describe("runSharedAgentTurn realtime grounding", () => {
       expect(JSON.stringify(records)).not.toContain("63,800");
       expect(JSON.stringify(records)).not.toContain("TradingView");
       expect(JSON.stringify(records)).not.toContain("https://");
-      expect(result.reply).toContain("couldn’t safely bind the requested claim");
+      expect(result.reply).toContain("couldn’t verify an answer");
     } finally {
       sink.mockRestore();
     }
@@ -243,8 +243,8 @@ describe("runSharedAgentTurn realtime grounding", () => {
 
     expect(result.reply).not.toContain("63,800");
     expect(result.reply).not.toContain("TradingView");
-    expect(result.reply).toContain("couldn’t safely bind the requested claim");
-    expect(result.reply).toContain("Source provider: parallel");
+    expect(result.reply).toContain("couldn’t verify an answer");
+    expect(result.reply).not.toContain("Source provider: parallel");
     expect(JSON.stringify(result.actionResults)).not.toContain("63,800");
     expect(JSON.stringify(result.actionResults)).not.toContain("TradingView");
   });

@@ -1330,8 +1330,8 @@ describe("Shared Eliza Workerd runtime", () => {
       },
     });
     expect(result.reply).toStartWith("A new ElizaOS public release was announced today.");
-    expect(result.reply).toContain("Source: elizaos.ai — https://elizaos.ai/news");
-    expect(result.reply).toContain("parallel, checked ");
+    expect(result.reply).toContain("Source: https://elizaos.ai/news");
+    expect(result.reply).not.toContain("parallel, checked ");
     const searchResults = result.actionResults?.filter(
       (action) => action.data?.actionName === "WEB_SEARCH",
     );
