@@ -129,6 +129,7 @@ export class WebsiteBlockerWeb extends WebPlugin {
   private async requestJson<T>(
     pathname: string,
     init?: RequestInit,
+    options?: { resolveFailureBody?: boolean },
   ): Promise<T> {
     if (!this.canReachApi()) {
       throw new Error("Eliza API not available");
@@ -142,6 +143,24 @@ export class WebsiteBlockerWeb extends WebPlugin {
       },
     });
     if (!response.ok) {
+      // The start/stop routes answer known failures (a block already
+      // running, a stop that needs elevation) with a non-200 status whose
+      // JSON body IS the contract's { success: false, error, status? }
+      // result — the same variant both native bridges resolve. Throwing a
+      // generic error discarded the server's error and status and made
+      // that variant unreachable on web, so resolve the body when it
+      // carries the failure shape and throw only otherwise.
+      if (options?.resolveFailureBody) {
+        const body: unknown = await response.json().catch(() => null);
+        if (
+          typeof body === "object" &&
+          body !== null &&
+          (body as { success?: unknown }).success === false &&
+          typeof (body as { error?: unknown }).error === "string"
+        ) {
+          return body as T;
+        }
+      }
       throw new Error(`Request failed (${response.status})`);
     }
     return (await response.json()) as T;
@@ -161,6 +180,7 @@ export class WebsiteBlockerWeb extends WebPlugin {
         method: "PUT",
         body: JSON.stringify(body),
       },
+      { resolveFailureBody: true },
     );
   }
 
@@ -170,6 +190,7 @@ export class WebsiteBlockerWeb extends WebPlugin {
       {
         method: "DELETE",
       },
+      { resolveFailureBody: true },
     );
   }
 
