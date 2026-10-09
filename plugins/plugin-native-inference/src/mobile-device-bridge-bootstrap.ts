@@ -49,6 +49,7 @@ import {
   ServiceType,
   type TextEmbeddingParams,
 } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { imageUrlToBase64 } from "./image-url-to-base64.ts";
 import { BGE_EMBEDDING_MODEL } from "./model-catalog/bge-embedding-model.js";
 import {
@@ -2118,7 +2119,7 @@ function extractEmbeddingText(
 function makeEmbeddingHandler(runtime: AgentRuntime): EmbeddingHandler {
   let readiness: Promise<void> | undefined;
   const assertEnabled = () => {
-    if (isTruthyEnvValue(process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS))
+    if (isTruthyEnvValue(readAliasedEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")))
       throw new ElizaError(
         "Local embeddings are disabled by the host provider policy",
         { code: "LOCAL_EMBEDDING_DISABLED" },
@@ -2475,7 +2476,7 @@ function registerMobileDeviceBridgeModels(
     );
   }
   // Host-selected Cloud embeddings must never fall back into local dispatch.
-  if (!isTruthyEnvValue(process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS)) {
+  if (!isTruthyEnvValue(readAliasedEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS"))) {
     runtimeWithRegistration.registerModel(
       ModelType.TEXT_EMBEDDING,
       makeEmbeddingHandler(runtime),
@@ -2502,7 +2503,7 @@ function registerMobileDeviceBridgeModels(
   }
   const embeddingModelPath = resolveLocalModelPath("TEXT_EMBEDDING");
   if (
-    !isTruthyEnvValue(process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS) &&
+    !isTruthyEnvValue(readAliasedEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) &&
     !embeddingModelPath &&
     process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() !== "1"
   ) {
