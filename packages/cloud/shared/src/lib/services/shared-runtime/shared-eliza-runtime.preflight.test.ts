@@ -269,6 +269,14 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
     } else if (mode.deny && validations > 0 && actions.length === 0 && kinds.includes("missing_capability")) {
       failureCategory = "canonical_action_denied";
     } else if (
+      mode.deny &&
+      validations > 0 &&
+      actions.length === 0 &&
+      result === undefined &&
+      codes.includes("REPLY_GROUNDING_FAILED")
+    ) {
+      failureCategory = "canonical_action_denied";
+    } else if (
       mode.unavailable &&
       actions.length > 0 &&
       actions.every((action) => !action.success) &&
