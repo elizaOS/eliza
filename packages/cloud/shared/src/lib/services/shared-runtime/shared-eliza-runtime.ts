@@ -1,3 +1,8 @@
+import {
+  createSharedGoogleContextPlugin,
+  GOOGLE_CONTEXT_ACTION,
+  isSharedGoogleContextRequest,
+} from "./shared-google-context-plugin";
 /**
  * Runs one Shared turn through the genuine Eliza message pipeline in Workerd.
  * Durable Object history remains authoritative; each turn projects that history
@@ -299,12 +304,14 @@ function createRuntime(options: {
   mediaPlugin?: Plugin;
   reminderPlugin?: Plugin;
   todoPlugin?: Plugin;
+  googlePlugin?: Plugin;
 }): AgentRuntime {
   const capabilityPlugin = createSharedRuntimeCapabilitiesPlugin({
     agentId: options.agentKey,
     webSearch: options.webSearchEnabled,
     reminders: options.actionsEnabled && Boolean(options.reminderPlugin),
     todos: options.actionsEnabled && Boolean(options.todoPlugin),
+    googleContext: options.actionsEnabled && Boolean(options.googlePlugin),
     media: options.actionsEnabled && Boolean(options.mediaPlugin),
     transport: options.transport,
   });
@@ -340,6 +347,7 @@ function createRuntime(options: {
       ...(options.actionsEnabled && options.mediaPlugin ? [options.mediaPlugin] : []),
       ...(options.actionsEnabled && options.reminderPlugin ? [options.reminderPlugin] : []),
       ...(options.actionsEnabled && options.todoPlugin ? [options.todoPlugin] : []),
+      ...(options.actionsEnabled && options.googlePlugin ? [options.googlePlugin] : []),
     ],
     logLevel: "error",
   });
@@ -1034,7 +1042,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const modelPlugin = sharedModelPlugin(modelHandler, Boolean(input.ownerCapture));
   const actionsEnabled = input.messageRole !== "system";
   const realtimeRequirement =
-    actionsEnabled && input.capabilityText
+    actionsEnabled && input.capabilityText && !isSharedGoogleContextRequest(input.capabilityText)
       ? resolveSharedRealtimeRequirement(input.capabilityText, input.history)
       : undefined;
   const privateCapabilityIntent =
@@ -1042,13 +1050,22 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     resolveSharedCapabilityIntent(input.capabilityText, {
       reminders: Boolean(input.execution?.reminders),
       todos: Boolean(input.execution?.todos),
+      googleContext: Boolean(input.execution?.google),
     });
   const publicSearchIntent = realtimeRequirement
     ? { kind: "prefetched" as const, requirement: realtimeRequirement }
-    : actionsEnabled && input.capabilityText && !privateCapabilityIntent
+    : actionsEnabled &&
+        input.capabilityText &&
+        !isSharedGoogleContextRequest(input.capabilityText) &&
+        !privateCapabilityIntent
       ? resolveSharedPublicSearchIntent(input.capabilityText, input.history)
       : undefined;
   const webSearchEnabled = Boolean(publicSearchIntent);
+  // Public-search turns must not also expose a private data source to the model.
+  const googlePlugin =
+    actionsEnabled && !webSearchEnabled && input.execution?.google
+      ? createSharedGoogleContextPlugin(input.execution.google)
+      : undefined;
   const reminderPlugin =
     actionsEnabled && input.execution?.reminders
       ? createSharedRemindersEdgePlugin({
@@ -1154,6 +1171,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     mediaPlugin,
     reminderPlugin,
     todoPlugin,
+    googlePlugin,
   });
   exposeRuntime(runtime);
   if (input.ownerCapture) {
@@ -1233,6 +1251,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         !runtime.actions.some((action) => action.name === "REMINDERS")
       ) {
         throw new Error("Eliza Shared runtime initialized without its REMINDERS action");
+      }
+      if (
+        googlePlugin &&
+        !runtime.actions.some((action) => action.name === GOOGLE_CONTEXT_ACTION)
+      ) {
+        throw new Error("Eliza Shared runtime initialized without its owner Google action");
       }
       if (input.execution?.todos && !runtime.actions.some((action) => action.name === "TODO")) {
         throw new Error("Eliza Shared runtime initialized without its TODO action");

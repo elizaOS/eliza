@@ -1,3 +1,5 @@
+import { clearPersonalGoogleContextConsent } from "../../../db/repositories/personal-google-context-consent";
+import { usersService } from "../users";
 /**
  * OAuth Service
  *
@@ -157,7 +159,15 @@ class OAuthService {
 
   /** Initiate OAuth flow for a platform */
   async initiateAuth(params: InitiateAuthParams): Promise<InitiateAuthResult> {
-    const { organizationId, userId, platform, redirectUrl, scopes, connectionRole } = params;
+    const {
+      organizationId,
+      userId,
+      platform,
+      redirectUrl,
+      scopes,
+      connectionRole,
+      personalGoogleContext,
+    } = params;
     const role = normalizeOAuthConnectionRole(connectionRole);
 
     const provider = getProvider(platform);
@@ -180,6 +190,7 @@ class OAuthService {
         redirectUrl,
         scopes,
         connectionRole: role,
+        ...(platform === "google" && personalGoogleContext ? { personalGoogleContext } : {}),
       });
       return { authUrl: result.authUrl, state: result.state };
     }
@@ -307,6 +318,13 @@ class OAuthService {
 
     const version = await incrementOAuthVersion(organizationId, adapter.platform);
     await tokenCache.invalidate(organizationId, connectionId, version);
+    if (adapter.platform === "google") {
+      const owner = await clearPersonalGoogleContextConsent({
+        organizationId,
+        grantId: connectionId,
+      });
+      if (owner) await usersService.invalidateCache(owner);
+    }
 
     logger.info("[OAuthService] Connection revoked", {
       organizationId,

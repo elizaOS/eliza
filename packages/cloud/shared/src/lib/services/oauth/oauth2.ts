@@ -1,3 +1,14 @@
+import {
+  bindPersonalGoogleContextConsent,
+  lockPersonalGoogleContextOwner,
+  readPersonalGoogleContextOwner,
+} from "../../../db/repositories/personal-google-context-consent";
+import { secretsRepository } from "../../../db/repositories/secrets";
+import {
+  type GooglePersonalContextConsent,
+  isGooglePersonalContextConsent,
+} from "../shared-runtime/shared-google-consent";
+import { usersService } from "../users";
 /**
  * Generic OAuth 2.0 Flow Handler
  *
@@ -42,6 +53,7 @@ function fetchOAuth2(input: string | URL, init?: RequestInit): Promise<Response>
  * OAuth state stored in cache during authorization flow.
  */
 interface OAuth2State {
+  personalGoogleContext?: GooglePersonalContextConsent;
   organizationId: string;
   userId: string;
   providerId: string;
@@ -194,6 +206,7 @@ export async function initiateOAuth2(
     redirectUrl?: string;
     scopes?: string[];
     connectionRole?: OAuthConnectionRole;
+    personalGoogleContext?: GooglePersonalContextConsent;
   },
 ): Promise<InitiateOAuth2Result> {
   const clientId = getClientId(provider);
@@ -232,6 +245,9 @@ export async function initiateOAuth2(
     connectionRole: normalizeOAuthConnectionRole(params.connectionRole),
     createdAt: Date.now(),
     codeVerifier,
+    ...(provider.id === "google" && isGooglePersonalContextConsent(params.personalGoogleContext)
+      ? { personalGoogleContext: params.personalGoogleContext }
+      : {}),
   };
 
   await cache.set(`oauth2:${provider.id}:${state}`, stateData, STATE_TTL_SECONDS);
@@ -318,9 +334,44 @@ export async function handleOAuth2Callback(
 
   const { organizationId, userId, redirectUrl, scopes, codeVerifier } = stateData;
   const connectionRole = normalizeOAuthConnectionRole(stateData.connectionRole);
+  if (
+    stateData.personalGoogleContext !== undefined &&
+    (provider.id !== "google" ||
+      connectionRole !== "OWNER" ||
+      !isGooglePersonalContextConsent(stateData.personalGoogleContext))
+  ) {
+    throw new Error("GOOGLE_PERSONAL_CONTEXT_CALLBACK_SCOPE_INVALID");
+  }
 
+  if (
+    stateData.personalGoogleContext &&
+    !(await readPersonalGoogleContextOwner({ organizationId, userId }))
+  ) {
+    throw new Error("GOOGLE_PERSONAL_CONTEXT_OWNER_CHANGED");
+  }
   // Exchange code for tokens
   const tokens = await exchangeCodeForTokens(provider, code, codeVerifier);
+  let connectionScopes = scopes;
+  if (stateData.personalGoogleContext) {
+    // Requested scopes are intent, never proof of what Google actually granted.
+    const granted =
+      typeof tokens.scope === "string"
+        ? [...new Set(tokens.scope.split(/\s+/u).filter(Boolean))]
+        : [];
+    if (
+      !granted.includes("https://www.googleapis.com/auth/gmail.readonly") ||
+      !granted.includes("https://www.googleapis.com/auth/calendar.readonly")
+    ) {
+      throw new Error("GOOGLE_PERSONAL_CONTEXT_GRANTED_SCOPES_REQUIRED");
+    }
+    connectionScopes = granted;
+  }
+  if (
+    stateData.personalGoogleContext &&
+    !(await readPersonalGoogleContextOwner({ organizationId, userId }))
+  ) {
+    throw new Error("GOOGLE_PERSONAL_CONTEXT_OWNER_CHANGED");
+  }
 
   // For providers with a user/bot token split (Slack), the OWNER flow
   // must resolve the *authorizing user's* identity via the user token
@@ -342,15 +393,28 @@ export async function handleOAuth2Callback(
   }
 
   // Store connection
-  const connectionId = await storeConnection(
+  const { connectionId, consentOwner } = await storeConnection(
     provider,
     organizationId,
     userId,
     connectionRole,
     tokens,
     userInfo,
-    scopes,
+    connectionScopes,
+    stateData.personalGoogleContext,
   );
+
+  if (consentOwner) {
+    try {
+      await usersService.invalidateCache(consentOwner);
+    } catch (error) {
+      // Publication already committed. Cache eviction is observable but cannot
+      // turn that committed result into a failed callback or undo its secrets.
+      logger.error("[OAuth2] Personal Google owner cache eviction failed", {
+        errorType: error instanceof Error ? error.name : "unknown",
+      });
+    }
+  }
 
   logger.info(`[OAuth2] Callback completed for ${provider.id}`, {
     organizationId,
@@ -700,12 +764,73 @@ async function storeConnection(
   tokens: TokenResponse,
   userInfo: ExtractedUserInfo,
   scopes: string[],
-): Promise<string> {
+  personalConsent?: GooglePersonalContextConsent,
+): Promise<{
+  connectionId: string;
+  consentOwner?: Awaited<ReturnType<typeof bindPersonalGoogleContextConsent>>;
+}> {
   const connectionUserId = connectionRole === "OWNER" ? userId : null;
   const audit = {
     actorType: "user" as const,
     actorId: userId,
     source: `oauth2-${provider.id}-callback`,
+  };
+
+  if (
+    personalConsent &&
+    (provider.id !== "google" ||
+      connectionRole !== "OWNER" ||
+      !isGooglePersonalContextConsent(personalConsent))
+  ) {
+    throw new Error("GOOGLE_PERSONAL_CONTEXT_CALLBACK_SCOPE_INVALID");
+  }
+  const stagingAttempt = personalConsent ? crypto.randomUUID().replaceAll("-", "_") : "";
+  const stagedSecrets: Array<{ name: string; description: string; id?: string }> = [];
+  let publicationSubmitted = false;
+  const cleanupPersonalStaging = async (cause: unknown): Promise<never> => {
+    const cleanupErrors: unknown[] = [];
+    for (const staged of stagedSecrets) {
+      try {
+        // create() can persist a row and then fail audit. Recover only this
+        // unpredictable attempt's exact metadata; never rotate/delete legacy secrets.
+        const secret = staged.id
+          ? { id: staged.id, description: staged.description }
+          : await secretsRepository.findByName(organizationId, staged.name);
+        if (secret?.description === staged.description) {
+          await secretsService.delete(secret.id, organizationId, audit);
+        }
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+    if (cleanupErrors.length) {
+      throw new AggregateError(
+        [cause, ...cleanupErrors],
+        "GOOGLE_PERSONAL_CONTEXT_SECRET_CLEANUP_INCOMPLETE",
+      );
+    }
+    throw cause;
+  };
+  const stagePersonalSecret = async (kind: "ACCESS_TOKEN" | "REFRESH_TOKEN", value: string) => {
+    const staged = {
+      name: `GOOGLE_OWNER_${kind}_STAGED_${stagingAttempt}`,
+      description: `oauth2-personal-context-staging:${stagingAttempt}`,
+      id: undefined as string | undefined,
+    };
+    stagedSecrets.push(staged);
+    const secret = await secretsService.create(
+      {
+        organizationId,
+        name: staged.name,
+        value,
+        description: staged.description,
+        scope: "organization",
+        createdBy: userId,
+      },
+      audit,
+    );
+    staged.id = secret.id;
+    return secret.id;
   };
 
   // Tracks newly created secrets for deletion on failure
@@ -793,7 +918,16 @@ async function storeConnection(
   let accessTokenSecretId: string;
   let refreshTokenSecretId: string | undefined;
 
-  if (existing.length > 0 && existing[0].access_token_secret_id) {
+  if (personalConsent) {
+    try {
+      accessTokenSecretId = await stagePersonalSecret("ACCESS_TOKEN", tokens.access_token);
+      refreshTokenSecretId = tokens.refresh_token
+        ? await stagePersonalSecret("REFRESH_TOKEN", tokens.refresh_token)
+        : (existing[0]?.refresh_token_secret_id ?? undefined);
+    } catch (error) {
+      return cleanupPersonalStaging(error);
+    }
+  } else if (existing.length > 0 && existing[0].access_token_secret_id) {
     // Update existing secrets - handle orphaned secret references gracefully
     try {
       await secretsService.rotate(
@@ -919,7 +1053,8 @@ async function storeConnection(
   let insertBlocked = false;
 
   try {
-    const connectionId = await writeTransaction(async (tx) => {
+    const publication = await writeTransaction(async (tx) => {
+      if (personalConsent) await lockPersonalGoogleContextOwner(tx, { organizationId, userId });
       const result = await tx
         .insert(platformCredentials)
         .values({
@@ -963,7 +1098,10 @@ async function storeConnection(
             platform_email: userInfo.email || undefined,
             status: "active",
             access_token_secret_id: accessTokenSecretId,
-            refresh_token_secret_id: refreshTokenSecretId,
+            refresh_token_secret_id:
+              personalConsent && !tokens.refresh_token
+                ? sql`${platformCredentials.refresh_token_secret_id}`
+                : refreshTokenSecretId,
             token_expires_at: tokenExpiresAt,
             scopes,
             profile_data: userInfo.raw,
@@ -979,11 +1117,34 @@ async function storeConnection(
         throw new Error("OAUTH_ACCOUNT_ALREADY_LINKED");
       }
 
-      return result[0].id;
+      const connectionId = result[0].id;
+      const consentOwner = personalConsent
+        ? await bindPersonalGoogleContextConsent(
+            {
+              organizationId,
+              userId,
+              grantId: connectionId,
+              consent: personalConsent,
+            },
+            tx,
+          )
+        : undefined;
+      // Once the transaction body succeeds, a COMMIT acknowledgement failure
+      // is uncertain. Retain possibly published secrets for reconciliation.
+      publicationSubmitted = true;
+      return { connectionId, ...(consentOwner ? { consentOwner } : {}) };
     });
 
-    return connectionId;
+    return publication;
   } catch (error) {
+    if (personalConsent) {
+      if (publicationSubmitted) {
+        throw new Error("GOOGLE_PERSONAL_CONTEXT_PUBLICATION_OUTCOME_UNCONFIRMED", {
+          cause: error,
+        });
+      }
+      return cleanupPersonalStaging(error);
+    }
     if (insertBlocked) {
       await cleanupNewlyCreatedSecrets("Database insert blocked by existing connection");
       throw new Error("OAUTH_ACCOUNT_ALREADY_LINKED");

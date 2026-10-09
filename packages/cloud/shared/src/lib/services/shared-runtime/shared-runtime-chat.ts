@@ -1,3 +1,7 @@
+import {
+  createOwnerBoundSharedGooglePort,
+  isPersonalGooglePrivateAudience,
+} from "./shared-google-owner-binding";
 import type { OwnerModelCapture } from "./shared-owner-model-capture";
 /**
  * Cache-only shared-tier chat execution for Cloudflare Workers.
@@ -600,7 +604,7 @@ function personalSharedMediaPort(
   };
 }
 
-function sharedElizaRuntimeExecution(
+export function sharedElizaRuntimeExecution(
   agent: SharedRuntimeAgent,
   roomId: string,
   turnKey: string | undefined,
@@ -626,6 +630,11 @@ function sharedElizaRuntimeExecution(
     ...(personalShared ? { authenticatedPersonalSharedUser: true as const } : {}),
     ...(personalShared && runtimeChannel.type === ChannelType.DM && agent.owner_name
       ? { participantName: agent.owner_name }
+      : {}),
+    ...(personalShared &&
+    isPersonalGooglePrivateAudience(agent, runtimeChannel, params) &&
+    roomId === sharedRuntimeRoomKey(agent.id, agent.id)
+      ? { google: () => createOwnerBoundSharedGooglePort(agent, runtimeChannel, params) }
       : {}),
     todos: {
       scope: sharedTodoStorageScope({
@@ -1413,6 +1422,16 @@ export class SharedRuntimeChatService {
       };
     }
     const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
+    if (
+      isCanonicalPersonalSharedAgent(agent) &&
+      options.channel &&
+      options.channel.type !== ChannelType.DM &&
+      roomId === sharedRuntimeRoomKey(agent.id, agent.id)
+    ) {
+      throw new ElizaError("Canonical Personal history requires a private DM audience", {
+        code: "SHARED_PRIVATE_PERSONAL_ROOM_REQUIRED",
+      });
+    }
     const messageRole = options.trustedMessageRole ?? "user";
     if (
       options.trustedNetworkContext &&
@@ -1653,6 +1672,16 @@ export class SharedRuntimeChatService {
     const text = stringValue(params.text);
     if (!text) return sseError("message.send requires params.text");
     const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
+    if (
+      isCanonicalPersonalSharedAgent(agent) &&
+      options.channel &&
+      options.channel.type !== ChannelType.DM &&
+      roomId === sharedRuntimeRoomKey(agent.id, agent.id)
+    ) {
+      throw new ElizaError("Canonical Personal history requires a private DM audience", {
+        code: "SHARED_PRIVATE_PERSONAL_ROOM_REQUIRED",
+      });
+    }
     const messageRole = options.trustedMessageRole ?? "user";
     if (
       options.trustedNetworkContext &&

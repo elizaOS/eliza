@@ -290,6 +290,7 @@ export async function fetchManagedGoogleCalendarFeed(args: {
   userId: string;
   side: OAuthConnectionRole;
   grantId?: string;
+  personalContextRead?: true;
   calendarId: string;
   timeMin: string;
   timeMax: string;
@@ -324,6 +325,7 @@ export async function fetchManagedGoogleCalendarFeed(args: {
       userId: args.userId,
       side: args.side,
       grantId: args.grantId,
+      personalContextRead: args.personalContextRead,
       url: `${GOOGLE_CALENDAR_EVENTS_ENDPOINT}/${encodeURIComponent(args.calendarId)}/events?${params.toString()}`,
     });
     const parsed = (await response.json()) as {
