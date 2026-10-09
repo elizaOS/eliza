@@ -213,7 +213,10 @@ export class CameraWeb extends WebPlugin {
     this.videoElement.style.height = "100%";
     this.videoElement.style.objectFit = "cover";
 
-    if (options.mirror) {
+    // Mirror defaults to on for the front camera, as on both native
+    // bridges and in switchCamera below; an explicit value wins.
+    const mirror = options.mirror ?? options.direction === "front";
+    if (mirror) {
       this.videoElement.style.transform = "scaleX(-1)";
     }
 
