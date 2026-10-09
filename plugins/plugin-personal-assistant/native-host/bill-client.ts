@@ -203,7 +203,8 @@ export type BillReview = {
 };
 export type BillDecision = {
   billSources?: BillSourceReference[];
-  guidance?: { instruction: string; available: boolean };
+  /** expiresAt: when the guide on the website ends unless it is renewed. */
+  guidance?: { instruction: string; available: boolean; expiresAt?: number };
   kind: string;
   conflict?: BillConflict;
   message?: string;
@@ -265,7 +266,10 @@ export function readBillDecision(
       typeof decision.guidance.instruction !== "string" ||
       !decision.guidance.instruction.trim() ||
       decision.guidance.instruction.length > 600 ||
-      typeof decision.guidance.available !== "boolean")
+      typeof decision.guidance.available !== "boolean" ||
+      (decision.guidance.expiresAt !== undefined &&
+        (!Number.isSafeInteger(decision.guidance.expiresAt) ||
+          decision.guidance.expiresAt < 0)))
   )
     throw new BillClientResponseError("Invalid guidance");
   if (
@@ -452,17 +456,81 @@ class BillSession<S extends { pending: boolean }> {
   }
 }
 
+/** Check the website again this often while a guide is shown. */
+export const GUIDANCE_RECHECK_MS = 15000;
+/** Renew a guide this long before it expires. */
+const GUIDANCE_RENEW_BEFORE_MS = 5000;
+export interface BillTimers {
+  set(callback: () => void, ms: number): unknown;
+  clear(handle: unknown): void;
+}
 export class BillDecisionClient extends BillSession<BillDecisionState> {
   private readonly request: BillRequest;
   private readonly validators: BillClientValidators;
+  private readonly now: () => number;
+  private readonly timers: BillTimers;
+  private recheck: unknown = null;
   constructor(options: {
     request: BillRequest;
     validators: BillClientValidators;
     changed: (state: BillDecisionState) => void;
+    now?: () => number;
+    timers?: BillTimers;
   }) {
     super({ decision: null, pending: false, error: null }, options.changed);
     this.request = options.request;
     this.validators = options.validators;
+    this.now = options.now ?? Date.now;
+    this.timers = options.timers ?? {
+      set: (callback, ms) => setTimeout(callback, ms),
+      clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    };
+  }
+  override stop() {
+    this.cancelRecheck();
+    super.stop();
+  }
+  private cancelRecheck() {
+    if (this.recheck !== null) this.timers.clear(this.recheck);
+    this.recheck = null;
+  }
+  /**
+   * While a guide is shown, look at the website again on a short interval and
+   * before the guide expires. A page change hides the guide in the page; the
+   * next check shows it on the current page, or reports it unavailable.
+   */
+  private scheduleRecheck() {
+    this.cancelRecheck();
+    const guidance = this.state.decision?.guidance;
+    if (!guidance?.available || this.taskId === null) return;
+    const ticket = this.generation;
+    const untilExpiry =
+      guidance.expiresAt === undefined
+        ? Number.POSITIVE_INFINITY
+        : guidance.expiresAt - this.now();
+    // After a failed renewal, try once more when the guide expires.
+    const delay =
+      untilExpiry - GUIDANCE_RENEW_BEFORE_MS > 0
+        ? Math.min(GUIDANCE_RECHECK_MS, untilExpiry - GUIDANCE_RENEW_BEFORE_MS)
+        : Math.max(1000, untilExpiry);
+    this.recheck = this.timers.set(() => {
+      this.recheck = null;
+      if (this.generation !== ticket || this.taskId === null) return;
+      const shown = this.state.decision?.guidance;
+      // The guide is gone once it expires, even if the check fails.
+      if (
+        shown?.expiresAt !== undefined &&
+        shown.expiresAt <= this.now() &&
+        this.state.decision
+      ) {
+        this.state.decision = {
+          ...this.state.decision,
+          guidance: { ...shown, available: false },
+        };
+        this.publish();
+      }
+      void this.refresh();
+    }, delay);
   }
   start(taskId: string) {
     this.stop();
@@ -517,6 +585,7 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
           this.state.decision?.saveStatus === "pending" ? "save" : "load";
       return false;
     } finally {
+      if (this.current(ticket)) this.scheduleRecheck();
       this.finish(ticket);
     }
   }

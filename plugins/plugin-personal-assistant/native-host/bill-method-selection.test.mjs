@@ -218,3 +218,61 @@ test("a failed durable method review prevents dispatch; successful storage prece
     db.close();
   }
 });
+
+test("a selection refused before the click is found again once, then reported", async () => {
+  const db = new DatabaseSync(":memory:");
+  const runtime = { owner, get: () => task };
+  const store = createBillOutcomeStore(db, { get: () => task }).forTask(
+    runtime,
+    task.id,
+  );
+  const proposals = [];
+  let results = ["failed", "succeeded"];
+  runtime.execute = async (_id, _rev, proposal) => {
+    proposals.push(proposal.id);
+    return {
+      operations: [{ proposal, status: results.shift() }],
+    };
+  };
+  const workflow = new BillWorkflow({
+    deriveBillDecision,
+    runtime,
+    bill: {},
+    taskId: task.id,
+    outcomes: store,
+    controls: {
+      ...validateBillControls(controls),
+      existingMethod: {
+        label: "Use existing method",
+        selector: "#existing-method",
+      },
+    },
+    actuator: {
+      readObservation: () => ({ observation: task.observation, snapshot }),
+      quiesce: async () => {},
+    },
+  });
+  let refreshes = 0;
+  workflow.refresh = async () => {
+    refreshes++;
+    return refreshes === 3 ? { kind: "human-submit" } : decision;
+  };
+  try {
+    const done = await workflow.chooseExistingMethod(decision.reviewKey, {
+      operationId: "operation",
+    });
+    assert.equal(done.kind, "human-submit");
+    assert.deepEqual(proposals, ["operation", "operation.relocated"]);
+    // A second refusal is not retried again.
+    results = ["failed", "failed"];
+    proposals.length = 0;
+    refreshes = 0;
+    const stopped = await workflow.chooseExistingMethod(decision.reviewKey, {
+      operationId: "second",
+    });
+    assert.equal(stopped.kind, "unknown-outcome");
+    assert.deepEqual(proposals, ["second", "second.relocated"]);
+  } finally {
+    db.close();
+  }
+});
