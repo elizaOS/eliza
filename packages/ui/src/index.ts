@@ -1381,6 +1381,18 @@ export {
   loadWebAppsStudio,
 } from "./view-loaders.js";
 export {
+  type BatchVoiceCapture,
+  type BatchVoiceClock,
+  BatchVoiceConversation,
+  BatchVoiceError,
+  type BatchVoiceOptions,
+  type BatchVoicePhase,
+  type BatchVoicePorts,
+  type BatchVoiceReply,
+  type BatchVoiceState,
+  createVoiceTurnAggregator,
+} from "./voice/batch-conversation.js";
+export {
   playCaptureSendCue,
   playCaptureStartCue,
 } from "./voice/capture-cues.js";
@@ -1429,6 +1441,14 @@ export {
   type SpeechWordRange,
 } from "./voice/speech-word-timeline.js";
 export { useVoiceConfig } from "./voice/useVoiceConfig.js";
+export {
+  createVoiceActivityDetector,
+  DEFAULT_VOICE_ACTIVITY,
+  type VoiceActivityDetector,
+  type VoiceActivityMetrics,
+  type VoiceActivityOptions,
+  type VoiceActivityUpdate,
+} from "./voice/voice-activity.js";
 export {
   createVoiceCapture,
   type VoiceCaptureFactoryOptions,

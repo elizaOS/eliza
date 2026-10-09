@@ -20,7 +20,7 @@ import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
 } from "@elizaos/core/protocol";
-import { buildVoiceTurnSignal, shouldRespondToVoiceTurn } from "@elizaos/voice";
+import { buildVoiceTurnSignal } from "@elizaos/voice";
 import * as React from "react";
 import type { ImageAttachment } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
@@ -57,7 +57,8 @@ import { goHome } from "../../state/shell-surface-store";
 import { type AppContextValue, deriveAgentReady } from "../../state/types";
 import { openDesktopSettingsWindow } from "../../utils/desktop-workspace";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
-import { TurnAggregator } from "../../voice/end-of-turn";
+import { createVoiceTurnAggregator } from "../../voice/batch-conversation";
+import type { TurnAggregator } from "../../voice/end-of-turn";
 import {
   type MicrophonePermissionState,
   queryMicrophonePermission,
@@ -1337,38 +1338,22 @@ export function useShellController(): ShellController {
       const aggregator =
         intent === "dictate" || intent === "transcription" || intent === "ptt"
           ? null
-          : new TurnAggregator({
-              onCommit: (turn) => {
-                // Always-on shouldRespond: don't reply to the agent's own TTS
-                // echoed back through the mic, or to pure thinking-noise.
+          : createVoiceTurnAggregator({
+              responseContext: () => {
                 const reply = latestAgentReplyRef.current;
-                const replyAgeMs = reply.at
-                  ? Math.max(0, Date.now() - reply.at)
-                  : Number.POSITIVE_INFINITY;
-                const respondContext = {
+                return {
                   recentAgentReply: reply.text,
-                  replyAgeMs,
+                  replyAgeMs: reply.at
+                    ? Math.max(0, Date.now() - reply.at)
+                    : Number.POSITIVE_INFINITY,
                   agentSpeaking: speakingRef.current,
                 };
-                // Cheap client pre-filter: drop an obvious echo/disfluency turn
-                // before it costs a server round-trip.
-                if (!shouldRespondToVoiceTurn(turn, respondContext)) {
-                  return;
-                }
-                // Attach the ambient signal so the server gate
-                // (`core.voice_turn_signal`) is the single authority on whether
-                // to reply, and so diarization/wake-word enrichment composes in
-                // on platforms that have them. The transcript-only shell path
-                // contributes semantic end-of-turn + the echo/disfluency gate.
-                const voiceTurnSignal = buildVoiceTurnSignal(
-                  turn,
-                  respondContext,
-                );
+              },
+              onCommit: (turn, voiceTurnSignal) =>
                 send(turn, {
                   channelType: "VOICE_DM",
                   metadata: { voiceSource: lastBackend, voiceTurnSignal },
-                });
-              },
+                }),
             });
       turnAggregatorRef.current?.dispose();
       turnAggregatorRef.current = aggregator;
