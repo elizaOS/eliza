@@ -16,6 +16,7 @@ import {
 } from "@elizaos/host/protocol";
 import { dispatchApiRoute } from "../api/in-process-api.ts";
 import { listViews } from "../api/views-registry.ts";
+import { getViewClientScope } from "../runtime/view-client-context.ts";
 
 export const viewsAction: Action = {
   name: "VIEWS",
@@ -143,16 +144,23 @@ export const viewsAction: Action = {
       };
       let status: number;
       let body: unknown;
-      if (process.env.ELIZA_LOCAL_AGENT_TRANSPORT === "filesystem-v1") {
+      const scope = getViewClientScope();
+      // Cost: the same owned kernel, no loopback RPC or root-credential identity change.
+      // An expired scoped request fails closed in the dispatcher; it never falls back.
+      if (
+        scope?.request ||
+        process.env.ELIZA_LOCAL_AGENT_TRANSPORT === "filesystem-v1"
+      ) {
         const response = await dispatchApiRoute({
           runtime,
           inProcess: true,
+          ...(scope?.request ? { hostKey: scope.hostKey } : {}),
           isAuthorized: () => caller.isOwner,
           method: "POST",
           path,
           headers: {
             "Content-Type": "application/json",
-            ...createSelfApiRequestHeaders(),
+            ...(scope?.request ? {} : createSelfApiRequestHeaders()),
           },
           body: requestBody,
           signal,
