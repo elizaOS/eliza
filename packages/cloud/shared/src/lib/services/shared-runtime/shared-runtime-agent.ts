@@ -12,4 +12,10 @@ export interface SharedRuntimeAgent {
   owner_name?: string;
   agent_config: Record<string, unknown> | null;
   execution_tier: AgentExecutionTier;
+  /**
+   * Server-resolved product capabilities for this Personal turn (today only
+   * `"network"`). Independent of the account identity and room. Never read
+   * from untrusted transport input.
+   */
+  project?: string;
 }

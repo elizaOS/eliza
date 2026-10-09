@@ -45,6 +45,7 @@ import {
 } from "@elizaos/core";
 import type { AgentCapabilityTransport } from "@elizaos/core/protocol";
 import { createAssistantPlugin, generateMediaAction } from "@elizaos/plugin-assistant";
+import { createNetworkEdgePlugin, NETWORK_ACTION_FIELD } from "@elizaos/plugin-network";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos";
@@ -77,7 +78,11 @@ import type {
   SharedReminderOperation,
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
-import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
+import {
+  appendSharedInput,
+  appendSharedTurn,
+  NETWORK_DEFAULT_ROUTING,
+} from "./run-shared-agent-turn";
 import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
 import { resolveSharedCapabilityIntent } from "./shared-capability-wall";
 import type { OwnerModelCapture } from "./shared-owner-model-capture";
@@ -306,6 +311,7 @@ function createRuntime(options: {
   reminderPlugin?: Plugin;
   todoPlugin?: Plugin;
   googlePlugin?: Plugin;
+  networkPlugin?: Plugin;
 }): AgentRuntime {
   const capabilityPlugin = createSharedRuntimeCapabilitiesPlugin({
     agentId: options.agentKey,
@@ -349,6 +355,9 @@ function createRuntime(options: {
       ...(options.actionsEnabled && options.reminderPlugin ? [options.reminderPlugin] : []),
       ...(options.actionsEnabled && options.todoPlugin ? [options.todoPlugin] : []),
       ...(options.actionsEnabled && options.googlePlugin ? [options.googlePlugin] : []),
+      // SPIKE (The Network): host-injected store + member authority. Providers
+      // and evaluators stay on lifecycle turns; actions only when enabled.
+      ...(options.networkPlugin ? [options.networkPlugin] : []),
     ],
     logLevel: "error",
   });
@@ -1089,6 +1098,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       : undefined;
   const mediaPlugin =
     actionsEnabled && input.execution?.media ? sharedMediaPlugin(input.execution.media) : undefined;
+  const networkPlugin = input.execution?.network
+    ? createNetworkEdgePlugin({
+        store: input.execution.network.store,
+        authority: { memberId: input.execution.network.memberId },
+        routing: input.execution.network.routing ?? NETWORK_DEFAULT_ROUTING,
+        actionsEnabled,
+      })
+    : undefined;
   const userEntityId =
     input.execution?.todos?.scope.entityId ?? stringToUuid(`${input.agentKey}:owner`);
   const lifecycleEntityId = stringToUuid(`${input.agentKey}:system-lifecycle`);
@@ -1178,6 +1195,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     reminderPlugin,
     todoPlugin,
     googlePlugin,
+    networkPlugin,
   });
   exposeRuntime(runtime);
   if (input.ownerCapture) {
@@ -1275,6 +1293,24 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       }
       if (input.execution?.todos && !runtime.actions.some((action) => action.name === "TODO")) {
         throw new Error("Eliza Shared runtime initialized without its TODO action");
+      }
+      // Planner routing executes availability changes through the SET_STATE
+      // action; structured routing (the default) only through the authorized
+      // networkAction field evaluator, and deliberately registers no SET_STATE
+      // action (a planner SET_STATE there would bypass its authz).
+      if (input.execution?.network) {
+        const structured =
+          (input.execution.network.routing ?? NETWORK_DEFAULT_ROUTING) === "structured";
+        const ready = structured
+          ? runtime.responseHandlerFieldEvaluators.some(
+              (evaluator) => evaluator.name === NETWORK_ACTION_FIELD,
+            )
+          : runtime.actions.some((action) => action.name === "SET_STATE");
+        if (!ready) {
+          throw new Error(
+            `Eliza Shared runtime initialized without its Network ${structured ? "networkAction field evaluator" : "SET_STATE action"}`,
+          );
+        }
       }
       if (
         input.execution?.media &&

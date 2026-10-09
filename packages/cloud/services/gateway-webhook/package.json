@@ -27,7 +27,8 @@
     "hono": "4.13.8",
     "ioredis": "^5.10.1",
     "zod": "^4.6.5",
-    "@elizaos/cloud-sdk": "workspace:*"
+    "@elizaos/cloud-sdk": "workspace:*",
+    "@elizaos/plugin-network": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

@@ -590,6 +590,8 @@ export async function sharedRestMessageSend(
   traceId?: string,
   abortSignal?: AbortSignal,
   trustedNetworkContext?: NetworkSharedTurnObservation,
+  /** The Network service's open-turn context (takeover); read only for personal shared turns. */
+  trustedNetworkTurn?: unknown,
 ): Promise<{
   text: string;
   agentName: string;
@@ -623,6 +625,7 @@ export async function sharedRestMessageSend(
     ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
     ...(trustedAccountState ? { trustedAccountState } : {}),
     ...(trustedNetworkContext ? { trustedNetworkContext } : {}),
+    ...(trustedNetworkTurn !== undefined ? { trustedNetworkTurn } : {}),
     channel: trustedChannel ?? {
       type: ChannelType.DM,
       source: trustedDelivery?.platform ?? MESSAGE_SOURCE_CLIENT_CHAT,
