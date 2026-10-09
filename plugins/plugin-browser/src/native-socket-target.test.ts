@@ -569,6 +569,36 @@ it("sends a deadline-bound effect only to a feedback-capable peer", async () => 
       result: { dispatched: true },
     });
     await unbound;
+    // A reviewed target comes only from trusted options, and only a peer
+    // that enforces it may receive one.
+    await expect(
+      target.execute(
+        {
+          subaction: "click",
+          id: "1",
+          selector: "00000000-0000-0000-0000-000000000000:0:0",
+        },
+        { taskContext, taskExpiresAt, expectedSelector: "#method" },
+      ),
+    ).rejects.toMatchObject({ kind: "UNSUPPORTED" });
+    const raw = target.execute(
+      {
+        subaction: "click",
+        id: "1",
+        selector: "00000000-0000-0000-0000-000000000000:0:0",
+        expectedSelector: "#page-chosen",
+      } as never,
+      { taskContext, taskExpiresAt },
+    );
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(4));
+    expect(frames.messages[3].command.expectedSelector).toBeUndefined();
+    frames.send({
+      type: "result",
+      id: frames.messages[3].id,
+      ok: true,
+      result: { dispatched: true },
+    });
+    await raw;
   } finally {
     socket?.destroy();
     await target.stop();

@@ -29,8 +29,11 @@ export function createManualActivity(api, getBinding) {
           fail();
         if (
           !message ||
-          Object.keys(message).sort().join(",") !==
-            "bindingRevision,eventId,kind,type" ||
+          ![
+            "bindingRevision,eventId,kind,type",
+            "bindingRevision,credential,eventId,kind,type",
+          ].includes(Object.keys(message).sort().join(",")) ||
+          (message.credential !== undefined && message.credential !== true) ||
           message.type !== "task-manual-activity" ||
           message.kind !== "form-submit" ||
           !/^[a-f0-9-]{36}$/.test(message.eventId) ||
@@ -60,6 +63,8 @@ export function createManualActivity(api, getBinding) {
             origin: binding.origin,
             epoch: binding.epoch,
             observedAt: Date.now(),
+            // A sign-in or code form; never proof of what else was sent.
+            ...(message.credential ? { credential: true } : {}),
           });
         await api.storage.local.set({ [key]: saved });
         return { recorded: !saved.overflow, overflow: saved.overflow };
@@ -109,6 +114,19 @@ export function installManualActivity(bindingRevision, expiresAt) {
         return;
       // This proves only a form submit event associated with recent human input.
       // The website may preventDefault, fail its request, or submit different data.
+      // A form with a password, code or user-name field is marked as a sign-in
+      // form; only that fact leaves the page, never a field or its value.
+      const form = event.target;
+      const credential =
+        form instanceof HTMLFormElement &&
+        [...form.elements].some(
+          (field) =>
+            field instanceof HTMLInputElement &&
+            (field.type === "password" ||
+              /(?:^|\s)(?:username|current-password|new-password|one-time-code|webauthn)(?:\s|$)/i.test(
+                field.autocomplete || field.getAttribute("autocomplete") || "",
+              )),
+        );
       try {
         void chrome.runtime
           .sendMessage({
@@ -116,6 +134,7 @@ export function installManualActivity(bindingRevision, expiresAt) {
             kind: "form-submit",
             eventId: crypto.randomUUID(),
             bindingRevision,
+            ...(credential ? { credential: true } : {}),
           })
           .then(
             (reply) => {
