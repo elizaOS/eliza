@@ -31,6 +31,11 @@ export class TalkModeWeb extends WebPlugin {
   private statusText = "Off";
   private synthesis: SpeechSynthesis | null = null;
   private currentUtterance: SpeechSynthesisUtterance | null = null;
+  // Performance timestamp of the current utterance's start, for the
+  // interruptedAt position stopSpeaking() reports. Both native bridges
+  // compute that value from a recorded speak start; web recorded nothing,
+  // so its stopSpeaking() could only ever return undefined.
+  private speechStartedAt: number | null = null;
   private pendingSpeech = new Map<
     SpeechSynthesisUtterance,
     { cancelled: boolean }
@@ -184,6 +189,7 @@ export class TalkModeWeb extends WebPlugin {
     return new Promise((resolve) => {
       const utterance = new SpeechSynthesisUtterance(text);
       this.currentUtterance = utterance;
+      this.speechStartedAt = performance.now();
       const outcome = { cancelled: false };
       this.pendingSpeech.set(utterance, outcome);
 
@@ -208,7 +214,10 @@ export class TalkModeWeb extends WebPlugin {
       utterance.onend = () => {
         const stale = isStale();
         this.pendingSpeech.delete(utterance);
-        if (!stale) this.currentUtterance = null;
+        if (!stale) {
+          this.currentUtterance = null;
+          this.speechStartedAt = null;
+        }
         this.notifyListeners("speakComplete", {
           completed: !outcome.cancelled,
         });
@@ -227,7 +236,10 @@ export class TalkModeWeb extends WebPlugin {
       utterance.onerror = (event) => {
         const stale = isStale();
         this.pendingSpeech.delete(utterance);
-        if (!stale) this.currentUtterance = null;
+        if (!stale) {
+          this.currentUtterance = null;
+          this.speechStartedAt = null;
+        }
         this.notifyListeners("speakComplete", { completed: false });
         if (!stale) this.setState("idle", "Speech error");
         resolve({
@@ -244,6 +256,11 @@ export class TalkModeWeb extends WebPlugin {
 
   async stopSpeaking(): Promise<{ interruptedAt?: number }> {
     if (this.synthesis && this.currentUtterance) {
+      // Seconds from the utterance start, as both native bridges report.
+      const interruptedAt =
+        this.speechStartedAt === null
+          ? undefined
+          : (performance.now() - this.speechStartedAt) / 1000;
       this.cancelPendingSpeech();
       // The cancelled utterance's own end event is stale from here on, so the
       // resumed listening state is set here rather than by that handler.
@@ -251,7 +268,7 @@ export class TalkModeWeb extends WebPlugin {
         this.enabled ? "listening" : "idle",
         this.enabled ? "Listening" : "Off",
       );
-      return { interruptedAt: undefined };
+      return { interruptedAt };
     }
     return {};
   }
@@ -261,6 +278,7 @@ export class TalkModeWeb extends WebPlugin {
     for (const outcome of this.pendingSpeech.values()) outcome.cancelled = true;
     this.pendingSpeech.clear();
     this.currentUtterance = null;
+    this.speechStartedAt = null;
     this.synthesis?.cancel();
   }
 
