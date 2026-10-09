@@ -102,6 +102,7 @@ test("actual scoped empty TODO read grounds production compound reply without re
   expect(active).toMatchObject({
     success: true,
     text: "You have no active todos.",
+    userFacingText: "You have no active todos.",
     emptyTrackedState: {
       resource: "todos",
       scope: "active_current_inventory",

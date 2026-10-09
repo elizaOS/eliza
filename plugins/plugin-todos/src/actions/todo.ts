@@ -798,6 +798,9 @@ async function actionList({
     observedEntityId &&
     observedMessageId
       ? {
+          // Sanction this domain-owned read projection; diagnostic text alone
+          // must not be echoed through the planner's raw-tool-output boundary.
+          userFacingText: text,
           emptyTrackedState: {
             resource: "todos" as const,
             scope: includeCompleted
