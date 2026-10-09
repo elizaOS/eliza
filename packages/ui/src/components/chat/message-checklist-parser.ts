@@ -25,7 +25,12 @@ export const MAX_CHECKLIST_ITEMS = 40;
 
 const ITEM_STATUSES = new Set(["pending", "in_progress", "completed"]);
 
-export const CHECKLIST_RE = /\[CHECKLIST\]\n([\s\S]*?)\n\[\/CHECKLIST\]/g;
+// Same marker tolerance as the sibling block parsers this file mirrors
+// (form, maps, choice): spaces/tabs inside the brackets and around the
+// marker, and CRLF or LF line endings. A bare-\n pattern silently
+// rendered checklist blocks from CRLF-relayed messages as raw JSON.
+export const CHECKLIST_RE =
+  /\[[ \t]*CHECKLIST[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*CHECKLIST[ \t]*\]/g;
 
 export interface ChecklistSpec {
   title?: string;
