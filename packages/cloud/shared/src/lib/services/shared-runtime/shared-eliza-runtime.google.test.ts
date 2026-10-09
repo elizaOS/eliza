@@ -4,9 +4,13 @@
  * All model HTTP is synthetic; all other network is denied by the fixture.
  */
 import { expect, spyOn, test } from "bun:test";
-import { AgentRuntime, ChannelType } from "@elizaos/core";
+import { AgentRuntime, ChannelType, stringToUuid } from "@elizaos/core";
+import type { TodoStore } from "@elizaos/plugin-todos";
 import { personalSharedAgentId } from "./personal-shared-identity";
 import { runSharedAgentTurn } from "./run-shared-agent-turn";
+import { resolveSharedCapabilityIntent } from "./shared-capability-wall";
+import { runSharedElizaRuntimeTurn } from "./shared-eliza-runtime";
+import { resolveSharedRealtimeRequirement } from "./shared-realtime-grounding";
 
 function model(content: string | null, tool?: { name: string; args: object }) {
   return Response.json({
@@ -38,7 +42,12 @@ function model(content: string | null, tool?: { name: string; args: object }) {
     usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
   });
 }
-async function exercise(publicRead: boolean) {
+async function exercise(
+  kind: "general" | "weather" | "weather-missing" | "compound-missing" | "private",
+) {
+  const publicRead = kind !== "private";
+  const compoundMissing = kind === "compound-missing";
+  const weatherRead = kind === "weather" || kind === "weather-missing" || compoundMissing;
   const savedFetch = globalThis.fetch;
   const saved = {
     cerebras: process.env.CEREBRAS_API_KEY,
@@ -48,14 +57,23 @@ async function exercise(publicRead: boolean) {
   let reads = 0,
     binds = 0,
     publicCalls = 0,
-    modelCalls = 0;
-  let webRegistered = false;
+    modelCalls = 0,
+    todoReads = 0;
+  let webRegistered = false,
+    googleRegistered = false,
+    googleCapabilityOffered = false;
   let actualResults: unknown[] = [];
-  const publicTopic = "Gmail API documentation rate limits";
+  const publicTopic = 'Gmail API documentation for C# client SDK "rate  limits"';
+  const weatherQuery = "current public weather in Phoenix, AZ";
   const publicUrl = "https://developers.google.com/gmail/api/reference/quotas";
-  const reply = publicRead
-    ? `Gmail API documentation describes API rate limits. [[SOURCE_URL:${publicUrl}]]`
-    : "No matching invoices were found.";
+  const todoContent = "Stretch fixture shoulders";
+  const reply = compoundMissing
+    ? `Your checklist includes ${todoContent}. I could not verify current weather.`
+    : weatherRead
+      ? "I could not verify current weather from the available source."
+      : publicRead
+        ? `Gmail API documentation describes API rate limits. [[SOURCE_URL:${publicUrl}]]`
+        : "No matching invoices were found.";
   process.env.CEREBRAS_API_KEY = "offline-google-unit-key";
   delete process.env.OPENROUTER_API_KEY;
   process.env.NODE_ENV = "production";
@@ -104,17 +122,26 @@ async function exercise(publicRead: boolean) {
       .filter((m) => m.role === "system" && typeof m.content === "string")
       .map((m) => m.content)
       .join("\n");
+    googleCapabilityOffered ||= (body.messages ?? []).some(
+      (message) =>
+        typeof message.content === "string" &&
+        message.content.includes("Google connection and Gmail reads (owner permission required)"),
+    );
+    if (publicRead) expect(names).not.toContain("GOOGLE_CONTEXT");
     if (names.includes("HANDLE_RESPONSE"))
       return model(null, {
         name: "HANDLE_RESPONSE",
         args: {
           shouldRespond: "RESPOND",
-          thought: "Use the requested owned private read.",
-          contexts: ["general"],
+          thought: "Use the requested scoped read.",
+          contexts: [compoundMissing ? "todos" : "general"],
           intents: [],
-          candidateActionNames: [publicRead ? "WEB_SEARCH" : "GOOGLE_CONTEXT"],
-          requiresTool: true,
-          replyText: "",
+          candidateActionNames:
+            kind === "weather-missing"
+              ? []
+              : [compoundMissing ? "TODO" : publicRead ? "WEB_SEARCH" : "GOOGLE_CONTEXT"],
+          requiresTool: kind !== "weather-missing",
+          replyText: kind === "weather-missing" ? reply : "",
           replyEffectStatus: "none",
           facts: [],
           relationships: [],
@@ -136,12 +163,18 @@ async function exercise(publicRead: boolean) {
         }),
       );
     if (
-      publicRead &&
+      kind === "general" &&
       /(?:^|\n)planner_stage:\n/.test(system) &&
       names.includes("WEB_SEARCH") &&
       publicCalls === 0
     )
       throw new Error("PUBLIC_QUERY_MUST_BE_BOUND_BEFORE_EXECUTOR");
+    if (compoundMissing && /(?:^|\n)planner_stage:\n/.test(system) && names.includes("TODO")) {
+      return model(null, { name: "TODO", args: { action: "list" } });
+    }
+    if (weatherRead && /(?:^|\n)planner_stage:\n/.test(system) && names.includes("WEB_SEARCH")) {
+      return model(null, { name: "WEB_SEARCH", args: { query: weatherQuery } });
+    }
     if (
       /(?:^|\n)planner_stage:\n/.test(system) &&
       names.includes("GOOGLE_CONTEXT") &&
@@ -154,7 +187,6 @@ async function exercise(publicRead: boolean) {
     }
     return model(reply);
   }) as typeof fetch;
-  let googleRegistered = false;
   let runtimeSpy: ReturnType<typeof spyOn> | undefined;
   try {
     // Observe the actual runtime's returned results, without seeding any completion state.
@@ -169,6 +201,18 @@ async function exercise(publicRead: boolean) {
         service.handleMessage = async (...args) => {
           const result = await handle(...args);
           actualResults = result.actionResults ?? [];
+          if (kind === "general") {
+            // Exercise the actual registered action's equivalent-query boundary
+            // separately from Core's server-deterministic first call. No handler,
+            // Core validator, SDK response or SQLite implementation is replaced.
+            const action = this.actions.find((action) => action.name === "WEB_SEARCH")!;
+            const attemptedQuery = publicTopic.toLowerCase().replace(/\s+/gu, " ");
+            const outcome = await action.handler(this, args[1], undefined, {
+              parameters: { query: attemptedQuery },
+            });
+            expect(outcome && outcome.data?.query).toBe(publicTopic);
+            expect(attemptedQuery).not.toBe(publicTopic);
+          }
           return result;
         };
       },
@@ -177,7 +221,48 @@ async function exercise(publicRead: boolean) {
       userId: "22222222-2222-4222-8222-222222222222",
       organizationId: "11111111-1111-4111-8111-111111111111",
     });
-    const turn = await runSharedAgentTurn({
+    const todoScope = {
+      agentId: stringToUuid(agentKey),
+      entityId: stringToUuid(`${agentKey}:owner`),
+    };
+    const unrequestedTodoWrite = async (): Promise<never> => {
+      throw new Error("OFFLINE_UNREQUESTED_TODO_OPERATION");
+    };
+    const todoStore: TodoStore = {
+      list: async (filter) => {
+        expect(filter.agentId).toBe(todoScope.agentId);
+        expect(filter.entityId).toBe(todoScope.entityId);
+        todoReads += 1;
+        return [
+          {
+            id: stringToUuid("compound-fixture-todo"),
+            ...todoScope,
+            roomId: null,
+            worldId: null,
+            content: todoContent,
+            activeForm: "Stretching fixture shoulders",
+            status: "pending",
+            parentTodoId: null,
+            parentTrajectoryStepId: null,
+            metadata: {},
+            createdAt: new Date("2026-10-08T00:00:00Z"),
+            updatedAt: new Date("2026-10-08T00:00:00Z"),
+            completedAt: null,
+          },
+        ];
+      },
+      applyMutation: unrequestedTodoWrite,
+      readCutoverState: unrequestedTodoWrite,
+      listMutationRecords: unrequestedTodoWrite,
+      importMutationRecords: unrequestedTodoWrite,
+      create: unrequestedTodoWrite,
+      get: unrequestedTodoWrite,
+      update: unrequestedTodoWrite,
+      delete: unrequestedTodoWrite,
+      writeList: unrequestedTodoWrite,
+      clear: unrequestedTodoWrite,
+    };
+    const input: Parameters<typeof runSharedAgentTurn>[0] = {
       character: { name: "Eliza", system: "You are a concise assistant.", model: "qwen-3.8-27b" },
       history: publicRead
         ? [
@@ -187,17 +272,26 @@ async function exercise(publicRead: boolean) {
             },
           ]
         : [],
-      message: publicRead
-        ? "Search the web for Gmail API documentation rate limits?"
-        : "Search Gmail for API documentation invoices.",
-      capabilityText: publicRead
-        ? "Search the web for Gmail API documentation rate limits?"
-        : "Search Gmail for API documentation invoices.",
+      message: compoundMissing
+        ? "What is the weather in Phoenix, AZ? Show a checklist."
+        : weatherRead
+          ? "What is the weather in Phoenix, AZ?"
+          : publicRead
+            ? `Search the web for ${publicTopic}?`
+            : "Search Gmail for API documentation invoices.",
+      capabilityText: compoundMissing
+        ? "What is the weather in Phoenix, AZ? Show a checklist."
+        : weatherRead
+          ? "What is the weather in Phoenix, AZ?"
+          : publicRead
+            ? `Search the web for ${publicTopic}?`
+            : "Search Gmail for API documentation invoices.",
       execution: {
         agentKey,
         roomKey: agentKey,
         channel: { type: ChannelType.DM, source: "blooio" },
         authenticatedPersonalSharedUser: true,
+        ...(compoundMissing ? { todos: { scope: todoScope, store: todoStore } } : {}),
         google: async () => {
           binds += 1;
           if (publicRead) throw new Error("PUBLIC_READ_MUST_NOT_BIND_PRIVATE_GOOGLE");
@@ -218,23 +312,86 @@ async function exercise(publicRead: boolean) {
           };
         },
       },
-    });
-    expect(modelCalls).toBeGreaterThan(0);
+    };
+    if (compoundMissing) {
+      // Prove this exact input reaches both real predicates before exercising
+      // the branch: "my todos" would be correctly blocked as private state.
+      const requirement = resolveSharedRealtimeRequirement(input.capabilityText!, input.history);
+      expect(requirement?.domain).toBe("weather");
+      expect(requirement?.query).toBe(weatherQuery);
+      const privateIntent = resolveSharedCapabilityIntent(input.capabilityText!, {
+        todos: true,
+        googleContext: true,
+      });
+      expect(privateIntent?.kind).toBe("enabled-primary");
+      if (privateIntent?.kind !== "enabled-primary")
+        throw new Error("Compound TODO precondition failed");
+      expect(privateIntent.primary.capability).toBe("todos");
+      // The actual Core result below must additionally prove the TODO list op.
+    }
+    const turn = weatherRead
+      ? await runSharedElizaRuntimeTurn({
+          ...input,
+          agentKey,
+          model: "qwen-3.8-27b",
+          execution: input.execution!,
+          ...(kind === "weather"
+            ? {
+                preflightActionResults: [
+                  {
+                    success: false,
+                    text: reply,
+                    error: "OFFLINE_CLOSED_WEATHER",
+                    data: { actionName: "WEB_SEARCH", query: weatherQuery, observedAt: Date.now() },
+                  },
+                ],
+              }
+            : {}),
+        })
+      : await runSharedAgentTurn(input);
+    if (kind === "weather-missing") {
+      expect(modelCalls).toBe(0);
+      expect(turn.reply).toContain("complete, traceable live source");
+      expect(turn.usage?.totalTokens).toBe(0);
+    } else expect(modelCalls).toBeGreaterThan(0);
     expect(modelCalls).toBeLessThanOrEqual(12);
+    if (compoundMissing) {
+      expect(todoReads).toBeGreaterThan(0);
+      expect(turn.actionResults).toContainEqual(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            actionName: "TODO",
+            op: "list",
+            todos: expect.arrayContaining([expect.objectContaining({ content: todoContent })]),
+          }),
+        }),
+      );
+      expect(turn.reply).toContain(todoContent);
+      expect(turn.reply).toContain("could not verify current weather");
+    }
     if (publicRead) {
-      expect(webRegistered).toBe(true);
+      expect(webRegistered).toBe(kind === "general" || kind === "weather");
       expect(googleRegistered).toBe(false);
-      expect(publicCalls).toBe(1);
+      expect(googleCapabilityOffered).toBe(false);
+      expect(publicCalls).toBe(weatherRead ? 0 : 2);
       expect(reads).toBe(0);
       expect(binds).toBe(0);
       expect(
-        turn.actionResults?.some((result) => result.data?.actionName === "GOOGLE_CONTEXT"),
+        (turn.actionResults ?? []).some((result) => result.data?.actionName === "GOOGLE_CONTEXT"),
       ).toBe(false);
-      expect(turn.reply).toContain("Source:");
+      if (!weatherRead) {
+        expect(turn.reply).toContain("Source:");
+        expect(
+          turn.actionResults?.find((result) => result.data?.actionName === "WEB_SEARCH")?.data
+            ?.query,
+        ).toBe(publicTopic);
+      }
       expect(turn.reply).not.toContain("PRIVATE_HISTORY_MARKER");
     } else {
       expect(webRegistered).toBe(false);
       expect(googleRegistered).toBe(true);
+      expect(googleCapabilityOffered).toBe(true);
       expect(publicCalls).toBe(0);
       expect(reads).toBe(1);
       expect(binds).toBe(1);
@@ -261,7 +418,10 @@ async function exercise(publicRead: boolean) {
   }
 }
 test("actual Core keeps complete public Google queries separate from consented owner Google reads", async () => {
-  await exercise(true);
-  await exercise(false);
+  await exercise("general");
+  await exercise("weather");
+  await exercise("weather-missing");
+  await exercise("compound-missing");
+  await exercise("private");
 });
 const initializeOriginal = AgentRuntime.prototype.initialize;
