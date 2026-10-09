@@ -4191,6 +4191,7 @@ export class CalendarService extends Service {
       args.requestedSide,
       args.grantId,
     );
+    const deferLinkedReconciliation = Boolean(calendarRecordPolicyFailure());
     const syncedAt = new Date().toISOString();
     const accountId = accountIdForGrant(grant);
     const syncState = await this.repo.getCalendarSyncState(
@@ -4376,35 +4377,46 @@ export class CalendarService extends Service {
         calendarId: args.calendarId,
         windowStartAt: stateWindowStartAt,
         windowEndAt: stateWindowEndAt,
-        nextSyncToken: batch.nextSyncToken,
+        // A native read may refresh this provider, but not its backend mirror.
+        // Force the next permitted sync to enumerate all linked IDs, including
+        // deletions, instead of losing them behind an advanced provider cursor.
+        nextSyncToken: deferLinkedReconciliation ? null : batch.nextSyncToken,
         syncedAt,
       }),
     );
-    try {
-      const linkedProviderEventIds = new Set(
-        batch.events.map((event) => event.id),
-      );
-      if (!incremental) {
-        for (const link of await this.linkedRepo.listForAgent(this.agentId())) {
-          if (
-            link.connectorAccountId === accountId &&
-            link.providerCalendarId === args.calendarId &&
-            link.providerEventId
-          ) {
-            linkedProviderEventIds.add(link.providerEventId);
+    if (!deferLinkedReconciliation) {
+      try {
+        const linkedProviderEventIds = new Set(
+          batch.events.map((event) => event.id),
+        );
+        if (!incremental) {
+          for (const link of await this.linkedRepo.listForAgent(
+            this.agentId(),
+          )) {
+            if (
+              link.connectorAccountId === accountId &&
+              link.providerCalendarId === args.calendarId &&
+              link.providerEventId
+            ) {
+              linkedProviderEventIds.add(link.providerEventId);
+            }
           }
         }
+        await this.reconcileLinkedGoogleChanges(args.requestUrl, [
+          ...linkedProviderEventIds,
+        ]);
+      } catch (error) {
+        // error-policy:J4 The provider cache remains fresh, while linked-event
+        // reconciliation is explicitly surfaced for owner intervention.
+        this.runtime.reportError(
+          "calendar:linked-google-reconciliation",
+          error,
+          {
+            calendarId: args.calendarId,
+            grantId: grant.id,
+          },
+        );
       }
-      await this.reconcileLinkedGoogleChanges(args.requestUrl, [
-        ...linkedProviderEventIds,
-      ]);
-    } catch (error) {
-      // error-policy:J4 The provider cache remains fresh, while linked-event
-      // reconciliation is explicitly surfaced for owner intervention.
-      this.runtime.reportError("calendar:linked-google-reconciliation", error, {
-        calendarId: args.calendarId,
-        grantId: grant.id,
-      });
     }
     return {
       calendarId: args.calendarId,

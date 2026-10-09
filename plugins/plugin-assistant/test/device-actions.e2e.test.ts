@@ -44,8 +44,15 @@ import { calendarAction as standaloneCalendarAction } from "../../plugin-calenda
 import { calendarSourcesAction } from "../../plugin-calendar/src/actions/calendar-sources.ts";
 import { __testing as appleCalendarTesting } from "../../plugin-calendar/src/apple-calendar.ts";
 import { calendarPlugin } from "../../plugin-calendar/src/plugin.ts";
+import { CalendarRepository } from "../../plugin-calendar/src/service/CalendarRepository.ts";
 import { CalendarService } from "../../plugin-calendar/src/service/CalendarService.ts";
 import { createDefaultCalendarHostGate } from "../../plugin-calendar/src/service/gate.ts";
+import { LinkedCalendarControlRepository } from "../../plugin-calendar/src/service/linked-calendar-control.ts";
+import {
+  LinkedCalendarRepository,
+  linkedCalendarSemanticHash,
+} from "../../plugin-calendar/src/service/linked-calendar-sync.ts";
+import type { GoogleCalendarEvent } from "../../plugin-google-workspace/src/types.ts";
 import { notesPlugin } from "../../plugin-notes/src/plugin.ts";
 import {
   NOTES_SERVICE_TYPE,
@@ -4166,7 +4173,7 @@ test("registered Calendar preserves native ownership and explicit connected sour
     identity: { email: "fixture@example.test" },
     identityEmail: "fixture@example.test",
     grantedScopes: ["https://www.googleapis.com/auth/calendar.readonly"],
-    capabilities: ["google.calendar.read"],
+    capabilities: ["google.calendar.read", "google.calendar.write"],
     tokenRef: null,
     mode: "local",
     executionTarget: "local",
@@ -4179,6 +4186,7 @@ test("registered Calendar preserves native ownership and explicit connected sour
     updatedAt: now,
   };
   const googleReads: string[] = [];
+  let providerEvent: GoogleCalendarEvent | undefined;
   const google = {
     listCalendars: async () => [
       {
@@ -4192,9 +4200,19 @@ test("registered Calendar preserves native ownership and explicit connected sour
     ],
     listEventPage: async (input: { accountId: string }) => {
       googleReads.push(input.accountId);
-      return { events: [], nextPageToken: null, nextSyncToken: null };
+      return {
+        events: providerEvent ? [providerEvent] : [],
+        nextPageToken: null,
+        nextSyncToken: "fixture-sync-token",
+      };
     },
   };
+  Object.assign(google, {
+    getEvent: async () => {
+      if (!providerEvent) throw Error("Missing connected event fixture");
+      return providerEvent;
+    },
+  });
   const originalGet = runtime.getService.bind(runtime);
   const lookup = vi
     .spyOn(runtime, "getService")
@@ -4296,6 +4314,51 @@ test("registered Calendar preserves native ownership and explicit connected sour
       timeZone: "UTC",
       idempotencyKey: "native-calendar-backend-fixture",
     });
+    const links = new LinkedCalendarRepository(runtime);
+    const initialLink = await links.create({
+      agentId: runtime.agentId,
+      localEventId: stored.id,
+      connectorAccountId: "native-fixture",
+      providerCalendarId: "primary",
+      localRevision: 1,
+    });
+    const semantic = {
+      title: stored.title,
+      description: stored.description,
+      location: stored.location,
+      startAt: stored.startAt,
+      endAt: stored.endAt,
+      timeZone: stored.timezone,
+      isAllDay: stored.isAllDay,
+      attendees: [],
+    };
+    const linked = await links.save(initialLink, {
+      state: "clean",
+      pendingOperation: null,
+      providerEventId: "provider-linked",
+      providerEtag: "old-version",
+      lastCommonSemanticHash: linkedCalendarSemanticHash(semantic),
+    });
+    providerEvent = {
+      id: "provider-linked",
+      calendarId: "primary",
+      title: "Provider edit",
+      description: stored.description,
+      location: stored.location,
+      start: stored.startAt,
+      end: stored.endAt,
+      timeZone: stored.timezone,
+      isAllDay: false,
+      attendees: [],
+      metadata: { etag: "new-version" },
+    } as GoogleCalendarEvent;
+    const controls = new LinkedCalendarControlRepository(runtime);
+    const initialControl = await controls.read();
+    const selected = await controls.selectDestination(initialControl.revision, {
+      connectorAccountId: "native-fixture",
+      providerCalendarId: "primary",
+    });
+    await controls.resume(selected.revision);
     await withDeviceActionTurn(runtime, credential, async () => {
       for (const subaction of ["feed", "next_event", "create_event"])
         for (const source of [
@@ -4369,6 +4432,21 @@ test("registered Calendar preserves native ownership and explicit connected sour
         expect.arrayContaining([grant.id, "apple-calendar"]),
       );
     });
+    expect(await links.getById(runtime.agentId, linked.id)).toMatchObject({
+      state: "clean",
+      providerEtag: "old-version",
+      lastErrorCode: null,
+    });
+    const repo = new CalendarRepository(runtime);
+    expect(
+      await repo.getCalendarSyncState(
+        runtime.agentId,
+        "google",
+        "primary",
+        "owner",
+        grant.id,
+      ),
+    ).toMatchObject({ nextSyncToken: null });
     expect(googleReads).toContain("native-fixture");
     expect(appleReads).toBeGreaterThan(0);
     const retained = await calendar.getCalendarFeed(url, {
@@ -4377,6 +4455,24 @@ test("registered Calendar preserves native ownership and explicit connected sour
     });
     expect(retained.events.map((event) => event.title)).toEqual([
       "Backend fixture",
+    ]);
+    await calendar.getCalendarFeed(url, {
+      ...range,
+      grantId: grant.id,
+      calendarId: "primary",
+      forceSync: true,
+    });
+    expect(await links.getById(runtime.agentId, linked.id)).toMatchObject({
+      state: "clean",
+      providerEtag: "new-version",
+      lastErrorCode: null,
+    });
+    const reconciled = await calendar.getCalendarFeed(url, {
+      ...range,
+      grantId: "eliza-calendar",
+    });
+    expect(reconciled.events.map((event) => event.title)).toEqual([
+      "Provider edit",
     ]);
   } finally {
     lookup.mockRestore();
