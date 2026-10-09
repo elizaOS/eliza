@@ -279,7 +279,10 @@ export default defineConfig({
       // window.localStorage / window.sessionStorage.
       jsdom: { url: "http://localhost/" },
     },
-    include: ["src/**/__e2e__/**/*.test.{ts,tsx}"],
+    include: [
+      "src/**/__e2e__/**/*.test.{ts,tsx}",
+      "test/cloud/network-site-handoff.test.ts",
+    ],
     exclude: ["dist/**", "**/node_modules/**"],
     testTimeout: 900_000,
     hookTimeout: 900_000,

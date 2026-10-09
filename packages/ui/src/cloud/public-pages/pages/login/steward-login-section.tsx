@@ -71,6 +71,7 @@ import {
   SelectTrigger,
 } from "../../../../components/ui/select";
 import { openExternalUrl } from "../../../../utils/openExternalUrl";
+import { appModeNavigation } from "../../../app-mode/app-mode";
 import { hasHydratableStewardToken } from "../../../lib/steward-session";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
@@ -79,8 +80,11 @@ import {
 } from "../../../shell/steward-config";
 import { resolveBrowserStewardApiUrl } from "../../../shell/steward-url";
 import {
+  burnSsoBridgeCode,
   clearSsoLoggedOut,
   isSsoLoggedOut,
+  mintSsoCode,
+  parseNetworkSiteHandoff,
 } from "../../../sso-bridge/sso-bridge";
 import { getErrorMessage } from "../../lib/error-message";
 import {
@@ -1357,6 +1361,11 @@ export default function StewardLoginSection({
     refreshToken?: string | null,
     options?: { verifiedPhone: string },
   ) {
+    const network = phoneOnly
+      ? parseNetworkSiteHandoff(searchParams, window.location.hostname)
+      : null;
+    if (network && !options?.verifiedPhone)
+      throw new Error("Network sign-in requires phone verification.");
     setPasskeyEmailGrant(null);
     setShowPasskeyEnrollmentRecovery(false);
     if (options) {
@@ -1368,6 +1377,38 @@ export default function StewardLoginSection({
     // Otherwise StewardProviderRuntime can race a second unhinted sync against
     // phone-account promotion.
     await persistStewardToken(token);
+    if (network) {
+      let code: string | null = null;
+      try {
+        const minted = await mintSsoCode(
+          window.location.hostname,
+          network.challenge,
+          fetch,
+          { ...network, expectedToken: token },
+        );
+        if (!minted.ok)
+          throw new Error(
+            "Could not continue to The Network. Start again from the Network site.",
+          );
+        code = minted.code;
+        if (readStoredStewardToken() !== token)
+          throw new Error(
+            "The signed-in account changed. Start again from The Network.",
+          );
+        const callback = new URL(
+          "/api/auth/cloud/callback",
+          network.destination,
+        );
+        callback.searchParams.set("code", code);
+        callback.searchParams.set("state", network.state);
+        appModeNavigation.replace(callback.href);
+        code = null;
+        return;
+      } finally {
+        if (code)
+          burnSsoBridgeCode(code, window.location.hostname, fetch, true);
+      }
+    }
     toast.success("Signed in!");
     setRedirectTo(
       phoneOnly
@@ -1659,6 +1700,13 @@ export default function StewardLoginSection({
 
   async function handleSendSms() {
     if (loading !== null) return;
+    try {
+      if (phoneOnly)
+        parseNetworkSiteHandoff(searchParams, window.location.hostname);
+    } catch (error) {
+      setError(getErrorMessage(error, "This Network sign-in link is invalid."));
+      return;
+    }
     const normalizedPhone = normalizePhoneForCountry(phone, phoneCountry);
     if (!normalizedPhone) {
       const selectedCountry = PHONE_COUNTRY_OPTIONS.find(

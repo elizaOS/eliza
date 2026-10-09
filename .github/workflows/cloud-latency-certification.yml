@@ -23,9 +23,9 @@ on:
         default: ""
         type: string
       probe_case:
-        description: Synthetic probe model@reasoning_effort@max_tokens; default matches interactive Qwen controls
+        description: Synthetic probe model@reasoning_effort@max_tokens; max leaves the output limit to the provider
         required: false
-        default: "qwen-3.8-27b@none@512"
+        default: "qwen-3.8-27b@high@max"
         type: string
       run_auth:
         description: Also run protected inference-auth hit, miss, non-standing guards, and sanitized Worker Tail proof.

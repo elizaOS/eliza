@@ -366,16 +366,11 @@ function resolvePromptCacheOptions(
  * Forward `OPENAI_REASONING_EFFORT` (runtime setting / process.env) as
  * `reasoning_effort` on the outbound chat completions request. This is
  * the OpenAI-spec knob for reasoning-capable models (`o1-*`, `o3-*`,
- * `gpt-oss-*`, `deepseek-r1`, and similar families) — including
- * Cerebras and OpenRouter, which honor the same field. `"low"` keeps
- * reasoning short enough that visible content always fits inside
- * `max_tokens`, which is the failure mode on Cerebras gpt-oss-120b when
- * left unset.
+ * `gpt-oss-*`, `deepseek-r1`, and similar families), including compatible
+ * providers that honor the same field.
  *
- * In Cerebras mode the field defaults to `"low"` when unset only for the exact
- * models whose current provider contract exposes reasoning controls:
- * `gpt-oss-120b` and `zai-glm-4.7`. Qwen 3.8 defaults to `"none"` for
- * interactive latency; explicit reasoning settings remain authoritative.
+ * Cerebras defaults to its highest supported effort, `"high"`, for
+ * `gpt-oss-120b`, `zai-glm-4.7`, and `qwen-3.8-27b`.
  * Family-name lookalikes and models without the knob must not receive the
  * field because compatible endpoints reject unsupported request properties.
  * An explicit valid `OPENAI_REASONING_EFFORT` always wins.
@@ -459,10 +454,9 @@ function resolveCerebrasDefaultReasoningEffort(
 ): ReasoningEffort | "none" | undefined {
   if (!modelName) return undefined;
   const id = normalizeCerebrasModelId(modelName);
-  if (id === "gpt-oss-120b" || id === "zai-glm-4.7") return "low";
-  // Cerebras defaults Qwen to high reasoning. Keep ordinary interactive
-  // calls non-reasoning unless the caller explicitly requests otherwise.
-  if (id === "qwen-3.8-27b") return "none";
+  if (id === "gpt-oss-120b" || id === "zai-glm-4.7" || id === "qwen-3.8-27b") {
+    return "high";
+  }
   return undefined;
 }
 

@@ -188,7 +188,7 @@ describe("explicit OpenRouter fallback", () => {
     expect(requests[1].body.messages).toEqual(requests[0].body.messages);
     expect(requests[1].body.tools).toEqual(requests[0].body.tools);
     expect(requests[1].body.tool_choice).toEqual("required");
-    expect(requests[1].body.reasoning).toEqual({ enabled: false });
+    expect(requests[1].body.reasoning).toEqual({ effort: "high" });
     expect(requests[1].body.provider).toEqual({
       require_parameters: true,
       data_collection: "deny",

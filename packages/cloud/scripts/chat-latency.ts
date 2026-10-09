@@ -50,11 +50,21 @@ function boundedInteger(value, label, minimum, maximum) {
   return parsed;
 }
 
-export function parseProbeCase(raw, fallbackMaxTokens = 512) {
+// "max" leaves the output boundary to the provider/model rather than imposing
+// a synthetic cap that can exhaust the completion in reasoning alone.
+function parseMaxTokens(value) {
+  if (value === "max" || value === null) return null;
+  if (!/^[1-9]\d*$/.test(String(value))) {
+    throw new Error("max_tokens must be a positive integer or max");
+  }
+  return boundedInteger(value, "max_tokens", 1, Number.MAX_SAFE_INTEGER);
+}
+
+export function parseProbeCase(raw, fallbackMaxTokens = null) {
   const parts = String(raw).split("@");
   if (parts.length > 3) {
     throw new Error(
-      `Probe case must be model[@reasoning_effort][@max_tokens]: ${raw}`,
+      `Probe case must be model[@reasoning_effort][@max_tokens|max]: ${raw}`,
     );
   }
   const model = parts[0]?.trim();
@@ -63,12 +73,7 @@ export function parseProbeCase(raw, fallbackMaxTokens = 512) {
   if (!REASONING_EFFORTS.has(reasoningEffort)) {
     throw new Error(`Unsupported reasoning effort in probe case: ${raw}`);
   }
-  const maxTokens = boundedInteger(
-    parts[2]?.trim() || fallbackMaxTokens,
-    "max_tokens",
-    1,
-    16_384,
-  );
+  const maxTokens = parseMaxTokens(parts[2]?.trim() || fallbackMaxTokens);
   return { model, reasoningEffort, maxTokens };
 }
 
@@ -214,7 +219,9 @@ export function buildOpenAiRequestBody(probeCase, prompt, promptCacheKey) {
     messages: [{ role: "user", content: prompt }],
     stream: true,
     stream_options: { include_usage: true },
-    max_tokens: probeCase.maxTokens,
+    ...(probeCase.maxTokens === null
+      ? {}
+      : { max_tokens: probeCase.maxTokens }),
     // Control sampling identically on both sides of the synthetic nonce probe.
     temperature: PROOF_TEMPERATURE,
     ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
@@ -979,7 +986,7 @@ function printHelp() {
       "Usage: chat-latency.ts --target direct|gateway|paired|dedicated [options]",
       "",
       "OpenAI-compatible targets:",
-      "  --case model[@omit|none|low|medium|high][@max_tokens] (repeatable)",
+      "  --case model[@omit|none|low|medium|high][@max_tokens|max] (repeatable)",
       "  --model model (repeatable; uses --reasoning-effort and --max-tokens)",
       "  --target paired counterbalances identical direct/gateway requests",
       "",
@@ -1011,7 +1018,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       "dedicated-request-mode": { type: "string", default: "instrumented" },
       "base-url": { type: "string" },
       prompt: { type: "string" },
-      "max-tokens": { type: "string", default: "512" },
+      "max-tokens": { type: "string", default: "max" },
       repeat: { type: "string", default: "1" },
       "timeout-ms": { type: "string", default: "0" },
       "api-key-env": { type: "string" },
@@ -1042,12 +1049,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     0,
     180_000,
   );
-  const fallbackMaxTokens = boundedInteger(
-    values["max-tokens"],
-    "max-tokens",
-    1,
-    16_384,
-  );
+  const fallbackMaxTokens = parseMaxTokens(values["max-tokens"]);
   const idleMs = boundedInteger(values["idle-ms"], "idle-ms", 0, 300_000);
   const pairIntervalMs = boundedInteger(
     values["pair-interval-ms"],
@@ -1073,7 +1075,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     }
     cases = values.model.map((model) =>
       parseProbeCase(
-        `${model}@${effort}@${fallbackMaxTokens}`,
+        `${model}@${effort}@${fallbackMaxTokens ?? "max"}`,
         fallbackMaxTokens,
       ),
     );

@@ -1149,6 +1149,8 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         shouldRun: ({ messageHandler }) => messageHandler.processMessage === "RESPOND",
         evaluate: () => ({
           requiresTool: true,
+          setContexts: ["general"],
+          clearCandidateActions: true,
           addCandidateActions: ["WEB_SEARCH"],
           clearReply: true,
           deterministicToolCall: {
