@@ -489,8 +489,8 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
   private readonly now: () => number;
   private readonly timers: BillTimers;
   private recheck: unknown = null;
-  /** A background website check in flight; it never holds `pending`. */
-  private background: Promise<unknown> | null = null;
+  /** In-flight checks remain tied to their task across task switches. */
+  private readonly background = new Map<string, Promise<unknown>>();
   constructor(options: {
     request: BillRequest;
     validators: BillClientValidators;
@@ -561,7 +561,7 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
    */
   private checkInBackground() {
     const taskId = this.taskId;
-    if (taskId === null || this.background !== null) return;
+    if (taskId === null || this.background.has(taskId)) return;
     if (this.state.pending) {
       // The person's command reschedules the check when it finishes.
       return;
@@ -589,13 +589,16 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
           this.state.error = "load";
       },
     );
-    this.background = settled.finally(() => {
-      this.background = null;
-      if (this.current(ticket) && !this.state.pending) {
-        this.scheduleRecheck();
-        this.publish();
-      }
-    });
+    this.background.set(
+      taskId,
+      settled.finally(() => {
+        this.background.delete(taskId);
+        if (this.current(ticket) && !this.state.pending) {
+          this.scheduleRecheck();
+          this.publish();
+        }
+      }),
+    );
   }
   start(taskId: string) {
     this.stop();
@@ -639,7 +642,8 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
     this.publish();
     try {
       // Let a background check that is already sent settle first.
-      if (this.background) await this.background;
+      const background = this.background.get(taskId);
+      if (background) await background;
       if (!this.current(ticket)) return false;
       const reply = await this.request(
         `/tasks/${encodeURIComponent(taskId)}/bill`,
