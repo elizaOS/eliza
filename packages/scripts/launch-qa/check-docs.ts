@@ -191,10 +191,16 @@ function stripCodeFences(markdown) {
 function slugifyHeading(heading) {
   return heading
     .replace(/<[^>]*>/g, "")
-    .replace(/[`*_~[\]]/g, "")
+    .replace(/[`*~[\]]/g, "")
+    // Underscores between word characters are literal in the rendered
+    // heading, and GitHub keeps them in the anchor (run_receipt ->
+    // #run_receipt); only emphasis-delimiter underscores at word
+    // boundaries disappear. Stripping every underscore made the gate
+    // report GitHub-valid anchor links as broken.
+    .replace(/(?<!\p{L}|\p{N})_|_(?!\p{L}|\p{N})/gu, "")
     .trim()
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .replace(/[^\p{L}\p{N}_\s-]/gu, "")
     .replace(/\s+/g, "-");
 }
 
