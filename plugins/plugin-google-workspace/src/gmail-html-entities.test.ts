@@ -4,8 +4,8 @@
  * regression is caught in-tree.
  */
 import { describe, expect, it } from "vitest";
-import { GoogleGmailClient } from "./gmail.ts";
 import type { GoogleApiClientFactory } from "./client-factory.ts";
+import { GoogleGmailClient } from "./gmail.ts";
 
 function stubFactory(message: Record<string, unknown>): GoogleApiClientFactory {
   return {
@@ -38,7 +38,7 @@ describe("Gmail numeric HTML entities", () => {
             { name: "To", value: "me@example.com" },
           ],
         },
-      }),
+      })
     );
 
     const summary = await client.getGmailMessage({

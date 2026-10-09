@@ -6,11 +6,10 @@
 export function evmPersonalSignInput(
   message: string,
 ): { raw: `0x${string}` } | string {
-  const trimmed = message.trim();
-  if (!/^0x/i.test(trimmed)) return message;
-  const hex = `0x${trimmed.slice(2)}` as `0x${string}`;
-  if (!/^0x[0-9a-fA-F]*$/.test(hex)) return message;
-  return { raw: hex };
+  // Plain text is byte-sensitive. Do not trim it or reinterpret malformed
+  // prefixed input as text; the signer retains its existing validation.
+  if (!/^0x/i.test(message)) return message;
+  return { raw: `0x${message.slice(2)}` };
 }
 
 /** Keep a 0x prefix and rewrite a 0X prefix. Bare hex gains a 0x prefix. */

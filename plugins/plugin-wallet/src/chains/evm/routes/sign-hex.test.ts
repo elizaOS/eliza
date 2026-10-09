@@ -13,9 +13,11 @@ import {
 
 describe("browser EVM hex prefix", () => {
   it("signs 0X personal_sign bytes instead of the hex text", () => {
-    expect(evmPersonalSignInput(" \t0X4869\n")).toEqual({ raw: "0x4869" });
+    expect(evmPersonalSignInput("0X4869")).toEqual({ raw: "0x4869" });
     expect(evmPersonalSignInput("0x4869")).toEqual({ raw: "0x4869" });
     expect(evmPersonalSignInput("hello")).toBe("hello");
+    expect(evmPersonalSignInput(" \t0X4869\n")).toBe(" \t0X4869\n");
+    expect(evmPersonalSignInput("0xnot-hex")).toEqual({ raw: "0xnot-hex" });
   });
 
   it("does not double-prefix calldata that already uses 0X", () => {
