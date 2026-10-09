@@ -2746,3 +2746,153 @@ describe("native completed-action navigation", () => {
     expect(f.frames).toHaveLength(0);
   });
 });
+
+describe("trusted navigation-only consumer counterparts", () => {
+  const declarations = [
+    { id: "photos", label: "Photos", path: "/photos" },
+    { id: "maps", label: "Maps", path: "/maps" },
+    { id: "camera", label: "Camera", path: "/camera" },
+  ];
+  it.each(declarations)(
+    "prepares $id through the canonical action and retains exact owner/client/installation claim and acknowledgment",
+    async ({ id }) => {
+      vi.stubEnv(
+        "ELIZA_NATIVE_VIEW_DECLARATIONS",
+        JSON.stringify(declarations),
+      );
+      vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+      const f = await fixture(1, undefined, undefined, true);
+      const input = clientMessage();
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        viewDelivery: "completed-action",
+        uiView: id,
+      };
+      const selected = await selectNavigation(f, input, {
+        disposition: "direct",
+        viewId: id,
+      });
+      expect(selected.plan.deterministicToolCall?.params).toMatchObject({
+        action: "show",
+        view: id,
+      });
+      const result = await show(f.runtime, id, input);
+      expect(result).toMatchObject({
+        success: true,
+        values: {
+          navigationPrepared: true,
+          viewId: id,
+          viewPath: `/${id}`,
+          completedActionDelivered: false,
+        },
+      });
+      const binding = result?.values?.navigationBinding;
+      if (!isObjectRecord(binding)) throw Error("Missing counterpart binding");
+      const post = (
+        path: string,
+        body: unknown,
+        token = "local-navigation-test",
+      ) =>
+        fetch(f.url + path, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+      expect(
+        (
+          await post("/api/views/interact-claim", {
+            ...binding,
+            clientId: "another-client",
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await post(
+            "/api/views/interact-claim",
+            binding,
+            "other-navigation-owner",
+          )
+        ).status,
+      ).toBe(409);
+      const claim = await post("/api/views/interact-claim", binding);
+      expect(claim.status).toBe(200);
+      const { claimId } = await claim.json();
+      const ack = await post("/api/views/interact-result", {
+        ...binding,
+        claimId,
+        success: true,
+        result: { switched: true },
+      });
+      expect(ack.status).toBe(200);
+      expect(await ack.json()).toMatchObject({ accepted: true });
+      expect(f.frames).toHaveLength(0);
+      expect(f.runtime.reportError).not.toHaveBeenCalled();
+      // A native counterpart never supplies a missing hosted executable.
+      const ordinary = await show(f.runtime, id, clientMessage());
+      expect(ordinary?.success).toBe(false);
+    },
+  );
+  it("does not create views from renderer metadata or device profile hints, or admit an unauthorized actor", async () => {
+    const f = await fixture();
+    for (const id of [
+      "photos",
+      "maps",
+      "camera",
+      "unknown-consumer",
+      "phone",
+      "messages",
+      "contacts",
+    ]) {
+      const input = clientMessage();
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        viewDelivery: "completed-action",
+        uiView: id,
+        supportedViews: [id],
+      };
+      expect(
+        (
+          await selectNavigation(f, input, {
+            disposition: "direct",
+            viewId: id,
+          })
+        ).plan.deterministicToolCall,
+      ).toBeUndefined();
+    }
+    vi.stubEnv("ELIZA_NATIVE_VIEW_DECLARATIONS", JSON.stringify(declarations));
+    const consumer = await fixture();
+    const input = clientMessage();
+    input.entityId = "55555555-5555-4555-8555-555555555555" as UUID;
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+    };
+    expect((await show(consumer.runtime, "maps", input))?.success).toBe(false);
+    expect(consumer.requests()).toBe(0);
+  });
+  it("retires a declared counterpart preparation with its host before any execution claim", async () => {
+    vi.stubEnv("ELIZA_NATIVE_VIEW_DECLARATIONS", JSON.stringify(declarations));
+    vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+    const f = await fixture(1, undefined, undefined, true);
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+    };
+    const result = await show(f.runtime, "maps", input);
+    closeViewInteractionHost(f.hostKey);
+    const response = await fetch(`${f.url}/api/views/interact-claim`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer local-navigation-test",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(result?.values?.navigationBinding),
+    });
+    expect(response.ok).toBe(false);
+  });
+});
