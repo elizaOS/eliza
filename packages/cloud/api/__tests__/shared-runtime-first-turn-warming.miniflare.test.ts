@@ -16,6 +16,9 @@ import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared
 import { Miniflare } from "miniflare";
 
 const RUNTIME_BOUNDARIES = {
+  ownerCapture: /shared-owner-model-capture\.ts$/,
+  ownerCaptureStore: /shared-owner-model-capture-store\.ts$/,
+  personalFallback: /personal-dedicated-fallback\.ts$/,
   apiErrors:
     /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]api[\\/]errors\.ts$/,
   apnsProvider:
@@ -41,6 +44,27 @@ const RUNTIME_BOUNDARIES = {
 } as const;
 
 const RUNTIME_STUBS = {
+  // This suite has no capture policy or Dedicated cutover. Keep those service
+  // boundaries fail-closed instead of bundling their KMS/SSH dependencies.
+  ownerCapture: `
+    export function observeOwnerCapture(capture) {
+      if (capture !== undefined) throw new Error("Capture is outside this warming test");
+    }
+  `,
+  ownerCaptureStore: `
+    export function parseOwnerCapturePolicy(value) {
+      if (value !== undefined) throw new Error("Capture policy is outside this warming test");
+      return undefined;
+    }
+    function outside() { throw new Error("Capture storage is outside this warming test"); }
+    export { outside as cleanupDueOwnerCaptures, outside as listOwnerCaptureReservations,
+      outside as readEncryptedOwnerCapture, outside as reserveOwnerModelCapture };
+  `,
+  personalFallback: `
+    export async function resolvePersonalFallbackCutoverRecovery() {
+      throw new Error("Dedicated recovery is outside this warming test");
+    }
+  `,
   apiErrors: `
     export class InsufficientCreditsError extends Error {}
     export class RateLimitError extends Error {}
@@ -60,6 +84,16 @@ const RUNTIME_STUBS = {
     }
   `,
   coreEdge: `
+    export { validateUuid } from ${JSON.stringify(
+      fileURLToPath(
+        new URL("../../../core/src/utils/uuid.ts", import.meta.url),
+      ),
+    )};
+    export { MediaFetchError, readResponseWithLimit } from ${JSON.stringify(
+      fileURLToPath(
+        new URL("../../../core/src/media/fetch.ts", import.meta.url),
+      ),
+    )};
     export class ElizaError extends Error {}
     export const ChannelType = {
       SELF: "SELF",
@@ -211,6 +245,18 @@ describe("Shared first-turn warming in Workerd", () => {
           plugins: [{
             name: "shared-first-turn-warming-runtime-boundaries",
             setup(build) {
+              build.onLoad(
+                { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.ownerCapture.source)}) },
+                () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.ownerCapture)} }),
+              );
+              build.onLoad(
+                { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.ownerCaptureStore.source)}) },
+                () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.ownerCaptureStore)} }),
+              );
+              build.onLoad(
+                { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.personalFallback.source)}) },
+                () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.personalFallback)} }),
+              );
               build.onResolve({ filter: /^@elizaos\\/core(?:\\/edge)?$/ }, () => ({
                 path: "core-edge",
                 namespace: "shared-cutover-test-stub",
