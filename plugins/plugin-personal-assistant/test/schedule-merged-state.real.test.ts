@@ -195,6 +195,59 @@ describe("merged schedule state", () => {
       expect(snapshot?.circadianState).toBe("winding_down");
       expect(snapshot?.nextMealLabel).toBe("dinner");
       expect(snapshot?.lastSleepEndedAt).toBe("2026-04-19T10:30:00.000Z");
+
+      // Drive projected bedtime selection through persisted owner state and
+      // the workflow scheduler, including the hours after local midnight.
+      for (const [cursor, onDays, offsetMinutes, expected] of [
+        ["2026-10-09T12:00:00.000Z", [5], -120, "2026-10-10T00:00:00.000Z"],
+        ["2026-10-10T00:30:00.000Z", [5], 0, "2026-10-10T02:00:00.000Z"],
+        ["2026-10-10T00:30:00.000Z", undefined, 0, "2026-10-10T02:00:00.000Z"],
+        ["2026-10-10T02:00:00.000Z", [5], 0, "2026-10-17T02:00:00.000Z"],
+      ] as const) {
+        const projected = buildCloudState(
+          String(fixture.runtime.agentId),
+          cursor,
+          "UTC",
+        );
+        projected.relativeTime.bedtimeTargetAt = null;
+        projected.baseline = {
+          medianWakeLocalHour: 8,
+          medianBedtimeLocalHour: 26,
+          medianSleepDurationMin: 360,
+          bedtimeStddevMin: 15,
+          wakeStddevMin: 15,
+          sampleCount: 10,
+          windowDays: 28,
+        };
+        await fixture.service.repository.upsertScheduleMergedState(projected);
+        const workflow = await fixture.service.createWorkflow({
+          title: "Projected bedtime schedule",
+          triggerType: "schedule",
+          schedule: {
+            kind: "relative_to_bedtime",
+            timezone: "UTC",
+            offsetMinutes,
+            ...(onDays ? { onDays: [...onDays] } : {}),
+          },
+          actionPlan: {
+            steps: [{ kind: "summarize", prompt: "Bedtime reminder" }],
+          },
+        });
+        expect(
+          await fixture.service.runDueWorkflows({ now: cursor, limit: 1 }),
+        ).toEqual([]);
+        const saved = (
+          await fixture.service.repository.listWorkflows(
+            String(fixture.runtime.agentId),
+          )
+        ).find((item) => item.id === workflow.definition.id);
+        expect(saved?.metadata.lifeopsScheduler).toMatchObject({
+          nextDueAt: expected,
+        });
+        await fixture.service.updateWorkflow(workflow.definition.id, {
+          status: "paused",
+        });
+      }
     } finally {
       await fixture.cleanup();
     }

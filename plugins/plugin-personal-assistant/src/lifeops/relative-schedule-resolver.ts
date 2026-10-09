@@ -73,7 +73,8 @@ function nextProjectedLocalInstant(args: {
   const dayDelta = Math.floor(totalMinutes / (24 * 60));
   const minuteOfDay = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
   const offsetMs = args.offsetMinutes * 60000;
-  for (let dayOffset = 0; dayOffset < 14; dayOffset += 1) {
+  // After midnight, the previous sleep-day can still have a future bedtime.
+  for (let dayOffset = -dayDelta; dayOffset < 14; dayOffset += 1) {
     const sleepDay = addDaysToLocalDate(parts, dayOffset);
     const date = addDaysToLocalDate(parts, dayOffset + dayDelta);
     const candidate = buildUtcDateFromLocalParts(args.timezone, {
