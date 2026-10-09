@@ -43,10 +43,7 @@ function validateReadRequest(value: unknown): SharedGoogleReadRequest {
   if (request.kind === "gmail_search" && typeof request.query === "string") {
     return { kind: "gmail_search", query: bounded(request.query, 256) };
   }
-  if (
-    request.kind === "gmail_message" &&
-    typeof request.messageId === "string"
-  ) {
+  if (request.kind === "gmail_message" && typeof request.messageId === "string") {
     return {
       kind: "gmail_message",
       messageId: bounded(request.messageId, 256),
@@ -99,11 +96,7 @@ export function createSharedGoogleReadPort(
     connect: () =>
       deps.initiateManagedGoogleConnection({
         ...scope,
-        capabilities: [
-          "google.basic_identity",
-          "google.gmail.triage",
-          "google.calendar.read",
-        ],
+        capabilities: ["google.basic_identity", "google.gmail.triage", "google.calendar.read"],
         redirectUrl: "/cloud/connectors",
         personalContextPurpose: "personal_google_context_v1",
       }),
@@ -121,9 +114,7 @@ export function createSharedGoogleReadPort(
       };
       const status = await deps.getManagedGoogleConnectorStatus(selected);
       const capability =
-        request.kind === "calendar"
-          ? "google.calendar.read"
-          : "google.gmail.triage";
+        request.kind === "calendar" ? "google.calendar.read" : "google.gmail.triage";
       if (
         !status.connected ||
         status.connectionId !== grantId ||
@@ -140,8 +131,7 @@ export function createSharedGoogleReadPort(
           query: request.query,
           maxResults: 5,
         });
-        const hasMore =
-          Boolean(result.nextPageToken) || result.messages.length > 5;
+        const hasMore = Boolean(result.nextPageToken) || result.messages.length > 5;
         const selectedMessages = result.messages.slice(0, 5);
         return {
           kind: "private_google_gmail_search" as const,
@@ -176,9 +166,7 @@ export function createSharedGoogleReadPort(
           id: result.message.externalId,
           subject: result.message.subject.slice(0, 256),
           bodyText: result.bodyText.slice(0, 8_000),
-          truncated:
-            result.bodyText.length > 8_000 ||
-            result.message.subject.length > 256,
+          truncated: result.bodyText.length > 8_000 || result.message.subject.length > 256,
         };
       }
       const result = await deps.fetchManagedGoogleCalendarFeed({
@@ -200,10 +188,7 @@ export function createSharedGoogleReadPort(
           result.events.length > 20 ||
           result.events
             .slice(0, 20)
-            .some(
-              (event) =>
-                event.title.length > 256 || event.location.length > 256,
-            ),
+            .some((event) => event.title.length > 256 || event.location.length > 256),
         events: result.events.slice(0, 20).map((event) => ({
           id: event.externalId,
           title: event.title.slice(0, 256),

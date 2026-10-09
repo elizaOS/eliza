@@ -69,11 +69,7 @@ describe("server-owned Shared Google read seam", () => {
           side: "owner",
           redirectUrl: "/cloud/connectors",
           personalContextPurpose: "personal_google_context_v1",
-          capabilities: [
-            "google.basic_identity",
-            "google.gmail.triage",
-            "google.calendar.read",
-          ],
+          capabilities: ["google.basic_identity", "google.gmail.triage", "google.calendar.read"],
         },
       },
     ]);
@@ -133,9 +129,7 @@ describe("server-owned Shared Google read seam", () => {
       { kind: "gmail_search", query: 42 },
       null,
     ]) {
-      await expect(port.read(request)).rejects.toThrow(
-        "SHARED_GOOGLE_INVALID_INPUT",
-      );
+      await expect(port.read(request)).rejects.toThrow("SHARED_GOOGLE_INVALID_INPUT");
     }
     expect(authorizations).toBe(0);
     expect(calls).toHaveLength(0);
@@ -158,9 +152,7 @@ describe("server-owned Shared Google read seam", () => {
             endAt: "2026-11-02",
             isAllDay: true,
             description: "excluded",
-          } as Awaited<
-            ReturnType<typeof deps.fetchManagedGoogleCalendarFeed>
-          >["events"][number],
+          } as Awaited<ReturnType<typeof deps.fetchManagedGoogleCalendarFeed>>["events"][number],
         ],
       };
     };
@@ -207,9 +199,7 @@ describe("server-owned Shared Google read seam", () => {
       },
       deps,
     );
-    expect(
-      await port.read({ kind: "gmail_search", query: " meeting " }),
-    ).toMatchObject({
+    expect(await port.read({ kind: "gmail_search", query: " meeting " })).toMatchObject({
       kind: "private_google_gmail_search",
       untrustedContent: true,
       messages: [],
@@ -249,9 +239,7 @@ describe("server-owned Shared Google read seam", () => {
       snippet: "x".repeat(900),
       receivedAt: "2026-10-08",
       extraPrivateMetadata: "must not enter model context",
-    } as Awaited<
-      ReturnType<typeof deps.fetchManagedGoogleGmailSearch>
-    >["messages"][number];
+    } as Awaited<ReturnType<typeof deps.fetchManagedGoogleGmailSearch>>["messages"][number];
     let pages = 0;
     deps.fetchManagedGoogleGmailSearch = async (args) => {
       pages++;
@@ -274,8 +262,7 @@ describe("server-owned Shared Google read seam", () => {
     );
     const result = await port.read({ kind: "gmail_search", query: "meeting" });
     expect(result).toMatchObject({ hasMore: true, truncated: true });
-    if (result.kind !== "private_google_gmail_search")
-      throw new Error("WRONG_KIND");
+    if (result.kind !== "private_google_gmail_search") throw new Error("WRONG_KIND");
     expect(result.messages).toHaveLength(5);
     expect(result.messages[0]).toEqual({
       id: "m1",
@@ -306,15 +293,13 @@ describe("server-owned Shared Google read seam", () => {
       },
       deps,
     );
-    expect(await port.read({ kind: "gmail_message", messageId: "m1" })).toEqual(
-      {
-        kind: "private_google_gmail_message",
-        untrustedContent: true,
-        id: "m1",
-        subject: "s".repeat(256),
-        bodyText: "x".repeat(8000),
-        truncated: true,
-      },
-    );
+    expect(await port.read({ kind: "gmail_message", messageId: "m1" })).toEqual({
+      kind: "private_google_gmail_message",
+      untrustedContent: true,
+      id: "m1",
+      subject: "s".repeat(256),
+      bodyText: "x".repeat(8000),
+      truncated: true,
+    });
   });
 });
