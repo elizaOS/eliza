@@ -130,6 +130,8 @@ export interface DispatchRouteArgs {
   rawBody?: string;
   /** true when invoked in-process via IPC; false when invoked over HTTP. */
   inProcess: boolean;
+  /** Select the exact owning server; scoped dispatch cannot use a runtime fallback. */
+  hostKey?: object;
   isAuthorized: () => boolean;
   /** true when the transport verified a trusted loopback/local request. */
   isTrustedLocal?: () => boolean;
