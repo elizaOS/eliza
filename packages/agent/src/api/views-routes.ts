@@ -890,7 +890,8 @@ export async function handleViewsRoutes(
       } catch (cause) {
         if (
           !(cause instanceof ElizaError) ||
-          cause.code !== "VIEW_NAVIGATION_BUSY"
+          (cause.code !== "VIEW_NAVIGATION_BUSY" &&
+            cause.code !== "VIEW_REQUEST_PENDING")
         )
           throw cause;
         error(res, cause.message, 409);
