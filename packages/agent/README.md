@@ -163,6 +163,26 @@ resolution or automatic network-change refresh.
 
 ## Native host composition
 
+Hosts with their own native view renderers may set
+`ELIZA_NATIVE_VIEW_DECLARATIONS` before runtime startup. Its value is a JSON
+array of at most 32 navigation-only declarations with `id`, `label`, `path`,
+and optional `fallbackFor` (an exact plugin package name). For example:
+
+```json
+[{"id":"native-gallery","label":"Gallery","path":"/native-gallery"}]
+```
+
+This is trusted host configuration, never renderer metadata or a device view
+profile. Entries use existing runtime installations, have an OWNER role gate,
+declare no capabilities or controls, and retain `available: false` because they
+supply no hosted executable. Registered completed-action clients still require
+the normal owner/client/installation preparation, claim and acknowledgment.
+Ordinary originating-client delivery cannot use an unavailable hosted view.
+An exact preview builtin may have a host-selected released native counterpart;
+system/release builtins cannot be overridden. Already installed plugin entries
+remain authoritative. Later plugin replacement requires an explicit matching
+`fallbackFor`, route and modality. Without this setting, catalogs are unchanged.
+
 `native-host/gateway.mjs` is a dependency-free Node source entrypoint for native
 hosts shipping a separately verified gateway payload. Supply an explicit
 `hostPolicy`: origins, resetPaths, conversationTitle, abortReason, validateTitle,
