@@ -477,7 +477,10 @@ async function providersCacheKey(
  */
 export function providersCacheControlForAgeMs(ageMs: number): string {
   const remainingMs = Math.max(0, PROVIDERS_CACHE_TTL_MS - Math.max(0, ageMs));
-  const maxAgeSec = Math.ceil(remainingMs / 1000);
+  // Floor, not ceil: rounding the remaining lifetime up lets isolate age +
+  // downstream max-age compose past the 60s ceiling above for any
+  // non-whole-second age (a hit at 59.5s would emit max-age=1).
+  const maxAgeSec = Math.floor(remainingMs / 1000);
   return `public, max-age=${maxAgeSec}`;
 }
 
