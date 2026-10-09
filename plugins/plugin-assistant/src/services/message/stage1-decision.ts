@@ -1198,6 +1198,11 @@ export async function generateStage1Decision(
         if (
           progress.kind === "text" &&
           evaluatePlannedReplyEgress({
+            currentScope: {
+              agentId: args.runtime.agentId,
+              entityId: args.message.entityId,
+              id: args.message.id,
+            },
             pendingWork: true,
             providers: args.state.data.providers,
             request: getUserMessageText(args.message),

@@ -899,6 +899,11 @@ export async function runV5MessageRuntimeStage1(
         replyIsModelVoice = false;
       }
       const directReplyEgressDecision = evaluatePlannedReplyEgress({
+        currentScope: {
+          agentId: args.runtime.agentId,
+          entityId: args.message.entityId,
+          id: args.message.id,
+        },
         providers: args.state.data.providers,
         request: getUserMessageText(args.message),
         reply: protectedReply
@@ -1020,6 +1025,11 @@ export async function runV5MessageRuntimeStage1(
       // waits for the normal grounded final path. Never fabricate a substitute.
       if (!replyClaimsInProgressWork(earlyReplyText)) earlyReplyText = "";
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+        currentScope: {
+          agentId: args.runtime.agentId,
+          entityId: args.message.entityId,
+          id: args.message.id,
+        },
         pendingWork: prePatchStageOneReplyEffectStatus === "pending",
         providers: args.state.data.providers,
         request: getUserMessageText(args.message),
@@ -2055,6 +2065,11 @@ export async function runV5MessageRuntimeStage1(
           }
           const groundedModelReplyEgress = groundedModelReply
             ? evaluatePlannedReplyEgress({
+                currentScope: {
+                  agentId: args.runtime.agentId,
+                  entityId: args.message.entityId,
+                  id: args.message.id,
+                },
                 providers: plannerState.data.providers,
                 request: getUserMessageText(args.message),
                 reply: groundedModelReply,
@@ -2578,6 +2593,11 @@ export async function runV5MessageRuntimeStage1(
       args.codingMode === true
         ? ({ verdict: "allow" } as const)
         : evaluatePlannedReplyEgress({
+            currentScope: {
+              agentId: args.runtime.agentId,
+              entityId: args.message.entityId,
+              id: args.message.id,
+            },
             providers: plannerState.data.providers,
             request: getUserMessageText(args.message),
             reply: String(plannerResult.finalMessage ?? ""),
