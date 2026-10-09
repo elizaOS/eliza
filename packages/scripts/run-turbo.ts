@@ -133,11 +133,18 @@ if (process.env.RUN_TURBO_AFFECTED === "1") {
   if (!process.env.TURBO_SCM_BASE?.match(/^[0-9a-f]{40}$/)) {
     throw new Error("Affected verification requires a verified TURBO_SCM_BASE");
   }
+  const hasExplicitFilter = turboArgs.some(
+    (arg) => arg === "--filter" || arg.startsWith("--filter="),
+  );
   if (
     turboArgs.includes("run") &&
     turboArgs.some((arg) =>
-      ["typecheck", "lint:check", "format:check"].includes(arg),
+      ["build", "typecheck", "lint:check", "format:check"].includes(arg),
     ) &&
+    // An explicit filter already owns package selection. Adding --affected
+    // would silently intersect it, which can narrow bootstrap commands such
+    // as build:core and leave required package outputs missing on clean CI.
+    !hasExplicitFilter &&
     !turboArgs.includes("--affected")
   ) {
     turboArgs.push("--affected");

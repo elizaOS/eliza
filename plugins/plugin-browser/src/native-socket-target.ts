@@ -107,6 +107,15 @@ interface NativeReply {
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout>;
 }
+/** One short sentence, no control or format characters. */
+export function validActionText(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    value.length <= 200 &&
+    /^[^\p{Cc}\p{Cf}]+$/u.test(value)
+  );
+}
 /** Android host identity selects its same-UID abstract socket, never another app's default. */
 export function androidNativeBrowserSocketPath(
   applicationId = "ai.elizaos.app",
@@ -684,8 +693,21 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       taskContext?: NativeTaskContext;
       taskExpiresAt?: number;
       protectedValueKind?: "verification-code";
+      /** Host-written preview sentence for a bound task action. */
+      actionText?: string;
     } = {},
   ): Promise<BrowserWorkspaceCommandResult> {
+    if (
+      options.actionText !== undefined &&
+      (!options.taskContext ||
+        !["click", "fill", "scroll"].includes(command.subaction) ||
+        !validActionText(options.actionText))
+    )
+      throw new BrowserDispatchFailure(
+        "POLICY_BLOCKED",
+        "An action sentence needs a bound task action.",
+        { targetId: this.id },
+      );
     if (
       options.protectedValueKind &&
       (!options.taskContext ||
@@ -698,8 +720,14 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         { targetId: this.id },
       );
     // Only trusted execute options may introduce this marker, never a raw command.
-    const { protectedValueKind: _untrusted, ...safeCommand } =
-      command as BrowserWorkspaceCommand & { protectedValueKind?: unknown };
+    const {
+      protectedValueKind: _untrusted,
+      actionText: _untrustedText,
+      ...safeCommand
+    } = command as BrowserWorkspaceCommand & {
+      protectedValueKind?: unknown;
+      actionText?: unknown;
+    };
     command = safeCommand as BrowserWorkspaceCommand;
     if (
       options.taskContext &&
@@ -756,6 +784,9 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           ...(options.taskExpiresAt === undefined
             ? {}
             : { taskExpiresAt: options.taskExpiresAt }),
+          ...(options.actionText === undefined
+            ? {}
+            : { actionText: options.actionText }),
         }
       : command;
     const result = await this.request(scopedCommand, options.signal);
