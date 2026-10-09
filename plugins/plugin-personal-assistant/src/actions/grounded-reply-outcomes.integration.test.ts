@@ -476,7 +476,7 @@ describe("grounded reply outcomes — real PGlite", () => {
       instructions.push(event.content);
       const serialized = JSON.stringify(context);
       expect(serialized).toContain(
-        "Separately registered app-domain tools and this app's OS notification delivery retain their own availability and authorization gates",
+        "Other app domains and OS notification delivery retain their own availability and authorization gates",
       );
       expect(serialized).toContain(
         "use authorized current app record sources rather than historical dialogue as a proxy",
