@@ -212,16 +212,79 @@ export function parseSharedReminderActionProvenance(
   };
 }
 
+/**
+ * Model-only, reversible representation: source objects remain complete once;
+ * original aggregate metadata and zero-based result ordering remain explicit.
+ * Cost: expected O(B + N) over at most 2,097,152 UTF-16 units/256 sources; no I/O/cache.
+ * Exact parsed-JSON serialization equality is conservative: unfamiliar shapes,
+ * key-order differences, unmatched values or multiplicities retain the old view.
+ */
+function projectRedundantPublicEvidence(
+  grounding: Extract<SharedRuntimePublicGrounding, { kind: "web_search" }>,
+):
+  | { aggregateMetadata: Record<string, unknown>; aggregateResultSourceIndices: number[] }
+  | undefined {
+  const sources = grounding.sources;
+  if (
+    !sources?.length ||
+    sources.length > 256 ||
+    grounding.text.length + sources.reduce((n, source) => n + source.text.length, 0) >
+      2 * 1024 * 1024
+  )
+    return undefined;
+  try {
+    const aggregate: unknown = JSON.parse(grounding.text);
+    if (!aggregate || typeof aggregate !== "object" || Array.isArray(aggregate)) return undefined;
+    const record = aggregate as Record<string, unknown>;
+    if (!Array.isArray(record.results) || record.results.length !== sources.length)
+      return undefined;
+    const groups = new Map<string, { indices: number[]; next: number }>();
+    for (const [index, source] of sources.entries()) {
+      const value: unknown = JSON.parse(source.text);
+      if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+      const url = (value as Record<string, unknown>).url;
+      if (typeof url !== "string" || new URL(url).toString() !== source.url) return undefined;
+      const key = JSON.stringify(value);
+      if (typeof key !== "string") return undefined;
+      const group = groups.get(key) ?? { indices: [], next: 0 };
+      group.indices.push(index);
+      groups.set(key, group);
+    }
+    const aggregateResultSourceIndices: number[] = [];
+    for (const result of record.results) {
+      if (!result || typeof result !== "object" || Array.isArray(result)) return undefined;
+      const key = JSON.stringify(result);
+      if (typeof key !== "string") return undefined;
+      const group = groups.get(key);
+      if (!group || group.next >= group.indices.length) return undefined;
+      aggregateResultSourceIndices.push(group.indices[group.next++]);
+    }
+    if ([...groups.values()].some((group) => group.next !== group.indices.length)) return undefined;
+    return {
+      aggregateMetadata: Object.fromEntries(
+        Object.entries(record).filter(([key]) => key !== "results"),
+      ),
+      aggregateResultSourceIndices,
+    };
+  } catch {
+    // This optional normalization must never replace complete unfamiliar data
+    // with an incomplete view or turn a formerly valid receipt into a failure.
+    return undefined;
+  }
+}
+
 /** Encodes untrusted evidence as JSON so result text cannot forge envelope boundaries. */
 export function encodeSharedPublicWebGrounding(value: SharedRuntimePublicGrounding): string {
   const parsed = parseSharedPublicWebGrounding(value);
   if (!parsed || parsed.kind !== "web_search") {
     throw new TypeError("Invalid Shared public web grounding");
   }
+  const projection = projectRedundantPublicEvidence(parsed);
   return JSON.stringify({
     type: "untrusted_public_web_search_result",
     instructionPolicy: "data_only",
     ...parsed,
+    ...(projection ? { text: undefined, ...projection } : {}),
   });
 }
 

@@ -1344,3 +1344,89 @@ describe("provider-compatible grounding policy placement", () => {
     expect(insertSharedRuntimeGroundingMessages(noUser, policy)).toBe(noUser);
   });
 });
+
+
+describe("lossless public evidence model projection", () => {
+  const one = {
+    url: "https://example.com/one",
+    title: "One",
+    excerpt: "First complete source evidence. ".repeat(20),
+  };
+  const two = {
+    url: "https://example.com/two",
+    title: "Two",
+    excerpt: "Second complete source evidence. ".repeat(20),
+  };
+  const source = (value: typeof one) => ({ url: value.url, text: JSON.stringify(value) });
+  const receipt = (aggregate: unknown, sources: Array<{ url: string; text: string }>) => ({
+    kind: "web_search" as const,
+    provider: "parallel" as const,
+    query: "public reference documents",
+    observedAt: Date.now(),
+    truncated: false as const,
+    text: JSON.stringify(aggregate),
+    sourceUrls: sources.map((value) => value.url),
+    sources,
+  });
+  const oldView = (value: ReturnType<typeof receipt>) =>
+    JSON.stringify({
+      type: "untrusted_public_web_search_result",
+      instructionPolicy: "data_only",
+      ...parseSharedPublicWebGrounding(value),
+    });
+
+  test("reconstructs complete aggregate metadata, ranking and duplicate multiplicity without changing canonical data", () => {
+    const aggregate = {
+      results: [one, two, one],
+      warnings: ["Unique provider warning"],
+      metadata: { complete: true, count: 3 },
+    };
+    const value = receipt(aggregate, [source(two), source(one), source(one)]);
+    const before = JSON.stringify(value);
+    const encoded = encodeSharedPublicWebGrounding(value);
+    const projected = JSON.parse(encoded);
+    expect(projected.text).toBeUndefined();
+    expect(projected.sources).toEqual(value.sources);
+    expect(projected.aggregateResultSourceIndices).toEqual([1, 0, 2]);
+    const reconstructed = {
+      ...projected.aggregateMetadata,
+      results: projected.aggregateResultSourceIndices.map((index: number) =>
+        JSON.parse(projected.sources[index].text),
+      ),
+    };
+    expect(reconstructed).toEqual(aggregate);
+    expect(JSON.stringify(value)).toBe(before);
+    expect(parseSharedPublicWebGrounding(value)?.text).toBe(value.text);
+    expect(encoded.length).toBeLessThan(oldView(value).length);
+  });
+
+  test("unmatched or unique result content and mismatched multiplicities retain the exact old encoding", () => {
+    for (const value of [
+      receipt({ results: [one, { ...two, excerpt: "Unique uncopied evidence" }] }, [
+        source(one),
+        source(two),
+      ]),
+      receipt({ results: [one, two, one] }, [source(one), source(two), source(two)]),
+      receipt({ results: [one, two] }, [source(one)]),
+      receipt({ results: [one] }, [{ url: two.url, text: JSON.stringify(one) }]),
+    ])
+      expect(encodeSharedPublicWebGrounding(value)).toBe(oldView(value));
+  });
+
+  test("unknown or differently serialized source formats retain the exact old encoding", () => {
+    const value = receipt({ results: [one] }, [source(one)]);
+    for (const candidate of [
+      { ...value, text: "Unstructured complete provider evidence" },
+      receipt([one], [source(one)]),
+      receipt({ other_results: [one] }, [source(one)]),
+      receipt({ results: [one] }, [{ url: one.url, text: "Complete non-JSON source evidence" }]),
+      receipt({ results: [one] }, [
+        {
+          url: one.url,
+          text: JSON.stringify({ excerpt: one.excerpt, title: one.title, url: one.url }),
+        },
+      ]),
+    ])
+      expect(encodeSharedPublicWebGrounding(candidate)).toBe(oldView(candidate));
+  });
+});
