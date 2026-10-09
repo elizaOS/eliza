@@ -1016,6 +1016,17 @@ function BrowserWorkspaceForAuthority({
     }
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
+      const menu = mobileActionsMenuRef.current;
+      if (
+        menu?.dataset.state === "open" &&
+        target instanceof Element &&
+        !menu.contains(target) &&
+        !target.closest('[data-testid="browser-workspace-mobile-more"]')
+      ) {
+        // The modal's deferred outside-click listener may not yet be armed
+        // when a user immediately leaves a newly opened menu.
+        dismissMobileActions();
+      }
       if (target instanceof HTMLIFrameElement) {
         releaseBrowserWorkspaceIframeFocusReturn(target);
         return;
@@ -1060,7 +1071,7 @@ function BrowserWorkspaceForAuthority({
       iframeFocusTimersRef.current.clear();
       iframeFocusHandoffsRef.current.clear();
     };
-  }, [releaseBrowserWorkspaceIframeFocusReturn]);
+  }, [dismissMobileActions, releaseBrowserWorkspaceIframeFocusReturn]);
   const loadWorkspace = useCallback(
     async (options?: {
       preferTabId?: string | null;
