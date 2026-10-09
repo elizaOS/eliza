@@ -244,7 +244,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
         args: {
           shouldRespond: "RESPOND",
           thought: "Use the current authorized operation.",
-          contexts: mode.ordinary ? ["simple"] : ["general"],
+          contexts: mode.ordinary || mode.general ? ["simple"] : ["general"],
           intents: mode.compound ? ["current weather", "other operation"] : [],
           candidateActionNames: mode.ordinary ? [] : mode.compound ? ["WEB_SEARCH", "OTHER_ACTION"] : ["WEB_SEARCH"],
           requiresTool: !mode.ordinary,
