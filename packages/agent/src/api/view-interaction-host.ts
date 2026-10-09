@@ -144,7 +144,7 @@ export class ViewInteractionHost {
       (caller.ownerId !== undefined && caller.ownerId !== ownerId)
     )
       return false;
-    if (caller.navigation && result.success) {
+    if (caller.navigation) {
       const value = result.result;
       if (
         !value ||
@@ -152,7 +152,8 @@ export class ViewInteractionHost {
         Array.isArray(value) ||
         Object.keys(value).length !== 1 ||
         !("switched" in value) ||
-        value.switched !== true
+        value.switched !== result.success ||
+        result.error !== undefined
       )
         return false;
     }
