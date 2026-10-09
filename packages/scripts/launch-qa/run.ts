@@ -11,10 +11,13 @@ const repoRoot = path.resolve(scriptDir, "..", "..", "..");
 
 const QUICK_TASK_IDS = new Set([
   "mobile-artifacts",
-  "app-focused",
   "agent-focused",
   "lifeops-focused",
-  "cloud-api-key-client",
+  // The gate's task id is cloud-api-key-redaction; the stale name that
+  // stood here matched no task, so the quick suite silently never ran
+  // the API-key redaction check. (A second stale entry, app-focused,
+  // has no task at all and is removed.)
+  "cloud-api-key-redaction",
   "model-data",
 ]);
 
