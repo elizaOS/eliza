@@ -138,14 +138,15 @@ export function installManualActivity(bindingRevision, expiresAt) {
           })
           .then(
             (reply) => {
-              if (!reply?.recorded) controller.failed = true;
+              // A lost sign-in form is not payment evidence; it is no gap.
+              if (!reply?.recorded && !credential) controller.failed = true;
             },
             () => {
-              controller.failed = true;
+              if (!credential) controller.failed = true;
             },
           );
       } catch {
-        controller.failed = true;
+        if (!credential) controller.failed = true;
       }
     },
     options,
