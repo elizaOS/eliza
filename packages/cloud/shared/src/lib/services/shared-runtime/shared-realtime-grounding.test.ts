@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
+import { resolveSharedCapabilityIntent } from "./shared-capability-wall";
 import {
   createMatchingRealtimeSearchRunner,
   finalizeSharedRealtimeReply,
@@ -921,6 +922,9 @@ describe("general public search hotfix boundaries", () => {
   });
   test("private, mixed, bare-history and oversized topics never become public dispatch", () => {
     const history = [{ role: "assistant" as const, content: "PRIVATE_HISTORY_MARKER", grounding }];
+    expect(resolveSharedCapabilityIntent("Search the web for Gmail API documentation rate limits.")).toBeNull();
+    expect(resolveSharedCapabilityIntent("Search Gmail for invoices")?.kind).toBe("blocked-primary");
+    expect(resolveSharedCapabilityIntent("Search the web for Gmail API docs and read my inbox")?.kind).toBe("blocked-primary");
     const punctuationTopic = 'Gmail API documentation for C# client SDK "rate  limits"';
     expect(resolveSharedPublicSearchIntent(`Search the web for ${punctuationTopic}`, [])).toEqual({ kind: "general", topic: punctuationTopic });
     for (const message of ["Search Gmail for invoices", "Search the web for Gmail API docs and read my inbox", "Search the web for that", "Search the web for alice@example.com", "Search the web for http://127.0.0.1"]) {

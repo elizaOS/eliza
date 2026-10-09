@@ -1,5 +1,7 @@
 /** Keeps Shared honest and returns a resumable setup handoff for unavailable work. */
 
+import { sharedPublicGoogleProductQuery } from "./shared-realtime-grounding";
+
 import { ElizaError } from "@elizaos/core/edge";
 import { type CapabilityHandoffRequest, capabilityHandoffTargetAgentId } from "@elizaos/shared";
 
@@ -223,7 +225,12 @@ export function resolveSharedCapabilityIntent(
 ): SharedCapabilityResolution | null {
   const text = (message ?? "").trim();
   if (!text || hasTrailingSharedActionCancellation(text)) return null;
-  const matches = RULES.flatMap((rule, priority) => matchesForRule(rule, priority, text)).sort(
+  const publicGoogleProduct = Boolean(sharedPublicGoogleProductQuery(text));
+  const matches = RULES.flatMap((rule, priority) =>
+    publicGoogleProduct && (rule.capability === "cloud-apps" || rule.capability === "calendar")
+      ? []
+      : matchesForRule(rule, priority, text),
+  ).sort(
     (left, right) => left.index - right.index || left.priority - right.priority,
   );
   const primary = matches[0];
