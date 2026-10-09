@@ -36,6 +36,7 @@ import {
   SHARED_TURN_HYDRATION_WAIT_MS,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/bounded-hydration";
 import type { CachedAgentSandbox } from "@elizaos/cloud-shared/lib/services/shared-runtime/cached-agent-dates";
+import type { SharedCutoverSeal } from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
 import {
   networkSharedTurnMatches,
   parseNetworkSharedTurnContext,
@@ -134,6 +135,7 @@ type ConversationRequest =
   | { operation: "push-dispatch"; agentId: string; message: MobilePushMessage }
   | {
       operation: "cutover-seal";
+      fallback?: SharedCutoverSeal["fallback"];
       agentId: string;
       roomId: string;
       token: string;
@@ -271,6 +273,7 @@ interface StoredDeletionTombstone {
 }
 
 interface StoredCutoverSeal {
+  fallback?: SharedCutoverSeal["fallback"];
   token: string;
   expiresAt: number;
   committed: boolean;
@@ -1269,6 +1272,46 @@ export class SharedRuntimeConversation {
     // a stale browser/native session resume the archived Shared transcript.
     if (!seal || seal.committed || seal.expiresAt > Date.now()) return seal;
 
+    if (seal.fallback) {
+      if (
+        !seal.organizationId ||
+        !seal.userId ||
+        !seal.sourceAgentId ||
+        !seal.dedicatedAgentId
+      ) {
+        return { ...seal, recoveryBlocked: true };
+      }
+      const scope = {
+        organizationId: seal.organizationId,
+        userId: seal.userId,
+        sourceAgentId: seal.sourceAgentId,
+        dedicatedAgentId: seal.dedicatedAgentId,
+        fallback: seal.fallback,
+      };
+      const outcome = await this.runWithBindings(async () => {
+        const { resolvePersonalFallbackCutoverRecovery } = await import(
+          "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback"
+        );
+        return await resolvePersonalFallbackCutoverRecovery(scope);
+      });
+      if (outcome === "released") {
+        await this.state.storage.delete(CUTOVER_SEAL_KEY);
+        return null;
+      }
+      if (outcome === "committed") {
+        const recovered = {
+          ...seal,
+          committed: true,
+          recoveryBlocked: undefined,
+        };
+        await this.state.storage.put(CUTOVER_SEAL_KEY, recovered);
+        return recovered;
+      }
+      // Unlike the original upgrade marker, recovery_pending still owns this
+      // journal. Time alone cannot invalidate an in-flight import's snapshot.
+      return outcome === "pending" ? seal : { ...seal, recoveryBlocked: true };
+    }
+
     // The DB marker commits before the final DO transition. If the Worker
     // crashes or loses the acknowledgement between those two durable writes,
     // an expired lease must recover the server-owned marker rather than
@@ -2035,6 +2078,23 @@ export class SharedRuntimeConversation {
       );
     }
     if (payload.operation === "cutover-seal") {
+      if (
+        payload.fallback !== undefined &&
+        (!payload.fallback ||
+          typeof payload.fallback !== "object" ||
+          typeof payload.fallback.id !== "string" ||
+          !payload.fallback.id ||
+          payload.fallback.roomId !== payload.roomId ||
+          !Number.isSafeInteger(payload.fallback.generation) ||
+          payload.fallback.generation < 1 ||
+          !Number.isSafeInteger(payload.fallback.revision) ||
+          payload.fallback.revision < 1)
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_fallback_seal" },
+          { status: 400 },
+        );
+      }
       const existing = await this.activeCutoverSeal();
       if (existing && existing.token !== payload.token) {
         return Response.json(
@@ -2055,6 +2115,7 @@ export class SharedRuntimeConversation {
         userId: payload.userId,
         sourceAgentId: payload.agentId,
         dedicatedAgentId: payload.dedicatedAgentId,
+        ...(payload.fallback ? { fallback: payload.fallback } : {}),
       };
       await this.state.storage.put(CUTOVER_SEAL_KEY, seal);
       try {
@@ -2071,7 +2132,11 @@ export class SharedRuntimeConversation {
         return Response.json({ success: true, history });
       } catch (error) {
         const current = await this.activeCutoverSeal();
-        if (current?.token === payload.token && !current.committed) {
+        if (
+          current?.token === payload.token &&
+          !current.committed &&
+          !current.fallback
+        ) {
           await this.state.storage.delete(CUTOVER_SEAL_KEY);
         }
         throw error;
@@ -2079,7 +2144,17 @@ export class SharedRuntimeConversation {
     }
     if (payload.operation === "cutover-release") {
       const existing = await this.activeCutoverSeal();
-      if (existing?.token === payload.token && !existing.committed) {
+      if (existing?.token === payload.token && existing.fallback) {
+        return Response.json(
+          { success: false, code: "fallback_recovery_seal_owned_by_revision" },
+          { status: 409 },
+        );
+      }
+      if (
+        existing?.token === payload.token &&
+        !existing.committed &&
+        !existing.fallback
+      ) {
         await this.state.storage.delete(CUTOVER_SEAL_KEY);
       }
       return Response.json({ success: true });
