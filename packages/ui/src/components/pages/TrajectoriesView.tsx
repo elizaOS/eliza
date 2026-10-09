@@ -66,7 +66,7 @@ type TrajectoryLoadIssue =
   | "restricted"
   | "offline"
   | "error";
-type ManagementCapability = "checking" | "available" | "unavailable";
+type ManagementCapability = "checking" | "available" | "unavailable" | "error";
 const TRAJECTORIES_RUNTIME_UNAVAILABLE_CODE =
   "trajectories_runtime_unavailable";
 function isTrajectoriesRuntimeUnavailable(error: unknown): boolean {
@@ -390,27 +390,29 @@ function TrajectoriesViewForAuthority({
       silent: getCached<TrajectoryListResult>(cacheKey) != null,
     });
   }, [loadTrajectories, cacheKey]);
-  useEffect(() => {
-    let cancelled = false;
+  const loadManagementCapability = useCallback(async () => {
     const requestedAuthority = authority;
-    void runCapabilityWarmup(() => client.getTrajectoryConfig())
-      .then(() => {
-        if (!cancelled && authorityRef.current === requestedAuthority) {
-          setManagementCapability("available");
-        }
-      })
-      .catch((error: unknown) => {
-        if (isCapabilityWarmupAbort(error)) return;
-        if (!cancelled && authorityRef.current === requestedAuthority) {
-          setManagementCapability(
-            isMissingManagementCapability(error) ? "unavailable" : "checking",
-          );
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
+    setManagementCapability("checking");
+    try {
+      await runCapabilityWarmup(() => client.getTrajectoryConfig());
+      if (authorityRef.current === requestedAuthority) {
+        setManagementCapability("available");
+      }
+    } catch (error) {
+      if (
+        isCapabilityWarmupAbort(error) ||
+        authorityRef.current !== requestedAuthority
+      ) {
+        return;
+      }
+      setManagementCapability(
+        isMissingManagementCapability(error) ? "unavailable" : "error",
+      );
+    }
   }, [authority, runCapabilityWarmup]);
+  useEffect(() => {
+    void loadManagementCapability();
+  }, [loadManagementCapability]);
   useIntervalWhenDocumentVisible(() => {
     void loadTrajectories({ silent: true });
   }, 15000);
@@ -814,6 +816,36 @@ function TrajectoriesViewForAuthority({
                         Retry
                       </Button>
                     ) : null}
+                  </div>
+                ) : null}
+
+                {managementCapability === "error" ? (
+                  <div
+                    role="status"
+                    className="mt-2 flex items-start gap-2 rounded-[12px] bg-[var(--settings-fill)] px-3 py-2.5 text-[13px] leading-5 text-[color:var(--settings-muted)]"
+                  >
+                    <AlertTriangle
+                      className="mt-0.5 size-4 shrink-0"
+                      aria-hidden
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-[color:var(--settings-foreground)]">
+                        Management controls are unavailable
+                      </div>
+                      <div>
+                        Export and delete controls could not be checked.
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="touch"
+                      variant="ghostMuted"
+                      className="shrink-0"
+                      aria-label="Retry management controls"
+                      onClick={() => void loadManagementCapability()}
+                    >
+                      Retry
+                    </Button>
                   </div>
                 ) : null}
 
