@@ -52,6 +52,7 @@ type FixtureWindow = Window & {
   androidBridge?: Record<string, unknown>;
   __elizaNativeFixture?: {
     clipboard: string;
+    wifi: { disconnects: number; connected: boolean };
     phone: {
       placedCalls: Array<{ number: string }>;
       openedDialers: Array<Record<string, unknown> | null>;
@@ -155,6 +156,13 @@ const PLUGIN_HEADERS: NativePluginHeader[] = [
     "importVCard",
     "checkPermissions",
     "requestPermissions",
+  ]),
+  header("ElizaWiFi", [
+    "getWifiState",
+    "getConnectedNetwork",
+    "listAvailableNetworks",
+    "connectToNetwork",
+    "disconnectFromNetwork",
   ]),
   header("ElizaSystem", [
     "getStatus",
@@ -446,16 +454,16 @@ async function installDeterministicNativeBridge(
       ];
       const initialMessages = [
         {
-          id: "sms-1",
+          id: "9",
           threadId: "thread-alpha",
           address: "+14155550101",
           body: "Can you review the build?",
-          date: fixedNow - 120_000,
+          date: fixedNow - 90_000,
           type: 1,
           read: false,
         },
         {
-          id: "sms-2",
+          id: "10",
           threadId: "thread-alpha",
           address: "+14155550101",
           body: "Yes, checking the deterministic smoke path now.",
@@ -464,7 +472,7 @@ async function installDeterministicNativeBridge(
           read: true,
         },
         {
-          id: "sms-3",
+          id: "9007199254740993",
           threadId: "thread-beta",
           address: "+14155550102",
           body: "Pairing window is ready.",
@@ -472,9 +480,19 @@ async function installDeterministicNativeBridge(
           type: 1,
           read: true,
         },
+        {
+          id: "9007199254740992",
+          threadId: "thread-beta",
+          address: "+14155550102",
+          body: "Earlier row at the same timestamp.",
+          date: fixedNow - 30_000,
+          type: 1,
+          read: true,
+        },
       ];
       const fixture = {
         clipboard: "",
+        wifi: { disconnects: 0, connected: true },
         phone: {
           placedCalls: [] as Array<{ number: string }>,
           openedDialers: [] as Array<Record<string, unknown> | null>,
@@ -862,6 +880,42 @@ async function installDeterministicNativeBridge(
             return { imported: [] };
           }
         }
+        if (pluginName === "ElizaWiFi") {
+          if (methodName === "getWifiState") {
+            return {
+              enabled: true,
+              connected: fixture.wifi.connected,
+              rssi: -50,
+            };
+          }
+          if (methodName === "getConnectedNetwork") {
+            return {
+              network: fixture.wifi.connected
+                ? {
+                    ssid: "QA network",
+                    bssid: "02:00:00:00:00:01",
+                    rssi: -50,
+                    frequency: 2412,
+                    secured: true,
+                  }
+                : null,
+            };
+          }
+          if (methodName === "listAvailableNetworks") return { networks: [] };
+          if (methodName === "disconnectFromNetwork") {
+            fixture.wifi.disconnects += 1;
+            if (fixture.wifi.disconnects === 1) {
+              return {
+                success: false,
+                message: "WifiManager.disconnect() returned false",
+              };
+            }
+            if (fixture.wifi.disconnects === 2) return { success: false };
+            fixture.wifi.connected = false;
+            return { success: true };
+          }
+          throw new Error(`Unexpected Wi-Fi fixture method: ${methodName}`);
+        }
         if (pluginName === "ElizaSystem") {
           if (methodName === "getStatus") return systemStatus();
           if (methodName === "requestRole") {
@@ -1033,6 +1087,13 @@ async function installDeterministicNativeBridge(
           "checkPermissions",
           "requestPermissions",
         ]),
+        ElizaWiFi: nativePromisePlugin("ElizaWiFi", [
+          "getWifiState",
+          "getConnectedNetwork",
+          "listAvailableNetworks",
+          "connectToNetwork",
+          "disconnectFromNetwork",
+        ]),
         ElizaSystem: nativePromisePlugin("ElizaSystem", [
           "getStatus",
           "requestRole",
@@ -1102,6 +1163,52 @@ test.describe("Android communications app interactions", () => {
     await installDeterministicNativeBridge(page, { nativePlatform: true });
   });
 
+  test("Wi-Fi disconnect failures remain visible until a successful retry", async ({
+    page,
+  }) => {
+    const issues = installIssueGuards(page);
+    await hideChatOverlay(page);
+    await installDefaultAppRoutes(page);
+    await openAppWindow(page, "wifi", "/apps/native-wifi", [
+      { selector: '[data-testid="wifi-shell"]' },
+    ]);
+    const disconnect = page.getByRole("button", {
+      name: "Disconnect",
+      exact: true,
+    });
+    await disconnect.click();
+    await expect(
+      page.getByText("WifiManager.disconnect() returned false", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.getByText("QA network", { exact: true })).toBeVisible();
+    await expect(disconnect).toBeEnabled();
+    await page.screenshot({
+      path: test.info().outputPath("wifi-failure-desktop.png"),
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectNoIssues(page, issues.splice(0), "Wi-Fi failure mobile");
+    await page.screenshot({
+      path: test.info().outputPath("wifi-failure-mobile.png"),
+      fullPage: true,
+    });
+    await disconnect.click();
+    await expect(
+      page.getByText("Failed to disconnect", { exact: true }),
+    ).toBeVisible();
+    await disconnect.click();
+    await expect(disconnect).toHaveCount(0);
+    await expect(
+      page.getByText("Failed to disconnect", { exact: true }),
+    ).toHaveCount(0);
+    await expect
+      .poll(async () => (await readFixture(page))?.wifi.disconnects)
+      .toBe(3);
+    await expectNoIssues(page, issues.splice(0), "Wi-Fi successful retry");
+  });
+
   test("phone, messages, and contacts use deterministic native data through real controls", async ({
     page,
   }) => {
@@ -1140,6 +1247,24 @@ test.describe("Android communications app interactions", () => {
     await openAppWindow(page, "messages", "/messages", [
       { selector: '[data-agent-id="messages-refresh"]' },
     ]);
+    await expect(
+      page.locator('[data-agent-id="open-thread-thread-alpha"]').locator(".."),
+    ).toContainText("Yes, checking the deterministic smoke path now.");
+    await expect(
+      page.locator('[data-agent-id="open-thread-thread-beta"]').locator(".."),
+    ).toContainText("Pairing window is ready.");
+    const desktopViewport = page.viewportSize();
+    await page.screenshot({
+      path: test.info().outputPath("messages-ties-desktop.png"),
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectNoIssues(page, issues.splice(0), "message previews mobile");
+    await page.screenshot({
+      path: test.info().outputPath("messages-ties-mobile.png"),
+      fullPage: true,
+    });
+    if (desktopViewport) await page.setViewportSize(desktopViewport);
     await page.locator('[data-agent-id="open-thread-thread-alpha"]').click();
     await expect(page.getByText("Can you review the build?")).toBeVisible();
     const latestThreadMessage = page.getByText(
