@@ -207,11 +207,13 @@ export class GatewayWeb extends WebPlugin {
   }
 
   /**
-   * Settle a failed initial handshake: reject the pending connect() promise,
-   * tear down the socket, and stop the reconnect loop. A gateway that never
-   * completes its first handshake must not spawn sockets forever behind a
-   * promise the caller can neither observe nor cancel except via disconnect().
-   * Post-connect drops keep the normal reconnect behavior and never reach here.
+   * Settle a failed handshake: reject the pending connect() promise if one
+   * exists, tear down the socket, and stop the reconnect loop. A gateway
+   * that never completes its first handshake must not spawn sockets forever
+   * behind a promise the caller can neither observe nor cancel except via
+   * disconnect(), and a gateway that explicitly refuses a reconnect
+   * handshake has ended the session just as finally. Post-connect drops keep
+   * the normal reconnect behavior and never reach here.
    */
   private failConnect(error: Error): void {
     const reject = this.connectReject;
@@ -353,14 +355,16 @@ export class GatewayWeb extends WebPlugin {
           this.connectReject = null;
           this.connectResolve = null;
         } else {
-          // A gateway that answers the handshake with an error is as fatal to
-          // the initial connect as a dropped socket: reject and stop retrying.
+          // A gateway that answers the handshake with an error has refused
+          // the session outright (for example a revoked token). That is
+          // fatal on every attempt, not only the initial connect: closing
+          // the socket here would route through handleClose, which still
+          // sees the previous session's completed handshake and reschedules
+          // another reconnect, looping forever against a gateway that has
+          // already said no. failConnect stops the loop; only silence (the
+          // timeout above) keeps the retry policy.
           const error = new Error(result.error?.message || "Connection failed");
-          if (this.connectReject) {
-            this.failConnect(error);
-          } else {
-            this.ws?.close(1011, error.message);
-          }
+          this.failConnect(error);
         }
       },
       reject: (error) => {
