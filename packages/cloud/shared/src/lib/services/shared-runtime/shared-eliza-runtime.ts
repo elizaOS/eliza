@@ -1192,7 +1192,9 @@ async function executeMeasuredSharedElizaRuntimeTurn(
             history: input.history,
             preferredName: input.execution.participantName,
           })
-        : undefined;
+        : actionsEnabled
+          ? "Shared user"
+          : "Shared lifecycle";
     timing.markConnectionStarted();
     await runtime.ensureConnection({
       entityId: incomingEntityId,
