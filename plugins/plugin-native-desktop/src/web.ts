@@ -457,7 +457,22 @@ export class DesktopWeb extends WebPlugin {
     rtf?: string;
     hasImage: boolean;
   }> {
-    return { text: await navigator.clipboard.readText(), hasImage: false };
+    // Match the native host's semantics: empty text is undefined, and
+    // hasImage reflects the actual clipboard content. The old body
+    // hardcoded hasImage to false, so an image-only clipboard read back
+    // as plain empty text.
+    const text = await navigator.clipboard.readText();
+    let hasImage = false;
+    try {
+      const items = await navigator.clipboard.read();
+      hasImage = items.some((item) =>
+        item.types.some((type) => type.startsWith("image/")),
+      );
+    } catch {
+      // clipboard.read() can reject without focus or permission; the
+      // native host likewise falls back to hasImage false on read errors.
+    }
+    return { text: text || undefined, hasImage };
   }
   async clearClipboard(): Promise<void> {
     await navigator.clipboard.writeText("");
