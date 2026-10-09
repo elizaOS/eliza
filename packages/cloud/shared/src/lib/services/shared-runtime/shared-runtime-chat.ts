@@ -1,3 +1,4 @@
+import type { OwnerModelCapture } from "./shared-owner-model-capture";
 /**
  * Cache-only shared-tier chat execution for Cloudflare Workers.
  *
@@ -278,7 +279,11 @@ function turnActionResults(
     RunSharedAgentTurnResult,
     "actionResults" | "capabilityWall" | "blockedSecondaryCapabilities"
   >,
-  context: { agentId: string; originalIntent: string; clientMessageId?: string },
+  context: {
+    agentId: string;
+    originalIntent: string;
+    clientMessageId?: string;
+  },
 ): unknown[] | undefined {
   const results: unknown[] = [...(turn.actionResults ?? [])];
   if (turn.capabilityWall) {
@@ -340,6 +345,8 @@ export interface SharedTurnClaimStore {
 }
 
 export interface SharedRuntimeChatOptions {
+  /** Server-only capability reserved by the owning Personal Shared DO. */
+  ownerCapture?: OwnerModelCapture;
   /** Standard request trace propagated through the conversation coordinator. */
   traceId?: string;
   abortSignal?: AbortSignal;
@@ -592,7 +599,7 @@ function sharedElizaRuntimeExecution(
   turnKey: string | undefined,
   params: Record<string, unknown>,
   funding: SharedRuntimeChatOptions["funding"],
-  executionCtx: BridgeExecutionContext | undefined,
+  _executionCtx: BridgeExecutionContext | undefined,
   mobilePushDispatch?: SharedRuntimeChatOptions["mobilePushDispatch"],
   channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"],
 ): NonNullable<RunSharedAgentTurnInput["execution"]> {
@@ -610,6 +617,9 @@ function sharedElizaRuntimeExecution(
     // Personal funding is selected by the server-owned coordinator only after
     // account/tenant resolution; RPC params cannot grant this attestation.
     ...(personalShared ? { authenticatedPersonalSharedUser: true as const } : {}),
+    ...(personalShared && runtimeChannel.type === ChannelType.DM && agent.owner_name
+      ? { participantName: agent.owner_name }
+      : {}),
     todos: {
       scope: sharedTodoStorageScope({
         sourceAgentId: agent.id,
@@ -1443,6 +1453,7 @@ export class SharedRuntimeChatService {
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
+        ownerCapture: options.ownerCapture,
         abortSignal: options.abortSignal,
         character,
         history,
@@ -1895,7 +1906,14 @@ export class SharedRuntimeChatService {
       const sentAt = Date.now();
       const messages: SharedTurnMessage[] = options.transientInput
         ? []
-        : [{ id: messageIds.user, role: messageRole, content: text, createdAt: sentAt }];
+        : [
+            {
+              id: messageIds.user,
+              role: messageRole,
+              content: text,
+              createdAt: sentAt,
+            },
+          ];
       const assistantText = reply.trim();
       if (assistantText) {
         messages.push({
@@ -2223,7 +2241,11 @@ export class SharedRuntimeChatService {
           });
           if (!consumerCanceled) {
             controller.enqueue(
-              encoder.encode(chatSseFrame("error", { message: "Shared runtime stream failed" })),
+              encoder.encode(
+                chatSseFrame("error", {
+                  message: "Shared runtime stream failed",
+                }),
+              ),
             );
           }
         } finally {

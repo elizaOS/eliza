@@ -157,7 +157,10 @@ export function webSearchSourceEvidence(text: string): {
     return {
         sources: overflowed
             ? []
-            : [...sourceTextByUrl].map(([url, sourceText]) => ({ url, text: sourceText })),
+            : [...sourceTextByUrl].map(([url, sourceText]) => ({
+                  url,
+                  text: sourceText,
+              })),
         sourceUrls: [...sourceUrls],
         overflowed,
     };
@@ -183,8 +186,15 @@ async function fail(
 }
 
 /** Runs the same public-read implementation used by the registered action. */
-export async function runWebSearchEdge(query: string): Promise<ActionResult> {
-    return runWebSearchWith(query, searchKeylessWeb);
+export async function runWebSearchEdge(
+    query: string,
+    options: { numResults?: number; signal?: AbortSignal } = {}
+): Promise<ActionResult> {
+    return runWebSearchWith(
+        query,
+        (value) => searchKeylessWeb(value, { signal: options.signal }),
+        options
+    );
 }
 
 /** Common receipt handling; the host supplies its authorized browser-first transport. */
@@ -192,7 +202,8 @@ export async function runWebSearchWith(
     query: string,
     search: (
         query: string
-    ) => Promise<{ provider: string; text: string; truncated: boolean } | null | undefined>
+    ) => Promise<{ provider: string; text: string; truncated: boolean } | null | undefined>,
+    options: { signal?: AbortSignal } = {}
 ): Promise<ActionResult> {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) return await fail("A web search query is required.");
@@ -204,10 +215,12 @@ export async function runWebSearchWith(
         );
     }
     const observedAt = Date.now();
+    options.signal?.throwIfAborted();
     let result: Awaited<ReturnType<typeof search>>;
     try {
         result = await search(normalizedQuery);
     } catch (error) {
+        options.signal?.throwIfAborted();
         if (!isKeylessWebSearchUnavailableError(error)) throw error;
         // error-policy:J1 a provider outage is a typed action failure, never "no results".
         return {
@@ -225,6 +238,7 @@ export async function runWebSearchWith(
             error: error.message,
         };
     }
+    options.signal?.throwIfAborted();
     if (!result) {
         return await fail("Web search returned no results.", undefined, normalizedQuery);
     }
@@ -248,7 +262,10 @@ export async function runWebSearchWith(
     };
 }
 
-export type WebSearchEdgeRunner = (query: string) => Promise<ActionResult>;
+export type WebSearchEdgeRunner = (
+    query: string,
+    options?: { numResults?: number; signal?: AbortSignal }
+) => Promise<ActionResult>;
 
 function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
     return {
@@ -279,7 +296,14 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
             const query = readQuery(parameters);
             if (!query) return await fail("A web search query is required.", callback);
 
-            const result = await runner(query);
+            const candidateSignal =
+                options && typeof options === "object"
+                    ? (options as { abortSignal?: unknown }).abortSignal
+                    : undefined;
+            const signal = candidateSignal instanceof AbortSignal ? candidateSignal : undefined;
+            signal?.throwIfAborted();
+            const result = await runner(query, { signal });
+            signal?.throwIfAborted();
             if (result.success !== true && result.text) {
                 await callback?.({ text: result.text });
             }

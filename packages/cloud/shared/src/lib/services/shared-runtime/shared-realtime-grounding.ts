@@ -6,6 +6,11 @@
 import { type ActionResult, isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
+import {
+  currentNwsObservationSource,
+  isVerifiedCurrentNwsObservation,
+  parseExplicitUsWeatherQuery,
+} from "./shared-current-weather";
 import { sharedSelectedGroundingMetadata } from "./shared-runtime-history-policy";
 
 export type SharedRealtimeDomain = "markets" | "weather" | "news" | "sports" | "mutable_fact";
@@ -62,7 +67,7 @@ const NAMED_TEAM_SCORE = /\b\p{Lu}[\p{L}\p{N}.'’-]*(?:\s+\p{Lu}[\p{L}\p{N}.'�
 const SOURCE_MARKER = /\[\[SOURCE_URL:(https?:\/\/[^\]\s]+)\]\]/giu;
 const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
 const CLAIM_UNIT =
-  /(?:[$€£¥%])|\b(?:USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH|dollars?|euros?|pounds?|yen|percent(?:age)?|celsius|fahrenheit|kelvin|mph|kph|km\/h|m\/s|mm|cm|km|meters?|metres?|miles?|feet|ft|inches?|degrees?)\b/giu;
+  /(?:[$€£¥%])|°\s*[CF]\b|\b(?:USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH|dollars?|euros?|pounds?|yen|percent(?:age)?|celsius|fahrenheit|kelvin|mph|kph|km\/h|m\/s|mm|cm|km|meters?|metres?|miles?|feet|ft|inches?|degrees?)\b/giu;
 const ATTRIBUTION = /\b(?:according to|reported by)\s+([^,.;\n]{1,80})/giu;
 const NEGATION =
   /\b(?:no|not|never|neither|nor|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|hasn['’]t|haven['’]t|hadn['’]t|won['’]t|wouldn['’]t|didn['’]t|doesn['’]t|don['’]t)\b/iu;
@@ -336,15 +341,25 @@ export function requireTraceableRealtimeSearch(
   result: ActionResult,
   query: string,
   observedAt = Date.now(),
+  domain?: SharedRealtimeDomain,
 ): ActionResult {
   const data = result.data && typeof result.data === "object" ? result.data : {};
   const sources = sourceEvidence(data.sources);
   const receiptObservedAt = data.observedAt;
+  const weather =
+    (domain === "weather" || query.startsWith("current public weather in ")) &&
+    parseExplicitUsWeatherQuery(query) !== undefined;
+  const nws =
+    data.provider === "nws" &&
+    isVerifiedCurrentNwsObservation(data.weatherObservation, query, observedAt) &&
+    sources?.length === 1 &&
+    sources[0].url === data.weatherObservation.sourceUrl &&
+    sources[0].text === currentNwsObservationSource(data.weatherObservation).text;
   if (
     result.success === true &&
     data.actionName === "WEB_SEARCH" &&
     normalizedRealtimeQuery(data.query) === normalizedRealtimeQuery(query) &&
-    data.provider === "parallel" &&
+    (weather ? nws : data.provider === "parallel") &&
     typeof receiptObservedAt === "number" &&
     Number.isSafeInteger(receiptObservedAt) &&
     Math.abs(receiptObservedAt - observedAt) <= 5 * 60 * 1000 &&
@@ -372,10 +387,14 @@ export function requireTraceableRealtimeSearch(
 /** A successful current-data receipt must retain at least one complete source result. */
 export function hasTraceableRealtimeGrounding(
   grounding: SharedRuntimePublicGrounding | undefined,
-): grounding is AvailableGrounding & { sources: [SourceEvidence, ...SourceEvidence[]] } {
+): grounding is AvailableGrounding & {
+  sources: [SourceEvidence, ...SourceEvidence[]];
+} {
   return Boolean(
     grounding?.kind === "web_search" &&
       grounding.truncated === false &&
+      (grounding.provider !== "nws" ||
+        isVerifiedCurrentNwsObservation(grounding.weatherObservation, grounding.query)) &&
       grounding.sources &&
       grounding.sources.length > 0,
   );
@@ -415,8 +434,8 @@ function canonicalClaimUnit(unit: string): string {
   if (normalized === "cad" || normalized === "aud") return `currency:${normalized}`;
   if (normalized === "btc" || normalized === "eth") return `asset:${normalized}`;
   if (normalized === "%" || /^percent(?:age)?$/u.test(normalized)) return "ratio:percent";
-  if (/^celsius$/u.test(normalized)) return "temperature:celsius";
-  if (/^fahrenheit$/u.test(normalized)) return "temperature:fahrenheit";
+  if (/^(?:celsius|°\s*c)$/u.test(normalized)) return "temperature:celsius";
+  if (/^(?:fahrenheit|°\s*f)$/u.test(normalized)) return "temperature:fahrenheit";
   if (/^kelvin$/u.test(normalized)) return "temperature:kelvin";
   if (/^degrees?$/u.test(normalized)) return "temperature:degree-unspecified";
   if (normalized === "mph") return "speed:mph";
@@ -440,7 +459,7 @@ type NumericUnitTuple = { value: number; unit: string };
 
 function numericUnitTuples(value: string): NumericUnitTuple[] {
   const unit =
-    "[$€£¥%]|USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH|dollars?|euros?|pounds?|yen|percent(?:age)?|celsius|fahrenheit|kelvin|mph|kph|km\\/h|m\\/s|mm|cm|km|meters?|metres?|miles?|feet|ft|inches?|degrees?";
+    "[$€£¥%]|°\\s*[CF]\\b|USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH|dollars?|euros?|pounds?|yen|percent(?:age)?|celsius|fahrenheit|kelvin|mph|kph|km\\/h|m\\/s|mm|cm|km|meters?|metres?|miles?|feet|ft|inches?|degrees?";
   const pattern = new RegExp(
     `(?:(${unit})\\s*)?(-?\\d[\\d,]*(?:\\.\\d+)?)(?:\\s*(${unit}))?`,
     "giu",
@@ -684,7 +703,11 @@ function supportedRealtimeReply(
   SOURCE_MARKER.lastIndex = 0;
   let cursor = 0;
   let omittedUnsupported = false;
-  const diagnostic = { markerCount: 0, knownSourceMarkerCount: 0, failedPredicateMask: 0 };
+  const diagnostic = {
+    markerCount: 0,
+    knownSourceMarkerCount: 0,
+    failedPredicateMask: 0,
+  };
   const segments: string[] = [];
   const selectedUrls: string[] = [];
   for (const marker of reply.matchAll(SOURCE_MARKER)) {
@@ -739,7 +762,11 @@ export function finalizeSharedRealtimeReply(
   const sources = [...new Set(supported.selectedUrls)].map((url) => {
     const canonical = canonicalPublicUrl(url);
     if (!canonical) throw new TypeError("Validated Shared realtime source became invalid");
-    return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}, checked ${new Date(grounding.observedAt).toISOString()})`;
+    const observed =
+      grounding.provider === "nws" && grounding.weatherObservation
+        ? `, observation ${grounding.weatherObservation.timestamp}`
+        : "";
+    return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}${observed}, checked ${new Date(grounding.observedAt).toISOString()})`;
   });
   const omission = supported.omittedUnsupported
     ? "\n\nI left out part of the draft because it was not supported by the live source."

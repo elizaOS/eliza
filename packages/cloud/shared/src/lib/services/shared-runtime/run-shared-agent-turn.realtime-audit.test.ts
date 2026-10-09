@@ -140,3 +140,36 @@ describe("runSharedAgentTurn quiet binding audit", () => {
     }
   });
 });
+
+test("retains the public search path for international current weather", async () => {
+  const url = "https://weather.example/paris";
+  const statement = "Paris, France is 18 Celsius and cloudy.";
+  searchResult = {
+    success: true,
+    text: statement,
+    data: {
+      actionName: "WEB_SEARCH",
+      query: "current public weather in Paris, France",
+      provider: "parallel",
+      observedAt: Date.now(),
+      sourceUrls: [url],
+      sources: [{ url, text: statement }],
+      truncated: false,
+    },
+  };
+  runtimeReply = `${statement} [[SOURCE_URL:${url}]]`;
+  const result = await runSharedAgentTurn({
+    character,
+    history: [],
+    message: "What is the current weather in Paris, France?",
+    capabilityText: "What is the current weather in Paris, France?",
+    execution: {
+      agentKey: "personal-shared:weather-audit",
+      roomKey: "telegram:weather-audit",
+      channel: { type: "DM", source: "telegram" },
+    },
+  });
+  expect(searchQueries).toEqual(["current public weather in Paris, France"]);
+  expect(result.reply).toContain(statement);
+  expect(result.reply).toContain(url);
+});
