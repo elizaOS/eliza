@@ -530,6 +530,8 @@ export {
 	isProviderContextOverflowFailure,
 	isProviderSchemaRejection,
 	isTransientModelError,
+	type ModelOutputEvidence,
+	modelOutputIncompleteEvidence,
 	modelProviderErrorDetail,
 	PROVIDER_CONTEXT_OVERFLOW,
 } from "./utils/model-errors";
