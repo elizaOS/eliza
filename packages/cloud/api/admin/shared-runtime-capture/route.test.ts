@@ -255,6 +255,75 @@ describe("exact-reader private capture Hono retrieval", () => {
     expect(calls).toHaveLength(0);
   });
 
+  test("authenticated browser GET uses only UUID locators for the canonical default owner DM", async () => {
+    reader = OWNER;
+    adminFailure = true;
+    const defaultRoom = sharedRuntimeConversationRoomId(
+      sharedRuntimeRoomKey(AGENT, AGENT),
+    );
+    const bindings = env(
+      JSON.stringify({ ...policy, readerUserId: OWNER, roomId: defaultRoom }),
+    );
+    const get = (query: string, selected = bindings) =>
+      app.request(
+        "/read?" + query,
+        { method: "GET", headers: { Cookie: "session=synthetic" } },
+        selected,
+      );
+    const result = await get(`sessionId=${SESSION}&captureId=${CAPTURE}`);
+    expect(result.status).toBe(200);
+    privateHeaders(result);
+    expect(result.headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(await result.text()).toBe(JSON.stringify(upstreamBody));
+    expect(calls).toHaveLength(1);
+    expect(adminCalls).toBe(0);
+    const call = calls[0];
+    if (!call) throw new Error("Expected one canonical DO read");
+    expect(call.name).toBe(`${AGENT}:${AGENT}`);
+    expect(JSON.parse(String(call.init.body))).toEqual({
+      sessionId: SESSION,
+      captureId: CAPTURE,
+      readerUserId: OWNER,
+      verifiedAdmin: false,
+    });
+    expect(new Headers(call.init.headers).get("Cookie")).toBeNull();
+    calls.length = 0;
+    const status = await get(`sessionId=${SESSION}`);
+    expect(status.status).toBe(200);
+    const statusCall = calls[0];
+    if (!statusCall) throw new Error("Expected canonical reservation listing");
+    expect(JSON.parse(String(statusCall.init.body))).toEqual({
+      sessionId: SESSION,
+      readerUserId: OWNER,
+      verifiedAdmin: false,
+    });
+    calls.length = 0;
+    const wrongRoom = await get(
+      `sessionId=${SESSION}`,
+      env(JSON.stringify({ ...policy, readerUserId: OWNER })),
+    );
+    expect(wrongRoom.status).toBe(404);
+    expect(calls).toHaveLength(0);
+    for (const query of [
+      `sessionId=${SESSION}&roomKey=caller-room`,
+      `sessionId=${SESSION}&sessionId=${SESSION}`,
+      `sessionId=${SESSION}&captureId=invalid`,
+      `sessionId=${SESSION}&captureId=${CAPTURE}&captureId=${CAPTURE}`,
+      `sessionId=${SESSION}&readerUserId=${OWNER}`,
+      `sessionId=${"x".repeat(4100)}`,
+    ]) {
+      const invalid = await get(query);
+      expect(invalid.status).toBe(400);
+      expect(invalid.headers.get("Referrer-Policy")).toBe("no-referrer");
+    }
+    expect(calls).toHaveLength(0);
+    reader = READER;
+    const denied = await get(`sessionId=${SESSION}`);
+    expect(denied.status).toBe(403);
+    expect(adminCalls).toBe(0);
+    expect(calls).toHaveLength(0);
+  });
+
   test("actual policy parser and two-stage room identity reject invalid or one-stage scope", async () => {
     expect(parseOwnerCapturePolicy(JSON.stringify(policy))?.readerUserId).toBe(
       READER,

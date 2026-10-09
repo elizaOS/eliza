@@ -3,6 +3,74 @@
  */
 import type { ActionResult } from "@elizaos/core";
 
+export const CURRENT_WEATHER_UNAVAILABLE_REASONS = [
+  "CURRENT_WEATHER_DEADLINE",
+  "CURRENT_WEATHER_EXPLICIT_US_CITY_STATE_REQUIRED",
+  "CURRENT_WEATHER_FORECAST_UNSUPPORTED",
+  "CURRENT_WEATHER_GEOCODER_SHAPE",
+  "CURRENT_WEATHER_NEARBY_STATION_MISSING",
+  "CURRENT_WEATHER_NWS_PLACE_MISMATCH",
+  "CURRENT_WEATHER_PLACE_AMBIGUOUS_OR_MISSING",
+  "CURRENT_WEATHER_PLACE_CONTRADICTORY",
+  "CURRENT_WEATHER_RECEIPT_UNTRACEABLE",
+  "CURRENT_WEATHER_RECENT_VERIFIED_OBSERVATION_MISSING",
+  "CURRENT_WEATHER_SOURCE_UNAVAILABLE",
+  "CURRENT_WEATHER_STATION_COLLECTION_SCOPE",
+  "CURRENT_WEATHER_STATION_COLLECTION_SHAPE",
+] as const;
+export type CurrentWeatherUnavailableReason = (typeof CURRENT_WEATHER_UNAVAILABLE_REASONS)[number];
+export function isCurrentWeatherUnavailableReason(
+  value: unknown,
+): value is CurrentWeatherUnavailableReason {
+  return (
+    typeof value === "string" &&
+    (CURRENT_WEATHER_UNAVAILABLE_REASONS as readonly string[]).includes(value)
+  );
+}
+
+export type CurrentWeatherSourceDiagnostic = {
+  hop: "geocoder" | "points" | "stations" | "observation";
+  outcome: "ok" | "http-error" | "timeout" | "network" | "body-limit" | "shape" | "validation";
+  httpStatus?: number;
+  elapsedMs?: number;
+};
+/** Rebuild only closed transport categories, never error strings, URLs, headers or provider bodies. */
+export function parseCurrentWeatherSourceDiagnostics(
+  value: unknown,
+): CurrentWeatherSourceDiagnostic[] | undefined {
+  if (!Array.isArray(value) || value.length > 5) return undefined;
+  const rows: CurrentWeatherSourceDiagnostic[] = [];
+  for (const row of value) {
+    if (
+      !row ||
+      typeof row !== "object" ||
+      Array.isArray(row) ||
+      Object.keys(row).some(
+        (key) => !["hop", "outcome", "httpStatus", "elapsedMs"].includes(key),
+      ) ||
+      !["geocoder", "points", "stations", "observation"].includes(row.hop) ||
+      !["ok", "http-error", "timeout", "network", "body-limit", "shape", "validation"].includes(
+        row.outcome,
+      ) ||
+      (row.httpStatus !== undefined &&
+        (!Number.isInteger(row.httpStatus) || row.httpStatus < 100 || row.httpStatus > 599)) ||
+      (row.elapsedMs !== undefined &&
+        (typeof row.elapsedMs !== "number" ||
+          !Number.isFinite(row.elapsedMs) ||
+          row.elapsedMs < 0 ||
+          row.elapsedMs > 6000))
+    )
+      return undefined;
+    rows.push({
+      hop: row.hop,
+      outcome: row.outcome,
+      ...(row.httpStatus === undefined ? {} : { httpStatus: row.httpStatus }),
+      ...(row.elapsedMs === undefined ? {} : { elapsedMs: row.elapsedMs }),
+    });
+  }
+  return rows;
+}
+
 export const CURRENT_WEATHER_LIMITS = Object.freeze({
   totalMs: 6000,
   requestMs: 1500,
@@ -322,8 +390,15 @@ export async function runCurrentUsWeatherSearch(
   const now = options.now ?? Date.now;
   const started = now();
   const target = parseExplicitUsWeatherQuery(query);
-  const unavailable = (code: string): ActionResult => {
+  const sourceDiagnostics: CurrentWeatherSourceDiagnostic[] = [];
+  const unavailable = (code: CurrentWeatherUnavailableReason): ActionResult => {
     options.signal?.throwIfAborted();
+    const last = sourceDiagnostics.at(-1);
+    if (
+      last?.outcome === "ok" &&
+      !["CURRENT_WEATHER_DEADLINE", "CURRENT_WEATHER_SOURCE_UNAVAILABLE"].includes(code)
+    )
+      last.outcome = "validation";
     return {
       success: false,
       text: "A recent, location-matched weather observation is unavailable.",
@@ -333,6 +408,9 @@ export async function runCurrentUsWeatherSearch(
         query,
         observedAt: now(),
         unavailableReason: code,
+        ...(sourceDiagnostics.length
+          ? { sourceDiagnostics: sourceDiagnostics.map((row) => ({ ...row })) }
+          : {}),
       },
     };
   };
@@ -348,7 +426,7 @@ export async function runCurrentUsWeatherSearch(
   let requests = 0;
   let bytes = 0;
   const cacheKey = fold(target.city) + ":" + target.state;
-  async function get(url: string): Promise<unknown> {
+  async function get(url: string, hop: CurrentWeatherSourceDiagnostic["hop"]): Promise<unknown> {
     signal.throwIfAborted();
     if (
       ++requests > CURRENT_WEATHER_LIMITS.requests ||
@@ -365,6 +443,10 @@ export async function runCurrentUsWeatherSearch(
       !["dashboard.waterdata.usgs.gov", "api.weather.gov"].includes(u.hostname)
     )
       throw new Error("CURRENT_WEATHER_URL_SCOPE");
+    const requestStarted = now();
+    const diagnostic: CurrentWeatherSourceDiagnostic = { hop, outcome: "network", elapsedMs: 0 };
+    sourceDiagnostics.push(diagnostic);
+    let phase: CurrentWeatherSourceDiagnostic["outcome"] = "network";
     const request = new AbortController();
     const timeout = setTimeout(
       () => request.abort(new Error("CURRENT_WEATHER_REQUEST_DEADLINE")),
@@ -385,7 +467,13 @@ export async function runCurrentUsWeatherSearch(
         }),
         active,
       );
-      if (!response.ok || !response.body) throw new Error("CURRENT_WEATHER_HTTP_UNAVAILABLE");
+      diagnostic.httpStatus = response.status;
+      if (!response.ok) {
+        phase = "http-error";
+        throw new Error("CURRENT_WEATHER_HTTP_UNAVAILABLE");
+      }
+      phase = "shape";
+      if (!response.body) throw new Error("CURRENT_WEATHER_HTTP_UNAVAILABLE");
       const contentType = (response.headers.get("content-type") ?? "")
         .split(";")[0]
         .trim()
@@ -398,6 +486,7 @@ export async function runCurrentUsWeatherSearch(
       const blocks: Uint8Array[] = [];
       let local = 0;
       while (true) {
+        phase = "network";
         const next = await controlled(reader.read(), active);
         if (next.done) break;
         local += next.value.byteLength;
@@ -405,8 +494,10 @@ export async function runCurrentUsWeatherSearch(
         if (
           local > CURRENT_WEATHER_LIMITS.bodyBytes ||
           bytes > CURRENT_WEATHER_LIMITS.totalBodyBytes
-        )
+        ) {
+          phase = "body-limit";
           throw new Error("CURRENT_WEATHER_BODY_BOUND");
+        }
         blocks.push(next.value);
       }
       const body = new Uint8Array(local);
@@ -415,8 +506,18 @@ export async function runCurrentUsWeatherSearch(
         body.set(block, offset);
         offset += block.length;
       }
-      return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body));
+      phase = "shape";
+      const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body));
+      diagnostic.outcome = "ok";
+      return value;
+    } catch (error) {
+      diagnostic.outcome = active.aborted ? "timeout" : phase;
+      throw error;
     } finally {
+      diagnostic.elapsedMs = Math.min(
+        CURRENT_WEATHER_LIMITS.totalMs,
+        Math.max(0, now() - requestStarted),
+      );
       clearTimeout(timeout);
       // Stop even an unread non-OK/wrong-MIME body. Cleanup is deliberately
       // non-blocking and cannot replace the original read/cancellation error.
@@ -443,7 +544,7 @@ export async function runCurrentUsWeatherSearch(
       geo.searchParams.set("include", "gnis");
       geo.searchParams.set("states", target.state);
       geo.searchParams.set("maxSuggestions", "20");
-      const suggestions = await get(geo.href);
+      const suggestions = await get(geo.href, "geocoder");
       if (!Array.isArray(suggestions) || suggestions.length > 20)
         return unavailable("CURRENT_WEATHER_GEOCODER_SHAPE");
       const matches = suggestions.map(record).filter(
@@ -494,6 +595,7 @@ export async function runCurrentUsWeatherSearch(
           place.latitude.toFixed(4) +
           "," +
           place.longitude.toFixed(4),
+        "points",
       );
       const properties = record(pointBody)?.properties;
       const relative = record(record(record(properties)?.relativeLocation)?.properties);
@@ -511,7 +613,7 @@ export async function runCurrentUsWeatherSearch(
         )
       )
         return unavailable("CURRENT_WEATHER_STATION_COLLECTION_SCOPE");
-      const stationBody = await get(stationUrl);
+      const stationBody = await get(stationUrl, "stations");
       const features = record(stationBody)?.features;
       if (!Array.isArray(features) || features.length > 500)
         return unavailable("CURRENT_WEATHER_STATION_COLLECTION_SHAPE");
@@ -565,7 +667,8 @@ export async function runCurrentUsWeatherSearch(
     for (const station of metadata.stations) {
       try {
         const sourceUrl = "https://api.weather.gov/stations/" + station.id + "/observations/latest";
-        const observation = await get(sourceUrl);
+        const observation = await get(sourceUrl, "observation");
+        sourceDiagnostics.at(-1)!.outcome = "validation";
         const p = record(record(observation)?.properties);
         const t = record(p?.temperature);
         const coords = point(record(observation)?.geometry);
@@ -618,6 +721,7 @@ export async function runCurrentUsWeatherSearch(
           sourceUrl,
         };
         if (!isVerifiedCurrentNwsObservation(value, query, now())) continue;
+        sourceDiagnostics.at(-1)!.outcome = "ok";
         const source = currentNwsObservationSource(value);
         const statement = JSON.parse(source.text).statement as string;
         return {
@@ -632,6 +736,7 @@ export async function runCurrentUsWeatherSearch(
             sources: [source],
             truncated: false,
             weatherObservation: value,
+            sourceDiagnostics: sourceDiagnostics.map((row) => ({ ...row })),
           },
         };
       } catch {

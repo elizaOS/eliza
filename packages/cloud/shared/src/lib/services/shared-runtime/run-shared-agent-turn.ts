@@ -68,6 +68,7 @@ import {
   finalizeSharedRealtimeReply,
   hasSharedRealtimeIntent,
   requireTraceableRealtimeSearch,
+  resolveSharedPublicSearchIntent,
   resolveSharedRealtimeRequirement,
   sharedRealtimePromptPolicy,
 } from "./shared-realtime-grounding";
@@ -1184,6 +1185,11 @@ export async function runSharedAgentTurn(
     actionsEnabled && publicSearchText
       ? resolveSharedRealtimeRequirement(publicSearchText, input.history)
       : undefined;
+  const publicSearchIntent = realtimeRequirement
+    ? { kind: "prefetched" as const, requirement: realtimeRequirement }
+    : actionsEnabled && publicSearchText && !resolution
+      ? resolveSharedPublicSearchIntent(publicSearchText, input.history)
+      : undefined;
   const trustedRealtimeIntent =
     actionsEnabled && publicSearchText
       ? hasSharedRealtimeIntent(publicSearchText, input.history)
@@ -1254,7 +1260,7 @@ export async function runSharedAgentTurn(
           system: buildSharedRuntimeSystem(
             input.character,
             {
-              webSearch: Boolean(realtimeRequirement),
+              webSearch: Boolean(publicSearchIntent),
               reminders: remindersEnabled,
               todos: todosEnabled,
               media:
@@ -1316,7 +1322,8 @@ export async function runSharedAgentTurn(
       error,
     );
   }
-  if (realtimeRequirement) {
+  if (publicSearchIntent) {
+    realtimeGrounding ??= sharedPublicWebGrounding(turn.actionResults ?? []);
     const groundedReply = finalizeSharedRealtimeReply(
       turn.reply,
       realtimeGrounding,
@@ -1468,7 +1475,9 @@ export async function runSharedAgentTurnStream(
   if (
     requiredAction ||
     (actionsEnabled &&
-      ((publicSearchText && hasSharedRealtimeIntent(publicSearchText, input.history)) ||
+      ((publicSearchText &&
+        (resolveSharedPublicSearchIntent(publicSearchText, input.history) ||
+          hasSharedRealtimeIntent(publicSearchText, input.history))) ||
         (!publicSearchText && hasSharedRealtimeIntent(message, input.history))))
   ) {
     const turn = await runSharedAgentTurn(input);

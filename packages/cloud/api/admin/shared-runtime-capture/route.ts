@@ -19,6 +19,7 @@ const PRIVATE_HEADERS = {
   Pragma: "no-cache",
   "X-Content-Type-Options": "nosniff",
   Vary: "Authorization, Cookie",
+  "Referrer-Policy": "no-referrer",
 };
 const app = new Hono<AppEnv>();
 app.use("*", async (c, next) => {
@@ -26,7 +27,7 @@ app.use("*", async (c, next) => {
     c.header(name, value);
   await next();
 });
-app.post("/read", bodyLimit({ maxSize: 4096 }), async (c) => {
+app.on(["GET", "POST"], "/read", bodyLimit({ maxSize: 4096 }), async (c) => {
   const user = await requireUserOrApiKeyWithOrg(c);
   const policyValue = (c.env as unknown as Record<string, unknown>)
     .SHARED_OWNER_MODEL_CAPTURE_POLICY;
@@ -55,10 +56,35 @@ app.post("/read", bodyLimit({ maxSize: 4096 }), async (c) => {
   }
 
   let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "Invalid capture request" }, 400);
+  if (c.req.method === "GET") {
+    // UUID locators are not authorization. Browser reads still use the exact
+    // authenticated policy reader and the same canonical owner/room/store gates.
+    const url = new URL(c.req.url);
+    const query = url.searchParams;
+    if (
+      new TextEncoder().encode(url.search).byteLength > 4096 ||
+      !["sessionId", "captureId,sessionId"].includes(
+        [...query.keys()].sort().join(","),
+      )
+    ) {
+      return c.json({ error: "Invalid capture request" }, 400);
+    }
+    body = {
+      sessionId: query.get("sessionId"),
+      ...(query.has("captureId") ? { captureId: query.get("captureId") } : {}),
+      // Native Personal DM uses its canonical personal agent id as the raw room.
+      // GET intentionally cannot choose another conversation or carry private text.
+      roomKey: personalSharedAgentId({
+        organizationId: policy.organizationId,
+        userId: policy.userId,
+      }),
+    };
+  } else {
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid capture request" }, 400);
+    }
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return c.json({ error: "Invalid capture request" }, 400);
