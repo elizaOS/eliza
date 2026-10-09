@@ -111,17 +111,15 @@ export function createInteractiveTaskHandler(options: {
         // Close still reaches a paused task, so the host removes its guide.
         if (
           task &&
-          (["completed", "cancelled"].includes(task.status) ||
-            (task.status === "paused" && !close))
+          !["completed", "cancelled"].includes(task.status) &&
+          (task.status !== "paused" || close)
         )
-          return json(200, { task: view(task) });
-        if (task)
           task = options.runtime.control(
             task.id,
             task.revision,
             close ? "close" : "pause",
           );
-        if (task) await options.runtime.settle(task.id);
+        await options.runtime.settle(task?.id);
         if (!(await authenticated(request)))
           return json(401, { code: "TASK_UNAUTHORIZED" });
         return json(200, { task: task ? view(task) : null });

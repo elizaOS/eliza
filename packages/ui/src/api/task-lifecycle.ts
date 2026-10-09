@@ -142,7 +142,7 @@ export class TaskLifecycle {
 
   async refresh() {
     // A background read must never supersede a user control.
-    if (this.state.pending) return;
+    if (this.state.pending || this.starting) return;
     const ticket = ++this.generation;
     try {
       const task = taskFrom(await this.request("/tasks/current"));
@@ -174,21 +174,25 @@ export class TaskLifecycle {
         return task;
       });
     const starting = this.starting;
-    const task = await pause();
+    let task: TaskView | null = null;
+    try {
+      task = await pause();
+    } catch (error) {
+      // A pending creation must still be paused after an uncertain first reply.
+      if (!starting) throw error;
+    }
     if (ticket !== this.generation) return false;
     this.publish({ task, pending: !!starting, error: "" });
     if (starting) {
-      let created: TaskView | null = null;
       try {
-        created = await starting;
+        await starting;
       } catch {
         /* Pause the current task below either way. */
       }
       if (ticket !== this.generation) return false;
-      const latest =
-        created && ["active", "waiting", "blocked"].includes(created.status)
-          ? await pause()
-          : task;
+      // A missing start reply cannot prove that creation had no effect.
+      // Reconcile with the host even when that request rejected.
+      const latest = await pause();
       if (ticket !== this.generation) return false;
       this.publish({ task: latest ?? task, pending: false, error: "" });
     }
@@ -200,7 +204,10 @@ export class TaskLifecycle {
     const ticket = ++this.generation;
     this.publish({ ...this.state, pending: true, error: "" });
     if (command === "pause" || command === "close")
-      return this.pauseCurrent(command, ticket).catch(() => {
+      return withTimeout(
+        this.pauseCurrent(command, ticket),
+        TASK_PAUSE_TIMEOUT_MS,
+      ).catch(() => {
         if (ticket === this.generation)
           this.publish({
             ...this.state,

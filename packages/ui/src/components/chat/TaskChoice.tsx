@@ -103,17 +103,12 @@ export function TaskChoice({
     const ticket = generation.current;
     try {
       await onChoose(value);
-      if (ticket === generation.current) {
-        const label = widget.block.options.find(
-          (option) => option.value === value,
-        )?.label;
-        if (label !== undefined) onAccepted?.(label);
-      }
     } catch {
       if (ticket === generation.current) {
         setFailed(true);
         setChosen(null);
       }
+      return;
     } finally {
       if (
         ticket === generation.current &&
@@ -122,6 +117,13 @@ export function TaskChoice({
         locked.current = false;
         setBusy(false);
       }
+    }
+    // Presentation failure cannot turn an acknowledged choice into a retry.
+    if (ticket === generation.current) {
+      const label = widget.block.options.find(
+        (option) => option.value === value,
+      )?.label;
+      if (label !== undefined) onAccepted?.(label);
     }
   }
   if (taskId !== widget.taskId) return null;
