@@ -5,7 +5,7 @@ import {
   openSync,
   readFileSync,
   renameSync,
-  writeSync,
+  writeFileSync,
 } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { BillHostError } from "./errors.mjs";
@@ -19,7 +19,7 @@ function outcomeJournal(path) {
   const append = (entry) => {
     const fd = openSync(path, "a", 0o600);
     try {
-      writeSync(fd, `${JSON.stringify(entry)}\n`);
+      writeFileSync(fd, `${JSON.stringify(entry)}\n`);
       fsyncSync(fd);
     } finally {
       closeSync(fd);
@@ -34,12 +34,15 @@ function outcomeJournal(path) {
       throw error;
     }
     const entries = [];
-    for (const line of text.split("\n")) {
-      if (!line) continue;
+    const lines = text.split("\n");
+    // An append is acknowledged only after its newline and fsync. Preserve
+    // every complete record; only an unfinished final append can be ignored.
+    lines.pop();
+    for (const line of lines) {
       try {
         entries.push(JSON.parse(line));
       } catch {
-        // Only an interrupted final append can be torn. It was never acknowledged.
+        throw new BillHostError("Invalid outcome journal");
       }
     }
     return entries;
@@ -48,7 +51,7 @@ function outcomeJournal(path) {
     const temporary = `${path}.${randomUUID()}.tmp`;
     const fd = openSync(temporary, "wx", 0o600);
     try {
-      writeSync(fd, entries.map((e) => `${JSON.stringify(e)}\n`).join(""));
+      writeFileSync(fd, entries.map((e) => `${JSON.stringify(e)}\n`).join(""));
       fsyncSync(fd);
     } finally {
       closeSync(fd);
@@ -217,20 +220,22 @@ export function createBillOutcomeStore(db, tasks, { journalPath } = {}) {
         typeof entry.taskId !== "string" ||
         typeof entry.ownerKey !== "string"
       )
-        continue;
+        throw new BillHostError("Invalid outcome journal entry");
+      const record = validate(entry.record);
       const row = db
         .prepare(
           "SELECT document FROM bill_outcomes_v1 WHERE task_id=? AND owner_key=?",
         )
         .get(entry.taskId, entry.ownerKey);
-      if (row) continue;
-      try {
-        pending.set(
-          JSON.stringify([entry.ownerKey, entry.taskId]),
-          validate(entry.record),
-        );
-        unsaved.push(entry);
-      } catch {}
+      if (row) {
+        if (!isDeepStrictEqual(validate(JSON.parse(row.document)), record))
+          throw new BillHostError(
+            "Outcome journal conflicts with saved record",
+          );
+        continue;
+      }
+      pending.set(JSON.stringify([entry.ownerKey, entry.taskId]), record);
+      unsaved.push(entry);
     }
     journal.replace(unsaved);
   }

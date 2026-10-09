@@ -291,6 +291,11 @@ test("a look-alike bill is reported as a conflicting source with safe facts only
   assert.equal(both.status, "candidate");
   assert.equal(both.candidates[0].facts.origin, "https://water.example");
   assert.equal(both.conflicts.length, 1);
+  const all = await fixture({
+    messages: Array.from({ length: 6 }, (_, i) => message(`other${i}`)),
+    text: (id) => body.replace("Water Test", `Other ${id}`),
+  }).discovery.discover(context, signal());
+  assert.equal(all.conflicts.length, 6);
 });
 test("provider read failures still fail the whole search with a typed reason", async () => {
   const f = fixture({

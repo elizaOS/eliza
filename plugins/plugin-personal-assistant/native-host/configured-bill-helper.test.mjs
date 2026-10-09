@@ -5,10 +5,12 @@ import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 import {
   controls,
   deriveBillDecision,
 } from "../test/fixtures/bill-host/policy.mjs";
+import { buildTaskRuntime } from "../test/fixtures/bill-host/runtime.mjs";
 import { BillCodeCoordinator } from "./bill-code-coordinator.mjs";
 import { createConfiguredBillHelper } from "./configured-bill-helper.mjs";
 
@@ -326,60 +328,35 @@ test("revocation and ordinary commands never wait for registration or retry", as
   }
 });
 
-/** A resolver shaped like GoogleTaskCodeResolver over the configured read port. */
-function codeResolver({ google }) {
-  const values = new Map();
-  return {
-    async resolve(context) {
-      const page = await google.service.searchGmailMessagesPage({
-        accountId: context.accountId,
-        query: context.searchQuery,
-        pageSize: 10,
-      });
-      const codes = [];
-      for (const summary of page.messages) {
-        const detail = await google.service.getGmailMessageDetail({
-          accountId: context.accountId,
-          messageId: summary.externalId,
-        });
-        const parsed = google.parse(detail, context);
-        if (parsed?.challengeId === context.challengeId) codes.push(parsed);
-      }
-      const live = codes.filter((code) => code.expiresAt > Date.now());
-      if (live.length > 1) return { status: "ambiguous" };
-      if (!live.length) return { status: codes.length ? "expired" : "missing" };
-      const valueRef = `ref:${values.size}`;
-      values.set(valueRef, live[0].code);
-      return { status: "ready", valueRef, expiresAt: live[0].expiresAt };
-    },
-    async consumeForFill(valueRef) {
-      const value = values.get(valueRef);
-      values.delete(valueRef);
-      return value;
-    },
-    revoke() {
-      values.clear();
-    },
-  };
-}
-
 test("configured emailed-code policy reaches the helper and fills only one current code", async (t) => {
   const f = await fixture(t);
+  const bundle = join(f.root, "task-runtime.mjs");
+  buildTaskRuntime(bundle);
+  const { GoogleTaskCodeResolver } = await import(pathToFileURL(bundle));
   let connected = "grant-a";
   const mailbox = new Map();
   const reads = [];
+  const summary = (externalId) => ({
+    externalId,
+    fromEmail: "security@biller.example",
+    to: ["person@example.org"],
+    receivedAt: new Date().toISOString(),
+  });
   const googleReadPort = {
     currentAccountId: async () => connected,
     async searchGmailMessagesPage(input) {
       reads.push(input.accountId);
       return {
-        messages: [...mailbox.keys()].map((externalId) => ({ externalId })),
+        messages: [...mailbox.keys()].map(summary),
         nextPageToken: null,
       };
     },
     async getGmailMessageDetail(input) {
       reads.push(input.accountId);
-      return { bodyText: mailbox.get(input.messageId) };
+      return {
+        message: summary(input.messageId),
+        bodyText: mailbox.get(input.messageId),
+      };
     },
   };
   const parse = (detail) => {
@@ -471,7 +448,12 @@ test("configured emailed-code policy reaches the helper and fills only one curre
         observation: { id: "observation", version: 1, inputRevision: 0 },
       }),
     },
-    resolver: codeResolver({ google }),
+    resolver: new GoogleTaskCodeResolver({
+      google: google.service,
+      parse: google.parse,
+      authorize: async (context) =>
+        context.accountId === (await google.accountForTask(task)),
+    }),
     challengeProvider: google.challengeForBill,
     resolveGoogleAccount: google.accountForTask,
   });

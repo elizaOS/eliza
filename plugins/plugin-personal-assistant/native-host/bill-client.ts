@@ -124,7 +124,6 @@ export function readBillSourceOffer(
       (!Number.isSafeInteger(v.unreadable) || v.unreadable < 1)) ||
     (v.conflicts !== undefined &&
       (!Array.isArray(v.conflicts) ||
-        v.conflicts.length > 5 ||
         v.conflicts.some(
           (c) =>
             ![c?.company, c?.accountLabel, c?.origin].every(

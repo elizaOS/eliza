@@ -150,10 +150,7 @@ function validateResult(result, task) {
   )
     throw fail();
   const candidates = result.candidates.map((c) => validateCandidate(c, task));
-  if (
-    result.conflicts !== undefined &&
-    (!Array.isArray(result.conflicts) || result.conflicts.length > 5)
-  )
+  if (result.conflicts !== undefined && !Array.isArray(result.conflicts))
     throw fail();
   // Look-alike messages: only the identity facts, for the person to compare.
   const conflicts = result.conflicts?.map((c) => {

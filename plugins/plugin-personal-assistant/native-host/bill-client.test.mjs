@@ -389,9 +389,15 @@ test("source offers carry arrival order, optional due dates and look-alike sourc
     ).conflicts[0].origin,
     "https://lookalike.example",
   );
+  assert.equal(
+    readBillSourceOffer(
+      { ...offer(), conflicts: Array(6).fill(conflict) },
+      validators,
+    ).conflicts.length,
+    6,
+  );
   for (const patch of [
     { conflicts: [{ ...conflict, origin: "" }] },
-    { conflicts: Array(6).fill(conflict) },
     { unreadable: 0 },
     { candidates: [{ ...newest, mostRecent: false }] },
     { candidates: [{ ...newest, receivedAt: "yesterday" }] },

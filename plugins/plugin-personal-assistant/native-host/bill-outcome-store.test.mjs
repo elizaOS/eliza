@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  appendFileSync,
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -226,6 +233,16 @@ test("an outcome whose INSERT fails is journaled first and recovered after a res
     db.exec("DROP TRIGGER fail_outcome");
     db.close();
     ({ db, tasks, runtime } = f.open());
+    const acknowledged = readFileSync(f.journalPath, "utf8");
+    appendFileSync(f.journalPath, "corrupt acknowledged record\n");
+    const corrupt = readFileSync(f.journalPath, "utf8");
+    assert.throws(
+      () => createBillOutcomeStore(db, tasks, { journalPath: f.journalPath }),
+      /Invalid outcome journal/,
+    );
+    assert.equal(readFileSync(f.journalPath, "utf8"), corrupt);
+    // Repair the fixture, then model a torn, unacknowledged final append.
+    writeFileSync(f.journalPath, `${acknowledged}{"partial":`);
     const recovered = createBillOutcomeStore(db, tasks, {
       journalPath: f.journalPath,
     }).forTask(runtime, f.task.id);

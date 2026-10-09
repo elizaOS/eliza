@@ -221,12 +221,15 @@ test("look-alike sources and newest-first facts survive an offer; a conflicting 
   const conflicting = {
     status: "conflicting-source",
     candidates: [],
-    conflicts: [conflict],
+    conflicts: Array.from({ length: 6 }, (_, i) => ({
+      ...conflict,
+      company: `Other ${i}`,
+    })),
     unreadable: 1,
   };
   const offer = f.api.offer(conflicting, f.task.revision);
   assert.equal(offer.status, "conflicting-source");
-  assert.deepEqual(offer.conflicts, [conflict]);
+  assert.deepEqual(offer.conflicts, conflicting.conflicts);
   assert.equal(offer.unreadable, 1);
   assert.throws(() =>
     f.api.select(

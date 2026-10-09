@@ -1648,7 +1648,8 @@ export function createCloudRoutes({
         // A spoken secret never reaches the renderer's draft.
         try {
           requireNonSensitiveText(text);
-        } catch {
+        } catch (error) {
+          if (error?.code !== "SENSITIVE_TEXT") throw error;
           send(res, 200, { text: "", redacted: true });
           return true;
         }

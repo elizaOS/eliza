@@ -25,7 +25,6 @@ const failureReason = (error) =>
     : BILL_SOURCE_FAILURE_REASONS.includes(error?.code)
       ? error.code
       : "unavailable";
-const MAX_CONFLICTS = 5;
 const hash = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const text = (v, max = 300) =>
@@ -308,8 +307,7 @@ export class BillSourceDiscovery {
             }
             if (value.conflict) {
               const key = hash(value.conflict);
-              if (!conflicts.has(key) && conflicts.size < MAX_CONFLICTS)
-                conflicts.set(key, value.conflict);
+              if (!conflicts.has(key)) conflicts.set(key, value.conflict);
               continue;
             }
             const version = hash(value.facts),

@@ -686,7 +686,11 @@ function googleHost(t, google) {
       speechLanguage: null,
       multipartPrefix: "independent-host",
       requireNonSensitiveText(text) {
-        if (/\d{6}/.test(text)) throw new Error("sensitive");
+        if (google.policyFailure) throw new Error("private policy failure");
+        if (/\d{6}/.test(text))
+          throw Object.assign(new Error("sensitive"), {
+            code: "SENSITIVE_TEXT",
+          });
       },
       pickMessage: (value) => ({ id: value.externalId }),
     },
@@ -900,6 +904,11 @@ test("a heard secret is withheld from the transcript and flagged", async (t) => 
     text: "",
     redacted: true,
   });
+  google.policyFailure = true;
+  const failed = await post("/voice/stt", audio);
+  assert.equal(failed.status, 502);
+  assert.deepEqual(await failed.json(), { error: "Cloud service unavailable" });
+  google.policyFailure = false;
   google.transcript = "call my daughter";
   assert.deepEqual(await (await post("/voice/stt", audio)).json(), {
     text: "call my daughter",
