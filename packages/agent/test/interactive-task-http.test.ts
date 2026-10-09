@@ -581,3 +581,84 @@ it("does not deliver a choice when an authenticated pause finishes during refres
     storage.close();
   }
 });
+
+it("Pause is one request that does not wait for a pending start, and pauses the task that start creates", async () => {
+  const f = setup();
+  const runtime = new InteractiveTaskRuntime({
+    owner,
+    store: f.store,
+    actuator: {
+      capabilities: [],
+      observe: async () => {
+        throw new Error("unexpected observe");
+      },
+      execute: async () => {
+        throw new Error("unexpected execute");
+      },
+      quiesce: async () => {},
+    },
+  });
+  const created = deferred<void>();
+  const authorizing = deferred<void>();
+  const http = await listenTaskHttp(
+    createInteractiveTaskHandler({
+      runtime,
+      authenticate: async () => owner,
+      authorizeGoal: async (ref) => {
+        authorizing.resolve();
+        await created.promise;
+        return goal(ref);
+      },
+    }),
+  );
+  const paths: string[] = [];
+  const client = new TaskLifecycle(
+    async (path, body) => {
+      paths.push(path);
+      const response = await http.call(path, body);
+      if (!response.ok) throw new Error(`Task HTTP ${response.status}`);
+      return response.json();
+    },
+    () => {},
+    {
+      start: "start failed",
+      pause: "pause failed",
+      resume: "resume failed",
+      cancel: "cancel failed",
+    },
+  );
+  try {
+    for (const body of [{ reason: "pause" }, { reason: "close", extra: 1 }])
+      expect((await http.call("/tasks/current/pause", body)).status).toBe(400);
+    expect(await (await http.call("/tasks/current/pause", {})).json()).toEqual({
+      task: null,
+    });
+    const starting = client.start("bill");
+    await authorizing.promise;
+    paths.length = 0;
+    let paused = false;
+    const pausing = client.control("pause").then((value) => {
+      paused = value;
+      return value;
+    });
+    // The pause request is answered while the start is still pending.
+    while (!paths.includes("/tasks/current/pause"))
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(paused).toBe(false);
+    created.resolve();
+    expect(await starting).toBe(false);
+    expect(await pausing).toBe(true);
+    // The task that start created is paused, not left running.
+    expect(runtime.get("task-1").status).toBe("paused");
+    expect(
+      paths.filter((path) => path === "/tasks/current/pause"),
+    ).toHaveLength(2);
+    expect(paths.some((path) => /\/tasks\/task-1\/pause$/.test(path))).toBe(
+      false,
+    );
+  } finally {
+    created.resolve();
+    await http.close();
+    f.close();
+  }
+});
