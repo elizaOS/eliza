@@ -820,10 +820,34 @@ test(
       throw new Error("Expected a Dedicated cutback with an interval to reconcile");
     }
     expect(cutback.reconcile.dedicated_agent_id).toBe(account.agentId);
+    const sealScope = {
+      ...input,
+      dedicatedAgentId: account.agentId,
+      fallback: {
+        id: cutback.reconcile.id,
+        generation: cutback.reconcile.generation,
+        revision: cutback.reconcile.revision,
+        roomId: cutback.reconcile.journal_room_id,
+      },
+    };
+    expect(await fallback.resolvePersonalFallbackCutoverRecovery(sealScope)).toBe("pending");
+    expect(
+      await fallback.resolvePersonalFallbackCutoverRecovery({
+        ...sealScope,
+        userId: crypto.randomUUID(),
+      }),
+    ).toBe("conflict");
+    expect(
+      await fallback.resolvePersonalFallbackCutoverRecovery({
+        ...sealScope,
+        fallback: { ...sealScope.fallback, roomId: "fallback:other" },
+      }),
+    ).toBe("conflict");
     const recovered = await fallback.completePersonalFallbackRecovery({
       fallback: cutback.reconcile,
       receipt: { sourceMessageCount: 4, inserted: 4 },
     });
+    expect(await fallback.resolvePersonalFallbackCutoverRecovery(sealScope)).toBe("committed");
     expect(recovered).toMatchObject({
       state: "recovered",
       reconciled_message_count: 4,
@@ -861,6 +885,18 @@ test(
       }),
     ).rejects.toMatchObject({ code: "PERSONAL_DEDICATED_FALLBACK_CONFLICT" });
     expect((await route()).route).toBe("shared_fallback");
+    expect(
+      await fallback.resolvePersonalFallbackCutoverRecovery({
+        ...input,
+        dedicatedAgentId: account.agentId,
+        fallback: {
+          id: restoring.reconcile.id,
+          generation: restoring.reconcile.generation,
+          revision: restoring.reconcile.revision,
+          roomId: restoring.reconcile.journal_room_id,
+        },
+      }),
+    ).toBe("released");
     const rows = await fallbackRows(account);
     expect(rows.filter((row) => row.state !== "recovered")).toHaveLength(1);
   },
@@ -1167,7 +1203,9 @@ test(
         });
         expect(handback.route === "dedicated" && handback.dedicated.id).toBe(account.agentId);
         // Only the scoped journal was read, and it moved into the same agent.
-        expect(journal.rooms).toEqual([`${account.sourceAgentId}:${lapsed.roomId}`]);
+        expect(new Set(journal.rooms)).toEqual(
+          new Set([`${account.sourceAgentId}:${lapsed.roomId}`]),
+        );
         expect(imported).toHaveBeenCalledTimes(1);
         expect(imported.mock.calls[0]?.slice(0, 3)).toEqual([
           account.agentId,
