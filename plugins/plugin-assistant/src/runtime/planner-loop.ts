@@ -4876,17 +4876,12 @@ async function dispatchPlannerModelCall(params: {
     const envelope = isPlainObject(parsed.raw.parsedText)
       ? parsed.raw.parsedText
       : parsed.raw;
-    if (
-      envelope.messageToUser !== undefined &&
-      typeof envelope.messageToUser !== "string"
-    ) {
-      const sourceReply = resolveSuppliedSourceReply(
-        envelope.messageToUser,
-        params.sourceReply.scope,
-        params.sourceReply.sources,
-      );
-      return { ...parsed, messageToUser: sourceReply.text, sourceReply };
-    }
+    const sourceReply = resolveSuppliedSourceReply(
+      envelope.messageToUser,
+      params.sourceReply.scope,
+      params.sourceReply.sources,
+    );
+    return { ...parsed, messageToUser: sourceReply.text, sourceReply };
   }
   return parsed;
 }

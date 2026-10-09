@@ -81,13 +81,23 @@ async function fixture(
     owner = randomUUID(),
     roomId = randomUUID() as UUID,
     conversationId = randomUUID();
-  const model = vi.fn(async (_type?: unknown, _params?: unknown) =>
-    JSON.stringify({
+  const model = vi.fn(async (_type?: unknown, params?: unknown) => {
+    const hasBody = JSON.stringify(
+      (params as { messages?: unknown[] } | undefined)?.messages,
+    ).includes("Closed synthetic body.");
+    return JSON.stringify({
       completed: true,
       toolCalls: [],
-      messageToUser: "The note says: “Closed synthetic body.”",
-    }),
-  );
+      messageToUser: hasBody
+        ? [{ kind: "source", value: "approved_note_body" }]
+        : [
+            {
+              kind: "text",
+              value: "The selected note has no body text.",
+            },
+          ],
+    });
+  });
   const runtime = new AgentRuntime({
     agentId,
     character: { name: "Closed native read reply", bio: [] },
@@ -337,7 +347,7 @@ it("uses the approved immutable snapshot in one actual no-tools reply and caches
       new AbortController().signal,
     );
     expect(reply).toMatchObject({
-      text: "The note says: “Closed synthetic body.”",
+      text: "Closed synthetic body.",
       conversationId: f.conversationId,
       inReplyTo: f.original.id,
     });
@@ -471,7 +481,7 @@ it("the explicit original completion RPC persists its distinct canonical same-ro
     expect(status).toBe(200);
     expect(body).toMatchObject({
       reply: {
-        text: "The note says: “Closed synthetic body.”",
+        text: "Closed synthetic body.",
         conversationId: f.conversationId,
         inReplyTo: f.original.id,
       },
