@@ -386,6 +386,9 @@ function swapEnvSetting(key: string): string | undefined {
 }
 
 export class AgentRuntime implements IAgentRuntime {
+	static readonly ownerToolExecutionObserverVersion = 1 as const;
+	readonly ownerToolExecutionObserverVersion = 1 as const;
+	ownerToolExecutionObserver?: IAgentRuntime["ownerToolExecutionObserver"];
 	private readonly dataMutations = new RuntimeDataMutations(this, {
 		invalidateTurnEntityDetails: (...args) =>
 			this.invalidateTurnEntityDetails(...args),

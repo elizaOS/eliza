@@ -668,7 +668,11 @@
     "./lib/auth/verified-phone-account": "./src/lib/auth/verified-phone-account.ts",
     "./lib/services/shared-runtime/network-membership-client": "./src/lib/services/shared-runtime/network-membership-client.ts",
     "./lib/services/shared-runtime/network-shared-turn": "./src/lib/services/shared-runtime/network-shared-turn.ts",
-    "./lib/services/shared-runtime/network-shared-context": "./src/lib/services/shared-runtime/network-shared-context.ts"
+    "./lib/services/shared-runtime/network-shared-context": "./src/lib/services/shared-runtime/network-shared-context.ts",
+    "./lib/services/shared-runtime/shared-owner-model-capture": "./src/lib/services/shared-runtime/shared-owner-model-capture.ts",
+    "./lib/services/shared-runtime/shared-owner-model-capture-store": "./src/lib/services/shared-runtime/shared-owner-model-capture-store.ts",
+    "./lib/services/shared-runtime/shared-runtime-room-identity": "./src/lib/services/shared-runtime/shared-runtime-room-identity.ts",
+    "./lib/services/shared-runtime/shared-runtime-storage-identity": "./src/lib/services/shared-runtime/shared-runtime-storage-identity.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",

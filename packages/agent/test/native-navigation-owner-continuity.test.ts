@@ -21,16 +21,31 @@ import { authStoreForRuntime } from "../../app/src/services/auth-store.ts";
 import { viewsAction } from "../src/actions/views.ts";
 import { isAuthenticatedInProcessRequest } from "../src/api/in-process-request.ts";
 import { startApiServer } from "../src/api/server.ts";
-import {
-  registerBuiltinViews,
-  registerPluginViews,
-} from "../src/api/views-registry.ts";
+import { registerPluginViews } from "../src/api/views-registry.ts";
 import { _resetAgentHostBridge } from "../src/runtime/host-bridge.ts";
 import { getViewClientScope } from "../src/runtime/view-client-context.ts";
 
-it.each(["stable", "runtime-replaced", "standalone-root"])(
+it.each([
+  "stable",
+  "runtime-replaced",
+  "standalone-root",
+  "native-initial",
+  "native-adopted",
+  "native-replaced",
+])(
   "retains paired navigation authority only while its owning runtime is current: %s",
   async (scenario) => {
+    const native = scenario.startsWith("native-");
+    const target = native ? "photos" : "notes";
+    if (native)
+      vi.stubEnv(
+        "ELIZA_NATIVE_VIEW_DECLARATIONS",
+        JSON.stringify([
+          { id: "photos", label: "Photos", path: "/photos" },
+          { id: "maps", label: "Maps", path: "/maps" },
+          { id: "camera", label: "Camera", path: "/camera" },
+        ]),
+      );
     const directory = await mkdtemp(
       path.join(tmpdir(), "eliza-navigation-auth-"),
     );
@@ -67,8 +82,11 @@ it.each(["stable", "runtime-replaced", "standalone-root"])(
     );
     let server: Awaited<ReturnType<typeof startApiServer>> | undefined,
       otherHost: Awaited<ReturnType<typeof startApiServer>> | undefined,
-      replacement: AgentRuntime | undefined;
+      replacement: AgentRuntime | undefined,
+      predecessor: AgentRuntime | undefined;
     let nestedStatus: number | undefined;
+    let toolStarted = false;
+    let catalogWarmupsBeforeTool = 0;
     let release: () => void = () => {};
     const paused = Promise.withResolvers<void>();
     const resume = new Promise<void>((resolve) => (release = resolve));
@@ -92,7 +110,6 @@ it.each(["stable", "runtime-replaced", "standalone-root"])(
         "local-auth-fixture",
       );
       await runtime.initialize();
-      registerBuiltinViews(runtime);
       await registerPluginViews(
         runtime,
         {
@@ -137,11 +154,32 @@ it.each(["stable", "runtime-replaced", "standalone-root"])(
       const canonical = resolveOwnerEntityIdOrDefault(runtime);
       expect(identity.id).not.toBe(canonical);
       installMobileAuthHostBridge();
+      if (scenario === "native-replaced") {
+        predecessor = new AgentRuntime({
+          character: createCharacter({ name: "Cold predecessor" }),
+          enableAutonomy: false,
+          logLevel: "fatal",
+        });
+        predecessor.registerDatabaseAdapter(
+          SQLiteDatabaseAdapter.create(
+            path.join(directory, "predecessor.sqlite"),
+            predecessor.agentId,
+          ),
+        );
+        await predecessor.initialize();
+      }
       server = await startApiServer({
-        runtime,
+        runtime:
+          scenario === "native-adopted"
+            ? undefined
+            : scenario === "native-replaced"
+              ? predecessor
+              : runtime,
         port: 0,
         skipDeferredStartupWork: true,
         requestMiddleware: async (req, res, dispatch) => {
+          if (!toolStarted && req.url?.startsWith("/api/views"))
+            catalogWarmupsBeforeTool++;
           if (
             scenario === "runtime-replaced" &&
             isAuthenticatedInProcessRequest(req)
@@ -154,11 +192,24 @@ it.each(["stable", "runtime-replaced", "standalone-root"])(
             nestedStatus = res.statusCode;
         },
       });
-      otherHost = await startApiServer({
-        runtime,
-        port: 0,
-        skipDeferredStartupWork: true,
-      });
+      if (scenario === "native-replaced") {
+        const policy = process.env.ELIZA_NATIVE_VIEW_DECLARATIONS;
+        vi.stubEnv("ELIZA_NATIVE_VIEW_DECLARATIONS", "invalid-policy");
+        expect(() => server?.updateRuntime(runtime)).toThrow(
+          "Invalid trusted native view declarations",
+        );
+        const stillCurrent = await fetch(
+          `http://127.0.0.1:${server.port}/api/agents`,
+          { headers: { Authorization: `Bearer ${rootToken}` } },
+        );
+        expect(stillCurrent.status).toBe(200);
+        expect((await stillCurrent.json()).agents[0].id).toBe(
+          predecessor?.agentId,
+        );
+        vi.stubEnv("ELIZA_NATIVE_VIEW_DECLARATIONS", policy);
+      }
+      if (scenario === "native-adopted" || scenario === "native-replaced")
+        server.updateRuntime(runtime);
       const origin = `http://127.0.0.1:${server.port}`;
       vi.stubEnv("ELIZA_API_PORT", String(server.port));
       const request = async (
@@ -191,13 +242,15 @@ it.each(["stable", "runtime-replaced", "standalone-root"])(
       vi.spyOn(service, "handleMessage").mockImplementation(
         async (active, message) => {
           expect(message.entityId).toBe(canonical);
+          expect(catalogWarmupsBeforeTool).toBe(0);
+          toolStarted = true;
           actionExecutions++;
           const action = (await viewsAction.handler(
             active,
             message,
             undefined,
             {
-              parameters: { action: "show", view: "notes" },
+              parameters: { action: "show", view: target },
             },
           )) as ActionResult;
           const scope = getViewClientScope();
@@ -225,7 +278,7 @@ it.each(["stable", "runtime-replaced", "standalone-root"])(
             didRespond: true,
             outcome: { status: "completed", effects: [] },
             responseContent: {
-              text: "Opening Notes.",
+              text: `Opening ${target}.`,
               actions: ["VIEWS_SHOW"],
             },
             responseMessages: [],
@@ -246,7 +299,7 @@ it.each(["stable", "runtime-replaced", "standalone-root"])(
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            text: "Open Notes.",
+            text: `Open ${target}.`,
             clientMessageId: randomUUID(),
             streamProtocol: "delta-v2",
             metadata: {
@@ -273,7 +326,6 @@ it.each(["stable", "runtime-replaced", "standalone-root"])(
           ),
         );
         await replacement.initialize();
-        registerBuiltinViews(replacement);
         await registerPluginViews(
           replacement,
           {
@@ -337,6 +389,13 @@ it.each(["stable", "runtime-replaced", "standalone-root"])(
       expect(handoff?.navigationPrepared).toBe(true);
       const binding = handoff?.navigationBinding;
       if (!binding) throw Error("Prepared binding missing");
+      expect(binding.viewId).toBe(target);
+      // No catalog route or second host may warm this runtime before its first tool.
+      otherHost = await startApiServer({
+        runtime,
+        port: 0,
+        skipDeferredStartupWork: true,
+      });
       const wrong = await request(
         origin,
         "/api/views/interact-claim",
@@ -390,6 +449,8 @@ it.each(["stable", "runtime-replaced", "standalone-root"])(
       _resetAgentHostBridge();
       await replacement?.stop();
       await replacement?.close();
+      await predecessor?.stop();
+      await predecessor?.close();
       await runtime.stop();
       await runtime.close();
       vi.unstubAllEnvs();

@@ -6,6 +6,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { sharedOwnerProfileName } from "../../lib/services/shared-runtime/shared-participant-name";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
 import type { AgentSandboxStatus } from "../schemas/agent-sandboxes";
@@ -16,6 +17,7 @@ import { userIdentities } from "../schemas/user-identities";
 import { users } from "../schemas/users";
 
 export interface ReusablePersonalDelivery {
+  ownerName?: string;
   userId: string;
   organizationId: string;
   dedicatedCandidate: {
@@ -27,6 +29,8 @@ export interface ReusablePersonalDelivery {
 }
 
 interface ReusablePersonalDeliveryRow {
+  owner_nickname: string | null;
+  owner_name: string | null;
   user_id: string;
   organization_id: string;
   dedicated_id: string | null;
@@ -110,6 +114,8 @@ export async function findReusablePersonalDelivery(
     sql`
       SELECT
         canonical.id AS user_id,
+        canonical.nickname AS owner_nickname,
+        canonical.name AS owner_name,
         organization.id AS organization_id,
         dedicated.id AS dedicated_id,
         dedicated.status AS dedicated_status,
@@ -152,8 +158,13 @@ export async function findReusablePersonalDelivery(
   );
 
   if (!row) return null;
+  const ownerName = sharedOwnerProfileName({
+    nickname: row.owner_nickname,
+    name: row.owner_name,
+  });
   if (!row.dedicated_id) {
     return {
+      ...(ownerName ? { ownerName } : {}),
       userId: row.user_id,
       organizationId: row.organization_id,
       dedicatedCandidate: null,
@@ -163,6 +174,7 @@ export async function findReusablePersonalDelivery(
     throw new Error(`Dedicated target ${row.dedicated_id} has no lifecycle status`);
   }
   return {
+    ...(ownerName ? { ownerName } : {}),
     userId: row.user_id,
     organizationId: row.organization_id,
     dedicatedCandidate: {

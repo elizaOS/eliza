@@ -766,7 +766,7 @@ app.post("/", async (c) => {
 
     stage = "account_resolution";
     const accountStartedAt = performance.now();
-    let account: { userId: string; organizationId: string };
+    let account: { userId: string; organizationId: string; ownerName?: string };
     let accountResolution = "phone-query";
     let groupConversationId: string | undefined;
     let groupActorLabel: string | undefined;
@@ -1329,6 +1329,7 @@ app.post("/", async (c) => {
       account = {
         userId: delivery.userId,
         organizationId: delivery.organizationId,
+        ...(delivery.ownerName ? { ownerName: delivery.ownerName } : {}),
       };
       accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
@@ -1348,6 +1349,7 @@ app.post("/", async (c) => {
       account = {
         userId: delivery.userId,
         organizationId: delivery.organizationId,
+        ...(delivery.ownerName ? { ownerName: delivery.ownerName } : {}),
       };
       accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
@@ -1364,6 +1366,7 @@ app.post("/", async (c) => {
       account = {
         userId: delivery.userId,
         organizationId: delivery.organizationId,
+        ...(delivery.ownerName ? { ownerName: delivery.ownerName } : {}),
       };
       accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
@@ -1372,6 +1375,9 @@ app.post("/", async (c) => {
     const agent = personalSharedAgent({
       userId: account.userId,
       organizationId: account.organizationId,
+      ...(!groupConversationId && account.ownerName
+        ? { ownerName: account.ownerName }
+        : {}),
     });
     if (groupConversationId && !groupConversationId.startsWith("group:")) {
       throw new Error("Invalid Personal Shared group conversation authority");

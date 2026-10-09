@@ -25,6 +25,10 @@ export type { ViewRegistryEntry } from "./view-registry-types.ts";
 
 import { BUILTIN_VIEWS } from "./builtin-views.ts";
 import {
+  NATIVE_VIEW_DECLARATIONS_ENV,
+  nativeViewDeclarations,
+} from "./native-view-declarations.ts";
+import {
   isPathWithinRoot,
   resolveRealPathSync,
 } from "./realpath-confinement.ts";
@@ -420,8 +424,22 @@ export function registerBuiltinViews(
     assertViewInstallation(runtime, current);
     return;
   }
+  // Only trusted process launch configuration can declare consumer routes.
+  // Renderer metadata and device profiles never manufacture registry entries.
+  const nativeViews = nativeViewDeclarations(
+    process.env[NATIVE_VIEW_DECLARATIONS_ENV],
+    BUILTIN_VIEWS,
+  );
+  const nativeIds = new Set(nativeViews.map((view) => view.id));
+  const installed = runtimeViewEntries(runtime);
+  const views = [
+    ...BUILTIN_VIEWS.filter((view) => !nativeIds.has(view.id)),
+    ...nativeViews.filter(
+      (view) =>
+        !installed.some((entry) => !entry.builtin && entry.id === view.id),
+    ),
+  ];
   const installation = beginViewInstallation(runtime, "@elizaos/builtin");
-  const views = BUILTIN_VIEWS;
   const loadedAt = Date.now();
   const pluginName = "@elizaos/builtin";
   const registered: ViewRegistryEntry[] = [];
@@ -455,7 +473,8 @@ export function registerBuiltinViews(
           query ? `?${query}` : ""
         }`,
         hasHeroImage,
-        available: true,
+        // No hosted executable is supplied for a consumer-owned counterpart.
+        available: !nativeIds.has(view.id),
         loadedAt,
         platform,
         builtin: true,

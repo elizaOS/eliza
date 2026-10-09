@@ -1,3 +1,4 @@
+import { type OwnerModelCapture, observeOwnerCapture } from "./shared-owner-model-capture";
 /**
  * Shared runtime — runs a single agent turn container-free.
  *
@@ -57,6 +58,11 @@ import {
   type SharedCapabilityResolution,
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
+import {
+  isCurrentWeatherObservationRequest,
+  parseExplicitUsWeatherQuery,
+  runCurrentUsWeatherSearch,
+} from "./shared-current-weather";
 import type { SharedMemoryStore } from "./shared-memory-store";
 import {
   finalizeSharedRealtimeReply,
@@ -133,6 +139,8 @@ export interface SharedMediaGenerationPort {
 }
 
 export interface RunSharedAgentTurnInput {
+  /** Server-admitted private capture capability; never populated from RPC params. */
+  ownerCapture?: OwnerModelCapture;
   character: SharedAgentCharacter;
   /** Prior conversation (oldest first). The new user message is NOT included. */
   history: SharedTurnMessage[];
@@ -184,6 +192,8 @@ export interface RunSharedAgentTurnInput {
      * must never populate this grant.
      */
     authenticatedPersonalSharedUser?: true;
+    /** Verified owner profile preference; server execution only, never RPC params. */
+    participantName?: string;
     todos?: {
       scope: { agentId: UUID; entityId: UUID };
       store: TodoStore;
@@ -615,7 +625,12 @@ export function appendSharedTurn(
   const sentAt = Date.now();
   return [
     ...history,
-    { id: messageIds?.user, role: messageRole, content: userMessage, createdAt: sentAt },
+    {
+      id: messageIds?.user,
+      role: messageRole,
+      content: userMessage,
+      createdAt: sentAt,
+    },
     {
       id: messageIds?.assistant,
       role: "assistant",
@@ -1180,8 +1195,19 @@ export async function runSharedAgentTurn(
   if (realtimeRequirement) {
     let searchResult: ActionResult;
     try {
-      searchResult = await runWebSearchEdge(realtimeRequirement.query);
+      searchResult =
+        realtimeRequirement.domain === "weather" &&
+        parseExplicitUsWeatherQuery(realtimeRequirement.query)
+          ? await runCurrentUsWeatherSearch(realtimeRequirement.query, {
+              signal: input.abortSignal,
+              observationOnly: isCurrentWeatherObservationRequest(publicSearchText ?? message),
+            })
+          : await runWebSearchEdge(realtimeRequirement.query, {
+              signal: input.abortSignal,
+            });
+      input.abortSignal?.throwIfAborted();
     } catch (error) {
+      input.abortSignal?.throwIfAborted();
       // error-policy:J4 current-data lookup failures become an explicit,
       // visibly unavailable receipt; the model never receives fake success.
       logger.warn("[runSharedAgentTurn] current public-data preflight failed", {
@@ -1199,7 +1225,19 @@ export async function runSharedAgentTurn(
         },
       };
     }
-    const traceableResult = requireTraceableRealtimeSearch(searchResult, realtimeRequirement.query);
+    const traceableResult = requireTraceableRealtimeSearch(
+      searchResult,
+      realtimeRequirement.query,
+      Date.now(),
+      realtimeRequirement.domain,
+    );
+    observeOwnerCapture(input.ownerCapture, (capture) =>
+      capture.observe("preflight", {
+        query: realtimeRequirement.query,
+        domain: realtimeRequirement.domain,
+        result: traceableResult,
+      }),
+    );
     realtimeActionResults = [traceableResult];
     realtimeGrounding = sharedPublicWebGrounding(realtimeActionResults);
   }
@@ -1253,7 +1291,10 @@ export async function runSharedAgentTurn(
       const runtimeActionResults = (turn.actionResults ?? []).filter(
         (result) => !isWebSearchActionResult(result),
       );
-      turn = { ...turn, actionResults: [...realtimeActionResults, ...runtimeActionResults] };
+      turn = {
+        ...turn,
+        actionResults: [...realtimeActionResults, ...runtimeActionResults],
+      };
     }
     if (
       requiredAction &&
@@ -1328,7 +1369,10 @@ export async function runSharedAgentTurn(
     const history = [...turn.history];
     const assistantIndex = history.findLastIndex((entry) => entry.role === "assistant");
     if (assistantIndex >= 0) {
-      history[assistantIndex] = { ...history[assistantIndex], content: groundedReply };
+      history[assistantIndex] = {
+        ...history[assistantIndex],
+        content: groundedReply,
+      };
     } else {
       history.push({
         id: input.messageIds?.assistant,

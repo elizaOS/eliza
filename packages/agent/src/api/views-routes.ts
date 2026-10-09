@@ -732,6 +732,10 @@ export async function handleViewsRoutes(
     const callerOwnedDelivery =
       body?.delivery === "originating-client" ||
       body?.delivery === "completed-action";
+    if (body?.delivery === "originating-client" && entry?.available === false) {
+      error(res, "This destination has no available hosted view", 409);
+      return true;
+    }
     const originatingClientId = resolveViewInteractClientId(req, body);
     const scope = clientScope(ctx.hostKey, originatingClientId);
     currentViewState = getCurrentViewState(viewRuntime, scope);
