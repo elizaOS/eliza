@@ -226,14 +226,33 @@ function extendDuration(text: string, candidate: DelayCandidate): void {
   }
 }
 
+function findCommandCorrection(text: string, end: number, pattern: RegExp) {
+  const suffix = text.slice(end);
+  const immediate = suffix.match(pattern);
+  if (immediate) return { match: immediate, start: end };
+  // A correction can follow the reminder body in a separate sentence or
+  // clause. Require an explicit correction marker; body text is not a command.
+  for (const boundary of suffix.matchAll(
+    /[.!?;\n]\s*(?=(?:actually|instead)\b)/gi,
+  )) {
+    const start = end + (boundary.index ?? 0);
+    const match = text.slice(start).match(pattern);
+    if (match) return { match, start };
+  }
+  return undefined;
+}
+
 function applyImmediateRevisions(
   text: string,
   candidate: DelayCandidate,
 ): void {
   while (true) {
-    const revision = text
-      .slice(candidate.end)
-      .match(IMMEDIATE_REVISION_PATTERN);
+    const correction = findCommandCorrection(
+      text,
+      candidate.end,
+      IMMEDIATE_REVISION_PATTERN,
+    );
+    const revision = correction?.match;
     const rawNumber = revision?.[1];
     const rawUnit = revision?.[2]?.toLowerCase();
     if (!revision || !rawNumber || !(rawUnit && rawUnit in UNIT_MILLISECONDS)) {
@@ -246,7 +265,7 @@ function applyImmediateRevisions(
       },
     ];
     candidate.invalidComposition = false;
-    candidate.end += revision[0].length;
+    candidate.end = (correction?.start ?? candidate.end) + revision[0].length;
     extendDuration(text, candidate);
   }
 }
@@ -255,7 +274,9 @@ function hasLaterCancellation(
   text: string,
   candidate: DelayCandidate,
 ): boolean {
-  return LATER_CANCELLATION_PATTERN.test(text.slice(candidate.end));
+  return Boolean(
+    findCommandCorrection(text, candidate.end, LATER_CANCELLATION_PATTERN),
+  );
 }
 
 function collectCandidates(text: string): DelayCandidate[] {
