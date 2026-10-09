@@ -21,6 +21,203 @@ import { handleTextLarge } from "../src/models/text";
 import { handleCloudStatusRoutes } from "../src/routes/cloud-status-routes";
 import { handleCloudStatusRoutes as handleAutonomousCloudStatusRoutes } from "../src/routes/cloud-status-routes-autonomous";
 
+test("canonical evaluator history reaches the Cloud HTTP wire as linked OpenAI calls", async () => {
+  const requests: Record<string, unknown>[] = [];
+  const server = createServer(async (request, response) => {
+    let body = "";
+    for await (const chunk of request) body += chunk;
+    requests.push(JSON.parse(body));
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(
+      JSON.stringify({
+        choices: [{ message: { content: "fixture completed" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 11, completion_tokens: 2, total_tokens: 13 },
+      })
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw Error("Expected local HTTP listener");
+  const runtime = createSQLiteTestRuntime({
+    character: { name: "Canonical history fixture", bio: ["tests"] },
+    settings: {
+      ELIZAOS_CLOUD_API_KEY: "eliza_controlled_native",
+      ELIZAOS_CLOUD_BASE_URL: `http://127.0.0.1:${address.port}/api/v1`,
+      ELIZAOS_CLOUD_APPLICATION_SLOT: "fixture-product",
+    },
+    logLevel: "fatal",
+  });
+  const input = { nested: { text: 'exact "quoted"\ntext', count: 0 } };
+  const result = { status: "pending", approved: false, text: "exact\nreceipt" };
+  const messages = [
+    { role: "user", content: "Review evidence only" },
+    {
+      role: "assistant",
+      content: [
+        { type: "text", text: "Before" },
+        { type: "tool-call", toolCallId: "call_first", toolName: "PROPOSE_DEVICE_ACTION", input },
+        { type: "text", text: "After" },
+        {
+          type: "tool-call",
+          toolCallId: "call_second",
+          toolName: "READ_CONTEXT",
+          input: { reference: "fixture" },
+        },
+      ],
+    },
+    {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: "call_first",
+          toolName: "PROPOSE_DEVICE_ACTION",
+          output: { type: "json", value: result },
+        },
+        {
+          type: "tool-result",
+          toolCallId: "call_second",
+          toolName: "READ_CONTEXT",
+          output: { type: "text", value: "exact second\nresult" },
+        },
+      ],
+    },
+    { role: "user", content: "Evaluate; do not execute anything" },
+  ];
+  const original = structuredClone(messages);
+  try {
+    runtime.registerModel(ModelType.TEXT_LARGE, handleTextLarge, "application-provider", 100);
+    await runtime.initialize();
+    const invokeModel = runtime.useModel.bind(runtime);
+    await invokeModel(ModelType.TEXT_LARGE, { messages: messages as never });
+    expect(messages).toEqual(original);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).not.toHaveProperty("tools");
+    expect(requests[0]).not.toHaveProperty("tool_choice");
+    const wire = requests[0].messages as Array<Record<string, unknown>>;
+    const assistant = wire.find((message) => message.role === "assistant");
+    expect(assistant?.content).toEqual([
+      { type: "text", text: "Before" },
+      { type: "text", text: "After" },
+    ]);
+    expect(assistant?.tool_calls).toEqual([
+      {
+        id: "call_first",
+        type: "function",
+        function: { name: "PROPOSE_DEVICE_ACTION", arguments: JSON.stringify(input) },
+      },
+      {
+        id: "call_second",
+        type: "function",
+        function: { name: "READ_CONTEXT", arguments: JSON.stringify({ reference: "fixture" }) },
+      },
+    ]);
+    expect(wire.filter((message) => message.role === "tool")).toEqual([
+      { role: "tool", tool_call_id: "call_first", content: JSON.stringify(result) },
+      { role: "tool", tool_call_id: "call_second", content: "exact second\nresult" },
+    ]);
+    // Already linked OpenAI history keeps its original wire representation.
+    const linked = [
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          { id: "linked", type: "function", function: { name: "fixture", arguments: "{}" } },
+        ],
+      },
+      { role: "tool", tool_call_id: "linked", content: "unchanged" },
+    ];
+    await invokeModel(ModelType.TEXT_LARGE, { messages: structuredClone(linked) as never });
+    expect(
+      (requests[1].messages as typeof linked).filter((message) => message.role !== "system")
+    ).toEqual(linked);
+    const outputs = [
+      { type: "json", value: null },
+      { type: "json", value: "quoted JSON scalar" },
+      { type: "error-text", value: "No record was shared" },
+      { type: "error-json", value: { failed: true, reason: "unavailable" } },
+      { type: "execution-denied", reason: "Owner declined" },
+      { type: "execution-denied" },
+      { type: "content", value: [{ type: "text", text: "complete content" }] },
+    ];
+    await invokeModel(ModelType.TEXT_LARGE, {
+      messages: [
+        {
+          role: "assistant",
+          content: outputs.map((_, index) => ({
+            type: "tool-call",
+            toolCallId: `output_${index}`,
+            toolName: "fixture",
+            input: null,
+          })),
+        },
+        {
+          role: "tool",
+          content: outputs.map((output, index) => ({
+            type: "tool-result",
+            toolCallId: `output_${index}`,
+            toolName: "fixture",
+            output,
+          })),
+        },
+      ] as never,
+    });
+    const outputWire = requests[2].messages as Array<Record<string, unknown>>;
+    expect(
+      outputWire.filter((message) => message.role === "tool").map((message) => message.content)
+    ).toEqual([
+      "null",
+      '"quoted JSON scalar"',
+      "No record was shared",
+      JSON.stringify({ failed: true, reason: "unavailable" }),
+      "Owner declined",
+      "Tool execution denied.",
+      JSON.stringify([{ type: "text", text: "complete content" }]),
+    ]);
+    expect(outputWire.find((message) => message.role === "assistant")).toMatchObject({
+      tool_calls: outputs.map(() => ({ function: { arguments: "null" } })),
+    });
+    // Unpaired canonical calls/results retain the existing orphan policy.
+    await invokeModel(ModelType.TEXT_LARGE, {
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "tool-call", toolCallId: "unanswered", toolName: "fixture", input: {} },
+          ],
+        },
+        { role: "user", content: "Interrupted" },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "orphan",
+              toolName: "fixture",
+              output: { type: "json", value: result },
+            },
+          ],
+        },
+      ] as never,
+    });
+    const orphanWire = requests[3].messages as Array<Record<string, unknown>>;
+    expect(orphanWire.find((message) => message.role === "assistant")).not.toHaveProperty(
+      "tool_calls"
+    );
+    expect(orphanWire.some((message) => message.role === "tool")).toBe(false);
+    expect(orphanWire.at(-1)).toMatchObject({
+      role: "user",
+      content: `[tool result] ${JSON.stringify(result)}`,
+    });
+    expect(requests).toHaveLength(4);
+  } finally {
+    await runtime.stop();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve()))
+    );
+  }
+});
+
 test.each([
   { name: "provider failure", admission: false, recover: false, attempts: 1 },
   { name: "recovered admission", admission: true, recover: true, attempts: 2 },
