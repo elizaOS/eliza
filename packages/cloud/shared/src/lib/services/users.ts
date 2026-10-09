@@ -37,6 +37,9 @@ type PersonalDeliveryIdentitySource = Partial<
 >;
 
 const PERSONAL_DELIVERY_ROUTING_FIELDS = [
+  // The sender projection also carries the canonical owner display preference.
+  "name",
+  "nickname",
   "organization_id",
   "is_active",
   "telegram_id",
