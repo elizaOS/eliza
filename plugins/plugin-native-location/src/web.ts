@@ -12,11 +12,25 @@ import type {
   WatchLocationOptions,
 } from "./definitions";
 
-/**
- * Web implementation of the Location Plugin
- *
- * Uses the browser Geolocation API.
- */
+/** Great-circle distance in meters between two coordinates (haversine). */
+function distanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const earthRadiusMeters = 6_371_000;
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadians(lat1)) *
+      Math.cos(toRadians(lat2)) *
+      Math.sin(dLon / 2) ** 2;
+  return 2 * earthRadiusMeters * Math.asin(Math.sqrt(a));
+}
+
 export class LocationWeb extends WebPlugin {
   private watches = new Map<string, number>();
 
@@ -115,8 +129,45 @@ export class LocationWeb extends WebPlugin {
     this.validateWatchOptions(options);
     const geoOptions = this.normalizePositionOptions(options);
 
+    // The browser API has no distance or interval filter, so enforce the
+    // contract's minDistance and minInterval here, as both native bridges
+    // do: a fix is delivered only when both thresholds are met relative to
+    // the last delivered fix. Validating the options and then ignoring
+    // them delivered every raw fix to listeners.
+    const minDistance = options?.minDistance ?? 0;
+    const minInterval = options?.minInterval ?? 0;
+    let lastDelivered: {
+      latitude: number;
+      longitude: number;
+      timestamp: number;
+    } | null = null;
+
     const nativeWatchId = geolocation.watchPosition(
       (position) => {
+        if (lastDelivered) {
+          if (
+            minInterval > 0 &&
+            position.timestamp - lastDelivered.timestamp < minInterval
+          ) {
+            return;
+          }
+          if (
+            minDistance > 0 &&
+            distanceMeters(
+              lastDelivered.latitude,
+              lastDelivered.longitude,
+              position.coords.latitude,
+              position.coords.longitude,
+            ) < minDistance
+          ) {
+            return;
+          }
+        }
+        lastDelivered = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          timestamp: position.timestamp,
+        };
         this.notifyListeners("locationChange", {
           coords: {
             latitude: position.coords.latitude,
@@ -161,6 +212,10 @@ export class LocationWeb extends WebPlugin {
 
   async clearWatch(options: { watchId: string }): Promise<void> {
     const watchId = typeof options?.watchId === "string" ? options.watchId : "";
+    // Reject missing IDs and whitespace-only IDs, matching Android cleanup.
+    if (!watchId.trim()) {
+      throw new Error("Missing watchId");
+    }
     const nativeWatchId = this.watches.get(watchId);
     if (nativeWatchId !== undefined) {
       this.getGeolocation().clearWatch(nativeWatchId);
