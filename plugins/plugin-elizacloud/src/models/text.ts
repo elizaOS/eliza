@@ -1596,6 +1596,11 @@ export async function generateNativeChatCompletion(
 		finishReason: data.choices?.[0]?.finish_reason,
 		provider: "elizacloud",
 		model: context.modelName,
+		maxTokens: typeof requestBody.max_tokens === "number" ? requestBody.max_tokens : null,
+		finishReasonSource: "cloud-chat-completions",
+		emptyVisibleOutput: !text.trim() && toolCalls.length === 0,
+		usage,
+		costUsd: extractCostUsd(data.usage, response),
 	});
   if (!text.trim() && toolCalls.length === 0) {
     throw new Error("elizaOS Cloud returned no text or tool calls");

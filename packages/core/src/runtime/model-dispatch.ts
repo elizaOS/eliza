@@ -72,6 +72,7 @@ import { BufferUtils } from "../utils/buffer";
 import { resolveSetting } from "../utils/environment";
 import {
 	assertModelOutputComplete,
+	modelOutputIncompleteEvidence,
 	modelProviderErrorDetail,
 } from "../utils/model-errors";
 import { captureModelLookupCaller } from "../utils/model-lookup-caller";
@@ -2589,6 +2590,7 @@ export class RuntimeModelDispatch {
 			const sanitizedMessage = this.runtime.redactSecrets(
 				`${errorMessage}${detailSuffix}`,
 			);
+			const failureEvidence = modelOutputIncompleteEvidence(args.error);
 			const activeTrace = this.runtime.getActiveTrace(
 				this.runtime.getCurrentRunId(),
 			);
@@ -2615,11 +2617,27 @@ export class RuntimeModelDispatch {
 				responseSchema: paramsRecord.responseSchema,
 				providerOptions: paramsRecord.providerOptions,
 				response: `[model call failed] ${sanitizedMessage}`,
-				finishReason: "error",
-				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
-				...(typeof maxTokensRaw === "number"
-					? { maxTokens: maxTokensRaw }
+				finishReason: failureEvidence?.finishReason ?? "error",
+				...(failureEvidence
+					? {
+							model: failureEvidence.model ?? args.resolvedModelKey,
+							providerMetadata: failureEvidence,
+							promptTokens: failureEvidence.usage?.promptTokens,
+							completionTokens: failureEvidence.usage?.completionTokens,
+							cacheReadInputTokens: failureEvidence.usage?.cacheReadInputTokens,
+							cacheCreationInputTokens:
+								failureEvidence.usage?.cacheCreationInputTokens,
+							reasoningTokens: failureEvidence.usage?.reasoningTokens,
+						}
 					: {}),
+				...(failureEvidence?.maxTokens === null
+					? { maxTokensOmitted: true }
+					: typeof failureEvidence?.maxTokens === "number"
+						? { maxTokens: failureEvidence.maxTokens }
+						: typeof maxTokensRaw === "number"
+							? { maxTokens: maxTokensRaw }
+							: {}),
+				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
 				purpose: trajCtx.purpose ?? "action",
 				actionType: "runtime.useModel",
 				latencyMs: Math.max(0, Math.round(args.elapsedTime)),
