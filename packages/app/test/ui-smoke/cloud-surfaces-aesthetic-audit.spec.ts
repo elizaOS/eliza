@@ -1139,6 +1139,23 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         await page.waitForTimeout(750);
         readableChars = await readPaintAfterNavigation(10);
 
+        if (auditCase.slug === "cloud-analytics") {
+          // Real wheel input must reach analytics content below the fold.
+          // scrollIntoView would also move an overflow-hidden element.
+          const scrollRegion = page.locator(
+            '[data-shell-scroll-region="true"]',
+          );
+          await expect(scrollRegion).toHaveCount(1);
+          await page.mouse.move(vp.width / 2, vp.height / 2);
+          await page.mouse.wheel(0, 1200);
+          await expect
+            .poll(() => scrollRegion.evaluate((el) => el.scrollTop))
+            .toBeGreaterThan(0);
+          await scrollRegion.evaluate((el) => {
+            el.scrollTop = 0;
+          });
+        }
+
         const restPath = path.join(shotDir, `${auditCase.slug}.png`);
         const fullPage = auditCase.fullPageEvidence ?? false;
         if (fullPage) {

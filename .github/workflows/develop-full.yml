@@ -80,18 +80,32 @@ jobs:
           set -euo pipefail
           base=0000000000000000000000000000000000000000
           if [ "$EVENT_NAME" = push ]; then
-            if gh api --method GET "/repos/$GITHUB_REPOSITORY/actions/workflows/develop-full.yml/runs" \
-              -f "branch=$GITHUB_REF_NAME" -f status=success -f per_page=100 \
-              --jq '.workflow_runs[].head_sha' > "$RUNNER_TEMP/validated-ancestors"; then
-              while IFS= read -r candidate; do
-                if [[ "$candidate" =~ ^[0-9a-f]{40}$ ]] && git merge-base --is-ancestor "$candidate" "$GITHUB_SHA"; then
-                  base="$candidate"
-                  break
-                fi
-              done < "$RUNNER_TEMP/validated-ancestors"
-            else
-              echo "::warning::Validation history unavailable; running full validation."
-            fi
+            # A first promotion has no destination history. Its upstream branch
+            # can supply an ancestor with identical, successfully validated
+            # source. A prior push or deployment alone is not evidence.
+            branches=("$GITHUB_REF_NAME")
+            case "$GITHUB_REF_NAME" in
+              staging) branches+=(develop) ;;
+              main) branches+=(staging) ;;
+            esac
+            for branch in "${branches[@]}"; do
+              if gh api --method GET "/repos/$GITHUB_REPOSITORY/actions/workflows/develop-full.yml/runs" \
+                -f "branch=$branch" -f status=success -f per_page=100 \
+                --jq '.workflow_runs[].head_sha' > "$RUNNER_TEMP/validated-ancestors"; then
+                while IFS= read -r candidate; do
+                  if [[ "$candidate" =~ ^[0-9a-f]{40}$ ]] && git merge-base --is-ancestor "$candidate" "$GITHUB_SHA"; then
+                    if [ "$branch" != "$GITHUB_REF_NAME" ] && ! git diff --quiet "$candidate" "$GITHUB_SHA" --; then
+                      continue
+                    fi
+                    base="$candidate"
+                    break 2
+                  fi
+                done < "$RUNNER_TEMP/validated-ancestors"
+              else
+                echo "::warning::Validation history unavailable; running full validation."
+                break
+              fi
+            done
           fi
           echo "base_sha=$base" >> "$GITHUB_OUTPUT"
       - name: Compute exact input closures
