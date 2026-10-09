@@ -31,6 +31,8 @@ import {
   stableStringify,
   type UUID,
 } from "@elizaos/core";
+import type { NetworkRouting, NetworkStore } from "@elizaos/plugin-network";
+import { isNetworkStateIntent } from "@elizaos/plugin-network";
 import {
   isSharedGroupReminderDelivery,
   type ScheduledTaskRunner,
@@ -211,6 +213,16 @@ export interface RunSharedAgentTurnInput {
     };
     /** Present only when the server has a configured, billable Cloud image authority. */
     media?: SharedMediaGenerationPort;
+    /**
+     * SPIKE (The Network): server-resolved Network member authority and store.
+     * Present only for turns the host resolved to project "network".
+     */
+    network?: {
+      memberId: string;
+      store: NetworkStore;
+      /** Routing design; defaults to NETWORK_DEFAULT_ROUTING. */
+      routing?: NetworkRouting;
+    };
   };
 }
 
@@ -355,7 +367,21 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  * from `@elizaos/core`'s prompt builder; the Shared runtime receives the
  * already-projected edge character, so this is the renderer on this side.
  */
-type RequiredSharedAction = "REMINDERS" | "TODO" | "GENERATE_MEDIA" | "GOOGLE_CONTEXT";
+/**
+ * Default routing design for Network availability changes when
+ * `execution.network.routing` is not set: "structured" (design B, one
+ * Stage-1 call proposes SET_STATE and deterministic code executes it) or
+ * "planner" (design A, Stage 1 routes to `network` and SET_STATE is a
+ * must-call). See RESULTS.md "Routing design comparison" for the measurements.
+ */
+export const NETWORK_DEFAULT_ROUTING: NetworkRouting = "structured";
+
+type RequiredSharedAction =
+  | "REMINDERS"
+  | "TODO"
+  | "GENERATE_MEDIA"
+  | "GOOGLE_CONTEXT"
+  | "SET_STATE";
 
 function buildSharedRuntimeSystem(
   character: SharedAgentCharacter,
@@ -394,7 +420,9 @@ function buildSharedRuntimeSystem(
           ? "todo"
           : requiredAction === "GOOGLE_CONTEXT"
             ? "private Google context"
-            : "image or video generation";
+            : requiredAction === "SET_STATE"
+              ? "Network availability (pause, busy, traveling, or resume intros)"
+              : "image or video generation";
     const ungroundedClaim =
       requiredAction === "GENERATE_MEDIA"
         ? "A plain-text claim that generation was attempted, unavailable, or failed is not an execution result."
@@ -449,6 +477,16 @@ function requiredActionForTurn(
   const intentText = input.capabilityText ?? input.message;
   if (actionsEnabled && input.execution?.google && isSharedGoogleContextRequest(intentText)) {
     return "GOOGLE_CONTEXT";
+  }
+  // Design A (The Network): a detected availability change must be executed
+  // by SET_STATE, exactly like an executable reminder or todo request.
+  if (
+    actionsEnabled &&
+    input.execution?.network &&
+    (input.execution.network.routing ?? NETWORK_DEFAULT_ROUTING) === "planner" &&
+    isNetworkStateIntent(intentText)
+  ) {
+    return "SET_STATE";
   }
   if (
     actionsEnabled &&

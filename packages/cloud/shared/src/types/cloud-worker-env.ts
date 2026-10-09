@@ -29,6 +29,8 @@ export interface Bindings {
   /** Private server-owned Network HTTP service binding; no public fetch fallback. */
   NETWORK_MEMBERSHIP?: import("../lib/services/shared-runtime/network-membership-client").NetworkMembershipFetcher;
   NETWORK_MEMBERSHIP_SERVER_TOKEN?: string;
+  /** Default off. Enable only after legacy Network history inventory/migration and staging qualification. */
+  NETWORK_PERSONAL_CONTINUITY_ENABLED?: string;
   /** Trusted execution environment for app inference; must match the registered app client mode. */
   APP_INFERENCE_EXECUTION_ENVIRONMENT?: "test" | "live";
   /** Inactive by default: reviewed server-owned owner/room capture policy JSON. */

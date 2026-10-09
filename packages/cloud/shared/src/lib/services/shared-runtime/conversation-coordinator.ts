@@ -18,6 +18,7 @@ import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox";
 import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fetch";
 import type { NetworkSharedTurnObservation } from "./network-shared-context";
 import type { PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
+import { personalSharedAgentId } from "./personal-shared-identity";
 import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
@@ -51,6 +52,8 @@ export interface SharedConversationCoordinatorOptions {
   trustedAccountState?: PersonalSharedFallbackAccountState;
   /** Server-resolved per-turn Network context; never populated from RPC params. */
   trustedNetworkContext?: NetworkSharedTurnObservation;
+  /** Authenticated Network service admission, carried outside caller RPC params. */
+  trustedNetworkTurn?: unknown;
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -222,15 +225,42 @@ export async function coordinateSharedLifecycleEvent(
   await response.arrayBuffer();
 }
 
-/**
- * One normalization for the Durable Object instance name. Turn dispatch and
- * history reads MUST agree — a whitespace/empty variant addressing a second
- * object would migrate the same Postgres row twice and serve a frozen copy.
- * The authenticated caller may select a logical room, but this normalization
- * is the server-owned boundary used by both Durable Object addressing and the
- * hashed runtime channel identity. A caller-provided storage uuid is never
- * accepted as the memory scope.
- */
+export interface SharedNetworkDelivery {
+  project: "network";
+  app?: "ntwrk" | "slop" | "peon" | "friends";
+  userId: string;
+  organizationId: string;
+  phoneNumber: string;
+  platform: "blooio" | "twilio";
+  idempotencyKey: string;
+  text: string;
+  handled?: { messageId: string; replyIds: string[] };
+  inbound?: { id: string; text: string; createdAt: number };
+  compliance?: { command: "stop" | "help" | "start"; messageId: string };
+}
+
+/** The canonical room owns admission, the durable send intent, receipt and transcript. */
+export async function coordinateNetworkDelivery(
+  delivery: SharedNetworkDelivery,
+  options: SharedConversationHistoryCoordinatorOptions & { reconcileOnly?: true },
+): Promise<Response> {
+  const agentId = personalSharedAgentId(delivery);
+  return await coordinatorStub(requireHistoryCoordinator(options), agentId, agentId).fetch(
+    "https://shared-runtime.internal/network-delivery",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "network-delivery",
+        ...(options.reconcileOnly ? { reconcileOnly: true } : {}),
+        agentId,
+        roomId: agentId,
+        delivery,
+      }),
+    },
+  );
+}
+
 function coordinatorRoom(roomId?: unknown, userId?: unknown): string {
   return normalizeSharedRuntimeRoom(roomId, userId);
 }
@@ -383,6 +413,9 @@ export async function coordinateSharedBridge(
         ...(options.trustedAccountState
           ? { trustedAccountState: options.trustedAccountState }
           : {}),
+        ...(options.trustedNetworkTurn !== undefined
+          ? { trustedNetworkTurn: options.trustedNetworkTurn }
+          : {}),
         ...(options.trustedNetworkContext
           ? { trustedNetworkContext: options.trustedNetworkContext }
           : {}),
@@ -422,6 +455,9 @@ export async function coordinateSharedStream(
         ...(options.channel ? { channel: options.channel } : {}),
         ...(options.trustedAccountState
           ? { trustedAccountState: options.trustedAccountState }
+          : {}),
+        ...(options.trustedNetworkTurn !== undefined
+          ? { trustedNetworkTurn: options.trustedNetworkTurn }
           : {}),
         ...(options.trustedNetworkContext
           ? { trustedNetworkContext: options.trustedNetworkContext }
