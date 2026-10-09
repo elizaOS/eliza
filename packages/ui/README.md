@@ -126,3 +126,5 @@ The committed fixture is a synthetic four-second 440 Hz tone, generated with
 `ffmpeg -f lavfi -i sine=frequency=440:sample_rate=44100:duration=4 -ac 1 -b:a 32k -write_xing 0 -map_metadata -1 synthetic-tone.mp3`.
 The test permits autoplay explicitly; it does not qualify autoplay policy,
 provider timing/voice quality, mobile WebView or physical speakers.
+
+`BatchVoiceConversation` shares the foreground capture, turn, reply and playback loop through injected ports. Hosts own credentials, microphone access, Cloud transcription, `VOICE_DM` submission and matching playback completion. Stop retires late replies and drains owned capture before replacement. It never edits a text draft, selects a provider or resumes itself after retirement. `createVoiceTurnAggregator` and `createVoiceActivityDetector` also serve the existing shell; native peak-only activity does not invent RMS measurements.

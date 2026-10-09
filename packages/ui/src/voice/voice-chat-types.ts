@@ -62,7 +62,9 @@ export function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
 
 // ── Public types ──────────────────────────────────────────────────────
 
-export type SpeechSegmentKind = "full" | "first-sentence" | "remainder";
+import type { SpeechSegmentKind } from "./voice-chat-playback";
+
+export type { SpeechSegmentKind } from "./voice-chat-playback";
 export type SpeechProviderKind =
   | "eliza-cloud"
   | "elevenlabs"
@@ -396,7 +398,7 @@ export const ASSISTANT_TTS_DEBOUNCE_MS = 170;
 export const ASSISTANT_TTS_FINAL_ONLY = false;
 export const TALKMODE_STOP_SETTLE_MS = 120;
 export const REDACTED_SECRET = "[REDACTED]";
-export const MOUTH_OPEN_STEP = 0.02;
+export { MOUTH_OPEN_STEP } from "./voice-chat-playback";
 
 export const globalAudioCache = new Map<string, Uint8Array>();
 
