@@ -53,6 +53,7 @@ import {
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
 } from "../calendar-action-schema.js";
 import { normalizeCalendarDateTimeInTimeZone } from "../internal/calendar-normalize.js";
+import { assertCalendarRecordsAllowed } from "../internal/calendar-record-policy.js";
 import {
   CALENDAR_TIME_ZONE_ALIASES,
   isValidTimeZone,
@@ -5190,6 +5191,11 @@ const calendarAction: CalendarHandlerAction = {
       params.title,
       params.query,
     ]);
+    // An authenticated native turn must name a separately connected source.
+    // Model arguments cannot default a phone request to the backend calendar.
+    const requestedGrant = connectorGrantIdDetail(details);
+    if (!requestedGrant || requestedGrant === ELIZA_CALENDAR_GRANT_ID)
+      assertCalendarRecordsAllowed();
     const calendarZone = await resolveOwnerCalendarTimeZone(
       runtime,
       new Date(),
@@ -5510,6 +5516,7 @@ const calendarAction: CalendarHandlerAction = {
         const context = await service.getNextCalendarEventContext(
           INTERNAL_URL,
           {
+            grantId: connectorGrantIdDetail(details),
             calendarId: calendarIdDetail(details),
             timeZone: planningTimeZone,
           },

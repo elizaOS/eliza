@@ -134,6 +134,10 @@ import {
   resolveCalendarWindow,
   resolveNextCalendarEventWindow,
 } from "../internal/calendar-normalize.js";
+import {
+  assertCalendarRecordsAllowed,
+  calendarRecordPolicyFailure,
+} from "../internal/calendar-record-policy.js";
 import { DEFAULT_CALENDAR_REMINDER_STEPS } from "../internal/constants.js";
 import {
   createElizaCalendarEvent,
@@ -3569,7 +3573,11 @@ export class CalendarService extends Service {
       .filter((grant) => grant.capabilities.includes("google.calendar.read"));
     const summaries: LifeOpsCalendarSummary[] = [];
     const failures: LifeOpsCalendarSourceHealth[] = [];
-    if (shouldIncludeElizaCalendar({ side, grantId: request?.grantId })) {
+    if (isElizaCalendarGrant(request?.grantId)) assertCalendarRecordsAllowed();
+    if (
+      shouldIncludeElizaCalendar({ side, grantId: request?.grantId }) &&
+      !calendarRecordPolicyFailure()
+    ) {
       summaries.push(elizaCalendarSummary());
     }
     if (grants.length > 0) {
@@ -4183,6 +4191,7 @@ export class CalendarService extends Service {
       args.requestedSide,
       args.grantId,
     );
+    const deferLinkedReconciliation = Boolean(calendarRecordPolicyFailure());
     const syncedAt = new Date().toISOString();
     const accountId = accountIdForGrant(grant);
     const syncState = await this.repo.getCalendarSyncState(
@@ -4368,35 +4377,46 @@ export class CalendarService extends Service {
         calendarId: args.calendarId,
         windowStartAt: stateWindowStartAt,
         windowEndAt: stateWindowEndAt,
-        nextSyncToken: batch.nextSyncToken,
+        // A native read may refresh this provider, but not its backend mirror.
+        // Force the next permitted sync to enumerate all linked IDs, including
+        // deletions, instead of losing them behind an advanced provider cursor.
+        nextSyncToken: deferLinkedReconciliation ? null : batch.nextSyncToken,
         syncedAt,
       }),
     );
-    try {
-      const linkedProviderEventIds = new Set(
-        batch.events.map((event) => event.id),
-      );
-      if (!incremental) {
-        for (const link of await this.linkedRepo.listForAgent(this.agentId())) {
-          if (
-            link.connectorAccountId === accountId &&
-            link.providerCalendarId === args.calendarId &&
-            link.providerEventId
-          ) {
-            linkedProviderEventIds.add(link.providerEventId);
+    if (!deferLinkedReconciliation) {
+      try {
+        const linkedProviderEventIds = new Set(
+          batch.events.map((event) => event.id),
+        );
+        if (!incremental) {
+          for (const link of await this.linkedRepo.listForAgent(
+            this.agentId(),
+          )) {
+            if (
+              link.connectorAccountId === accountId &&
+              link.providerCalendarId === args.calendarId &&
+              link.providerEventId
+            ) {
+              linkedProviderEventIds.add(link.providerEventId);
+            }
           }
         }
+        await this.reconcileLinkedGoogleChanges(args.requestUrl, [
+          ...linkedProviderEventIds,
+        ]);
+      } catch (error) {
+        // error-policy:J4 The provider cache remains fresh, while linked-event
+        // reconciliation is explicitly surfaced for owner intervention.
+        this.runtime.reportError(
+          "calendar:linked-google-reconciliation",
+          error,
+          {
+            calendarId: args.calendarId,
+            grantId: grant.id,
+          },
+        );
       }
-      await this.reconcileLinkedGoogleChanges(args.requestUrl, [
-        ...linkedProviderEventIds,
-      ]);
-    } catch (error) {
-      // error-policy:J4 The provider cache remains fresh, while linked-event
-      // reconciliation is explicitly surfaced for owner intervention.
-      this.runtime.reportError("calendar:linked-google-reconciliation", error, {
-        calendarId: args.calendarId,
-        grantId: grant.id,
-      });
     }
     return {
       calendarId: args.calendarId,
@@ -5185,6 +5205,7 @@ export class CalendarService extends Service {
     timeMin: string;
     timeMax: string;
   }): Promise<LifeOpsCalendarFeed> {
+    assertCalendarRecordsAllowed();
     const events = await this.repo.listCalendarEvents(
       this.agentId(),
       ELIZA_CALENDAR_PROVIDER,
@@ -5694,6 +5715,7 @@ export class CalendarService extends Service {
     const recurrence = normalizeRecurrence(request.recurrence);
     const range = resolveCalendarEventRange(request, now);
     if (!request.grantId || isElizaCalendarGrant(request.grantId)) {
+      assertCalendarRecordsAllowed();
       if (calendarId !== ELIZA_CALENDAR_ID) {
         fail(
           404,
@@ -6091,6 +6113,7 @@ export class CalendarService extends Service {
     const range = resolveCalendarEventRange(request, now);
     const { startAt, endAt, timeZone, isAllDay } = range;
     if (!request.grantId || isElizaCalendarGrant(request.grantId)) {
+      assertCalendarRecordsAllowed();
       if (calendarId !== ELIZA_CALENDAR_ID) {
         fail(
           404,
@@ -6383,6 +6406,7 @@ export class CalendarService extends Service {
     eventId: string;
     calendarId?: string | null;
   }): Promise<LifeOpsCalendarEvent> {
+    assertCalendarRecordsAllowed();
     const eventId = requireNonEmptyString(args.eventId, "eventId");
     const event = isElizaCalendarEventId(eventId, this.agentId())
       ? await this.repo.getCalendarEventById(this.agentId(), eventId)
@@ -7510,6 +7534,7 @@ export class CalendarService extends Service {
     // the mutation to an external provider grant. A miss falls through to the
     // existing provider resolution unchanged.
     if (!request.grantId) {
+      assertCalendarRecordsAllowed();
       const builtIn = await this.repo.getCalendarEventByExternalId({
         agentId: this.agentId(),
         provider: ELIZA_CALENDAR_PROVIDER,

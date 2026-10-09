@@ -109,29 +109,6 @@ export function extractTokenSymbol(text: string): string | null {
 }
 
 /**
- * Format OHLCV data for display
- */
-export function formatOHLCV(candle: {
-  timestamp: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume?: number;
-}): string {
-  const date = formatDate(candle.timestamp);
-  let result = `📅 ${date}\n`;
-  result += `   Open: ${formatCurrency(candle.open)}\n`;
-  result += `   High: ${formatCurrency(candle.high)}\n`;
-  result += `   Low: ${formatCurrency(candle.low)}\n`;
-  result += `   Close: ${formatCurrency(candle.close)}`;
-  if (candle.volume !== undefined) {
-    result += `\n   Volume: ${formatCurrency(candle.volume)}`;
-  }
-  return result;
-}
-
-/**
  * Clean HTML tags from text
  */
 export function stripHtml(html: string): string {

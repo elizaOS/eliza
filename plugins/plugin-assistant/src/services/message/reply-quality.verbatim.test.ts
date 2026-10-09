@@ -1,5 +1,5 @@
 /** Preserves explicit single-token verbatim requests without accepting unrelated scaffolds. */
-import { expect, test } from "bun:test";
+import { expect, test } from "vitest";
 import {
   isTerseReplyWorthKeeping,
   isUnusableStage1Reply,

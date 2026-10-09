@@ -3,10 +3,7 @@
  * into shell navigation. Chat streams exist on every runtime transport, so this
  * is the reliable handoff when a platform intentionally runs without WebSockets.
  */
-import {
-  ElizaError,
-  normalizeCompletedActionHandoffId,
-} from "@elizaos/core/protocol";
+import { ElizaError, findViewActionHandoff } from "@elizaos/core/protocol";
 import type { ChatActionResultSummary } from "./api/client-types-chat";
 import { fetchWithCsrf } from "./api/csrf-client";
 import { dispatchCompletedActionNavigation } from "./completed-action-navigation";
@@ -30,87 +27,14 @@ interface CurrentViewResponse {
   currentView: CurrentViewNavigation | null;
   justSwitched: boolean;
 }
-export interface ViewActionHandoff {
-  viewId: string;
-  viewPath?: string;
-  subview?: string;
-  completedActionDelivered?: true;
-  completedActionHandoffId?: string;
-}
+
+export {
+  findViewActionHandoff,
+  type ViewActionHandoff,
+} from "@elizaos/core/protocol";
+
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-function readOwnValue(value: unknown, key: string): unknown {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return undefined;
-  }
-  return Object.getOwnPropertyDescriptor(value, key)?.value;
-}
-export function findViewActionHandoff(
-  actionResults: readonly ChatActionResultSummary[] | undefined,
-): ViewActionHandoff | null {
-  if (!Array.isArray(actionResults)) return null;
-  for (let index = actionResults.length - 1; index >= 0; index--) {
-    const result = actionResults[index];
-    if (readOwnValue(result, "success") !== true) {
-      continue;
-    }
-    const actionName = readString(
-      readOwnValue(result, "actionName"),
-    )?.toUpperCase();
-    const values = readOwnValue(result, "values");
-    const mode = readString(readOwnValue(values, "mode"))?.toLowerCase();
-    const subaction = readString(
-      readOwnValue(values, "subaction"),
-    )?.toLowerCase();
-    const targetId = readString(
-      readOwnValue(values, "targetId"),
-    )?.toLowerCase();
-    const viewId = readString(readOwnValue(values, "viewId"));
-    const isViewsHandoff =
-      actionName === "VIEWS" && (mode === "show" || mode === "open");
-    const isAppBrowserHandoff =
-      actionName === "APP" && mode === "launch" && viewId === "browser";
-    const isBrowserWorkspaceHandoff =
-      (actionName === "BROWSER" ||
-        actionName === "BROWSER_OPEN" ||
-        actionName === "BROWSER_NAVIGATE" ||
-        actionName === "BROWSER_SHOW") &&
-      targetId === "workspace" &&
-      (subaction === "open" ||
-        subaction === "navigate" ||
-        subaction === "show") &&
-      viewId === "browser";
-    if (
-      (isViewsHandoff || isAppBrowserHandoff || isBrowserWorkspaceHandoff) &&
-      viewId
-    ) {
-      const actionUrl = readString(readOwnValue(values, "url"));
-      const declaredViewPath = readString(readOwnValue(values, "viewPath"));
-      // Native mobile browser tabs are intentionally client-owned, while the
-      // browser action executes in the remote workspace. Carry the verified
-      // destination through the existing browser deep link so the mounted
-      // native view can mirror the completed action as well.
-      const viewPath =
-        isBrowserWorkspaceHandoff && actionUrl
-          ? `/browser?browse=${encodeURIComponent(actionUrl)}`
-          : declaredViewPath;
-      const subview = readString(readOwnValue(values, "subview"));
-      const completedActionHandoffId = normalizeCompletedActionHandoffId(
-        readOwnValue(values, "completedActionHandoffId"),
-      );
-      return {
-        viewId,
-        ...(viewPath ? { viewPath } : {}),
-        ...(subview ? { subview } : {}),
-        ...(readOwnValue(values, "completedActionDelivered") === true
-          ? { completedActionDelivered: true }
-          : {}),
-        ...(completedActionHandoffId ? { completedActionHandoffId } : {}),
-      };
-    }
-  }
-  return null;
 }
 function parseCurrentViewResponse(body: unknown): CurrentViewResponse {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
