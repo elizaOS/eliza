@@ -22,6 +22,7 @@ import { isUniqueConstraintError } from "../../utils/db-errors";
 import { isValidEmail, maskEmailForLogging } from "../../utils/email-validation";
 import { logger } from "../../utils/logger";
 import { isValidE164, normalizePhoneNumber } from "../../utils/phone-normalization";
+import { sharedOwnerProfileName } from "../shared-runtime/shared-participant-name";
 import { findActivePersonalDedicatedTarget } from "../agent-tier-upgrade-target";
 import { apiKeysService } from "../api-keys";
 import { personalSharedAgentId } from "../shared-runtime/personal-shared-agent";
@@ -36,6 +37,8 @@ export interface FindOrCreateResult {
 }
 
 export interface PersonalDeliveryResult {
+  /** Canonical owner profile projection; never a connector-supplied display label. */
+  ownerName?: string;
   userId: string;
   organizationId: string;
   dedicatedTarget: Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config"> | null;
@@ -302,6 +305,7 @@ class ElizaAppUserService {
       return {
         userId: reusable.userId,
         organizationId: reusable.organizationId,
+        ...(reusable.ownerName ? { ownerName: reusable.ownerName } : {}),
         dedicatedTarget,
         isNew: false,
         resolution,
@@ -353,9 +357,11 @@ class ElizaAppUserService {
         resolution: "locked-create-or-repair",
       },
     );
+    const ownerName = sharedOwnerProfileName(result.user);
     return {
       userId: result.user.id,
       organizationId: result.organization.id,
+      ...(ownerName ? { ownerName } : {}),
       dedicatedTarget,
       isNew: result.isNew,
       resolution: "locked-create-or-repair",
