@@ -100,7 +100,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
   const seenSegments = new Set<string>();
   const seenWireContent = new Set<string>();
   const coreShapes: Array<{ modelType: string; messageChars: number; segments: Record<string, { count: number; chars: number; bytes: number }>; repeatedWithinBytes: number; repeatedEarlierCallBytes: number }> = [];
-  const wireShapes: Array<{ ordinal: number; roles: Record<string, { count: number; messageJSONChars: number; contentChars: number; contentBytes: number }>; requestJSONChars: number; toolCount: number; toolJSONChars: number; toolSchemaJSONChars: number; toolDescriptionChars: number; repeatedWithinBytes: number; repeatedEarlierCallBytes: number }> = [];
+  const wireShapes: Array<{ ordinal: number; roles: Record<string, { count: number; messageJSONChars: number; contentChars: number; contentBytes: number }>; requestJSONChars: number; toolCount: number; toolJSONChars: number; toolSchemaJSONChars: number; responseFormatJSONChars: number; responseFormatSchemaJSONChars: number; toolDescriptionChars: number; repeatedWithinBytes: number; repeatedEarlierCallBytes: number }> = [];
   const advertisedSdkTools: Array<Array<{ name: string; parameters: unknown }>> = [];
   let freeSelectionsBeforeAction = 0;
   let validations = 0;
@@ -258,6 +258,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
     const request = JSON.parse(body) as {
       tools?: Array<{ function?: { name?: string; parameters?: unknown } }>;
       messages?: Array<Record<string, unknown>>;
+      response_format?: { json_schema?: { schema?: unknown } };
     };
     modelCalls += 1;
     if (mode.measureShape) {
@@ -277,6 +278,8 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
       const tools = request.tools as Array<{ function?: { parameters?: unknown; description?: unknown } }> | undefined;
       wireShapes.push({ ordinal: modelCalls, roles, requestJSONChars: body.length,
         toolCount: tools?.length ?? 0, toolJSONChars: JSON.stringify(tools ?? []).length,
+        responseFormatJSONChars: request.response_format === undefined ? 0 : JSON.stringify(request.response_format).length,
+        responseFormatSchemaJSONChars: request.response_format?.json_schema?.schema === undefined ? 0 : JSON.stringify(request.response_format.json_schema.schema).length,
         toolSchemaJSONChars: (tools ?? []).reduce((n, tool) => n + JSON.stringify(tool.function?.parameters ?? null).length, 0),
         toolDescriptionChars: (tools ?? []).reduce((n, tool) => n + (typeof tool.function?.description === "string" ? tool.function.description.length : 0), 0),
         repeatedWithinBytes, repeatedEarlierCallBytes });
@@ -610,7 +613,9 @@ test("general Gmail documentation uses canonical query and source footer after r
   expect(actual.coreShapes).toHaveLength(actual.modelCalls);
   expect(actual.wireShapes).toHaveLength(actual.modelCalls);
   expect(actual.coreShapes.some((row) => Object.keys(row.segments).some((key) => key.endsWith("stage_instructions")))).toBe(true);
-  expect(actual.wireShapes.every((row) => row.requestJSONChars > 0 && row.toolCount > 0)).toBe(true);
+  // Structured output can use response_format instead of tool definitions.
+  expect(actual.wireShapes.every((row) => row.requestJSONChars > 0)).toBe(true);
+  expect(actual.wireShapes.some((row) => row.toolCount > 0 || row.responseFormatSchemaJSONChars > 0)).toBe(true);
   const summary = { minimumComparedChars: 128, weather: { core: prior.coreShapes, wire: prior.wireShapes }, general: { core: actual.coreShapes, wire: actual.wireShapes } };
   const pending: unknown[] = [summary];
   while (pending.length) {
