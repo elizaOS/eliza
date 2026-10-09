@@ -222,6 +222,12 @@ test("general public search admission is distinct from freshness preflight and r
     kind: "general",
     topic: completeTopic,
   });
+  expect(() =>
+    resolveSharedPublicSearchIntent(
+      "Search the web for " + "public documentation ".repeat(150),
+      [],
+    ),
+  ).toThrow("Public search topics must not exceed 2048 characters");
   for (const message of [
     "Search the web for my inbox messages",
     "Search localhost for current news",

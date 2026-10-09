@@ -3,7 +3,12 @@
  * Shared without sending private-state requests to a public search provider.
  */
 
-import { type ActionResult, isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
+import {
+  type ActionResult,
+  ElizaError,
+  isBlockedHostname,
+  isPrivateIpAddress,
+} from "@elizaos/core";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 import {
@@ -245,7 +250,7 @@ function publicProviderQuery(domain: SharedRealtimeDomain, text: string): string
     const subject = boundedPublicSearchTopic(rawSubject);
     if (rawSubject !== undefined && !subject) return undefined;
     const query = subject ? `latest public ${subject} news` : "latest public news";
-    return [...query].length <= 2048 ? query : undefined;
+    return boundedPublicSearchTopic(query);
   }
   if (domain === "sports") {
     const league = text.match(/\b(?:NBA|WNBA|NFL|NHL|MLB|EPL|IPL)\b/iu)?.[0]?.toUpperCase();
@@ -281,7 +286,12 @@ function boundedPublicSearchTopic(value: string | undefined): string | undefined
     .replace(/[.!?]+$/u, "")
     .trim()
     .replace(/\s+/gu, " ");
-  if (!topic || [...topic].length > 2048 || !isSharedPublicSearchSafe(topic)) return undefined;
+  if (!topic || !isSharedPublicSearchSafe(topic)) return undefined;
+  if ([...topic].length > 2048) {
+    throw new ElizaError("Public search topics must not exceed 2048 characters", {
+      code: "PUBLIC_SEARCH_QUERY_TOO_LARGE",
+    });
+  }
   return topic;
 }
 /** Authority comes only from a standalone authenticated public utterance, never history text. */
