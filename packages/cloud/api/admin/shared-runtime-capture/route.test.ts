@@ -4,6 +4,8 @@
  * Requires capture-store source composition; never substitutes parser/hash helpers.
  */
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { Hono } from "hono";
+import type { AppEnv } from "@/types/cloud-worker-env";
 import { HTTPException } from "hono/http-exception";
 import * as realAuth from "@/lib/auth/workers-hono-auth";
 import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-identity";
@@ -20,7 +22,7 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
     return { user: { id: reader }, role: "super_admin" };
   },
 }));
-const { default: app } = await import("./route");
+const { default: app }: { default: Hono<AppEnv> } = await import("./route");
 
 const SESSION = "44444444-4444-4444-8444-444444444444";
 const CAPTURE = "55555555-5555-4555-8555-555555555555";
@@ -40,12 +42,13 @@ const calls: Array<{ name: string; url: string; init: RequestInit }> = [];
 let upstreamStatus = 200;
 let upstreamThrows = false;
 let upstreamBody: object = { capture: "synthetic-private-capture" };
-function env(value: unknown = JSON.stringify(policy)) {
+function env(value: string | undefined = JSON.stringify(policy)): AppEnv["Bindings"] {
   return {
     SHARED_OWNER_MODEL_CAPTURE_POLICY: value,
     SHARED_RUNTIME_CONVERSATIONS: {
       getByName: (name: string) => ({
-        fetch: async (url: string, init: RequestInit) => {
+        fetch: async (url: RequestInfo | URL, init?: RequestInit) => {
+          if (typeof url !== "string" || init === undefined) throw new Error("Unexpected synthetic DO fetch invocation");
           calls.push({ name, url, init });
           if (upstreamThrows) throw new Error("Synthetic platform failure");
           return Response.json(upstreamBody, { status: upstreamStatus,
@@ -58,7 +61,7 @@ function env(value: unknown = JSON.stringify(policy)) {
 function request(body: unknown, bindings = env()) {
   return app.request("/read", { method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer synthetic", Cookie: "session=synthetic" },
-    body: JSON.stringify(body) }, bindings as never);
+    body: JSON.stringify(body) }, bindings);
 }
 function privateHeaders(response: Response) {
   expect(response.headers.get("Cache-Control")).toBe("private, no-store");
@@ -70,7 +73,11 @@ const savedFetch = globalThis.fetch;
 beforeEach(() => {
   reader = READER; authFailure = undefined; calls.length = 0;
   upstreamStatus = 200; upstreamThrows = false; upstreamBody = { capture: "synthetic-private-capture" };
-  globalThis.fetch = (async () => { throw new Error("OFFLINE_NETWORK_FORBIDDEN"); }) as typeof fetch;
+  const blockedFetch: typeof fetch = Object.assign(
+    async () => { throw new Error("OFFLINE_NETWORK_FORBIDDEN"); },
+    { preconnect: () => { throw new Error("OFFLINE_NETWORK_FORBIDDEN"); } },
+  );
+  globalThis.fetch = blockedFetch;
 });
 afterAll(() => {
   globalThis.fetch = savedFetch;
@@ -149,14 +156,14 @@ describe("exact-reader private capture Hono retrieval", () => {
     const text = JSON.stringify({ roomKey: ROOM, sessionId: SESSION, padding: "x".repeat(5000) });
     const declared = await app.request("/read", { method: "POST", headers: {
       "Content-Type": "application/json", "Content-Length": String(new TextEncoder().encode(text).byteLength),
-    }, body: text }, env() as never);
+    }, body: text }, env());
     expect(declared.status).toBe(413); privateHeaders(declared);
     const bytes = new TextEncoder().encode(text);
     const stream = new ReadableStream<Uint8Array>({ start(controller) {
       controller.enqueue(bytes.slice(0, 2000)); controller.enqueue(bytes.slice(2000)); controller.close();
     } });
     const streaming = await app.fetch(new Request("https://test.invalid/read",
-      { method: "POST", body: stream, duplex: "half" } as RequestInit), env() as never);
+      { method: "POST", body: stream, duplex: "half" } as RequestInit), env());
     expect(streaming.status).toBe(413); privateHeaders(streaming);
     expect(calls).toHaveLength(0);
   });
