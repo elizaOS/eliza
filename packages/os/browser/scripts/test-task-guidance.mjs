@@ -49,7 +49,7 @@ const server = createServer(
   (_req, res) => {
     res.setHeader("Content-Type", "text/html");
     res.end(
-      '<!doctype html><style>button{margin:100px;padding:20px;font:24px system-ui}</style><button id="target" type="button" onclick="window.clicks++">Continue</button><input id="manual" aria-label="Manual input"><button id="pay" type="button" onclick="window.clicks++">Pay</button><script>window.clicks=0</script>',
+      '<!doctype html><style>button{margin:100px;padding:20px;font:24px system-ui}</style><button id="target" type="button" onclick="window.clicks++">Show details</button><input id="manual" aria-label="Manual input"><button id="pay" type="button" onclick="window.clicks++">Pay</button><script>window.clicks=0</script>',
     );
   },
 );
@@ -163,7 +163,7 @@ try {
     });
     assert.equal(snapshot.ok, true);
     const selector = snapshot.result.frames[0].elements.find(
-      (e) => e.label === "Continue",
+      (e) => e.label === "Show details",
     ).selector;
     const id = `guide-${sequence++}`;
     const reply = await send({
@@ -391,7 +391,7 @@ try {
     ).ok,
     true,
   );
-  const startAction = async (extra = {}, label = "Continue") => {
+  const startAction = async (extra = {}, label = "Show details") => {
     const read = await send({
       type: "command",
       id: `action-read-${sequence++}`,
@@ -428,8 +428,17 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
   };
-  const cancelledAction = await startAction();
+  const cancelledAction = await startAction({
+    actionText: "I will show the bill details.",
+  });
   await waitPointer();
+  // The host's own sentence replaces the generic preview line.
+  assert.equal(
+    await evaluate(
+      "globalThis.__elizaPageGuidanceV1.shadow.querySelector('.title').textContent",
+    ),
+    "I will show the bill details.",
+  );
   await page.screenshot({ path: join(output, "action-preview.png") });
   await send({ type: "cancel", id: cancelledAction.id });
   assert.equal((await cancelledAction.pending).ok, false);

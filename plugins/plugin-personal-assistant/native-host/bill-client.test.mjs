@@ -476,3 +476,103 @@ test("prior and saved outcomes are admitted with their company", () => {
       BillClientResponseError,
     );
 });
+
+test("a shown guide is checked again and renewed before it expires, and reported gone after", async () => {
+  let time = 1000;
+  const pending = [];
+  const timers = {
+    set: (callback, ms) => {
+      const handle = { callback, at: time + ms };
+      pending.push(handle);
+      return handle;
+    },
+    clear: (handle) => {
+      const index = pending.indexOf(handle);
+      if (index >= 0) pending.splice(index, 1);
+    },
+  };
+  const fire = async () => {
+    const next = pending.shift();
+    time = next.at;
+    next.callback();
+    await tick();
+  };
+  const calls = [];
+  const client = new BillDecisionClient({
+    validators,
+    now: () => time,
+    timers,
+    changed: () => {},
+    request: (path, body) => {
+      const d = deferred();
+      calls.push({ path, body, ...d });
+      return d.promise;
+    },
+  });
+  const guided = (expiresAt) => ({
+    decision: {
+      kind: "human-sign-in",
+      guidance: {
+        instruction: "Sign in yourself.",
+        available: true,
+        expiresAt,
+      },
+    },
+  });
+  client.start("task1");
+  await tick();
+  calls[0].resolve(guided(time + 60000));
+  await tick();
+  // A shown guide is checked again on the short interval.
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].at, 1000 + 15000);
+  await fire();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].body, undefined);
+  // Close to expiry, the check runs before the guide ends.
+  calls[1].resolve(guided(time + 8000));
+  await tick();
+  assert.equal(pending[0].at, time + 3000);
+  await fire();
+  calls[2].reject(new Error("offline"));
+  await tick();
+  // A failed renewal tries once more when the guide expires, and then the
+  // guide is reported unavailable.
+  assert.equal(pending[0].at, time + 5000);
+  await fire();
+  assert.equal(client.snapshot().decision.guidance.available, false);
+  calls[3].reject(new Error("offline"));
+  await tick();
+  assert.equal(pending.length, 0);
+  // No checks without a shown guide, and none after stop.
+  client.start("task2");
+  await tick();
+  calls[4].resolve({ decision: { kind: "human-sign-in" } });
+  await tick();
+  assert.equal(pending.length, 0);
+  client.start("task3");
+  await tick();
+  calls[5].resolve(guided(time + 60000));
+  await tick();
+  assert.equal(pending.length, 1);
+  client.stop();
+  assert.equal(pending.length, 0);
+});
+
+test("guide expiry must be a safe time", () => {
+  for (const expiresAt of [-1, 1.5, "soon"])
+    assert.throws(
+      () =>
+        readBillDecision(
+          {
+            decision: {
+              kind: "human-sign-in",
+              guidance: { instruction: "x", available: true, expiresAt },
+            },
+          },
+          "task1",
+          validators,
+        ),
+      BillClientResponseError,
+    );
+});
