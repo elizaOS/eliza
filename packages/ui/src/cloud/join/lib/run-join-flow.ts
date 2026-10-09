@@ -60,14 +60,7 @@ export interface JoinFlowResult {
 export async function runJoinFlow(
   args: RunJoinFlowArgs,
 ): Promise<JoinFlowResult> {
-  const {
-    client,
-    effects,
-    cloudApiBase,
-    authToken,
-    onProgress,
-    signal,
-  } = args;
+  const { client, effects, cloudApiBase, authToken, onProgress, signal } = args;
   signal?.throwIfAborted();
   onProgress?.("connecting", "Opening your personal Eliza…");
 

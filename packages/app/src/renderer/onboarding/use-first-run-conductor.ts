@@ -466,8 +466,7 @@ export function useFirstRunConductor(): void {
     setUiAccent: s.setUiAccent,
     uiLanguage: s.uiLanguage,
   }));
-  const { conversationMessages, setConversationMessages } =
-    useConversationMessages();
+  const { setConversationMessages } = useConversationMessages();
 
   const active = firstRunComplete === false;
 
@@ -941,10 +940,7 @@ export function useFirstRunConductor(): void {
       seedWaitingTurn();
     } else if (hasStoredSession) {
       refreshCloudLoginWaitingRef.current = null;
-      portsRef.current.onStatus?.(
-        "Connecting to your Eliza…",
-        "listing",
-      );
+      portsRef.current.onStatus?.("Connecting to your Eliza…", "listing");
     }
     // Pre-open only when this gesture can actually enter OAuth. A usable
     // stored Steward token takes the silent resolution path; retaining an
@@ -976,10 +972,7 @@ export function useFirstRunConductor(): void {
         loginDeadline?.cancel();
         if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
         refreshCloudLoginWaitingRef.current = null;
-        portsRef.current.onStatus?.(
-          "Connecting to your Eliza…",
-          "listing",
-        );
+        portsRef.current.onStatus?.("Connecting to your Eliza…", "listing");
       },
     })
       .then((outcome) => {
