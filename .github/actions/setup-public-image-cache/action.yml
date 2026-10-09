@@ -1,0 +1,31 @@
+name: Set up public Docker Hub image cache
+description: Configure a fresh Linux runner to use the public cache with canonical Hub fallback.
+runs:
+  using: composite
+  steps:
+    - name: Configure runner Docker Hub cache
+      shell: bash
+      run: |
+        set -euo pipefail
+        [ "${RUNNER_OS:-}" = Linux ] && [ "${RUNNER_ENVIRONMENT:-}" = github-hosted ] || {
+          echo "::error::Docker mirror setup requires a fresh GitHub-hosted Linux runner."
+          exit 1
+        }
+        sudo python3 - <<'PY'
+        import json
+        from pathlib import Path
+        path = Path("/etc/docker/daemon.json")
+        config = json.loads(path.read_text()) if path.exists() else {}
+        config["registry-mirrors"] = ["https://mirror.gcr.io"] + [
+            mirror for mirror in config.get("registry-mirrors", [])
+            if mirror != "https://mirror.gcr.io"
+        ]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(config, indent=2) + "\n")
+        PY
+        sudo systemctl restart docker
+        for ((attempt = 0; attempt < 30; attempt++)); do
+          if docker info >/dev/null 2>&1; then break; fi
+          sleep 2
+        done
+        docker info --format '{{json .RegistryConfig.Mirrors}}'
