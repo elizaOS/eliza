@@ -35,6 +35,9 @@ const SensitiveRequestPage = lazy(
 const PublicChatPage = lazy(() => import("./pages/public-chat-page"));
 const InviteAcceptPage = lazy(() => import("./pages/invite-accept-page"));
 const LoginPage = lazy(() => import("./pages/login/login-page"));
+const NetworkSignInPage = lazy(
+  () => import("./pages/login/network-sign-in-page"),
+);
 const AuthSuccessPage = lazy(() => import("./pages/auth/auth-success-page"));
 const AuthErrorPage = lazy(() => import("./pages/auth/auth-error-page"));
 const CliLoginPage = lazy(() => import("./pages/auth/cli-login-page"));
@@ -134,6 +137,12 @@ export function registerPublicPages(): void {
   });
 
   // ── Login + Steward auth surfaces ──
+  registerCloudRoute({
+    path: "network/sign-in",
+    element: NetworkSignInPage,
+    ...PUBLIC_ROUTE_ACCESS,
+    group: "auth",
+  });
   registerCloudRoute({
     path: "login",
     element: LoginPage,
