@@ -32,6 +32,7 @@ import {
   type ShellOutputArtifact,
   ShellOutputArtifactWriter,
   type ShellStreamMetrics,
+  updateShellStreamMetrics,
 } from "./shell-output-artifact.js";
 
 const CAPTURE_ROOT_SEGMENTS = [
@@ -80,32 +81,6 @@ export interface ShellCaptureOutcome {
   signal: NodeJS.Signals | null;
   ownerAgentId: string;
   ownerConversationId: string;
-}
-
-function updateMetrics(
-  metrics: ShellStreamMetrics,
-  chunk: string,
-  priorEndedWithNewline: boolean,
-): boolean {
-  metrics.characters += chunk.length;
-  metrics.bytes += Buffer.byteLength(chunk, "utf8");
-  const newlines = chunk.match(/\n/g)?.length ?? 0;
-  if (metrics.characters === chunk.length) {
-    metrics.lines =
-      chunk.length === 0 ? 0 : newlines + (chunk.endsWith("\n") ? 0 : 1);
-  } else {
-    metrics.lines += newlines;
-    if (priorEndedWithNewline && chunk.length > 0 && !chunk.endsWith("\n")) {
-      metrics.lines += 1;
-    }
-    if (!priorEndedWithNewline && chunk.endsWith("\n")) {
-      // The first newline in this chunk terminates the partial line the
-      // previous chunk already counted. Counting it again would make the
-      // line total depend on where the pipe split the output.
-      metrics.lines -= 1;
-    }
-  }
-  return chunk.endsWith("\n");
 }
 
 async function ensureCaptureRoot(): Promise<string> {
@@ -397,7 +372,7 @@ export class ForegroundShellCapture {
     if (toWellFormedUnicode(chunk) !== chunk)
       throw new Error("shell capture contains malformed Unicode");
     const state = this.streams[stream];
-    state.endedWithNewline = updateMetrics(
+    state.endedWithNewline = updateShellStreamMetrics(
       state.metrics,
       chunk,
       state.endedWithNewline,
