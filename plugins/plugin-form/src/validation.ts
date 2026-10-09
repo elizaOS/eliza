@@ -506,10 +506,8 @@ function validateSelect(
 ): ValidationResult {
   const options = control.options ?? [];
   if (options.length === 0) {
-    // No options defined - fall back to the enum list when one is set,
-    // matching the built-in select control type. Only a select with
-    // neither options nor enum is treated as free text.
-    if (control.enum && control.enum.length > 0) {
+    // Use the declared enum when no option values are available.
+    if (control.enum) {
       const enumValue = String(value);
       if (!control.enum.includes(enumValue)) {
         return {
