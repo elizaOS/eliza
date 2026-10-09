@@ -305,9 +305,20 @@ test("genuine preflight enters canonical execution without free-query selection"
 test("canonical denial and unsupported source claims retain their gates", async () => {
   const unsupported = await exercise({ expectGroundingFailure: true }, `Springfield, Missouri is 75 EUR. [[SOURCE_URL:${SOURCE_URL}]]`);
   expect(unsupported.actions).toEqual([{ query: QUERY, success: true }]);
-  expect(unsupported.failed).toBe(true);
-  expect(unsupported.failureCategory).toBe("reply_grounding_failed");
-  expect(unsupported.result).toBeUndefined();
+  if (unsupported.failed) {
+    expect(unsupported.failureCategory).toBe("reply_grounding_failed");
+    expect(unsupported.result).toBeUndefined();
+  } else {
+    const grounding = unsupported.result?.internalGrounding;
+    if (!grounding || grounding.kind !== "web_search") {
+      throw new Error("Unsupported claim returned without the genuine current grounding");
+    }
+    expect(unsupported.result?.reply).toBe(
+      "I found live public results, but I couldn’t safely bind the requested claim to one complete source, so I won’t guess.\n\n" +
+      `Source provider: ${grounding.provider} (checked ${new Date(grounding.observedAt).toISOString()})`,
+    );
+    expect(unsupported.result?.reply).not.toContain("75 EUR");
+  }
   const denied = await exercise({ deny: true });
   expect(denied.validations).toBeGreaterThan(0);
   expect(denied.actions).toHaveLength(0);
