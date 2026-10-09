@@ -88,6 +88,7 @@ function modelResponse(content: string | null, calls: Array<{ name: string; args
 async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerModelCapture) {
   clearCurrentWeatherMetadataCacheForTests();
   let publicHttpCalls = 0;
+  const participantNames: Array<string | undefined> = [];
   const publicHttpHops: string[] = [];
   let modelCalls = 0;
   let freeSelectionsBeforeAction = 0;
@@ -160,6 +161,13 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
     async function (this: AgentRuntime, ...args) {
       legacyCacheCountAtStop = this.getActionResults(USER_MESSAGE_ID as UUID).length;
       return await stop.apply(this, args);
+    },
+  );
+  const ensureConnection = AgentRuntime.prototype.ensureConnection;
+  const connecting = spyOn(AgentRuntime.prototype, "ensureConnection").mockImplementation(
+    async function (this: AgentRuntime, ...args) {
+      participantNames.push(args[0].userName);
+      return await ensureConnection.apply(this, args);
     },
   );
   globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
@@ -282,6 +290,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         authenticatedPersonalSharedUser: true,
+        participantName: "QA Owner",
         agentKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
         roomKey: "offline-preflight-room",
       },
@@ -328,6 +337,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
   } finally {
     initialization.mockRestore();
     stopping.mockRestore();
+    connecting.mockRestore();
     for (const spy of restorers) spy.mockRestore();
   }
   console.info("[offline-preflight-chronology]", {
@@ -335,7 +345,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
     publicHttpCalls, publicHttpHops, modelCalls, modelChronology, legacyCacheCountAtStop, coreResultCount: coreActionResults.length,
     failed, failureCategory: failureCategory ?? null,
   });
-  return { result, failed, failureCategory, publicHttpCalls, publicHttpHops, modelCalls, modelChronology, freeSelectionsBeforeAction, validations, otherActions, actions, coreActionResults, legacyCacheCountAtStop, registeredShortcut };
+  return { participantNames, result, failed, failureCategory, publicHttpCalls, publicHttpHops, modelCalls, modelChronology, freeSelectionsBeforeAction, validations, otherActions, actions, coreActionResults, legacyCacheCountAtStop, registeredShortcut };
 }
 
 const CAPTURE_SCOPE = {
@@ -409,6 +419,8 @@ test("genuine preflight enters canonical execution without free-query selection"
   expect(starts.every((started) => settled.some((terminal) => terminal.executionId === started.executionId))).toBe(true);
   expect(JSON.stringify(starts)).toContain(QUERY);
   expect(JSON.stringify(settled)).toContain(SOURCE_URL);
+  expect(actual.participantNames).toContain("QA Owner");
+  expect(actual.participantNames).not.toContain("Shared user");
   expect(actual.registeredShortcut).toBe(true);
   expect(actual.publicHttpCalls).toBe(4);
   expect(actual.publicHttpHops).toEqual([GNIS_URL, POINT_URL, STATIONS_URL, SOURCE_URL]);
