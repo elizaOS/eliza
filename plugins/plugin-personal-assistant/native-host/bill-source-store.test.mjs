@@ -213,18 +213,15 @@ test("complete source offers persist more than one hundred candidates and source
 
 test("look-alike sources and newest-first facts survive an offer; a conflicting source cannot select", (t) => {
   const f = fixture(t);
-  const conflict = {
-    company: "Test",
-    accountLabel: "Ending 1234",
-    origin: "https://lookalike.example",
-  };
+  const conflict = { differs: ["origin"] };
   const conflicting = {
     status: "conflicting-source",
     candidates: [],
-    conflicts: Array.from({ length: 6 }, (_, i) => ({
-      ...conflict,
-      company: `Other ${i}`,
-    })),
+    conflicts: [
+      { differs: ["company"] },
+      { differs: ["accountLabel", "origin"] },
+      { differs: ["company", "accountLabel", "origin"] },
+    ],
     unreadable: 1,
   };
   const offer = f.api.offer(conflicting, f.task.revision);
@@ -254,9 +251,32 @@ test("look-alike sources and newest-first facts survive an offer; a conflicting 
   );
   assert.equal(ranked.candidates[0].mostRecent, true);
   assert.equal(ranked.candidates[0].facts.dueDate, undefined);
+  const withheld = f.api.offer(
+    {
+      status: "incomplete",
+      reason: "newer-unreadable",
+      candidates: [],
+      unreadable: 1,
+    },
+    f.task.revision,
+  );
+  assert.equal(withheld.reason, "newer-unreadable");
+  assert.deepEqual(withheld.candidates, []);
   for (const bad of [
     { ...conflicting, conflicts: [] },
     { ...conflicting, conflicts: [{ ...conflict, body: "private" }] },
+    // The look-alike's own website is never carried.
+    {
+      ...conflicting,
+      conflicts: [{ ...conflict, origin: "https://lookalike.example" }],
+    },
+    { ...conflicting, conflicts: [{ differs: [] }] },
+    { ...conflicting, conflicts: [{ differs: ["origin", "company"] }] },
+    { ...conflicting, conflicts: [{ differs: ["website"] }] },
+    { ...conflicting, conflicts: [conflict, conflict] },
+    { ...conflicting, reason: "newer-unreadable" },
+    { status: "incomplete", candidates: [], reason: "newer-unreadable" },
+    { status: "candidate", candidates: [newest], reason: "newer-unreadable" },
     { ...conflicting, unreadable: 0 },
     { ...conflicting, candidates: [candidate] },
     {
