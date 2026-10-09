@@ -8,6 +8,6 @@ test("renders plain headings without altering code, math, or arbitrary asterisks
     ),
   ).toBe("Headline limits (per project):\n- 1,200,000 quota units per minute\nMethod costs");
   const literal =
-    "2 ** 3 = 8\na*b\n**wildcard**\nUse `messages.get`\n```md\n# Heading\n**Label:**\n```\n~~~python\nx = 2 ** 3\n~~~";
+    "2 ** 3 = 8\na*b\n**wildcard**\nUse `messages.get`\n```md\n```python\n# Heading\n**Label:**\n```\n~~~python\nx = 2 ** 3\n~~~";
   expect(formatSharedMessageText(literal)).toBe(literal);
 });

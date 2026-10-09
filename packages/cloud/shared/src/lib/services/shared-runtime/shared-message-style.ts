@@ -14,7 +14,8 @@ export function formatSharedMessageText(text: string): string {
       const marker = /^\s*(`{3,}|~{3,})/u.exec(line)?.[1];
       if (marker) {
         if (!fence) fence = marker;
-        else if (marker[0] === fence[0] && marker.length >= fence.length) fence = undefined;
+        else if (marker[0] === fence[0] && marker.length >= fence.length && line.trim() === marker)
+          fence = undefined;
         return line;
       }
       if (fence) return line;
