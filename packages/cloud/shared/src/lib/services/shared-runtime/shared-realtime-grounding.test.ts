@@ -1017,7 +1017,10 @@ describe("General public citation mode", () => {
       sources: [{ url, text: "The amount is 1,234.5 USD." }],
     };
     expect(general("The amount is 1.2345k USD.", fractionalSource)).toContain("1.2345k USD");
-    const roundingSource = { ...official, sources: [{ url, text: "The limit is 1,005 units." }] };
+    const roundingSource = {
+      ...official,
+      sources: [{ url, text: "The limit is 1,005 units." }],
+    };
     expect(general("The limit is 1.005k units.", roundingSource)).toContain("1.005k units");
     const draft = `The project quota is 1.2M units. [[SOURCE_URL:${url}]]`;
     expect(finalizeSharedRealtimeReply(draft, official)).not.toContain("1.2M units");
