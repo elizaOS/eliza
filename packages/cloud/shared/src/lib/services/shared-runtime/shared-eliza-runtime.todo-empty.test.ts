@@ -53,6 +53,7 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
   const diagnostic: Array<{ request: unknown; response?: unknown; failureName?: string }> = [];
   let diagnosticBytes = 0;
   let todoDispatched = false;
+  let replyRecoveryRequested = false;
   const unrequested = async (): Promise<never> => {
     throw new Error("UNREQUESTED_TODO_OPERATION");
   };
@@ -94,6 +95,7 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
       .filter((message) => message.role === "system" && typeof message.content === "string")
       .map((message) => message.content)
       .join("\n");
+    if (system.includes("\nreply_recovery:\n")) replyRecoveryRequested = true;
     if (names.includes("HANDLE_RESPONSE"))
       return model(null, {
         name: "HANDLE_RESPONSE",
@@ -128,6 +130,17 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
     if (/(?:^|\n)planner_stage:\n/.test(system) && names.includes("TODO") && !todoDispatched) {
       todoDispatched = true;
       return model(null, { name: "TODO", args: { action: "list" } });
+    }
+    if (/(?:^|\n)planner_stage:\n/.test(system) && names.length === 0) {
+      // The terminal planner explicitly requires this JSON envelope, not plain prose.
+      return model(
+        JSON.stringify({
+          thought: "The scoped TODO read is complete.",
+          toolCalls: [],
+          messageToUser: reply,
+          completed: true,
+        }),
+      );
     }
     return model(reply);
   }) as typeof fetch;
@@ -175,6 +188,7 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
     expect(modelCalls).toBeGreaterThan(0);
     expect(modelCalls).toBeLessThanOrEqual(12);
     expect(turn.reply).toBe(reply);
+    expect(replyRecoveryRequested).toBe(false);
     expect(turn.responded).not.toBe(false);
     const settled =
       turn.actionResults?.filter(
@@ -202,6 +216,7 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
           diagnostic,
           modelCalls,
           todoDispatched,
+          replyRecoveryRequested,
           reads,
           preToolDispatchReads,
           postToolDispatchReads,
