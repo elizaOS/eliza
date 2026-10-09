@@ -11,14 +11,9 @@ export default function NetworkSignInPage(): React.JSX.Element {
   return (
     <LoginBackground plain>
       <main className="space-y-8">
-        <div className="space-y-3">
-          <h1 className="font-sans text-3xl font-semibold tracking-tight text-txt-strong">
-            Sign in to The Network
-          </h1>
-          <p className="text-base leading-relaxed text-muted">
-            Use the same number you text Eliza from.
-          </p>
-        </div>
+        <h1 className="font-sans text-3xl font-semibold tracking-tight text-txt-strong">
+          Sign in to The Network
+        </h1>
         <Suspense
           fallback={
             <p role="status" className="py-6 text-sm text-muted">
