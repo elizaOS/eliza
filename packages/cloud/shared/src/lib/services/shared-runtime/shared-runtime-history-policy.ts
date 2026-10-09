@@ -212,12 +212,38 @@ export function parseSharedReminderActionProvenance(
   };
 }
 
+/** JSON reserialization must not collapse distinguishable parsed numeric values. */
+function projectionNumbersAreSafe(value: unknown): boolean {
+  const pending: unknown[] = [value];
+  let visited = 0;
+  while (pending.length > 0) {
+    if (++visited > 100_000) return false;
+    const current = pending.pop();
+    if (typeof current === "number") {
+      if (
+        !Number.isFinite(current) ||
+        Object.is(current, -0) ||
+        (Number.isInteger(current) && !Number.isSafeInteger(current))
+      )
+        return false;
+    } else if (current && typeof current === "object") {
+      for (const child of Object.values(current)) {
+        if (pending.length + visited >= 100_000) return false;
+        pending.push(child);
+      }
+    }
+  }
+  return true;
+}
+
 /**
  * Model-only, reversible representation: source objects remain complete once;
  * original aggregate metadata and zero-based result ordering remain explicit.
  * Cost: expected O(B + N) over at most 2,097,152 UTF-16 units/256 sources; no I/O/cache.
  * Exact parsed-JSON serialization equality is conservative: unfamiliar shapes,
  * key-order differences, unmatched values or multiplicities retain the old view.
+ * Numeric eligibility is iterative and capped at 100,000 visited/queued nodes;
+ * reconstruction preserves the parsed aggregate object, not raw text spelling.
  */
 function projectRedundantPublicEvidence(
   grounding: Extract<SharedRuntimePublicGrounding, { kind: "web_search" }>,
@@ -234,14 +260,26 @@ function projectRedundantPublicEvidence(
     return undefined;
   try {
     const aggregate: unknown = JSON.parse(grounding.text);
-    if (!aggregate || typeof aggregate !== "object" || Array.isArray(aggregate)) return undefined;
+    if (
+      !aggregate ||
+      typeof aggregate !== "object" ||
+      Array.isArray(aggregate) ||
+      !projectionNumbersAreSafe(aggregate)
+    )
+      return undefined;
     const record = aggregate as Record<string, unknown>;
     if (!Array.isArray(record.results) || record.results.length !== sources.length)
       return undefined;
     const groups = new Map<string, { indices: number[]; next: number }>();
     for (const [index, source] of sources.entries()) {
       const value: unknown = JSON.parse(source.text);
-      if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+      if (
+        !value ||
+        typeof value !== "object" ||
+        Array.isArray(value) ||
+        !projectionNumbersAreSafe(value)
+      )
+        return undefined;
       const url = (value as Record<string, unknown>).url;
       if (typeof url !== "string" || new URL(url).toString() !== source.url) return undefined;
       const key = JSON.stringify(value);

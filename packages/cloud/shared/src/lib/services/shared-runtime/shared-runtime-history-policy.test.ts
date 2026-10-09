@@ -1413,6 +1413,38 @@ describe("lossless public evidence model projection", () => {
       expect(encodeSharedPublicWebGrounding(value)).toBe(oldView(value));
   });
 
+  test("numeric collapse risks anywhere retain the exact old encoding", () => {
+    const rawReceipt = (aggregateNumber: string, sourceNumber: string) => ({
+      ...receipt({ results: [] }, []),
+      text: `{"results":[{"url":"${one.url}","value":${aggregateNumber}}]}`,
+      sources: [{ url: one.url, text: `{"url":"${one.url}","value":${sourceNumber}}` }],
+      sourceUrls: [one.url],
+    });
+    for (const candidate of [
+      rawReceipt("1e400", "null"),
+      rawReceipt("-0", "0"),
+      rawReceipt("9007199254740993", "9007199254740993"),
+      {
+        ...rawReceipt("1", "1"),
+        text: `{"results":[{"url":"${one.url}","value":1}],"nested":{"array":[-0]}}`,
+      },
+      {
+        ...rawReceipt("0", "0"),
+        sources: [{ url: one.url, text: `{"url":"${one.url}","value":-0}` }],
+      },
+    ]) {
+      const encoded = encodeSharedPublicWebGrounding(candidate);
+      expect(encoded).toBe(oldView(candidate));
+      expect(JSON.parse(encoded).text).toBe(candidate.text);
+      expect(JSON.parse(encoded).aggregateResultSourceIndices).toBeUndefined();
+    }
+    const finite = { ...one, numbers: { count: 4, ratio: 1.5 } };
+    expect(
+      JSON.parse(encodeSharedPublicWebGrounding(receipt({ results: [finite] }, [source(finite)])))
+        .text,
+    ).toBeUndefined();
+  });
+
   test("unknown or differently serialized source formats retain the exact old encoding", () => {
     const value = receipt({ results: [one] }, [source(one)]);
     for (const candidate of [
