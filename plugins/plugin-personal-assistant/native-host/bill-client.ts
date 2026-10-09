@@ -77,12 +77,14 @@ export type BillSourceCandidate = {
   };
   sources: BillSourceReference[];
 };
-/** A look-alike bill email for another company, account or website. */
+/**
+ * A look-alike bill email for another company, account or website. Only the
+ * facts that differ are named; the email's own values are never shown.
+ */
 export type BillSourceConflict = {
-  company: string;
-  accountLabel: string;
-  origin: string;
+  differs: Array<"company" | "accountLabel" | "origin">;
 };
+const CONFLICT_FIELDS = ["company", "accountLabel", "origin"];
 export type BillSourceOffer = {
   status:
     | "candidate"
@@ -90,7 +92,12 @@ export type BillSourceOffer = {
     | "missing"
     | "incomplete"
     | "conflicting-source";
-  reason?: "conflicting-invoice";
+  /**
+   * conflicting-invoice: two versions of one invoice (ambiguous).
+   * newer-unreadable: a newer message from the biller could not be read, so
+   * no older bill is offered (incomplete).
+   */
+  reason?: "conflicting-invoice" | "newer-unreadable";
   /** Messages from the bill sender that could not be read. */
   unreadable?: number;
   conflicts?: BillSourceConflict[];
@@ -119,16 +126,26 @@ export function readBillSourceOffer(
     !Number.isSafeInteger(v.expiresAt) ||
     !Array.isArray(v.candidates) ||
     v.candidates.length > 100 ||
-    (v.reason !== undefined && v.reason !== "conflicting-invoice") ||
+    (v.reason !== undefined &&
+      !(
+        (v.status === "ambiguous" && v.reason === "conflicting-invoice") ||
+        (v.status === "incomplete" && v.reason === "newer-unreadable")
+      )) ||
     (v.unreadable !== undefined &&
       (!Number.isSafeInteger(v.unreadable) || v.unreadable < 1)) ||
     (v.conflicts !== undefined &&
       (!Array.isArray(v.conflicts) ||
+        v.conflicts.length > 7 ||
         v.conflicts.some(
           (c) =>
-            ![c?.company, c?.accountLabel, c?.origin].every(
-              (x) => typeof x === "string" && x.length > 0 && x.length <= 300,
-            ),
+            !c ||
+            Object.keys(c).join(",") !== "differs" ||
+            !Array.isArray(c.differs) ||
+            !c.differs.length ||
+            c.differs.join(",") !==
+              CONFLICT_FIELDS.filter((key) =>
+                (c.differs as string[]).includes(key),
+              ).join(","),
         )))
   )
     throw new BillClientResponseError("Unsupported source result");
@@ -398,12 +415,14 @@ export interface BillDecisionState {
 /** Why a source search failed, from the host's fixed list. */
 export type BillSourceFailureReason =
   | "reauth_required"
+  | "cloud_sign_in_required"
   | "insufficient_scope"
   | "account_changed"
   | "unavailable"
   | "timeout";
 const sourceFailureReasons: readonly BillSourceFailureReason[] = [
   "reauth_required",
+  "cloud_sign_in_required",
   "insufficient_scope",
   "account_changed",
   "unavailable",
@@ -470,6 +489,8 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
   private readonly now: () => number;
   private readonly timers: BillTimers;
   private recheck: unknown = null;
+  /** A background website check in flight; it never holds `pending`. */
+  private background: Promise<unknown> | null = null;
   constructor(options: {
     request: BillRequest;
     validators: BillClientValidators;
@@ -529,8 +550,52 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
         };
         this.publish();
       }
-      void this.refresh();
+      this.checkInBackground();
     }, delay);
+  }
+  /**
+   * A timed re-check never makes the panel pending and never refuses a
+   * person's choice. A person's command started meanwhile supersedes it: its
+   * reply is dropped and the command waits only for the request to settle,
+   * so the host never sees two task requests at once.
+   */
+  private checkInBackground() {
+    const taskId = this.taskId;
+    if (taskId === null || this.background !== null) return;
+    if (this.state.pending) {
+      // The person's command reschedules the check when it finishes.
+      return;
+    }
+    const ticket = this.generation;
+    const settled = this.request(
+      `/tasks/${encodeURIComponent(taskId)}/bill`,
+      undefined,
+    ).then(
+      (reply) => {
+        if (!this.current(ticket) || this.state.pending) return;
+        try {
+          this.state.decision = readBillDecision(
+            reply,
+            taskId,
+            this.validators,
+          );
+          this.state.error = null;
+        } catch {
+          this.state.error = "load";
+        }
+      },
+      () => {
+        if (this.current(ticket) && !this.state.pending)
+          this.state.error = "load";
+      },
+    );
+    this.background = settled.finally(() => {
+      this.background = null;
+      if (this.current(ticket) && !this.state.pending) {
+        this.scheduleRecheck();
+        this.publish();
+      }
+    });
   }
   start(taskId: string) {
     this.stop();
@@ -569,9 +634,13 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
     const taskId = this.taskId,
       ticket = this.begin();
     if (ticket === null || taskId === null) return false;
+    this.cancelRecheck();
     this.state.error = null;
     this.publish();
     try {
+      // Let a background check that is already sent settle first.
+      if (this.background) await this.background;
+      if (!this.current(ticket)) return false;
       const reply = await this.request(
         `/tasks/${encodeURIComponent(taskId)}/bill`,
         body,

@@ -371,11 +371,7 @@ test("source offers carry arrival order, optional due dates and look-alike sourc
   );
   assert.equal(read.candidates[0].mostRecent, true);
   assert.equal(read.candidates[0].facts.dueDate, undefined);
-  const conflict = {
-    company: "Utility",
-    accountLabel: "Account ending 12",
-    origin: "https://lookalike.example",
-  };
+  const conflict = { differs: ["origin"] };
   assert.equal(
     readBillSourceOffer(
       {
@@ -386,18 +382,42 @@ test("source offers carry arrival order, optional due dates and look-alike sourc
         unreadable: 2,
       },
       validators,
-    ).conflicts[0].origin,
-    "https://lookalike.example",
+    ).conflicts[0].differs[0],
+    "origin",
   );
   assert.equal(
     readBillSourceOffer(
-      { ...offer(), conflicts: Array(6).fill(conflict) },
+      {
+        ...offer(),
+        conflicts: [
+          conflict,
+          { differs: ["company"] },
+          { differs: ["company", "accountLabel"] },
+        ],
+      },
       validators,
     ).conflicts.length,
-    6,
+    3,
+  );
+  assert.equal(
+    readBillSourceOffer(
+      {
+        ...offer(),
+        status: "incomplete",
+        reason: "newer-unreadable",
+        candidates: [],
+        unreadable: 1,
+      },
+      validators,
+    ).reason,
+    "newer-unreadable",
   );
   for (const patch of [
-    { conflicts: [{ ...conflict, origin: "" }] },
+    { conflicts: [{ ...conflict, origin: "https://lookalike.example" }] },
+    { conflicts: [{ differs: [] }] },
+    { conflicts: [{ differs: ["origin", "company"] }] },
+    { conflicts: Array(8).fill(conflict) },
+    { reason: "newer-unreadable" },
     { unreadable: 0 },
     { candidates: [{ ...newest, mostRecent: false }] },
     { candidates: [{ ...newest, receivedAt: "yesterday" }] },
@@ -426,6 +446,7 @@ test("a conflicting-source offer cannot dispatch selection", async () => {
 test("a failed source search keeps only the host's fixed reason", async () => {
   for (const [reason, expected] of [
     ["reauth_required", "reauth_required"],
+    ["cloud_sign_in_required", "cloud_sign_in_required"],
     ["insufficient_scope", "insufficient_scope"],
     ["account_changed", "account_changed"],
     ["timeout", "timeout"],
@@ -575,4 +596,88 @@ test("guide expiry must be a safe time", () => {
         ),
       BillClientResponseError,
     );
+});
+
+test("a background guide check never makes the panel pending or refuses a choice", async () => {
+  let time = 1000;
+  const pending = [];
+  const timers = {
+    set: (callback, ms) => {
+      const handle = { callback, at: time + ms };
+      pending.push(handle);
+      return handle;
+    },
+    clear: (handle) => {
+      const index = pending.indexOf(handle);
+      if (index >= 0) pending.splice(index, 1);
+    },
+  };
+  const calls = [];
+  const client = new BillDecisionClient({
+    validators,
+    now: () => time,
+    timers,
+    changed: () => {},
+    request: (path, body) => {
+      const d = deferred();
+      calls.push({ path, body, ...d });
+      return d.promise;
+    },
+  });
+  const guided = () => {
+    const value = decision();
+    value.decision.guidance = {
+      instruction: "Choose the saved card.",
+      available: true,
+      expiresAt: time + 60000,
+    };
+    return value;
+  };
+  client.start("task1");
+  await tick();
+  calls[0].resolve(guided());
+  await tick();
+  const widget = client.snapshot().decision.choice;
+  // The timed check is sent and is still in flight.
+  const timer = pending.shift();
+  time = timer.at;
+  timer.callback();
+  await tick();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].body, undefined);
+  assert.equal(client.snapshot().pending, false);
+  // A tap now is accepted. It waits for the check to settle, then is sent.
+  const chosen = client.choose(widget, "card");
+  assert.equal(client.snapshot().pending, true);
+  await tick();
+  assert.equal(calls.length, 2);
+  calls[1].resolve(guided());
+  await tick();
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls[2].body, {
+    callbackData: widget.callbackData,
+    contextKey: widget.contextKey,
+    value: "card",
+  });
+  calls[2].resolve({ decision: { kind: "human-review" } });
+  assert.equal(await chosen, true);
+  // The check's older reply did not replace the choice's reply.
+  assert.equal(client.snapshot().decision.kind, "human-review");
+  assert.equal(client.snapshot().pending, false);
+  // A failed check does not block a later choice either.
+  client.start("task1");
+  await tick();
+  calls[3].resolve(guided());
+  await tick();
+  const next = pending.shift();
+  time = next.at;
+  next.callback();
+  await tick();
+  calls[4].reject(new Error("offline"));
+  await tick();
+  assert.equal(client.snapshot().pending, false);
+  const again = client.choose(client.snapshot().decision.choice, "card");
+  assert.equal(calls.length, 6);
+  calls[5].resolve({ decision: { kind: "human-review" } });
+  assert.equal(await again, true);
 });

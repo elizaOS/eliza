@@ -265,6 +265,64 @@ test("an outcome whose INSERT fails is journaled first and recovered after a res
   }
 });
 
+test("a journaled outcome for a task that no longer exists is dropped at startup", async () => {
+  const f = await journalFixture();
+  let { db, tasks } = f.first;
+  try {
+    const owner = f.first.runtime.owner;
+    const ownerKey = JSON.stringify([
+      owner.agentId,
+      owner.actorId,
+      owner.connector.source,
+      owner.connector.accountId,
+    ]);
+    const record = (taskId) => ({
+      taskId,
+      ownerKey,
+      record: {
+        schemaVersion: 1,
+        observationId: "observation",
+        observedAt: Date.now(),
+        decision: {
+          kind: "outcome",
+          status: "paid",
+          reference: "TEST-9",
+          source: "https://example.test/receipt",
+          billSource: "mail:test",
+          totalMinor: null,
+          paymentDate: null,
+          currency: null,
+          currencyDigits: null,
+          company: "Water Test",
+        },
+      },
+    });
+    // The person's data was erased but the journal file was left behind.
+    writeFileSync(
+      f.journalPath,
+      `${JSON.stringify(record("erased"))}\n${JSON.stringify(record(f.task.id))}\n`,
+    );
+    db.close();
+    ({ db, tasks } = f.open());
+    const runtime = { owner };
+    const store = createBillOutcomeStore(db, tasks, {
+      journalPath: f.journalPath,
+    });
+    const journal = readFileSync(f.journalPath, "utf8");
+    assert.equal(journal.includes('"erased"'), false);
+    assert.equal(journal.includes(`"${f.task.id}"`), true);
+    // The surviving task's own outcome is still recovered.
+    assert.equal(
+      store.forTask(runtime, f.task.id).loadEvidence().record.decision
+        .reference,
+      "TEST-9",
+    );
+  } finally {
+    db.close();
+    rmSync(f.directory, { recursive: true, force: true });
+  }
+});
+
 test("a failed journal write keeps the outcome pending and asks for a retry", async () => {
   const f = await journalFixture();
   const { db, tasks, runtime } = f.first;

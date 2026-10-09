@@ -584,6 +584,38 @@ test("a bill the website already shows paid is not saved as this task's payment"
     assert.equal(outcome.kind, "outcome");
     assert.equal(outcome.company, "Power");
     assert.equal(saved, 1);
+    // A later task for the same bill sees the paid page without reviewing
+    // anything. The earlier payment is not saved again as the later task's.
+    const later = { ...task, id: "later", observation: { id: "seen" } };
+    const laterRuntime = { owner, get: () => later, observe: async () => {} };
+    const laterOutcomes = createBillOutcomeStore(db, {
+      get: () => later,
+    }).forTask(laterRuntime, later.id);
+    const again = await new BillWorkflow({
+      deriveBillDecision,
+      controls,
+      runtime: laterRuntime,
+      actuator: {
+        readObservation: () => ({
+          observation: { id: "seen" },
+          snapshot: snapshot({
+            "Payment status": "Paid",
+            Confirmation: "NEW-1",
+          }),
+        }),
+        quiesce: async () => {},
+      },
+      bill,
+      taskId: later.id,
+      outcomes: laterOutcomes,
+    }).refresh();
+    assert.equal(again.kind, "prior-outcome");
+    assert.equal(again.reference, "NEW-1");
+    assert.match(again.message, /earlier task already recorded/);
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS n FROM bill_outcomes_v1").get().n,
+      1,
+    );
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });
