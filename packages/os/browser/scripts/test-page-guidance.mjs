@@ -307,8 +307,9 @@ try {
   };
   const shown =
     "globalThis.__elizaPageGuidanceV1?.visible && globalThis.__elizaPageGuidanceV1.shadow.querySelector('.label').classList.contains('shown')";
-  // Grace sheet sequence: travel 1.4s, tap ring 700ms, cursor hides, ring,
-  // then the label 250ms later. Sampled every frame inside the isolated realm.
+  // Show-only sequence: travel 1.4s, cursor hides with no tap (the person
+  // presses this control), ring, then the label 250ms later. Sampled every
+  // frame inside the isolated realm.
   await page.emulateMediaFeatures([
     { name: "prefers-reduced-motion", value: "no-preference" },
   ]);
@@ -318,19 +319,21 @@ try {
   );
   assert.equal((await show("labels-1", element("Email"))).accepted, true);
   await evaluate(
-    `(()=>{const samples=globalThis.__samples=[];const t0=performance.now();const tick=()=>{const s=globalThis.__elizaPageGuidanceV1;const q=(c)=>s.shadow.querySelector(c);const p=q('.pointer');const r=p.getBoundingClientRect();samples.push({t:performance.now()-t0,pointer:p.style.display==='block',tapping:p.classList.contains('tapping'),x:r.left,y:r.top,ring:!q('.ring').hidden,label:!q('.label').hidden,shown:q('.label').classList.contains('shown'),opacity:getComputedStyle(q('.label')).opacity});if(samples.length<400)requestAnimationFrame(tick)};requestAnimationFrame(tick);return true})()`,
+    `(()=>{const samples=globalThis.__samples=[];const t0=performance.now();const tick=()=>{const s=globalThis.__elizaPageGuidanceV1;const q=(c)=>s.shadow.querySelector(c);const p=q('.pointer');const r=p.getBoundingClientRect();samples.push({t:performance.now()-t0,pointer:p.style.display==='block',tapping:Boolean(q('.tapring'))||!q('.tap').hidden,x:r.left,y:r.top,ring:!q('.ring').hidden,label:!q('.label').hidden,shown:q('.label').classList.contains('shown'),opacity:getComputedStyle(q('.label')).opacity});if(samples.length<400)requestAnimationFrame(tick)};requestAnimationFrame(tick);return true})()`,
   );
   await until(shown);
   await new Promise((resolve) => setTimeout(resolve, 450));
   const samples = await evaluate("globalThis.__samples");
   const first = (test) => samples.find(test)?.t;
   const travelStart = first((x) => x.pointer);
-  const tapStart = first((x) => x.tapping);
   const ringStart = first((x) => x.ring);
   const labelShown = first((x) => x.shown);
   assert.ok(Math.abs(samples.find((x) => x.pointer).x - 997) < 2);
-  assert.ok(tapStart - travelStart >= 1350 && tapStart - travelStart < 1600);
-  assert.ok(ringStart - tapStart >= 650 && ringStart - tapStart < 900);
+  assert.ok(
+    samples.every((x) => !x.tapping),
+    "show-only guidance never plays the agent tap",
+  );
+  assert.ok(ringStart - travelStart >= 1350 && ringStart - travelStart < 1600);
   assert.ok(
     samples.filter((x) => x.ring || x.label).every((x) => !x.pointer),
     "the cursor hides before the ring and label appear",
@@ -347,7 +350,7 @@ try {
   );
   assert.equal(await part(".label", "getComputedStyle(n).opacity"), "1");
   cases.push(
-    "cursor travels 1.4s from where last seen, taps 700ms, hides; ring then label 250ms later",
+    "cursor travels 1.4s from where last seen and hides without a tap; ring then label 250ms later",
   );
   // Grace computed styles, configured name and the bundled font.
   await until(

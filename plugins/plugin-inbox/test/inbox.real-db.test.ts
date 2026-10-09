@@ -36,6 +36,7 @@ import {
   lifeInboxTriageEntries,
   lifeInboxTriageExamples,
 } from "../src/db/schema.ts";
+import { curateEmailCandidates } from "../src/inbox/email-curation.ts";
 import { InboxService } from "../src/inbox/service.ts";
 import type { InboundMessage } from "../src/inbox/types.ts";
 
@@ -286,6 +287,35 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     expect(byId.get("cur-marketing")?.action).not.toBe("save");
     // Personal relationship cues keep the message out of delete.
     expect(byId.get("cur-personal")?.action).not.toBe("delete");
+  });
+
+  it("curation keeps sender identity inside the authoritative address", () => {
+    const vipContacts = [{ emails: ["trusted@example.com"], name: "Trusted" }];
+    for (const fromEmail of [
+      "trusted@example.com <invalid>",
+      "trusted@example.com <sender@.example.com>",
+      "trusted@example.com <sender@example.com",
+      "trusted@example.com >",
+      "trusted@example.com <other@example.com>",
+    ]) {
+      const result = curateEmailCandidates({
+        candidates: [{ id: "untrusted", fromEmail, bodyText: "An update." }],
+        identityContext: { vipContacts },
+      });
+      expect(result.decisions[0]?.identity.kind, fromEmail).not.toBe("vip");
+    }
+    for (const fromEmail of [
+      "trusted@example.com",
+      "Other <trusted@example.com>",
+      "other@example.com <trusted@example.com>",
+    ]) {
+      const result = curateEmailCandidates({
+        candidates: [{ id: "trusted", fromEmail, bodyText: "An update." }],
+        identityContext: { vipContacts },
+      });
+      expect(result.decisions[0]?.identity.kind, fromEmail).toBe("vip");
+      expect(result.decisions[0]?.blockedActions).toContain("delete");
+    }
   });
 
   it("triageWithCuration() keeps triage intact and attaches curation, with an injected VIP identity blocking delete", async () => {

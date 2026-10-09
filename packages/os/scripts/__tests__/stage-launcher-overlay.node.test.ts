@@ -204,3 +204,48 @@ test("intent names must belong to the correct action and category elements", () 
       validateInspection(descriptor, badging, invalid, signer, false),
     );
 });
+
+test("reviewed default permissions are declared by the APK and granted revocably", () => {
+  const granted = {
+    ...descriptor,
+    defaultPermissions: [
+      "android.permission.RECORD_AUDIO",
+      "android.permission.POST_NOTIFICATIONS",
+    ],
+  };
+  assert.deepEqual(validateDescriptor(granted), granted);
+  for (const defaultPermissions of [
+    [],
+    ["android.permission.RECORD_AUDIO", "android.permission.RECORD_AUDIO"],
+    ['android.permission.X"/><permission name="android.permission.Y'],
+    ["com.example.permission.PRIVATE"],
+    Array.from({ length: 33 }, (_, i) => `android.permission.P${i}`),
+  ])
+    assert.throws(
+      () => validateDescriptor({ ...descriptor, defaultPermissions }),
+      /Invalid default permissions/,
+    );
+  const declared = `${badging}\nuses-permission: name='android.permission.RECORD_AUDIO'\nuses-permission: name='android.permission.POST_NOTIFICATIONS'`;
+  validateInspection(granted, declared, xml, signer, false);
+  assert.throws(
+    () => validateInspection(granted, badging, xml, signer, false),
+    /does not declare android.permission.RECORD_AUDIO/,
+  );
+  const generated = renderOverlay(granted);
+  assert.match(generated.blueprint, /prebuilt_etc \{/);
+  assert.match(generated.blueprint, /sub_dir: "default-permissions"/);
+  assert.match(
+    generated.product,
+    /PRODUCT_PACKAGES \+= AlphaPhone AlphaPhoneDefaultPermissions/,
+  );
+  assert.match(
+    generated.permissions ?? "",
+    /<exception package="ai.elizaresearch.alphaphone">/,
+  );
+  assert.equal(
+    (generated.permissions ?? "").match(/fixed="false"/g)?.length,
+    2,
+  );
+  assert.equal(renderOverlay(descriptor).permissions, null);
+  assert.doesNotMatch(renderOverlay(descriptor).blueprint, /prebuilt_etc/);
+});
