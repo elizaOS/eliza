@@ -1,3 +1,4 @@
+import type { GoogleCalendarEvent } from "@elizaos/plugin-google-workspace";
 /**
  * Drives CALENDAR through the canonical executor over a real PGlite-backed ICS
  * snapshot, proving read receipts are grounded in persisted provider evidence.
@@ -173,8 +174,8 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
       },
     });
     const services = runtime.getService.bind(runtime);
-    const googlePages = vi.fn(async () => ({
-      events: [],
+    const googlePages = vi.fn(async (_args?: { accountId?: string }) => ({
+      events: [] as GoogleCalendarEvent[],
       nextPageToken: null,
       nextSyncToken: null,
     }));
@@ -311,6 +312,210 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
     lookup.mockRestore();
     backendRead.mockRestore();
     extraction.mockRestore();
+    // Valid native writes reach availability and its alternatives reload; both
+    // must retain the chosen connected source rather than reopen merged history.
+    const day = new Date(Date.now() + 86400000);
+    day.setUTCHours(10, 0, 0, 0);
+    const startAt = day.toISOString(),
+      endAt = new Date(day.getTime() + 3600000).toISOString();
+    await calendar.createCalendarEvent(new URL("http://127.0.0.1/"), {
+      grantId: "eliza-calendar",
+      calendarId: "primary",
+      title: "FORBIDDEN_ELIZA_AVAILABILITY",
+      startAt,
+      endAt,
+      timeZone: "UTC",
+      idempotencyKey: "native-availability-sentinel",
+    });
+    const otherGrant = {
+      ...googleGrant,
+      id: "connector-account:other-fixture",
+      connectorAccountId: "other-fixture",
+    };
+    googleGrant.capabilities.push("google.calendar.write");
+    const wireEvent = (
+      id: string,
+      title: string,
+      start: string,
+      end: string,
+    ): GoogleCalendarEvent => ({
+      id,
+      title,
+      status: "confirmed",
+      start,
+      end,
+      timeZone: "UTC",
+      calendarId: "primary",
+      metadata: {
+        etag: "fixture-version",
+        updatedAt: new Date().toISOString(),
+      },
+    });
+    const targetEvent = wireEvent(
+      "target-fixture",
+      "Selected target",
+      new Date(day.getTime() - 7200000).toISOString(),
+      new Date(day.getTime() - 3600000).toISOString(),
+    );
+    googlePages.mockImplementation(async (args) => ({
+      events:
+        args?.accountId === "other-fixture"
+          ? [
+              wireEvent(
+                "other-busy",
+                "FORBIDDEN_OTHER_AVAILABILITY",
+                startAt,
+                endAt,
+              ),
+            ]
+          : [
+              targetEvent,
+              wireEvent("selected-busy", "Selected conflict", startAt, endAt),
+            ],
+      nextPageToken: null,
+      nextSyncToken: null,
+    }));
+    const googlePort = {
+      listCalendars: async () => [
+        {
+          calendarId: "primary",
+          summary: "Fixture calendar",
+          primary: true,
+          accessRole: "owner",
+          timeZone: "UTC",
+          selected: true,
+        },
+      ],
+      listEventPage: googlePages,
+      getEvent: vi.fn(async (request: { accountId?: string }) => {
+        expect(request.accountId).toBe(googleGrant.connectorAccountId);
+        return targetEvent;
+      }),
+    };
+    vi.mocked(runtime.getService).mockImplementation((name: string) =>
+      name === "google" ? (googlePort as never) : services(name),
+    );
+    calendar.setGate({
+      ...gate(),
+      getGoogleConnectorAccounts: async () =>
+        [{ grant: googleGrant }, { grant: otherGrant }] as never,
+      requireGoogleCalendarGrant: async (_u, _m, _s, id) => {
+        const grant = [googleGrant, otherGrant].find(
+          (grant) => grant.id === id,
+        );
+        if (!grant) throw Error("Wrong read grant");
+        return grant as never;
+      },
+      requireGoogleCalendarWriteGrant: async (_u, _m, _s, id) => {
+        if (id !== googleGrant.id) throw Error("Wrong write grant");
+        return googleGrant as never;
+      },
+    });
+    for (const source of await calendar.listCalendars(
+      new URL("http://127.0.0.1/"),
+    )) {
+      if (source.provider !== "google") continue;
+      await calendar.setCalendarIncluded(new URL("http://127.0.0.1/"), {
+        provider: source.provider,
+        side: source.side,
+        grantId: source.grantId,
+        connectorAccountId: source.connectorAccountId,
+        calendarId: source.calendarId,
+        includeInFeed: true,
+        expectedVersion: source.selectionVersion,
+      });
+    }
+    for (const { subaction, native } of [
+      { subaction: "create_event", native: true },
+      { subaction: "update_event", native: true },
+      { subaction: "create_event", native: false },
+    ]) {
+      input.content.text =
+        subaction === "create_event"
+          ? `Create Scoped appointment on ${startAt} until ${endAt} in UTC`
+          : `Move Selected target to ${startAt} until ${endAt} in UTC`;
+      const extraction = vi
+        .spyOn(runtime, "useModel")
+        .mockImplementation(async (_type, parameters) =>
+          String(
+            parameters &&
+              typeof parameters === "object" &&
+              "prompt" in parameters
+              ? parameters.prompt
+              : "",
+          ).includes("Extract calendar")
+            ? JSON.stringify({
+                requiresInput: false,
+                title:
+                  subaction === "create_event" ? "Scoped appointment" : null,
+                startAt,
+                endAt,
+                timeZone: "UTC",
+                grantId: googleGrant.id,
+                calendarId: "primary",
+              })
+            : "Only selected calendar evidence.",
+        );
+      feed.mockClear();
+      googlePages.mockClear();
+      const run = () =>
+        execute(
+          {
+            grantId: googleGrant.id,
+            calendarId: "primary",
+            ...(subaction === "update_event"
+              ? { eventId: "target-fixture" }
+              : {}),
+          },
+          subaction,
+        );
+      const result = native
+        ? await withDeviceActionTurn(runtime, credentials, run)
+        : await run();
+      expect(result.data).toHaveProperty("availability");
+      expect(feed.mock.calls.length).toBeGreaterThanOrEqual(
+        subaction === "create_event" ? 3 : 2,
+      );
+      expect(JSON.stringify(result)).toContain("Selected conflict");
+      if (native) {
+        expect(JSON.stringify(result)).not.toMatch(
+          /FORBIDDEN_(ELIZA|OTHER)_AVAILABILITY/,
+        );
+        expect(
+          feed.mock.calls.every(
+            ([, request]) => request?.grantId === googleGrant.id,
+          ),
+        ).toBe(true);
+        expect(
+          googlePages.mock.calls.every(
+            ([request]) =>
+              request?.accountId === googleGrant.connectorAccountId,
+          ),
+        ).toBe(true);
+        if (subaction === "update_event")
+          expect(googlePort.getEvent).toHaveBeenCalledWith(
+            expect.objectContaining({
+              accountId: googleGrant.connectorAccountId,
+              calendarId: "primary",
+              eventId: "target-fixture",
+            }),
+          );
+        expect(JSON.stringify(extraction.mock.calls)).not.toMatch(
+          /FORBIDDEN_(ELIZA|OTHER)_AVAILABILITY/,
+        );
+      } else {
+        expect(
+          feed.mock.calls.some(([, request]) => request?.grantId === undefined),
+        ).toBe(true);
+        expect(JSON.stringify(result)).toContain(
+          "FORBIDDEN_ELIZA_AVAILABILITY",
+        );
+        expect(JSON.stringify(result)).toContain(
+          "FORBIDDEN_OTHER_AVAILABILITY",
+        );
+      }
+      extraction.mockRestore();
+    }
     const unknown = await withDeviceActionTurn(runtime, credentials, () =>
       execute({ grantId: "connector-account:unavailable" }),
     );
