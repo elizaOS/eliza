@@ -4,9 +4,17 @@
  */
 
 import { execSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { ChannelType, type Content, type Memory, ModelType } from "@elizaos/core";
+import { createPerfectResultPlugin } from "@elizaos/testing/models";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { recentMessagesProvider } from "../../../plugin-assistant/src/features/basic-capabilities/providers/recentMessages";
+import mcpPlugin from "../../src/index";
+import type { McpService } from "../../src/service";
 
 const runNpxMcpServerTests = process.env.ELIZA_MCP_NPX_INTEGRATION === "1";
 
@@ -174,4 +182,144 @@ describe("MCP Server Integration", () => {
       }
     });
   });
+});
+
+describe("MCP tool schema dialects through model argument selection", () => {
+  const fixture = fileURLToPath(new URL("../fixtures/schema-dialect-server.mjs", import.meta.url));
+  const cases = [
+    { tool: "implicit", pair: ["task", 0], valid: true },
+    { tool: "explicit", pair: ["task", 0], valid: true },
+    { tool: "legacy", pair: ["task", 0], valid: true },
+    { tool: "implicit", pair: [0, "task"], valid: false },
+    { tool: "explicit", pair: ["task", 0, 1], valid: false },
+    { tool: "legacy", pair: [0, "task"], valid: false },
+    { tool: "unsupported", pair: ["task", 0], valid: false },
+  ];
+
+  it.each(cases)(
+    "validates $tool/$pair before invoking the server",
+    async ({ tool, pair, valid }) => {
+      const modelCalls: Array<{ type: string; prompt: string }> = [];
+      const model = createPerfectResultPlugin({
+        fixtures: [
+          {
+            name: "argument-selection",
+            match: { modelType: ModelType.TEXT_LARGE },
+            times: { min: 1, max: 3 },
+            response: (call) => {
+              modelCalls.push({ type: call.modelType, prompt: call.params.prompt ?? "" });
+              return JSON.stringify({ toolArguments: { pair } });
+            },
+          },
+          ...(valid
+            ? [
+                {
+                  name: "tool-response",
+                  match: { modelType: ModelType.TEXT_SMALL },
+                  times: 1,
+                  response: (call) => {
+                    modelCalls.push({ type: call.modelType, prompt: call.params.prompt ?? "" });
+                    return "The tool received the pair.";
+                  },
+                },
+              ]
+            : []),
+        ],
+      });
+      const runtime = createSQLiteTestRuntime({
+        character: {
+          name: "mcp-schema-dialects",
+          bio: "Use tool schemas without losing their validation rules",
+          settings: {
+            mcp: {
+              servers: { peer: { type: "stdio", command: "node", args: [fixture] } },
+            },
+          },
+        },
+        plugins: [mcpPlugin, model],
+        logLevel: "fatal",
+      });
+      try {
+        await runtime.initialize();
+        runtime.registerProvider(recentMessagesProvider);
+        const service = (await runtime.getServiceLoadPromise("mcp")) as McpService;
+        expect(service.getServers()[0].status).toBe("connected");
+        expect(service.getServers()[0].tools?.map((entry) => entry.name)).toEqual([
+          "implicit",
+          "explicit",
+          "legacy",
+          "unsupported",
+        ]);
+        const roomId = randomUUID(),
+          entityId = randomUUID(),
+          worldId = randomUUID();
+        await runtime.ensureConnection({
+          roomId,
+          entityId,
+          worldId,
+          source: "mcp-integration",
+          type: ChannelType.DM,
+        });
+        const message: Memory = {
+          id: randomUUID(),
+          roomId,
+          entityId,
+          worldId,
+          agentId: runtime.agentId,
+          content: {
+            text: `Use ${tool} with the pair ${JSON.stringify(pair)}.`,
+            source: "mcp-integration",
+          },
+        };
+        await runtime.createMemory(message, "messages");
+        const action = runtime.actions.find((entry) => entry.name === "MCP");
+        if (!action?.handler) throw new Error("Registered MCP action is missing");
+        const callbacks: Content[] = [];
+        const result = await action.handler(
+          runtime,
+          message,
+          undefined,
+          { parameters: { op: "call_tool", serverName: "peer", toolName: tool } },
+          async (content) => {
+            callbacks.push(content);
+            return [];
+          }
+        );
+        if (!result || typeof result !== "object") throw new Error("Expected action result");
+        expect(result.success).toBe(true);
+        expect(result.values?.toolExecuted === true).toBe(valid);
+        expect(result.data?.noToolAvailable === true).toBe(!valid);
+        const readback = (await service.readResource("peer", "fixture:///calls")).contents[0];
+        if (typeof readback.text !== "string") throw new Error("Expected invocation receipt");
+        const invocations = JSON.parse(readback.text);
+        expect(invocations).toEqual(valid ? [{ name: tool, arguments: { pair } }] : []);
+        const memories = await runtime.getMemories({ tableName: "messages", roomId, count: 20 });
+        const saved = memories.find((memory) => memory.content.actions?.includes("CALL_MCP_TOOL"));
+        expect(Boolean(saved)).toBe(valid);
+        if (valid) {
+          expect(result.data?.output).toContain(JSON.stringify(pair));
+          expect(saved?.content.text).toBe(callbacks.at(-1)?.text);
+          expect(modelCalls.at(-1)?.prompt).toContain(JSON.stringify(pair));
+        }
+        expect(modelCalls.map((call) => call.type)).toEqual(
+          valid
+            ? [ModelType.TEXT_LARGE, ModelType.TEXT_SMALL]
+            : [ModelType.TEXT_LARGE, ModelType.TEXT_LARGE, ModelType.TEXT_LARGE]
+        );
+        model.assertFixturesConsumed();
+        console.info(
+          "MCP schema dialect receipt:",
+          JSON.stringify({
+            tool,
+            pair,
+            success: result.success,
+            invocations,
+            storedReply: Boolean(saved),
+          })
+        );
+      } finally {
+        await runtime.stop();
+      }
+    }
+  );
 });

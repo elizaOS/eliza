@@ -3,6 +3,10 @@
 elizaOS plugin that connects Eliza agents to external MCP (Model Context Protocol)
 servers, exposing their tools and resources as agent capabilities.
 
+Tool argument validation defaults to JSON Schema 2020-12. An explicit
+`http://json-schema.org/draft-07/schema#` selects draft-07 instead. Unsupported
+dialects are rejected within the existing isolated validation worker.
+
 Discovery requests only the tools and resources that the server declares. Servers
 that provide resources without tools can connect and serve agent context. Stdio
 health checks use protocol `ping` with the configured timeout, not `tools/list`.
