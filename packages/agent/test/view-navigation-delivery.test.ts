@@ -2323,6 +2323,18 @@ describe("native completed-action navigation", () => {
     const claimed = await post("/api/views/interact-claim", binding);
     expect(claimed.status).toBe(200);
     const { claimId } = await claimed.json();
+    // Once execution is claimed, a later preparation cannot revoke its ack
+    // or introduce a second claim that can commit out of order.
+    const nextNavigation = {
+      clientId: "origin-client",
+      delivery: "completed-action",
+      completedActionHandoffId: "claimed-navigation-next",
+      viewType: "gui",
+      prepareOnly: true,
+    };
+    expect(
+      (await post("/api/views/notes/navigate", nextNavigation)).status,
+    ).toBe(409);
     const settled = {
       ...binding,
       claimId,
@@ -2361,6 +2373,35 @@ describe("native completed-action navigation", () => {
     await vi.waitFor(() =>
       expect(getCurrentViewState(f.runtime, scope)?.viewId).toBe("notes"),
     );
+    const nextPrepared = await post(
+      "/api/views/notes/navigate",
+      nextNavigation,
+    );
+    expect(nextPrepared.status).toBe(200);
+    const nextBinding = (await nextPrepared.json()).navigationBinding;
+    // Unclaimed preparations remain replaceable; only issued execution claims
+    // prevent supersession.
+    const superseding = await post("/api/views/notes/navigate", {
+      ...nextNavigation,
+      completedActionHandoffId: "unclaimed-navigation-newer",
+    });
+    expect(superseding.status).toBe(200);
+    const latestBinding = (await superseding.json()).navigationBinding;
+    expect((await post("/api/views/interact-claim", nextBinding)).status).toBe(
+      409,
+    );
+    const latestClaim = await post("/api/views/interact-claim", latestBinding);
+    expect(latestClaim.status).toBe(200);
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...latestBinding,
+          claimId: (await latestClaim.json()).claimId,
+          success: true,
+          result: { switched: true },
+        })
+      ).json(),
+    ).toMatchObject({ accepted: true });
     expect(events).not.toHaveBeenCalled();
     expect(
       await (await post("/api/views/interact-result", settled)).json(),
