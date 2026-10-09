@@ -88,6 +88,7 @@ import { classifyRegistryPluginRelease } from "../runtime/release-plugin-policy.
 import {
   getViewClientScope,
   runWithViewClient,
+  type ViewClientScope,
 } from "../runtime/view-client-context.ts";
 import {
   AUDIT_EVENT_TYPES,
@@ -182,6 +183,7 @@ import { resolveHostSessionAccessContext } from "./host-session-access-context.t
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { listenHttpServer } from "./http-listener.ts";
 import { registerInProcessApi } from "./in-process-api.ts";
+import { getAuthenticatedInProcessAuthorization } from "./in-process-request.ts";
 import { resolveInboxRequestAuthorization } from "./inbox-request-authorization.ts";
 import {
   type LocalInferenceRouteApi,
@@ -1168,15 +1170,50 @@ async function handleRequest(
   state: ServerState,
   ctx?: RequestContext,
 ): Promise<void> {
+  // Admission and host middleware may await after the dispatcher selects us.
+  // Revalidate the original owner before creating a scope for the current runtime.
+  const parentScope = getViewClientScope();
+  if (
+    getAuthenticatedInProcessAuthorization(req) &&
+    (parentScope?.hostKey !== state ||
+      !parentScope.request ||
+      parentScope.request.signal.aborted ||
+      parentScope.request.runtime !== state.runtime)
+  ) {
+    error(res, "Original authenticated request is no longer active", 403);
+    return;
+  }
   const rawClientId =
     req.headers["x-elizaos-client-id"] ?? req.headers["x-eliza-client-id"];
   const clientId = normalizeWsClientId(
     Array.isArray(rawClientId) ? rawClientId[0] : rawClientId,
   );
-  return runWithViewClient(
-    clientId ? { hostKey: state, clientId } : undefined,
-    () => handleRequestForViewClient(req, res, state, ctx),
-  );
+  const requestController = new AbortController();
+  const request: NonNullable<ViewClientScope["request"]> = {
+    runtime: state.runtime,
+    signal: requestController.signal,
+  };
+  const scope: ViewClientScope = {
+    hostKey: state,
+    ...(clientId ? { clientId } : {}),
+    request,
+  };
+  const retire = () => {
+    requestController.abort(
+      new DOMException("The originating HTTP request closed", "AbortError"),
+    );
+  };
+  req.once("aborted", retire);
+  res.once("close", retire);
+  return runWithViewClient(scope, async () => {
+    try {
+      await handleRequestForViewClient(req, res, state, ctx);
+    } finally {
+      retire();
+      req.removeListener("aborted", retire);
+      res.removeListener("close", retire);
+    }
+  });
 }
 async function handleRequestForViewClient(
   req: http.IncomingMessage,
@@ -1249,7 +1286,9 @@ async function handleRequestForViewClient(
       hostSessionAuthorizationAttempted = true;
       const bridge = getAgentHostBridge();
       const resolveAuthorization = bridge.resolveHttpRequestAuthorization;
-      if (typeof resolveAuthorization === "function") {
+      const inherited = getAuthenticatedInProcessAuthorization(req);
+      if (inherited) hostSessionAuthorization = inherited;
+      else if (typeof resolveAuthorization === "function") {
         hostSessionAuthorization = await resolveAuthorization(
           req,
           state.runtime,
@@ -1259,22 +1298,39 @@ async function handleRequestForViewClient(
             allowBearerAuth: true,
           },
         );
-        return hostSessionAuthorization;
+      } else {
+        const authorize = bridge.isHttpRequestAuthorized;
+        // A legacy boolean-only bridge cannot separate cookie from bearer
+        // authority. Do not consult it for an explicitly untrusted origin;
+        // standalone bearer schemes are evaluated by the normal server gates.
+        const authorized =
+          allowHostCookieAuth && typeof authorize === "function"
+            ? await authorize(req, state.runtime)
+            : false;
+        // Legacy boolean-only hosts can still pass the coarse request gate, but
+        // cannot claim OWNER authority for a sensitive account-selection action.
+        hostSessionAuthorization = {
+          ok: authorized,
+          role: authorized ? "USER" : "NONE",
+        };
       }
-      const authorize = bridge.isHttpRequestAuthorized;
-      // A legacy boolean-only bridge cannot separate cookie from bearer
-      // authority. Do not consult it for an explicitly untrusted origin;
-      // standalone bearer schemes are evaluated by the normal server gates.
-      const authorized =
-        allowHostCookieAuth && typeof authorize === "function"
-          ? await authorize(req, state.runtime)
-          : false;
-      // Legacy boolean-only hosts can still pass the coarse request gate, but
-      // cannot claim OWNER authority for a sensitive account-selection action.
-      hostSessionAuthorization = {
-        ok: authorized,
-        role: authorized ? "USER" : "NONE",
-      };
+      const scope = getViewClientScope();
+      if (
+        scope?.hostKey === state &&
+        scope.request &&
+        !scope.request.signal.aborted &&
+        scope.request.runtime === state.runtime
+      )
+        scope.request.authorization = Object.freeze({
+          ...hostSessionAuthorization,
+          ...(hostSessionAuthorization.externalIdentity
+            ? {
+                externalIdentity: Object.freeze({
+                  ...hostSessionAuthorization.externalIdentity,
+                }),
+              }
+            : {}),
+        });
       return hostSessionAuthorization;
     };
   const isHostSessionAuthorized = async (): Promise<boolean> =>
@@ -3528,10 +3584,20 @@ export async function startApiServer(opts?: {
   let unregisterInProcessApi: (() => void) | undefined;
   const bindInProcessApi = () => {
     unregisterInProcessApi?.();
-    unregisterInProcessApi =
-      opts?.skipListen && state.runtime
+    if (state.runtime) {
+      const unregisterHost = registerInProcessApi(
+        state.runtime,
+        routeKernel,
+        state,
+      );
+      const unregisterDefault = opts?.skipListen
         ? registerInProcessApi(state.runtime, routeKernel)
         : undefined;
+      unregisterInProcessApi = () => {
+        unregisterHost();
+        unregisterDefault?.();
+      };
+    } else unregisterInProcessApi = undefined;
   };
   bindInProcessApi();
   const server = http.createServer((req, res) => routeKernel.handle(req, res));
