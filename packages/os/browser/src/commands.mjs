@@ -376,6 +376,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         (node instanceof HTMLInputElement &&
           node.type === "date" &&
           (!/^\d{4}-\d{2}-\d{2}$/.test(command.text) ||
+            command.text.startsWith("0000-") ||
             Number.isNaN(Date.parse(`${command.text}T00:00:00Z`)) ||
             new Date(`${command.text}T00:00:00Z`).toISOString().slice(0, 10) !==
               command.text)) ||
@@ -417,7 +418,10 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     let personAt = Number.NEGATIVE_INFINITY;
     const controller = new AbortController();
     const watch = {
-      violation: globalThis[watchKey]?.violation ?? null,
+      violation:
+        globalThis[watchKey]?.violation?.scope === policy.guidanceScope
+          ? (globalThis[watchKey]?.violation ?? null)
+          : null,
       stop: () => controller.abort(),
     };
     const report = (kind, event) => {

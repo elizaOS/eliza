@@ -84,6 +84,26 @@ try {
     true,
     "failed transport remains an explicit capture gap",
   );
+  for (const failure of ["unrecorded", "rejected", "thrown"]) {
+    await page.evaluate((mode) => {
+      globalThis.__elizaManualActivityV1.abort();
+      delete globalThis.__elizaManualActivityV1;
+      chrome.runtime.sendMessage = () => {
+        if (mode === "thrown") throw new Error("test transport lost");
+        if (mode === "rejected")
+          return Promise.reject(new Error("test transport lost"));
+        return Promise.resolve({ recorded: false });
+      };
+    }, failure);
+    await install(6, Date.now() + 60000);
+    await page.getByRole("button", { name: "Next" }).click();
+    await page.waitForTimeout(100);
+    assert.equal(
+      (await install(7, Date.now() + 60000)).captureGap,
+      true,
+      `a credential field cannot erase a ${failure} activity delivery`,
+    );
+  }
   console.log(
     "PASS: Chromium trusted activation, script-only refusal, value exclusion, sign-in form marking, rebind, expiry and failed transport gap; simulated message transport only.",
   );
