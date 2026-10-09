@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type BatchVoiceCapture,
   BatchVoiceConversation,
@@ -6,6 +5,7 @@ import {
   type BatchVoicePorts,
   type BatchVoiceReply,
 } from "@elizaos/ui/voice/batch-conversation";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createVoiceActivityDetector,
   DEFAULT_VOICE_ACTIVITY,
