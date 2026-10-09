@@ -53,7 +53,8 @@ describe("slack connector loop (keyless)", () => {
             response: {
               contexts: ["simple"],
               intents: [],
-              replyText: "Read [Function](https://en.wikipedia.org/wiki/Function_(mathematics)).",
+              replyText:
+                "Read [Function](https://en.wikipedia.org/wiki/Function_(mathematics)).",
               candidateActionNames: [],
             },
           },
