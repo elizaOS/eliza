@@ -205,7 +205,7 @@ try {
     "submit",
   );
   const dateTarget = [{ selector: "#when", action: "fill" }];
-  for (const text of ["10/01/2026", "2026-02-30", "2026-13-01"])
+  for (const text of ["10/01/2026", "2026-02-30", "2026-13-01", "0000-01-01"])
     assert.equal(
       (await act("Payment date", "fill", dateTarget, { text })).error.kind,
       "POLICY_BLOCKED",
