@@ -1129,6 +1129,9 @@ export type StreamChunkCallback = (
  * Provides context about the current execution and queued action plans
  */
 export interface HandlerOptions {
+	/** Server-owned executor cancellation, never a model-authored action parameter. */
+	abortSignal?: AbortSignal;
+
 	/** Context with previous action results and utilities */
 	actionContext?: ActionContext;
 

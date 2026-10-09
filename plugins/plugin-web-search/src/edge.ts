@@ -13,7 +13,8 @@ import type {
     Plugin,
     State,
 } from "@elizaos/core/edge";
-import { isBlockedHostname, isPrivateIpAddress, searchKeylessWeb } from "@elizaos/core/edge";
+import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core/edge";
+import { isKeylessWebSearchUnavailableError, searchKeylessWeb } from "./keyless-web-search";
 
 export const WEB_SEARCH_EDGE_COMPATIBILITY = {
     target: "edge",
@@ -190,7 +191,7 @@ async function fail(
 /** Runs the same public-read implementation used by the registered action. */
 export async function runWebSearchEdge(
     query: string,
-    options: { numResults?: number } = {}
+    options: { numResults?: number; signal?: AbortSignal } = {}
 ): Promise<ActionResult> {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) return await fail("A web search query is required.");
@@ -202,11 +203,28 @@ export async function runWebSearchEdge(
         );
     }
     const observedAt = Date.now();
-    const result = await searchKeylessWeb(normalizedQuery, {
-        resultCount: options.numResults,
-    });
+    options.signal?.throwIfAborted();
+    let result: Awaited<ReturnType<typeof searchKeylessWeb>>;
+    try {
+        // Legacy numResults affected only the removed Exa fallback. Parallel
+        // returns its complete bounded evidence, matching the canonical OG helper.
+        result = await searchKeylessWeb(normalizedQuery, { signal: options.signal });
+    } catch (error) {
+        options.signal?.throwIfAborted();
+        if (!isKeylessWebSearchUnavailableError(error)) throw error;
+        return {
+            success: false,
+            text: "Web search is temporarily unavailable.",
+            data: { actionName: "WEB_SEARCH", query: normalizedQuery, unavailable: true,
+                provider: error.provider, reason: error.reason,
+                ...(error.status === undefined ? {} : { status: error.status }),
+                ...(error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs }) },
+            error: error.message,
+        };
+    }
+    options.signal?.throwIfAborted();
     if (!result) {
-        return await fail("Web search is temporarily unavailable.", undefined, normalizedQuery);
+        return await fail("Web search returned no results.", undefined, normalizedQuery);
     }
     const evidence = webSearchSourceEvidence(result.text);
     return {
@@ -228,7 +246,7 @@ export async function runWebSearchEdge(
 
 export type WebSearchEdgeRunner = (
     query: string,
-    options?: { numResults?: number }
+    options?: { numResults?: number; signal?: AbortSignal }
 ) => Promise<ActionResult>;
 
 function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
@@ -266,9 +284,15 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
             const query = readQuery(parameters);
             if (!query) return await fail("A web search query is required.", callback);
 
+            const candidateSignal = options && typeof options === "object"
+                ? (options as { abortSignal?: unknown }).abortSignal : undefined;
+            const signal = candidateSignal instanceof AbortSignal ? candidateSignal : undefined;
+            signal?.throwIfAborted();
             const result = await runner(query, {
                 numResults: readResultCount(parameters),
+                signal,
             });
+            signal?.throwIfAborted();
             if (result.success !== true && result.text) {
                 await callback?.({ text: result.text });
             }

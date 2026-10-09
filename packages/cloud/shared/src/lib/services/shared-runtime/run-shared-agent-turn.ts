@@ -1277,7 +1277,7 @@ export async function runSharedAgentTurn(
             signal: input.abortSignal,
             observationOnly: isCurrentWeatherObservationRequest(publicSearchText ?? message),
           })
-        : await runWebSearchEdge(realtimeRequirement.query);
+        : await runWebSearchEdge(realtimeRequirement.query, { signal: input.abortSignal });
       input.abortSignal?.throwIfAborted();
     } catch (error) {
       input.abortSignal?.throwIfAborted();
