@@ -171,8 +171,33 @@ export class BillWorkflow {
       await this.clearGuidance();
       if (!(await this.stillAuthorized()))
         return blocked("Task authorization changed.");
+      // The website already shows this bill paid or scheduled, but neither
+      // this task nor an earlier task for this owner and bill reviewed or
+      // submitted a payment. It is not a payment this helper made.
+      if (
+        typeof this.outcomes?.loadReview === "function" &&
+        typeof this.outcomes?.loadAttempt === "function" &&
+        !this.outcomes.loadReview() &&
+        !this.hasPaymentHistory()
+      )
+        return {
+          kind: "prior-outcome",
+          status: decision.status,
+          ...(typeof decision.reference === "string"
+            ? { reference: decision.reference }
+            : {}),
+          source: decision.source,
+          message:
+            (decision.status === "scheduled"
+              ? "The website shows this bill is already scheduled."
+              : "The website shows this bill is already paid.") +
+            " This task did not review a payment, so it is not saved as this task's payment. Check the website's records before you pay again.",
+        };
       return this.outcomes
-        ? this.outcomes.save(decision, observation.id)
+        ? this.outcomes.save(
+            { ...decision, company: this.bill.company },
+            observation.id,
+          )
         : {
             ...decision,
             saveStatus: "pending",

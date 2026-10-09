@@ -672,3 +672,271 @@ test("native speech rendering validates context and confirms exact provider spee
     );
   }
 });
+
+const GRANT_A = "11111111-1111-4111-8111-111111111111";
+const GRANT_B = "22222222-2222-4222-8222-222222222222";
+const READ_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+const METADATA_SCOPE = "https://www.googleapis.com/auth/gmail.metadata";
+function googleHost(t, google) {
+  const calls = [];
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      accountBilling: false,
+      providerDefaultVoice: true,
+      speechLanguage: null,
+      multipartPrefix: "independent-host",
+      requireNonSensitiveText(text) {
+        if (google.policyFailure) throw new Error("private policy failure");
+        if (/\d{6}/.test(text))
+          throw Object.assign(new Error("sensitive"), {
+            code: "SENSITIVE_TEXT",
+          });
+      },
+      pickMessage: (value) => ({ id: value.externalId }),
+    },
+    initialApiKey: "synthetic-credential",
+    credentialGate: async () => "owner",
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      const path = new URL(url).pathname;
+      if (path === "/api/v1/voice/stt")
+        return Response.json({ text: google.transcript ?? "hello" });
+      if (path === "/api/v1/eliza/google/status")
+        return Response.json({
+          connected: google.connectionId !== null,
+          configured: true,
+          reason: google.connectionId ? "connected" : "disconnected",
+          identity: { email: "owner@example.test" },
+          connectionId: google.connectionId,
+          grantedCapabilities: ["google.gmail.triage"],
+          grantedScopes: google.scopes ?? [READ_SCOPE, "openid"],
+        });
+      if (path === "/api/v1/eliza/google/disconnect") {
+        google.connectionId = null;
+        return Response.json({ ok: true });
+      }
+      if (path === "/api/v1/eliza/google/gmail/search") {
+        if (google.searchFailures?.length)
+          return new Response(null, { status: google.searchFailures.shift() });
+        await google.beforeSearch?.();
+        return Response.json({ messages: [], nextPageToken: null });
+      }
+      throw Error("Unexpected provider request");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const post = async (route, value) => {
+    if (!server.listening) await once(server, "listening");
+    return fetch(`http://127.0.0.1:${server.address().port}${route}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value),
+    });
+  };
+  const get = async (route) => {
+    if (!server.listening) await once(server, "listening");
+    return fetch(`http://127.0.0.1:${server.address().port}${route}`);
+  };
+  return { routes, calls, post, get };
+}
+const search = (accountId) => ({
+  accountId,
+  query: "from:billing@example.test",
+  pageSize: 10,
+});
+
+test("Gmail status names its connection and whether message bodies can be read", async (t) => {
+  const google = { connectionId: GRANT_A };
+  const { get, calls } = googleHost(t, google);
+  const status = await (await get("/gmail/status")).json();
+  assert.equal(status.connectionId, GRANT_A);
+  assert.deepEqual(status.grantedScopes, [READ_SCOPE, "openid"]);
+  assert.equal(status.canReadMessages, true);
+  // A metadata-only grant still reports triage but cannot read messages.
+  google.scopes = [METADATA_SCOPE, "not a scope"];
+  const metadata = await (await get("/gmail/status")).json();
+  assert.deepEqual(metadata.grantedCapabilities, ["google.gmail.triage"]);
+  assert.deepEqual(metadata.grantedScopes, [METADATA_SCOPE]);
+  assert.equal(metadata.canReadMessages, false);
+  google.connectionId = null;
+  const disconnected = await (await get("/gmail/status")).json();
+  assert.equal(disconnected.connectionId, null);
+  assert.equal(disconnected.canReadMessages, false);
+  assert.equal(calls.length, 3);
+});
+
+test("Gmail list and read name the shown connection; a bad grant is refused", async (t) => {
+  const google = { connectionId: GRANT_A };
+  const { post, calls } = googleHost(t, google);
+  assert.equal(
+    (await post("/gmail/list", { query: "bill", grantId: "../other" })).status,
+    400,
+  );
+  assert.equal(calls.length, 0);
+  assert.equal(
+    (await post("/gmail/list", { query: "bill", grantId: GRANT_A })).status,
+    200,
+  );
+  const listed = new URL(calls.at(-1).url);
+  assert.equal(listed.pathname, "/api/v1/eliza/google/gmail/search");
+  assert.equal(listed.searchParams.get("grantId"), GRANT_A);
+});
+
+test("Gmail disconnect proxies the owner connection and fences an in-flight task read", async (t) => {
+  let release;
+  const google = {
+    connectionId: GRANT_A,
+    beforeSearch: () =>
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+  };
+  const { routes, post, calls } = googleHost(t, google);
+  const port = routes.googleForAccount({
+    actorId: "owner",
+    retryDelaysMs: [],
+  });
+  assert.equal(await port.currentAccountId(), GRANT_A);
+  const read = port.searchGmailMessagesPage(search(GRANT_A));
+  while (!release) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    (await post("/gmail/disconnect", { connectionId: "bad id" })).status,
+    400,
+  );
+  const response = await post("/gmail/disconnect", { connectionId: GRANT_A });
+  assert.deepEqual(await response.json(), { disconnected: true });
+  const sent = calls.find((c) => c.url.endsWith("/google/disconnect"));
+  assert.deepEqual(JSON.parse(sent.init.body), {
+    side: "owner",
+    connectionId: GRANT_A,
+  });
+  release();
+  await assert.rejects(read, { code: "account_changed", status: 409 });
+  // After the disconnect, a new read finds no connected account.
+  await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
+    code: "account_changed",
+  });
+});
+
+test("a task read bound to one Google connection refuses another connected mailbox", async (t) => {
+  const google = { connectionId: GRANT_A };
+  const { routes, calls } = googleHost(t, google);
+  const port = routes.googleForAccount({ actorId: "owner", retryDelaysMs: [] });
+  const bound = await port.currentAccountId();
+  assert.deepEqual(await port.searchGmailMessagesPage(search(bound)), {
+    messages: [],
+    nextPageToken: null,
+  });
+  const searched = calls.find((c) => c.url.includes("/gmail/search"));
+  assert.equal(new URL(searched.url).searchParams.get("grantId"), GRANT_A);
+  // Margaret reconnects with another account. The task's grant is now stale.
+  google.connectionId = GRANT_B;
+  const before = calls.length;
+  await assert.rejects(port.searchGmailMessagesPage(search(bound)), {
+    code: "account_changed",
+  });
+  assert.equal(
+    calls.slice(before).some((c) => c.url.includes("/gmail/search")),
+    false,
+  );
+  // A fixed configured grant is held to the same check.
+  const fixed = routes.googleForAccount({
+    actorId: "owner",
+    accountId: GRANT_A,
+    retryDelaysMs: [],
+  });
+  await assert.rejects(fixed.searchGmailMessagesPage(search(GRANT_A)), {
+    code: "account_changed",
+  });
+});
+
+test("task reads report typed reasons and retry only transient failures", async (t) => {
+  const google = { connectionId: GRANT_A, scopes: [METADATA_SCOPE] };
+  const { routes, calls } = googleHost(t, google);
+  const port = routes.googleForAccount({
+    actorId: "owner",
+    retryDelaysMs: [1, 1],
+  });
+  await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
+    code: "insufficient_scope",
+    status: 403,
+  });
+  google.scopes = undefined;
+  google.searchFailures = [503, 429];
+  const before = calls.length;
+  await port.searchGmailMessagesPage(search(GRANT_A));
+  assert.equal(
+    calls.slice(before).filter((c) => c.url.includes("/gmail/search")).length,
+    3,
+  );
+  google.searchFailures = [503, 503, 503];
+  await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
+    code: "unavailable",
+  });
+  google.searchFailures = [401];
+  await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
+    code: "reauth_required",
+  });
+  // A refusal is never retried.
+  google.searchFailures = [400, 400];
+  const refused = calls.length;
+  await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
+    code: "unavailable",
+  });
+  assert.equal(
+    calls.slice(refused).filter((c) => c.url.includes("/gmail/search")).length,
+    1,
+  );
+});
+
+test("a heard secret is withheld from the transcript and flagged", async (t) => {
+  const google = { connectionId: GRANT_A, transcript: "my code is 123456" };
+  const { post } = googleHost(t, google);
+  const audio = { audioBase64: "AQID", mimeType: "audio/wav" };
+  assert.deepEqual(await (await post("/voice/stt", audio)).json(), {
+    text: "",
+    redacted: true,
+  });
+  google.policyFailure = true;
+  const failed = await post("/voice/stt", audio);
+  assert.equal(failed.status, 502);
+  assert.deepEqual(await failed.json(), { error: "Cloud service unavailable" });
+  google.policyFailure = false;
+  google.transcript = "call my daughter";
+  assert.deepEqual(await (await post("/voice/stt", audio)).json(), {
+    text: "call my daughter",
+  });
+});
+
+test("native auth learns whether Google account linking is ready, off by default", () => {
+  for (const [accountLinkReady, expected] of [
+    [undefined, false],
+    ["yes", false],
+    [true, true],
+  ]) {
+    let options;
+    createCloudRoutes({
+      hostPolicy: {
+        ...policy,
+        accountLinkReady,
+        createNativeCloudAuth: (value) => {
+          options = value;
+          return {};
+        },
+      },
+      pendingCredentialStore: { read: async () => null },
+      speechVoice: { voiceId: "voice", modelId: "model" },
+      fetchImpl: async () => {
+        throw Error("Unexpected provider request");
+      },
+    });
+    assert.equal(options.accountLinkReady, expected);
+  }
+});

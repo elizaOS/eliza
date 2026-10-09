@@ -357,3 +357,122 @@ test("source links open only explicit safe URLs, serialize taps and suppress sta
   assert.equal(await next, false);
   assert.deepEqual(states.at(-1), { opening: false, failed: true });
 });
+
+test("source offers carry arrival order, optional due dates and look-alike sources", () => {
+  const newest = {
+    ...candidate(),
+    receivedAt: "2026-09-20T00:00:00.000Z",
+    mostRecent: true,
+  };
+  delete newest.facts.dueDate;
+  const read = readBillSourceOffer(
+    { ...offer(), candidates: [newest] },
+    validators,
+  );
+  assert.equal(read.candidates[0].mostRecent, true);
+  assert.equal(read.candidates[0].facts.dueDate, undefined);
+  const conflict = {
+    company: "Utility",
+    accountLabel: "Account ending 12",
+    origin: "https://lookalike.example",
+  };
+  assert.equal(
+    readBillSourceOffer(
+      {
+        ...offer(),
+        status: "conflicting-source",
+        candidates: [],
+        conflicts: [conflict],
+        unreadable: 2,
+      },
+      validators,
+    ).conflicts[0].origin,
+    "https://lookalike.example",
+  );
+  assert.equal(
+    readBillSourceOffer(
+      { ...offer(), conflicts: Array(6).fill(conflict) },
+      validators,
+    ).conflicts.length,
+    6,
+  );
+  for (const patch of [
+    { conflicts: [{ ...conflict, origin: "" }] },
+    { unreadable: 0 },
+    { candidates: [{ ...newest, mostRecent: false }] },
+    { candidates: [{ ...newest, receivedAt: "yesterday" }] },
+    {
+      candidates: [
+        { ...candidate(), facts: { ...candidate().facts, dueDate: "soon" } },
+      ],
+    },
+  ])
+    assert.throws(
+      () => readBillSourceOffer({ ...offer(), ...patch }, validators),
+      BillClientResponseError,
+    );
+});
+
+test("a conflicting-source offer cannot dispatch selection", async () => {
+  const { client, calls } = fixture(BillSourceClient);
+  client.start("task1");
+  await tick();
+  calls[0].resolve({ ...offer(), status: "conflicting-source" });
+  await tick();
+  assert.equal(await client.choose("a".repeat(64)), false);
+  assert.equal(calls.length, 1);
+});
+
+test("a failed source search keeps only the host's fixed reason", async () => {
+  for (const [reason, expected] of [
+    ["reauth_required", "reauth_required"],
+    ["insufficient_scope", "insufficient_scope"],
+    ["account_changed", "account_changed"],
+    ["timeout", "timeout"],
+    ["provider said something private", undefined],
+  ]) {
+    const { client, calls } = fixture(BillSourceClient);
+    client.start("task1");
+    await tick();
+    calls[0].reject(Object.assign(new Error("search failed"), { reason }));
+    await tick();
+    assert.equal(client.snapshot().error, "search");
+    assert.equal(client.snapshot().reason, expected);
+    const retry = client.search();
+    assert.equal(client.snapshot().reason, undefined);
+    calls[1].resolve(offer());
+    assert.equal(await retry, true);
+  }
+});
+
+test("prior and saved outcomes are admitted with their company", () => {
+  const outcome = {
+    kind: "outcome",
+    status: "paid",
+    reference: "TEST-1",
+    source: "https://biller.example/receipt",
+    company: "Utility",
+  };
+  assert.equal(
+    readBillDecision({ decision: outcome }, "task1", validators).company,
+    "Utility",
+  );
+  assert.equal(
+    readBillDecision(
+      { decision: { ...outcome, kind: "prior-outcome" } },
+      "task1",
+      validators,
+    ).kind,
+    "prior-outcome",
+  );
+  for (const company of ["", "x".repeat(301), 7])
+    assert.throws(
+      () =>
+        readBillDecision(
+          { decision: { ...outcome, company } },
+          "task1",
+          validators,
+        ),
+      BillClientResponseError,
+    );
+});
