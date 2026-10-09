@@ -1509,7 +1509,17 @@ export class CanvasWeb extends WebPlugin {
     }
 
     if (transform.skewX || transform.skewY) {
-      ctx.transform(1, transform.skewY || 0, transform.skewX || 0, 1, 0, 0);
+      // Skew values are angles (radians, like rotation above); the shear
+      // factors are their tangents. Both native bridges apply tan() —
+      // passing the raw angle shears by the wrong amount.
+      ctx.transform(
+        1,
+        Math.tan(transform.skewY || 0),
+        Math.tan(transform.skewX || 0),
+        1,
+        0,
+        0,
+      );
     }
   }
 
