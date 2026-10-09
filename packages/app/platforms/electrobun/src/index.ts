@@ -2979,7 +2979,7 @@ async function main(): Promise<void> {
 	}
 	// ── Steward sidecar startup (must happen BEFORE agent) ────────────
 	// When STEWARD_LOCAL=true, start the steward sidecar first so it can
-	// set STEWARD_API_URL / STEWARD_AGENT_TOKEN env vars. The the app agent's
+	// set STEWARD_API_URL / STEWARD_AGENT_TOKEN env vars. The app agent's
 	// steward-bridge.ts reads these on boot to discover local steward.
 	if (isStewardLocalEnabled()) {
 		logger.info("[Main] STEWARD_LOCAL=true — starting steward sidecar...");
