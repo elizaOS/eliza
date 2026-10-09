@@ -20,6 +20,7 @@ import {
   type ResponseAttemptsResult,
   readPersonalSharedFailureMetadata,
 } from "@elizaos/cloud-services-common/transport";
+import type { NetworkServiceClient } from "@elizaos/plugin-network/client";
 import { svcSign } from "@elizaos/plugin-network/svc-auth";
 import type {
   ChatEvent,
@@ -184,7 +185,7 @@ interface HandlerDeps {
    * The Network service (takeover). Defaults to `networkServiceFromEnv()`;
    * `null` forces the legacy gateway-only keyword path.
    */
-  networkService?: Parameters<typeof runNetworkServiceTurn>[0] | null;
+  networkService?: Pick<NetworkServiceClient, "turn" | "turnReceipt"> | null;
 }
 
 function networkConsentLedger(deps: HandlerDeps): NetworkConsentLedger {

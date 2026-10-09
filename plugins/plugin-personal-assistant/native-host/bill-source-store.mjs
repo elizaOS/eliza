@@ -20,6 +20,8 @@ const ownerKey = (owner) =>
     owner.connector.source,
     owner.connector.accountId,
   ]);
+// Equal to BILL_SOURCE_CONFLICT_FIELDS in bill-source-discovery.mjs.
+const CONFLICT_FIELDS = ["company", "accountLabel", "origin"];
 const text = (value) =>
   typeof value === "string" && value.length > 0 && value.length <= 300;
 const date = (value) =>
@@ -152,19 +154,19 @@ function validateResult(result, task) {
   const candidates = result.candidates.map((c) => validateCandidate(c, task));
   if (result.conflicts !== undefined && !Array.isArray(result.conflicts))
     throw fail();
-  // Look-alike messages: only the identity facts, for the person to compare.
+  // Look-alike messages: only which identity facts differ. Their own
+  // company, account and website come from an untrusted email.
   const conflicts = result.conflicts?.map((c) => {
     if (
       !c ||
-      Object.keys(c).sort().join(",") !== "accountLabel,company,origin" ||
-      ![c.company, c.accountLabel, c.origin].every(text)
+      Object.keys(c).join(",") !== "differs" ||
+      !Array.isArray(c.differs) ||
+      !c.differs.length ||
+      c.differs.join(",") !==
+        CONFLICT_FIELDS.filter((key) => c.differs.includes(key)).join(",")
     )
       throw fail();
-    return {
-      company: c.company,
-      accountLabel: c.accountLabel,
-      origin: c.origin,
-    };
+    return { differs: [...c.differs] };
   });
   if (
     new Set(candidates.map((c) => c.candidateId)).size !== candidates.length ||
@@ -175,7 +177,16 @@ function validateResult(result, task) {
     (result.unreadable !== undefined &&
       (!Number.isSafeInteger(result.unreadable) || result.unreadable < 1)) ||
     candidates.filter((c) => c.mostRecent).length > 1 ||
-    (result.reason !== undefined && result.reason !== "conflicting-invoice")
+    new Set(conflicts?.map((c) => c.differs.join(","))).size !==
+      (conflicts?.length ?? 0) ||
+    (result.reason !== undefined &&
+      !(
+        (result.status === "ambiguous" &&
+          result.reason === "conflicting-invoice") ||
+        (result.status === "incomplete" &&
+          result.reason === "newer-unreadable" &&
+          result.unreadable >= 1)
+      ))
   )
     throw fail();
   return {

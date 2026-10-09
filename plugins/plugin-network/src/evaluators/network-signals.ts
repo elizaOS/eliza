@@ -42,7 +42,7 @@ export function detectNetworkSignals(text: string): NetworkSignal[] {
   for (const { kind, re } of PATTERNS) {
     const m = re.exec(own);
     if (m && !NEGATED.test(own.slice(0, m.index)))
-      out.push({ kind, evidence: m[0].slice(0, 120) });
+      out.push({ kind, evidence: m[0] });
   }
   return out;
 }

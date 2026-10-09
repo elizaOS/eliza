@@ -269,8 +269,15 @@ export function WifiAppView(props: OverlayAppContext) {
     setBusy(true);
     setError(null);
     try {
-      await WiFi.disconnectFromNetwork();
-      await refreshState();
+      // disconnectFromNetwork resolves a ConnectResult like connect does;
+      // a resolved failure must surface its message, as handleConnect
+      // does, instead of refreshing as if the disconnect had worked.
+      const result: ConnectResult = await WiFi.disconnectFromNetwork();
+      if (!result.success) {
+        setError(result.message ?? "Failed to disconnect");
+      } else {
+        await refreshState();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
