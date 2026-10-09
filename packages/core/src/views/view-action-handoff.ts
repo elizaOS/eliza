@@ -48,7 +48,8 @@ export function findViewActionHandoff(
 		)?.toLowerCase();
 		const viewId = readString(readOwnValue(values, "viewId"));
 		const isViewsHandoff =
-			actionName === "VIEWS" && (mode === "show" || mode === "open");
+			(actionName === "VIEWS" && (mode === "show" || mode === "open")) ||
+			(actionName === "VIEWS_SHOW" && mode === "show");
 		const isAppBrowserHandoff =
 			actionName === "APP" && mode === "launch" && viewId === "browser";
 		const isBrowserWorkspaceHandoff =
