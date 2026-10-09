@@ -36,21 +36,25 @@ export function isHallucination(text: string): boolean {
   if (words.length <= 1 && trimmed.length < 10) return true;
 
   // Layer 3: repetition loop — same 3-6 word phrase repeated 3+ times
+  // in a row. The loop may start at any word: ASR output often has a
+  // leading filler word before the loop begins, so every start offset
+  // is checked, not just the start of the text.
   if (words.length >= 9) {
+    const lowered = words.map((word) => word.toLowerCase());
     for (let len = 3; len <= 6; len++) {
-      const phrase = words.slice(0, len).join(" ").toLowerCase();
-      let count = 0;
-      for (let i = 0; i <= words.length - len; i += len) {
-        if (
-          words
-            .slice(i, i + len)
-            .join(" ")
-            .toLowerCase() === phrase
+      for (let start = 0; start + len <= words.length; start++) {
+        const phrase = lowered.slice(start, start + len).join(" ");
+        let repeats = 1;
+        for (
+          let next = start + len;
+          next + len <= words.length;
+          next += len
         ) {
-          count++;
+          if (lowered.slice(next, next + len).join(" ") !== phrase) break;
+          repeats++;
         }
+        if (repeats >= 3) return true;
       }
-      if (count >= 3) return true;
     }
   }
 
