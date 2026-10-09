@@ -353,13 +353,13 @@ import {
 import { createServerResources } from "./server-resources.ts";
 import { createServerState } from "./server-state.ts";
 import type { ServerState } from "./server-types.ts";
-
 import { isAuthProtectedRoute, serveStaticUi } from "./static-file-server.ts";
 import { isTrajectoryOwnerRequest } from "./trajectory-request-authorization.ts";
 import {
   bindViewRequestHost,
   closeViewInteractionHost,
 } from "./view-interaction-host.ts";
+import { registerBuiltinViews as registerRuntimeBuiltinViews } from "./views-registry.ts";
 import {
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
@@ -1106,6 +1106,7 @@ async function applyRuntimeRestart(
       state.broadcastStatus?.();
       return false;
     }
+    registerRuntimeBuiltinViews(newRuntime);
     await quiesceRuntimeBeforeReplacement(previousRuntime, newRuntime);
     state.runtime = newRuntime;
     state.chatConnectionReady = null;
@@ -3301,6 +3302,9 @@ export async function startApiServer(opts?: {
 }> {
   // Hosts that listen before startEliza must still pass protected admission.
   await ensureProtectedProfileAdmission();
+  // Publish a complete navigation catalog before accepting the first tool turn.
+  // Hosts may attach their runtime later; updateRuntime keeps the same fence.
+  if (opts?.runtime) registerRuntimeBuiltinViews(opts.runtime);
   const apiStartTime = Date.now();
   const hostAdmission = opts?.hostAdmission;
   const hostConfig =
@@ -4885,6 +4889,7 @@ export async function startApiServer(opts?: {
   };
   /** Hot-swap the runtime reference (used after an in-process restart). */
   const updateRuntime = (rt: AgentRuntime): void => {
+    registerRuntimeBuiltinViews(rt);
     void assertX402RoutesValid(rt).catch((err) => {
       logger.error(
         `[x402] runtime route validation failed after update: ${err instanceof Error ? err.message : String(err)}`,
