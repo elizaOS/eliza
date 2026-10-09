@@ -1,7 +1,9 @@
 /**
  * Runs the production Shared conversation coordinator in Workerd and proves a
  * committed Personal Shared -> Dedicated cutover cannot reopen Shared for a
- * reminder turn.
+ * reminder turn. Network cases exercise actual DO scope/history/claim storage
+ * and actual Shared bridge early replay/conflict; seeded receipts and transport
+ * probes are not generated model/provider completions.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -10,6 +12,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
+import {
+  type NetworkAppId,
+  networkMembershipScopeId,
+} from "../../shared/src/lib/services/shared-runtime/network-membership-client";
+import type {
+  NetworkSharedTurnContext,
+  NetworkSharedTurnObservation,
+} from "../../shared/src/lib/services/shared-runtime/network-shared-context";
+import { personalSharedAgentId } from "../../shared/src/lib/services/shared-runtime/personal-shared-identity";
+import {
+  SharedRuntimeChatService,
+  type SharedRuntimeHistoryStore,
+  type SharedTurnClaimStore,
+  type SharedTurnTerminalResult,
+  sharedRuntimeRoomKey,
+} from "../../shared/src/lib/services/shared-runtime/shared-runtime-chat";
 
 const RUNTIME_BOUNDARIES = {
   apiErrors:
@@ -49,6 +67,11 @@ const RUNTIME_STUBS = {
     export function rehydrateCachedAgentDates(agent) { return agent; }
   `,
   coreEdge: `
+    export { MediaFetchError, readResponseWithLimit } from ${JSON.stringify(
+      fileURLToPath(
+        new URL("../../../core/src/media/fetch.ts", import.meta.url),
+      ),
+    )};
     export { trimEndCharacters } from ${JSON.stringify(
       fileURLToPath(
         new URL(
@@ -107,6 +130,9 @@ const RUNTIME_STUBS = {
         return await store.load(agentId, roomId);
       },
       async bridge(agent, rpc, options) {
+        if (rpc.id === "network-transport-probe") {
+          return { jsonrpc: "2.0", id: rpc.id, result: { observation: options.trustedNetworkContext ?? null, roomId: rpc.params.roomId } };
+        }
         if (rpc.id === "fallback-account-state") {
           // Echo the server-owned options the coordinator admitted, plus the
           // exact history the turn would load for its room.
@@ -222,6 +248,23 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
           }
 
           async fetch(request) {
+            if (new URL(request.url).pathname === "/__test/claims") {
+              const body = await request.json();
+              const claims = this.turnClaims();
+              const decision = await claims.claim(body.key, body.hash);
+              if (decision.state === "claimed" && body.seedResult) {
+                await claims.complete(body.key, body.seedResult);
+                return Response.json(await claims.claim(body.key, body.hash));
+              }
+              return Response.json(decision);
+            }
+            if (new URL(request.url).pathname === "/__test/history-store") {
+              const body = await request.json();
+              const store = this.historyStore(true);
+              return Response.json(body.messages
+                ? await store.merge(body.agentId, body.channelId, body.messages)
+                : await store.load(body.agentId, body.channelId));
+            }
             if (new URL(request.url).pathname === "/__test/seed") {
               const body = await request.json();
               await this.testState.storage.put("conversation", body.conversation);
@@ -269,7 +312,7 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
           entrypoints: [process.env.SHARED_CUTOVER_ENTRYPOINT],
           format: "esm",
           target: "browser",
-          conditions: ["worker", "browser"],
+          conditions: ["eliza-source", "worker", "browser"],
           external: ["node:*"],
           plugins: [{
             name: "shared-cutover-reminder-runtime-boundaries",
@@ -805,4 +848,322 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     });
     expect(await history.json()).toEqual({ history: [] });
   }, 120_000);
+
+  function networkFixture(
+    app: NetworkAppId,
+    userId = "network-continuous-user",
+  ): {
+    agent: import("../../shared/src/lib/services/shared-runtime/shared-runtime-agent").SharedRuntimeAgent;
+    context: NetworkSharedTurnContext;
+  } {
+    const organizationId = "network-continuous-org";
+    const agent = {
+      id: personalSharedAgentId({ userId, organizationId }),
+      organization_id: organizationId,
+      user_id: userId,
+      character_id: null,
+      agent_name: "Eliza",
+      agent_config: { character: { name: "Eliza", system: "Fixture" } },
+      execution_tier: "shared" as const,
+    };
+    const binding = {
+      cloudUserId: userId,
+      organizationId,
+      app,
+      personId: "network-fixture-person",
+      memberId: `${app}-fixture-member`,
+    };
+    return {
+      agent,
+      context: {
+        membership: { ...binding, scopeId: networkMembershipScopeId(binding) },
+        context: {
+          app,
+          memberId: binding.memberId,
+          firstName: "Fixture",
+          city: "SF",
+          state: "open",
+          stateUntil: null,
+          facets: [],
+          activeItems: null,
+        },
+      },
+    };
+  }
+
+  test("real DO rejects forged Network scope before transport or history access", async () => {
+    const { agent, context } = networkFixture("slop", "network-forgery-user");
+    const room = `${agent.id}:${agent.id}`;
+    const before = modelRequests.length;
+    for (const forged of [
+      {
+        ...context,
+        membership: { ...context.membership, scopeId: "forged-scope" },
+      },
+      { ...context, context: { ...context.context, app: "friends" } },
+      networkFixture("slop", "other-user").context,
+    ]) {
+      for (const operation of ["personal-bridge", "personal-stream"]) {
+        const response = await post(room, "/network-forged", {
+          operation,
+          agent,
+          trustedNetworkContext: forged,
+          rpc: {
+            jsonrpc: "2.0",
+            id: "network-transport-probe",
+            method: "message.send",
+            params: { text: "Fixture", roomId: agent.id },
+          },
+        });
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          code: "invalid_network_scope",
+        });
+      }
+    }
+    const history = await post(room, "/history", {
+      operation: "history",
+      agentId: agent.id,
+      roomId: agent.id,
+    });
+    expect(await history.json()).toEqual({ history: [] });
+    expect(modelRequests.length).toBe(before);
+  });
+
+  test("Slop and Friends transport metadata keep one canonical Personal conversation", async () => {
+    const slop = networkFixture("slop", "network-transport-user");
+    const friends = networkFixture("friends", "network-transport-user");
+    const room = `${slop.agent.id}:${slop.agent.id}`;
+    const history = [
+      {
+        id: "existing-personal-turn",
+        role: "user",
+        content: "Existing Personal history",
+        createdAt: 1,
+      },
+      {
+        id: "prior-slop-turn",
+        role: "user",
+        content: "Prior Slop discussion",
+        createdAt: 2,
+      },
+      {
+        id: "prior-friends-turn",
+        role: "user",
+        content: "Prior Friends discussion",
+        createdAt: 3,
+      },
+    ];
+    await post(room, "/__test/seed", {
+      conversation: {
+        agentId: slop.agent.id,
+        channelId: slop.agent.id,
+        history,
+        dirty: false,
+        version: 1,
+      },
+    });
+    for (const fixture of [slop, friends]) {
+      const response = await post(room, "/network-transport-probe", {
+        operation: "personal-bridge",
+        agent: fixture.agent,
+        trustedNetworkContext: fixture.context,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "network-transport-probe",
+          method: "message.send",
+          params: {
+            text: "Fixture transport only",
+            roomId: fixture.agent.id,
+            clientMessageId: `transport-${fixture.context.membership.app}`,
+          },
+        },
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        result: { observation: fixture.context, roomId: slop.agent.id },
+      });
+    }
+    const result = await post(room, "/history", {
+      operation: "history",
+      agentId: slop.agent.id,
+      roomId: slop.agent.id,
+    });
+    expect(await result.json()).toEqual({ history });
+  });
+
+  test("actual Shared bridge and stream replay DO receipts across Network changes without inference", async () => {
+    const slop = networkFixture("slop", "network-claim-user");
+    const friends = networkFixture("friends", "network-claim-user");
+    const room = `${slop.agent.id}:${slop.agent.id}`;
+    const channelId = sharedRuntimeRoomKey(slop.agent.id, slop.agent.id);
+    const existing = [
+      {
+        id: "continuous-slop-history",
+        role: "user" as const,
+        content: "Slop history",
+        createdAt: 1,
+      },
+      {
+        id: "continuous-friends-history",
+        role: "user" as const,
+        content: "Friends history",
+        createdAt: 2,
+      },
+    ];
+    await post(room, "/__test/seed", {
+      conversation: {
+        agentId: slop.agent.id,
+        channelId,
+        history: existing,
+        dirty: false,
+        version: 1,
+      },
+    });
+    const priorReceipt: SharedTurnTerminalResult = {
+      text: "Seeded prior terminal receipt; no model completion",
+      messageId: "receipt-assistant",
+      userMessageId: "receipt-user",
+      agentName: "Eliza",
+      channelId,
+      model: "seeded-receipt",
+      degraded: false,
+      runtime: "shared",
+      transport: "shared-runtime",
+    };
+    let claimCalls = 0;
+    let historyLoads = 0;
+    let historyMerges = 0;
+    const claims: SharedTurnClaimStore = {
+      async claim(key, hash) {
+        claimCalls++;
+        const response = await post(room, "/__test/claims", {
+          key,
+          hash,
+          seedResult: priorReceipt,
+        });
+        return (await response.json()) as Awaited<
+          ReturnType<SharedTurnClaimStore["claim"]>
+        >;
+      },
+      async complete() {
+        throw new Error("Replay must not complete a new turn");
+      },
+    };
+    const store: SharedRuntimeHistoryStore = {
+      async load(agentId, loadedChannel) {
+        historyLoads++;
+        const response = await post(room, "/__test/history-store", {
+          agentId,
+          channelId: loadedChannel,
+        });
+        return (await response.json()) as typeof existing;
+      },
+      async merge(agentId, mergedChannel, messages) {
+        historyMerges++;
+        const response = await post(room, "/__test/history-store", {
+          agentId,
+          channelId: mergedChannel,
+          messages,
+        });
+        return (await response.json()) as typeof existing;
+      },
+    };
+    const chat = new SharedRuntimeChatService();
+    const rpc = {
+      jsonrpc: "2.0" as const,
+      id: "fixture-retry",
+      method: "message.send",
+      params: {
+        text: "Same complete user message",
+        roomId: slop.agent.id,
+        clientMessageId: "same-client-key",
+      },
+    };
+    const before = modelRequests.length;
+    const unavailable: NetworkSharedTurnObservation = {
+      status: "unavailable",
+      cloudUserId: slop.agent.user_id,
+      organizationId: slop.agent.organization_id,
+      reason: "private_service_unavailable",
+    };
+    // Each first claim seeds a terminal receipt through the production DO
+    // ledger. Retry identity belongs to this conversation and submitted text;
+    // the server's current Network observation is not new client input.
+    for (const [index, firstContext] of [
+      slop.context,
+      unavailable,
+      undefined,
+    ].entries()) {
+      const submitted = {
+        ...rpc,
+        params: { ...rpc.params, clientMessageId: `same-client-key-${index}` },
+      };
+      const options = {
+        turnClaims: claims,
+        historyStore: store,
+        funding: "platform" as const,
+      };
+      const original = await chat.bridge(slop.agent, submitted, {
+        ...options,
+        trustedNetworkContext: firstContext,
+      });
+      expect(original.result).toMatchObject(priorReceipt);
+      for (const trustedNetworkContext of [
+        slop.context,
+        unavailable,
+        undefined,
+        friends.context,
+      ]) {
+        const replayOptions = { ...options, trustedNetworkContext };
+        const replay = await chat.bridge(slop.agent, submitted, replayOptions);
+        expect(replay.result).toMatchObject(priorReceipt);
+        const stream = await chat.stream(slop.agent, submitted, replayOptions);
+        expect(stream.status).toBe(200);
+        const events = (await stream.text()).split("\n\n");
+        const done = events.find((event) => event.startsWith("event: done\n"));
+        if (!done)
+          throw new Error("Replay did not include a terminal SSE frame");
+        expect(JSON.parse(done.split("data: ")[1])).toMatchObject({
+          messageId: priorReceipt.messageId,
+          userMessageId: priorReceipt.userMessageId,
+          text: priorReceipt.text,
+          fullText: priorReceipt.text,
+        });
+        const changed = {
+          ...submitted,
+          params: { ...submitted.params, text: "Changed user message" },
+        };
+        await expect(
+          chat.bridge(slop.agent, changed, replayOptions),
+        ).rejects.toMatchObject({
+          name: "SharedTurnConflictError",
+        });
+        await expect(
+          chat.stream(slop.agent, changed, replayOptions),
+        ).rejects.toMatchObject({
+          name: "SharedTurnConflictError",
+        });
+      }
+    }
+    const beforeInvalidScope = claimCalls;
+    await expect(
+      chat.bridge(
+        slop.agent,
+        { ...rpc, params: { ...rpc.params, roomId: "forged-room" } },
+        {
+          trustedNetworkContext: slop.context,
+          turnClaims: claims,
+          historyStore: store,
+        },
+      ),
+    ).rejects.toMatchObject({ code: "NETWORK_SHARED_CONTEXT_SCOPE_INVALID" });
+    expect(claimCalls).toBe(beforeInvalidScope);
+    expect(historyLoads).toBe(0);
+    expect(historyMerges).toBe(0);
+    expect(await chat.getHistory(slop.agent.id, slop.agent.id, store)).toEqual(
+      existing,
+    );
+    expect(modelRequests.length).toBe(before);
+  });
 });

@@ -6,6 +6,7 @@
  */
 
 import type { AgentSandbox } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/errors";
 import { timingSafeEqualSecret } from "@elizaos/cloud-shared/lib/auth/cron";
 import { cache } from "@elizaos/cloud-shared/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@elizaos/cloud-shared/lib/cache/keys";
@@ -26,12 +27,17 @@ import {
   type CanonicalScopedStreamRequest,
   handleCanonicalScopedAgentStream,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/canonical-scoped-stream";
+import { networkContextForPersonalSurface } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-context";
+import { prepareNetworkSharedTurn } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-turn";
 import { isPersonalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
-import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
+import {
+  type BridgeExecutionContext,
+  normalizeSharedRuntimeRoom,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import {
   classifySharedTurnOutcome,
   recordSharedTurnAttempt,
@@ -292,8 +298,34 @@ app.post("/", async (c) => {
       };
     }
 
-    const conversationId = c.req.param("conversationId") ?? r.agentId;
+    const conversationId = normalizeSharedRuntimeRoom(
+      c.req.param("conversationId") ?? r.agentId,
+    );
     const personal = "agentKind" in r && r.agentKind === "personal";
+    const bodyRecord =
+      raw && typeof raw === "object"
+        ? (raw as Record<string, unknown>)
+        : undefined;
+    if ("userId" in r && bodyRecord?.networkApp !== undefined) {
+      throw new ApiError({
+        status: 400,
+        code: "validation_error",
+        message:
+          "Network enrichment is unavailable on the service-voice transport",
+      });
+    }
+    // The service-voice branch authenticates a different server credential and
+    // retains its existing scope owner; Network reads require a user projection.
+    let trustedNetworkContext =
+      "userId" in r
+        ? undefined
+        : await prepareNetworkSharedTurn(
+            c,
+            r.agent,
+            bodyRecord?.networkApp,
+            typeof bodyRecord?.text === "string" ? bodyRecord.text : "",
+          );
+
     // The personal identity follows its entitlement route (#25146).
     const target = await resolveSharedSurfaceTarget({
       agent: r.agent,
@@ -315,6 +347,11 @@ app.post("/", async (c) => {
         runtimeKind: "personal",
       };
     }
+    trustedNetworkContext = networkContextForPersonalSurface(
+      trustedNetworkContext,
+      r.agent,
+      target.roomId,
+    );
     return {
       response: await handleCanonicalScopedAgentStream({
         traceId: c.get("traceId"),
@@ -323,6 +360,7 @@ app.post("/", async (c) => {
         agentId: r.agentId,
         orgId: r.orgId,
         conversationId: target.roomId,
+        ...(trustedNetworkContext ? { trustedNetworkContext } : {}),
         ...(target.accountState
           ? { trustedAccountState: target.accountState }
           : {}),
