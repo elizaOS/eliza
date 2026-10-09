@@ -239,7 +239,28 @@ export type BillDecision = {
   currencyDigits?: number;
   /** The company named on the source bill, for an outcome. */
   company?: string | null;
+  /** A prior outcome: the task ended with this fact kept. */
+  ended?: boolean;
+  /** One receipt email for this outcome was found in the connected Google account. */
+  receiptInEmail?: boolean;
+  /** Why the verification code was not filled, from the host's fixed list. */
+  codeReason?: BillCodeReason;
 };
+export type BillCodeReason =
+  | "typed"
+  | "reauth_required"
+  | "insufficient_scope"
+  | "account_changed"
+  | "cloud_sign_in_required"
+  | "timeout";
+const codeReasons: readonly BillCodeReason[] = [
+  "typed",
+  "reauth_required",
+  "insufficient_scope",
+  "account_changed",
+  "cloud_sign_in_required",
+  "timeout",
+];
 export function readBillDecision(
   value: unknown,
   taskId: string,
@@ -316,6 +337,15 @@ export function readBillDecision(
     !["saved", "pending"].includes(decision.saveStatus)
   )
     throw new BillClientResponseError("Invalid save status");
+  for (const flag of [decision.ended, decision.receiptInEmail])
+    if (flag !== undefined && typeof flag !== "boolean")
+      throw new BillClientResponseError("Invalid bill state");
+  if (
+    decision.codeReason !== undefined &&
+    (decision.kind !== "human-verification" ||
+      !codeReasons.includes(decision.codeReason))
+  )
+    throw new BillClientResponseError("Invalid code reason");
   for (const value of [
     decision.message,
     decision.reason,
@@ -418,6 +448,8 @@ export type BillSourceFailureReason =
   | "cloud_sign_in_required"
   | "insufficient_scope"
   | "account_changed"
+  /** The connected Google account is not the one that gets these bills. */
+  | "account_mismatch"
   | "unavailable"
   | "timeout";
 const sourceFailureReasons: readonly BillSourceFailureReason[] = [
@@ -425,6 +457,7 @@ const sourceFailureReasons: readonly BillSourceFailureReason[] = [
   "cloud_sign_in_required",
   "insufficient_scope",
   "account_changed",
+  "account_mismatch",
   "unavailable",
   "timeout",
 ];
@@ -491,6 +524,8 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
   private recheck: unknown = null;
   /** In-flight checks remain tied to their task across task switches. */
   private readonly background = new Map<string, Promise<unknown>>();
+  /** Set while a question is answered: nothing new is sent to the host. */
+  private hold_: { released: Promise<void>; release: () => void } | null = null;
   constructor(options: {
     request: BillRequest;
     validators: BillClientValidators;
@@ -510,6 +545,33 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
   override stop() {
     this.cancelRecheck();
     super.stop();
+    this.hold_?.release();
+    this.hold_ = null;
+  }
+  /**
+   * A question interrupts the task while it is answered. Timed re-checks
+   * stop, and a command started meanwhile waits and is sent only after
+   * `release()`. A request already sent is not recalled.
+   */
+  hold() {
+    if (this.hold_) return;
+    this.cancelRecheck();
+    let release = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.hold_ = { released, release };
+  }
+  /** Ends a hold: waiting commands are sent and re-checks resume. */
+  release() {
+    const hold = this.hold_;
+    if (!hold) return;
+    this.hold_ = null;
+    hold.release();
+    if (!this.state.pending) this.scheduleRecheck();
+  }
+  get held(): boolean {
+    return this.hold_ !== null;
   }
   private cancelRecheck() {
     if (this.recheck !== null) this.timers.clear(this.recheck);
@@ -523,7 +585,7 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
   private scheduleRecheck() {
     this.cancelRecheck();
     const guidance = this.state.decision?.guidance;
-    if (!guidance?.available || this.taskId === null) return;
+    if (!guidance?.available || this.taskId === null || this.hold_) return;
     const ticket = this.generation;
     const untilExpiry =
       guidance.expiresAt === undefined
@@ -561,7 +623,7 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
    */
   private checkInBackground() {
     const taskId = this.taskId;
-    if (taskId === null || this.background.has(taskId)) return;
+    if (taskId === null || this.background.has(taskId) || this.hold_) return;
     if (this.state.pending) {
       // The person's command reschedules the check when it finishes.
       return;
@@ -641,6 +703,11 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
     this.state.error = null;
     this.publish();
     try {
+      // While a question is answered, wait; then send under the same ticket.
+      while (this.hold_) {
+        await this.hold_.released;
+        if (!this.current(ticket)) return false;
+      }
       // Let a background check that is already sent settle first.
       const background = this.background.get(taskId);
       if (background) await background;

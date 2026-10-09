@@ -177,6 +177,27 @@ test("native admission refuses weak token, invalid broker and relative state bef
   assert.equal(f.brokerRequests, 0);
 });
 
+test("a desktop host can require the inbound token on every local request", async (t) => {
+  const f = await fixture(t, false);
+  const configuration = { ...f.config, requireInboundToken: true };
+  await writeFile(f.config.inboundTokenPath, "short");
+  await assert.rejects(
+    startLocalGateway({ configuration, ports: f.ports }),
+    /Gateway token missing/,
+  );
+  await assert.rejects(
+    startLocalGateway({
+      configuration: { ...f.config, requireInboundToken: "yes" },
+      ports: f.ports,
+    }),
+    /inbound token policy/,
+  );
+  await writeFile(f.config.inboundTokenPath, "i".repeat(32));
+  const gateway = await startLocalGateway({ configuration, ports: f.ports });
+  t.after(() => gateway.close());
+  assert.equal(f.serverOptions.inboundToken, "i".repeat(32));
+});
+
 test("missing or malformed binding fails closed without creating task state", async (t) => {
   const f = await fixture(t, false);
   await rm(f.config.bindingPath);

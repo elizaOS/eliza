@@ -461,3 +461,107 @@ test("authorized search exhausts all pages and preserves a late invoice", async 
     6,
   );
 });
+
+test("another connected Google account fails with a typed account mismatch", async () => {
+  const f = fixture();
+  await assert.rejects(
+    f.discovery.discover(
+      { ...context, accountEmail: "someone.else@example.org" },
+      signal(),
+    ),
+    { reason: "account_mismatch" },
+  );
+  assert.equal(f.calls.length, 0, "nothing is searched");
+  // The same mailbox matches, also when one side is shown masked.
+  for (const accountEmail of [
+    "person@EXAMPLE.org",
+    "p•••@example.org",
+    "pe***n@example.org",
+  ])
+    assert.equal(
+      (
+        await fixture().discovery.discover(
+          { ...context, accountEmail },
+          signal(),
+        )
+      ).status,
+      "candidate",
+      accountEmail,
+    );
+  await assert.rejects(
+    fixture().discovery.discover(
+      { ...context, accountEmail: "q•••@example.org" },
+      signal(),
+    ),
+    { reason: "account_mismatch" },
+  );
+});
+
+test("a receipt email is found only when exactly one matching receipt names the reference", async () => {
+  const paidAt = Date.parse("2026-09-20T12:00:00Z");
+  const receipt = (
+    id,
+    at = "2026-09-20T12:05:00Z",
+    from = "bill@example.org",
+  ) => ({
+    externalId: id,
+    fromEmail: from,
+    to: ["person@example.org"],
+    receivedAt: at,
+  });
+  const receiptBody =
+    "Payment received. Thank you.\nConfirmation number: WT-55021\nAmount: USD 23.45\n";
+  const look = async (messages, bodies = {}, extra = {}) => {
+    const calls = [];
+    const discovery = new BillSourceDiscovery({
+      google: {
+        searchGmailMessagesPage: async (input) => {
+          calls.push(input);
+          return { messages, nextPageToken: extra.nextPageToken ?? null };
+        },
+        getGmailMessageDetail: async (input) => ({
+          message: messages.find((m) => m.externalId === input.messageId),
+          bodyText: bodies[input.messageId] ?? receiptBody,
+        }),
+      },
+      authorize: async () => false,
+      authorizeReceipt: extra.authorizeReceipt ?? (async () => true),
+      parse: parseControlledBillMessage,
+    });
+    const found = await discovery.findReceipt(
+      context,
+      { reference: extra.reference ?? "WT-55021", observedAt: paidAt },
+      signal(),
+    );
+    return { found, calls };
+  };
+  const one = await look([receipt("r1")]);
+  assert.equal(one.found, true);
+  assert.equal(one.calls.length, 1);
+  assert.equal(one.calls[0].pageSize, 10);
+  assert.equal(one.calls[0].accountId, "google-a");
+  assert.match(
+    one.calls[0].query,
+    /\{from:bill@example\.org\} "WT-55021" after:/,
+  );
+  // Two receipts, none, an older message, another sender, a different
+  // reference in the body, or a second page are not one verified receipt.
+  for (const [messages, bodies, extra] of [
+    [[receipt("r1"), receipt("r2")], {}, {}],
+    [[], {}, {}],
+    [[receipt("r1", "2026-09-19T12:00:00Z")], {}, {}],
+    [[receipt("r1", undefined, "spoof@example.net")], {}, {}],
+    [[receipt("r1")], { r1: "Confirmation number: WT-550210" }, {}],
+    [[receipt("r1")], {}, { nextPageToken: "more" }],
+  ])
+    assert.equal((await look(messages, bodies, extra)).found, false);
+  // A reference that cannot be searched safely is not looked for.
+  const unsafe = await look([receipt("r1")], {}, { reference: 'WT" OR x' });
+  assert.equal(unsafe.found, false);
+  assert.equal(unsafe.calls.length, 0);
+  // Without task authorization nothing is read.
+  await assert.rejects(
+    look([receipt("r1")], {}, { authorizeReceipt: async () => false }),
+    { code: "BILL_SOURCES_UNAVAILABLE" },
+  );
+});

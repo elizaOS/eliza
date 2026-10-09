@@ -81,6 +81,46 @@ export function createBillHelperHost({
     if (closed || (await credentialGate()) !== owner.actorId)
       throw new BillHostError("Bill helper account unavailable");
   };
+  const contextFor = async (current) => ({
+    ...(await billDiscovery.scopeForTask(current)),
+    actorId: current.owner.actorId,
+    agentId: current.owner.agentId,
+    taskId: current.id,
+    epoch: current.epoch,
+  });
+  const authorized = async (runtime, c, statuses) => {
+    try {
+      await requireOwner(runtime.owner);
+      const currentContext = await contextFor(runtime.get(c.taskId));
+      await requireOwner(runtime.owner);
+      const current = runtime.get(c.taskId);
+      return (
+        current.owner.actorId === c.actorId &&
+        current.owner.agentId === c.agentId &&
+        current.epoch === c.epoch &&
+        current.authorization.state === "active" &&
+        statuses.includes(current.status) &&
+        current.allowedOrigins.includes(c.providerOrigin) &&
+        JSON.stringify(currentContext) === JSON.stringify(c)
+      );
+    } catch {
+      return false;
+    }
+  };
+  const discoveryFor = (entry, runtime) => {
+    entry.discovery ??= new BillSourceDiscovery({
+      google: billDiscovery.google,
+      parse: billDiscovery.parse,
+      attachmentPolicy,
+      parseAttachment,
+      maxAttachmentBytes: billDiscovery.maxAttachmentBytes,
+      authorize: (c) => authorized(runtime, c, ["active", "waiting"]),
+      // A receipt is looked for after the outcome ended the task.
+      authorizeReceipt: (c) =>
+        authorized(runtime, c, ["active", "waiting", "completed"]),
+    });
+    return entry.discovery;
+  };
   return {
     requiresBillSelection: Boolean(billDiscovery),
     async authorizeGoal(goalRef, owner) {
@@ -225,42 +265,8 @@ export function createBillHelperHost({
       if (!entry || (entry.runtime && entry.runtime !== runtime))
         throw new BillHostError("Unbound bill helper runtime");
       entry.runtime = runtime;
-      const contextFor = async (current) => ({
-        ...(await billDiscovery.scopeForTask(current)),
-        actorId: current.owner.actorId,
-        agentId: current.owner.agentId,
-        taskId: current.id,
-        epoch: current.epoch,
-      });
       const context = await contextFor(runtime.get(task.id));
-      if (!entry.discovery)
-        entry.discovery = new BillSourceDiscovery({
-          google: billDiscovery.google,
-          parse: billDiscovery.parse,
-          attachmentPolicy,
-          parseAttachment,
-          maxAttachmentBytes: billDiscovery.maxAttachmentBytes,
-          authorize: async (c) => {
-            try {
-              await requireOwner(runtime.owner);
-              const currentContext = await contextFor(runtime.get(c.taskId));
-              await requireOwner(runtime.owner);
-              const current = runtime.get(c.taskId);
-              return (
-                current.owner.actorId === c.actorId &&
-                current.owner.agentId === c.agentId &&
-                current.epoch === c.epoch &&
-                current.authorization.state === "active" &&
-                ["active", "waiting"].includes(current.status) &&
-                current.allowedOrigins.includes(c.providerOrigin) &&
-                JSON.stringify(currentContext) === JSON.stringify(c)
-              );
-            } catch {
-              return false;
-            }
-          },
-        });
-      return entry.discovery.discover(context, signal);
+      return discoveryFor(entry, runtime).discover(context, signal);
     },
     workflowFactory({
       runtime,
@@ -317,6 +323,9 @@ export function createBillHelperHost({
           resolver: entry.resolver,
           challengeProvider: google.challengeForBill,
           resolveGoogleAccount: google.accountForTask,
+          ...(typeof google.checkAccount === "function"
+            ? { checkGoogleAccount: google.checkAccount }
+            : {}),
           stillAuthorized: async () => {
             try {
               await requireOwner(runtime.owner);
@@ -346,6 +355,20 @@ export function createBillHelperHost({
         controls,
         selectionGuidance,
         codeCoordinator: entry.coordinator,
+        // The receipt for a saved outcome is looked for in the same mailbox
+        // scope as the bill, under the same task authorization.
+        ...(billDiscovery
+          ? {
+              receipts: {
+                find: async (outcome, receiptSignal) =>
+                  discoveryFor(entry, runtime).findReceipt(
+                    await contextFor(runtime.get(task.id)),
+                    outcome,
+                    receiptSignal,
+                  ),
+              },
+            }
+          : {}),
       });
     },
     /** Call after the task gateway has quiesced owned browser work. */
