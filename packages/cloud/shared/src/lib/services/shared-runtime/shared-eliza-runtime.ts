@@ -1006,7 +1006,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       deterministicActions: ["WEB_SEARCH"],
       shouldRun: ({ messageHandler }) => messageHandler.processMessage === "RESPOND",
       evaluate: () => ({
-        requiresTool: true, addCandidateActions: ["WEB_SEARCH"], clearReply: true,
+        requiresTool: true,
+        setContexts: ["general"],
+        clearCandidateActions: true,
+        addCandidateActions: ["WEB_SEARCH"],
+        clearReply: true,
         deterministicToolCall: { name: "WEB_SEARCH", params: { query: publicSearchIntent.topic } },
       }),
     }];
