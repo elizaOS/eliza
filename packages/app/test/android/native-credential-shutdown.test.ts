@@ -103,7 +103,8 @@ public class ElizaAgentService extends BaseService {
  public static void main(String[] args)throws Exception {
   int cases=0;Context context=new Context();reset();long request=stopForCredentialChange(context);ElizaAgentService owned=service();owned.stopIntent(context.sent);check(!isCredentialShutdownConfirmed(request),"Confirmed before teardown");owned.onDestroy();drain();check(isCredentialShutdownConfirmed(request)&&activeInstance==null,"Successful shutdown not confirmed");cases++;
   reset();request=stopForCredentialChange(context);owned=service();owned.detachedAgentMode=true;owned.stopIntent(context.sent);inventory=()->{throw new IllegalStateException("Resident preserved");};IpcStartupRecovery.sole=false;owned.onDestroy();drain();check(!isCredentialShutdownConfirmed(request)&&currentLocalAgentToken!=null&&deleted==0&&owned.detachedAgentMode,"Refused stop lost ownership or confirmed");cases++;
-  reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);inventory=()->{throw new IllegalStateException("No extracted loader");};owned.onDestroy();drain();check(isCredentialShutdownConfirmed(request)&&IpcStartupRecovery.checks==1,"Cold sole-UID process not confirmed");cases++;
+  reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);IpcStartupRecovery.sole=false;owned.onDestroy();drain();check(!isCredentialShutdownConfirmed(request)&&deleted==0&&currentLocalAgentToken!=null,"Resident-only stop admitted surviving same-UID worker");cases++;
+  reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);inventory=()->{throw new IllegalStateException("No extracted loader");};owned.onDestroy();drain();check(isCredentialShutdownConfirmed(request)&&IpcStartupRecovery.checks==2,"Cold sole-UID process not confirmed");cases++;
   for(String reason:new String[]{"Unadopted child","Unreadable inventory"}){reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);inventory=()->{throw new IllegalStateException(reason);};IpcStartupRecovery.sole=false;owned.onDestroy();drain();check(!isCredentialShutdownConfirmed(request)&&deleted==0,"Cold uncertain inventory confirmed");cases++;}
   reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);FakeProcess direct=new FakeProcess();direct.stubborn=true;owned.agentProcess=direct;owned.onDestroy();drain();check(isCredentialShutdownConfirmed(request)&&!direct.isAlive()&&direct.kills==1,"Confirmed kill was not awaited");cases++;
   reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);direct=new FakeProcess();direct.stubborn=direct.neverExits=true;owned.agentProcess=direct;owned.onDestroy();drain();check(!isCredentialShutdownConfirmed(request)&&owned.agentProcess==direct&&currentLocalAgentToken!=null&&deleted==0,"Unconfirmed direct kill erased ownership");cases++;
@@ -127,7 +128,7 @@ public class ElizaAgentService extends BaseService {
       ),
     ],
   );
-  expect(output).toContain("PASS 17 actual service credential shutdown cases");
+  expect(output).toContain("PASS 18 actual service credential shutdown cases");
 });
 
 test("existing sole-full-UID absence gate refuses live children and unreadable or changing identities", () => {
