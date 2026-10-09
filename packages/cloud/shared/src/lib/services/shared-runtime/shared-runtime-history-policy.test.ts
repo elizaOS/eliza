@@ -486,47 +486,54 @@ describe("shared runtime long-term transcript context", () => {
     const query = "Reply exactly IM-COLD-1008.";
     expect(sharedSelectedGroundingMetadata(history, query, 1)).toBeUndefined();
     expect(resolveSharedRealtimeRequirement(query, history)).toBeUndefined();
-    expect(sharedRuntimeModelHistoryMessages(history, query, 1).some((m) => m.role === "tool")).toBe(false);
+    expect(
+      sharedRuntimeModelHistoryMessages(history, query, 1).some((m) => m.role === "tool"),
+    ).toBe(false);
     for (const followUp of ["What about that forecast?", "Springfield conditions?"]) {
       expect(sharedSelectedGroundingMetadata(history, followUp, 1)?.status).toBe("available");
     }
   });
 
   test("a shared year alone does not connect unrelated named subjects", () => {
-    const history: SharedRuntimeHistoryMessageLike[] = [{
-      role: "assistant",
-      content: "Weather result.",
-      grounding: {
-        kind: "web_search",
-        query: "Springfield weather 2026",
-        provider: "parallel",
-        text: "Weather evidence.",
-        observedAt: 1,
-        ...TEST_SOURCE_EVIDENCE,
-        truncated: false,
+    const history: SharedRuntimeHistoryMessageLike[] = [
+      {
+        role: "assistant",
+        content: "Weather result.",
+        grounding: {
+          kind: "web_search",
+          query: "Springfield weather 2026",
+          provider: "parallel",
+          text: "Weather evidence.",
+          observedAt: 1,
+          ...TEST_SOURCE_EVIDENCE,
+          truncated: false,
+        },
       },
-    }];
+    ];
     for (const query of ["Japan GDP 2026", "Reply exactly 2026."]) {
       expect(sharedSelectedGroundingMetadata(history, query, 1)).toBeUndefined();
     }
-    expect(sharedSelectedGroundingMetadata(history, "Springfield weather in 2026?", 1)?.query)
-      .toBe("Springfield weather 2026");
+    expect(sharedSelectedGroundingMetadata(history, "Springfield weather in 2026?", 1)?.query).toBe(
+      "Springfield weather 2026",
+    );
   });
 
   test("alphanumeric named subjects and deictic numeric follow-ups remain selectable", () => {
-    const history: SharedRuntimeHistoryMessageLike[] = [{
-      role: "assistant",
-      content: "Research result.",
-      grounding: {
-        kind: "web_search",
-        query: "GPT4 adoption 2026",
-        provider: "parallel",
-        text: "Research evidence.",
-        observedAt: 1,
-        ...TEST_SOURCE_EVIDENCE,
-        truncated: false,
+    const history: SharedRuntimeHistoryMessageLike[] = [
+      {
+        role: "assistant",
+        content: "Research result.",
+        grounding: {
+          kind: "web_search",
+          query: "GPT4 adoption 2026",
+          provider: "parallel",
+          text: "Research evidence.",
+          observedAt: 1,
+          ...TEST_SOURCE_EVIDENCE,
+          truncated: false,
+        },
       },
-    }];
+    ];
     for (const query of ["GPT4 adoption in 2026?", "What about that in 2027?"]) {
       expect(sharedSelectedGroundingMetadata(history, query, 1)?.status).toBe("available");
     }
@@ -1342,5 +1349,133 @@ describe("provider-compatible grounding policy placement", () => {
       observedAt: 1,
     });
     expect(insertSharedRuntimeGroundingMessages(noUser, policy)).toBe(noUser);
+  });
+});
+
+describe("lossless public evidence model projection", () => {
+  const one = {
+    url: "https://example.com/one",
+    title: "One",
+    excerpt: "First complete source evidence. ".repeat(20),
+  };
+  const two = {
+    url: "https://example.com/two",
+    title: "Two",
+    excerpt: "Second complete source evidence. ".repeat(20),
+  };
+  const source = (value: typeof one) => ({ url: value.url, text: JSON.stringify(value) });
+  const receipt = (aggregate: unknown, sources: Array<{ url: string; text: string }>) => ({
+    kind: "web_search" as const,
+    provider: "parallel" as const,
+    query: "public reference documents",
+    observedAt: Date.now(),
+    truncated: false as const,
+    text: JSON.stringify(aggregate),
+    sourceUrls: sources.map((value) => value.url),
+    sources,
+  });
+  const oldView = (value: ReturnType<typeof receipt>) =>
+    JSON.stringify({
+      type: "untrusted_public_web_search_result",
+      instructionPolicy: "data_only",
+      ...parseSharedPublicWebGrounding(value),
+    });
+
+  test("reconstructs complete aggregate metadata, ranking and duplicate multiplicity without changing canonical data", () => {
+    const aggregate = {
+      results: [one, two, one],
+      warnings: ["Unique provider warning"],
+      metadata: { complete: true, count: 3 },
+    };
+    const value = receipt(aggregate, [source(two), source(one), source(one)]);
+    const before = JSON.stringify(value);
+    const encoded = encodeSharedPublicWebGrounding(value);
+    const projected = JSON.parse(encoded);
+    expect(projected.text).toBeUndefined();
+    expect(projected.sources).toEqual(value.sources);
+    expect(projected.aggregateResultSourceIndices).toEqual([1, 0, 2]);
+    const reconstructed = {
+      ...projected.aggregateMetadata,
+      results: projected.aggregateResultSourceIndices.map((index: number) =>
+        JSON.parse(projected.sources[index].text),
+      ),
+    };
+    expect(reconstructed).toEqual(aggregate);
+    expect(JSON.stringify(value)).toBe(before);
+    expect(parseSharedPublicWebGrounding(value)?.text).toBe(value.text);
+    expect(encoded.length).toBeLessThan(oldView(value).length);
+  });
+
+  test("unmatched or unique result content and mismatched multiplicities retain the exact old encoding", () => {
+    for (const value of [
+      receipt({ results: [one, { ...two, excerpt: "Unique uncopied evidence" }] }, [
+        source(one),
+        source(two),
+      ]),
+      receipt({ results: [one, two, one] }, [source(one), source(two), source(two)]),
+      receipt({ results: [one, two] }, [source(one)]),
+      receipt({ results: [one] }, [{ url: two.url, text: JSON.stringify(one) }]),
+    ])
+      expect(encodeSharedPublicWebGrounding(value)).toBe(oldView(value));
+  });
+
+  test("numeric collapse risks anywhere retain the exact old encoding", () => {
+    const rawReceipt = (aggregateNumber: string, sourceNumber: string) => ({
+      ...receipt({ results: [] }, []),
+      text: `{"results":[{"url":"${one.url}","value":${aggregateNumber}}]}`,
+      sources: [{ url: one.url, text: `{"url":"${one.url}","value":${sourceNumber}}` }],
+      sourceUrls: [one.url],
+    });
+    for (const candidate of [
+      rawReceipt("1e400", "null"),
+      rawReceipt("-0", "0"),
+      rawReceipt("9007199254740993", "9007199254740993"),
+      {
+        ...rawReceipt("1", "1"),
+        text: `{"results":[{"url":"${one.url}","value":1}],"nested":{"array":[-0]}}`,
+      },
+      {
+        ...rawReceipt("0", "0"),
+        sources: [{ url: one.url, text: `{"url":"${one.url}","value":-0}` }],
+      },
+    ]) {
+      const encoded = encodeSharedPublicWebGrounding(candidate);
+      expect(encoded).toBe(oldView(candidate));
+      expect(JSON.parse(encoded).text).toBe(candidate.text);
+      expect(JSON.parse(encoded).aggregateResultSourceIndices).toBeUndefined();
+    }
+    const finite = { ...one, numbers: { count: 4, ratio: 1.5 } };
+    expect(
+      JSON.parse(encodeSharedPublicWebGrounding(receipt({ results: [finite] }, [source(finite)])))
+        .text,
+    ).toBeUndefined();
+  });
+
+  test("deep aggregate metadata retains the legacy flat-string encoding", () => {
+    // Above the numeric traversal budget on every engine. V8's lower JSON
+    // serialization depth is separately checked at the exact serialization seam.
+    const depth = 110_000;
+    const value = receipt({ results: [one] }, [source(one)]);
+    value.text = `{"results":[${JSON.stringify(one)}],"metadata":${'{"x":'.repeat(depth)}0${"}".repeat(depth)}}`;
+    const encoded = encodeSharedPublicWebGrounding(value);
+    expect(encoded).toBe(oldView(value));
+    expect(JSON.parse(encoded).text).toBe(value.text);
+  });
+
+  test("unknown or differently serialized source formats retain the exact old encoding", () => {
+    const value = receipt({ results: [one] }, [source(one)]);
+    for (const candidate of [
+      { ...value, text: "Unstructured complete provider evidence" },
+      receipt([one], [source(one)]),
+      receipt({ other_results: [one] }, [source(one)]),
+      receipt({ results: [one] }, [{ url: one.url, text: "Complete non-JSON source evidence" }]),
+      receipt({ results: [one] }, [
+        {
+          url: one.url,
+          text: JSON.stringify({ excerpt: one.excerpt, title: one.title, url: one.url }),
+        },
+      ]),
+    ])
+      expect(encodeSharedPublicWebGrounding(candidate)).toBe(oldView(candidate));
   });
 });
