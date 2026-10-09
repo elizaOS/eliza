@@ -109,7 +109,8 @@ afterAll(async () => {
 
 test("personal status reads current selected owner consent without a legacy grant or caller override", async () => {
   const absent = await app.request(`/?purpose=${purpose}`);
-  expect(await absent.json()).toEqual({
+  const absentBody: unknown = await absent.json();
+  expect(absentBody).toEqual({
     purpose,
     selectedConnectionId: null,
     status: null,
@@ -148,7 +149,8 @@ test("inactive owner or organization denies reads; a missing exact grant never s
   missingGrant = true;
   const missing = await app.request(`/?purpose=${purpose}`);
   expect(missing.status).toBe(200);
-  expect(await missing.json()).toEqual({
+  const missingBody: unknown = await missing.json();
+  expect(missingBody).toEqual({
     purpose,
     selectedConnectionId: GRANT,
     status: null,
