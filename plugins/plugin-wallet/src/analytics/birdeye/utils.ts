@@ -478,6 +478,10 @@ export const extractSymbols = (
     const matches = Array.from(text.matchAll(pattern));
     for (const match of matches) {
       const symbol = (match[1] || match[0]).toUpperCase();
+      // A token symbol contains at least one letter. In loose mode the
+      // standalone pattern otherwise returns a bare number from an
+      // ordinary query ("top 10 trending tokens") as a token symbol.
+      if (mode === "loose" && !/[A-Z]/.test(symbol)) continue;
       symbols.add(symbol);
     }
   });
