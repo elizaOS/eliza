@@ -197,7 +197,7 @@ export function AnalyticsPageClient({
   ];
 
   return (
-    <DashboardPageContainer className="min-w-0 space-y-10 overflow-hidden lg:space-y-14">
+    <DashboardPageContainer className="min-w-0 space-y-10 lg:space-y-14">
       <section className="flex min-w-0 flex-col gap-6 pb-2 lg:flex-row lg:items-start lg:justify-between lg:gap-10">
         <div className="min-w-0 space-y-5 lg:max-w-3xl">
           <div className="flex flex-wrap items-center gap-2 gap-y-3 text-xs font-medium text-white/60">
