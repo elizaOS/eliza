@@ -1,6 +1,6 @@
 /** One genuine Core/SQLite TODO turn; synthetic model HTTP, all other network forbidden. */
-import { expect, spyOn, test } from "bun:test";
-import { AgentRuntime, ChannelType, stringToUuid } from "@elizaos/core";
+import { expect, test } from "bun:test";
+import { ChannelType, stringToUuid } from "@elizaos/core";
 import type { TodoStore } from "@elizaos/plugin-todos";
 import { runSharedAgentTurn } from "./run-shared-agent-turn";
 
@@ -47,12 +47,10 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
   const userMessageId = stringToUuid("todo-empty-core-user");
   const reply = "You have no active todos.";
   let reads = 0,
-    actionReads = 0,
-    providerReads = 0,
+    postToolDispatchReads = 0,
+    preToolDispatchReads = 0,
     modelCalls = 0;
   let todoDispatched = false;
-  let inTodoAction = false;
-  let initializeObserver: ReturnType<typeof spyOn> | undefined;
   const unrequested = async (): Promise<never> => {
     throw new Error("UNREQUESTED_TODO_OPERATION");
   };
@@ -60,8 +58,8 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
     list: async (filter) => {
       expect(filter).toEqual({ ...scope, includeCompleted: false });
       reads++;
-      if (inTodoAction) actionReads++;
-      else providerReads++;
+      if (todoDispatched) postToolDispatchReads++;
+      else preToolDispatchReads++;
       return [];
     },
     applyMutation: unrequested,
@@ -132,24 +130,6 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
     return model(reply);
   }) as typeof fetch;
   try {
-    const initialize = AgentRuntime.prototype.initialize;
-    initializeObserver = spyOn(AgentRuntime.prototype, "initialize").mockImplementation(
-      async function (options) {
-        await initialize.call(this, options);
-        const action = this.actions.find((candidate) => candidate.name === "TODO");
-        if (!action) throw new Error("ACTUAL_TODO_ACTION_MISSING");
-        const handler = action.handler;
-        // Observe the actual canonical handler; never replace its result or scope.
-        action.handler = async (...args) => {
-          inTodoAction = true;
-          try {
-            return await handler(...args);
-          } finally {
-            inTodoAction = false;
-          }
-        };
-      },
-    );
     const turn = await runSharedAgentTurn({
       character: { name: "Eliza", system: "You are a concise assistant.", model: "qwen-3.8-27b" },
       history: [],
@@ -165,14 +145,24 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
       },
     });
     expect(todoDispatched).toBe(true);
-    expect(actionReads).toBe(1);
-    expect(providerReads).toBeGreaterThanOrEqual(1);
-    expect(reads).toBe(actionReads + providerReads);
+    expect(preToolDispatchReads).toBeGreaterThanOrEqual(1);
+    expect(postToolDispatchReads).toBeGreaterThanOrEqual(1);
+    expect(reads).toBe(preToolDispatchReads + postToolDispatchReads);
+    // Phase counts are not callsite attribution: providers may recompose after dispatch.
+    console.info(
+      JSON.stringify({ totalStoreReads: reads, preToolDispatchReads, postToolDispatchReads }),
+    );
     expect(modelCalls).toBeGreaterThan(0);
     expect(modelCalls).toBeLessThanOrEqual(12);
     expect(turn.reply).toBe(reply);
     expect(turn.responded).not.toBe(false);
-    const result = turn.actionResults?.find((action) => action.data?.actionName === "TODO");
+    const settled =
+      turn.actionResults?.filter(
+        (action) =>
+          action.success && action.data?.actionName === "TODO" && action.data?.op === "list",
+      ) ?? [];
+    expect(settled).toHaveLength(1);
+    const result = settled[0];
     expect(result).toMatchObject({
       success: true,
       data: { op: "list", todos: [], readOnlyOperation: true },
@@ -185,7 +175,6 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
       },
     });
   } finally {
-    initializeObserver?.mockRestore();
     globalThis.fetch = savedFetch;
     for (const [name, value] of [
       ["CEREBRAS_API_KEY", saved.cerebras],
