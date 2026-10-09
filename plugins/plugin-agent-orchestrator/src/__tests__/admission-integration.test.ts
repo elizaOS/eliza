@@ -424,10 +424,28 @@ describe("admission queue integration (#13772)", () => {
     const low = await newTask(store, "low", "low");
     const urgent = await newTask(store, "urgent", "urgent");
     const normal = await newTask(store, "normal", "normal");
-    for (const id of [low, urgent, normal]) {
+    const corrupt = await newTask(store, "corrupt", "normal");
+    for (const id of [low, urgent, normal, corrupt]) {
       await service.spawnAgentForTask(id);
     }
-    expect((await service.getAdmissionSnapshot()).queueDepth).toBe(3);
+    expect((await service.getAdmissionSnapshot()).queueDepth).toBe(4);
+    for (const [id, enqueuedAt] of [
+      [normal, new Date(Date.now() - 1000).toISOString()],
+      [corrupt, "invalid-timestamp"],
+    ]) {
+      const doc = await store.getTask(id);
+      if (!doc) throw new Error("Queued task is missing");
+      const admission = doc.task.metadata?.admission;
+      if (!admission || typeof admission !== "object") {
+        throw new Error("Queued task has no admission record");
+      }
+      await store.updateTask(id, {
+        metadata: {
+          ...doc.task.metadata,
+          admission: { ...admission, enqueuedAt },
+        },
+      });
+    }
 
     // Simulate a restart: a fresh service over the SAME store rebuilds the order.
     await service.stop();
@@ -436,10 +454,9 @@ describe("admission queue integration (#13772)", () => {
     });
     await restarted.start();
     const snapshot = await restarted.getAdmissionSnapshot();
-    expect(snapshot.queueDepth).toBe(3);
-    // Priority order: urgent first, then the two normals/low by band.
-    expect(snapshot.queuedTaskIds[0]).toBe(urgent);
-    expect(snapshot.queuedTaskIds[2]).toBe(low);
+    expect(snapshot.queueDepth).toBe(4);
+    // Corrupt timestamps get no seniority within the normal-priority band.
+    expect(snapshot.queuedTaskIds).toEqual([urgent, normal, corrupt, low]);
     await restarted.stop();
   });
 

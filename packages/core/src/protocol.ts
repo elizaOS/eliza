@@ -112,6 +112,8 @@ export {
 	createInteractiveTask,
 	type InteractiveTask,
 	sameTaskOwner,
+	TASK_ACTION_NOT_DISPATCHED,
+	TASK_ACTION_NOT_DISPATCHED_REF,
 	type TaskActionProposal,
 	type TaskContext,
 	type TaskObservation,
