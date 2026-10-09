@@ -85,6 +85,7 @@ import { observeOwnerCapture } from "./shared-owner-model-capture";
 import { resolveSharedParticipantName } from "./shared-participant-name";
 import {
   createMatchingRealtimeSearchRunner,
+  finalizeSharedRealtimeReply,
   normalizedRealtimeQuery,
   requireTraceableRealtimeSearch,
   resolveSharedPublicSearchIntent,
@@ -1060,12 +1061,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         !privateCapabilityIntent
       ? resolveSharedPublicSearchIntent(input.capabilityText, input.history)
       : undefined;
-  const webSearchEnabled = Boolean(publicSearchIntent);
-  // Public-search turns must not also expose a private data source to the model.
-  const googlePlugin =
-    actionsEnabled && !webSearchEnabled && input.execution?.google
-      ? createSharedGoogleContextPlugin(input.execution.google)
-      : undefined;
+  const preflightWebSearchResult = input.preflightActionResults?.find(
+    (result) => result.data?.actionName === "WEB_SEARCH",
+  );
+  // Recognized current-data turns require the server's preflight receipt.
+  // Missing receipts must not fall back to an unbound public network action.
+  const webSearchEnabled = Boolean(
+    publicSearchIntent && (publicSearchIntent.kind === "general" || preflightWebSearchResult),
+  );
   const reminderPlugin =
     actionsEnabled && input.execution?.reminders
       ? createSharedRemindersEdgePlugin({
@@ -1092,9 +1095,6 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const incomingEntityId = actionsEnabled ? userEntityId : lifecycleEntityId;
   const authenticatedPersonalSharedUser =
     actionsEnabled && input.execution?.authenticatedPersonalSharedUser === true;
-  const preflightWebSearchResult = input.preflightActionResults?.find(
-    (result) => result.data?.actionName === "WEB_SEARCH",
-  );
   const webSearchPlugin = preflightWebSearchResult
     ? createWebSearchEdgePlugin(createMatchingRealtimeSearchRunner(preflightWebSearchResult))
     : publicSearchIntent?.kind === "general"
@@ -1109,21 +1109,32 @@ async function executeMeasuredSharedElizaRuntimeTurn(
               data: { actionName: "WEB_SEARCH" },
             };
           }
-          const result = await runWebSearchEdge(query, options);
-          const traceable = requireTraceableRealtimeSearch(result, query);
+          // Core/SDK capture retains the model's attempted arguments. The
+          // provider dispatch and result.data.query use only server-owned bytes;
+          // equivalent model casing/spacing is not an outbound data channel.
+          const result = await runWebSearchEdge(publicSearchIntent.topic, options);
+          const traceable = requireTraceableRealtimeSearch(result, publicSearchIntent.topic);
           return traceable.success === true
             ? { ...traceable, modelReplyRequired: true }
             : traceable;
         })
       : undefined;
-  if (webSearchPlugin && publicSearchIntent?.kind === "general") {
+  const publicWebSearchAction = webSearchEnabled
+    ? (webSearchPlugin ?? webSearchEdgePlugin).actions?.find(
+        (action) => action.name === webSearchEdgeAction.name,
+      )
+    : undefined;
+  const googlePlugin =
+    actionsEnabled && input.execution?.google && !publicSearchIntent && !publicWebSearchAction
+      ? createSharedGoogleContextPlugin(input.execution.google)
+      : undefined;
+  if (webSearchPlugin && publicWebSearchAction && publicSearchIntent?.kind === "general") {
     webSearchPlugin.responseHandlerEvaluators = [
       {
         name: "shared.explicit_public_search",
         priority: 999,
         deterministicActions: ["WEB_SEARCH"],
-        shouldRun: ({ messageHandler }) =>
-          messageHandler.processMessage === "RESPOND" && !messageHandler.plan.deterministicToolCall,
+        shouldRun: ({ messageHandler }) => messageHandler.processMessage === "RESPOND",
         evaluate: () => ({
           requiresTool: true,
           addCandidateActions: ["WEB_SEARCH"],
@@ -1258,6 +1269,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ) {
         throw new Error("Eliza Shared runtime initialized without its owner Google action");
       }
+      if (
+        publicSearchIntent &&
+        runtime.actions.some((action) => action.name === GOOGLE_CONTEXT_ACTION)
+      ) {
+        throw new Error(
+          "Eliza Shared public-search runtime must not register private Google actions",
+        );
+      }
       if (input.execution?.todos && !runtime.actions.some((action) => action.name === "TODO")) {
         throw new Error("Eliza Shared runtime initialized without its TODO action");
       }
@@ -1267,6 +1286,31 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ) {
         throw new Error("Eliza Shared runtime initialized without its GENERATE_MEDIA action");
       }
+    }
+    if (publicSearchIntent?.kind === "prefetched" && !preflightWebSearchResult) {
+      // A missing server receipt is not permission to search from private history
+      // or read Google instead. No model/public/private provider has dispatched.
+      const reply = finalizeSharedRealtimeReply("", undefined);
+      return {
+        reply,
+        responded: true,
+        history: appendSharedTurn(
+          input.history,
+          input.message.trim(),
+          reply,
+          input.messageIds,
+          input.messageRole,
+        ),
+        model: input.model,
+        degraded: false,
+        usage: {
+          promptTokens: 0,
+          completionTokens: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+        },
+      };
     }
     const roomId = sharedRuntimeConversationRoomId(trustedRoomKey);
     const participantName =
