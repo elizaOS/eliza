@@ -844,7 +844,12 @@ export function finalizeSharedRealtimeReply(
 }
 
 /** System-only policy; actual provider results remain untrusted data messages. */
-export function sharedRealtimePromptPolicy(grounding: SharedRuntimePublicGrounding): string {
+export function sharedRealtimePromptPolicy(
+  grounding: SharedRuntimePublicGrounding | undefined,
+): string {
+  if (!grounding) {
+    return "Public-search grounding policy:\n- WEB_SEARCH is available for this turn; do not claim a search has run until its action result confirms success.\n- After a successful search, use only its structured current-turn source objects for public factual claims. Append [[SOURCE_URL:https://exact-supporting-url]] immediately after every supported claim segment, using the exact URL from that result. Never combine a claim from one result with another result's URL.\n- If the action fails or the sources do not support the requested answer, say what you could not verify. Never invent a search, article, attribution, numeric value, or source. Do not repeat the same completed query.";
+  }
   return grounding.kind === "web_search"
     ? "Current-data grounding policy:\n- A complete live public read already ran for this turn. Use only its structured current-turn source objects for mutable factual claims.\n- Keep each claim with its own source: append [[SOURCE_URL:https://exact-supporting-url]] immediately after every claim segment. Never combine a value from one result with another result’s URL.\n- Preserve the source value, timestamp, units or currency. If evidence conflicts or omits the requested value, say you cannot verify it.\n- Never invent a search, article, source, attribution, or numeric value. Do not run a duplicate search for the same query."
     : "Current-data grounding policy:\n- The required live public read failed or lacked complete source-bound evidence. Say you cannot verify the current value and do not provide a number, source, article, or claimed search result.\n- Recover conversationally from corrections; never answer with punctuation alone.";

@@ -83,6 +83,7 @@ import {
   requireTraceableRealtimeSearch,
   resolveSharedPublicSearchIntent,
   resolveSharedRealtimeRequirement,
+  sharedRealtimePromptPolicy,
 } from "./shared-realtime-grounding";
 import {
   createSharedRuntimeCapabilitiesPlugin,
@@ -1117,6 +1118,15 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       },
     ];
   }
+  const character =
+    publicSearchIntent?.kind === "general"
+      ? {
+          ...input.character,
+          system: [input.character.system, sharedRealtimePromptPolicy(undefined)]
+            .filter(Boolean)
+            .join("\n\n"),
+        }
+      : input.character;
   // A group turn labels each speaker `Participant <n>` (see
   // `group-participant-labels.ts`). That is a slot, not a name, so the model
   // needs one line telling it where real names come from; scoping it to the
@@ -1130,10 +1140,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     adapter,
     character: isGroupTurn
       ? {
-          ...input.character,
-          system: withGroupTurnNamingRule(input.character.system),
+          ...character,
+          system: withGroupTurnNamingRule(character.system),
         }
-      : input.character,
+      : character,
     modelPlugin,
     ...(webSearchPlugin ? { webSearchPlugin } : {}),
     transport: sharedCapabilityTransportForSource(

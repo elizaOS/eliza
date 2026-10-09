@@ -43,7 +43,7 @@ describe("Shared Eliza runtime in Workerd", () => {
   const boundedSourceUrl = "https://learn.microsoft.com/en-us/dotnet/csharp/";
   const boundedSourceText =
     "shared-general-owned-qa source: C# installation uses the .NET SDK.";
-  const boundedGeneralReply = `C# installation uses the .NET SDK. ${boundedSourceUrl}`;
+  const boundedGeneralDraft = `C# installation uses the .NET SDK. [[SOURCE_URL:${boundedSourceUrl}]]`;
 
   let todoPlannerRequests = 0;
   let reminderPlannerRequests = 0;
@@ -76,7 +76,7 @@ describe("Shared Eliza runtime in Workerd", () => {
                   success: true,
                   decision: "FINISH",
                   thought: "Answer from the exact returned public source.",
-                  messageToUser: boundedGeneralReply,
+                  messageToUser: boundedGeneralDraft,
                 }),
               }
             : {
@@ -1775,7 +1775,12 @@ describe("Shared Eliza runtime in Workerd", () => {
           ),
         })
         .parse(JSON.parse(publicBody));
-      expect(result.reply).toBe(boundedGeneralReply);
+      expect(result.reply).toContain("C# installation uses the .NET SDK.");
+      expect(result.reply).toContain(
+        `Source: learn.microsoft.com — ${boundedSourceUrl} (parallel, checked `,
+      );
+      expect(result.reply).not.toContain("[[SOURCE_URL:");
+      expect(result.reply).not.toContain("could not verify");
       expect(result.degraded).toBe(false);
       expect(result.actionResults).toHaveLength(1);
       expect(result.actionResults[0]).toMatchObject({
@@ -1784,7 +1789,7 @@ describe("Shared Eliza runtime in Workerd", () => {
           actionName: "WEB_SEARCH",
           query: boundedGeneralTopic,
           groundingStatus: "verified",
-          deliveredReply: boundedGeneralReply,
+          deliveredReply: result.reply,
         },
       });
       expect(boundedSearchBodies).toHaveLength(1);
@@ -1807,6 +1812,19 @@ describe("Shared Eliza runtime in Workerd", () => {
       expect(JSON.stringify(publicModels[0].messages)).not.toContain(
         boundedSourceText,
       );
+      const pendingSystem = modelSystemContent(publicModels);
+      expect(pendingSystem).toContain(
+        "WEB_SEARCH is available for this turn; do not claim a search has run until its action result confirms success.",
+      );
+      expect(pendingSystem).toContain(
+        "[[SOURCE_URL:https://exact-supporting-url]]",
+      );
+      expect(pendingSystem).not.toContain(
+        "A complete live public read already ran for this turn.",
+      );
+      expect(
+        modelSystemContent([publicModels[publicModels.length - 1]]),
+      ).toContain("[[SOURCE_URL:https://exact-supporting-url]]");
 
       const privateModelBefore = modelRequests.length;
       const privateResponse = await miniflare.dispatchFetch(
@@ -1816,6 +1834,9 @@ describe("Shared Eliza runtime in Workerd", () => {
       expect(privateResponse.status, privateBody).toBe(200);
       expect(boundedSearchBodies).toHaveLength(1);
       const privateModels = modelRequests.slice(privateModelBefore);
+      expect(modelSystemContent(privateModels)).not.toContain(
+        "Public-search grounding policy:",
+      );
       expect(privateModels.length).toBeGreaterThan(0);
       expect(privateModels.length).toBeLessThanOrEqual(2);
       for (const request of privateModels) {
