@@ -184,6 +184,8 @@ export interface RunSharedAgentTurnInput {
      * must never populate this grant.
      */
     authenticatedPersonalSharedUser?: true;
+    /** Verified owner profile preference; server execution only, never RPC params. */
+    participantName?: string;
     todos?: {
       scope: { agentId: UUID; entityId: UUID };
       store: TodoStore;

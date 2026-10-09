@@ -59,6 +59,7 @@ import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-ru
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { getInteractiveCerebrasLanguageModel } from "../../providers/language-model";
 import { logger } from "../../utils/logger";
+import { resolveSharedParticipantName } from "./shared-participant-name";
 import { withGroupTurnNamingRule } from "./group-participant-labels";
 import type {
   RunSharedAgentTurnInput,
@@ -1024,12 +1025,21 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       }
     }
     const roomId = sharedRuntimeConversationRoomId(trustedRoomKey);
+    const participantName =
+      authenticatedPersonalSharedUser && input.execution.channel.type === ChannelType.DM
+        ? resolveSharedParticipantName({
+            message: input.capabilityText ?? input.message,
+            messageRole: input.messageRole,
+            history: input.history,
+            preferredName: input.execution.participantName,
+          })
+        : undefined;
     timing.markConnectionStarted();
     await runtime.ensureConnection({
       entityId: incomingEntityId,
       roomId,
       worldId: sharedRuntimeWorldId(trustedRoomKey),
-      userName: actionsEnabled ? "Shared user" : "Shared lifecycle",
+      ...(participantName ? { userName: participantName } : {}),
       source: actionsEnabled ? input.execution.channel.source : "shared-runtime-system",
       type: input.execution.channel.type,
       ...(authenticatedPersonalSharedUser

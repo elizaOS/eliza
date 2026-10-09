@@ -610,6 +610,9 @@ function sharedElizaRuntimeExecution(
     // Personal funding is selected by the server-owned coordinator only after
     // account/tenant resolution; RPC params cannot grant this attestation.
     ...(personalShared ? { authenticatedPersonalSharedUser: true as const } : {}),
+    ...(personalShared && runtimeChannel.type === ChannelType.DM && agent.owner_name
+      ? { participantName: agent.owner_name }
+      : {}),
     todos: {
       scope: sharedTodoStorageScope({
         sourceAgentId: agent.id,
