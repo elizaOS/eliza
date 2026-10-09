@@ -75,6 +75,14 @@ interface DelayCandidate {
   invalidComposition: boolean;
 }
 
+function isWordApostrophe(text: string, index: number): boolean {
+  return (
+    (text[index] === "'" || text[index] === "’") &&
+    /[\p{L}\p{N}]/u.test(text[index - 1] ?? "") &&
+    /[\p{L}\p{N}]/u.test(text[index + 1] ?? "")
+  );
+}
+
 function maskQuotedText(text: string): string {
   const closingQuote = new Map([
     ['"', '"'],
@@ -87,13 +95,23 @@ function maskQuotedText(text: string): string {
   let cursor = 0;
   while (cursor < text.length) {
     const closer = closingQuote.get(text[cursor] ?? "");
-    if (!closer) {
+    // Outside a quote, an apostrophe following a word is word punctuation,
+    // including a trailing possessive such as James'.
+    if (
+      !closer ||
+      ((text[cursor] === "'" || text[cursor] === "’") &&
+        /[\p{L}\p{N}]/u.test(text[cursor - 1] ?? ""))
+    ) {
       out.push(text[cursor] ?? "");
       cursor += 1;
       continue;
     }
     let end = cursor + 1;
-    while (end < text.length && text[end] !== "\n" && text[end] !== closer) {
+    while (
+      end < text.length &&
+      text[end] !== "\n" &&
+      (text[end] !== closer || isWordApostrophe(text, end))
+    ) {
       end += 1;
     }
     if (text[end] === closer) {
@@ -101,10 +119,10 @@ function maskQuotedText(text: string): string {
       cursor = end + 1;
       continue;
     }
-    // Unmatched opener (e.g. a contraction apostrophe): emit just the opener
-    // and rescan from the next char so a later quoted span is still masked.
-    out.push(text[cursor] ?? "");
-    cursor += 1;
+    // An unmatched quote is not authority to run its contents. Word
+    // apostrophes were handled above; keep the rest of this line masked.
+    out.push(" ".repeat(end - cursor));
+    cursor = end;
   }
   return out.join("");
 }
