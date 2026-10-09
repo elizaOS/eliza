@@ -205,6 +205,38 @@ jobs:
         working-directory: packages/cloud/shared
         run: bun --conditions=eliza-source test ./src/lib/services/shared-runtime/run-shared-agent-turn.realtime-audit.test.ts --timeout 30000
 
+      - name: Verify owner-consented Google backend boundaries
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 3
+        working-directory: packages/cloud/shared
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset SHARED_ELIZA_LIVE_MODEL_URL SHARED_ELIZA_LIVE_MODEL_ID SHARED_ELIZA_LIVE_WEB_SEARCH
+          for suite in \
+            src/db/repositories/personal-google-context-consent.pglite.test.ts \
+            src/lib/services/oauth/oauth2.personal-context.test.ts \
+            src/lib/services/agent-google-connector/calendar.pagination.test.ts \
+            src/lib/services/shared-runtime/shared-google-consent.test.ts \
+            src/lib/services/shared-runtime/shared-google-owner-binding.test.ts \
+            src/lib/services/shared-runtime/shared-google-read-port.test.ts \
+            src/lib/services/shared-runtime/shared-google-context-plugin.test.ts \
+            src/lib/services/shared-runtime/shared-eliza-runtime.google.test.ts; do
+            bun --conditions=eliza-source test "$suite" --timeout 30000
+          done
+
+      - name: Verify selected Google owner status through Hono and PostgreSQL
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 1
+        working-directory: packages/cloud/api
+        run: bun --conditions=eliza-source test ./v1/eliza/google/status/route.personal-context.test.ts --timeout 30000
+
+      - name: Verify personal Google cards and account-switch behavior
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 2
+        working-directory: packages/ui
+        run: bun run test:e2e src/cloud/connectors/__e2e__/google-personal-context.test.tsx
+
       - name: Run synthetic-world transaction tests
         if: steps.diff.outputs.synthetic_world_changed == 'true'
         run: bun run --cwd packages/testing test:synthetic-world
