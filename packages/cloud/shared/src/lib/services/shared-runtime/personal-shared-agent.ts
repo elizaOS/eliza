@@ -136,6 +136,7 @@ export function personalSharedAgent(identity: PersonalSharedAccountIdentity): Sh
     id: personalSharedAgentId(identity),
     organization_id: identity.organizationId,
     user_id: identity.userId,
+    ...(identity.ownerName ? { owner_name: identity.ownerName } : {}),
     character_id: null,
     agent_name: character.name,
     agent_config: { character },

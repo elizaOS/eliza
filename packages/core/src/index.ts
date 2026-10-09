@@ -557,3 +557,6 @@ export {
 	ttsDebugTextPreview,
 } from "./utils/tts-debug.js";
 export { validateUuid } from "./utils/uuid.js";
+
+// Bounded owner capture shares the canonical credential redaction policy.
+export { isSensitiveKeyName, redactSensitiveText } from "./security/redact";

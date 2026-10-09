@@ -56,6 +56,7 @@ import {
 import { _resetActionRolePolicyCacheForTests as _resetCacheForTests } from "./action-role-policy";
 import { runWithActionRoutingContext } from "./action-routing-context";
 import type { PlannerToolCall } from "./planner-types.ts";
+import { observeOwnerToolExecution } from "./owner-tool-execution-observer";
 import {
 	buildTurnEntityAliases,
 	type EntityAliasCapabilityMap,
@@ -561,6 +562,7 @@ export async function executePlannedToolCall(
 	options: ExecutePlannedToolCallOptions = {},
 ): Promise<ActionResult> {
 	options.abortSignal?.throwIfAborted();
+	const ownerExecutionId = runtime.ownerToolExecutionObserver ? crypto.randomUUID() : undefined;
 	// Perf probe (#latency): per-segment wall clock for one executed tool call,
 	// logged as a single summary line. Diagnostic only; never alters behavior.
 	const perfT0 = Date.now();
@@ -593,7 +595,8 @@ export async function executePlannedToolCall(
 					retryable: false,
 				},
 			),
-		);
+    { ownerCapture: runtime.ownerToolExecutionObserver ? { runtime, executionId: ownerExecutionId, phase: "gate", gate: "lookup", gateOutcome: "denied" } : undefined },
+);
 	}
 
 	const resolvedCtx = await withResolvedUserRoles(runtime, ctx);
@@ -624,7 +627,8 @@ export async function executePlannedToolCall(
 			toolCall,
 			redactDiagnosticText,
 			failureResult(action.name, gateFailure),
-		);
+    { ownerCapture: runtime.ownerToolExecutionObserver ? { runtime, executionId: ownerExecutionId, phase: "gate", gate: "role-context", gateOutcome: "denied" } : undefined },
+);
 	}
 	if (action.disclosureGate?.require === "owner_exclusive") {
 		const disclosure = await authorizeOwnerExclusiveDisclosure(
@@ -639,7 +643,8 @@ export async function executePlannedToolCall(
 					action.name,
 					`Owner-private disclosure denied: ${disclosure.reason}`,
 				),
-			);
+    { ownerCapture: runtime.ownerToolExecutionObserver ? { runtime, executionId: ownerExecutionId, phase: "gate", gate: "disclosure", gateOutcome: "denied" } : undefined },
+);
 		}
 	}
 
@@ -657,6 +662,7 @@ export async function executePlannedToolCall(
 				action.name,
 				"Tool arguments must be a plain object in params",
 			),
+      { ownerCapture: runtime.ownerToolExecutionObserver ? { runtime, executionId: ownerExecutionId, phase: "gate", gate: "schema", gateOutcome: "denied" } : undefined },
 		);
 	}
 	const argsForValidation = dropEmptyOptionalArgs(
@@ -702,7 +708,8 @@ export async function executePlannedToolCall(
 						: {}),
 				},
 			),
-		);
+    { ownerCapture: runtime.ownerToolExecutionObserver ? { runtime, executionId: ownerExecutionId, phase: "gate", gate: "schema", gateOutcome: "denied" } : undefined },
+);
 	}
 	const previousResults = [...(executorCtx.previousResults ?? [])];
 	const parameters =
@@ -754,7 +761,8 @@ export async function executePlannedToolCall(
 						retryable: true,
 					},
 				),
-			);
+    { ownerCapture: runtime.ownerToolExecutionObserver ? { runtime, executionId: ownerExecutionId, phase: "gate", gate: "action-validation", gateOutcome: "failed" } : undefined },
+);
 		}
 		if (!valid) {
 			return emitToolResult(
@@ -771,7 +779,8 @@ export async function executePlannedToolCall(
 						retryable: false,
 					},
 				),
-			);
+    { ownerCapture: runtime.ownerToolExecutionObserver ? { runtime, executionId: ownerExecutionId, phase: "gate", gate: "action-validation", gateOutcome: "denied" } : undefined },
+);
 		}
 	}
 
@@ -793,7 +802,8 @@ export async function executePlannedToolCall(
 				accountPolicy.reason ??
 					`Action ${action.name} is not allowed for the selected connector account`,
 			),
-		);
+    { ownerCapture: runtime.ownerToolExecutionObserver ? { runtime, executionId: ownerExecutionId, phase: "gate", gate: "connector-account", gateOutcome: "denied" } : undefined },
+);
 	}
 	perfMark("accountPolicy");
 	options.abortSignal?.throwIfAborted();
@@ -934,6 +944,11 @@ export async function executePlannedToolCall(
 									handlerOptions.parameters,
 								);
 							}
+              observeOwnerToolExecution(runtime, () => ({
+                phase: "started", gate: "execution", gateOutcome: "executed",
+                actionName: action.name, executionId: ownerExecutionId, toolCallId: toolCall.id,
+                args: handlerOptions.parameters,
+              }));
 							const routingContext = {
 								actionName: action.name,
 								modelClass: action.modelClass,
@@ -1064,6 +1079,7 @@ export async function executePlannedToolCall(
 	}
 	return emitToolResult(toolCall, redactDiagnosticText, resultForEvent, {
 		suppressData: suppressActionResult,
+    ownerCapture: runtime.ownerToolExecutionObserver ? { runtime, executionId: ownerExecutionId, phase: "settled", gate: "execution", gateOutcome: resultForEvent.success ? "executed" : "failed" } : undefined,
 	});
 }
 
@@ -1071,8 +1087,25 @@ async function emitToolResult(
 	toolCall: PlannerToolCall | PlannedToolCall,
 	redactDiagnosticText: ToolDiagnosticTextRedactor,
 	result: ActionResult,
-	options: { suppressData?: boolean } = {},
+  options: {
+    suppressData?: boolean;
+    ownerCapture?: {
+      runtime: IAgentRuntime;
+      executionId?: string;
+      phase: "gate" | "settled";
+      gate: "lookup" | "role-context" | "disclosure" | "schema" | "action-validation" | "connector-account" | "execution";
+      gateOutcome: "denied" | "failed" | "executed";
+    };
+  } = {},
 ): Promise<ActionResult> {
+  if (options.ownerCapture) {
+    const observation = options.ownerCapture;
+    observeOwnerToolExecution(observation.runtime, () => ({
+      phase: observation.phase, gate: observation.gate, gateOutcome: observation.gateOutcome,
+      actionName: toolCall.name, executionId: observation.executionId, toolCallId: toolCall.id,
+      ...(observation.phase === "gate" ? { args: toolCall.params } : {}), result,
+    }));
+  }
 	const streamingContext = getStreamingContext();
 	const status = result.success ? "completed" : "failed";
 	const streamingToolCall = plannedToolCallToStreamingToolCall(

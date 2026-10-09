@@ -1,3 +1,4 @@
+import type { OwnerModelCapture } from "./shared-owner-model-capture";
 /**
  * Cache-only shared-tier chat execution for Cloudflare Workers.
  *
@@ -340,6 +341,8 @@ export interface SharedTurnClaimStore {
 }
 
 export interface SharedRuntimeChatOptions {
+  /** Server-only capability reserved by the owning Personal Shared DO. */
+  ownerCapture?: OwnerModelCapture;
   /** Standard request trace propagated through the conversation coordinator. */
   traceId?: string;
   abortSignal?: AbortSignal;
@@ -610,6 +613,9 @@ function sharedElizaRuntimeExecution(
     // Personal funding is selected by the server-owned coordinator only after
     // account/tenant resolution; RPC params cannot grant this attestation.
     ...(personalShared ? { authenticatedPersonalSharedUser: true as const } : {}),
+    ...(personalShared && runtimeChannel.type === ChannelType.DM && agent.owner_name
+      ? { participantName: agent.owner_name }
+      : {}),
     todos: {
       scope: sharedTodoStorageScope({
         sourceAgentId: agent.id,
@@ -1443,6 +1449,7 @@ export class SharedRuntimeChatService {
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
+        ownerCapture: options.ownerCapture,
         abortSignal: options.abortSignal,
         character,
         history,

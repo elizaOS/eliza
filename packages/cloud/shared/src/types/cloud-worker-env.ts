@@ -26,6 +26,8 @@ export interface RuntimeDurableObjectNamespace {
 export interface Bindings {
   /** Trusted execution environment for app inference; must match the registered app client mode. */
   APP_INFERENCE_EXECUTION_ENVIRONMENT?: "test" | "live";
+  /** Inactive by default: reviewed server-owned owner/room capture policy JSON. */
+  SHARED_OWNER_MODEL_CAPTURE_POLICY?: string;
   // ---- Deployment environment ----
   /**
    * Wrangler environment name (`"production"` | `"staging"`); unset in local
