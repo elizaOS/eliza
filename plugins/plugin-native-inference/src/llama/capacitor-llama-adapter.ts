@@ -250,6 +250,16 @@ function toPlainLlamaCppPlugin(plugin: LlamaCppPluginLike): LlamaCppPluginLike {
               variant?: string;
             }>
         : undefined,
+    // Without this forward the wrapper hid the native chat-template
+    // renderer, so formatChat() always saw a non-function and returned
+    // null even when the native plugin and the model both support it.
+    getFormattedChat:
+      typeof plugin.getFormattedChat === "function"
+        ? (options) =>
+            plugin.getFormattedChat?.(options) as Promise<{
+              prompt: string | null;
+            }>
+        : undefined,
     addListener: (event, listener) => plugin.addListener(event, listener),
   };
 }
