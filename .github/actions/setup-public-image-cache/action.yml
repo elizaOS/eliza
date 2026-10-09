@@ -40,3 +40,4 @@ runs:
             raise SystemExit("Public Docker Hub cache mirror was not applied")
         print("Verified public Docker Hub cache mirror")
         '
+        docker info --format 'Docker server version={{.ServerVersion}} storage-driver={{.Driver}} driver-status={{json .DriverStatus}}'
