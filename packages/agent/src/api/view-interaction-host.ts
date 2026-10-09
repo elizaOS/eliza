@@ -59,6 +59,13 @@ export class ViewInteractionHost {
     if (this.closed)
       throw new ElizaError("View host is closed", { code: "VIEW_HOST_CLOSED" });
     assertRuntimeViewEntry(this.runtime, entry);
+    if (this.callers.has(requestId))
+      throw new ElizaError(
+        "A renderer request with this ID is already pending",
+        {
+          code: "VIEW_REQUEST_PENDING",
+        },
+      );
     if (binding.navigation) {
       const priorNavigations = [...this.callers].filter(
         ([, prior]) =>

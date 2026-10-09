@@ -2323,6 +2323,27 @@ describe("native completed-action navigation", () => {
     const claimed = await post("/api/views/interact-claim", binding);
     expect(claimed.status).toBe(200);
     const { claimId } = await claimed.json();
+    // Request IDs share one host map, so a different renderer or owner must
+    // not replace this claim by colliding with its caller-provided ID.
+    for (const authorization of [
+      "Bearer local-navigation-test",
+      "Bearer other-navigation-owner",
+    ])
+      expect(
+        (
+          await post(
+            "/api/views/notes/navigate",
+            {
+              clientId: "other-client",
+              delivery: "completed-action",
+              completedActionHandoffId: binding.requestId,
+              viewType: "gui",
+              prepareOnly: true,
+            },
+            authorization,
+          )
+        ).status,
+      ).toBe(409);
     // Once execution is claimed, a later preparation cannot revoke its ack
     // or introduce a second claim that can commit out of order.
     const nextNavigation = {
