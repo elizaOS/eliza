@@ -311,6 +311,8 @@ function GooglePersonalContextConnect({
       actionController.current?.abort();
     };
   }, []);
+  // External grant changes and explicit refresh invalidate this selected-consent read.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: connectionsVersion and refresh intentionally retrigger the request.
   useEffect(() => {
     const controller = new AbortController();
     setData(null);
