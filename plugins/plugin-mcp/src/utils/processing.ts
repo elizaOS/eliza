@@ -30,22 +30,52 @@ function getMimeTypeToContentType(mimeType: string | undefined): ContentType | u
   if (mimeType.includes("pdf") || mimeType.includes("document")) return ContentType.DOCUMENT;
   return undefined;
 }
+function resourceAttachment(
+  resource: McpResourceContent,
+  runtime: IAgentRuntime,
+  source: string,
+  messageEntityId: string,
+  index: number
+): Media {
+  const mimeType = resource.mimeType ?? "application/octet-stream";
+  return {
+    id: createUniqueUuid(
+      runtime,
+      `${messageEntityId}:${source}:${index}:${resource.uri}:${resource.blob}`
+    ),
+    url: `data:${mimeType};base64,${resource.blob}`,
+    mimeType,
+    contentType: getMimeTypeToContentType(mimeType),
+    title: resource.uri,
+    source: resource.uri,
+    description: `MCP resource from ${source}`,
+  };
+}
+
 interface ResourceResult {
   readonly contents: readonly McpResourceContent[];
 }
 export function processResourceResult(
   result: ResourceResult,
-  uri: string
+  uri: string,
+  runtime: IAgentRuntime,
+  serverName: string,
+  messageEntityId: string
 ): {
   resourceContent: string;
   resourceMeta: string;
+  attachments: Media[];
 } {
   let resourceContent = "";
   let resourceMeta = "";
+  const attachments: Media[] = [];
   for (const content of result.contents) {
     if (content.text) {
       resourceContent += content.text;
-    } else if (content.blob) {
+    } else if (typeof content.blob === "string") {
+      attachments.push(
+        resourceAttachment(content, runtime, serverName, messageEntityId, attachments.length)
+      );
       resourceContent += `[Binary data${content.mimeType ? ` - ${content.mimeType}` : ""}]`;
     }
     resourceMeta += `Resource: ${content.uri ?? uri}\n`;
@@ -53,7 +83,7 @@ export function processResourceResult(
       resourceMeta += `Type: ${content.mimeType}\n`;
     }
   }
-  return { resourceContent, resourceMeta };
+  return { resourceContent, resourceMeta, attachments };
 }
 export function processToolResult(
   result: Pick<CallToolResult, "content" | "structuredContent" | "isError">,
@@ -106,7 +136,17 @@ export function processToolResult(
       const resource = content.resource;
       if ("text" in resource && resource.text) {
         toolOutput += `\n\nResource (${resource.uri}):\n${resource.text}`;
-      } else if ("blob" in resource) {
+      } else if ("blob" in resource && typeof resource.blob === "string") {
+        attachments.push(
+          resourceAttachment(
+            resource,
+            runtime,
+            `${serverName}/${toolName}`,
+            messageEntityId,
+            mediaIndex++
+          )
+        );
+        hasAttachments = true;
         toolOutput += `\n\nResource (${resource.uri}): [Binary data]`;
       }
     }
@@ -135,12 +175,21 @@ export async function handleResourceAnalysis(
   serverName: string,
   resourceContent: string,
   resourceMeta: string,
+  attachments: readonly Media[],
   callback?: HandlerCallback
 ): Promise<void> {
-  await createMcpMemory(runtime, message, "resource", serverName, resourceContent, {
-    uri,
-    isResourceAccess: true,
-  });
+  await createMcpMemory(
+    runtime,
+    message,
+    "resource",
+    serverName,
+    resourceContent,
+    {
+      uri,
+      isResourceAccess: true,
+    },
+    attachments
+  );
   const analysisPrompt = createAnalysisPrompt(
     uri,
     message.content.text ?? "",
@@ -153,6 +202,7 @@ export async function handleResourceAnalysis(
   if (callback) {
     await callback({
       text: analyzedResponse,
+      attachments: attachments.length ? [...attachments] : undefined,
       actions: ["READ_MCP_RESOURCE"],
     });
   }
@@ -180,11 +230,19 @@ export async function handleToolResponse(
   callback?: HandlerCallback,
   isError = false
 ): Promise<Memory> {
-  await createMcpMemory(runtime, message, "tool", serverName, toolOutput, {
-    toolName,
-    arguments: toolArgs,
-    isToolCall: true,
-  });
+  await createMcpMemory(
+    runtime,
+    message,
+    "tool",
+    serverName,
+    toolOutput,
+    {
+      toolName,
+      arguments: toolArgs,
+      isToolCall: true,
+    },
+    attachments
+  );
   const reasoningPrompt = createReasoningPrompt(
     state,
     mcpProvider,
