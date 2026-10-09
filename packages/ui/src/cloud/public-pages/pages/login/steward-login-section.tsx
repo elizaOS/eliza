@@ -1080,6 +1080,8 @@ export default function StewardLoginSection({
   }, [navigate, pathname, searchParams, PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
+    // The old cookie must be retired before either login mode starts a new OTP.
+    if (searchParams.get("switchAccount") === "1") return;
     if (phoneOnly) {
       // A generic stored/cookie session is not proof of this phone. Network
       // entry always completes the existing SMS verification and phone sync.
@@ -1087,7 +1089,6 @@ export default function StewardLoginSection({
       return;
     }
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
-    if (searchParams.get("switchAccount") === "1") return;
     if (callbackOwnsSessionRef.current || searchParams.get("code")) {
       setSessionRecoveryComplete(true);
       return;
@@ -1123,11 +1124,7 @@ export default function StewardLoginSection({
             // confirms it explicitly.
             await syncStewardSessionCookie(storedToken, null);
             if (!cancelled) {
-              setRedirectTo(
-                phoneOnly
-                  ? defaultLoginReturnTo()
-                  : resolveLoginReturnTo(searchParams),
-              );
+              setRedirectTo(resolveLoginReturnTo(searchParams));
             }
             return;
           } catch (storedTokenError) {
@@ -1149,11 +1146,7 @@ export default function StewardLoginSection({
           if (refreshed?.token) {
             await writeStoredStewardToken(refreshed.token);
             window.dispatchEvent(new CustomEvent("steward-token-sync"));
-            setRedirectTo(
-              phoneOnly
-                ? defaultLoginReturnTo()
-                : resolveLoginReturnTo(searchParams),
-            );
+            setRedirectTo(resolveLoginReturnTo(searchParams));
           }
           return;
         }
