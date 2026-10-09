@@ -927,9 +927,14 @@ describe("general public search hotfix boundaries", () => {
     expect(resolveSharedCapabilityIntent("Search the web for Gmail API docs and read my inbox")?.kind).toBe("blocked-primary");
     const punctuationTopic = 'Gmail API documentation for C# client SDK "rate  limits"';
     expect(resolveSharedPublicSearchIntent(`Search the web for ${punctuationTopic}`, [])).toEqual({ kind: "general", topic: punctuationTopic });
-    for (const message of ["Search Gmail for invoices", "Search the web for Gmail API docs and read my inbox", "Search the web for that", "Search the web for alice@example.com", "Search the web for http://127.0.0.1"]) {
+    for (const message of ["Search Gmail for invoices", "Search the web for Gmail API docs and read my inbox", "Search the web for alice@example.com", "Search the web for http://127.0.0.1"]) {
       expect(resolveSharedPublicSearchIntent(message, history)).toBeUndefined();
     }
+    expect(resolveSharedPublicSearchIntent("Search the web for that", [{ role: "assistant", content: "PRIVATE_HISTORY_MARKER" }])).toBeUndefined();
+    expect(resolveSharedPublicSearchIntent("Search the web for that", history)).toEqual({
+      kind: "prefetched",
+      requirement: { domain: "markets", query: "BTC price current", correction: true },
+    });
     expect(() => resolveSharedPublicSearchIntent(`Search the web for ${"x".repeat(2049)}`, [])).toThrow("Public search topics must not exceed 2048 characters");
   });
 });
