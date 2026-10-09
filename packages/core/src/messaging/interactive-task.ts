@@ -35,6 +35,13 @@ export interface TaskObservation {
 	inputRevision: number;
 	observedAt: number;
 }
+/**
+ * Error code for an action refused before anything reached the page. The
+ * runtime records such an operation as failed, with the fixed evidence
+ * reference below, instead of as an unknown outcome.
+ */
+export const TASK_ACTION_NOT_DISPATCHED = "TASK_ACTION_NOT_DISPATCHED";
+export const TASK_ACTION_NOT_DISPATCHED_REF = "not-dispatched";
 export interface TaskActionProposal {
 	id: string;
 	taskId: string;

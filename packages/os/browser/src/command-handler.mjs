@@ -128,6 +128,8 @@ export function createCommandHandler(api) {
     )
       throw blocked();
     delete copy.taskPolicy;
+    // Only a bound task action carries the host's preview sentence.
+    if (!command.taskContext) delete copy.actionText;
     if (!command.id) {
       if (command.taskContext) throw blocked();
       return { command: copy, current: () => true };

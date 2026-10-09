@@ -90,7 +90,7 @@ export class BillWorkflow {
       throw new BillHostError("Task authorization changed");
     }
     try {
-      await this.actuator.showGuidance(
+      const shown = await this.actuator.showGuidance(
         this.taskId,
         this.runtime.owner,
         {
@@ -103,7 +103,17 @@ export class BillWorkflow {
       );
       if (!(await this.stillAuthorized()))
         throw new BillHostError("Task authorization changed");
-      return { ...decision, guidance: { instruction, available: true } };
+      return {
+        ...decision,
+        guidance: {
+          instruction,
+          available: true,
+          // The renderer checks the website again before the guide expires.
+          ...(Number.isSafeInteger(shown?.expiresAt)
+            ? { expiresAt: shown.expiresAt }
+            : {}),
+        },
+      };
     } catch {
       // Preserve the instruction; failed removal still fails the whole request.
       await this.clearGuidance();
@@ -365,7 +375,11 @@ export class BillWorkflow {
   /** Explicit choice commit, after a fresh observation. It selects a saved method only. */
   async chooseExistingMethod(
     expectedReviewKey,
-    { operationId = randomUUID(), isCurrent = () => true } = {},
+    {
+      operationId = randomUUID(),
+      isCurrent = () => true,
+      relocated = false,
+    } = {},
   ) {
     const decision = await this.refresh();
     if (decision.kind !== "choose-existing-method") {
@@ -430,11 +444,24 @@ export class BillWorkflow {
       );
     }
     const result = await this.runtime.execute(task.id, task.revision, proposal);
-    if (
-      result.operations.find(
-        (operation) => operation.proposal.id === operationId,
-      )?.status !== "succeeded"
-    )
+    const operation = result.operations.find(
+      (operation) => operation.proposal.id === operationId,
+    );
+    const status = operation?.status;
+    // Retry only an explicit pre-effect refusal. A verified failure after a
+    // click is not evidence that repeating the click is safe.
+    if (status === "failed" && operation.evidenceRef === "not-dispatched") {
+      if (!relocated)
+        return this.chooseExistingMethod(expectedReviewKey, {
+          operationId: `${operationId}.relocated`,
+          isCurrent,
+          relocated: true,
+        });
+      return blocked(
+        "The saved payment method was not selected. No click was sent.",
+      );
+    }
+    if (status !== "succeeded")
       return {
         kind: "unknown-outcome",
         message:

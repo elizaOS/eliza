@@ -154,11 +154,16 @@ current show, binding, transport, document and per-show key, then sends a
 disconnect ends the offer. `pause` removes the label and answers and leaves a
 grey, show-only "<name> · paused" cursor; it cancels a pending action and is
 owner-bound like removal. Hosts use `pause` for product Pause and `hide` for Close.
-The cursor travels from where it was last seen, taps in the air and hides before
-the ring and label appear; an action cursor stays on its target, and the 800 ms
-readiness starts after it arrives. Reduced motion shows everything in place.
+The cursor travels from where it was last seen and hides before the ring and
+label appear. A show-only guide never plays a tap, because the person presses
+that control. An action cursor stays on its target, and the 800 ms readiness
+starts after it arrives. Reduced motion shows everything in place.
 The binding's optional `assistantName` (default "Eliza") names the cursor tag and
-label mark. `guide-font.mjs` bundles Figtree 500/700 (`figtree-OFL.txt`). The
+label mark. A bound task action may carry the host's own preview sentence
+(`actionText`, at most 200 characters); otherwise the preview uses a generic line.
+A task policy never clicks a control whose name uses the `COMMIT_CONTROL`
+vocabulary in `src/commands.mjs` (pay, confirm, continue, schedule, sign in and
+similar). The person presses those controls. `guide-font.mjs` bundles Figtree 500/700 (`figtree-OFL.txt`). The
 overlay adds it from bytes under a random family name and falls back to the
 system font if a page face claims that name.
 Run the actual Chromium renderer guidance tests. In Bash or Zsh, run:
