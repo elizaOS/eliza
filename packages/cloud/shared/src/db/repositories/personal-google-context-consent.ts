@@ -1,5 +1,5 @@
 /** Primary consent authorization and callback-owned atomic preference updates. */
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import {
   type GooglePersonalContextConsent,
   isGooglePersonalContextConsent,
@@ -26,6 +26,9 @@ function personalGoogleOwnerQuery(
         eq(users.organization_id, args.organizationId),
         eq(users.is_active, true),
         isNull(users.deleted_at),
+        eq(users.account_lifecycle_state, "active"),
+        isNull(users.account_deletion_request_id),
+        or(isNull(users.expires_at), gt(users.expires_at, new Date())),
         eq(organizations.is_active, true),
         eq(organizations.account_lifecycle_state, "active"),
         isNull(organizations.account_deletion_request_id),
@@ -81,6 +84,9 @@ export async function authorizePersonalGoogleContextRead(args: {
         eq(users.organization_id, args.organizationId),
         eq(users.is_active, true),
         isNull(users.deleted_at),
+        eq(users.account_lifecycle_state, "active"),
+        isNull(users.account_deletion_request_id),
+        or(isNull(users.expires_at), gt(users.expires_at, new Date())),
         eq(organizations.is_active, true),
         eq(organizations.account_lifecycle_state, "active"),
         isNull(organizations.account_deletion_request_id),
@@ -124,6 +130,9 @@ export async function bindPersonalGoogleContextConsent(
         eq(users.organization_id, args.organizationId),
         eq(users.is_active, true),
         sql`${users.deleted_at} IS NULL`,
+        eq(users.account_lifecycle_state, "active"),
+        isNull(users.account_deletion_request_id),
+        or(isNull(users.expires_at), gt(users.expires_at, new Date())),
         sql`EXISTS (SELECT 1 FROM ${organizations} owner_org WHERE owner_org.id = ${args.organizationId}::uuid AND owner_org.is_active = TRUE
         AND owner_org.account_lifecycle_state = 'active'
         AND owner_org.account_deletion_request_id IS NULL)`,

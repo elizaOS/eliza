@@ -83,7 +83,7 @@ beforeEach(async () => {
   );
   for (const id of [OWNER, OTHER])
     await pg.query(
-      "INSERT INTO users (id,organization_id,is_active,preferences) VALUES ($1,$2,true,$3)",
+      "INSERT INTO users (id,organization_id,is_active,preferences,account_lifecycle_state) VALUES ($1,$2,true,$3,'active')",
       [id, ORG, JSON.stringify({ theme: "light", otherPreference: { keep: true } })],
     );
   await pg.query(
@@ -149,6 +149,12 @@ describe("atomic personal Google consent SQL", () => {
     expect(
       await readPersonalGoogleContextOwner({ organizationId: ORG, userId: OWNER }),
     ).toBeDefined();
+    await pg.query("UPDATE users SET expires_at=NOW()-interval '1 minute' WHERE id=$1", [OWNER]);
+    expect(
+      await readPersonalGoogleContextOwner({ organizationId: ORG, userId: OWNER }),
+    ).toBeUndefined();
+    await expect(bind()).rejects.toThrow("GOOGLE_PERSONAL_CONTEXT_OWNER_OR_GRANT_CHANGED");
+    await pg.query("UPDATE users SET expires_at=NULL WHERE id=$1", [OWNER]);
     await pg.query("UPDATE organizations SET account_deletion_request_id=$1 WHERE id=$2", [
       STALE,
       ORG,
@@ -274,6 +280,12 @@ describe("atomic personal Google consent SQL", () => {
       await pg.query("UPDATE users SET preferences='{}' WHERE id=$1", [OWNER]);
       await expect(getGoogleAccessToken(args)).rejects.toThrow("no longer authorized");
       await bind();
+      await pg.query("UPDATE users SET expires_at=NOW()-interval '1 minute' WHERE id=$1", [OWNER]);
+      expect(
+        await readPersonalGoogleContextOwner({ organizationId: ORG, userId: OWNER }),
+      ).toBeUndefined();
+      await expect(bind()).rejects.toThrow("GOOGLE_PERSONAL_CONTEXT_OWNER_OR_GRANT_CHANGED");
+      await pg.query("UPDATE users SET expires_at=NULL WHERE id=$1", [OWNER]);
       await pg.query("UPDATE organizations SET account_deletion_request_id=$1 WHERE id=$2", [
         STALE,
         ORG,

@@ -674,7 +674,8 @@
     "./lib/services/shared-runtime/shared-runtime-room-identity": "./src/lib/services/shared-runtime/shared-runtime-room-identity.ts",
     "./lib/services/shared-runtime/shared-runtime-storage-identity": "./src/lib/services/shared-runtime/shared-runtime-storage-identity.ts",
     "./lib/services/shared-runtime/shared-google-consent": "./src/lib/services/shared-runtime/shared-google-consent.ts",
-    "./db/repositories/personal-google-context-consent": "./src/db/repositories/personal-google-context-consent.ts"
+    "./db/repositories/personal-google-context-consent": "./src/db/repositories/personal-google-context-consent.ts",
+    "./lib/auth/private-owner-credential": "./src/lib/auth/private-owner-credential.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",

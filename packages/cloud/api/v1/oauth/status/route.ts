@@ -5,7 +5,10 @@
  * Twilio, Blooio) for the authenticated organization.
  */
 
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import {
   failureResponse,
   ApiError as WorkerApiError,
@@ -105,6 +108,7 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     organizationId = user.organization_id;
+    await requirePrivateOwnerAccess(c, user);
 
     const services = await Promise.all([
       getGoogleStatus(user.organization_id, user.id),

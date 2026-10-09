@@ -5,7 +5,10 @@
  * Returns an authorization URL for the user to visit.
  */
 
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import {
   failureResponse,
   ApiError as WorkerApiError,
@@ -61,6 +64,7 @@ app.post("/", async (c) => {
     // Sanitize platform — lowercase and max 50 chars.
     body.platform = body.platform.toLowerCase().slice(0, 50);
     platform = body.platform;
+    if (platform === "google") await requirePrivateOwnerAccess(c, user);
 
     logger.info("[API] POST /api/v1/oauth/connect", {
       organizationId,

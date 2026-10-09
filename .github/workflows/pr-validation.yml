@@ -230,7 +230,12 @@ jobs:
         if: steps.affected.outputs.cloud == 'true'
         timeout-minutes: 1
         working-directory: packages/cloud/api
-        run: bun --conditions=eliza-source test ./v1/eliza/google/status/route.personal-context.test.ts --timeout 30000
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset SHARED_ELIZA_LIVE_MODEL_URL SHARED_ELIZA_LIVE_MODEL_ID SHARED_ELIZA_LIVE_WEB_SEARCH
+          bun --conditions=eliza-source test ./v1/eliza/google/status/route.personal-context.test.ts --timeout 30000
+          bun --conditions=eliza-source test ./__tests__/private-owner-credential.pglite.test.ts --timeout 30000
 
       - name: Verify personal Google cards and account-switch behavior
         if: steps.affected.outputs.cloud == 'true'

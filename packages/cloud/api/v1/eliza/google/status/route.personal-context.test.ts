@@ -27,11 +27,16 @@ mock.module("@elizaos/cloud-shared/db/client", () => ({
 }));
 mock.module("@elizaos/cloud-shared/auth", () => ({
   ...originalAuth,
-  requireUserOrApiKeyWithOrg: async () => ({
-    id: OWNER,
-    organization_id: ORG,
-    preferences: "{}",
-  }),
+  requireUserOrApiKeyWithOrg: async (c: {
+    set: (key: "authMethod", value: "session") => void;
+  }) => {
+    c.set("authMethod", "session");
+    return {
+      id: OWNER,
+      organization_id: ORG,
+      preferences: "{}",
+    };
+  },
 }));
 mock.module(
   "@elizaos/cloud-shared/lib/services/agent-google-connector",
@@ -88,7 +93,7 @@ beforeEach(async () => {
     [ORG],
   );
   await pg.query(
-    "INSERT INTO users (id,organization_id,is_active,preferences) VALUES ($1,$2,true,'{}')",
+    "INSERT INTO users (id,organization_id,is_active,preferences,account_lifecycle_state) VALUES ($1,$2,true,'{}','active')",
     [OWNER, ORG],
   );
 });

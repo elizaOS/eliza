@@ -742,3 +742,21 @@ export function requireCronSecret(c: AppContext): void {
     throw AuthenticationError("Invalid cron secret");
   }
 }
+
+/** Keep creator app credentials out of private owner journals and connector data. */
+export async function requirePrivateOwnerAccess(
+  c: AppContext,
+  user: AuthedUserWithOrg,
+): Promise<void> {
+  const { requirePrivateOwnerCredential } = await import("./private-owner-credential");
+  const { createHash } = await import("node:crypto");
+  const key = readApiKeyCredential(c);
+  await requirePrivateOwnerCredential({
+    userId: user.id,
+    organizationId: user.organization_id,
+    authMethod: c.get("authMethod"),
+    apiKeyId: c.get("apiKeyId"),
+    apiKeyHash: key ? createHash("sha256").update(key).digest("hex") : undefined,
+    env: c.env,
+  });
+}

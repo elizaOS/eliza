@@ -5,7 +5,10 @@
  * managed Google connection (with optional capability scopes).
  */
 
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
@@ -69,6 +72,8 @@ app.post("/", async (c) => {
         400,
       );
     }
+    if (parsed.data.side !== "agent" || parsed.data.purpose)
+      await requirePrivateOwnerAccess(c, user);
     const result = await initiateManagedGoogleConnection({
       organizationId: user.organization_id,
       userId: user.id,

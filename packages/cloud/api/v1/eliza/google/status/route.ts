@@ -6,7 +6,10 @@ import { readPersonalGoogleContextOwner } from "@elizaos/cloud-shared/db/reposit
  * on the given `side` (default `owner`).
  */
 
-import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
@@ -25,6 +28,11 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const rawSide = c.req.query("side") ?? null;
+    if (
+      rawSide !== "agent" ||
+      c.req.query("purpose") === "personal_google_context_v1"
+    )
+      await requirePrivateOwnerAccess(c, user);
     const purpose = c.req.query("purpose");
     if (purpose !== undefined && purpose !== GOOGLE_PERSONAL_CONTEXT_PURPOSE) {
       return c.json({ error: "Unknown Google connection purpose." }, 400);

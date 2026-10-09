@@ -168,7 +168,7 @@ beforeEach(async () => {
     [ORG],
   );
   await pg.query(
-    "INSERT INTO users (id,organization_id,is_active,preferences) VALUES ($1,$2,true,$3)",
+    "INSERT INTO users (id,organization_id,is_active,preferences,account_lifecycle_state) VALUES ($1,$2,true,$3,'active')",
     [OWNER, ORG, JSON.stringify({ theme: "dark" })],
   );
   disableAt = "never";
