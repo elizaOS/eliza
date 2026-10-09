@@ -1322,6 +1322,9 @@ export function collectPreviousActionResults(
           ? step.result.error.message
           : undefined;
     results.push({
+      ...(step.result.emptyTrackedState !== undefined
+        ? { emptyTrackedState: step.result.emptyTrackedState }
+        : {}),
       success: step.result.success,
       ...(step.result.text !== undefined ? { text: step.result.text } : {}),
       ...(step.result.transcriptVisibility !== undefined

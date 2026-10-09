@@ -177,6 +177,8 @@ export interface InferredSubactionDispatch {
 }
 
 export interface PlannerToolResult {
+	/** Tool-owned inventory observation; preserve it until scoped final egress. */
+	emptyTrackedState?: ActionResult["emptyTrackedState"];
 	success: boolean;
 	verification?: ActionResult["verification"];
 	/**

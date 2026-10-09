@@ -16,7 +16,7 @@ import type {
 } from "./contexts";
 import type { EffectReceipt } from "./effects";
 import type { DisclosureSubject, Memory } from "./memory";
-import type { Content, JsonPrimitive, JsonValue } from "./primitives";
+import type { Content, JsonPrimitive, JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
 
@@ -990,14 +990,24 @@ export function isActionConfirmationStatus(
 	);
 }
 
-/** A tool-owned observation of an entire current inventory, never a filtered search or mutation result. */
-export interface EmptyTrackedStateObservation {
-	resource: "notes";
-	scope: "entire_current_inventory";
-	count: 0;
-	revision: number;
-	observedAt: string;
-}
+/** Tool-owned current inventory evidence. Notes retain their durable revision proof. */
+export type EmptyTrackedStateObservation =
+	| {
+			resource: "notes";
+			scope: "entire_current_inventory";
+			count: 0;
+			revision: number;
+			observedAt: string;
+	  }
+	| {
+			resource: "todos";
+			scope: "active_current_inventory" | "entire_current_inventory";
+			count: 0;
+			agentId: UUID;
+			entityId: UUID;
+			messageId: UUID;
+			observedAt: string;
+	  };
 
 /** Result returned by an action for chaining, grounding, and state management. */
 export interface ActionResult {
