@@ -224,10 +224,14 @@ export function touchToInput(
   const samples = pointers[0];
   const first = samples[0];
   const last = lastSample(samples);
-  const displacement = distance(first.x, first.y, last.x, last.y);
   const duration = last.t - first.t;
 
-  if (displacement <= tapSlop) {
+  // A tap or long-press must stay within the slop for the whole gesture,
+  // as the rules above state and as the two-finger path checks with isTap.
+  // Net displacement alone misclassifies a pan that wanders and returns
+  // near its start as a click (or a right click when it lasts long
+  // enough), so reuse isTap for the stay-within-slop test.
+  if (isTap(samples, tapSlop)) {
     if (duration >= longPress) {
       return [{ type: "mouse-click", x: last.x, y: last.y, button: "right" }];
     }
