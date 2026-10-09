@@ -130,11 +130,11 @@ describe("server-owned Shared Google read seam", () => {
     expect(calls).toHaveLength(0);
   });
 
-  test("calendar read supplies the upstream one-page twenty-event budget", async () => {
+  test("calendar read preserves the complete authorized interval and event fields", async () => {
     const { calls, deps } = fixture();
     deps.fetchManagedGoogleCalendarFeed = async (args) => {
       calls.push({ name: "calendar", args });
-      return { calendarId: "primary", events: [], syncedAt: "2026-10-08", truncated: true };
+      return { calendarId: "primary", events: [], syncedAt: "2026-10-08" };
     };
     const port = createSharedGoogleReadPort(
       {
@@ -149,21 +149,21 @@ describe("server-owned Shared Google read seam", () => {
       await port.read({
         kind: "calendar",
         timeMin: "2026-10-08T00:00:00Z",
-        timeMax: "2026-10-09T00:00:00Z",
+        timeMax: "2026-11-09T00:00:00Z",
         timeZone: "UTC",
       }),
-    ).toMatchObject({ truncated: true });
+    ).toMatchObject({ events: [] });
     expect(calls[1]).toMatchObject({
       name: "calendar",
       args: {
         grantId: "grant",
         calendarId: "primary",
-        limits: { maxEvents: 20, maxPages: 1 },
+        timeMax: "2026-11-09T00:00:00.000Z",
       },
     });
   });
 
-  test("read pins owner side and selected grant, bounds search, and excludes write methods", async () => {
+  test("read pins owner side and selected grant and excludes write methods", async () => {
     const { calls, deps } = fixture();
     const port = createSharedGoogleReadPort(
       {
@@ -199,10 +199,68 @@ describe("server-owned Shared Google read seam", () => {
           grantId: "grant",
           personalContextRead: true,
           query: "meeting",
-          maxResults: 5,
+          maxResults: 50,
         },
       },
     ]);
     expect(Object.keys(port).sort()).toEqual(["connect", "read"]);
+  });
+  test("search follows provider cursors and keeps all selected fields", async () => {
+    const { deps } = fixture();
+    const message = {
+      externalId: "m1",
+      subject: "s".repeat(300),
+      from: "f".repeat(300),
+      snippet: "x".repeat(900),
+    } as Awaited<ReturnType<typeof deps.fetchManagedGoogleGmailSearch>>["messages"][number];
+    let pages = 0;
+    deps.fetchManagedGoogleGmailSearch = async (args) => {
+      pages++;
+      expect(args.pageToken).toBe(pages === 1 ? undefined : "next");
+      return { messages: [message], syncedAt: "now", nextPageToken: pages === 1 ? "next" : null };
+    };
+    const port = createSharedGoogleReadPort(
+      {
+        organizationId: "org",
+        userId: "owner",
+        grantId: "grant",
+        authorizePrivateRead: async () => {},
+      },
+      deps,
+    );
+    expect(await port.read({ kind: "gmail_search", query: "meeting" })).toMatchObject({
+      messages: [message, message],
+    });
+    expect(pages).toBe(2);
+    deps.fetchManagedGoogleGmailSearch = async () => ({
+      messages: [],
+      syncedAt: "now",
+      nextPageToken: "repeat",
+    });
+    await expect(port.read({ kind: "gmail_search", query: "meeting" })).rejects.toThrow(
+      "repeated a page token",
+    );
+  });
+
+  test("message body and metadata survive beyond the former truncation boundary", async () => {
+    const { deps } = fixture();
+    const result = {
+      message: { externalId: "m1", subject: "s".repeat(300) } as Awaited<
+        ReturnType<typeof deps.readManagedGoogleGmailMessage>
+      >["message"],
+      bodyText: "x".repeat(9000) + "complete ending",
+      attachments: [],
+    };
+    deps.readManagedGoogleGmailMessage = async () => result;
+    const port = createSharedGoogleReadPort(
+      {
+        organizationId: "org",
+        userId: "owner",
+        grantId: "grant",
+        authorizePrivateRead: async () => {},
+      },
+      deps,
+    );
+    expect(await port.read({ kind: "gmail_message", messageId: "m1" })).toMatchObject(result);
   });
 });

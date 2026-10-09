@@ -1,5 +1,6 @@
 /** First-party private reads; owner scope is bound by the hosting boundary, never tool args. */
-import type { Action, ActionResult, Plugin } from "@elizaos/core";
+import { type Action, type ActionResult, ElizaError, type Plugin } from "@elizaos/core";
+import { AgentGoogleConnectorError } from "../agent-google-connector";
 import type { createSharedGoogleReadPort } from "./shared-google-read-port";
 
 export { isSharedPrivateGoogleContextRequest as isSharedGoogleContextRequest } from "./shared-realtime-grounding";
@@ -41,7 +42,7 @@ export function createSharedGoogleContextPlugin(
       },
       {
         name: "timeMax",
-        description: "Calendar window end ISO timestamp, no more than seven days later.",
+        description: "Calendar window end ISO timestamp, after the requested start.",
         schema: { type: "string" },
       },
       {
@@ -107,15 +108,28 @@ export function createSharedGoogleContextPlugin(
           modelReplyRequired: true,
           data: { actionName: GOOGLE_CONTEXT_ACTION, operation, receipt, privateSource: true },
         };
-      } catch {
+      } catch (error) {
         // No provider payload, private body or credential is projected into failure text.
+        const calendarLimit =
+          error instanceof AgentGoogleConnectorError &&
+          /^Google Calendar feed exceeded \d+ events; narrow the requested time range\.$/u.test(
+            error.message,
+          );
+        const code = calendarLimit ? "GOOGLE_CONTEXT_LIMIT_EXCEEDED" : "GOOGLE_CONTEXT_UNAVAILABLE";
+        _runtime.reportError(
+          "SharedGoogleContext",
+          new ElizaError("Google personal context operation failed", { code }),
+          { operation },
+        );
         return {
           success: false,
-          text: "Google personal context was not read. Connect or reconnect the selected account and grant read-only personal-context access.",
+          text: calendarLimit
+            ? "Google Calendar context exceeded the event limit. No partial result was returned. Request a narrower time range."
+            : "Google personal context could not be read. Check the selected account's connection and consent, or retry the request. No successful read is claimed.",
           data: {
             actionName: GOOGLE_CONTEXT_ACTION,
             operation,
-            code: "GOOGLE_CONTEXT_UNAVAILABLE",
+            code,
           },
         };
       }

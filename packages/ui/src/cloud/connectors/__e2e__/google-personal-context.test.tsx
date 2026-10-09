@@ -155,7 +155,7 @@ it("aborts old-account status and ignores its late result after an account switc
   expect(oldSignal?.aborted).toBe(true);
   await act(async () => resolveOld?.(selected));
   await screen.findByRole("button", {
-    name: "Connect Google for personal chat",
+    name: "Set up Google for personal chat",
   });
   expect(screen.queryByText("personal@example.test")).toBeNull();
 }, 30_000);
@@ -168,7 +168,7 @@ it("sends the disclosed owner purpose on connect and shows recovery without navi
   render(<GoogleConnection />);
   fireEvent.click(
     await screen.findByRole("button", {
-      name: "Connect Google for personal chat",
+      name: "Set up Google for personal chat",
     }),
   );
   fireEvent.click(

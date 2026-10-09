@@ -58,23 +58,17 @@ afterEach(() => {
 });
 
 describe("fetchManagedGoogleCalendarFeed pagination", () => {
-  test("Shared budget caps the actual provider request and stops at one page", async () => {
-    const urls: string[] = [];
-    installFetchSequence((_i, input) => {
-      urls.push(String(input));
-      return page(
-        "more-data",
-        Array.from({ length: 21 }, (_, i) => calendarEvent(i)),
-      );
-    });
-    const result = await fetchManagedGoogleCalendarFeed({
-      ...FEED_ARGS,
-      limits: { maxEvents: 20, maxPages: 1 },
-    });
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-    expect(new URL(urls[0]!).searchParams.get("maxResults")).toBe("20");
-    expect(result.events).toHaveLength(20);
-    expect(result.truncated).toBe(true);
+  test("complete results survive the former twenty-event boundary", async () => {
+    installFetchSequence((i) =>
+      page(
+        i === 0 ? "more-data" : undefined,
+        Array.from({ length: 21 }, (_, j) => calendarEvent(i * 21 + j)),
+      ),
+    );
+    const result = await fetchManagedGoogleCalendarFeed(FEED_ARGS);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(result.events).toHaveLength(42);
+    expect(result.events.at(-1)?.externalId).toBe("event-41");
   });
 
   test("drains pages until the API stops returning a next cursor", async () => {

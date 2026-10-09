@@ -2,6 +2,7 @@
  * Server-owned, read-only Google seam. Not registered in Shared until the
  * hosting boundary supplies owner scope and explicit private-context consent.
  */
+import { ElizaError } from "@elizaos/core";
 import {
   fetchManagedGoogleCalendarFeed,
   fetchManagedGoogleGmailSearch,
@@ -26,13 +27,14 @@ export type SharedGoogleReadRequest =
 function bounded(value: string, maximum: number): string {
   const result = value.trim();
   if (!result || result.length > maximum || /[\p{C}]/u.test(result)) {
-    throw new Error("SHARED_GOOGLE_INVALID_INPUT");
+    throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", { code: "SHARED_GOOGLE_INVALID_INPUT" });
   }
   return result;
 }
 
 function validateReadRequest(value: unknown): SharedGoogleReadRequest {
-  if (!value || typeof value !== "object") throw new Error("SHARED_GOOGLE_INVALID_INPUT");
+  if (!value || typeof value !== "object")
+    throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", { code: "SHARED_GOOGLE_INVALID_INPUT" });
   const request = value as Record<string, unknown>;
   if (request.kind === "gmail_search" && typeof request.query === "string") {
     return { kind: "gmail_search", query: bounded(request.query, 256) };
@@ -48,13 +50,10 @@ function validateReadRequest(value: unknown): SharedGoogleReadRequest {
   ) {
     const start = Date.parse(request.timeMin),
       end = Date.parse(request.timeMax);
-    if (
-      !Number.isFinite(start) ||
-      !Number.isFinite(end) ||
-      end <= start ||
-      end - start > 7 * 24 * 60 * 60 * 1_000
-    ) {
-      throw new Error("SHARED_GOOGLE_CALENDAR_WINDOW_REQUIRED");
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      throw new ElizaError("SHARED_GOOGLE_CALENDAR_WINDOW_REQUIRED", {
+        code: "SHARED_GOOGLE_CALENDAR_WINDOW_REQUIRED",
+      });
     }
     return {
       kind: "calendar",
@@ -63,7 +62,7 @@ function validateReadRequest(value: unknown): SharedGoogleReadRequest {
       timeZone: bounded(request.timeZone, 100),
     };
   }
-  throw new Error("SHARED_GOOGLE_INVALID_INPUT");
+  throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", { code: "SHARED_GOOGLE_INVALID_INPUT" });
 }
 
 export function createSharedGoogleReadPort(
@@ -94,7 +93,10 @@ export function createSharedGoogleReadPort(
       }),
     async read(input: unknown) {
       const request = validateReadRequest(input);
-      if (!grantId) throw new Error("SHARED_GOOGLE_EXPLICIT_GRANT_REQUIRED");
+      if (!grantId)
+        throw new ElizaError("SHARED_GOOGLE_EXPLICIT_GRANT_REQUIRED", {
+          code: "SHARED_GOOGLE_EXPLICIT_GRANT_REQUIRED",
+        });
       await owner.authorizePrivateRead(request);
       const selected = { ...scope, grantId, personalContextRead: true as const };
       const status = await deps.getManagedGoogleConnectorStatus(selected);
@@ -105,25 +107,39 @@ export function createSharedGoogleReadPort(
         status.connectionId !== grantId ||
         !status.grantedCapabilities.includes(capability)
       ) {
-        throw new Error("SHARED_GOOGLE_READ_NOT_GRANTED");
+        throw new ElizaError("SHARED_GOOGLE_READ_NOT_GRANTED", {
+          code: "SHARED_GOOGLE_READ_NOT_GRANTED",
+        });
       }
       if (request.kind === "gmail_search") {
-        const result = await deps.fetchManagedGoogleGmailSearch({
+        let result = await deps.fetchManagedGoogleGmailSearch({
           ...selected,
           query: bounded(request.query, 256),
-          maxResults: 5,
+          maxResults: 50,
         });
+        const messages = [...result.messages];
+        const seenTokens = new Set<string>();
+        while (result.nextPageToken) {
+          const pageToken = result.nextPageToken;
+          if (seenTokens.has(pageToken)) {
+            throw new ElizaError("Google Gmail search repeated a page token", {
+              code: "SHARED_GOOGLE_PAGINATION_FAILED",
+            });
+          }
+          seenTokens.add(pageToken);
+          result = await deps.fetchManagedGoogleGmailSearch({
+            ...selected,
+            query: request.query,
+            maxResults: 50,
+            pageToken,
+          });
+          messages.push(...result.messages);
+        }
         return {
           kind: "private_google_gmail_search" as const,
           untrustedContent: true as const,
           observedAt: result.syncedAt,
-          messages: result.messages.slice(0, 5).map((message) => ({
-            id: message.externalId,
-            subject: message.subject.slice(0, 256),
-            from: message.from.slice(0, 256),
-            snippet: message.snippet.slice(0, 512),
-            receivedAt: message.receivedAt,
-          })),
+          messages,
         };
       }
       if (request.kind === "gmail_message") {
@@ -135,15 +151,12 @@ export function createSharedGoogleReadPort(
           kind: "private_google_gmail_message" as const,
           untrustedContent: true as const,
           id: result.message.externalId,
-          subject: result.message.subject.slice(0, 256),
-          bodyText: result.bodyText.slice(0, 8_000),
-          truncated: result.bodyText.length > 8_000,
+          ...result,
         };
       }
       const result = await deps.fetchManagedGoogleCalendarFeed({
         ...selected,
         calendarId: "primary",
-        limits: { maxEvents: 20, maxPages: 1 },
         timeMin: request.timeMin,
         timeMax: request.timeMax,
         timeZone: request.timeZone,
@@ -152,15 +165,7 @@ export function createSharedGoogleReadPort(
         kind: "private_google_calendar" as const,
         untrustedContent: true as const,
         observedAt: result.syncedAt,
-        truncated: result.truncated === true || result.events.length > 20,
-        events: result.events.slice(0, 20).map((event) => ({
-          id: event.externalId,
-          title: event.title.slice(0, 256),
-          startAt: event.startAt,
-          endAt: event.endAt,
-          isAllDay: event.isAllDay,
-          location: event.location.slice(0, 256),
-        })),
+        events: result.events,
       };
     },
   };

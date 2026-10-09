@@ -216,7 +216,8 @@ export function sharedPublicGoogleProductQuery(message: string): string | undefi
     .trim()
     .replace(/[.!?]+$/u, "")
     .trim();
-  return boundedPublicSearchTopic(topic);
+  // Intent classification must not call the public guard that calls this classifier.
+  return checkPublicSearchTopicSize(topic);
 }
 
 /** One private-Google recognizer shared by registration and public-network admission. */
@@ -336,19 +337,22 @@ const EXPLICIT_PUBLIC_SEARCH =
   /^\s*(?:(?:please|can you|could you|would you)\s+)?(?:search(?:\s+(?:the\s+)?(?:web|internet|online))?(?:\s+for)?|look\s+up|find(?:\s+me)?)\s+(.+)$/iu;
 const GENERAL_PUBLIC_RESEARCH =
   /\b(?:research|papers?|studies|documentation|reviews?|recommendations?|best|compare|comparison|products?|prices?|versions?|models?|context limits?|benchmarks?)\b/iu;
-function boundedPublicSearchTopic(value: string | undefined): string | undefined {
-  const topic = value
-    ?.trim()
-    .replace(/[.!?]+$/u, "")
-    .trim()
-    .replace(/\s+/gu, " ");
-  if (!topic || !isSharedPublicSearchSafe(topic)) return undefined;
+function checkPublicSearchTopicSize(topic: string | undefined): string | undefined {
+  if (!topic) return undefined;
   if ([...topic].length > 2048) {
     throw new ElizaError("Public search topics must not exceed 2048 characters", {
       code: "PUBLIC_SEARCH_QUERY_TOO_LARGE",
     });
   }
   return topic;
+}
+function boundedPublicSearchTopic(value: string | undefined): string | undefined {
+  const topic = value
+    ?.trim()
+    .replace(/[.!?]+$/u, "")
+    .trim()
+    .replace(/\s+/gu, " ");
+  return topic && isSharedPublicSearchSafe(topic) ? checkPublicSearchTopicSize(topic) : undefined;
 }
 /** Authority comes only from a standalone authenticated public utterance, never history text. */
 export function resolveSharedPublicSearchIntent(

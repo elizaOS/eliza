@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { AgentGoogleConnectorError } from "../agent-google-connector";
 import { buildSharedCapabilityCatalog } from "./shared-capability-catalog";
 import { resolveSharedCapabilityWall } from "./shared-capability-wall";
 import {
@@ -144,5 +145,31 @@ describe("Google Shared action/capability bridge", () => {
       modelReplyRequired: true,
       data: { actionName: "GOOGLE_CONTEXT", privateSource: true },
     });
+  });
+  test("limit failures are explicit and diagnostics never include private provider text", async () => {
+    const reports: unknown[] = [];
+    const runtime = {
+      reportError: (...args: unknown[]) => reports.push(args),
+    } as unknown as IAgentRuntime;
+    let failure: Error = new AgentGoogleConnectorError(
+      502,
+      "Google Calendar feed exceeded 10000 events; narrow the requested time range.",
+    );
+    const plugin = createSharedGoogleContextPlugin(async () => {
+      throw failure;
+    });
+    const run = () =>
+      plugin.actions![0]!.handler(runtime, {} as Memory, undefined, {
+        parameters: { operation: "calendar" },
+      });
+    expect(await run()).toMatchObject({
+      success: false,
+      data: { code: "GOOGLE_CONTEXT_LIMIT_EXCEEDED" },
+    });
+    failure = new Error("private-message-and-token-sentinel");
+    const result = await run();
+    expect(result).toMatchObject({ success: false, data: { code: "GOOGLE_CONTEXT_UNAVAILABLE" } });
+    expect(reports).toHaveLength(2);
+    expect(JSON.stringify([reports, result])).not.toContain(failure.message);
   });
 });
