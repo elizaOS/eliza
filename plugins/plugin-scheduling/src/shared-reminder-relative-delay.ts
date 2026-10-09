@@ -95,7 +95,13 @@ function maskQuotedText(text: string): string {
   let cursor = 0;
   while (cursor < text.length) {
     const closer = closingQuote.get(text[cursor] ?? "");
-    if (!closer || isWordApostrophe(text, cursor)) {
+    // Outside a quote, an apostrophe following a word is word punctuation,
+    // including a trailing possessive such as James'.
+    if (
+      !closer ||
+      ((text[cursor] === "'" || text[cursor] === "’") &&
+        /[\p{L}\p{N}]/u.test(text[cursor - 1] ?? ""))
+    ) {
       out.push(text[cursor] ?? "");
       cursor += 1;
       continue;
@@ -113,10 +119,10 @@ function maskQuotedText(text: string): string {
       cursor = end + 1;
       continue;
     }
-    // Unmatched opener (e.g. a contraction apostrophe): emit just the opener
-    // and rescan from the next char so a later quoted span is still masked.
-    out.push(text[cursor] ?? "");
-    cursor += 1;
+    // An unmatched quote is not authority to run its contents. Word
+    // apostrophes were handled above; keep the rest of this line masked.
+    out.push(" ".repeat(end - cursor));
+    cursor = end;
   }
   return out.join("");
 }
