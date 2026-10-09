@@ -260,9 +260,9 @@ describe("#18025: request bodies are well-formed strict JSON", () => {
 
   it.each([
     ["gemma-4-31b", undefined],
-    ["qwen-3.8-27b", "none"],
-    ["gpt-oss-120b", "low"],
-    ["zai-glm-4.7", "low"],
+    ["qwen-3.8-27b", "high"],
+    ["gpt-oss-120b", "high"],
+    ["zai-glm-4.7", "high"],
   ] as const)(
     "emits only provider-documented Cerebras reasoning fields for %s",
     async (modelName, expectedEffort) => {

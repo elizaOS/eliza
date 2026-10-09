@@ -253,7 +253,7 @@ describe("Qwen3.8 response-schema wire contract", () => {
         .decision
     ).toBe("FINISH");
     expect(requests.at(-1)?.model).toBe("gpt-oss-120b");
-    expect(requests.at(-1)?.reasoning_effort).toBe("low");
+    expect(requests.at(-1)?.reasoning_effort).toBe("high");
     const unchanged = {
       messages: [{ role: "user" as const, content: "Complete original input." }],
       stream: false,
@@ -337,7 +337,7 @@ describe("Qwen3.8 response-schema wire contract", () => {
       } as never);
       expect(requests).toHaveLength(1);
       expect(requests[0]).toMatchObject({ tool_choice: "required" });
-      expect(requests[0].reasoning_effort).toBe(override ? "none" : "low");
+      expect(requests[0].reasoning_effort).toBe(override ? "none" : "high");
       expect(result).toMatchObject({ toolCalls: [{ name: "SAVE_LITERAL", arguments: { body } }] });
     }
   );

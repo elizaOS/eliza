@@ -303,7 +303,7 @@ test("parseCertificationArgs requires an exact SHA and explicit output directory
     ]),
     {
       deploySha: SHA,
-      probeCase: "qwen-3.8-27b@none@512",
+      probeCase: "qwen-3.8-27b@high@max",
       outputDir: join(process.cwd(), "artifacts/cert"),
       acknowledgedContractDigest: "",
       runAuth: true,
@@ -741,8 +741,9 @@ test("explicit probe controls retain the selected reasoning policy and token bud
     "synthetic proof",
     "synthetic-cache-key",
   );
-  assert.equal(Reflect.get(body, "reasoning_effort"), "none");
-  assert.equal(body.max_tokens, 512);
+  assert.equal(Reflect.get(body, "reasoning_effort"), "high");
+  assert.equal(Object.hasOwn(body, "max_tokens"), false);
+  assert.equal(Object.hasOwn(body, "max_completion_tokens"), false);
   const selected = parseCertificationArgs([
     "--deploy-sha",
     SHA,
@@ -770,4 +771,39 @@ test("explicit probe controls retain the selected reasoning policy and token bud
       ]),
     /max_tokens/,
   );
+});
+
+test("probe budgets preserve provider maximum and explicit caller limits", async () => {
+  const { buildOpenAiRequestBody, parseProbeCase } = await import(
+    "./chat-latency.ts"
+  );
+  for (const value of ["qwen-3.8-27b@high", "qwen-3.8-27b@high@max"]) {
+    const probe = parseProbeCase(value);
+    assert.equal(probe.maxTokens, null);
+    const body = buildOpenAiRequestBody(probe, "proof", undefined);
+    assert.equal(Object.hasOwn(body, "max_tokens"), false);
+    assert.equal(
+      JSON.parse(JSON.stringify({ maxTokens: probe.maxTokens })).maxTokens,
+      null,
+    );
+  }
+  for (const cap of [512, 32768, 65536]) {
+    const probe = parseProbeCase(`qwen-3.8-27b@none@${cap}`);
+    const body = buildOpenAiRequestBody(probe, "proof", undefined);
+    assert.equal(body.max_tokens, cap);
+    assert.equal(Reflect.get(body, "reasoning_effort"), "none");
+  }
+  for (const cap of [
+    "0",
+    "-1",
+    "512garbage",
+    "1.5",
+    "Infinity",
+    "9007199254740992",
+  ]) {
+    assert.throws(
+      () => parseProbeCase(`qwen-3.8-27b@high@${cap}`),
+      /max_tokens/,
+    );
+  }
 });
