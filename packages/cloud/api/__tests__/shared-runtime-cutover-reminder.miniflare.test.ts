@@ -16,7 +16,10 @@ import {
   type NetworkAppId,
   networkMembershipScopeId,
 } from "../../shared/src/lib/services/shared-runtime/network-membership-client";
-import type { NetworkSharedTurnContext } from "../../shared/src/lib/services/shared-runtime/network-shared-context";
+import type {
+  NetworkSharedTurnContext,
+  NetworkSharedTurnObservation,
+} from "../../shared/src/lib/services/shared-runtime/network-shared-context";
 import { personalSharedAgentId } from "../../shared/src/lib/services/shared-runtime/personal-shared-identity";
 import {
   SharedRuntimeChatService,
@@ -71,6 +74,11 @@ const RUNTIME_STUBS = {
     }
   `,
   coreEdge: `
+    export { MediaFetchError, readResponseWithLimit } from ${JSON.stringify(
+      fileURLToPath(
+        new URL("../../../core/src/media/fetch.ts", import.meta.url),
+      ),
+    )};
     export class ElizaError extends Error {}
     export const ChannelType = {
       SELF: "SELF",
@@ -982,7 +990,7 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     expect(await result.json()).toEqual({ history });
   });
 
-  test("actual Shared bridge replays durable DO receipts and rejects app-scope key reuse without inference", async () => {
+  test("actual Shared bridge and stream replay DO receipts across Network changes without inference", async () => {
     const slop = networkFixture("slop", "network-claim-user");
     const friends = networkFixture("friends", "network-claim-user");
     const room = `${slop.agent.id}:${slop.agent.id}`;
@@ -1022,6 +1030,8 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       transport: "shared-runtime",
     };
     let claimCalls = 0;
+    let historyLoads = 0;
+    let historyMerges = 0;
     const claims: SharedTurnClaimStore = {
       async claim(key, hash) {
         claimCalls++;
@@ -1040,6 +1050,7 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     };
     const store: SharedRuntimeHistoryStore = {
       async load(agentId, loadedChannel) {
+        historyLoads++;
         const response = await post(room, "/__test/history-store", {
           agentId,
           channelId: loadedChannel,
@@ -1047,6 +1058,7 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
         return (await response.json()) as typeof existing;
       },
       async merge(agentId, mergedChannel, messages) {
+        historyMerges++;
         const response = await post(room, "/__test/history-store", {
           agentId,
           channelId: mergedChannel,
@@ -1067,28 +1079,72 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       },
     };
     const before = modelRequests.length;
-    const original = await chat.bridge(slop.agent, rpc, {
-      trustedNetworkContext: slop.context,
-      turnClaims: claims,
-      historyStore: store,
-      funding: "platform",
-    });
-    expect(original.result).toMatchObject(priorReceipt);
-    const replay = await chat.bridge(slop.agent, rpc, {
-      trustedNetworkContext: slop.context,
-      turnClaims: claims,
-      historyStore: store,
-      funding: "platform",
-    });
-    expect(replay.result).toMatchObject(priorReceipt);
-    await expect(
-      chat.bridge(friends.agent, rpc, {
-        trustedNetworkContext: friends.context,
+    const unavailable: NetworkSharedTurnObservation = {
+      status: "unavailable",
+      cloudUserId: slop.agent.user_id,
+      organizationId: slop.agent.organization_id,
+      reason: "private_service_unavailable",
+    };
+    // Each first claim seeds a terminal receipt through the production DO
+    // ledger. Retry identity belongs to this conversation and submitted text;
+    // the server's current Network observation is not new client input.
+    for (const [index, firstContext] of [
+      slop.context,
+      unavailable,
+      undefined,
+    ].entries()) {
+      const submitted = {
+        ...rpc,
+        params: { ...rpc.params, clientMessageId: `same-client-key-${index}` },
+      };
+      const options = {
         turnClaims: claims,
         historyStore: store,
-        funding: "platform",
-      }),
-    ).rejects.toMatchObject({ name: "SharedTurnConflictError" });
+        funding: "platform" as const,
+      };
+      const original = await chat.bridge(slop.agent, submitted, {
+        ...options,
+        trustedNetworkContext: firstContext,
+      });
+      expect(original.result).toMatchObject(priorReceipt);
+      for (const trustedNetworkContext of [
+        slop.context,
+        unavailable,
+        undefined,
+        friends.context,
+      ]) {
+        const replayOptions = { ...options, trustedNetworkContext };
+        const replay = await chat.bridge(slop.agent, submitted, replayOptions);
+        expect(replay.result).toMatchObject(priorReceipt);
+        const stream = await chat.stream(slop.agent, submitted, replayOptions);
+        expect(stream.status).toBe(200);
+        const events = (await stream.text()).split("\n\n");
+        const done = events.find((event) => event.startsWith("event: done\n"));
+        if (!done)
+          throw new Error("Replay did not include a terminal SSE frame");
+        expect(JSON.parse(done.split("data: ")[1])).toMatchObject({
+          messageId: priorReceipt.messageId,
+          userMessageId: priorReceipt.userMessageId,
+          text: priorReceipt.text,
+          fullText: priorReceipt.text,
+        });
+        const changed = {
+          ...submitted,
+          params: { ...submitted.params, text: "Changed user message" },
+        };
+        await expect(
+          chat.bridge(slop.agent, changed, replayOptions),
+        ).rejects.toMatchObject({
+          name: "SharedTurnConflictError",
+        });
+        await expect(
+          chat.stream(slop.agent, changed, replayOptions),
+        ).rejects.toMatchObject({
+          name: "SharedTurnConflictError",
+        });
+      }
+    }
+    const beforeInvalidScope = claimCalls;
     await expect(
       chat.bridge(
         slop.agent,
@@ -1100,7 +1156,9 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
         },
       ),
     ).rejects.toMatchObject({ code: "NETWORK_SHARED_CONTEXT_SCOPE_INVALID" });
-    expect(claimCalls).toBe(3);
+    expect(claimCalls).toBe(beforeInvalidScope);
+    expect(historyLoads).toBe(0);
+    expect(historyMerges).toBe(0);
     expect(await chat.getHistory(slop.agent.id, slop.agent.id, store)).toEqual(
       existing,
     );

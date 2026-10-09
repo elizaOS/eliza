@@ -790,12 +790,9 @@ function stableUuid(raw: string): string {
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
 
-/** Content identity for conflict detection: same key + different text is rejected. */
-function sharedTurnPayloadHash(text: string, networkScopeId?: string): string {
-  return crypto
-    .createHash("sha256")
-    .update(networkScopeId ? JSON.stringify({ text, networkScopeId }) : text)
-    .digest("hex");
+/** Client content identity; server observations can change between retries. */
+function sharedTurnPayloadHash(text: string): string {
+  return crypto.createHash("sha256").update(text).digest("hex");
 }
 
 /**
@@ -808,9 +805,8 @@ async function claimSharedTurn(
   claims: SharedTurnClaimStore,
   claimKey: string,
   text: string,
-  networkScopeId?: string,
 ): Promise<SharedTurnTerminalResult | undefined> {
-  const decision = await claims.claim(claimKey, sharedTurnPayloadHash(text, networkScopeId));
+  const decision = await claims.claim(claimKey, sharedTurnPayloadHash(text));
   if (decision.state === "conflict") throw new SharedTurnConflictError();
   return decision.state === "replay" ? decision.result : undefined;
 }
@@ -1418,14 +1414,7 @@ export class SharedRuntimeChatService {
     }
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
-      const replay = await claimSharedTurn(
-        options.turnClaims,
-        claimKey,
-        text,
-        options.trustedNetworkContext && "membership" in options.trustedNetworkContext
-          ? options.trustedNetworkContext.membership.scopeId
-          : undefined,
-      );
+      const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
       if (replay) {
         return {
           jsonrpc: "2.0",
@@ -1665,14 +1654,7 @@ export class SharedRuntimeChatService {
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
       const claimStartedAt = performance.now();
-      const replay = await claimSharedTurn(
-        options.turnClaims,
-        claimKey,
-        text,
-        options.trustedNetworkContext && "membership" in options.trustedNetworkContext
-          ? options.trustedNetworkContext.membership.scopeId
-          : undefined,
-      );
+      const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
       timings.turn_claim = elapsedTurnMs(claimStartedAt);
       if (replay) {
         return withTurnTimingHeaders(
