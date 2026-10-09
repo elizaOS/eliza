@@ -65,7 +65,7 @@ afterEach(() => {
   else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
 });
 
-type Mode = { general?: boolean; history?: SharedTurnMessage[]; compound?: boolean; deny?: boolean; ordinary?: boolean; unavailable?: boolean; expectGroundingFailure?: boolean };
+type Mode = { sdkFailure?: boolean; general?: boolean; history?: SharedTurnMessage[]; compound?: boolean; deny?: boolean; ordinary?: boolean; unavailable?: boolean; expectGroundingFailure?: boolean };
 function modelResponse(content: string | null, calls: Array<{ name: string; args: object }> = []) {
   return Response.json({
     id: "offline-preflight",
@@ -217,6 +217,10 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
     if (target !== "https://api.cerebras.ai/v1/chat/completions") {
       throw new Error("Unexpected network boundary in offline Core test");
     }
+    if (mode.sdkFailure) {
+      modelCalls += 1;
+      return Response.json({ error: { message: "SYNTHETIC_PRIVATE_PROVIDER_ERROR", type: "server_error" } }, { status: 502 });
+    }
     const request = JSON.parse(body) as {
       tools?: Array<{ function?: { name?: string; parameters?: unknown } }>;
       messages?: Array<Record<string, unknown>>;
@@ -293,7 +297,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
   }) as typeof fetch;
   let result: RunSharedAgentTurnResult | undefined;
   let failed = false;
-  let failureCategory: "canonical_action_denied" | "canonical_search_unavailable" | "reply_grounding_failed" | undefined;
+  let failureCategory: "sdk_failure" | "canonical_action_denied" | "canonical_search_unavailable" | "reply_grounding_failed" | undefined;
   try {
     const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
     result = await runSharedAgentTurn({
@@ -325,7 +329,9 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
       codes.push(record.code);
       current = record.cause;
     }
-    if (
+    if (mode.sdkFailure) {
+      failureCategory = "sdk_failure";
+    } else if (
       mode.expectGroundingFailure &&
       codes.includes("REPLY_GROUNDING_FAILED") &&
       actions.length === 1 &&
@@ -534,14 +540,49 @@ test("general Gmail documentation uses canonical query and source footer after r
   const prior = await exercise();
   expect(prior.result?.internalGrounding?.kind).toBe("web_search");
   if (!prior.result) throw new Error("Actual weather history was not produced");
-  const actual = await exercise({ general: true, history: prior.result.history }, `${GENERAL_CLAIM} [[SOURCE_URL:${GENERAL_SOURCE}]]`);
+  const paraphrase = "Gmail API calls are rate-limited.";
+  const actual = await exercise({ general: true, history: prior.result.history }, `${paraphrase} [[SOURCE_URL:${GENERAL_SOURCE}]]`);
   expect(actual.failed).toBe(false);
   expect(actual.publicHttpCalls).toBe(1);
   expect(actual.actions).toEqual([{ query: GENERAL_TOPIC, success: true }]);
   expect(actual.freeSelectionsBeforeAction).toBe(0);
   expect(actual.coreActionResults).toContainEqual({ actionName: "WEB_SEARCH", query: GENERAL_TOPIC, success: true });
-  expect(actual.result?.reply).toContain(GENERAL_CLAIM);
+  expect(actual.result?.reply).toContain(paraphrase);
   expect(actual.result?.reply).toContain(`Source: developers.google.com — ${GENERAL_SOURCE}`);
   expect(actual.result?.reply).not.toContain("SOURCE_URL:");
   expect(actual.result?.reply).not.toContain("Springfield");
+});
+
+
+test("numeric model audit records actual SDK usage and failures without content", async () => {
+  type Audit = { outcome: string; callCount: number; omittedCallCount: number; calls: Array<{
+    modelType: string; purpose: string; outcome: string;
+    inputTokens: number | null; outputTokens: number | null; totalTokens: number | null;
+  }> };
+  const audits: Audit[] = [];
+  const info = spyOn(console, "info").mockImplementation((...args: unknown[]) => {
+    if (args[0] === "[shared-eliza-runtime] model usage") audits.push(args[1] as Audit);
+  });
+  try {
+    const success = await exercise({ ordinary: true }, "Hello.");
+    expect(success.failed).toBe(false);
+    expect(audits).toHaveLength(1);
+    expect(audits[0].outcome).toBe("success");
+    expect(audits[0].callCount).toBeGreaterThan(0);
+    expect(audits[0].omittedCallCount).toBe(0);
+    expect(audits[0].calls.every((call) => call.inputTokens === 8 && call.outputTokens === 4 && call.totalTokens === 12 && call.outcome === "sdk_completed")).toBe(true);
+    expect(audits[0].calls.every((call) => call.modelType !== "unknown")).toBe(true);
+    const failure = await exercise({ ordinary: true, sdkFailure: true });
+    expect(failure.failed).toBe(true);
+    expect(audits).toHaveLength(2);
+    expect(audits[1].outcome).toBe("error");
+    expect(audits[1].calls.length).toBeGreaterThan(0);
+    expect(audits[1].calls.every((call) => call.outcome === "sdk_error" && call.inputTokens === null && call.outputTokens === null && call.totalTokens === null)).toBe(true);
+    const encoded = JSON.stringify(audits);
+    for (const content of ["Hello there", "SYNTHETIC_PRIVATE_PROVIDER_ERROR", "offline-preflight-test-key", "prompt_tokens", "reasoning", "messages", "toolCalls"]) {
+      expect(encoded).not.toContain(content);
+    }
+  } finally {
+    info.mockRestore();
+  }
 });

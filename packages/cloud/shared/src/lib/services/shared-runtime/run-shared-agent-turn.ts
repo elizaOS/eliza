@@ -1402,6 +1402,7 @@ export async function runSharedAgentTurn(
           ...diagnostic,
         });
       },
+      publicSearchIntent.kind === "general" ? "general_public" : "realtime",
     );
     const history = [...turn.history];
     let replaced = false;

@@ -938,3 +938,93 @@ describe("general public search hotfix boundaries", () => {
     expect(() => resolveSharedPublicSearchIntent(`Search the web for ${"x".repeat(2049)}`, [])).toThrow("Public search topics must not exceed 2048 characters");
   });
 });
+
+
+describe("General public citation mode", () => {
+  // Public Google documentation, observed 2026-10-09. Keep only this short
+  // excerpt and uncopyrightable table facts; no owned journal/export fixture.
+  const url = "https://developers.google.com/workspace/gmail/api/reference/quota";
+  const official: SharedRuntimePublicGrounding = {
+    kind: "web_search",
+    provider: "parallel",
+    query: "Gmail API documentation rate limits",
+    observedAt: Date.UTC(2026, 9, 9),
+    truncated: false,
+    sourceUrls: [url],
+    sources: [
+      {
+        url,
+        text: JSON.stringify({
+          excerpt:
+            "The Gmail API is subject to usage limits that restrict the rate at which you can call API methods.",
+          quotas:
+            "Per minute per project | 1,200,000 quota units\nPer minute per user per project | 6,000 quota units",
+        }),
+      },
+    ],
+  };
+  const general = (claim: string, receipt = official, selected = url) =>
+    finalizeSharedRealtimeReply(
+      `${claim} [[SOURCE_URL:${selected}]]`,
+      receipt,
+      undefined,
+      "general_public",
+    );
+
+  test("allows ordinary paraphrases and reordered present numeric values from a cited public source", () => {
+    for (const claim of [
+      "Gmail API calls are rate-limited.",
+      "Each project can use 1,200,000 quota units per minute.",
+      "Each user can use 6,000 quota units per minute in a project.",
+      "The per-user limit is 6,000; the project limit is 1,200,000 quota units per minute.",
+    ]) {
+      expect(general(claim)).toContain(claim);
+      expect(general(claim)).toContain(`Source: developers.google.com — ${url}`);
+    }
+    const paraphrase = "Gmail API calls are rate-limited.";
+    expect(
+      finalizeSharedRealtimeReply(`${paraphrase} [[SOURCE_URL:${url}]]`, official),
+    ).not.toContain(paraphrase);
+  });
+
+  test("refuses fabricated numeric values, unsupported recognized units and untrusted receipts or URLs", () => {
+    for (const claim of [
+      "Each project can use 9,000,000 quota units per minute.",
+      "The quota costs 6,000 USD.",
+    ]) {
+      expect(general(claim)).not.toContain(claim);
+    }
+    const claim = "Gmail API calls are rate-limited.";
+    expect(general(claim, { ...official, truncated: true })).not.toContain(claim);
+    expect(general(claim, { ...official, sources: [{ url, text: "" }] })).not.toContain(claim);
+    const privateUrl = "http://127.0.0.1/private";
+    expect(
+      general(
+        claim,
+        {
+          ...official,
+          sourceUrls: [privateUrl],
+          sources: [{ url: privateUrl, text: "Gmail API calls are rate-limited." }],
+        },
+        privateUrl,
+      ),
+    ).not.toContain(claim);
+    expect(general(claim, official, "https://unrelated.example/quotas")).not.toContain(claim);
+    expect(general(claim, official, "http://127.0.0.1/private")).not.toContain(claim);
+    expect(general(`${claim} https://unrelated.example/quotas`)).not.toContain(claim);
+    for (const prompt of [
+      "Search Gmail for my invoices",
+      "Search the web for Gmail API quotas and read my inbox",
+    ]) {
+      expect(resolveSharedPublicSearchIntent(prompt, [])).toBeUndefined();
+    }
+  });
+
+  test("documents source-provenance scope instead of claiming semantic entailment", () => {
+    // Both numbers occur on the cited page. This check cannot prove which
+    // semantic quota scope owns them; standard general RAG delegates that to
+    // the model. It must not be described as a semantic-entailment validator.
+    const scopeSwap = "The project quota is 6,000 quota units per minute.";
+    expect(general(scopeSwap)).toContain(scopeSwap);
+  });
+});

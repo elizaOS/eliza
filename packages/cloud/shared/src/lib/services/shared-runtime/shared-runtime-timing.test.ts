@@ -402,3 +402,116 @@ describe("SharedRuntimeTimingCollector", () => {
     expect(receipt.inference.composeStateDurationMs).toBeNull();
   });
 });
+
+describe("Shared model numeric diagnostics", () => {
+  test("records returned usage without retaining SDK content or changing public timing", () => {
+    const timing = new SharedRuntimeTimingCollector("numeric", 0, clock([0, 10, 30, 40]));
+    const call = timing.prepareModelCall({
+      modelType: "ACTION_PLANNER",
+      purpose: "action",
+      requestedModel: "cerebras/gpt-oss-120b",
+    });
+    call.setSdkModel("gpt-oss-120b");
+    call.begin();
+    call.select({ provider: "cerebras", fallback: false });
+    const sdkUsage = {
+      inputTokens: 8,
+      outputTokens: 4,
+      totalTokens: 12,
+      text: "SYNTHETIC_OUTPUT_SENTINEL",
+      reasoning: "SYNTHETIC_REASONING_SENTINEL",
+    };
+    call.complete("sdk_completed", sdkUsage);
+    call.finish();
+    const diagnostics = timing.modelDiagnostics();
+    expect(diagnostics.calls[0]).toEqual({
+      provider: "cerebras",
+      fallback: false,
+      durationMs: 20,
+      ordinal: 1,
+      startOffsetMs: 10,
+      modelType: "ACTION_PLANNER",
+      purpose: "action",
+      requestedModel: "cerebras/gpt-oss-120b",
+      sdkModel: "gpt-oss-120b",
+      outcome: "sdk_completed",
+      inputTokens: 8,
+      outputTokens: 4,
+      totalTokens: 12,
+    });
+    expect(JSON.stringify(diagnostics)).not.toContain("SYNTHETIC_");
+    expect(Object.keys(timing.receipt("success").model.calls[0]).sort()).toEqual([
+      "durationMs",
+      "fallback",
+      "provider",
+    ]);
+    diagnostics.calls[0].inputTokens = 999;
+    expect(timing.modelDiagnostics().calls[0].inputTokens).toBe(8);
+  });
+
+  test("keeps unknown and failed usage distinct from genuine zero; orders by dispatch ordinal", () => {
+    const timing = new SharedRuntimeTimingCollector("failures", 0, clock([0, 1, 2, 3, 4, 5]));
+    const first = timing.prepareModelCall({
+      modelType: "TEXT_SMALL",
+      purpose: "should_respond",
+      requestedModel: "model",
+    });
+    const second = timing.prepareModelCall({
+      modelType: "RAW_PROMPT_SENTINEL",
+      purpose: "RAW_PROMPT_SENTINEL",
+      requestedModel: "unsafe model content",
+    });
+    first.begin();
+    second.begin();
+    second.complete("aborted");
+    second.finish();
+    first.complete("sdk_completed", { inputTokens: 0, outputTokens: undefined, totalTokens: NaN });
+    first.finish();
+    const calls = timing.modelDiagnostics().calls;
+    expect(
+      calls.map((call) => [
+        call.ordinal,
+        call.outcome,
+        call.inputTokens,
+        call.outputTokens,
+        call.totalTokens,
+      ]),
+    ).toEqual([
+      [2, "aborted", null, null, null],
+      [1, "sdk_completed", 0, null, null],
+    ]);
+    expect(calls[0].modelType).toBe("unknown");
+    expect(calls[0].purpose).toBe("unknown");
+    expect(calls[0].requestedModel).toBeNull();
+    expect(JSON.stringify(calls)).not.toContain("SENTINEL");
+    const failed = timing.prepareModelCall({
+      modelType: "TEXT_LARGE",
+      purpose: "response",
+      requestedModel: "model",
+    });
+    failed.begin();
+    failed.complete("sdk_error", { inputTokens: -1, outputTokens: 1.5, totalTokens: Infinity });
+    failed.finish();
+    expect(timing.modelDiagnostics().calls[2].inputTokens).toBeNull();
+    expect(timing.modelDiagnostics().calls[2].outputTokens).toBeNull();
+    expect(timing.modelDiagnostics().calls[2].totalTokens).toBeNull();
+  });
+
+  test("bounds audit records without hiding invocation totals or truncating public receipts", () => {
+    const timing = new SharedRuntimeTimingCollector("bounded", 0, () => 0);
+    for (let i = 0; i < 18; i++) {
+      const call = timing.prepareModelCall({
+        modelType: "TEXT_SMALL",
+        purpose: "hook",
+        requestedModel: "model",
+      });
+      call.begin();
+      call.finish();
+    }
+    expect(timing.modelDiagnostics().calls).toHaveLength(16);
+    expect(timing.modelDiagnostics().callCount).toBe(18);
+    expect(timing.modelDiagnostics().omittedCallCount).toBe(2);
+    expect(timing.receipt("error").model.calls).toHaveLength(18);
+    expect(timing.receipt("error").model.callsTruncated).toBe(false);
+  });
+});
