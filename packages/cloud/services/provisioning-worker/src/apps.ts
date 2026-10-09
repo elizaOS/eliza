@@ -61,10 +61,32 @@ const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_BATCH_SIZE = 3;
 const workerStartedAt = new Date();
 
-function parsePositiveInt(value: string | undefined, fallback: number): number {
+function parsePositiveInt(
+  value: string | undefined,
+  fallback: number,
+  label = "integer",
+): number {
   if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  if (/^[1-9]\d*$/.test(value)) {
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+      throw new Error(
+        `${label} must be a canonical positive integer (received ${JSON.stringify(value)})`,
+      );
+    }
+    return parsed;
+  }
+  // Same fail-closed boundary as the main worker's parser for these keys
+  // (index.ts): anything the old prefix-coercing parseInt could partially
+  // read — trailing units, decimals, leading whitespace — must fail
+  // startup instead of silently becoming a poll interval or batch size.
+  // Fully non-numeric values keep the documented fallback.
+  if (!Number.isNaN(Number.parseInt(value, 10))) {
+    throw new Error(
+      `${label} must be a canonical positive integer (received ${JSON.stringify(value)})`,
+    );
+  }
+  return fallback;
 }
 
 function hasFlag(argv: readonly string[], flag: string): boolean {
@@ -79,8 +101,13 @@ export function readAppsWorkerConfig(
     pollIntervalMs: parsePositiveInt(
       env.WORKER_POLL_INTERVAL,
       DEFAULT_POLL_INTERVAL_MS,
+      "WORKER_POLL_INTERVAL",
     ),
-    batchSize: parsePositiveInt(env.WORKER_BATCH_SIZE, DEFAULT_BATCH_SIZE),
+    batchSize: parsePositiveInt(
+      env.WORKER_BATCH_SIZE,
+      DEFAULT_BATCH_SIZE,
+      "WORKER_BATCH_SIZE",
+    ),
     runOnce: env.WORKER_RUN_ONCE === "1" || hasFlag(argv, "--once"),
   };
 }
