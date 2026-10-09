@@ -1320,17 +1320,26 @@ async function handleRequestForViewClient(
         scope.request &&
         !scope.request.signal.aborted &&
         scope.request.runtime === state.runtime
-      )
+      ) {
+        // Keep the same verified caller used by inbox and view routes, including
+        // standalone root tokens when no embedding host installs an auth bridge.
+        const requestAuthorization = resolveInboxRequestAuthorization(
+          req,
+          method,
+          pathname,
+          hostSessionAuthorization,
+        );
         scope.request.authorization = Object.freeze({
-          ...hostSessionAuthorization,
-          ...(hostSessionAuthorization.externalIdentity
+          ...requestAuthorization,
+          ...(requestAuthorization.externalIdentity
             ? {
                 externalIdentity: Object.freeze({
-                  ...hostSessionAuthorization.externalIdentity,
+                  ...requestAuthorization.externalIdentity,
                 }),
               }
             : {}),
         });
+      }
       return hostSessionAuthorization;
     };
   const isHostSessionAuthorized = async (): Promise<boolean> =>
