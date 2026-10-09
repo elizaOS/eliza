@@ -98,11 +98,15 @@ export class SystemWeb extends WebPlugin implements SystemPlugin {
   async setScreenBrightness(_options: {
     brightness: number;
   }): Promise<DeviceSettingsStatus> {
+    // The Android bridge rejects only a missing or NaN brightness and
+    // clamps any finite value into 0..1 (its bridge fixture pins a 2.0
+    // input applying as 1.0). Keep the same validation boundary here:
+    // finite out-of-range values are valid input, so they reach the
+    // Android-only error below rather than a range rejection the native
+    // bridge never produces.
     if (
       typeof _options?.brightness !== "number" ||
-      !Number.isFinite(_options.brightness) ||
-      _options.brightness < 0 ||
-      _options.brightness > 1
+      !Number.isFinite(_options.brightness)
     ) {
       throw new Error("brightness must be a number between 0 and 1");
     }
