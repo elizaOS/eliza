@@ -5,7 +5,7 @@
  * execution. Real model dispatch is intercepted at HTTP; no paid requests.
  */
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import { AgentRuntime, ChannelType, type UUID } from "@elizaos/core/edge";
+import { AgentRuntime, ChannelType, type ModelParamsMap, type ModelResultMap, type UUID } from "@elizaos/core/edge";
 import { readFileSync } from "node:fs";
 import { clearCurrentWeatherMetadataCacheForTests } from "./shared-current-weather";
 import type { OwnerModelCapture } from "./shared-owner-model-capture";
@@ -65,7 +65,7 @@ afterEach(() => {
   else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
 });
 
-type Mode = { sdkFailure?: boolean; general?: boolean; history?: SharedTurnMessage[]; compound?: boolean; deny?: boolean; ordinary?: boolean; unavailable?: boolean; expectGroundingFailure?: boolean };
+type Mode = { measureShape?: boolean; sdkFailure?: boolean; general?: boolean; history?: SharedTurnMessage[]; compound?: boolean; deny?: boolean; ordinary?: boolean; unavailable?: boolean; expectGroundingFailure?: boolean };
 function modelResponse(content: string | null, calls: Array<{ name: string; args: object }> = []) {
   return Response.json({
     id: "offline-preflight",
@@ -95,6 +95,12 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
   const participantNames: Array<string | undefined> = [];
   const publicHttpHops: string[] = [];
   let modelCalls = 0;
+  // Test-only numeric observers. Full strings exist only in RAM for exact
+  // equality comparisons and are never returned, logged or hashed.
+  const seenSegments = new Set<string>();
+  const seenWireContent = new Set<string>();
+  const coreShapes: Array<{ modelType: string; messageChars: number; segments: Record<string, { count: number; chars: number; bytes: number }>; repeatedWithinBytes: number; repeatedEarlierCallBytes: number }> = [];
+  const wireShapes: Array<{ ordinal: number; roles: Record<string, { count: number; messageJSONChars: number; contentChars: number; contentBytes: number }>; requestJSONChars: number; toolCount: number; toolJSONChars: number; toolSchemaJSONChars: number; toolDescriptionChars: number; repeatedWithinBytes: number; repeatedEarlierCallBytes: number }> = [];
   const advertisedSdkTools: Array<Array<{ name: string; parameters: unknown }>> = [];
   let freeSelectionsBeforeAction = 0;
   let validations = 0;
@@ -109,6 +115,34 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
   const initialization = spyOn(AgentRuntime.prototype, "initialize").mockImplementation(
     async function (this: AgentRuntime, options) {
       const result = await initialize.call(this, options);
+      if (mode.measureShape) {
+        const originalUseModel = this.useModel;
+        restorers.push(spyOn(this, "useModel").mockImplementation(function <T extends keyof ModelParamsMap, R = ModelResultMap[T]>(this: AgentRuntime, type: T, params: ModelParamsMap[T], provider?: string): Promise<R> {
+          const value = params as unknown as { messages?: Array<{ content?: unknown }>; promptSegments?: Array<{ content?: unknown; id?: unknown; label?: unknown; stable?: unknown }> };
+          const segments: Record<string, { count: number; chars: number; bytes: number }> = {};
+          const current = new Set<string>();
+          let repeatedWithinBytes = 0, repeatedEarlierCallBytes = 0;
+          for (const segment of value.promptSegments ?? []) {
+            if (typeof segment.content !== "string") continue;
+            const text = segment.content;
+            const label = typeof segment.label === "string" ? segment.label : "";
+            const category = segment.id === "system" ? "persona_system" : segment.id === "character-style" ? "character_style"
+              : label.startsWith("provider:") ? "providers" : label.startsWith("prior_message:") ? "prior_dialogue"
+              : text.trimStart().startsWith("message_handler_stage:") || text.trimStart().startsWith("planner_stage:") ? "stage_instructions"
+              : label === "message:user" ? "current_message" : "other";
+            const bucket = `${segment.stable === true ? "stable" : "dynamic"}_${category}`;
+            const measure = segments[bucket] ??= { count: 0, chars: 0, bytes: 0 };
+            measure.count++; measure.chars += text.length; measure.bytes += new TextEncoder().encode(text).length;
+            if (text.length >= 128 && current.has(text)) repeatedWithinBytes += new TextEncoder().encode(text).length;
+            if (text.length >= 128 && seenSegments.has(text)) repeatedEarlierCallBytes += new TextEncoder().encode(text).length;
+            current.add(text);
+          }
+          for (const text of current) seenSegments.add(text);
+          coreShapes.push({ modelType: ["RESPONSE_HANDLER", "ACTION_PLANNER", "TEXT_SMALL", "TEXT_LARGE"].includes(String(type)) ? String(type) : "other",
+            messageChars: (value.messages ?? []).reduce((n, message) => n + (typeof message.content === "string" ? message.content.length : JSON.stringify(message.content ?? null).length), 0), segments, repeatedWithinBytes, repeatedEarlierCallBytes });
+          return originalUseModel.call(this, type, params, provider) as Promise<R>;
+        }));
+      }
       const service = this.messageService;
       if (!service) throw new Error("Actual Core message service unavailable after initialization");
       const handleMessage = service.handleMessage;
@@ -226,6 +260,27 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
       messages?: Array<Record<string, unknown>>;
     };
     modelCalls += 1;
+    if (mode.measureShape) {
+      const roles: Record<string, { count: number; messageJSONChars: number; contentChars: number; contentBytes: number }> = {};
+      const current = new Set<string>();
+      let repeatedWithinBytes = 0, repeatedEarlierCallBytes = 0;
+      for (const message of request.messages ?? []) {
+        const role = ["system", "user", "assistant", "tool"].includes(String(message.role)) ? String(message.role) : "other";
+        const content = typeof message.content === "string" ? message.content : JSON.stringify(message.content ?? null);
+        const row = roles[role] ??= { count: 0, messageJSONChars: 0, contentChars: 0, contentBytes: 0 };
+        row.count++; row.messageJSONChars += JSON.stringify(message).length; row.contentChars += content.length; row.contentBytes += new TextEncoder().encode(content).length;
+        if (content.length >= 128 && current.has(content)) repeatedWithinBytes += new TextEncoder().encode(content).length;
+        if (content.length >= 128 && seenWireContent.has(content)) repeatedEarlierCallBytes += new TextEncoder().encode(content).length;
+        current.add(content);
+      }
+      for (const text of current) seenWireContent.add(text);
+      const tools = request.tools as Array<{ function?: { parameters?: unknown; description?: unknown } }> | undefined;
+      wireShapes.push({ ordinal: modelCalls, roles, requestJSONChars: body.length,
+        toolCount: tools?.length ?? 0, toolJSONChars: JSON.stringify(tools ?? []).length,
+        toolSchemaJSONChars: (tools ?? []).reduce((n, tool) => n + JSON.stringify(tool.function?.parameters ?? null).length, 0),
+        toolDescriptionChars: (tools ?? []).reduce((n, tool) => n + (typeof tool.function?.description === "string" ? tool.function.description.length : 0), 0),
+        repeatedWithinBytes, repeatedEarlierCallBytes });
+    }
     if (modelCalls > 12) throw new Error("Offline model-dispatch count bound exceeded");
     const names = request.tools?.map((tool) => tool.function?.name) ?? [];
     advertisedSdkTools.push((request.tools ?? []).flatMap((tool) => typeof tool.function?.name === "string" ? [{ name: tool.function.name, parameters: tool.function.parameters }] : []));
@@ -364,13 +419,14 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
     stopping.mockRestore();
     connecting.mockRestore();
     for (const spy of restorers) spy.mockRestore();
+    seenSegments.clear(); seenWireContent.clear();
   }
   console.info("[offline-preflight-chronology]", {
     mode: { compound: !!mode.compound, deny: !!mode.deny, ordinary: !!mode.ordinary, unavailable: !!mode.unavailable, unsupported: !!mode.expectGroundingFailure },
     publicHttpCalls, publicHttpHops, modelCalls, modelChronology, legacyCacheCountAtStop, coreResultCount: coreActionResults.length,
     failed, failureCategory: failureCategory ?? null,
   });
-  return { advertisedSdkTools, participantNames, result, failed, failureCategory, publicHttpCalls, publicHttpHops, modelCalls, modelChronology, freeSelectionsBeforeAction, validations, otherActions, actions, coreActionResults, legacyCacheCountAtStop, registeredShortcut };
+  return { coreShapes, wireShapes, advertisedSdkTools, participantNames, result, failed, failureCategory, publicHttpCalls, publicHttpHops, modelCalls, modelChronology, freeSelectionsBeforeAction, validations, otherActions, actions, coreActionResults, legacyCacheCountAtStop, registeredShortcut };
 }
 
 const CAPTURE_SCOPE = {
@@ -537,11 +593,11 @@ test("ordinary chat and unavailable preflight keep their existing paths", async 
 
 
 test("general Gmail documentation uses canonical query and source footer after real weather history", async () => {
-  const prior = await exercise();
+  const prior = await exercise({ measureShape: true });
   expect(prior.result?.internalGrounding?.kind).toBe("web_search");
   if (!prior.result) throw new Error("Actual weather history was not produced");
   const paraphrase = "Each project can use 1.2 million quota units per minute, and each user can use 6k quota units per minute.";
-  const actual = await exercise({ general: true, history: prior.result.history }, `${paraphrase} [[SOURCE_URL:${GENERAL_SOURCE}]]`);
+  const actual = await exercise({ general: true, measureShape: true, history: prior.result.history }, `${paraphrase} [[SOURCE_URL:${GENERAL_SOURCE}]]`);
   expect(actual.failed).toBe(false);
   expect(actual.publicHttpCalls).toBe(1);
   expect(actual.actions).toEqual([{ query: GENERAL_TOPIC, success: true }]);
@@ -551,6 +607,14 @@ test("general Gmail documentation uses canonical query and source footer after r
   expect(actual.result?.reply).toContain(`Source: developers.google.com — ${GENERAL_SOURCE}`);
   expect(actual.result?.reply).not.toContain("SOURCE_URL:");
   expect(actual.result?.reply).not.toContain("Springfield");
+  expect(actual.coreShapes).toHaveLength(actual.modelCalls);
+  expect(actual.wireShapes).toHaveLength(actual.modelCalls);
+  expect(actual.coreShapes.some((row) => Object.keys(row.segments).some((key) => key.endsWith("stage_instructions")))).toBe(true);
+  expect(actual.wireShapes.every((row) => row.requestJSONChars > 0 && row.toolCount > 0)).toBe(true);
+  const summary = { minimumComparedChars: 128, weather: { core: prior.coreShapes, wire: prior.wireShapes }, general: { core: actual.coreShapes, wire: actual.wireShapes } };
+  const encoded = JSON.stringify(summary);
+  for (const privateValue of [GENERAL_TOPIC, GENERAL_SOURCE, PROMPT, USER_MESSAGE_ID, "offline-preflight-test-key", "QA Owner", "thought", "parameters"]) expect(encoded).not.toContain(privateValue);
+  console.info("[offline-request-shape-numeric]", summary);
 });
 
 
