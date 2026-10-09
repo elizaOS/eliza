@@ -596,7 +596,7 @@ function sharedElizaRuntimeExecution(
   const network = sharedNetworkExecution(
     agent,
     personalShared,
-    runtimeChannel.type !== ChannelType.DM || roomId.startsWith("group:"),
+    runtimeChannel.type !== ChannelType.DM || roomId !== sharedRuntimeRoomKey(agent.id, agent.id),
     serviceNetworkStoreFactory(personalShared ? params.trustedNetworkTurn : undefined),
   );
   return {

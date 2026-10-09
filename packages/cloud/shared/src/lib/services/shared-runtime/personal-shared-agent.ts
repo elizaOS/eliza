@@ -144,8 +144,8 @@ export function personalSharedAgent(identity: PersonalSharedAccountIdentity): Sh
     agent_name: character.name,
     agent_config: { character },
     execution_tier: "shared",
-    // Only a project-scoped identity carries its project; Eliza rows are
-    // byte-identical to the pre-project projection.
+    // The trusted turn keeps its product capabilities while sharing the
+    // existing account identity, history, todos and reminders.
     ...(project ? { project } : {}),
   };
 }

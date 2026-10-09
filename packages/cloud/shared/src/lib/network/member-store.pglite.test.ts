@@ -4,6 +4,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
+import {
+  legacyNetworkPersonalSharedAgentId,
+  personalSharedAgentId,
+} from "../services/shared-runtime/personal-shared-identity";
 import { createPostgresNetworkStore, sharedNetworkExecution } from "./member-store";
 import { createPostgresNetworkMembership } from "./membership";
 
@@ -188,16 +192,38 @@ describe("Postgres NetworkStore", () => {
     await seedMember();
     const store = createPostgresNetworkStore(db);
     const noop = await store.setState({
-      memberId: USER, state: "open", until: null, note: null, idempotencyKey: "noop-1",
+      memberId: USER,
+      state: "open",
+      until: null,
+      note: null,
+      idempotencyKey: "noop-1",
     });
-    expect(noop).toMatchObject({ eventId: null, previous: "open", current: "open", unchanged: true, replayed: false });
+    expect(noop).toMatchObject({
+      eventId: null,
+      previous: "open",
+      current: "open",
+      unchanged: true,
+      replayed: false,
+    });
     expect((await database.query(`SELECT 1 FROM network.member_events`)).rows).toHaveLength(0);
     // Same state with a different end date is a real change.
     const paused = { memberId: USER, state: "paused" as const, note: null };
     await store.setState({ ...paused, until: "2026-10-20T00:00:00.000Z", idempotencyKey: "p1" });
-    const extended = await store.setState({ ...paused, until: "2026-10-27T00:00:00.000Z", idempotencyKey: "p2" });
-    expect(extended).toMatchObject({ unchanged: false, current: "paused", until: "2026-10-27T00:00:00.000Z" });
-    const same = await store.setState({ ...paused, until: "2026-10-27T00:00:00.000Z", idempotencyKey: "p3" });
+    const extended = await store.setState({
+      ...paused,
+      until: "2026-10-27T00:00:00.000Z",
+      idempotencyKey: "p2",
+    });
+    expect(extended).toMatchObject({
+      unchanged: false,
+      current: "paused",
+      until: "2026-10-27T00:00:00.000Z",
+    });
+    const same = await store.setState({
+      ...paused,
+      until: "2026-10-27T00:00:00.000Z",
+      idempotencyKey: "p3",
+    });
     expect(same).toMatchObject({ unchanged: true, eventId: null });
     expect((await database.query(`SELECT 1 FROM network.member_events`)).rows).toHaveLength(2);
   });
@@ -206,15 +232,32 @@ describe("Postgres NetworkStore", () => {
     await seedMember();
     const store = createPostgresNetworkStore(db);
     const trip = {
-      memberId: USER, state: "traveling" as const, from: "2026-10-12T00:00:00.000Z",
-      until: "2026-10-15T00:00:00.000Z", note: null,
+      memberId: USER,
+      state: "traveling" as const,
+      from: "2026-10-12T00:00:00.000Z",
+      until: "2026-10-15T00:00:00.000Z",
+      note: null,
     };
     const applied = await store.setState({ ...trip, idempotencyKey: "w1" });
-    expect(applied).toMatchObject({ current: "traveling", from: trip.from, until: trip.until, unchanged: false });
-    expect(await store.getMemberContext(USER)).toMatchObject({ state: "traveling", stateFrom: trip.from, stateUntil: trip.until });
+    expect(applied).toMatchObject({
+      current: "traveling",
+      from: trip.from,
+      until: trip.until,
+      unchanged: false,
+    });
+    expect(await store.getMemberContext(USER)).toMatchObject({
+      state: "traveling",
+      stateFrom: trip.from,
+      stateUntil: trip.until,
+    });
     // Same window again: no event. A different start date: a real change.
-    expect(await store.setState({ ...trip, idempotencyKey: "w2" })).toMatchObject({ unchanged: true, eventId: null });
-    expect(await store.setState({ ...trip, from: "2026-10-13T00:00:00.000Z", idempotencyKey: "w3" })).toMatchObject({ unchanged: false });
+    expect(await store.setState({ ...trip, idempotencyKey: "w2" })).toMatchObject({
+      unchanged: true,
+      eventId: null,
+    });
+    expect(
+      await store.setState({ ...trip, from: "2026-10-13T00:00:00.000Z", idempotencyKey: "w3" }),
+    ).toMatchObject({ unchanged: false });
     expect((await database.query(`SELECT 1 FROM network.member_events`)).rows).toHaveLength(2);
   });
 
@@ -243,18 +286,35 @@ describe("sharedNetworkExecution", () => {
   });
   const factory = () => store;
   test("only canonical Network DMs get a member store", () => {
+    const agent = {
+      id: personalSharedAgentId({ userId: USER, organizationId: ORG }),
+      user_id: USER,
+      organization_id: ORG,
+      execution_tier: "shared" as const,
+    };
+    expect(sharedNetworkExecution({ ...agent, project: "network" }, true, false, factory)).toEqual({
+      memberId: USER,
+      store,
+    });
+    for (const forged of [
+      { ...agent, id: legacyNetworkPersonalSharedAgentId({ userId: USER, organizationId: ORG }) },
+      { ...agent, user_id: OTHER_USER },
+      { ...agent, organization_id: "foreign-org" },
+      { ...agent, execution_tier: "dedicated-always" as const },
+    ]) {
+      expect(
+        sharedNetworkExecution({ ...forged, project: "network" }, true, false, factory),
+      ).toBeUndefined();
+    }
+    expect(sharedNetworkExecution(agent, true, false, factory)).toBeUndefined();
     expect(
-      sharedNetworkExecution({ user_id: USER, project: "network" }, true, false, factory),
-    ).toEqual({ memberId: USER, store });
-    expect(sharedNetworkExecution({ user_id: USER }, true, false, factory)).toBeUndefined();
-    expect(
-      sharedNetworkExecution({ user_id: USER, project: "eliza-app" }, true, false, factory),
+      sharedNetworkExecution({ ...agent, project: "eliza-app" }, true, false, factory),
     ).toBeUndefined();
     expect(
-      sharedNetworkExecution({ user_id: USER, project: "network" }, false, false, factory),
+      sharedNetworkExecution({ ...agent, project: "network" }, false, false, factory),
     ).toBeUndefined();
     expect(
-      sharedNetworkExecution({ user_id: USER, project: "network" }, true, true, factory),
+      sharedNetworkExecution({ ...agent, project: "network" }, true, true, factory),
     ).toBeUndefined();
   });
 });

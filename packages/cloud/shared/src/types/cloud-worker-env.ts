@@ -24,6 +24,8 @@ export interface RuntimeDurableObjectNamespace {
 }
 
 export interface Bindings {
+  /** Default off. Enable only after legacy Network history inventory/migration and staging qualification. */
+  NETWORK_PERSONAL_CONTINUITY_ENABLED?: string;
   /** Trusted execution environment for app inference; must match the registered app client mode. */
   APP_INFERENCE_EXECUTION_ENVIRONMENT?: "test" | "live";
   // ---- Deployment environment ----

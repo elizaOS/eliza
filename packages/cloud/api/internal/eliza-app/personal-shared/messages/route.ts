@@ -31,8 +31,8 @@ import {
   NETWORK_INVITE_REQUIRED_REPLY,
 } from "@/lib/network/inbound-gate";
 import { networkInviteLookup } from "@/lib/network/invite-lookup";
-import { networkMembership } from "@/lib/network/membership";
 import { serviceNetworkStoreFactory } from "@/lib/network/member-store";
+import { networkMembership } from "@/lib/network/membership";
 import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { sha256Hex } from "@/lib/oidc/crypto";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
@@ -760,6 +760,17 @@ app.post("/", async (c) => {
     // model turn. Other projects skip this block entirely.
     const networkProject =
       "project" in parsed.data && isNetworkProject(parsed.data.project);
+    if (
+      networkProject &&
+      c.env.NETWORK_PERSONAL_CONTINUITY_ENABLED !== "true"
+    ) {
+      return jsonError(
+        c,
+        503,
+        "Network Personal continuity requires migration qualification.",
+        "network_personal_continuity_disabled",
+      );
+    }
     // The Network takeover: the Network service owns joins and invites. A
     // direct turn it already admitted (the gateway attaches its signed open
     // turn) skips the Cloud-side invite gate and invite link; without a
@@ -1467,9 +1478,8 @@ app.post("/", async (c) => {
         });
       }
     }
-    // A project-scoped product (The Network) gets its own `personal:` identity,
-    // Durable Object and history for the same account. Eliza projects derive
-    // the original unscoped id.
+    // Every trusted product turn reuses the account's original Personal
+    // assistant and room. The Network project enables only its turn capabilities.
     const agent = personalSharedAgent({
       userId: account.userId,
       organizationId: account.organizationId,

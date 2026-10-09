@@ -11,9 +11,9 @@ export interface SharedRuntimeAgent {
   agent_config: Record<string, unknown> | null;
   execution_tier: AgentExecutionTier;
   /**
-   * Server-resolved product project for a project-scoped Personal Shared
-   * identity (today only `"network"`). Absent for every Eliza identity, which
-   * keeps the original `personal:` derivation. Never read from transport input.
+   * Server-resolved product capabilities for this Personal turn (today only
+   * `"network"`). Independent of the account identity and room. Never read
+   * from untrusted transport input.
    */
   project?: string;
 }

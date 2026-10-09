@@ -1,4 +1,4 @@
-/** Project-scoped Personal Shared identity: Network gets its own id; Eliza ids are unchanged. */
+/** Network capabilities reuse the existing Personal identity; legacy ids are inventory only. */
 
 import { describe, expect, test } from "bun:test";
 import { capabilityHandoffTargetAgentId } from "@elizaos/core/capability-catalog";
@@ -7,6 +7,7 @@ import { personalSharedAgent } from "./personal-shared-agent";
 import {
   isCanonicalPersonalSharedAgent,
   isPersonalSharedAgentId,
+  legacyNetworkPersonalSharedAgentId,
   personalSharedAgentId,
   personalSharedProjectScope,
 } from "./personal-shared-identity";
@@ -38,12 +39,20 @@ describe("personal Shared identity", () => {
     expect("project" in personalSharedAgent({ ...account, project: "eliza-app" })).toBe(false);
   });
 
-  test("Network derives a separate personal: id from (org, user, project)", () => {
+  test("Network reuses the original Personal id; its old id is inventory only", () => {
     const networkId = personalSharedAgentId({ ...account, project: "network" });
-    expect(networkId).not.toBe(legacyElizaId);
-    expect(networkId).toBe(
+    expect(networkId).toBe(legacyElizaId);
+    const oldId = legacyNetworkPersonalSharedAgentId(account);
+    expect(oldId).toBe(
       `personal:${uuidv5(`network:${account.organizationId}:${account.userId}`, NAMESPACE)}`,
     );
+    expect(oldId).not.toBe(networkId);
+    expect(
+      isCanonicalPersonalSharedAgent({
+        ...personalSharedAgent({ ...account, project: "network" }),
+        id: oldId,
+      }),
+    ).toBe(false);
     expect(personalSharedAgentId({ ...account, project: "NETWORK" })).toBe(networkId);
     expect(personalSharedProjectScope("network")).toBe("network");
     expect(personalSharedProjectScope("eliza-app")).toBeUndefined();
@@ -69,24 +78,31 @@ describe("personal Shared identity", () => {
     );
   });
 
-  test("canonical USER authority binds the project into the check", () => {
+  test("canonical USER authority binds the account; product markers do not change the owner", () => {
     const network = personalSharedAgent({ ...account, project: "network" });
     const eliza = personalSharedAgent(account);
     expect(network.project).toBe("network");
     expect(isCanonicalPersonalSharedAgent(network)).toBe(true);
     expect(isCanonicalPersonalSharedAgent(eliza)).toBe(true);
-    // A Network id presented without its project, or an Eliza id claiming the
-    // Network project, is not canonical and gets no USER authority.
-    expect(isCanonicalPersonalSharedAgent({ ...network, project: undefined })).toBe(false);
-    expect(isCanonicalPersonalSharedAgent({ ...eliza, project: "network" })).toBe(false);
+    // USER identity alone grants no Network actions. sharedNetworkExecution
+    // separately requires the server-owned project and Personal DM authority.
+    expect(isCanonicalPersonalSharedAgent({ ...network, project: undefined })).toBe(true);
+    expect(isCanonicalPersonalSharedAgent({ ...eliza, project: "network" })).toBe(true);
+    expect(isCanonicalPersonalSharedAgent({ ...network, user_id: "foreign-user" })).toBe(false);
+    expect(isCanonicalPersonalSharedAgent({ ...network, organization_id: "foreign-org" })).toBe(
+      false,
+    );
+    expect(isCanonicalPersonalSharedAgent({ ...network, execution_tier: "dedicated-always" })).toBe(
+      false,
+    );
   });
 
-  test("Durable Object names differ, so Network and Eliza never share history", () => {
+  test("Network and original Personal turns address the same Durable Object history", () => {
     // conversation-coordinator names the DO `${agentId}:${room}` and personal
     // turns use the agent id as the room.
     const doName = (id: string) => `${id}:${id}`;
     const eliza = personalSharedAgent(account);
     const network = personalSharedAgent({ ...account, project: "network" });
-    expect(doName(network.id)).not.toBe(doName(eliza.id));
+    expect(doName(network.id)).toBe(doName(eliza.id));
   });
 });

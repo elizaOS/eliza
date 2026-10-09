@@ -103,7 +103,7 @@ type ConversationRequest =
   | {
       /**
        * Appends an already-delivered proactive send (e.g. a Network intro) to
-       * a project-scoped personal DM history as an assistant turn, so the
+       * the account's original Personal DM history as an assistant turn, so the
        * agent knows what it sent when the member replies.
        */
       operation: "project-proactive-turn";
@@ -1294,6 +1294,17 @@ export class SharedRuntimeConversation {
 
   private async handle(request: Request): Promise<Response> {
     const payload = (await request.json()) as ConversationRequest;
+    if (
+      (payload.operation === "personal-bridge" ||
+        payload.operation === "personal-stream") &&
+      personalSharedProjectScope(payload.agent.project) === "network" &&
+      this.env.NETWORK_PERSONAL_CONTINUITY_ENABLED !== "true"
+    ) {
+      return Response.json(
+        { success: false, code: "network_personal_continuity_disabled" },
+        { status: 503 },
+      );
+    }
     const suppliedChannel = "channel" in payload ? payload.channel : undefined;
     const channel =
       suppliedChannel === undefined
@@ -1743,10 +1754,26 @@ export class SharedRuntimeConversation {
       return Response.json({ success: true });
     }
     if (payload.operation === "project-proactive-turn") {
-      // Only a project-scoped personal identity (The Network) accepts
-      // proactive assistant turns, and only for its own canonical DM room:
-      // the id must re-derive from (project, org, user). An Eliza `personal:`
-      // DO can never be written this way.
+      // A server-authorized Network send may append only to the same account's
+      // canonical Personal DM. Product capabilities cannot select another room.
+      if (this.env.NETWORK_PERSONAL_CONTINUITY_ENABLED !== "true") {
+        return Response.json(
+          { success: false, code: "network_personal_continuity_disabled" },
+          { status: 503 },
+        );
+      }
+      const cutover = await this.activeCutoverSeal();
+      if (cutover) {
+        return Response.json(
+          {
+            success: false,
+            code: cutover.committed
+              ? "personal_eliza_dedicated"
+              : "personal_cutover_in_progress",
+          },
+          { status: cutover.committed ? 409 : 423 },
+        );
+      }
       const project = personalSharedProjectScope(payload.project);
       if (
         !project ||
@@ -1756,7 +1783,6 @@ export class SharedRuntimeConversation {
           personalSharedAgentId({
             userId: payload.userId,
             organizationId: payload.organizationId,
-            project,
           }) ||
         payload.roomId !== payload.agentId ||
         !payload.event?.id?.trim() ||

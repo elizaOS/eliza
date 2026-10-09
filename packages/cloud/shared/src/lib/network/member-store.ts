@@ -3,7 +3,7 @@
  * schema (migration 0474), and the server-owned `execution.network` binding.
  *
  * Authority key: the plugin's `memberId` is the server-resolved Cloud user id
- * of the project-scoped personal agent (`agent.user_id`). The store maps it to
+ * of the canonical Personal agent (`agent.user_id`). The store maps it to
  * `network.members.cloud_user_id`, so building `execution.network` needs no
  * extra round trip before the turn, and a model can never choose the member.
  * Every write is a single statement, so it is atomic on Hyperdrive without an
@@ -26,7 +26,10 @@ import {
 } from "@elizaos/plugin-network";
 import { type SQL, sql } from "drizzle-orm";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
-import { personalSharedProjectScope } from "../services/shared-runtime/personal-shared-identity";
+import {
+  isCanonicalPersonalSharedAgent,
+  personalSharedProjectScope,
+} from "../services/shared-runtime/personal-shared-identity";
 import type { SharedRuntimeAgent } from "../services/shared-runtime/shared-runtime-agent";
 
 /** Anything with Drizzle's `execute(sql)`; node-postgres, PGlite and pg-proxy all qualify. */
@@ -229,7 +232,10 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
  */
 export function serviceNetworkStoreFactory(
   trustedNetworkTurn: unknown,
-  env: Record<string, string | undefined> = getCloudAwareEnv() as Record<string, string | undefined>,
+  env: Record<string, string | undefined> = getCloudAwareEnv() as Record<
+    string,
+    string | undefined
+  >,
 ): (() => NetworkStore) | undefined {
   if (trustedNetworkTurn === undefined) return undefined;
   const turn = parseServiceTurn(trustedNetworkTurn);
@@ -250,17 +256,20 @@ export function createSharedNetworkStore(): NetworkStore {
 /**
  * Server-owned `execution.network` for a turn. Present only when the hosting
  * boundary already attested a canonical personal identity (`personalShared`)
- * whose server-resolved project is The Network. Eliza agents, Dedicated or
+ * whose server-resolved turn project is The Network. Ordinary turns, Dedicated or
  * sandbox agents, and group rooms never get it.
  */
 export function sharedNetworkExecution(
-  agent: Pick<SharedRuntimeAgent, "user_id" | "project">,
+  agent: Pick<
+    SharedRuntimeAgent,
+    "id" | "user_id" | "organization_id" | "execution_tier" | "project"
+  >,
   personalShared: boolean,
   isGroupRoom: boolean,
   storeFactory: () => NetworkStore = createSharedNetworkStore,
   routing?: NetworkRouting,
 ): { memberId: string; store: NetworkStore; routing?: NetworkRouting } | undefined {
-  if (!personalShared || isGroupRoom) return undefined;
+  if (!personalShared || isGroupRoom || !isCanonicalPersonalSharedAgent(agent)) return undefined;
   if (personalSharedProjectScope(agent.project) !== "network") return undefined;
   return { memberId: agent.user_id, store: storeFactory(), ...(routing ? { routing } : {}) };
 }

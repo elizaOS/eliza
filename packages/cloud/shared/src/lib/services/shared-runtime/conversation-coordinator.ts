@@ -200,58 +200,6 @@ export async function coordinateSharedLifecycleEvent(
   await response.arrayBuffer();
 }
 
-export interface SharedProjectProactiveTurn {
-  /** Project-scoped personal product, e.g. "network". */
-  project: string;
-  userId: string;
-  organizationId: string;
-  /** Deterministic per send so a replayed delivery merges onto the same turn. */
-  id: string;
-  content: string;
-  createdAt: number;
-}
-
-/**
- * Append an already-delivered proactive message to a project-scoped personal
- * DM history as an assistant turn. The Durable Object re-derives the agent id
- * from (project, org, user) and refuses anything else, including every Eliza
- * `personal:` room.
- */
-export async function coordinateSharedProjectProactiveTurn(
-  agentId: string,
-  turn: SharedProjectProactiveTurn,
-  options: SharedConversationHistoryCoordinatorOptions,
-): Promise<void> {
-  const namespace = requireHistoryCoordinator(options);
-  const response = await coordinatorStub(namespace, agentId, agentId).fetch(
-    "https://shared-runtime.internal/project-proactive-turn",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        operation: "project-proactive-turn",
-        agentId,
-        roomId: agentId,
-        project: turn.project,
-        userId: turn.userId,
-        organizationId: turn.organizationId,
-        event: { id: turn.id, content: turn.content, createdAt: turn.createdAt },
-      }),
-    },
-  );
-  await requireCoordinatorResponse(response, "project proactive turn");
-  await response.arrayBuffer();
-}
-
-/**
- * One normalization for the Durable Object instance name. Turn dispatch and
- * history reads MUST agree — a whitespace/empty variant addressing a second
- * object would migrate the same Postgres row twice and serve a frozen copy.
- * The authenticated caller may select a logical room, but this normalization
- * is the server-owned boundary used by both Durable Object addressing and the
- * hashed runtime channel identity. A caller-provided storage uuid is never
- * accepted as the memory scope.
- */
 function coordinatorRoom(roomId?: unknown, userId?: unknown): string {
   return normalizeSharedRuntimeRoom(roomId, userId);
 }
