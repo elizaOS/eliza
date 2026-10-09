@@ -1142,7 +1142,13 @@ it.each(["expiry", "enrollment"] as const)(
     }
   },
 );
-it.each(["expiry", "provider", "runtime"] as const)(
+it.each([
+  "expiry",
+  "provider",
+  "runtime",
+  "enrollment-revoke",
+  "enrollment-replace",
+] as const)(
   "canonical prewrite lookup retirement creates no assistant memory: %s",
   async (kind) => {
     const f = await fixture();
@@ -1206,7 +1212,15 @@ it.each(["expiry", "provider", "runtime"] as const)(
           key === "ELIZA_HOST_CONTEXT_REVISION"
             ? "replacement-provider-revision"
             : null;
-      else valid = false;
+      else if (kind === "enrollment-revoke")
+        await f.service.revoke(f.credential);
+      else if (kind === "enrollment-replace") {
+        await f.pg.query(
+          "DELETE FROM client_devices WHERE installation_id=$1",
+          [f.credential.installationId],
+        );
+        await f.service.register(f.credential, "Fresh synthetic enrollment");
+      } else valid = false;
       release();
       await expect(pending).rejects.toThrow();
       expect(f.model).toHaveBeenCalledTimes(1);
@@ -1218,6 +1232,88 @@ it.each(["expiry", "provider", "runtime"] as const)(
           ])
         ).rows,
       ).toHaveLength(0);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+
+it.each(["same-enrollment", "foreign-installation", "foreign-owner"] as const)(
+  "registration preserves a current in-flight writer: %s",
+  async (kind) => {
+    const f = await fixture();
+    try {
+      const { persistAssistantConversationMemory } = await import(
+        "../../../packages/agent/src/api/chat-routes.ts"
+      );
+      const attempt = await f.apply(),
+        hint = (await f.service.readCompletionHint(
+          f.credential,
+          f.outcome.request.id,
+          f.digest,
+          attempt,
+        ))!;
+      let enter!: () => void, release!: () => void;
+      const entered = new Promise<void>((yes) => {
+          enter = yes;
+        }),
+        gate = new Promise<void>((yes) => {
+          release = yes;
+        });
+      const original = f.runtime.getMemoriesByIds.bind(f.runtime);
+      f.runtime.getMemoriesByIds = async (...args) => {
+        enter();
+        await gate;
+        return original(...args);
+      };
+      const create = vi.spyOn(f.runtime, "createMemory");
+      const pending = f.service.completeReadReply(
+        f.credential,
+        hint,
+        new AbortController().signal,
+        async (reply, _signal, assertCurrent) => {
+          await persistAssistantConversationMemory(
+            f.runtime,
+            f.original.roomId,
+            { text: reply.text, inReplyTo: reply.inReplyTo as UUID },
+            ChannelType.API,
+            undefined,
+            reply.messageId as UUID,
+            undefined,
+            assertCurrent,
+          );
+        },
+      );
+      await entered;
+      const credential =
+        kind === "same-enrollment"
+          ? f.credential
+          : {
+              ...f.credential,
+              installationId:
+                kind === "foreign-owner"
+                  ? f.credential.installationId
+                  : randomUUID(),
+              subjectUserId:
+                kind === "foreign-owner"
+                  ? randomUUID()
+                  : f.credential.subjectUserId,
+              deviceKey: "d".repeat(64),
+            };
+      await f.service.register(
+        credential,
+        "Closed unchanged or foreign enrollment",
+      );
+      release();
+      const reply = await pending;
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(
+        (
+          await f.pg.query("SELECT id FROM original_memories WHERE id=$1", [
+            reply.messageId,
+          ])
+        ).rows,
+      ).toHaveLength(1);
     } finally {
       await f.pg.close();
     }
