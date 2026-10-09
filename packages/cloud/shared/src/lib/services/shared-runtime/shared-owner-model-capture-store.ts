@@ -232,7 +232,9 @@ export async function reserveOwnerModelCapture(params: {
   const storage = params.storage;
   const bucket = params.bucket;
   const waitUntil = params.waitUntil;
-  const persistence: OwnerCaptureAdmission["persistence"] = { state: "not-started" };
+  const persistence: OwnerCaptureAdmission["persistence"] = {
+    state: "not-started",
+  };
   const policy = parseOwnerCapturePolicy(params.policyValue);
   if (!policy) return { state: "disabled", persistence };
   const scope = Object.freeze({ ...params.scope });
@@ -241,7 +243,10 @@ export async function reserveOwnerModelCapture(params: {
   const now = params.now ?? Date.now;
   if (now() < policy.issuedAt || now() >= policy.expiresAt)
     return { state: "expired", persistence };
-  const locator = Object.freeze({ sessionId: policy.sessionId, captureId: crypto.randomUUID() });
+  const locator = Object.freeze({
+    sessionId: policy.sessionId,
+    captureId: crypto.randomUUID(),
+  });
   let admitted = false;
   let sessionCreated = false;
   try {
@@ -376,7 +381,10 @@ async function authorizedAdmission(params: {
   locator: OwnerCaptureLocator;
   principal: OwnerCapturePrincipal;
   roomId: string;
-}): Promise<{ policy: Readonly<OwnerCapturePolicy>; reservation: Reservation }> {
+}): Promise<{
+  policy: Readonly<OwnerCapturePolicy>;
+  reservation: Reservation;
+}> {
   const b = await params.storage.transaction((tx) =>
     tx.get<Budget>(budgetKey(params.locator.sessionId)),
   );
@@ -514,7 +522,11 @@ export async function readEncryptedOwnerCapture(params: {
     throw new Error("OWNER_CAPTURE_READ_UNAVAILABLE");
   }
   if (now() >= policy.retainUntil) throw new Error("OWNER_CAPTURE_READ_EXPIRED");
-  return { durableStatus: reservation.status, objectAuthenticated: payload !== null, payload };
+  return {
+    durableStatus: reservation.status,
+    objectAuthenticated: payload !== null,
+    payload,
+  };
 }
 
 /** Cleanup uses only an authoritative reserved locator and proves original AAD before delete. */
@@ -612,7 +624,7 @@ export async function cleanupDueOwnerCaptures(params: {
     const retained: string[] = [];
     for (const sessionId of current) {
       const b = await tx.get<Budget>(budgetKey(sessionId));
-      if (!b || !b.captures.every((entry) => entry.status === "deleted")) retained.push(sessionId);
+      if (!b?.captures.every((entry) => entry.status === "deleted")) retained.push(sessionId);
     }
     await tx.put(SESSION_INDEX, retained);
   });

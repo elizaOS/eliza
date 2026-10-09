@@ -625,7 +625,12 @@ export function appendSharedTurn(
   const sentAt = Date.now();
   return [
     ...history,
-    { id: messageIds?.user, role: messageRole, content: userMessage, createdAt: sentAt },
+    {
+      id: messageIds?.user,
+      role: messageRole,
+      content: userMessage,
+      createdAt: sentAt,
+    },
     {
       id: messageIds?.assistant,
       role: "assistant",
@@ -1197,7 +1202,9 @@ export async function runSharedAgentTurn(
               signal: input.abortSignal,
               observationOnly: isCurrentWeatherObservationRequest(publicSearchText ?? message),
             })
-          : await runWebSearchEdge(realtimeRequirement.query, { signal: input.abortSignal });
+          : await runWebSearchEdge(realtimeRequirement.query, {
+              signal: input.abortSignal,
+            });
       input.abortSignal?.throwIfAborted();
     } catch (error) {
       input.abortSignal?.throwIfAborted();
@@ -1284,7 +1291,10 @@ export async function runSharedAgentTurn(
       const runtimeActionResults = (turn.actionResults ?? []).filter(
         (result) => !isWebSearchActionResult(result),
       );
-      turn = { ...turn, actionResults: [...realtimeActionResults, ...runtimeActionResults] };
+      turn = {
+        ...turn,
+        actionResults: [...realtimeActionResults, ...runtimeActionResults],
+      };
     }
     if (
       requiredAction &&
@@ -1359,7 +1369,10 @@ export async function runSharedAgentTurn(
     const history = [...turn.history];
     const assistantIndex = history.findLastIndex((entry) => entry.role === "assistant");
     if (assistantIndex >= 0) {
-      history[assistantIndex] = { ...history[assistantIndex], content: groundedReply };
+      history[assistantIndex] = {
+        ...history[assistantIndex],
+        content: groundedReply,
+      };
     } else {
       history.push({
         id: input.messageIds?.assistant,

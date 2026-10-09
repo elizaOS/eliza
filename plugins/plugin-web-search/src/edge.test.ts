@@ -282,7 +282,9 @@ describe("webSearchEdgePlugin", () => {
                 query: "Tessera architecture",
             },
         });
-        expect(callback).toHaveBeenCalledWith({ text: "Web search is temporarily unavailable." });
+        expect(callback).toHaveBeenCalledWith({
+            text: "Web search is temporarily unavailable.",
+        });
     });
 
     it("rejects oversized queries before the public network boundary", async () => {
@@ -309,7 +311,9 @@ describe("webSearchEdgePlugin", () => {
             callback
         );
         expect(callback).toHaveBeenCalledOnce();
-        expect(callback).toHaveBeenCalledWith({ text: "Web search is temporarily unavailable." });
+        expect(callback).toHaveBeenCalledWith({
+            text: "Web search is temporarily unavailable.",
+        });
     });
 
     it("reports injected runner failures through the channel callback", async () => {
@@ -331,7 +335,10 @@ describe("webSearchEdgePlugin", () => {
             {} as IAgentRuntime,
             {} as Memory,
             undefined,
-            { parameters: { query: "current public result" }, abortSignal: controller.signal },
+            {
+                parameters: { query: "current public result" },
+                abortSignal: controller.signal,
+            },
             callback
         );
 
@@ -357,7 +364,11 @@ it("direct edge runner distinguishes typed outage from successful zero hits and 
         },
     });
     globalThis.fetch = vi.fn(async () =>
-        Response.json({ jsonrpc: "2.0", id: 1, result: { content: [{ type: "text", text: "" }] } })
+        Response.json({
+            jsonrpc: "2.0",
+            id: 1,
+            result: { content: [{ type: "text", text: "" }] },
+        })
     ) as typeof fetch;
     await expect(runWebSearchEdge("empty query")).resolves.toMatchObject({
         success: false,

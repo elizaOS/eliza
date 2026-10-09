@@ -126,7 +126,11 @@ it("successful zero-hit result is empty without any provider fallback", async ()
 });
 it("rate limit remains a typed finite failure with retry metadata", async () => {
     const fetchImpl = vi.fn(
-        async () => new Response("not logged", { status: 429, headers: { "Retry-After": "2" } })
+        async () =>
+            new Response("not logged", {
+                status: 429,
+                headers: { "Retry-After": "2" },
+            })
     );
     await expect(searchKeylessWeb("private-query-canary", { fetchImpl })).rejects.toMatchObject({
         code: "WEB_SEARCH_UNAVAILABLE",
@@ -142,7 +146,10 @@ it("caller abort prevents dispatch and cancels an in-flight provider request", a
     stopped.abort();
     const notCalled = vi.fn(async () => mcp("must not dispatch"));
     await expect(
-        searchKeylessWeb("cancelled", { signal: stopped.signal, fetchImpl: notCalled })
+        searchKeylessWeb("cancelled", {
+            signal: stopped.signal,
+            fetchImpl: notCalled,
+        })
     ).rejects.toBeInstanceOf(KeylessWebSearchUnavailableError);
     expect(notCalled).not.toHaveBeenCalled();
     const controller = new AbortController();

@@ -91,7 +91,10 @@ function personalDeliveryRoutingIdentities(
   for (const source of sources) {
     if (!source) continue;
     const candidates: PersonalDeliveryProjectionIdentity[] = [
-      { platform: "telegram", platformUserId: source.telegram_id?.trim() ?? "" },
+      {
+        platform: "telegram",
+        platformUserId: source.telegram_id?.trim() ?? "",
+      },
       { platform: "discord", platformUserId: source.discord_id?.trim() ?? "" },
       { platform: "phone", platformUserId: source.phone_number?.trim() ?? "" },
     ];
@@ -572,7 +575,11 @@ export class UsersService {
     }
 
     await usersRepository.upsertStewardIdentity(user.id, stewardUserId);
-    await activateFreshStewardBinding({ organizationId, userId: user.id, stewardUserId });
+    await activateFreshStewardBinding({
+      organizationId,
+      userId: user.id,
+      stewardUserId,
+    });
   }
 
   async linkStewardId(userId: string, stewardUserId: string): Promise<void> {

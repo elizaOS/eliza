@@ -178,7 +178,11 @@ export function parseOwnerCapturePayload(value: unknown): OwnerCapturePayload | 
       event.kind !== "final-delivery"
     )
       return undefined;
-    events.push({ ordinal: event.ordinal, kind: event.kind, payload: event.payload });
+    events.push({
+      ordinal: event.ordinal,
+      kind: event.kind,
+      payload: event.payload,
+    });
   }
   if (!isRecord(value.usageCoverage)) return undefined;
   const usage = value.usageCoverage;
@@ -494,7 +498,11 @@ export function createOwnerCaptureBuffer(
     }
     try {
       const projected = clone(payload, { bytes: 0, nodes: 0 });
-      const event: OwnerCaptureEvent = { ordinal: ++eventOrdinal, kind, payload: projected };
+      const event: OwnerCaptureEvent = {
+        ordinal: ++eventOrdinal,
+        kind,
+        payload: projected,
+      };
       const bytes = encoder.encode(JSON.stringify(event)).byteLength;
       if (bytes > MAX_CALL_BYTES || totalBytes + bytes > limits.maxBytes - 16_384) {
         coverage.omittedEvents += 1;

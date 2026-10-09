@@ -158,7 +158,10 @@ export async function findReusablePersonalDelivery(
   );
 
   if (!row) return null;
-  const ownerName = sharedOwnerProfileName({ nickname: row.owner_nickname, name: row.owner_name });
+  const ownerName = sharedOwnerProfileName({
+    nickname: row.owner_nickname,
+    name: row.owner_name,
+  });
   if (!row.dedicated_id) {
     return {
       ...(ownerName ? { ownerName } : {}),

@@ -114,7 +114,10 @@ function request(
         name: "WEB_SEARCH",
         inputSchema: {
           type: "object",
-          properties: { apiKey: { type: "string" }, thought: { type: "string" } },
+          properties: {
+            apiKey: { type: "string" },
+            thought: { type: "string" },
+          },
         },
       },
     ],
@@ -142,7 +145,9 @@ test("buffer retains realistic SDK context/schema and separates unknown from kno
   mutableScope.userId = "55555555-5555-4555-a555-555555555555";
   limits.maxBytes = 1;
   const call = capture.request({ messages: [] });
-  capture.result(call, { usage: { inputTokens: 0, outputTokens: null, totalTokens: null } });
+  capture.result(call, {
+    usage: { inputTokens: 0, outputTokens: null, totalTokens: null },
+  });
   capture.finish({ state: "cloud-response-ready" });
   expect(saved?.scope.userId).toBe(scope.userId);
   expect(saved?.coverage.omittedEvents).toBe(0);
@@ -167,9 +172,18 @@ test("buffer excludes credentials/hidden reasoning and exposes bounded omissions
   });
   capture.result(call, {
     visibleText: '{"thought":"hidden-chain-canary","messageToUser":"Visible reply"}',
-    toolCalls: [{ input: { apiKey: "csk-offline-canary-123456789", query: "public weather" } }],
+    toolCalls: [
+      {
+        input: {
+          apiKey: "csk-offline-canary-123456789",
+          query: "public weather",
+        },
+      },
+    ],
   });
-  capture.request({ messages: [{ role: "user", content: "x".repeat(1024 * 1024 + 1) }] });
+  capture.request({
+    messages: [{ role: "user", content: "x".repeat(1024 * 1024 + 1) }],
+  });
   const data = capture.snapshot();
   const encoded = JSON.stringify(data);
   expect(encoded.includes("hidden-chain-canary")).toBe(false);
@@ -315,15 +329,24 @@ test("read/cleanup enforce admitted locator, immutable retention and authenticat
   await expect(
     readEncryptedOwnerCapture({
       ...params,
-      principal: { ...principal, userId: "55555555-5555-4555-a555-555555555555" },
+      principal: {
+        ...principal,
+        userId: "55555555-5555-4555-a555-555555555555",
+      },
     }),
   ).rejects.toThrow("FORBIDDEN");
   await expect(
-    readEncryptedOwnerCapture({ ...params, roomId: "55555555-5555-4555-a555-555555555555" }),
+    readEncryptedOwnerCapture({
+      ...params,
+      roomId: "55555555-5555-4555-a555-555555555555",
+    }),
   ).rejects.toThrow("FORBIDDEN");
   expect(b.counts().gets).toBe(0);
   await expect(
-    readEncryptedOwnerCapture({ ...params, now: () => policyJson.retainUntil + 1 }),
+    readEncryptedOwnerCapture({
+      ...params,
+      now: () => policyJson.retainUntil + 1,
+    }),
   ).rejects.toThrow("EXPIRED");
   expect(b.counts().deletes).toBe(0);
   const arbitrary = {
@@ -346,7 +369,10 @@ test("read/cleanup enforce admitted locator, immutable retention and authenticat
   await expect(readEncryptedOwnerCapture(params)).rejects.toThrow("UNAVAILABLE");
   expect(b.counts().deletes).toBe(0);
   s.rows.set(budgetKey, original);
-  await cleanupExpiredOwnerCapture({ ...params, now: () => policyJson.retainUntil + 1 });
+  await cleanupExpiredOwnerCapture({
+    ...params,
+    now: () => policyJson.retainUntil + 1,
+  });
   expect(b.counts().deletes).toBe(1);
 });
 
@@ -411,14 +437,20 @@ test("canonical starts require matching terminal execution and SDK timing; denie
     omittedFields: 0,
   });
   expect(capture.snapshot().coverage.toolExecutionsStarted).toBe(0);
-  const call = capture.request({ messages: [{ role: "user", content: "synthetic owned input" }] });
+  const call = capture.request({
+    messages: [{ role: "user", content: "synthetic owned input" }],
+  });
   capture.result(call, {
     visibleText: "visible",
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
   });
   expect(capture.snapshot().coverage.pendingTimings).toBe(1);
   expect(capture.snapshot().coverage.exactFull).toBe(false);
-  capture.modelTiming(call, { provider: "cerebras", durationMs: 5, fallback: false });
+  capture.modelTiming(call, {
+    provider: "cerebras",
+    durationMs: 5,
+    fallback: false,
+  });
   const tool = {
     executionId: "22222222-2222-4222-a222-222222222222",
     redactedFields: 0,
@@ -478,7 +510,10 @@ test("private locator discovery enforces immutable reader and retention without 
   await expect(
     listOwnerCaptureReservations({
       ...params,
-      principal: { ...params.principal, userId: "55555555-5555-4555-a555-555555555555" },
+      principal: {
+        ...params.principal,
+        userId: "55555555-5555-4555-a555-555555555555",
+      },
     }),
   ).rejects.toThrow("FORBIDDEN");
   await expect(
@@ -498,7 +533,11 @@ test("missing ciphertext cleanup is bounded and durably reported without deletin
     waitUntil: () => {},
     now: () => 1000,
   });
-  const params = { storage: s.value, bucket: b.value, now: () => policy.retainUntil + 1 };
+  const params = {
+    storage: s.value,
+    bucket: b.value,
+    now: () => policy.retainUntil + 1,
+  };
   expect((await cleanupDueOwnerCaptures(params)).nextDeadline).toBeDefined();
   expect((await cleanupDueOwnerCaptures(params)).nextDeadline).toBeDefined();
   const exhausted = await cleanupDueOwnerCaptures(params);

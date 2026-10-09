@@ -117,7 +117,11 @@ export function parseSharedPublicWebGrounding(
   ) {
     const query = candidate.query.trim();
     return query
-      ? { kind: "web_search_unavailable", query, observedAt: candidate.observedAt }
+      ? {
+          kind: "web_search_unavailable",
+          query,
+          observedAt: candidate.observedAt,
+        }
       : undefined;
   }
   if (
@@ -226,7 +230,7 @@ export function parseSharedReminderActionProvenance(
 /** Encodes untrusted evidence as JSON so result text cannot forge envelope boundaries. */
 export function encodeSharedPublicWebGrounding(value: SharedRuntimePublicGrounding): string {
   const parsed = parseSharedPublicWebGrounding(value);
-  if (!parsed || parsed.kind !== "web_search") {
+  if (parsed?.kind !== "web_search") {
     throw new TypeError("Invalid Shared public web grounding");
   }
   return JSON.stringify({
@@ -264,7 +268,11 @@ export function sharedPublicWebGrounding(
   for (let index = (actionResults?.length ?? 0) - 1; index >= 0; index -= 1) {
     const candidate = actionResults?.[index];
     if (!candidate || typeof candidate !== "object") continue;
-    const record = candidate as { success?: unknown; text?: unknown; data?: unknown };
+    const record = candidate as {
+      success?: unknown;
+      text?: unknown;
+      data?: unknown;
+    };
     if (!record.data || typeof record.data !== "object") continue;
     const data = record.data as Record<string, unknown>;
     if (data.actionName !== "WEB_SEARCH") continue;
@@ -485,7 +493,10 @@ function groundingProjectionMessages(
   if (options?.nativeToolProjection === false) {
     return [
       groundingAuthorityMarker(selection),
-      { role: "user", content: encodeSharedPublicWebGrounding(selection.grounding) },
+      {
+        role: "user",
+        content: encodeSharedPublicWebGrounding(selection.grounding),
+      },
     ];
   }
   const toolCallId = `persisted-web-${stringToUuid(`shared:${messageIdentity(message)}`)}`;
@@ -546,7 +557,10 @@ export function sharedRuntimeModelHistoryMessages(
     if (selected?.index === index && selected.status === "available") {
       messages.push(...groundingProjectionMessages(message, selected));
     }
-    messages.push({ role: message.role, content: sharedRuntimeModelHistoryContent(message) });
+    messages.push({
+      role: message.role,
+      content: sharedRuntimeModelHistoryContent(message),
+    });
     if (selected?.index === index && selected.status !== "available") {
       messages.push(...groundingProjectionMessages(message, selected));
     }

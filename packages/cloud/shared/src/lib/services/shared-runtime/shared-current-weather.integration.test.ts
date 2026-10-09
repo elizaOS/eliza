@@ -17,7 +17,7 @@ test("actual NWS source preserves exact C/F facts and rejects city/unit/value sw
     const geo = fixture("usgs-springfield-mo-20261009.json");
     const station = fixture("nws-ksgf-station-20261009.json");
     const obs = fixture("nws-ksgf-observation-20261009.json");
-    const fetchImpl = (async (input: any) => {
+    const fetchImpl = (async (input: RequestInfo | URL) => {
       const u = new URL(String(input));
       let body: unknown;
       if (u.hostname === "dashboard.waterdata.usgs.gov") body = geo;
@@ -36,7 +36,10 @@ test("actual NWS source preserves exact C/F facts and rejects city/unit/value sw
       });
     }) as typeof fetch;
     const query = "current public weather in Springfield, Missouri";
-    const result = await runCurrentUsWeatherSearch(query, { fetchImpl, cache: false });
+    const result = await runCurrentUsWeatherSearch(query, {
+      fetchImpl,
+      cache: false,
+    });
     const checked = requireTraceableRealtimeSearch(result, query, Date.now(), "weather");
     expect(checked.success).toBe(true);
     const grounding = sharedPublicWebGrounding([checked]);

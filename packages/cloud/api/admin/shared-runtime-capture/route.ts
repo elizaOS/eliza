@@ -1,6 +1,9 @@
 /** Exact-reader access to one server-authorized private capture session. */
 
-import { requireAdmin } from "@elizaos/cloud-shared/auth";
+import {
+  requireAdmin,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
 import { parseOwnerCapturePolicy } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-owner-model-capture-store";
 import { sharedRuntimeRoomKey } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
@@ -24,13 +27,33 @@ app.use("*", async (c, next) => {
   await next();
 });
 app.post("/read", bodyLimit({ maxSize: 4096 }), async (c) => {
-  const { user } = await requireAdmin(c);
+  const user = await requireUserOrApiKeyWithOrg(c);
   const policyValue = (c.env as unknown as Record<string, unknown>)
     .SHARED_OWNER_MODEL_CAPTURE_POLICY;
   const policy = parseOwnerCapturePolicy(policyValue);
   if (!policy) return c.json({ error: "Capture session unavailable" }, 404);
   if (user.id !== policy.readerUserId)
     return c.json({ error: "Capture reader not authorized" }, 403);
+  // An app-issued key identifies its issuer but grants no private capture access.
+  const apiKeyId = c.get("apiKeyId");
+  if (apiKeyId) {
+    const { appsService } = await import(
+      "@elizaos/cloud-shared/lib/services/apps"
+    );
+    if (await appsService.getByApiKeyId(apiKeyId))
+      return c.json({ error: "Capture reader not authorized" }, 403);
+  }
+  const ownerReader = user.id === policy.userId;
+  if (ownerReader) {
+    if (user.organization_id !== policy.organizationId) {
+      return c.json({ error: "Capture reader not authorized" }, 403);
+    }
+  } else {
+    const admin = await requireAdmin(c);
+    if (admin.user.id !== user.id)
+      return c.json({ error: "Capture reader not authorized" }, 403);
+  }
+
   let body: unknown;
   try {
     body = await c.req.json();
@@ -86,6 +109,7 @@ app.post("/read", bodyLimit({ maxSize: 4096 }), async (c) => {
             ? {}
             : { captureId: request.captureId }),
           readerUserId: user.id,
+          verifiedAdmin: !ownerReader,
         }),
         signal: AbortSignal.timeout(20_000),
       });

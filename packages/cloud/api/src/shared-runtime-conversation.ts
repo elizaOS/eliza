@@ -1418,15 +1418,19 @@ export class SharedRuntimeConversation {
     if (!body || typeof body !== "object" || Array.isArray(body))
       return forbidden();
     if (
-      !["readerUserId,sessionId", "captureId,readerUserId,sessionId"].includes(
-        Object.keys(body).sort().join(","),
-      )
+      ![
+        "readerUserId,sessionId",
+        "captureId,readerUserId,sessionId",
+        "readerUserId,sessionId,verifiedAdmin",
+        "captureId,readerUserId,sessionId,verifiedAdmin",
+      ].includes(Object.keys(body).sort().join(","))
     )
       return forbidden();
     const locator = body as {
       sessionId?: unknown;
       captureId?: unknown;
       readerUserId?: unknown;
+      verifiedAdmin?: unknown;
     };
     const policy = parseOwnerCapturePolicy(
       this.env.SHARED_OWNER_MODEL_CAPTURE_POLICY,
@@ -1440,6 +1444,20 @@ export class SharedRuntimeConversation {
       !this.env.BLOB
     )
       return forbidden();
+    if (
+      locator.verifiedAdmin !== undefined &&
+      typeof locator.verifiedAdmin !== "boolean"
+    )
+      return forbidden();
+    const authenticatedOwner = locator.readerUserId === policy.userId;
+    const verifiedAdmin = !authenticatedOwner && locator.verifiedAdmin === true;
+    if (!authenticatedOwner && !verifiedAdmin) return forbidden();
+    const principal = {
+      organizationId: policy.organizationId,
+      userId: policy.readerUserId,
+      authenticatedOwner,
+      verifiedAdmin,
+    };
     const context = await this.state.storage.get<{
       agentId: string;
       channelId: string;
@@ -1473,12 +1491,7 @@ export class SharedRuntimeConversation {
         const result = await listOwnerCaptureReservations({
           storage: this.state.storage,
           sessionId: policy.sessionId,
-          principal: {
-            organizationId: policy.organizationId,
-            userId: policy.readerUserId,
-            authenticatedOwner: false,
-            verifiedAdmin: true,
-          },
+          principal,
           roomId: policy.roomId,
         });
         return Response.json(result, {
@@ -1493,12 +1506,7 @@ export class SharedRuntimeConversation {
             sessionId: policy.sessionId,
             captureId: locator.captureId as string,
           },
-          principal: {
-            organizationId: policy.organizationId,
-            userId: policy.readerUserId,
-            authenticatedOwner: false,
-            verifiedAdmin: true,
-          },
+          principal,
           roomId: policy.roomId,
         }),
       );

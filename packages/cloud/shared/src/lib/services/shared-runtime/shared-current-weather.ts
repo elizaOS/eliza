@@ -73,8 +73,19 @@ const STATES: Record<string, string> = {
   WI: "Wisconsin",
   WY: "Wyoming",
 };
-type Place = { city: string; state: string; latitude: number; longitude: number; gnisId: number };
-type Station = { id: string; name: string; latitude: number; longitude: number };
+type Place = {
+  city: string;
+  state: string;
+  latitude: number;
+  longitude: number;
+  gnisId: number;
+};
+type Station = {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+};
 type Metadata = {
   place: Place;
   pointLatitude: number;
@@ -119,8 +130,10 @@ const fold = (v: string) =>
     .replace(/[.'’]/g, "")
     .replace(/\s+/g, " ")
     .trim();
-const record = (v: unknown): Record<string, any> | undefined =>
-  v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, any>) : undefined;
+const record = (v: unknown): Record<string, unknown> | undefined =>
+  v !== null && typeof v === "object" && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : undefined;
 const coordinate = (v: unknown, max: number): v is number =>
   typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= max;
 function point(v: unknown): [number, number] | undefined {
@@ -191,9 +204,11 @@ export function isVerifiedCurrentNwsObservation(
     (v.advisoryNearestCity !== null && !safeText(v.advisoryNearestCity)) ||
     (v.advisoryNearestState !== null &&
       (typeof v.advisoryNearestState !== "string" || !/^[A-Z]{2}$/.test(v.advisoryNearestState))) ||
+    typeof v.gnisId !== "number" ||
     !Number.isSafeInteger(v.gnisId) ||
     v.gnisId < 1 ||
-    !/^[A-Z0-9]{3,12}$/.test(v.stationId ?? "") ||
+    typeof v.stationId !== "string" ||
+    !/^[A-Z0-9]{3,12}$/.test(v.stationId) ||
     !safeText(v.stationName) ||
     !safeText(v.conditions) ||
     /^(?:unknown|n\/a)$/i.test(v.conditions) ||
@@ -313,7 +328,12 @@ export async function runCurrentUsWeatherSearch(
       success: false,
       text: "A recent, location-matched weather observation is unavailable.",
       error: "A recent, location-matched weather observation is unavailable.",
-      data: { actionName: "WEB_SEARCH", query, observedAt: now(), unavailableReason: code },
+      data: {
+        actionName: "WEB_SEARCH",
+        query,
+        observedAt: now(),
+        unavailableReason: code,
+      },
     };
   };
   if (options.observationOnly === false) return unavailable("CURRENT_WEATHER_FORECAST_UNSUPPORTED");
@@ -328,7 +348,7 @@ export async function runCurrentUsWeatherSearch(
   let requests = 0;
   let bytes = 0;
   const cacheKey = fold(target.city) + ":" + target.state;
-  async function get(url: string): Promise<any> {
+  async function get(url: string): Promise<unknown> {
     signal.throwIfAborted();
     if (
       ++requests > CURRENT_WEATHER_LIMITS.requests ||
@@ -426,14 +446,23 @@ export async function runCurrentUsWeatherSearch(
       const suggestions = await get(geo.href);
       if (!Array.isArray(suggestions) || suggestions.length > 20)
         return unavailable("CURRENT_WEATHER_GEOCODER_SHAPE");
-      const matches = suggestions.filter(
-        (v) =>
-          record(v) &&
+      const matches = suggestions.map(record).filter(
+        (
+          v,
+        ): v is Record<string, unknown> & {
+          Name: string;
+          State: string;
+          GnisId: number;
+          Latitude: number;
+          Longitude: number;
+        } =>
+          v !== undefined &&
           v.Source === "gnis" &&
           v.Type === "Cities & Populated Places" &&
           typeof v.Name === "string" &&
           fold(v.Name) === fold(target.city) &&
           v.State === target.state &&
+          typeof v.GnisId === "number" &&
           Number.isSafeInteger(v.GnisId) &&
           v.GnisId > 0 &&
           coordinate(v.Latitude, 90) &&
@@ -452,6 +481,7 @@ export async function runCurrentUsWeatherSearch(
         return unavailable("CURRENT_WEATHER_PLACE_CONTRADICTORY");
       if (unique.length !== 1) return unavailable("CURRENT_WEATHER_PLACE_AMBIGUOUS_OR_MISSING");
       const city = unique[0];
+      if (!city) return unavailable("CURRENT_WEATHER_PLACE_AMBIGUOUS_OR_MISSING");
       const place: Place = {
         city: city.Name,
         state: city.State,
@@ -466,7 +496,7 @@ export async function runCurrentUsWeatherSearch(
           place.longitude.toFixed(4),
       );
       const properties = record(pointBody)?.properties;
-      const relative = record(record(properties)?.relativeLocation)?.properties;
+      const relative = record(record(record(properties)?.relativeLocation)?.properties);
       const pointGeo = point(record(pointBody)?.geometry);
       // relativeLocation describes a nearby named place, not the exact
       // requested municipality. GNIS city/state + point geometry bind the
@@ -539,7 +569,14 @@ export async function runCurrentUsWeatherSearch(
         const p = record(record(observation)?.properties);
         const t = record(p?.temperature);
         const coords = point(record(observation)?.geometry);
-        if (!p || !t) continue;
+        if (
+          !p ||
+          !t ||
+          typeof p.timestamp !== "string" ||
+          !coordinate(t.value, 100) ||
+          !safeText(p.textDescription)
+        )
+          continue;
         if (p.station !== "https://api.weather.gov/stations/" + station.id) {
           metadataCache.delete(cacheKey);
           continue;

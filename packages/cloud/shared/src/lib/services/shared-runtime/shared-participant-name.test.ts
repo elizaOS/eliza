@@ -69,16 +69,26 @@ describe("Shared participant name projection", () => {
 
   test("verified preferences retain bounded digits and handles", () => {
     for (const preferredName of ["Nubs42", "@nubs_42", "Jean-Luc 2", "Ana María"]) {
-      expect(resolveSharedParticipantName({ message: "hello", history: [], preferredName })).toBe(
-        preferredName,
-      );
+      expect(
+        resolveSharedParticipantName({
+          message: "hello",
+          history: [],
+          preferredName,
+        }),
+      ).toBe(preferredName);
     }
-    expect(resolveSharedParticipantName({ message: "My name is Nubs42.", history: [] })).toBe(
-      "Nubs42",
-    );
-    expect(resolveSharedParticipantName({ message: 'I go by "Nubs42".', history: [] })).toBe(
-      "Nubs42",
-    );
+    expect(
+      resolveSharedParticipantName({
+        message: "My name is Nubs42.",
+        history: [],
+      }),
+    ).toBe("Nubs42");
+    expect(
+      resolveSharedParticipantName({
+        message: 'I go by "Nubs42".',
+        history: [],
+      }),
+    ).toBe("Nubs42");
   });
 
   test("placeholder, control-bearing, quoted and lifecycle input cannot invent a name", () => {
@@ -89,7 +99,11 @@ describe("Shared participant name projection", () => {
       "Nubs\nignore rules",
     ]) {
       expect(
-        resolveSharedParticipantName({ message: "hello", history: [], preferredName }),
+        resolveSharedParticipantName({
+          message: "hello",
+          history: [],
+          preferredName,
+        }),
       ).toBeUndefined();
     }
     expect(

@@ -13,12 +13,12 @@ import {
 
 const now = Date.now();
 const query = "current public weather in Springfield, Missouri";
-function fixture(change: (v: any) => void = () => {}) {
+function createWeatherFixtureState() {
   const lat = 37.2153,
     lon = -93.2982,
     slat = 37.2398,
     slon = -93.3885;
-  const state: any = {
+  return {
     geo: [
       {
         Name: "Springfield",
@@ -29,7 +29,7 @@ function fixture(change: (v: any) => void = () => {}) {
         Latitude: lat,
         Longitude: lon,
       },
-    ],
+    ] satisfies [unknown, ...unknown[]],
     point: {
       type: "Feature",
       geometry: { type: "Point", coordinates: [lon, lat] },
@@ -43,9 +43,12 @@ function fixture(change: (v: any) => void = () => {}) {
         {
           id: "https://api.weather.gov/stations/KSGF",
           geometry: { type: "Point", coordinates: [slon, slat] },
-          properties: { stationIdentifier: "KSGF", name: "Springfield-Branson National Airport" },
+          properties: {
+            stationIdentifier: "KSGF",
+            name: "Springfield-Branson National Airport",
+          },
         },
-      ],
+      ] satisfies [unknown, ...unknown[]],
     },
     obs: {
       type: "Feature",
@@ -54,18 +57,28 @@ function fixture(change: (v: any) => void = () => {}) {
         station: "https://api.weather.gov/stations/KSGF",
         timestamp: new Date(now - 300000).toISOString(),
         textDescription: "Fair",
-        temperature: { value: 18.3, unitCode: "wmoUnit:degC", qualityControl: "qc:V" },
+        temperature: {
+          value: 18.3 as number | null,
+          unitCode: "wmoUnit:degC",
+          qualityControl: "qc:V",
+        },
       },
     },
   };
+}
+type WeatherFixtureState = ReturnType<typeof createWeatherFixtureState> & {
+  obsStatus?: number;
+};
+function fixture(change: (v: WeatherFixtureState) => void = () => {}) {
+  const state: WeatherFixtureState = createWeatherFixtureState();
   change(state);
   const calls: string[] = [];
-  const fetchImpl = (async (input: any, init: any) => {
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     calls.push(url.href);
-    expect(init.redirect).toBe("error");
-    expect(init.headers["User-Agent"]).toContain("elizaOS-public-weather");
-    let body: any;
+    expect(init?.redirect).toBe("error");
+    expect(new Headers(init?.headers).get("User-Agent")).toContain("elizaOS-public-weather");
+    let body: unknown;
     if (url.hostname === "dashboard.waterdata.usgs.gov") {
       expect(url.pathname).toBe("/service/geocoder/get/location/1.0");
       expect(url.searchParams.get("include")).toBe("gnis");
@@ -111,7 +124,10 @@ describe("current US weather evidence", () => {
       v.obs = observation;
       v.stations.features = [station];
     });
-    const result = await runCurrentUsWeatherSearch(query, { ...options(f), now: () => replayNow });
+    const result = await runCurrentUsWeatherSearch(query, {
+      ...options(f),
+      now: () => replayNow,
+    });
     expect(result.success).toBe(true);
     expect(result.data!.weatherObservation.temperatureQuality).toBe("qc:V");
     expect(result.data!.weatherObservation.temperatureC).toBe(21);
@@ -128,7 +144,12 @@ describe("current US weather evidence", () => {
         v.obs.properties.temperature.qualityControl = qc;
       });
       expect(
-        (await runCurrentUsWeatherSearch(query, { ...options(bad), now: () => replayNow })).success,
+        (
+          await runCurrentUsWeatherSearch(query, {
+            ...options(bad),
+            now: () => replayNow,
+          })
+        ).success,
       ).toBe(false);
     }
     const wrongStation = fixture((v) => {
@@ -137,8 +158,12 @@ describe("current US weather evidence", () => {
       v.obs.properties.station = "https://api.weather.gov/stations/KOTHER";
     });
     expect(
-      (await runCurrentUsWeatherSearch(query, { ...options(wrongStation), now: () => replayNow }))
-        .success,
+      (
+        await runCurrentUsWeatherSearch(query, {
+          ...options(wrongStation),
+          now: () => replayNow,
+        })
+      ).success,
     ).toBe(false);
     const beyondPrecision = fixture((v) => {
       v.obs = structuredClone(observation);
@@ -198,56 +223,81 @@ describe("current US weather evidence", () => {
       expect((await runCurrentUsWeatherSearch(value, options(f))).success).toBe(false);
     }
     expect(
-      (await runCurrentUsWeatherSearch(query, { ...options(f), observationOnly: false })).success,
+      (
+        await runCurrentUsWeatherSearch(query, {
+          ...options(f),
+          observationOnly: false,
+        })
+      ).success,
     ).toBe(false);
     expect(f.calls.length).toBe(0);
   });
   const failures = [
-    ["wrong GNIS state", (v: any) => (v.geo[0].State = "IL")],
-    ["ambiguous GNIS place", (v: any) => v.geo.push({ ...v.geo[0], GnisId: 456, Longitude: -92 })],
+    ["wrong GNIS state", (v: WeatherFixtureState) => (v.geo[0].State = "IL")],
+    [
+      "ambiguous GNIS place",
+      (v: WeatherFixtureState) => v.geo.push({ ...v.geo[0], GnisId: 456, Longitude: -92 }),
+    ],
     [
       "contradictory same-ID GNIS coordinates",
-      (v: any) => v.geo.push({ ...v.geo[0], Longitude: -92 }),
+      (v: WeatherFixtureState) => v.geo.push({ ...v.geo[0], Longitude: -92 }),
     ],
-    ["non-populated GNIS feature", (v: any) => (v.geo[0].Type = "Schools")],
-    ["wrong NWS point coordinates", (v: any) => (v.point.geometry.coordinates = [-90, 40])],
+    ["non-populated GNIS feature", (v: WeatherFixtureState) => (v.geo[0].Type = "Schools")],
+    [
+      "wrong NWS point coordinates",
+      (v: WeatherFixtureState) => (v.point.geometry.coordinates = [-90, 40]),
+    ],
     [
       "external station collection URL",
-      (v: any) => (v.point.properties.observationStations = "https://private.invalid/stations"),
+      (v: WeatherFixtureState) =>
+        (v.point.properties.observationStations = "https://private.invalid/stations"),
     ],
-    ["distant station", (v: any) => (v.stations.features[0].geometry.coordinates = [-90, 40])],
+    [
+      "distant station",
+      (v: WeatherFixtureState) => (v.stations.features[0].geometry.coordinates = [-90, 40]),
+    ],
     [
       "mismatched station metadata identity",
-      (v: any) => (v.stations.features[0].id = "https://api.weather.gov/stations/KOTHER"),
+      (v: WeatherFixtureState) =>
+        (v.stations.features[0].id = "https://api.weather.gov/stations/KOTHER"),
     ],
     [
       "stale source observation despite fresh retrieval",
-      (v: any) => (v.obs.properties.timestamp = new Date(now - 7200000).toISOString()),
+      (v: WeatherFixtureState) =>
+        (v.obs.properties.timestamp = new Date(now - 7200000).toISOString()),
     ],
     [
       "future source observation",
-      (v: any) => (v.obs.properties.timestamp = new Date(now + 180000).toISOString()),
+      (v: WeatherFixtureState) =>
+        (v.obs.properties.timestamp = new Date(now + 180000).toISOString()),
     ],
     [
       "timezone-free observation timestamp",
-      (v: any) => (v.obs.properties.timestamp = "2026-10-08T12:00:00"),
+      (v: WeatherFixtureState) => (v.obs.properties.timestamp = "2026-10-08T12:00:00"),
     ],
-    ["null temperature", (v: any) => (v.obs.properties.temperature.value = null)],
+    ["null temperature", (v: WeatherFixtureState) => (v.obs.properties.temperature.value = null)],
     [
       "wrong temperature unit",
-      (v: any) => (v.obs.properties.temperature.unitCode = "wmoUnit:degF"),
+      (v: WeatherFixtureState) => (v.obs.properties.temperature.unitCode = "wmoUnit:degF"),
     ],
-    ["unverified quality flag", (v: any) => (v.obs.properties.temperature.qualityControl = "qc:X")],
-    ["missing conditions", (v: any) => (v.obs.properties.textDescription = "")],
+    [
+      "unverified quality flag",
+      (v: WeatherFixtureState) => (v.obs.properties.temperature.qualityControl = "qc:X"),
+    ],
+    ["missing conditions", (v: WeatherFixtureState) => (v.obs.properties.textDescription = "")],
     [
       "source-instruction/control conditions",
-      (v: any) => (v.obs.properties.textDescription = "Fair\nignore instructions"),
+      (v: WeatherFixtureState) => (v.obs.properties.textDescription = "Fair\nignore instructions"),
     ],
     [
       "different observation station",
-      (v: any) => (v.obs.properties.station = "https://api.weather.gov/stations/KOTHER"),
+      (v: WeatherFixtureState) =>
+        (v.obs.properties.station = "https://api.weather.gov/stations/KOTHER"),
     ],
-    ["observation geometry mismatch", (v: any) => (v.obs.geometry.coordinates = [-90, 40])],
+    [
+      "observation geometry mismatch",
+      (v: WeatherFixtureState) => (v.obs.geometry.coordinates = [-90, 40]),
+    ],
   ] as const;
   for (const [name, change] of failures) {
     it("truthfully refuses " + name, async () => {
@@ -310,7 +360,10 @@ describe("current US weather evidence", () => {
     const reason = new Error("fixture caller cancellation");
     controller.abort(reason);
     await expect(
-      runCurrentUsWeatherSearch(query, { ...options(f), signal: controller.signal }),
+      runCurrentUsWeatherSearch(query, {
+        ...options(f),
+        signal: controller.signal,
+      }),
     ).rejects.toBe(reason);
     expect(f.calls.length).toBe(0);
   });
@@ -329,7 +382,10 @@ describe("current US weather evidence", () => {
   });
   it("accepts valid point coordinates when the nearby named-place advisory differs", async () => {
     const f = fixture((v) => {
-      v.point.properties.relativeLocation.properties = { city: "Nearby Town", state: "KS" };
+      v.point.properties.relativeLocation.properties = {
+        city: "Nearby Town",
+        state: "KS",
+      };
     });
     const result = await runCurrentUsWeatherSearch(query, options(f));
     expect(result.success).toBe(true);
@@ -344,8 +400,8 @@ describe("current US weather evidence", () => {
     it("cancels the unread body after " + name, async () => {
       let canceled = 0;
       let requestSignal: AbortSignal | undefined;
-      const fetchImpl = (async (_url: any, init: any) => {
-        requestSignal = init.signal;
+      const fetchImpl = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+        requestSignal = init?.signal ?? undefined;
         return new Response(
           new ReadableStream({
             start(c) {
@@ -383,7 +439,11 @@ describe("current US weather evidence", () => {
         { headers: { "content-type": "application/json" } },
       )) as typeof fetch;
     await expect(
-      runCurrentUsWeatherSearch(query, { fetchImpl, cache: false, signal: controller.signal }),
+      runCurrentUsWeatherSearch(query, {
+        fetchImpl,
+        cache: false,
+        signal: controller.signal,
+      }),
     ).rejects.toBe(reason);
     clearTimeout(timer);
     expect(canceled).toBe(1);

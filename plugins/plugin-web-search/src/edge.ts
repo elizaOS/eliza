@@ -157,7 +157,10 @@ export function webSearchSourceEvidence(text: string): {
     return {
         sources: overflowed
             ? []
-            : [...sourceTextByUrl].map(([url, sourceText]) => ({ url, text: sourceText })),
+            : [...sourceTextByUrl].map(([url, sourceText]) => ({
+                  url,
+                  text: sourceText,
+              })),
         sourceUrls: [...sourceUrls],
         overflowed,
     };

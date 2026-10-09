@@ -387,7 +387,9 @@ export function requireTraceableRealtimeSearch(
 /** A successful current-data receipt must retain at least one complete source result. */
 export function hasTraceableRealtimeGrounding(
   grounding: SharedRuntimePublicGrounding | undefined,
-): grounding is AvailableGrounding & { sources: [SourceEvidence, ...SourceEvidence[]] } {
+): grounding is AvailableGrounding & {
+  sources: [SourceEvidence, ...SourceEvidence[]];
+} {
   return Boolean(
     grounding?.kind === "web_search" &&
       grounding.truncated === false &&
@@ -701,7 +703,11 @@ function supportedRealtimeReply(
   SOURCE_MARKER.lastIndex = 0;
   let cursor = 0;
   let omittedUnsupported = false;
-  const diagnostic = { markerCount: 0, knownSourceMarkerCount: 0, failedPredicateMask: 0 };
+  const diagnostic = {
+    markerCount: 0,
+    knownSourceMarkerCount: 0,
+    failedPredicateMask: 0,
+  };
   const segments: string[] = [];
   const selectedUrls: string[] = [];
   for (const marker of reply.matchAll(SOURCE_MARKER)) {

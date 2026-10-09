@@ -38,7 +38,7 @@ import {
   TurnAbortedError,
   type UUID,
 } from "@elizaos/core";
-import { type AgentCapabilityTransport } from "@elizaos/core/protocol";
+import type { AgentCapabilityTransport } from "@elizaos/core/protocol";
 import { createAssistantPlugin, generateMediaAction } from "@elizaos/plugin-assistant";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
@@ -325,7 +325,10 @@ function createRuntime(options: {
     adapter: options.adapter,
     plugins: [
       options.modelPlugin,
-      { ...assistant, actions: options.actionsEnabled ? assistant.actions : [] },
+      {
+        ...assistant,
+        actions: options.actionsEnabled ? assistant.actions : [],
+      },
       ...(options.actionsEnabled ? [capabilityPlugin] : []),
       ...(options.webSearchEnabled ? [options.webSearchPlugin ?? webSearchEdgePlugin] : []),
       ...(options.actionsEnabled && options.mediaPlugin ? [options.mediaPlugin] : []),
@@ -1070,7 +1073,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     webSearchEnabled,
     adapter,
     character: isGroupTurn
-      ? { ...input.character, system: withGroupTurnNamingRule(input.character.system) }
+      ? {
+          ...input.character,
+          system: withGroupTurnNamingRule(input.character.system),
+        }
       : input.character,
     modelPlugin,
     ...(preflightWebSearchResult
@@ -1099,7 +1105,9 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     } else {
       observeOwnerCapture(input.ownerCapture, (capture) => capture.omission());
       observeOwnerCapture(input.ownerCapture, (capture) =>
-        capture.observe("action-omitted", { reason: "canonical-executor-observer-unavailable" }),
+        capture.observe("action-omitted", {
+          reason: "canonical-executor-observer-unavailable",
+        }),
       );
     }
   }
@@ -1510,7 +1518,10 @@ export async function runSharedElizaRuntimeTurnStream(
   const controller = new AbortController();
   const abortFromCaller = () => controller.abort(input.abortSignal?.reason);
   if (input.abortSignal?.aborted) abortFromCaller();
-  else input.abortSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  else
+    input.abortSignal?.addEventListener("abort", abortFromCaller, {
+      once: true,
+    });
 
   const queued: SharedAgentTurnStreamPart[] = [];
   let wake: (() => void) | undefined;
