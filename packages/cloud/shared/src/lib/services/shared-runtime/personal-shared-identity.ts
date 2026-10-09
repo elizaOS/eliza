@@ -14,7 +14,9 @@ export interface PersonalSharedAccountIdentity {
 }
 
 /** Stable namespaced id used for Durable Object routing and mirrored history. */
-export function personalSharedAgentId(identity: PersonalSharedAccountIdentity): string {
+export function personalSharedAgentId(
+  identity: PersonalSharedAccountIdentity,
+): string {
   return `${PERSONAL_SHARED_AGENT_PREFIX}${uuidv5(
     `${identity.organizationId.trim()}:${identity.userId.trim()}`,
     PERSONAL_SHARED_AGENT_NAMESPACE,
@@ -30,7 +32,10 @@ export function isPersonalSharedAgentId(value: string): boolean {
 
 /** Exact account-derived identity required before a Shared turn receives USER authority. */
 export function isCanonicalPersonalSharedAgent(
-  agent: Pick<SharedRuntimeAgent, "id" | "organization_id" | "user_id" | "execution_tier">,
+  agent: Pick<
+    SharedRuntimeAgent,
+    "id" | "organization_id" | "user_id" | "execution_tier"
+  >,
 ): boolean {
   return (
     agent.execution_tier === "shared" &&

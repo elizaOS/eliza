@@ -1,6 +1,13 @@
 // Defines the shared runtime history Drizzle table shape used by cloud repositories and services.
+
+import {
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 import type { CurrentNwsObservation } from "../../lib/services/shared-runtime/shared-current-weather";
-import { jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 /** Bounded public-read authority retained so a follow-up honors success or unavailability. */
 export type SharedRuntimePublicGrounding =
@@ -28,7 +35,15 @@ export type SharedRuntimePublicGrounding =
 /** Server-owned receipt retained only to authorize a scoped reminder follow-up. */
 export type SharedRuntimeReminderActionProvenance = {
   actionName: "REMINDERS";
-  operation: "create" | "list" | "update" | "snooze" | "complete" | "delete" | "dismiss" | "clear";
+  operation:
+    | "create"
+    | "list"
+    | "update"
+    | "snooze"
+    | "complete"
+    | "delete"
+    | "dismiss"
+    | "clear";
   success: boolean;
   requiresConfirmation?: boolean;
   taskIds: string[];
@@ -74,7 +89,9 @@ export const sharedRuntimeHistory = pgTable(
   {
     agent_id: text("agent_id").notNull(),
     channel_id: text("channel_id").notNull(),
-    messages: jsonb("messages").$type<SharedRuntimeHistoryMessage[]>().notNull(),
+    messages: jsonb("messages")
+      .$type<SharedRuntimeHistoryMessage[]>()
+      .notNull(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => ({
@@ -83,4 +100,5 @@ export const sharedRuntimeHistory = pgTable(
 );
 
 export type SharedRuntimeHistoryRow = typeof sharedRuntimeHistory.$inferSelect;
-export type NewSharedRuntimeHistoryRow = typeof sharedRuntimeHistory.$inferInsert;
+export type NewSharedRuntimeHistoryRow =
+  typeof sharedRuntimeHistory.$inferInsert;

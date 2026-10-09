@@ -65,14 +65,27 @@ async function activateFreshStewardBinding(input: {
   stewardUserId: string;
 }): Promise<void> {
   const { organizationId, userId, stewardUserId } = input;
-  for (let attempt = 1; attempt <= FRESH_STEWARD_BINDING_ACTIVATION_ATTEMPTS; attempt += 1) {
+  for (
+    let attempt = 1;
+    attempt <= FRESH_STEWARD_BINDING_ACTIVATION_ATTEMPTS;
+    attempt += 1
+  ) {
     try {
-      await setInferenceSessionBindingActive(organizationId, userId, stewardUserId, true);
+      await setInferenceSessionBindingActive(
+        organizationId,
+        userId,
+        stewardUserId,
+        true,
+      );
       return;
     } catch (error) {
       const isTransientBoundaryFailure =
-        isElizaError(error) && error.code === "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE";
-      if (!isTransientBoundaryFailure || attempt === FRESH_STEWARD_BINDING_ACTIVATION_ATTEMPTS) {
+        isElizaError(error) &&
+        error.code === "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE";
+      if (
+        !isTransientBoundaryFailure ||
+        attempt === FRESH_STEWARD_BINDING_ACTIVATION_ATTEMPTS
+      ) {
         throw error;
       }
       logger.warn("[UsersService] Retrying fresh Steward binding activation", {
@@ -91,13 +104,19 @@ function personalDeliveryRoutingIdentities(
   for (const source of sources) {
     if (!source) continue;
     const candidates: PersonalDeliveryProjectionIdentity[] = [
-      { platform: "telegram", platformUserId: source.telegram_id?.trim() ?? "" },
+      {
+        platform: "telegram",
+        platformUserId: source.telegram_id?.trim() ?? "",
+      },
       { platform: "discord", platformUserId: source.discord_id?.trim() ?? "" },
       { platform: "phone", platformUserId: source.phone_number?.trim() ?? "" },
     ];
     for (const identity of candidates) {
       if (!identity.platformUserId) continue;
-      identities.set(`${identity.platform}:${identity.platformUserId}`, identity);
+      identities.set(
+        `${identity.platform}:${identity.platformUserId}`,
+        identity,
+      );
     }
   }
   return [...identities.values()];
@@ -141,7 +160,8 @@ export class UsersService {
     userId: string,
     canonicalUser: User | undefined,
   ): Promise<PersonalDeliveryProjectionIdentity[]> {
-    const projectedIdentity = await usersRepository.findIdentityByUserIdForWrite(userId);
+    const projectedIdentity =
+      await usersRepository.findIdentityByUserIdForWrite(userId);
     return personalDeliveryRoutingIdentities(canonicalUser, projectedIdentity);
   }
 
@@ -157,17 +177,23 @@ export class UsersService {
     const stewardUserId = user.steward_user_id;
     if (typeof stewardUserId === "string") {
       promises.push(cache.del(CacheKeys.user.byStewardId(stewardUserId)));
-      promises.push(cache.del(CacheKeys.user.byStewardIdWithOrg(stewardUserId)));
+      promises.push(
+        cache.del(CacheKeys.user.byStewardIdWithOrg(stewardUserId)),
+      );
       promises.push(invalidateInferenceSessionAuthContexts([stewardUserId]));
     }
     const walletAddress = user.wallet_address;
     if (typeof walletAddress === "string") {
       promises.push(cache.del(CacheKeys.user.byWalletAddress(walletAddress)));
-      promises.push(cache.del(CacheKeys.user.byWalletAddressWithOrg(walletAddress)));
+      promises.push(
+        cache.del(CacheKeys.user.byWalletAddressWithOrg(walletAddress)),
+      );
     }
     if (user.organization_id) {
       promises.push(
-        invalidateOutboundMessageStanding(user.organization_id, user.id).then(() => undefined),
+        invalidateOutboundMessageStanding(user.organization_id, user.id).then(
+          () => undefined,
+        ),
       );
     }
     await Promise.all(promises);
@@ -204,7 +230,9 @@ export class UsersService {
     return user;
   }
 
-  async getByStewardId(stewardUserId: string): Promise<UserWithOrganization | undefined> {
+  async getByStewardId(
+    stewardUserId: string,
+  ): Promise<UserWithOrganization | undefined> {
     const cacheKey = CacheKeys.user.byStewardId(stewardUserId);
     const cached = await cache.get<UserWithOrganization>(cacheKey);
     if (cached) {
@@ -232,15 +260,21 @@ export class UsersService {
       // fail over to the primary. Never fabricates a user; rethrows via the inner catch.
       const errorDetails = getErrorDetails(error);
 
-      logger.warn("[UsersService] Read-path Steward lookup failed, retrying on primary", {
-        stewardUserId,
-        ...errorDetails,
-      });
+      logger.warn(
+        "[UsersService] Read-path Steward lookup failed, retrying on primary",
+        {
+          stewardUserId,
+          ...errorDetails,
+        },
+      );
 
       try {
-        return await retryOnTransientDbError(() => this.getByStewardIdForWrite(stewardUserId), {
-          attempts: 2,
-        });
+        return await retryOnTransientDbError(
+          () => this.getByStewardIdForWrite(stewardUserId),
+          {
+            attempts: 2,
+          },
+        );
       } catch (fallbackError) {
         // error-policy:J2 both replica and primary failed — record combined context and
         // rethrow the primary error (its cause chain is preserved) so the caller 500s.
@@ -254,11 +288,20 @@ export class UsersService {
     }
   }
 
-  async getByStewardIdForWrite(stewardUserId: string): Promise<UserWithOrganization | undefined> {
-    const user = await usersRepository.findByStewardIdWithOrganizationForWrite(stewardUserId);
+  async getByStewardIdForWrite(
+    stewardUserId: string,
+  ): Promise<UserWithOrganization | undefined> {
+    const user =
+      await usersRepository.findByStewardIdWithOrganizationForWrite(
+        stewardUserId,
+      );
     if (user) {
       await Promise.all([
-        cache.set(CacheKeys.user.byStewardId(stewardUserId), user, CacheTTL.user.byStewardId),
+        cache.set(
+          CacheKeys.user.byStewardId(stewardUserId),
+          user,
+          CacheTTL.user.byStewardId,
+        ),
         cache.set(
           CacheKeys.user.byStewardIdWithOrg(stewardUserId),
           user,
@@ -276,7 +319,9 @@ export class UsersService {
     return await usersRepository.findIdentityByStewardIdForWrite(stewardUserId);
   }
 
-  async getWithOrganization(userId: string): Promise<UserWithOrganization | undefined> {
+  async getWithOrganization(
+    userId: string,
+  ): Promise<UserWithOrganization | undefined> {
     const cacheKey = CacheKeys.user.withOrg(userId);
     const cached = await cache.get<UserWithOrganization>(cacheKey);
     if (cached) {
@@ -291,7 +336,9 @@ export class UsersService {
     return user;
   }
 
-  async getByEmailWithOrganization(email: string): Promise<UserWithOrganization | undefined> {
+  async getByEmailWithOrganization(
+    email: string,
+  ): Promise<UserWithOrganization | undefined> {
     const cacheKey = CacheKeys.user.byEmailWithOrg(email);
     const cached = await cache.get<UserWithOrganization>(cacheKey);
     if (cached) {
@@ -340,7 +387,8 @@ export class UsersService {
       logger.debug("[UsersService] Cache hit for user byWalletAddressWithOrg");
       return cached;
     }
-    const user = await usersRepository.findByWalletAddressWithOrganization(lookupAddress);
+    const user =
+      await usersRepository.findByWalletAddressWithOrganization(lookupAddress);
     if (user) {
       await cache.set(cacheKey, user, CacheTTL.user.byWalletAddressWithOrg);
       logger.debug("[UsersService] Cached user data byWalletAddressWithOrg");
@@ -364,7 +412,9 @@ export class UsersService {
    * positive rows, so this fresh insert has no negative cache entry to clear.
    * Linking, restoration, and other existing-account flows must use `create`.
    */
-  async createFreshStewardSignupUser(data: FreshStewardSignupUserData): Promise<User> {
+  async createFreshStewardSignupUser(
+    data: FreshStewardSignupUserData,
+  ): Promise<User> {
     return await usersRepository.create(data);
   }
 
@@ -379,22 +429,28 @@ export class UsersService {
   private async invalidateInferenceAuthForUser(userId: string): Promise<void> {
     try {
       const keys = await apiKeysRepository.listByUser(userId);
-      await invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash));
+      await invalidateInferenceAuthContextsByKeyHashes(
+        keys.map((k) => k.key_hash),
+      );
     } catch (error) {
       // error-policy:J6 best-effort IAC cache eviction — a cache blip must not break the
       // lifecycle write (deactivate/detach/delete). The slow path still enforces is_active.
-      logger.warn("[UsersService] Failed to invalidate inference auth cache for user", {
-        userId,
-        ...getErrorDetails(error),
-      });
+      logger.warn(
+        "[UsersService] Failed to invalidate inference auth cache for user",
+        {
+          userId,
+          ...getErrorDetails(error),
+        },
+      );
     }
   }
 
   async update(id: string, data: Partial<NewUser>): Promise<User | undefined> {
     const existing = await usersRepository.findByIdForWrite(id);
-    const personalDeliveryRoutingChanged = PERSONAL_DELIVERY_ROUTING_FIELDS.some((field) =>
-      Object.hasOwn(data, field),
-    );
+    const personalDeliveryRoutingChanged =
+      PERSONAL_DELIVERY_ROUTING_FIELDS.some((field) =>
+        Object.hasOwn(data, field),
+      );
     const previousRoutingIdentities = personalDeliveryRoutingChanged
       ? await this.capturePersonalDeliveryRoutingIdentities(id, existing)
       : [];
@@ -413,9 +469,16 @@ export class UsersService {
           (typeof data.steward_user_id === "string" &&
             data.steward_user_id !== existing?.steward_user_id);
         const sessionRevocationCutoff =
-          movingOrganizations || sessionAuthorityChanged ? Math.floor(Date.now() / 1000) : null;
+          movingOrganizations || sessionAuthorityChanged
+            ? Math.floor(Date.now() / 1000)
+            : null;
         if (movingOrganizations && existing?.organization_id) {
-          await setInferenceSubjectActive(existing.organization_id, id, false, "membership");
+          await setInferenceSubjectActive(
+            existing.organization_id,
+            id,
+            false,
+            "membership",
+          );
         }
         if (
           typeof data.steward_user_id === "string" &&
@@ -431,13 +494,27 @@ export class UsersService {
           );
         }
         if (movingOrganizations && typeof data.organization_id === "string") {
-          await setInferenceSubjectActive(data.organization_id, id, false, "membership");
+          await setInferenceSubjectActive(
+            data.organization_id,
+            id,
+            false,
+            "membership",
+          );
           if (sessionRevocationCutoff !== null) {
-            await revokeInferenceSessionsThrough(data.organization_id, id, sessionRevocationCutoff);
+            await revokeInferenceSessionsThrough(
+              data.organization_id,
+              id,
+              sessionRevocationCutoff,
+            );
           }
         }
         if (data.is_active === false && existing?.organization_id) {
-          await setInferenceSubjectActive(existing.organization_id, id, false, "account");
+          await setInferenceSubjectActive(
+            existing.organization_id,
+            id,
+            false,
+            "account",
+          );
         }
         if (sessionRevocationCutoff !== null && existing?.organization_id) {
           await revokeInferenceSessionsThrough(
@@ -447,7 +524,10 @@ export class UsersService {
           );
         }
         const result = await usersRepository.update(id, data);
-        if (result?.organization_id && typeof data.steward_user_id === "string") {
+        if (
+          result?.organization_id &&
+          typeof data.steward_user_id === "string"
+        ) {
           // Repeat the activation even when the row already has this binding. A
           // prior attempt can commit the database update and then fail while
           // clearing the durable fence; the retry must finish that recovery.
@@ -469,22 +549,48 @@ export class UsersService {
         if (data.is_active === false) {
           await this.invalidateInferenceAuthForUser(id);
         }
-        if (data.is_active === true && result?.organization_id && !movingOrganizations) {
-          await setInferenceSubjectActive(result.organization_id, id, true, "account");
+        if (
+          data.is_active === true &&
+          result?.organization_id &&
+          !movingOrganizations
+        ) {
+          await setInferenceSubjectActive(
+            result.organization_id,
+            id,
+            true,
+            "account",
+          );
         }
-        if (typeof data.organization_id === "string" && result?.organization_id) {
+        if (
+          typeof data.organization_id === "string" &&
+          result?.organization_id
+        ) {
           // Establish the account fence before clearing the move fence so an
           // inactive account is never briefly admitted between serialized writes.
-          await setInferenceSubjectActive(result.organization_id, id, result.is_active, "account");
-          await setInferenceSubjectActive(result.organization_id, id, true, "membership");
+          await setInferenceSubjectActive(
+            result.organization_id,
+            id,
+            result.is_active,
+            "account",
+          );
+          await setInferenceSubjectActive(
+            result.organization_id,
+            id,
+            true,
+            "membership",
+          );
         }
         return result;
       },
     );
   }
 
-  async upsertStewardIdentity(userId: string, stewardUserId: string): Promise<void> {
-    const existingIdentity = await usersRepository.findIdentityByUserIdForWrite(userId);
+  async upsertStewardIdentity(
+    userId: string,
+    stewardUserId: string,
+  ): Promise<void> {
+    const existingIdentity =
+      await usersRepository.findIdentityByUserIdForWrite(userId);
 
     if (existingIdentity?.steward_user_id === stewardUserId) {
       const user = await usersRepository.findByIdForWrite(userId);
@@ -492,7 +598,12 @@ export class UsersService {
         // The identity row may have committed before a prior attempt failed to
         // clear the durable binding fence. Make the idempotent retry complete
         // that activation before returning.
-        await setInferenceSessionBindingActive(user.organization_id, userId, stewardUserId, true);
+        await setInferenceSessionBindingActive(
+          user.organization_id,
+          userId,
+          stewardUserId,
+          true,
+        );
       }
       await Promise.all([
         cache.del(CacheKeys.user.byStewardId(stewardUserId)),
@@ -521,7 +632,12 @@ export class UsersService {
 
     await usersRepository.upsertStewardIdentity(userId, stewardUserId);
     if (user?.organization_id) {
-      await setInferenceSessionBindingActive(user.organization_id, userId, stewardUserId, true);
+      await setInferenceSessionBindingActive(
+        user.organization_id,
+        userId,
+        stewardUserId,
+        true,
+      );
     }
 
     const cacheDeletes = [
@@ -530,11 +646,18 @@ export class UsersService {
       invalidateInferenceSessionAuthContexts([stewardUserId]),
     ];
 
-    if (existingIdentity?.steward_user_id && existingIdentity.steward_user_id !== stewardUserId) {
+    if (
+      existingIdentity?.steward_user_id &&
+      existingIdentity.steward_user_id !== stewardUserId
+    ) {
       cacheDeletes.push(
         cache.del(CacheKeys.user.byStewardId(existingIdentity.steward_user_id)),
-        cache.del(CacheKeys.user.byStewardIdWithOrg(existingIdentity.steward_user_id)),
-        invalidateInferenceSessionAuthContexts([existingIdentity.steward_user_id]),
+        cache.del(
+          CacheKeys.user.byStewardIdWithOrg(existingIdentity.steward_user_id),
+        ),
+        invalidateInferenceSessionAuthContexts([
+          existingIdentity.steward_user_id,
+        ]),
       );
     }
 
@@ -547,7 +670,9 @@ export class UsersService {
    * generation, or positive cache projection to revoke; the new binding still
    * becomes active only after the identity projection commits.
    */
-  async initializeFreshStewardIdentity(input: FreshStewardIdentityInput): Promise<void> {
+  async initializeFreshStewardIdentity(
+    input: FreshStewardIdentityInput,
+  ): Promise<void> {
     const { user, stewardUserId } = input;
     const organizationId = user.organization_id;
     const canonicalStewardUserId = user.steward_user_id;
@@ -558,26 +683,36 @@ export class UsersService {
       stewardUserId.trim().length === 0 ||
       canonicalStewardUserId !== stewardUserId
     ) {
-      throw new ElizaError("Fresh Steward identity input does not match the created user", {
-        code: "FRESH_STEWARD_IDENTITY_INPUT_INVALID",
-        context: {
-          hasUserId: user.id.trim().length > 0,
-          hasOrganizationId: Boolean(organizationId?.trim()),
-          hasCanonicalStewardUserId: canonicalStewardUserId.trim().length > 0,
-          hasRequestedStewardUserId: stewardUserId.trim().length > 0,
-          stewardUserIdMatches: canonicalStewardUserId === stewardUserId,
+      throw new ElizaError(
+        "Fresh Steward identity input does not match the created user",
+        {
+          code: "FRESH_STEWARD_IDENTITY_INPUT_INVALID",
+          context: {
+            hasUserId: user.id.trim().length > 0,
+            hasOrganizationId: Boolean(organizationId?.trim()),
+            hasCanonicalStewardUserId: canonicalStewardUserId.trim().length > 0,
+            hasRequestedStewardUserId: stewardUserId.trim().length > 0,
+            stewardUserIdMatches: canonicalStewardUserId === stewardUserId,
+          },
+          severity: "fatal",
         },
-        severity: "fatal",
-      });
+      );
     }
 
     await usersRepository.upsertStewardIdentity(user.id, stewardUserId);
-    await activateFreshStewardBinding({ organizationId, userId: user.id, stewardUserId });
+    await activateFreshStewardBinding({
+      organizationId,
+      userId: user.id,
+      stewardUserId,
+    });
   }
 
   async linkStewardId(userId: string, stewardUserId: string): Promise<void> {
     const existing = await usersRepository.findByIdForWrite(userId);
-    if (existing?.organization_id && existing.steward_user_id !== stewardUserId) {
+    if (
+      existing?.organization_id &&
+      existing.steward_user_id !== stewardUserId
+    ) {
       if (existing.steward_user_id) {
         await setInferenceSessionBindingActive(
           existing.organization_id,
@@ -594,7 +729,12 @@ export class UsersService {
     }
     const updated = await usersRepository.linkStewardId(userId, stewardUserId);
     if (updated?.organization_id) {
-      await setInferenceSessionBindingActive(updated.organization_id, userId, stewardUserId, true);
+      await setInferenceSessionBindingActive(
+        updated.organization_id,
+        userId,
+        stewardUserId,
+        true,
+      );
     }
 
     if (existing) {
@@ -625,61 +765,80 @@ export class UsersService {
     if (!user) {
       throw new Error(`User ${id} not found`);
     }
-    const previousRoutingIdentities = await this.capturePersonalDeliveryRoutingIdentities(id, user);
-    return runWithBoundPersonalDeliveryProjectionFences(previousRoutingIdentities, async () => {
-      if (user.organization_id) {
-        await setInferenceSubjectActive(user.organization_id, id, false, "membership");
-      }
-
-      let slug = generatePersonalOrgSlug(user);
-      let attempts = 0;
-      while (await organizationsRepository.findBySlug(slug)) {
-        attempts++;
-        if (attempts > 10) {
-          throw new Error(`Failed to generate unique organization slug for user ${id}`);
+    const previousRoutingIdentities =
+      await this.capturePersonalDeliveryRoutingIdentities(id, user);
+    return runWithBoundPersonalDeliveryProjectionFences(
+      previousRoutingIdentities,
+      async () => {
+        if (user.organization_id) {
+          await setInferenceSubjectActive(
+            user.organization_id,
+            id,
+            false,
+            "membership",
+          );
         }
-        slug = generatePersonalOrgSlug(user);
-      }
 
-      const organization = await organizationsRepository.create({
-        name: `${user.name || user.email || "User"}'s Organization`,
-        slug,
-        credit_balance: "0.00",
-      });
+        let slug = generatePersonalOrgSlug(user);
+        let attempts = 0;
+        while (await organizationsRepository.findBySlug(slug)) {
+          attempts++;
+          if (attempts > 10) {
+            throw new Error(
+              `Failed to generate unique organization slug for user ${id}`,
+            );
+          }
+          slug = generatePersonalOrgSlug(user);
+        }
 
-      let updated: User | undefined;
-      try {
-        updated = await usersRepository.update(id, {
-          organization_id: organization.id,
-          role: "owner",
+        const organization = await organizationsRepository.create({
+          name: `${user.name || user.email || "User"}'s Organization`,
+          slug,
+          credit_balance: "0.00",
         });
-        if (!updated) {
-          throw new Error(`Failed to move user ${id} to personal organization ${organization.id}`);
-        }
-      } catch (error) {
-        // Don't strand an empty org when the move fails.
+
+        let updated: User | undefined;
         try {
-          await organizationsRepository.delete(organization.id);
-        } catch (rollbackError) {
-          // error-policy:J6 best-effort rollback of the just-created empty org; log and
-          // fall through to rethrow the original move failure (never masks it).
-          logger.error("[UsersService] Failed to roll back personal org after detach failure", {
-            userId: id,
-            organizationId: organization.id,
-            ...getErrorDetails(rollbackError),
+          updated = await usersRepository.update(id, {
+            organization_id: organization.id,
+            role: "owner",
           });
+          if (!updated) {
+            throw new Error(
+              `Failed to move user ${id} to personal organization ${organization.id}`,
+            );
+          }
+        } catch (error) {
+          // Don't strand an empty org when the move fails.
+          try {
+            await organizationsRepository.delete(organization.id);
+          } catch (rollbackError) {
+            // error-policy:J6 best-effort rollback of the just-created empty org; log and
+            // fall through to rethrow the original move failure (never masks it).
+            logger.error(
+              "[UsersService] Failed to roll back personal org after detach failure",
+              {
+                userId: id,
+                organizationId: organization.id,
+                ...getErrorDetails(rollbackError),
+              },
+            );
+          }
+          throw error;
         }
-        throw error;
-      }
 
-      if (user.organization_id) {
-        await apiKeysService.deactivateByUserAndOrganization(id, user.organization_id);
-      }
+        if (user.organization_id) {
+          await apiKeysService.deactivateByUserAndOrganization(
+            id,
+            user.organization_id,
+          );
+        }
 
-      await this.invalidateCache(user);
-      await this.invalidateCache(updated);
-      return updated;
-    });
+        await this.invalidateCache(user);
+        await this.invalidateCache(updated);
+        return updated;
+      },
+    );
   }
 
   async delete(id: string): Promise<void> {
@@ -688,35 +847,43 @@ export class UsersService {
     if (!user) {
       throw new Error(`User ${id} not found`);
     }
-    const routingIdentities = await this.capturePersonalDeliveryRoutingIdentities(id, user);
-    await runWithBoundPersonalDeliveryProjectionFences(routingIdentities, async () => {
-      const organizationId = user.organization_id;
+    const routingIdentities =
+      await this.capturePersonalDeliveryRoutingIdentities(id, user);
+    await runWithBoundPersonalDeliveryProjectionFences(
+      routingIdentities,
+      async () => {
+        const organizationId = user.organization_id;
 
-      if (organizationId) {
-        await setInferenceSubjectActive(organizationId, id, false, "account");
-      }
-
-      await this.invalidateCache(user);
-      // Resolve + evict the user's cached IAC identities BEFORE the row is deleted:
-      // at delete time the user is still active, so an is_active gate can't fire and
-      // the key_hash set must be read while the keys still exist.
-      await this.invalidateInferenceAuthForUser(id);
-      await usersRepository.delete(id);
-
-      // Check if this was the last user in the organization
-      if (organizationId) {
-        const remainingUsers = await usersRepository.listByOrganization(organizationId);
-
-        // If no users remain, delete the organization
-        if (remainingUsers.length === 0) {
-          await organizationsRepository.delete(organizationId);
+        if (organizationId) {
+          await setInferenceSubjectActive(organizationId, id, false, "account");
         }
-      }
-    });
+
+        await this.invalidateCache(user);
+        // Resolve + evict the user's cached IAC identities BEFORE the row is deleted:
+        // at delete time the user is still active, so an is_active gate can't fire and
+        // the key_hash set must be read while the keys still exist.
+        await this.invalidateInferenceAuthForUser(id);
+        await usersRepository.delete(id);
+
+        // Check if this was the last user in the organization
+        if (organizationId) {
+          const remainingUsers =
+            await usersRepository.listByOrganization(organizationId);
+
+          // If no users remain, delete the organization
+          if (remainingUsers.length === 0) {
+            await organizationsRepository.delete(organizationId);
+          }
+        }
+      },
+    );
   }
 
   /** Permanently erases a sole-user personal account without partial DB deletion. */
-  async deletePersonalAccount(id: string, organizationId: string): Promise<void> {
+  async deletePersonalAccount(
+    id: string,
+    organizationId: string,
+  ): Promise<void> {
     const user = await usersRepository.findByIdForWrite(id);
     if (!user) throw new Error(`User ${id} not found`);
     if (user.organization_id !== organizationId) {
@@ -726,7 +893,10 @@ export class UsersService {
     await setInferenceSubjectActive(organizationId, id, false, "account");
     await this.invalidateCache(user);
     await this.invalidateInferenceAuthForUser(id);
-    await usersRepository.deletePersonalOrganizationAtomically(id, organizationId);
+    await usersRepository.deletePersonalOrganizationAtomically(
+      id,
+      organizationId,
+    );
   }
 }
 

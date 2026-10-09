@@ -25,13 +25,19 @@ import {
 import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheTTL } from "../../cache/keys";
-import { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } from "../../middleware/rate-limit";
+import {
+  enforceOrgRateLimit,
+  OrgRateLimitCacheNotReadyError,
+} from "../../middleware/rate-limit";
 import { getProviderFromModel } from "../../pricing";
 import {
   collectVideoProviderApiKeys,
   getConfiguredVideoProviderCandidates,
 } from "../../providers/video/registry";
-import { getCloudAwareEnv, getCloudBinding } from "../../runtime/cloud-bindings";
+import {
+  getCloudAwareEnv,
+  getCloudBinding,
+} from "../../runtime/cloud-bindings";
 import type { PublicObjectBindings } from "../../storage/r2-public-object";
 import { logger } from "../../utils/logger";
 import { settleOffResponsePath } from "../../utils/settle-off-response-path";
@@ -70,7 +76,10 @@ import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
 } from "../organization-inference-admission";
-import { hydrationSettledWithin, SHARED_TURN_HYDRATION_WAIT_MS } from "./bounded-hydration";
+import {
+  hydrationSettledWithin,
+  SHARED_TURN_HYDRATION_WAIT_MS,
+} from "./bounded-hydration";
 import {
   formatPersonalSharedFallbackAccountContext,
   type PersonalSharedFallbackAccountState,
@@ -96,7 +105,10 @@ import {
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
 import { buildSharedFactsContext, sharedFactsEnabled } from "./shared-facts";
-import { createSharedMemoryStore, type SharedMemoryStore } from "./shared-memory-store";
+import {
+  createSharedMemoryStore,
+  type SharedMemoryStore,
+} from "./shared-memory-store";
 import {
   buildSharedRecallContext,
   embedTextsViaSidecar,
@@ -104,7 +116,10 @@ import {
   SHARED_RECALL_EMBEDDING_MODEL,
 } from "./shared-recall";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
-import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
+import {
+  SharedRuntimeCacheWarmingError,
+  SharedTurnConflictError,
+} from "./shared-runtime-errors";
 import {
   parseSharedReminderActionProvenance,
   sharedRuntimeModelHistoryMessages,
@@ -150,18 +165,28 @@ const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
 const SHARED_STREAM_TERMINAL_DEADLINE_MS = 75_000;
 const PERSONAL_SHARED_IMAGE_MODEL_ID = "fal-ai/flux/schnell";
-const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
+const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(
+  256,
+  60_000,
+);
 
 function elapsedTurnMs(startedAt: number): number {
   return Math.round((performance.now() - startedAt) * 10) / 10;
 }
 
-function withTurnTimingHeaders(response: Response, timings: Record<string, number>): Response {
-  const entries = Object.entries(timings).filter(([, duration]) => Number.isFinite(duration));
+function withTurnTimingHeaders(
+  response: Response,
+  timings: Record<string, number>,
+): Response {
+  const entries = Object.entries(timings).filter(([, duration]) =>
+    Number.isFinite(duration),
+  );
   if (entries.length === 0) return response;
   const headers = new Headers(response.headers);
   const existing = headers.get("Server-Timing");
-  const current = entries.map(([phase, duration]) => `${phase};dur=${duration}`).join(", ");
+  const current = entries
+    .map(([phase, duration]) => `${phase};dur=${duration}`)
+    .join(", ");
   headers.set("Server-Timing", existing ? `${existing}, ${current}` : current);
   return new Response(response.body, {
     status: response.status,
@@ -175,13 +200,21 @@ export type BridgeExecutionContext = {
 };
 
 export interface SharedRuntimeHistoryStore {
-  load(agentId: string, channelId: string, queryText?: string): Promise<SharedTurnMessage[]>;
+  load(
+    agentId: string,
+    channelId: string,
+    queryText?: string,
+  ): Promise<SharedTurnMessage[]>;
   /**
    * Makes a terminal turn visible to later room requests before asynchronous
    * durability work finishes. Implementations that serialize on durable
    * writes may omit this hook.
    */
-  stagePending?(agentId: string, channelId: string, messages: SharedTurnMessage[]): void;
+  stagePending?(
+    agentId: string,
+    channelId: string,
+    messages: SharedTurnMessage[],
+  ): void;
   /** Waits only for the restart-safe pending-history checkpoint, not full turn finalization. */
   checkpointPending?(): Promise<void>;
   merge(
@@ -207,7 +240,11 @@ function recordTurnTraceOffPath(
   history: readonly SharedTurnMessage[] = [],
   channel?: SharedRuntimeChatOptions["channel"],
 ): void {
-  const historyProvenance = retainedVoiceHistoryProvenance(channelId, history, channel);
+  const historyProvenance = retainedVoiceHistoryProvenance(
+    channelId,
+    history,
+    channel,
+  );
   void settleOffResponsePath(executionCtx, async () => {
     const summary = buildTurnSummary({
       result,
@@ -246,7 +283,11 @@ function recordFailedTurnTraceOffPath(
 ): void {
   const retainVoiceTrace = channel?.type === ChannelType.VOICE_DM;
   if (!terminalTiming && !retainVoiceTrace) return;
-  const historyProvenance = retainedVoiceHistoryProvenance(channelId, history, channel);
+  const historyProvenance = retainedVoiceHistoryProvenance(
+    channelId,
+    history,
+    channel,
+  );
   void settleOffResponsePath(executionCtx, async () => {
     const completedAt = Date.now();
     await recordSharedTurnTrace(
@@ -264,7 +305,10 @@ function recordFailedTurnTraceOffPath(
         // failure.
         latencyMs: Math.max(0, Math.round(completedAt - startedAt)),
         model,
-        finishReason: terminalTiming?.outcome === "aborted" ? "aborted" : fallbackFinishReason,
+        finishReason:
+          terminalTiming?.outcome === "aborted"
+            ? "aborted"
+            : fallbackFinishReason,
         stages: [{ name: "runtime" }],
         ...(terminalTiming ? { terminalTiming } : {}),
         ...(historyProvenance ? { historyProvenance } : {}),
@@ -279,7 +323,11 @@ function turnActionResults(
     RunSharedAgentTurnResult,
     "actionResults" | "capabilityWall" | "blockedSecondaryCapabilities"
   >,
-  context: { agentId: string; originalIntent: string; clientMessageId?: string },
+  context: {
+    agentId: string;
+    originalIntent: string;
+    clientMessageId?: string;
+  },
 ): unknown[] | undefined {
   const results: unknown[] = [...(turn.actionResults ?? [])];
   if (turn.capabilityWall) {
@@ -382,7 +430,9 @@ function stringValue(value: unknown): string | undefined {
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 function trustedReminderDelivery(params: Record<string, unknown>) {
@@ -412,9 +462,13 @@ function personalSharedMediaPort(
   const cloudEnv = getCloudAwareEnv();
   const bindings: PublicObjectBindings = {
     BLOB: blob,
-    ...(cloudEnv.R2_PUBLIC_HOST ? { R2_PUBLIC_HOST: cloudEnv.R2_PUBLIC_HOST } : {}),
+    ...(cloudEnv.R2_PUBLIC_HOST
+      ? { R2_PUBLIC_HOST: cloudEnv.R2_PUBLIC_HOST }
+      : {}),
   };
-  const videoKeys = collectVideoProviderApiKeys(cloudEnv as unknown as Record<string, unknown>);
+  const videoKeys = collectVideoProviderApiKeys(
+    cloudEnv as unknown as Record<string, unknown>,
+  );
   const videoConfigured = Boolean(videoKeys.FAL_KEY || videoKeys.FAL_API_KEY);
   const imageConfigured = isImageGenerationConfigured(
     PERSONAL_SHARED_IMAGE_MODEL_ID,
@@ -429,13 +483,18 @@ function personalSharedMediaPort(
   let actionOrdinal = 0;
   return {
     canGenerateMedia: ({ mediaType }) =>
-      mediaType === "image" ? imageConfigured : mediaType === "video" && videoConfigured,
+      mediaType === "image"
+        ? imageConfigured
+        : mediaType === "video" && videoConfigured,
     generateMedia: async (request) => {
       const ordinal = actionOrdinal;
       actionOrdinal += 1;
       let rateLimited: Response | null;
       try {
-        rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict");
+        rateLimited = await enforceOrgRateLimit(
+          agent.organization_id,
+          "strict",
+        );
       } catch (error) {
         // error-policy:J1 translate the cache-only rate-limit boundary into
         // the Shared runtime's single retryable warming signal.
@@ -448,7 +507,10 @@ function personalSharedMediaPort(
       }
       if (rateLimited) {
         if (rateLimited.status === 429) {
-          const retryAfter = Number.parseInt(rateLimited.headers.get("Retry-After") ?? "", 10);
+          const retryAfter = Number.parseInt(
+            rateLimited.headers.get("Retry-After") ?? "",
+            10,
+          );
           throw new RateLimitError(
             "Image generation rate limit exceeded.",
             Number.isFinite(retryAfter) ? retryAfter : undefined,
@@ -464,9 +526,16 @@ function personalSharedMediaPort(
           ? PERSONAL_SHARED_IMAGE_VIDEO_MODEL_ID
           : PERSONAL_SHARED_TEXT_VIDEO_MODEL_ID;
         const definition = getSupportedVideoModelDefinition(model);
-        if (!definition) throw new Error(`Personal Shared video model is unsupported: ${model}`);
-        const candidate = getConfiguredVideoProviderCandidates([definition], videoKeys)[0];
-        if (!candidate) throw new Error("fal.ai video generation is not configured");
+        if (!definition)
+          throw new Error(
+            `Personal Shared video model is unsupported: ${model}`,
+          );
+        const candidate = getConfiguredVideoProviderCandidates(
+          [definition],
+          videoKeys,
+        )[0];
+        if (!candidate)
+          throw new Error("fal.ai video generation is not configured");
         const options = resolvePersonalSharedSeedanceOptions(request);
         const costUsd = estimatePersonalSharedSeedanceCostUsd(options);
         await contentSafetyService.assertSafeForPublicUse({
@@ -514,7 +583,9 @@ function personalSharedMediaPort(
           status: "completed",
           storage_url: generated.video.url,
           thumbnail_url: generated.video.url,
-          file_size: generated.video.file_size ? BigInt(generated.video.file_size) : undefined,
+          file_size: generated.video.file_size
+            ? BigInt(generated.video.file_size)
+            : undefined,
           mime_type: generated.video.content_type ?? "video/mp4",
           parameters: {
             referenceUrl: request.imageUrl,
@@ -544,7 +615,9 @@ function personalSharedMediaPort(
         };
       }
       if (request.mediaType !== "image") {
-        throw new Error(`Personal Shared media generation does not support ${request.mediaType}`);
+        throw new Error(
+          `Personal Shared media generation does not support ${request.mediaType}`,
+        );
       }
       const outcome = await executeImageGeneration({
         input: {
@@ -577,7 +650,10 @@ function personalSharedMediaPort(
         admit: async () => ({ kind: "platform" as const }),
       });
       const image = outcome.images[0];
-      if (!image) throw new Error("Canonical Cloud image generation returned no artifact");
+      if (!image)
+        throw new Error(
+          "Canonical Cloud image generation returned no artifact",
+        );
       return {
         mediaType: "image",
         url: image.url,
@@ -595,25 +671,34 @@ function sharedElizaRuntimeExecution(
   turnKey: string | undefined,
   params: Record<string, unknown>,
   funding: SharedRuntimeChatOptions["funding"],
-  executionCtx: BridgeExecutionContext | undefined,
+  _executionCtx: BridgeExecutionContext | undefined,
   mobilePushDispatch?: SharedRuntimeChatOptions["mobilePushDispatch"],
   channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"],
 ): NonNullable<RunSharedAgentTurnInput["execution"]> {
-  const personalShared = funding === "platform" && isCanonicalPersonalSharedAgent(agent);
+  const personalShared =
+    funding === "platform" && isCanonicalPersonalSharedAgent(agent);
   const runtimeChannel = channel ?? {
     type: ChannelType.DM,
     source: personalShared ? MESSAGE_SOURCE_CLIENT_CHAT : "shared-runtime",
   };
-  const reminderDelivery = personalShared ? trustedReminderDelivery(params) : undefined;
-  const media = personalShared ? personalSharedMediaPort(agent, roomId, turnKey) : undefined;
+  const reminderDelivery = personalShared
+    ? trustedReminderDelivery(params)
+    : undefined;
+  const media = personalShared
+    ? personalSharedMediaPort(agent, roomId, turnKey)
+    : undefined;
   return {
     agentKey: agent.id,
     roomKey: roomId,
     channel: runtimeChannel,
     // Personal funding is selected by the server-owned coordinator only after
     // account/tenant resolution; RPC params cannot grant this attestation.
-    ...(personalShared ? { authenticatedPersonalSharedUser: true as const } : {}),
-    ...(personalShared && runtimeChannel.type === ChannelType.DM && agent.owner_name
+    ...(personalShared
+      ? { authenticatedPersonalSharedUser: true as const }
+      : {}),
+    ...(personalShared &&
+    runtimeChannel.type === ChannelType.DM &&
+    agent.owner_name
       ? { participantName: agent.owner_name }
       : {}),
     todos: {
@@ -637,7 +722,9 @@ function sharedElizaRuntimeExecution(
           },
         }
       : {}),
-    ...(mobilePushDispatch ? { mobilePush: { dispatch: mobilePushDispatch } } : {}),
+    ...(mobilePushDispatch
+      ? { mobilePush: { dispatch: mobilePushDispatch } }
+      : {}),
     ...(media ? { media } : {}),
   };
 }
@@ -655,7 +742,11 @@ function sharedTurnMemoryStore(agent: SharedRuntimeAgent, roomId: string) {
     sharedRecallEnabled() && embedBase
       ? {
           embedTexts: (texts: string[]) =>
-            embedTextsViaSidecar(embedBase, process.env.LOCAL_EMBEDDINGS_API_KEY, texts),
+            embedTextsViaSidecar(
+              embedBase,
+              process.env.LOCAL_EMBEDDINGS_API_KEY,
+              texts,
+            ),
           model: SHARED_RECALL_EMBEDDING_MODEL,
         }
       : undefined;
@@ -681,7 +772,8 @@ function sharedTurnMemoryStore(agent: SharedRuntimeAgent, roomId: string) {
  */
 function sharedRecallEnabled(): boolean {
   return (
-    process.env.SHARED_RECALL_ENABLED === "true" && Boolean(process.env.LOCAL_EMBEDDINGS_BASE_URL)
+    process.env.SHARED_RECALL_ENABLED === "true" &&
+    Boolean(process.env.LOCAL_EMBEDDINGS_BASE_URL)
   );
 }
 
@@ -707,7 +799,12 @@ async function sharedTurnRecallContext(
       hadKeywordHit: false,
       queryText,
       history,
-      embed: (text) => embedTextViaSidecar(embedBase, process.env.LOCAL_EMBEDDINGS_API_KEY, text),
+      embed: (text) =>
+        embedTextViaSidecar(
+          embedBase,
+          process.env.LOCAL_EMBEDDINGS_API_KEY,
+          text,
+        ),
       storeSearch: async (vector) => {
         // This is relevance retrieval, not prompt shortening: the durable transcript
         // is already supplied in full. Ask the repository for its complete supported
@@ -715,12 +812,17 @@ async function sharedTurnRecallContext(
         const hits = await store.searchByEmbedding(vector, 200);
         return hits.map((hit) => ({
           id: hit.id,
-          role: hit.entity_id === hit.agent_id ? ("assistant" as const) : ("user" as const),
+          role:
+            hit.entity_id === hit.agent_id
+              ? ("assistant" as const)
+              : ("user" as const),
           content:
             typeof (hit.content as { text?: unknown })?.text === "string"
               ? (hit.content as { text: string }).text
               : "",
-          createdAt: hit.created_at ? new Date(hit.created_at).getTime() : undefined,
+          createdAt: hit.created_at
+            ? new Date(hit.created_at).getTime()
+            : undefined,
         }));
       },
     });
@@ -782,7 +884,11 @@ function combinedTurnContext(
 }
 
 function stableUuid(raw: string): string {
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      raw,
+    )
+  ) {
     return raw;
   }
   const hash = crypto.createHash("sha256").update(raw).digest("hex");
@@ -826,11 +932,16 @@ function turnMessageIds(
   const turn = clientMessageId ?? crypto.randomUUID();
   return {
     user: stableUuid(`shared-runtime:${agentId}:${roomId}:${turn}:user`),
-    assistant: stableUuid(`shared-runtime:${agentId}:${roomId}:${turn}:assistant`),
+    assistant: stableUuid(
+      `shared-runtime:${agentId}:${roomId}:${turn}:assistant`,
+    ),
   };
 }
 
-export function sharedRuntimeChannelId(agentId: string, roomId: string): string {
+export function sharedRuntimeChannelId(
+  agentId: string,
+  roomId: string,
+): string {
   const room = roomId.trim() || "default";
   return stableUuid(`cloud-bridge-channel:${agentId}:${room}`);
 }
@@ -838,7 +949,11 @@ export function sharedRuntimeChannelId(agentId: string, roomId: string): string 
 export { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
 
 /** Storage-safe runtime room key derived from the coordinator's canonical room label. */
-export function sharedRuntimeRoomKey(agentId: string, roomId?: unknown, userId?: unknown): string {
+export function sharedRuntimeRoomKey(
+  agentId: string,
+  roomId?: unknown,
+  userId?: unknown,
+): string {
   const room = normalizeSharedRuntimeRoom(roomId, userId);
   return sharedRuntimeChannelId(agentId, room);
 }
@@ -863,7 +978,8 @@ async function loadHistory(
   const history = store
     ? await store.load(agentId, roomId, queryText)
     : await import("../../../db/repositories/shared-runtime-history").then(
-        ({ sharedRuntimeHistoryRepository }) => sharedRuntimeHistoryRepository.get(agentId, roomId),
+        ({ sharedRuntimeHistoryRepository }) =>
+          sharedRuntimeHistoryRepository.get(agentId, roomId),
       );
   return history.filter(isTurn);
 }
@@ -874,12 +990,19 @@ function constrainTrustedLifecycleHistory(
 ): SharedTurnMessage[] {
   const cutoff = options.trustedHistoryCutoffAt;
   if (cutoff === undefined) return history;
-  if (options.trustedMessageRole !== "system" || !Number.isSafeInteger(cutoff) || cutoff <= 0) {
-    throw new ElizaError("Shared runtime received an invalid trusted history cutoff", {
-      code: "INVALID_TRUSTED_HISTORY_CUTOFF",
-      context: { cutoff, trustedMessageRole: options.trustedMessageRole },
-      severity: "fatal",
-    });
+  if (
+    options.trustedMessageRole !== "system" ||
+    !Number.isSafeInteger(cutoff) ||
+    cutoff <= 0
+  ) {
+    throw new ElizaError(
+      "Shared runtime received an invalid trusted history cutoff",
+      {
+        code: "INVALID_TRUSTED_HISTORY_CUTOFF",
+        context: { cutoff, trustedMessageRole: options.trustedMessageRole },
+        severity: "fatal",
+      },
+    );
   }
   // A lifecycle opener may consume only messages proven to predate the call.
   // Undated legacy rows cannot satisfy that privacy assertion and fail closed.
@@ -927,8 +1050,11 @@ async function characterFor(
       linked = linkedCharacterMemoryCache.get(agent.character_id);
       if (!linked) {
         try {
-          linked = await cache.get<UserCharacter>(`character:data:${agent.character_id}`);
-          if (linked) linkedCharacterMemoryCache.set(agent.character_id, linked);
+          linked = await cache.get<UserCharacter>(
+            `character:data:${agent.character_id}`,
+          );
+          if (linked)
+            linkedCharacterMemoryCache.set(agent.character_id, linked);
         } catch {
           // error-policy:J4 a cache dependency failure cannot fall through to
           // the linked-character repository on an inference request.
@@ -956,12 +1082,19 @@ async function characterFor(
     const characterId = agent.character_id;
     const hydration = import("../../../db/repositories/characters")
       .then(({ userCharactersRepository }) =>
-        userCharactersRepository.findByIdInOrganization(characterId, agent.organization_id),
+        userCharactersRepository.findByIdInOrganization(
+          characterId,
+          agent.organization_id,
+        ),
       )
       .then(async (character) => {
         if (character) {
           linkedCharacterMemoryCache.set(characterId, character);
-          await cache.set(`character:data:${characterId}`, character, CacheTTL.agent.characterData);
+          await cache.set(
+            `character:data:${characterId}`,
+            character,
+            CacheTTL.agent.characterData,
+          );
         }
       })
       .catch((error) => {
@@ -979,7 +1112,9 @@ async function characterFor(
       const hydrated = linkedCharacterMemoryCache.get(characterId);
       if (hydrated) return projectSharedAgentCharacter(agent, hydrated);
     }
-    throw new SharedRuntimeCacheWarmingError("Character cache is warming. Retry shortly.");
+    throw new SharedRuntimeCacheWarmingError(
+      "Character cache is warming. Retry shortly.",
+    );
   }
   return projectSharedAgentCharacter(agent, linked);
 }
@@ -989,8 +1124,14 @@ function billingPrompt(
   history: SharedTurnMessage[],
   message: string,
 ): Array<{ content: string }> {
-  const projectedHistory = sharedRuntimeModelHistoryMessages(history, message).map((turn) => ({
-    content: typeof turn.content === "string" ? turn.content : JSON.stringify(turn.content),
+  const projectedHistory = sharedRuntimeModelHistoryMessages(
+    history,
+    message,
+  ).map((turn) => ({
+    content:
+      typeof turn.content === "string"
+        ? turn.content
+        : JSON.stringify(turn.content),
   }));
   return [
     { content: character.system },
@@ -1042,7 +1183,9 @@ async function admitTurn(
 ): Promise<BillingTurn | null> {
   const model = resolveSharedAgentTurnModel(character.model);
   if (!model) return null;
-  const estimatedInputTokens = estimateInputTokens(billingPrompt(character, history, text));
+  const estimatedInputTokens = estimateInputTokens(
+    billingPrompt(character, history, text),
+  );
   // A client-keyed turn gets DETERMINISTIC billing identities: the admission
   // gate keys its pending charge and debit replay on `requestId`, so even a
   // crash-and-retry re-execution of the same claim replays one debit identity
@@ -1088,14 +1231,18 @@ async function admitTurn(
     }
   }
   try {
-    rateLimited = await enforceOrgRateLimit(agent.organization_id, "completions", {
-      cacheOnly: Boolean(executionCtx),
-      executionCtx,
-      config:
-        funding === "platform"
-          ? undefined
-          : inferenceRateLimitConfig(admissionSnapshot, "completions"),
-    });
+    rateLimited = await enforceOrgRateLimit(
+      agent.organization_id,
+      "completions",
+      {
+        cacheOnly: Boolean(executionCtx),
+        executionCtx,
+        config:
+          funding === "platform"
+            ? undefined
+            : inferenceRateLimitConfig(admissionSnapshot, "completions"),
+      },
+    );
   } catch (error) {
     // error-policy:J1 the shared-runtime boundary keeps policy hydration off
     // the response path and exposes a single retryable cache-warming signal.
@@ -1108,7 +1255,10 @@ async function admitTurn(
   }
   if (rateLimited) {
     if (rateLimited.status === 429) {
-      const retryAfterValue = Number.parseInt(rateLimited.headers.get("Retry-After") ?? "", 10);
+      const retryAfterValue = Number.parseInt(
+        rateLimited.headers.get("Retry-After") ?? "",
+        10,
+      );
       throw new RateLimitError(
         "Organization rate limit exceeded.",
         Number.isFinite(retryAfterValue) ? retryAfterValue : undefined,
@@ -1138,7 +1288,9 @@ async function admitTurn(
       error instanceof InferenceAdmissionUnavailableError ||
       error instanceof InferenceBalanceCacheWarmingError
     ) {
-      throw new SharedRuntimeCacheWarmingError("Billing authorization is warming. Retry shortly.");
+      throw new SharedRuntimeCacheWarmingError(
+        "Billing authorization is warming. Retry shortly.",
+      );
     }
     throw error;
   }
@@ -1184,10 +1336,16 @@ async function finishBilling(
       // error-policy:J7 a settler that already failed (the deferred settler
       // replays its first settlement promise) must not mask the original
       // billing error below or escape as an unhandled waitUntil rejection.
-      logger.warn("[SharedRuntimeChatService] unknown-settle after billing failure also failed", {
-        agentId: agent.id,
-        error: settleError instanceof Error ? settleError.message : String(settleError),
-      });
+      logger.warn(
+        "[SharedRuntimeChatService] unknown-settle after billing failure also failed",
+        {
+          agentId: agent.id,
+          error:
+            settleError instanceof Error
+              ? settleError.message
+              : String(settleError),
+        },
+      );
     }
     logger.error("[SharedRuntimeChatService] billing failed", {
       agentId: agent.id,
@@ -1207,11 +1365,14 @@ async function settleAmbiguousProviderWork(
     // error-policy:J7 the original turn/stream failure remains the user-facing
     // boundary; the still-held admission lease preserves the monetary failure
     // for a later keyed retry or reconciliation.
-    logger.error("[SharedRuntimeChatService] ambiguous provider settlement failed", {
-      agentId: agent.id,
-      reason,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.error(
+      "[SharedRuntimeChatService] ambiguous provider settlement failed",
+      {
+        agentId: agent.id,
+        reason,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
   }
 }
 
@@ -1253,20 +1414,29 @@ function observeProviderCancellationOffPath(
         (error: unknown) => ({ state: "rejected" as const, error }),
       ),
       new Promise<{ state: "timed_out" }>((resolve) => {
-        timer = setTimeout(() => resolve({ state: "timed_out" }), observationMs);
+        timer = setTimeout(
+          () => resolve({ state: "timed_out" }),
+          observationMs,
+        );
       }),
     ]);
     if (timer !== undefined) clearTimeout(timer);
     if (outcome.state === "settled") return;
-    logger.warn("[SharedRuntimeChatService] provider stream cancellation did not settle cleanly", {
-      agentId,
-      outcome: outcome.state,
-      ...(outcome.state === "rejected"
-        ? {
-            error: outcome.error instanceof Error ? outcome.error.message : String(outcome.error),
-          }
-        : {}),
-    });
+    logger.warn(
+      "[SharedRuntimeChatService] provider stream cancellation did not settle cleanly",
+      {
+        agentId,
+        outcome: outcome.state,
+        ...(outcome.state === "rejected"
+          ? {
+              error:
+                outcome.error instanceof Error
+                  ? outcome.error.message
+                  : String(outcome.error),
+            }
+          : {}),
+      },
+    );
   });
 }
 
@@ -1312,7 +1482,12 @@ function settleFailedProviderWorkOffPath(
       await billing.settle(0);
     });
   }
-  return settleAmbiguousProviderWorkOffPath(agent, billing, executionCtx, reason);
+  return settleAmbiguousProviderWorkOffPath(
+    agent,
+    billing,
+    executionCtx,
+    reason,
+  );
 }
 
 function sseError(message: string): Response {
@@ -1322,7 +1497,9 @@ function sseError(message: string): Response {
 }
 
 export class SharedRuntimeChatService {
-  constructor(private readonly streamTerminalDeadlineMs = SHARED_STREAM_TERMINAL_DEADLINE_MS) {}
+  constructor(
+    private readonly streamTerminalDeadlineMs = SHARED_STREAM_TERMINAL_DEADLINE_MS,
+  ) {}
 
   async recordLifecycleEvent(
     agentId: string,
@@ -1330,7 +1507,12 @@ export class SharedRuntimeChatService {
     event: SharedTurnMessage,
     store: SharedRuntimeHistoryStore,
   ): Promise<void> {
-    await mergeHistory(agentId, sharedRuntimeRoomKey(agentId, roomId), [event], store);
+    await mergeHistory(
+      agentId,
+      sharedRuntimeRoomKey(agentId, roomId),
+      [event],
+      store,
+    );
   }
 
   async getHistory(
@@ -1338,7 +1520,11 @@ export class SharedRuntimeChatService {
     roomId = agentId,
     store?: SharedRuntimeHistoryStore,
   ): Promise<SharedTurnMessage[]> {
-    return await loadHistory(agentId, sharedRuntimeRoomKey(agentId, roomId), store);
+    return await loadHistory(
+      agentId,
+      sharedRuntimeRoomKey(agentId, roomId),
+      store,
+    );
   }
 
   async getCharacter(
@@ -1384,7 +1570,9 @@ export class SharedRuntimeChatService {
     }
     const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
     const messageRole = options.trustedMessageRole ?? "user";
-    const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
+    const claimKey = options.turnClaims
+      ? sharedTurnClientMessageId(params)
+      : undefined;
     if (claimKey && options.turnClaims) {
       const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
       if (replay) {
@@ -1434,7 +1622,9 @@ export class SharedRuntimeChatService {
     }
 
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
-    const memoryStore = options.transientInput ? null : sharedTurnMemoryStore(agent, roomId);
+    const memoryStore = options.transientInput
+      ? null
+      : sharedTurnMemoryStore(agent, roomId);
     const [factsContext, recallBlock] = await Promise.all([
       sharedTurnFactsContext(memoryStore, options.trustedAccountState),
       sharedTurnRecallContext(memoryStore, text, history),
@@ -1455,7 +1645,9 @@ export class SharedRuntimeChatService {
         history,
         message: text,
         ...(recallContext ? { recallContext } : {}),
-        ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
+        ...(options.trustedUserUtterance
+          ? { capabilityText: options.trustedUserUtterance }
+          : {}),
         messageRole,
         messageIds,
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
@@ -1610,7 +1802,9 @@ export class SharedRuntimeChatService {
     if (!text) return sseError("message.send requires params.text");
     const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
     const messageRole = options.trustedMessageRole ?? "user";
-    const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
+    const claimKey = options.turnClaims
+      ? sharedTurnClientMessageId(params)
+      : undefined;
     if (claimKey && options.turnClaims) {
       const claimStartedAt = performance.now();
       const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
@@ -1631,7 +1825,9 @@ export class SharedRuntimeChatService {
                 userMessageId: replay.userMessageId,
                 text: replay.text,
                 fullText: replay.text,
-                ...(replay.actionResults ? { actionResults: replay.actionResults } : {}),
+                ...(replay.actionResults
+                  ? { actionResults: replay.actionResults }
+                  : {}),
                 timing: replayedSharedProviderTiming(),
               }),
             { headers: { "Content-Type": "text/event-stream; charset=utf-8" } },
@@ -1682,10 +1878,13 @@ export class SharedRuntimeChatService {
     const terminalBoundary = new Promise<never>((_resolve, reject) => {
       rejectTerminalBoundary = reject;
       terminalDeadlineTimer = setTimeout(() => {
-        const error = new ElizaError("Shared runtime turn exceeded its terminal deadline", {
-          code: "SHARED_RUNTIME_TURN_DEADLINE_EXCEEDED",
-          context: { timeoutMs: this.streamTerminalDeadlineMs },
-        });
+        const error = new ElizaError(
+          "Shared runtime turn exceeded its terminal deadline",
+          {
+            code: "SHARED_RUNTIME_TURN_DEADLINE_EXCEEDED",
+            context: { timeoutMs: this.streamTerminalDeadlineMs },
+          },
+        );
         failTerminalBoundary(error, true);
       }, this.streamTerminalDeadlineMs);
     });
@@ -1731,16 +1930,22 @@ export class SharedRuntimeChatService {
     const detachRequestAbort = () =>
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
-    const streamMemoryStore = options.transientInput ? null : sharedTurnMemoryStore(agent, roomId);
+    const streamMemoryStore = options.transientInput
+      ? null
+      : sharedTurnMemoryStore(agent, roomId);
     const streamTurnStartedAtEpochMs = Date.now();
     let streamTerminalTiming: SharedRuntimeTimingReceipt | undefined;
     try {
-      const [streamFactsContext, streamRecallBlock] = await withinTerminalDeadline(
-        Promise.all([
-          sharedTurnFactsContext(streamMemoryStore, options.trustedAccountState),
-          sharedTurnRecallContext(streamMemoryStore, text, history),
-        ]),
-      );
+      const [streamFactsContext, streamRecallBlock] =
+        await withinTerminalDeadline(
+          Promise.all([
+            sharedTurnFactsContext(
+              streamMemoryStore,
+              options.trustedAccountState,
+            ),
+            sharedTurnRecallContext(streamMemoryStore, text, history),
+          ]),
+        );
       const streamRecallContext = combinedTurnContext(
         streamFactsContext,
         streamRecallBlock,
@@ -1753,8 +1958,12 @@ export class SharedRuntimeChatService {
           character,
           history,
           message: text,
-          ...(streamRecallContext ? { recallContext: streamRecallContext } : {}),
-          ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
+          ...(streamRecallContext
+            ? { recallContext: streamRecallContext }
+            : {}),
+          ...(options.trustedUserUtterance
+            ? { capabilityText: options.trustedUserUtterance }
+            : {}),
           messageRole,
           messageIds,
           ...(claimKey ? { originClientMessageId: claimKey } : {}),
@@ -1798,7 +2007,10 @@ export class SharedRuntimeChatService {
         "stream setup failed after admission",
       );
       if (turnTimedOut) {
-        return withTurnTimingHeaders(sseError("Shared runtime stream timed out"), timings);
+        return withTurnTimingHeaders(
+          sseError("Shared runtime stream timed out"),
+          timings,
+        );
       }
       const admissionFailure = providerBoundaryAdmissionFailure(error);
       if (admissionFailure instanceof InsufficientCreditsError) {
@@ -1829,7 +2041,10 @@ export class SharedRuntimeChatService {
           "degraded turn settlement exceeded terminal boundary",
         );
         if (turnTimedOut) {
-          return withTurnTimingHeaders(sseError("Shared runtime stream timed out"), timings);
+          return withTurnTimingHeaders(
+            sseError("Shared runtime stream timed out"),
+            timings,
+          );
         }
         throw error;
       }
@@ -1885,13 +2100,17 @@ export class SharedRuntimeChatService {
         closeTerminalBoundary();
         detachRequestAbort();
       }
-      return withTurnTimingHeaders(sseError("Shared runtime stream did not start"), timings);
+      return withTurnTimingHeaders(
+        sseError("Shared runtime stream did not start"),
+        timings,
+      );
     }
 
     const encoder = new TextEncoder();
     const terminalReminderAction = parseSharedReminderActionProvenance(
       turn.history?.findLast(
-        (message) => message.role === "assistant" && message.id === messageIds.assistant,
+        (message) =>
+          message.role === "assistant" && message.id === messageIds.assistant,
       )?.reminderAction,
     );
     const makeTurnMessages = (
@@ -1902,7 +2121,14 @@ export class SharedRuntimeChatService {
       const sentAt = Date.now();
       const messages: SharedTurnMessage[] = options.transientInput
         ? []
-        : [{ id: messageIds.user, role: messageRole, content: text, createdAt: sentAt }];
+        : [
+            {
+              id: messageIds.user,
+              role: messageRole,
+              content: text,
+              createdAt: sentAt,
+            },
+          ];
       const assistantText = reply.trim();
       if (assistantText) {
         messages.push({
@@ -1932,7 +2158,12 @@ export class SharedRuntimeChatService {
         await billing?.settle(0);
         return;
       }
-      await settleAmbiguousProviderWorkOffPath(agent, billing, options.executionCtx, reason);
+      await settleAmbiguousProviderWorkOffPath(
+        agent,
+        billing,
+        options.executionCtx,
+        reason,
+      );
     };
     const finalizeMessages = (
       reply: string,
@@ -1969,11 +2200,14 @@ export class SharedRuntimeChatService {
               // error-policy:J4 the mirror is an enhancement on the landed turn;
               // report the storage fault instead of failing a reply whose
               // history and claim already committed.
-              logger.warn("[SharedRuntimeChat] long-term-memory mirror failed", {
-                agentId: agent.id,
-                roomId,
-                error: error instanceof Error ? error.message : String(error),
-              });
+              logger.warn(
+                "[SharedRuntimeChat] long-term-memory mirror failed",
+                {
+                  agentId: agent.id,
+                  roomId,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              );
             }
           });
         }
@@ -1992,11 +2226,14 @@ export class SharedRuntimeChatService {
     };
     const continueFinalizationOffPath = (finalization: Promise<void>): void => {
       const observed = finalization.catch((error) => {
-        logger.warn("[SharedRuntimeChatService] interrupted finalization failed", {
-          agentId: agent.id,
-          roomId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.warn(
+          "[SharedRuntimeChatService] interrupted finalization failed",
+          {
+            agentId: agent.id,
+            roomId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
       });
       if (options.executionCtx) {
         options.executionCtx.waitUntil(observed);
@@ -2008,7 +2245,9 @@ export class SharedRuntimeChatService {
       start: async (controller) => {
         let finished = false;
         const parts = turn.parts!;
-        let iterator: ReturnType<(typeof parts)[typeof Symbol.asyncIterator]> | undefined;
+        let iterator:
+          | ReturnType<(typeof parts)[typeof Symbol.asyncIterator]>
+          | undefined;
         try {
           iterator = parts[Symbol.asyncIterator]();
           let pendingNext = iterator.next();
@@ -2107,7 +2346,9 @@ export class SharedRuntimeChatService {
             const actionResults = turnActionResults(
               {
                 ...turn,
-                ...(part.actionResults?.length ? { actionResults: part.actionResults } : {}),
+                ...(part.actionResults?.length
+                  ? { actionResults: part.actionResults }
+                  : {}),
               },
               {
                 agentId: agent.id,
@@ -2144,7 +2385,13 @@ export class SharedRuntimeChatService {
                   } else if (billing) {
                     terminalSettlementStarted = true;
                     await settleOffResponsePath(options.executionCtx, () =>
-                      finishBilling(agent, billing, finalReply, text, part.usage),
+                      finishBilling(
+                        agent,
+                        billing,
+                        finalReply,
+                        text,
+                        part.usage,
+                      ),
                     );
                   }
                 },
@@ -2174,7 +2421,9 @@ export class SharedRuntimeChatService {
           if (!finished) {
             await withinTerminalDeadline(
               finalizeMessages(streamedReply, true, () =>
-                settleInterruptedTurn("provider stream ended without completion"),
+                settleInterruptedTurn(
+                  "provider stream ended without completion",
+                ),
               ),
             );
             if (!consumerCanceled) {
@@ -2192,19 +2441,23 @@ export class SharedRuntimeChatService {
           if (!consumerCanceled) {
             const interruptedReply = streamedReply;
             await checkpointInterruptedTurn(interruptedReply);
-            const finalization = finalizeMessages(interruptedReply, true, async () => {
-              if (!terminalSettlementStarted) {
-                terminalSettlementStarted = true;
-                await settleFailedProviderWorkOffPath(
-                  agent,
-                  billing,
-                  options.executionCtx,
-                  error,
-                  "provider stream failed after dispatch",
-                  interruptedReply.length > 0,
-                );
-              }
-            });
+            const finalization = finalizeMessages(
+              interruptedReply,
+              true,
+              async () => {
+                if (!terminalSettlementStarted) {
+                  terminalSettlementStarted = true;
+                  await settleFailedProviderWorkOffPath(
+                    agent,
+                    billing,
+                    options.executionCtx,
+                    error,
+                    "provider stream failed after dispatch",
+                    interruptedReply.length > 0,
+                  );
+                }
+              },
+            );
             try {
               await withinTerminalDeadline(finalization);
             } catch {
@@ -2217,7 +2470,10 @@ export class SharedRuntimeChatService {
               agent.id,
               providerCancellation,
               options.executionCtx,
-              Math.min(PROVIDER_CANCELLATION_OBSERVE_MS, this.streamTerminalDeadlineMs),
+              Math.min(
+                PROVIDER_CANCELLATION_OBSERVE_MS,
+                this.streamTerminalDeadlineMs,
+              ),
             );
           }
           logger.warn("[SharedRuntimeChatService] stream failed", {
@@ -2225,12 +2481,19 @@ export class SharedRuntimeChatService {
             error: error instanceof Error ? error.message : String(error),
             cause:
               error instanceof Error && error.cause instanceof Error
-                ? truncateWellFormed(toWellFormedUnicode(error.cause.message), 240)
+                ? truncateWellFormed(
+                    toWellFormedUnicode(error.cause.message),
+                    240,
+                  )
                 : undefined,
           });
           if (!consumerCanceled) {
             controller.enqueue(
-              encoder.encode(chatSseFrame("error", { message: "Shared runtime stream failed" })),
+              encoder.encode(
+                chatSseFrame("error", {
+                  message: "Shared runtime stream failed",
+                }),
+              ),
             );
           }
         } finally {
@@ -2238,7 +2501,11 @@ export class SharedRuntimeChatService {
           // Runtime timing is emitted only when the provider iterator reaches
           // its terminal success/error/abort path. Persist it with the turn's
           // one durable trace row and therefore one deterministic sample.
-          if (!turnTimedOut && terminalDoneEmitted && streamTerminalTiming?.outcome === "success") {
+          if (
+            !turnTimedOut &&
+            terminalDoneEmitted &&
+            streamTerminalTiming?.outcome === "success"
+          ) {
             recordTurnTraceOffPath(
               options.executionCtx,
               agent,
@@ -2248,8 +2515,12 @@ export class SharedRuntimeChatService {
               {
                 model: turn.model,
                 degraded: turn.degraded,
-                ...(turn.actionResults ? { actionResults: turn.actionResults } : {}),
-                ...(turn.capabilityWall ? { capabilityWall: turn.capabilityWall } : {}),
+                ...(turn.actionResults
+                  ? { actionResults: turn.actionResults }
+                  : {}),
+                ...(turn.capabilityWall
+                  ? { capabilityWall: turn.capabilityWall }
+                  : {}),
               },
               streamTerminalTiming,
               history,
@@ -2257,7 +2528,8 @@ export class SharedRuntimeChatService {
             );
           } else {
             const failureOutcome =
-              !turnTimedOut && (consumerCanceled || generationAbort.signal.aborted)
+              !turnTimedOut &&
+              (consumerCanceled || generationAbort.signal.aborted)
                 ? "aborted"
                 : "error";
             recordFailedTurnTraceOffPath(
@@ -2293,7 +2565,11 @@ export class SharedRuntimeChatService {
             await turn.cancel?.(reason);
           })
           .then(() => undefined);
-        observeProviderCancellationOffPath(agent.id, providerCancellation, options.executionCtx);
+        observeProviderCancellationOffPath(
+          agent.id,
+          providerCancellation,
+          options.executionCtx,
+        );
 
         // Stage the exact interrupted pair synchronously before the consumer's
         // cancel promise can release room admission. Durable history, billing,
