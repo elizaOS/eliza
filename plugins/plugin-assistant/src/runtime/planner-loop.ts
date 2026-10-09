@@ -132,10 +132,18 @@ import {
   plannerToolScopedRules,
 } from "../prompts/planner.ts";
 import {
+  DEVICE_APPROVAL_REVIEW_TEXT,
+  isPersistedDeviceApprovalPause,
+} from "../services/device-actions/effect-receipts.ts";
+import {
   labelHistorySources,
   orderHistoryFirst,
   referenceRepeatedHistory,
 } from "../services/message/history-wire.ts";
+import {
+  replyClaimsCompletedSideEffect,
+  replyClaimsInProgressWork,
+} from "../services/message/side-effect-claims.ts";
 import {
   declaredIntentsFromContext,
   repairFinishWithProgressPromise,
@@ -2758,6 +2766,55 @@ async function runPlannerLoopIterations(
       // arguments; never replay the original command or its dependent batch.
       trajectory.plannedQueue.length = 0;
       continue;
+    }
+
+    if (isPersistedDeviceApprovalPause(latestResult)) {
+      // The owner must supply the next event. Do not spend another evaluator or
+      // planner call, manufacture a new operation key, or dispatch the queue.
+      // Preserve pending scope, remaining calls and all prior settled outcomes.
+      const startedAt = Date.now();
+      const captured = sanitizePlannerMessage(params.stageOneReplyText);
+      const message =
+        captured &&
+        !isUnsafeUserVisibleText(captured) &&
+        !replyClaimsCompletedSideEffect(captured) &&
+        !replyClaimsInProgressWork(captured)
+          ? captured
+          : (latestResult?.userFacingText ?? DEVICE_APPROVAL_REVIEW_TEXT);
+      const paused: EvaluatorOutput = {
+        success: false,
+        decision: "FINISH",
+        requestFullyCovered: false,
+        replyEffectStatus: "non_applied",
+        thought:
+          "The durable device proposal is waiting for explicit owner input. Requested work remains incomplete; no dependent operation ran.",
+        messageToUser: message,
+      };
+      trajectory.evaluatorOutputs.push(paused);
+      appendEvaluatorContextEvent(
+        trajectory,
+        paused,
+        iteration,
+        redactDiagnosticText,
+      );
+      await recordGatedEvaluationStage({
+        runtime: params.runtime,
+        recorder: params.recorder,
+        trajectoryId: params.trajectoryId,
+        parentStageId: params.parentStageId,
+        iteration,
+        startedAt,
+        endedAt: Date.now(),
+        output: paused,
+        reason: "durable_approval_awaiting_user_input",
+        logger: params.runtime.logger,
+      });
+      return {
+        status: "finished",
+        trajectory,
+        evaluator: paused,
+        finalMessage: userSafeFinalMessage(message, trajectory),
+      };
     }
 
     // A queued call may depend on the preceding result. A failed prerequisite

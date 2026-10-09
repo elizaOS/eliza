@@ -62,6 +62,16 @@ and the process-host configuration. Enabling the plugin does not establish
 worker readiness or authorize device effects. Use the existing reviewed
 workflow and device-action permission/receipt boundaries.
 
+Native Notes read completion is opt-in. Trusted hosts must supply
+`ELIZA_HOST_CONTEXT_REVISION` and rotate it when the account or provider authority
+changes. Without it, approvals retain ordinary typed receipts but cannot start a
+model continuation. After Share, the authenticated owner explicitly calls
+`POST /api/client-devices/proposals/:id/read-completion` with the retained original
+request correlation and receipt attempt. The reply uses only the shared snapshot
+and is saved in the original room; receipt reads do not start inference. The
+matching `cancel-read-completion` route retires the completion. Deploy the additive
+`0006_device_read_completion` migration without resetting existing approvals.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:
