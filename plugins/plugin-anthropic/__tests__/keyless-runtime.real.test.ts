@@ -4,7 +4,7 @@
  * The Anthropic plugin registers model handlers for every text `ModelType`,
  * which in production POST to `api.anthropic.com` and require `ANTHROPIC_API_KEY`.
  * This e2e loads the REAL `anthropicPlugin` under `createTestRuntimeWithModelProvider()` with NO
- * API key set, and proves the deterministic deterministic-model-provider proxy (registered at
+ * API key set, and proves the deterministic-model-provider proxy (registered at
  * `priority: 1000`) wins model dispatch over the provider's handlers — so a
  * provider plugin can be driven end-to-end with zero network and zero secrets.
  *

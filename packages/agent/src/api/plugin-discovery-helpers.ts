@@ -78,7 +78,7 @@ function findPluginsManifestRoot(startDir: string): string {
 
   for (let i = 0; i < 16; i += 1) {
     if (fs.existsSync(path.join(dir, "plugins.json"))) {
-      // Keep walking so wrapper wrapper repos can override the nested
+      // Keep walking so wrapper repos can override the nested
       // upstream eliza checkout's package root with the outer workspace manifest.
       manifestRoot = dir;
     }

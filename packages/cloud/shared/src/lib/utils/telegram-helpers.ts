@@ -1,6 +1,6 @@
 import { splitMessageLosslessly } from "./message-chunking";
 
-// Provides cloud utility telegram helpers helpers shared by backend services.
+// Provides cloud utility telegram helpers shared by backend services.
 export function escapeMarkdownV2(text: string): string {
   if (!text) return "";
   return text.replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, "\\$1");

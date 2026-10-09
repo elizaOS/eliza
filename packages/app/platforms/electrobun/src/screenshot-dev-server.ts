@@ -1,7 +1,7 @@
 /**
  * Dev-only localhost server so tools can fetch a PNG without talking to WKWebView APIs.
  *
- * **Why separate HTTP in Electrobun:** the the app API process cannot capture the desktop; capture
+ * **Why separate HTTP in Electrobun:** the app API process cannot capture the desktop; capture
  * runs in the shell process via ScreenCaptureManager → OS tools (e.g. macOS `screencapture`).
  *
  * **Window-scoped when possible:** to keep other windows/cursor/desktop out of agent evidence,
