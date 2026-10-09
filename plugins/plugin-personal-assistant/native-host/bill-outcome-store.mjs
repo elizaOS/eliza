@@ -1,8 +1,65 @@
 import { randomUUID } from "node:crypto";
+import {
+  closeSync,
+  fsyncSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  writeSync,
+} from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { BillHostError } from "./errors.mjs";
+
+/**
+ * Append-only file, independent of the database. An observed outcome is
+ * written here before its INSERT, so a failed INSERT or a process exit does
+ * not lose the provider reference.
+ */
+function outcomeJournal(path) {
+  const append = (entry) => {
+    const fd = openSync(path, "a", 0o600);
+    try {
+      writeSync(fd, `${JSON.stringify(entry)}\n`);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  };
+  const read = () => {
+    let text;
+    try {
+      text = readFileSync(path, "utf8");
+    } catch (error) {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    }
+    const entries = [];
+    for (const line of text.split("\n")) {
+      if (!line) continue;
+      try {
+        entries.push(JSON.parse(line));
+      } catch {
+        // Only an interrupted final append can be torn. It was never acknowledged.
+      }
+    }
+    return entries;
+  };
+  const replace = (entries) => {
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    const fd = openSync(temporary, "wx", 0o600);
+    try {
+      writeSync(fd, entries.map((e) => `${JSON.stringify(e)}\n`).join(""));
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(temporary, path);
+  };
+  return { append, read, replace };
+}
+
 /** Minimal product outcome records. No page bodies, tokens, or permanent transcripts. */
-export function createBillOutcomeStore(db, tasks) {
+export function createBillOutcomeStore(db, tasks, { journalPath } = {}) {
   db.exec(
     "CREATE TABLE IF NOT EXISTS bill_outcomes_v1 (task_id TEXT PRIMARY KEY, owner_key TEXT NOT NULL, document TEXT NOT NULL)",
   );
@@ -17,6 +74,7 @@ export function createBillOutcomeStore(db, tasks) {
   );
   const pending = new Map();
   const pendingAttempts = new Map();
+  const journal = journalPath ? outcomeJournal(journalPath) : null;
   const key = (owner) =>
     JSON.stringify([
       owner.agentId,
@@ -113,7 +171,11 @@ export function createBillOutcomeStore(db, tasks) {
       // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters in provider references.
       /[\x00-\x1f\x7f]/.test(record.decision.reference) ||
       typeof record.decision.billSource !== "string" ||
-      record.decision.billSource.length > 512
+      record.decision.billSource.length > 512 ||
+      (record.decision.company != null &&
+        (typeof record.decision.company !== "string" ||
+          !record.decision.company.trim() ||
+          record.decision.company.length > 300))
     )
       throw new BillHostError("Invalid outcome record");
     const d = record.decision;
@@ -144,6 +206,33 @@ export function createBillOutcomeStore(db, tasks) {
     )
       throw new BillHostError("Outcome source must be a canonical HTTPS page");
     return record;
+  }
+  // Recover outcomes whose INSERT never committed. They are offered again as
+  // pending records; nothing is sent to the website.
+  if (journal) {
+    const unsaved = [];
+    for (const entry of journal.read()) {
+      if (
+        !entry ||
+        typeof entry.taskId !== "string" ||
+        typeof entry.ownerKey !== "string"
+      )
+        continue;
+      const row = db
+        .prepare(
+          "SELECT document FROM bill_outcomes_v1 WHERE task_id=? AND owner_key=?",
+        )
+        .get(entry.taskId, entry.ownerKey);
+      if (row) continue;
+      try {
+        pending.set(
+          JSON.stringify([entry.ownerKey, entry.taskId]),
+          validate(entry.record),
+        );
+        unsaved.push(entry);
+      } catch {}
+    }
+    journal.replace(unsaved);
   }
   return {
     latest(owner) {
@@ -509,9 +598,23 @@ export function createBillOutcomeStore(db, tasks) {
               paymentDate: decision.paymentDate ?? null,
               currency: decision.currency ?? null,
               currencyDigits: decision.currencyDigits ?? null,
+              company: decision.company ?? null,
             },
           });
           pending.set(pendingKey, record);
+          // Journal before the INSERT. If the journal write fails, the outcome
+          // stays pending in memory and the person is told to retry saving.
+          try {
+            journal?.append({ taskId, ownerKey, record });
+          } catch {
+            return {
+              ...structuredClone(record.decision),
+              observedAt: record.observedAt,
+              saveStatus: "pending",
+              message:
+                "The website outcome was observed. Finishing its local record failed. Retry saving the reference; do not submit another payment.",
+            };
+          }
           return finish(record);
         },
       };

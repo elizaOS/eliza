@@ -2,15 +2,9 @@ import { BillHostError } from "./errors.mjs";
 
 const invalid = () =>
   new BillHostError("Bill extraction profile or source is unavailable");
-const required = [
-  "invoiceId",
-  "company",
-  "origin",
-  "accountLabel",
-  "amount",
-  "dueDate",
-];
-const optional = ["serviceAddress", "serviceStarts", "serviceEnds"];
+const required = ["invoiceId", "company", "origin", "accountLabel", "amount"];
+// Some bills (for example autopay notices) carry no due date.
+const optional = ["dueDate", "serviceAddress", "serviceStarts", "serviceEnds"];
 const bounded = (v, max) =>
   typeof v === "string" && v.trim().length > 0 && v.length <= max;
 
@@ -145,8 +139,9 @@ export function createLabelledBillExtractor(profile) {
       amountMinor: amountMinor(values.get("amount"), p.currencyDigits),
       currency: p.currency,
       currencyDigits: p.currencyDigits,
-      dueDate: calendarDate(values.get("dueDate"), p.dateFormat),
     };
+    if (values.has("dueDate"))
+      bill.dueDate = calendarDate(values.get("dueDate"), p.dateFormat);
     if (values.has("serviceAddress"))
       bill.serviceAddress = values.get("serviceAddress");
     if (values.has("serviceStarts") || values.has("serviceEnds")) {

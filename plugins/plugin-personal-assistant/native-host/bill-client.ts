@@ -60,6 +60,10 @@ export function validateBillSourceLinks(value: unknown): BillSourceReference[] {
 export type BillSourceCandidate = {
   candidateId: string;
   billId: string;
+  /** When the newest message for this bill arrived (ISO time). */
+  receivedAt?: string;
+  /** Set on the newest candidate only. */
+  mostRecent?: true;
   facts: {
     company: string;
     accountLabel: string;
@@ -67,15 +71,29 @@ export type BillSourceCandidate = {
     amountMinor: number;
     currency: string;
     currencyDigits: number;
-    dueDate: string;
+    dueDate?: string;
     serviceAddress?: string;
     servicePeriod?: { startsOn: string; endsOn: string };
   };
   sources: BillSourceReference[];
 };
+/** A look-alike bill email for another company, account or website. */
+export type BillSourceConflict = {
+  company: string;
+  accountLabel: string;
+  origin: string;
+};
 export type BillSourceOffer = {
-  status: "candidate" | "ambiguous" | "missing" | "incomplete";
+  status:
+    | "candidate"
+    | "ambiguous"
+    | "missing"
+    | "incomplete"
+    | "conflicting-source";
   reason?: "conflicting-invoice";
+  /** Messages from the bill sender that could not be read. */
+  unreadable?: number;
+  conflicts?: BillSourceConflict[];
   offerId: string;
   expectedRevision: number;
   expiresAt: number;
@@ -88,14 +106,31 @@ export function readBillSourceOffer(
   const v = value as BillSourceOffer;
   if (
     !v ||
-    !["candidate", "ambiguous", "missing", "incomplete"].includes(v.status) ||
+    ![
+      "candidate",
+      "ambiguous",
+      "missing",
+      "incomplete",
+      "conflicting-source",
+    ].includes(v.status) ||
     !/^[a-f0-9-]{36}$/.test(v.offerId) ||
     !Number.isSafeInteger(v.expectedRevision) ||
     v.expectedRevision < 0 ||
     !Number.isSafeInteger(v.expiresAt) ||
     !Array.isArray(v.candidates) ||
     v.candidates.length > 100 ||
-    (v.reason !== undefined && v.reason !== "conflicting-invoice")
+    (v.reason !== undefined && v.reason !== "conflicting-invoice") ||
+    (v.unreadable !== undefined &&
+      (!Number.isSafeInteger(v.unreadable) || v.unreadable < 1)) ||
+    (v.conflicts !== undefined &&
+      (!Array.isArray(v.conflicts) ||
+        v.conflicts.length > 5 ||
+        v.conflicts.some(
+          (c) =>
+            ![c?.company, c?.accountLabel, c?.origin].every(
+              (x) => typeof x === "string" && x.length > 0 && x.length <= 300,
+            ),
+        )))
   )
     throw new BillClientResponseError("Unsupported source result");
   for (const c of v.candidates) {
@@ -110,9 +145,16 @@ export function readBillSourceOffer(
       f.currencyDigits < 0 ||
       f.currencyDigits > 4 ||
       !/^[A-Z]{3}$/.test(f.currency) ||
-      ![f.company, f.accountLabel, f.origin, f.dueDate].every(
+      ![f.company, f.accountLabel, f.origin].every(
         (x) => typeof x === "string" && x.length > 0 && x.length <= 300,
       ) ||
+      (f.dueDate !== undefined &&
+        (typeof f.dueDate !== "string" ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(f.dueDate))) ||
+      (c.receivedAt !== undefined &&
+        (typeof c.receivedAt !== "string" ||
+          !Number.isFinite(Date.parse(c.receivedAt)))) ||
+      (c.mostRecent !== undefined && c.mostRecent !== true) ||
       !Array.isArray(c.sources) ||
       !c.sources.length
     )
@@ -178,6 +220,8 @@ export type BillDecision = {
   paymentDate?: string | null;
   currency?: string;
   currencyDigits?: number;
+  /** The company named on the source bill, for an outcome. */
+  company?: string | null;
 };
 export function readBillDecision(
   value: unknown,
@@ -198,6 +242,7 @@ export function readBillDecision(
       "submission-pending",
       "human-submit",
       "outcome",
+      "prior-outcome",
       "paused",
       "unknown-outcome",
       "unavailable",
@@ -263,6 +308,13 @@ export function readBillDecision(
       (typeof value !== "string" || value.length > 2000)
     )
       throw new BillClientResponseError("Invalid bill state");
+  if (
+    decision.company != null &&
+    (typeof decision.company !== "string" ||
+      !decision.company.trim() ||
+      decision.company.length > 300)
+  )
+    throw new BillClientResponseError("Invalid bill state");
   if (
     decision.review !== undefined ||
     ["choose-existing-method", "human-submit"].includes(decision.kind)
@@ -340,11 +392,27 @@ export interface BillDecisionState {
   pending: boolean;
   error: "load" | "save" | null;
 }
+/** Why a source search failed, from the host's fixed list. */
+export type BillSourceFailureReason =
+  | "reauth_required"
+  | "insufficient_scope"
+  | "account_changed"
+  | "unavailable"
+  | "timeout";
+const sourceFailureReasons: readonly BillSourceFailureReason[] = [
+  "reauth_required",
+  "insufficient_scope",
+  "account_changed",
+  "unavailable",
+  "timeout",
+];
 export interface BillSourceState {
   offer: BillSourceOffer | null;
   pending: boolean;
   selected: boolean;
   error: "search" | "selection" | null;
+  /** Set with a search error when the request error carries a host reason. */
+  reason?: BillSourceFailureReason;
 }
 
 /** One active task and operation. Invalidating a request suppresses its replies;
@@ -507,6 +575,7 @@ export class BillSourceClient extends BillSession<BillSourceState> {
       ticket = this.begin();
     if (ticket === null || taskId === null) return false;
     this.state.error = null;
+    delete this.state.reason;
     this.state.selected = false;
     this.publish();
     try {
@@ -523,9 +592,15 @@ export class BillSourceClient extends BillSession<BillSourceState> {
         this.state.offer = readBillSourceOffer(reply, this.validators);
       }
       return true;
-    } catch {
+    } catch (error) {
       if (this.current(ticket)) {
         this.state.error = body ? "selection" : "search";
+        const reason = (error as { reason?: unknown } | null)?.reason;
+        if (
+          !body &&
+          sourceFailureReasons.includes(reason as BillSourceFailureReason)
+        )
+          this.state.reason = reason as BillSourceFailureReason;
         // An uncertain POST can have committed. Discard its offer and require an
         // explicit GET of authoritative state; never retry/replay that POST.
         if (body) this.state.offer = null;

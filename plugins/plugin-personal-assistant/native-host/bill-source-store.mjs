@@ -45,7 +45,13 @@ function validateCandidate(value, task) {
     !Number.isInteger(f.currencyDigits) ||
     f.currencyDigits < 0 ||
     f.currencyDigits > 4 ||
-    !date(f.dueDate)
+    (f.dueDate !== undefined && !date(f.dueDate)) ||
+    // Offers saved before arrival times were recorded have none.
+    (c.receivedAt !== undefined &&
+      (typeof c.receivedAt !== "string" ||
+        !Number.isFinite(Date.parse(c.receivedAt)) ||
+        new Date(c.receivedAt).toISOString() !== c.receivedAt)) ||
+    (c.mostRecent !== undefined && c.mostRecent !== true)
   )
     throw fail();
   if (
@@ -61,7 +67,15 @@ function validateCandidate(value, task) {
   if (
     Object.keys(c).some(
       (k) =>
-        !["billId", "candidateId", "sourceRef", "facts", "sources"].includes(k),
+        ![
+          "billId",
+          "candidateId",
+          "sourceRef",
+          "receivedAt",
+          "mostRecent",
+          "facts",
+          "sources",
+        ].includes(k),
     ) ||
     Object.keys(f).some(
       (k) =>
@@ -125,18 +139,45 @@ function validateCandidate(value, task) {
 function validateResult(result, task) {
   if (
     !result ||
-    !["candidate", "ambiguous", "missing", "incomplete"].includes(
-      result.status,
-    ) ||
+    ![
+      "candidate",
+      "ambiguous",
+      "missing",
+      "incomplete",
+      "conflicting-source",
+    ].includes(result.status) ||
     !Array.isArray(result.candidates)
   )
     throw fail();
   const candidates = result.candidates.map((c) => validateCandidate(c, task));
   if (
+    result.conflicts !== undefined &&
+    (!Array.isArray(result.conflicts) || result.conflicts.length > 5)
+  )
+    throw fail();
+  // Look-alike messages: only the identity facts, for the person to compare.
+  const conflicts = result.conflicts?.map((c) => {
+    if (
+      !c ||
+      Object.keys(c).sort().join(",") !== "accountLabel,company,origin" ||
+      ![c.company, c.accountLabel, c.origin].every(text)
+    )
+      throw fail();
+    return {
+      company: c.company,
+      accountLabel: c.accountLabel,
+      origin: c.origin,
+    };
+  });
+  if (
     new Set(candidates.map((c) => c.candidateId)).size !== candidates.length ||
     (result.status === "candidate" && candidates.length !== 1) ||
-    (["missing", "incomplete"].includes(result.status) &&
+    (["missing", "incomplete", "conflicting-source"].includes(result.status) &&
       candidates.length !== 0) ||
+    (result.status === "conflicting-source" && !conflicts?.length) ||
+    (result.unreadable !== undefined &&
+      (!Number.isSafeInteger(result.unreadable) || result.unreadable < 1)) ||
+    candidates.filter((c) => c.mostRecent).length > 1 ||
     (result.reason !== undefined && result.reason !== "conflicting-invoice")
   )
     throw fail();
@@ -144,6 +185,8 @@ function validateResult(result, task) {
     status: result.status,
     ...(result.reason ? { reason: result.reason } : {}),
     candidates,
+    ...(result.unreadable ? { unreadable: result.unreadable } : {}),
+    ...(conflicts?.length ? { conflicts } : {}),
   };
 }
 function fingerprint(result) {

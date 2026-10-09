@@ -5,6 +5,11 @@ import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import {
+  controls,
+  deriveBillDecision,
+} from "../test/fixtures/bill-host/policy.mjs";
+import { BillCodeCoordinator } from "./bill-code-coordinator.mjs";
 import { createConfiguredBillHelper } from "./configured-bill-helper.mjs";
 
 async function fixture(
@@ -319,4 +324,197 @@ test("revocation and ordinary commands never wait for registration or retry", as
   } finally {
     await helper.close();
   }
+});
+
+/** A resolver shaped like GoogleTaskCodeResolver over the configured read port. */
+function codeResolver({ google }) {
+  const values = new Map();
+  return {
+    async resolve(context) {
+      const page = await google.service.searchGmailMessagesPage({
+        accountId: context.accountId,
+        query: context.searchQuery,
+        pageSize: 10,
+      });
+      const codes = [];
+      for (const summary of page.messages) {
+        const detail = await google.service.getGmailMessageDetail({
+          accountId: context.accountId,
+          messageId: summary.externalId,
+        });
+        const parsed = google.parse(detail, context);
+        if (parsed?.challengeId === context.challengeId) codes.push(parsed);
+      }
+      const live = codes.filter((code) => code.expiresAt > Date.now());
+      if (live.length > 1) return { status: "ambiguous" };
+      if (!live.length) return { status: codes.length ? "expired" : "missing" };
+      const valueRef = `ref:${values.size}`;
+      values.set(valueRef, live[0].code);
+      return { status: "ready", valueRef, expiresAt: live[0].expiresAt };
+    },
+    async consumeForFill(valueRef) {
+      const value = values.get(valueRef);
+      values.delete(valueRef);
+      return value;
+    },
+    revoke() {
+      values.clear();
+    },
+  };
+}
+
+test("configured emailed-code policy reaches the helper and fills only one current code", async (t) => {
+  const f = await fixture(t);
+  let connected = "grant-a";
+  const mailbox = new Map();
+  const reads = [];
+  const googleReadPort = {
+    currentAccountId: async () => connected,
+    async searchGmailMessagesPage(input) {
+      reads.push(input.accountId);
+      return {
+        messages: [...mailbox.keys()].map((externalId) => ({ externalId })),
+        nextPageToken: null,
+      };
+    },
+    async getGmailMessageDetail(input) {
+      reads.push(input.accountId);
+      return { bodyText: mailbox.get(input.messageId) };
+    },
+  };
+  const parse = (detail) => {
+    const [challengeId, code, expiresAt] = detail.bodyText.split(" ");
+    return { challengeId, code, expiresAt: Number(expiresAt) };
+  };
+  const challengeForBill = async () => ({
+    targetRef: "otp",
+    challengeId: "challenge",
+    recipient: "person@example.org",
+    senders: ["security@biller.example"],
+    issuedAt: Date.now() - 1000,
+    expiresAt: Date.now() + 60000,
+    searchQuery: "challenge",
+  });
+  f.args.googleReadPort = googleReadPort;
+  f.args.configuration = {
+    ...f.args.configuration,
+    googleSource: { senders: ["bills@example.org"] },
+    bill: {
+      company: "Example",
+      accountLabel: "1234",
+      origin: "https://biller.example",
+    },
+  };
+  f.args.hostPolicy = {
+    ...f.args.hostPolicy,
+    parseMessage: () => null,
+    googleCode: { parse, challengeForBill },
+  };
+  const helper = await createConfiguredBillHelper(f.args);
+  t.after(() => helper.close().catch(() => {}));
+  const { google } = f.options;
+  assert.equal(google.service, googleReadPort);
+  assert.equal(google.parse, parse);
+  assert.equal(google.challengeForBill, challengeForBill);
+
+  const owner = {
+    actorId: "owner",
+    agentId: "agent",
+    connector: { accountId: "owner" },
+  };
+  const task = {
+    id: "task",
+    epoch: 1,
+    revision: 1,
+    status: "active",
+    goalRef: "goal",
+    owner,
+    authorization: { state: "active", decisionId: "grant" },
+    operations: [],
+  };
+  // The task epoch binds the Google account connected when it first reads.
+  assert.equal(await google.accountForTask(task), "grant-a");
+  connected = "grant-b";
+  assert.equal(await google.accountForTask(task), "grant-a");
+  assert.equal(await google.accountForTask({ ...task, epoch: 2 }), "grant-b");
+  connected = "grant-a";
+  await assert.rejects(
+    google.accountForTask({ ...task, goalRef: "other" }),
+    /Unconfigured bill task/,
+  );
+
+  const filled = [];
+  let coordinator;
+  const runtime = {
+    owner,
+    get: () => structuredClone(task),
+    observe: async () => {},
+    execute: async (_id, _revision, proposal) => {
+      const value = await coordinator.resolveValue(proposal.valueRef, task);
+      filled.push(value.text);
+      task.operations.push({ proposal, status: "succeeded" });
+      task.revision++;
+      return structuredClone(task);
+    },
+  };
+  coordinator = new BillCodeCoordinator({
+    deriveBillDecision,
+    controls,
+    runtime,
+    actuator: {
+      readObservation: () => ({
+        snapshot: {
+          url: "https://biller.example/",
+          text: "Environment: Controlled test biller\nCompany: Example\nSession: Signed in\nVerification: Required",
+          elements: [{ selector: "otp" }],
+        },
+        observation: { id: "observation", version: 1, inputRevision: 0 },
+      }),
+    },
+    resolver: codeResolver({ google }),
+    challengeProvider: google.challengeForBill,
+    resolveGoogleAccount: google.accountForTask,
+  });
+  const bill = {
+    origin: "https://biller.example",
+    sourceRef: "mail:bill",
+    company: "Example",
+    amountMinor: 100,
+  };
+  const fill = () => coordinator.fill({ taskId: task.id, bill });
+  const later = Date.now() + 60000;
+
+  assert.match((await fill()).message, /No matching code/);
+  mailbox.set("old", `challenge 111111 ${Date.now() - 1}`);
+  assert.match((await fill()).message, /expired/);
+  mailbox.set("a", `challenge 222222 ${later}`);
+  mailbox.set("b", `challenge 333333 ${later}`);
+  assert.match((await fill()).message, /More than one code/);
+  assert.deepEqual(filled, []);
+  mailbox.delete("b");
+  const result = await fill();
+  assert.match(result.message, /press Verify yourself/);
+  assert.equal(JSON.stringify(result).includes("222222"), false);
+  assert.deepEqual(filled, ["222222"]);
+  // Every code read named the bound grant, not another connected mailbox.
+  assert.deepEqual(new Set(reads), new Set(["grant-a"]));
+});
+
+test("an emailed-code policy without a Google source or parser is refused", async (t) => {
+  const f = await fixture(t);
+  f.args.hostPolicy = {
+    ...f.args.hostPolicy,
+    googleCode: { parse: () => null, challengeForBill: async () => null },
+  };
+  await assert.rejects(
+    createConfiguredBillHelper(f.args),
+    /Incomplete Google verification configuration/,
+  );
+  f.args.configuration = { ...f.args.configuration, googleSource: {} };
+  f.args.googleReadPort = {};
+  f.args.hostPolicy.googleCode = { challengeForBill: async () => null };
+  await assert.rejects(
+    createConfiguredBillHelper(f.args),
+    /Incomplete Google verification configuration/,
+  );
 });

@@ -169,6 +169,37 @@ function invoiceProjection(value, id) {
   };
 }
 
+const googleGrantId = (value) =>
+  typeof value === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(value);
+const googleScopes = (value) =>
+  Array.isArray(value)
+    ? value.filter(
+        (scope) =>
+          typeof scope === "string" &&
+          /^(?:https:\/\/www\.googleapis\.com\/auth\/[a-z.]{1,64}|https:\/\/mail\.google\.com\/|openid|email|profile)$/.test(
+            scope,
+          ),
+      )
+    : [];
+// The Cloud Gmail search and read routes need one of these scopes.
+const gmailBodyRead = (scopes) =>
+  [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://mail.google.com/",
+  ].some((scope) => scopes.includes(scope));
+/** Typed task-read failure. `code` is one fixed reason; no provider text. */
+const googleReadFailure = (code) =>
+  new NativeCloudServiceError(`Google task read failed (${code})`, {
+    status:
+      {
+        reauth_required: 401,
+        insufficient_scope: 403,
+        account_changed: 409,
+        timeout: 504,
+      }[code] ?? 503,
+    code,
+  });
 const CHECKOUT_SESSION_ID = /^cs_(live|test)_[A-Za-z0-9]+$/;
 function send(res, status, value) {
   res.writeHead(status, {
@@ -490,6 +521,8 @@ export function createCloudRoutes({
   const attempts = new Map(),
     checkoutKeys = new Map();
   let generation = 0;
+  // Advanced by Gmail disconnect; fences task reads that started before it.
+  let googleGeneration = 0;
   let speechStreams;
   function advanceGeneration() {
     generation++;
@@ -501,6 +534,8 @@ export function createCloudRoutes({
     ? createNativeCloudAuth({
         fetchImpl,
         api,
+        // Google account linking stays off until the host enables it.
+        accountLinkReady: hostPolicy.accountLinkReady === true,
         pendingStore: pendingCredentialStore,
         readActive: async () => {
           await credentialWrites;
@@ -745,7 +780,11 @@ export function createCloudRoutes({
       }
       let method = req.method,
         requestInput;
-      if (path === "/gmail/status" || path === "/gmail/connect")
+      if (
+        path === "/gmail/status" ||
+        path === "/gmail/connect" ||
+        path === "/gmail/disconnect"
+      )
         path = "/cloud" + path;
       if (path === "/gmail/list" && method === "POST") {
         requestInput = await body(req);
@@ -767,6 +806,16 @@ export function createCloudRoutes({
         path = "/cloud/gmail/messages/" + requestInput.messageId;
         method = "GET";
       }
+      // The renderer names the connection it shows (from /gmail/status), so
+      // a list or read never falls back to another connected mailbox.
+      if (
+        requestInput?.grantId !== undefined &&
+        !googleGrantId(requestInput.grantId)
+      )
+        throw fail(message("invalidGoogleConnection"));
+      const grantQuery = requestInput?.grantId
+        ? `&grantId=${encodeURIComponent(requestInput.grantId)}`
+        : "";
       allowedQuery(
         url,
         path === "/cloud/login/status"
@@ -1595,6 +1644,14 @@ export function createCloudRoutes({
         const text = value.text ?? value.transcript;
         if (typeof text !== "string")
           throw fail(message("invalidTranscriptionResponse"), 502);
+        // The same host policy that screens typed text screens what was heard.
+        // A spoken secret never reaches the renderer's draft.
+        try {
+          requireNonSensitiveText(text);
+        } catch {
+          send(res, 200, { text: "", redacted: true });
+          return true;
+        }
         send(res, 200, { text });
         return true;
       }
@@ -1624,21 +1681,63 @@ export function createCloudRoutes({
           )
             ? value.identity.email
             : null;
+        const connected = value.connected === true;
         send(res, 200, {
-          connected: value.connected === true,
+          connected,
           configured: value.configured === true,
           reason,
           identity: email ? { email } : null,
+          // The connection the renderer shows; list, read and disconnect name it.
+          connectionId:
+            connected && googleGrantId(value.connectionId)
+              ? value.connectionId
+              : null,
           grantedCapabilities:
             Array.isArray(value.grantedCapabilities) &&
             value.grantedCapabilities.includes("google.gmail.triage")
               ? ["google.gmail.triage"]
               : [],
+          // A metadata-only grant still reports triage. Message reads need a
+          // body-read scope, so the app checks the scopes themselves.
+          grantedScopes: connected ? googleScopes(value.grantedScopes) : [],
+          canReadMessages:
+            connected && gmailBodyRead(googleScopes(value.grantedScopes)),
         });
+        return true;
+      }
+      if (method === "POST" && path === "/cloud/gmail/disconnect") {
+        const input = await body(req, 1024);
+        if (
+          Object.keys(input).some((field) => field !== "connectionId") ||
+          (input.connectionId !== undefined &&
+            !googleGrantId(input.connectionId))
+        )
+          throw fail(message("invalidGoogleConnection"));
+        // Fence task reads first. A read that started for this grant fails
+        // closed even when the remote removal fails.
+        googleGeneration++;
+        await parse(
+          await request("/api/v1/eliza/google/disconnect", {
+            method: "POST",
+            json: {
+              side: "owner",
+              ...(input.connectionId
+                ? { connectionId: input.connectionId }
+                : {}),
+            },
+            key,
+            signal,
+            authorityGeneration: credentialEpoch,
+          }),
+        );
+        googleGeneration++;
+        send(res, 200, { disconnected: true });
         return true;
       }
       if (method === "POST" && path === "/cloud/gmail/connect") {
         await body(req);
+        // A new consent can replace the active connection.
+        googleGeneration++;
         const value = await parse(
           await request("/api/v1/eliza/google/connect/initiate", {
             method: "POST",
@@ -1668,7 +1767,7 @@ export function createCloudRoutes({
         if (query.length > 1000) throw fail(message("searchQueryTooLong"));
         const value = await parse(
           await request(
-            `/api/v1/eliza/google/gmail/search?side=owner&maxResults=${maxResults}&query=${encodeURIComponent(query)}`,
+            `/api/v1/eliza/google/gmail/search?side=owner&maxResults=${maxResults}&query=${encodeURIComponent(query)}${grantQuery}`,
             { key, signal, authorityGeneration: credentialEpoch },
           ),
         );
@@ -1686,7 +1785,7 @@ export function createCloudRoutes({
       if (method === "GET" && read) {
         const value = await parse(
           await request(
-            `/api/v1/eliza/google/gmail/read?side=owner&messageId=${encodeURIComponent(read[1])}`,
+            `/api/v1/eliza/google/gmail/read?side=owner&messageId=${encodeURIComponent(read[1])}${grantQuery}`,
             { key, signal, authorityGeneration: credentialEpoch },
           ),
         );
@@ -1714,12 +1813,21 @@ export function createCloudRoutes({
     const access = await accountAccess();
     if (access.state !== "active") throw hostPolicy.fundingError(access);
   };
-  // This port is never exposed as a renderer route. It shares login/logout epochs.
-  handleCloudRoute.googleForAccount = ({ actorId, accountId }) => {
+  // This port is never exposed as a renderer route. It shares login/logout
+  // epochs. Each read first checks that the owner's connected Google account
+  // is still the grant it reads, so a reconnect to another mailbox is noticed.
+  // Without `accountId`, the caller binds each task to the grant that
+  // `currentAccountId()` returned when the task started.
+  handleCloudRoute.googleForAccount = ({
+    actorId,
+    accountId,
+    timeoutMs = 20000,
+    retryDelaysMs = [250, 1000],
+  }) => {
     if (typeof credentialGate !== "function" || typeof actorId !== "string")
       throw fail(message("taskAccountBindingUnavailable"), 503);
     const epoch = generation;
-    const check = async () => {
+    const check = async (googleEpoch) => {
       await ready;
       current(epoch);
       await credentialWrites;
@@ -1727,41 +1835,87 @@ export function createCloudRoutes({
       if ((await credentialGate()) !== actorId)
         throw fail(message("taskAccountChanged"), 409);
       current(epoch);
+      if (googleEpoch !== googleGeneration)
+        throw googleReadFailure("account_changed");
     };
-    return createManagedGoogleReadPort({
-      accountId,
-      request: async (path, maxBytes) => {
-        await check();
-        const key = await usableCredential();
-        await check();
-        if (!key) throw fail(message("cloudAccountUnavailable"), 401);
-        const response = await request(path, {
-          key,
-          authorityGeneration: epoch,
-        });
-        if (!response.ok)
-          throw fail(
-            `Cloud request failed (HTTP ${response.status})`,
-            response.status,
-          );
-        const chunks = [];
-        let size = 0;
-        for await (const chunk of response.body) {
-          await check();
-          size += chunk.length;
-          if (size > maxBytes)
-            throw fail(message("cloudResponseTooLarge"), 502);
-          chunks.push(chunk);
-        }
-        await check();
-        let value;
+    // Every task read is a GET. Retry only a timeout, 429 or 5xx, a bounded
+    // number of times; never a refusal.
+    const readJson = async (path, maxBytes, googleEpoch) => {
+      for (let attempt = 0; ; attempt++) {
         try {
-          value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-        } catch {
-          throw fail(message("invalidCloudResponse"), 502);
+          await check(googleEpoch);
+          const key = await usableCredential();
+          await check(googleEpoch);
+          if (!key) throw fail(message("cloudAccountUnavailable"), 401);
+          const response = await request(path, {
+            key,
+            authorityGeneration: epoch,
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+          if (!response.ok) {
+            void response.body?.cancel().catch(() => {});
+            if (response.status === 401)
+              throw googleReadFailure("reauth_required");
+            throw Object.assign(googleReadFailure("unavailable"), {
+              retry: response.status === 429 || response.status >= 500,
+            });
+          }
+          const chunks = [];
+          let size = 0;
+          for await (const chunk of response.body) {
+            await check(googleEpoch);
+            size += chunk.length;
+            if (size > maxBytes)
+              throw fail(message("cloudResponseTooLarge"), 502);
+            chunks.push(chunk);
+          }
+          await check(googleEpoch);
+          try {
+            return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          } catch {
+            throw fail(message("invalidCloudResponse"), 502);
+          }
+        } catch (error) {
+          const timedOut = error?.name === "TimeoutError";
+          if ((timedOut || error?.retry) && attempt < retryDelaysMs.length) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, retryDelaysMs[attempt]),
+            );
+            continue;
+          }
+          throw timedOut ? googleReadFailure("timeout") : error;
         }
-        return value;
+      }
+    };
+    const currentAccountId = async (googleEpoch) => {
+      const status = await readJson(
+        "/api/v1/eliza/google/status?side=owner",
+        65536,
+        googleEpoch,
+      );
+      if (status?.connected !== true)
+        throw googleReadFailure(
+          ["needs_reauth", "token_missing"].includes(status?.reason)
+            ? "reauth_required"
+            : "account_changed",
+        );
+      if (!googleGrantId(status.connectionId))
+        throw googleReadFailure("unavailable");
+      if (!gmailBodyRead(googleScopes(status.grantedScopes)))
+        throw googleReadFailure("insufficient_scope");
+      return status.connectionId;
+    };
+    const port = createManagedGoogleReadPort({
+      accountId,
+      request: async (path, maxBytes, grantId) => {
+        const googleEpoch = googleGeneration;
+        if ((await currentAccountId(googleEpoch)) !== grantId)
+          throw googleReadFailure("account_changed");
+        return readJson(path, maxBytes, googleEpoch);
       },
+    });
+    return Object.assign(port, {
+      currentAccountId: () => currentAccountId(googleGeneration),
     });
   };
   handleCloudRoute.documentImagesForAccount = ({
