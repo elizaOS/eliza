@@ -356,6 +356,56 @@ export function createSourceReplySnapshot(
   };
 }
 
+/** Resolve only caller-supplied authorized data; do not manufacture dialogue/provider identities. */
+export function resolveSuppliedSourceReply(
+  parts: unknown,
+  scope: SourceReplySnapshot["scope"],
+  sources: readonly { id: string; text: string }[],
+): SourceReplyRendering {
+  const invalid = () =>
+    new ElizaError("Invalid supplied source reply", {
+      code: "STAGE1_INVALID_SOURCE_REPLY",
+    });
+  if (
+    !Array.isArray(parts) ||
+    !scope ||
+    Object.keys(scope).length !== 3 ||
+    [scope.agentId, scope.roomId, scope.messageId].some(
+      (value) => typeof value !== "string" || !value,
+    )
+  )
+    throw invalid();
+  const originals = new Map<string, string>();
+  for (const source of sources) {
+    if (
+      typeof source.id !== "string" ||
+      !source.id ||
+      typeof source.text !== "string" ||
+      originals.has(source.id)
+    )
+      throw invalid();
+    originals.set(source.id, source.text);
+  }
+  const resolved: SourceReplyPart[] = [];
+  for (const part of parts) {
+    if (
+      !isObjectRecord(part) ||
+      Object.keys(part).length !== 2 ||
+      typeof part.value !== "string" ||
+      (part.kind !== "text" && part.kind !== "source")
+    )
+      throw invalid();
+    if (part.kind === "text") resolved.push({ kind: "text", text: part.value });
+    else {
+      const text = originals.get(part.value);
+      if (text === undefined) throw invalid();
+      // Empty approved data is valid, but cannot create an invalid zero-length literal span.
+      if (text !== "") resolved.push({ kind: "source", text });
+    }
+  }
+  return createRendering(resolved, scope);
+}
+
 /** A quote explicitly carries its original bytes; source IDs remain runtime-only.
  * Ordinary strings and text parts never acquire literal/effect exemptions. */
 export function resolveLiteralSourceReply(
