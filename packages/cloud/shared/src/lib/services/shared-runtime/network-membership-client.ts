@@ -5,11 +5,13 @@
  */
 
 import { createHash } from "node:crypto";
+import { MediaFetchError, readResponseWithLimit } from "@elizaos/core";
 import type { UUID } from "@elizaos/core/protocol";
 import { ElizaError, uuidFromString } from "@elizaos/core/protocol";
 import type { Organization } from "../../../db/schemas/organizations";
 import type { User } from "../../../db/schemas/users";
 import type { AuthedUser } from "../../../types/cloud-worker-env";
+import { DEFAULT_REST_RESPONSE_MAX_BYTES } from "../../utils/owned-bounded-fetch";
 import { isValidE164, validatePhoneForAPI } from "../../utils/phone-normalization";
 
 // Wire projection of the private Network apps owner; cross-repository integration
@@ -219,7 +221,7 @@ export class NetworkMembershipClient {
     // bind a lookup performed for one account to another account's room.
     const cloudUserId = account.user.id;
     const organizationId = account.organization.id;
-    const result = await this.#read(account, appId, "membership", signal);
+    const result = await this.#read(verifiedAccountPhone(account), appId, "membership", signal);
     if (!result.available) return null;
     const body = result.body;
     if (
@@ -259,6 +261,7 @@ export class NetworkMembershipClient {
     text: string,
     signal?: AbortSignal,
   ): Promise<NetworkMembershipBinding | null> {
+    signal?.throwIfAborted();
     if (typeof text !== "string" || !text.trim()) {
       throw new ElizaError("Network routing requires a complete user message", {
         code: "NETWORK_ROUTE_INPUT_INVALID",
@@ -266,7 +269,24 @@ export class NetworkMembershipClient {
     }
     const cloudUserId = account.user.id;
     const organizationId = account.organization.id;
-    const result = await this.#read(account, undefined, "route", signal, text);
+    // Both hops assert the same verified phone, even if a caller projection changes during I/O.
+    const e164 = verifiedAccountPhone(account);
+    const eligibility = await this.#read(e164, undefined, "membership-status", signal);
+    if (!eligibility.available) return null;
+    const status = eligibility.body;
+    if (
+      typeof status !== "object" ||
+      status === null ||
+      !("active" in status) ||
+      typeof status.active !== "boolean" ||
+      Object.keys(status).length !== 1
+    ) {
+      throw new ElizaError("Network membership status response was invalid", {
+        code: "NETWORK_MEMBERSHIP_RESPONSE_INVALID",
+      });
+    }
+    if (!status.active) return null;
+    const result = await this.#read(e164, undefined, "route", signal, text);
     if (!result.available) return null;
     const body = result.body;
     if (
@@ -306,7 +326,13 @@ export class NetworkMembershipClient {
     ) {
       invalidAccount();
     }
-    const result = await this.#read(account, membership.app, "context", signal);
+    signal?.throwIfAborted();
+    const result = await this.#read(
+      verifiedAccountPhone(account),
+      membership.app,
+      "context",
+      signal,
+    );
     if (!result.available) return null;
     const body = result.body;
     const context = parseNetworkMemberContext(body, membership.app, membership.memberId);
@@ -322,21 +348,21 @@ export class NetworkMembershipClient {
   }
 
   async #read(
-    account: NetworkMembershipAccount,
+    e164: string,
     appId: NetworkAppId | undefined,
-    operation: "membership" | "context" | "route",
+    operation: "membership" | "context" | "route" | "membership-status",
     signal?: AbortSignal,
     routeText?: string,
   ): Promise<{ available: false } | { available: true; body: unknown }> {
     signal?.throwIfAborted();
-    if (operation !== "route" && !isNetworkAppId(appId)) {
+    const unscoped = operation === "route" || operation === "membership-status";
+    if (!unscoped && !isNetworkAppId(appId)) {
       throw new ElizaError("Network membership requires an explicit supported app", {
         code: "NETWORK_MEMBERSHIP_APP_INVALID",
       });
     }
-    const e164 = verifiedAccountPhone(account);
     const request = new Request(
-      `https://network.internal/agent/${operation}${operation === "route" ? "" : `?app=${appId}`}`,
+      `https://network.internal/agent/${operation}${unscoped ? "" : `?app=${appId}`}`,
       {
         method: "POST",
         headers: {
@@ -371,10 +397,18 @@ export class NetworkMembershipClient {
     if (response.status === 404) return { available: false };
     let body: unknown;
     try {
-      body = await response.json();
-    } catch {
-      // error-policy:J3 invalid JSON is an explicit protocol failure without body leakage.
+      // Use the shared REST byte ceiling, never truncate individual approved facts.
+      body = JSON.parse(
+        (await readResponseWithLimit(response, DEFAULT_REST_RESPONSE_MAX_BYTES)).toString("utf8"),
+      );
+    } catch (error) {
       signal?.throwIfAborted();
+      if (error instanceof MediaFetchError && error.code === "max_bytes") {
+        throw new ElizaError("Network membership response exceeded the bounded-body contract", {
+          code: "NETWORK_MEMBERSHIP_RESPONSE_TOO_LARGE",
+        });
+      }
+      // error-policy:J3 invalid JSON is an explicit protocol failure without body leakage.
       throw new ElizaError("Network membership response was not JSON", {
         code: "NETWORK_MEMBERSHIP_RESPONSE_INVALID",
       });

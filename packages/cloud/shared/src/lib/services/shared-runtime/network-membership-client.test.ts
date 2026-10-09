@@ -98,11 +98,24 @@ describe("Network membership Cloud boundary", () => {
     expect(unavailable).not.toContain("PRIVATE_ORG");
   });
 
-  test("uses the private canonical routing owner with complete text and no client app URL", async () => {
+  test("checks phone-only eligibility before the private canonical routing owner receives complete text", async () => {
+    const paths: string[] = [];
+    const input = account();
     const completeMessage = "Complete message; no Cloud keyword routing. ".repeat(300);
     const client = new NetworkMembershipClient(
       {
         fetch: async (request) => {
+          paths.push(new URL(request.url).pathname);
+          if (request.url === "https://network.internal/agent/membership-status") {
+            expect(request.method).toBe("POST");
+            expect(request.headers.get("authorization")).toBe("Bearer server-secret");
+            expect(request.headers.get("cache-control")).toBe("no-store");
+            expect(request.redirect).toBe("error");
+            expect(request.cache).toBe("no-store");
+            expect(await request.json()).toEqual({ e164: "+12125550181" });
+            input.user.phone_number = "+12125550182";
+            return Response.json({ active: true });
+          }
           expect(request.url).toBe("https://network.internal/agent/route");
           expect(request.redirect).toBe("error");
           expect(request.cache).toBe("no-store");
@@ -116,11 +129,72 @@ describe("Network membership Cloud boundary", () => {
       },
       "server-secret",
     );
-    expect(await client.resolveForText(account(), completeMessage)).toMatchObject({
+    expect(await client.resolveForText(input, completeMessage)).toMatchObject({
       app: "peon",
       personId: "canonical-person",
       memberId: "canonical-member",
     });
+    expect(paths).toEqual(["/agent/membership-status", "/agent/route"]);
+  });
+
+  test("keeps non-member Personal text out of Network and refuses malformed eligibility", async () => {
+    for (const reply of [
+      false,
+      null,
+      {},
+      { active: "true" },
+      { active: true, memberId: "private" },
+    ]) {
+      const requests: unknown[] = [];
+      const client = new NetworkMembershipClient(
+        {
+          fetch: async (request) => {
+            requests.push({ url: request.url, body: await request.json() });
+            return Response.json(reply === false ? { active: false } : reply);
+          },
+        },
+        "server-secret",
+      );
+      try {
+        if (reply === false)
+          expect(await client.resolveForText(account(), "PRIVATE_PERSONAL_TEXT")).toBeNull();
+        else
+          await expect(
+            client.resolveForText(account(), "PRIVATE_PERSONAL_TEXT"),
+          ).rejects.toMatchObject({ code: "NETWORK_MEMBERSHIP_RESPONSE_INVALID" });
+      } finally {
+        expect(requests).toEqual([
+          {
+            url: "https://network.internal/agent/membership-status",
+            body: { e164: "+12125550181" },
+          },
+        ]);
+      }
+    }
+  });
+
+  test("rejects oversized private response streams explicitly and cancels reading", async () => {
+    let cancelled = false;
+    const client = new NetworkMembershipClient(
+      {
+        fetch: async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new Uint8Array(4 * 1024 * 1024 + 1));
+              },
+              cancel() {
+                cancelled = true;
+              },
+            }),
+          ),
+      },
+      "server-secret",
+    );
+    await expect(client.resolve(account(), "slop")).rejects.toMatchObject({
+      code: "NETWORK_MEMBERSHIP_RESPONSE_TOO_LARGE",
+    });
+    expect(cancelled).toBe(true);
   });
   const denied: [string, (input: NetworkMembershipAccount) => void][] = [
     [
@@ -406,6 +480,9 @@ describe("Network membership Cloud boundary", () => {
     );
     await expect(client.resolve(account(), "slop", controller.signal)).rejects.toBe(reason);
     await expect(client.resolve(account(), "slop", controller.signal)).rejects.toBe(reason);
+    await expect(client.resolveForText(account(), "private", controller.signal)).rejects.toBe(
+      reason,
+    );
     expect(calls).toBe(1);
   });
 
@@ -470,7 +547,7 @@ describe("Network membership Cloud boundary", () => {
       state: "open",
       stateFrom: null,
       stateUntil: null,
-      facets: ["approved fixture facet"],
+      facets: ["approved fixture facet", "Complete approved context fact ".repeat(600)],
       activeItems: [{ kind: "offer", summary: "Approved complete fixture" }],
     };
     const paths: string[] = [];
