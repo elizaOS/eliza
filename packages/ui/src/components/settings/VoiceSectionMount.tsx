@@ -110,6 +110,8 @@ export function VoiceSectionMount(): React.ReactElement {
   // counterparts; unrelated persisted preferences still hydrate normally.
   const pendingHydrationUpdates =
     React.useRef<Partial<VoiceSectionPrefs> | null>({});
+  const pendingPersistPrefs = React.useRef<VoiceSectionPrefs | null>(null);
+  const persistTask = React.useRef<Promise<void> | null>(null);
   const [persistError, setPersistError] = React.useState<string | null>(null);
   // Wake-word listening is a device-local pref (localStorage mirror the shell
   // reads synchronously — see useShellController's useWakeListenWindow), not part
@@ -201,19 +203,17 @@ export function VoiceSectionMount(): React.ReactElement {
     setWakeWordEnabled(next);
     saveWakeWordEnabled(next);
   }, []);
-  const handlePrefsChange = React.useCallback(
-    async (next: VoiceSectionPrefs) => {
-      setPrefs(next);
-      setPersistError(null);
-      // Mirror to localStorage immediately so the capture path picks up the new
-      // VAD thresholds without waiting on the config round-trip.
-      voiceSettingsController.applyDeviceSettings(next);
+  const persistPendingPrefs = React.useCallback(async () => {
+    while (pendingPersistPrefs.current) {
+      const next = pendingPersistPrefs.current;
+      pendingPersistPrefs.current = null;
       try {
         const config = await client.getConfig();
         const messages = (config.messages ?? {}) as Record<string, unknown>;
         await client.updateConfig({
           messages: { ...messages, [VOICE_PREFS_CONFIG_KEY]: next },
         });
+        setPersistError(null);
       } catch (error) {
         setPersistError(
           error instanceof Error
@@ -221,8 +221,25 @@ export function VoiceSectionMount(): React.ReactElement {
             : "Failed to save voice settings.",
         );
       }
+    }
+    persistTask.current = null;
+  }, []);
+  const handlePrefsChange = React.useCallback(
+    (next: VoiceSectionPrefs) => {
+      setPrefs(next);
+      setPersistError(null);
+      // Mirror to localStorage immediately so the capture path picks up the new
+      // VAD thresholds without waiting on the config round-trip.
+      voiceSettingsController.applyDeviceSettings(next);
+      // Keep at most one pending snapshot while a write is active. This keeps
+      // rapid slider and toggle changes in user order without replaying stale
+      // intermediate values after the newest choice has already saved.
+      pendingPersistPrefs.current = next;
+      if (!persistTask.current) {
+        persistTask.current = persistPendingPrefs();
+      }
     },
-    [],
+    [persistPendingPrefs],
   );
   return (
     <>
