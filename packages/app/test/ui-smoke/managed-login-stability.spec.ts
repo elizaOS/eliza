@@ -65,7 +65,6 @@ async function installManagedOriginProxy(
 
 async function installAuthenticatedPersonalRoutes(
   page: Page,
-  managedOrigin: string,
   personalGate?: Promise<void>,
 ): Promise<() => number> {
   await installDefaultAppRoutes(page);
@@ -139,8 +138,6 @@ async function installAuthenticatedPersonalRoutes(
             id: PERSONAL_ID,
             displayName: "Eliza",
             runtime: "shared",
-            activeAgentId: "22222222-2222-4222-8222-222222222222",
-            apiBase: managedOrigin,
           },
         },
       }),
@@ -166,15 +163,26 @@ for (const surface of SURFACES) {
     const requestFailures: string[] = [];
     const consoleMessages: Array<{ type: string; text: string }> = [];
     let notificationRequests = 0;
+    let paidEntryRequests = 0;
     let releasePersonal: (() => void) | undefined;
     const personalGate = new Promise<void>((resolve) => {
       releasePersonal = resolve;
     });
     const personalRequests = await installAuthenticatedPersonalRoutes(
       page,
-      managedOrigin,
       personalGate,
     );
+
+    // A zero-credit owner must enter Shared without quoting, activating,
+    // adopting or cutting over paid compute. Make every such request fail.
+    await page.route("**/upgrade-tier**", async (route) => {
+      paidEntryRequests += 1;
+      await route.fulfill({
+        status: 402,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Insufficient hosting credits" }),
+      });
+    });
 
     page.on("request", (request) => {
       if (new URL(request.url()).pathname.startsWith("/api/notifications")) {
@@ -218,6 +226,17 @@ for (const surface of SURFACES) {
     expect(personalRequests()).toBe(1);
     expect(new URL(documentRequests[0]).pathname).toBe("/join");
     expect(notificationRequests).toBe(0);
+    expect(paidEntryRequests).toBe(0);
+    expect(
+      await page.evaluate(() =>
+        JSON.parse(localStorage.getItem("elizaos:active-server") ?? "null"),
+      ),
+    ).toMatchObject({
+      id: `cloud:${PERSONAL_ID}`,
+      kind: "cloud",
+      cloudRuntime: "shared",
+      cloudRuntimeAgentId: PERSONAL_ID,
+    });
     await expect(page.getByText("Notifications unavailable")).toHaveCount(0);
     expect(pageErrors).toEqual([]);
     expect(requestFailures).toEqual([]);
@@ -505,10 +524,7 @@ for (const surface of SURFACES) {
     if (!baseURL) throw new Error("Playwright baseURL is required");
     await page.setViewportSize(surface.viewport);
     const managedOrigin = await installManagedOriginProxy(page, baseURL);
-    const personalRequests = await installAuthenticatedPersonalRoutes(
-      page,
-      managedOrigin,
-    );
+    const personalRequests = await installAuthenticatedPersonalRoutes(page);
     let sessionSyncRequests = 0;
     await page.route("**/api/auth/steward-session", async (route) => {
       sessionSyncRequests += 1;
@@ -601,10 +617,7 @@ for (const surface of SURFACES) {
     if (!baseURL) throw new Error("Playwright baseURL is required");
     await page.setViewportSize(surface.viewport);
     const managedOrigin = await installManagedOriginProxy(page, baseURL);
-    const personalRequests = await installAuthenticatedPersonalRoutes(
-      page,
-      managedOrigin,
-    );
+    const personalRequests = await installAuthenticatedPersonalRoutes(page);
     await page.route("**/api/eliza-app/onboarding/chat**", async (route) => {
       if (route.request().method() === "GET") {
         await route.fulfill({

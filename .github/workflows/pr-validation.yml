@@ -181,6 +181,14 @@ jobs:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
         run: node packages/scripts/run-turbo.ts run build --concurrency=4 --affected --output-logs=errors-only
 
+      - name: Verify personal Shared chat entry without paid activation
+        if: steps.affected.outputs.app == 'true'
+        timeout-minutes: 1
+        run: >-
+          node node_modules/vitest/vitest.mjs run --config vitest.config.ts
+          packages/ui/src/cloud/join/lib/run-join-flow.test.ts
+          --maxWorkers=1 --no-file-parallelism --testTimeout=10000 --hookTimeout=10000
+
       - name: Verify Shared general search with real Workerd and SQLite
         if: steps.affected.outputs.cloud == 'true'
         timeout-minutes: 4

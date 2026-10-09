@@ -1456,6 +1456,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       __ELIZAOS_APP_BOOT_CONFIG__?: Record<string, unknown>;
     };
     host.__ELIZAOS_APP_BOOT_CONFIG__ = {
+      branding: {},
       ...host.__ELIZAOS_APP_BOOT_CONFIG__,
       apiBase: window.location.origin,
     };
