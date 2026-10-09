@@ -876,6 +876,16 @@ function BrowserWorkspaceForAuthority({
     },
     [clearBrowserWorkspaceIframeFocusTimer],
   );
+  const dismissMobileActions = useCallback(() => {
+    setMobileActionsOpen(false);
+    // Explicit dismissal ends the navigation's return-to-toolbar handoff.
+    // Otherwise its settle timer can undo the user's next click inside the
+    // embedded page. A frame taking focus while the menu is open still goes
+    // through onOpenChange's modal guard, not this user-dismissal path.
+    for (const [iframe, handoff] of iframeFocusHandoffsRef.current) {
+      releaseBrowserWorkspaceIframeFocusReturn(iframe, handoff);
+    }
+  }, [releaseBrowserWorkspaceIframeFocusReturn]);
   const monitorBrowserWorkspaceIframeFocus = useCallback(
     (iframe: HTMLIFrameElement, handoff: BrowserIframeFocusHandoff) => {
       if (
@@ -2863,8 +2873,8 @@ function BrowserWorkspaceForAuthority({
                 mobileActionsFocusRef.current = event.target;
               }
             }}
-            onEscapeKeyDown={() => setMobileActionsOpen(false)}
-            onPointerDownOutside={() => setMobileActionsOpen(false)}
+            onEscapeKeyDown={dismissMobileActions}
+            onPointerDownOutside={dismissMobileActions}
           >
             <DropdownMenuItem
               className="min-h-12 gap-3"
