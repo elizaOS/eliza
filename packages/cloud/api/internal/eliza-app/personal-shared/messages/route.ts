@@ -43,6 +43,8 @@ import {
   groupParticipantLabel,
   redactGroupParticipantHandles,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/group-participant-labels";
+import { networkContextForPersonalSurface } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-context";
+import { prepareNetworkSharedTurnForAccount } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-turn";
 import { personalSharedAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import { prewarmPersonalSharedAgentTurnCaches } from "@elizaos/cloud-shared/lib/services/shared-runtime/prewarm-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
@@ -1934,6 +1936,32 @@ app.post("/", async (c) => {
                 discordUserId: parsed.data.discordUserId,
               }
             : undefined;
+    // InternalAuth and the existing Personal delivery projection already own
+    // this phone/account binding. Network reads reuse their exact primary
+    // verified projection without authenticating the internal token as a user.
+    const networkObservation =
+      !isGroupMessage(parsed.data) &&
+      (parsed.data.platform === "twilio" ||
+        parsed.data.platform === "blooio") &&
+      capabilityText
+        ? await prepareNetworkSharedTurnForAccount(
+            c.env,
+            agent,
+            {
+              userId: account.userId,
+              organizationId: account.organizationId,
+              phoneNumber: parsed.data.phoneNumber,
+            },
+            undefined,
+            capabilityText,
+            c.req.raw.signal,
+          )
+        : undefined;
+    const trustedNetworkContext = networkContextForPersonalSurface(
+      networkObservation,
+      agent,
+      sharedFallback?.journalRoomId ?? agent.id,
+    );
     const result = groupConversationId
       ? await sharedRestMessageSend(
           agent,
@@ -1968,6 +1996,7 @@ app.post("/", async (c) => {
           sharedFallback?.accountState,
           c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers),
           c.req.raw.signal,
+          trustedNetworkContext,
         );
     // The same values ship on `Server-Timing` below; a second uncorrelated
     // per-turn log on the hot path would only duplicate them.

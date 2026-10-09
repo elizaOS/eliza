@@ -17,6 +17,7 @@ import {
   coordinateSharedStream,
   type SharedConversationCoordinatorOptions,
 } from "./conversation-coordinator";
+import type { NetworkSharedTurnObservation } from "./network-shared-context";
 import type { PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
 import type { SharedRuntimeChannel } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
@@ -55,6 +56,7 @@ export interface CanonicalScopedStreamRequest {
   transientInput?: true;
   /** Server-resolved Dedicated fallback account state (#25146); never from the body. */
   trustedAccountState?: PersonalSharedFallbackAccountState;
+  trustedNetworkContext?: NetworkSharedTurnObservation;
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
   abortSignal?: AbortSignal;
@@ -230,6 +232,9 @@ export async function handleCanonicalScopedAgentStream(
       trustedHistoryCutoffAt,
       transientInput,
       ...(request.trustedAccountState ? { trustedAccountState: request.trustedAccountState } : {}),
+      ...(request.trustedNetworkContext
+        ? { trustedNetworkContext: request.trustedNetworkContext }
+        : {}),
     };
     upstream =
       request.responseMode === "buffered"

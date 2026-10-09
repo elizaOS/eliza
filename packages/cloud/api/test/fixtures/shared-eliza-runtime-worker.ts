@@ -790,6 +790,32 @@ const worker = {
         });
         return Response.json({ result, mediaRequests });
       }
+      if (
+        url.pathname === "/bounded-general-search" ||
+        url.pathname === "/bounded-private-search"
+      ) {
+        const message =
+          url.pathname === "/bounded-general-search"
+            ? 'Search the web for C# "shared-general-owned-qa" installation documentation?'
+            : "Search the web for my inbox messages";
+        const result = await runSharedAgentTurn({
+          character: {
+            name: "Shared Eliza Workerd Probe",
+            system: "You are Eliza.",
+            model: "local/shared-runtime-probe",
+          },
+          history: [],
+          message,
+          capabilityText: message,
+          execution: {
+            authenticatedPersonalSharedUser: true,
+            channel: { type: ChannelType.DM, source: "shared-runtime" },
+            agentKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
+            roomKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
+          },
+        });
+        return Response.json(result);
+      }
       if (url.pathname === "/search-turn") {
         const result = await runSharedAgentTurn({
           character: {

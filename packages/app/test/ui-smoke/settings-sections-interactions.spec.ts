@@ -44,6 +44,94 @@ test("voice settings: the wake-word toggle flips state", async ({ page }) => {
   await expect.poll(() => wakeWord.isChecked()).toBe(!before);
 });
 
+test("voice settings: rapid preference changes persist in user order", async ({
+  page,
+}) => {
+  let config: Record<string, unknown> = {
+    meta: { firstRunComplete: true },
+    agents: {
+      list: [
+        {
+          id: "00000000-0000-4000-8000-000000000001",
+          name: "UI Smoke Agent",
+        },
+      ],
+      defaults: {
+        workspace: "ui-smoke-workspace",
+        adminEntityId: "owner-ui-smoke",
+      },
+    },
+    messages: { voice: { continuous: "off" } },
+  };
+  let writesStarted = 0;
+  let writesFinished = 0;
+
+  await page.unroute("**/api/config");
+  await page.route("**/api/config", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(config),
+      });
+      return;
+    }
+    if (request.method() !== "PUT") {
+      await route.fallback();
+      return;
+    }
+
+    const writeNumber = ++writesStarted;
+    const patch = request.postDataJSON() as Record<string, unknown>;
+    if (writeNumber === 1) {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
+    config = {
+      ...config,
+      ...patch,
+      messages: {
+        ...((config.messages ?? {}) as Record<string, unknown>),
+        ...((patch.messages ?? {}) as Record<string, unknown>),
+      },
+    };
+    writesFinished += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(config),
+    });
+  });
+
+  await openAppPath(page, "/settings");
+  await openSettingsSection(page, /^Voice$/);
+  const continuous = page.getByRole("radiogroup", {
+    name: "Continuous chat mode",
+  });
+  const off = continuous.getByRole("radio", { name: "Off" });
+  const vad = continuous.getByRole("radio", { name: "VAD" });
+  const live = continuous.getByRole("radio", { name: "Live" });
+  await expect(off).toHaveAttribute("aria-checked", "true");
+
+  await vad.click();
+  await live.click();
+  await expect(live).toHaveAttribute("aria-checked", "true");
+  await expect.poll(() => writesStarted).toBe(2);
+  await expect.poll(() => writesFinished).toBe(2);
+
+  expect(config).toMatchObject({
+    messages: { voice: { continuous: "always-on" } },
+  });
+
+  await openAppPath(page, "/settings");
+  await openSettingsSection(page, /^Voice$/);
+  await expect(
+    page
+      .getByRole("radiogroup", { name: "Continuous chat mode" })
+      .getByRole("radio", { name: "Live" }),
+  ).toHaveAttribute("aria-checked", "true");
+});
+
 test("general settings: selecting a language updates the active value", async ({
   page,
 }) => {
