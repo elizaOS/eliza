@@ -45,11 +45,7 @@ export function isHallucination(text: string): boolean {
       for (let start = 0; start + len <= words.length; start++) {
         const phrase = lowered.slice(start, start + len).join(" ");
         let repeats = 1;
-        for (
-          let next = start + len;
-          next + len <= words.length;
-          next += len
-        ) {
+        for (let next = start + len; next + len <= words.length; next += len) {
           if (lowered.slice(next, next + len).join(" ") !== phrase) break;
           repeats++;
         }
