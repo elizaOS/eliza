@@ -181,6 +181,30 @@ jobs:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
         run: node packages/scripts/run-turbo.ts run build --concurrency=4 --affected --output-logs=errors-only
 
+      - name: Verify Shared general search with real Workerd and SQLite
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 4
+        working-directory: packages/cloud/api
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset SHARED_ELIZA_LIVE_MODEL_URL SHARED_ELIZA_LIVE_MODEL_ID SHARED_ELIZA_LIVE_WEB_SEARCH
+          bun test ./__tests__/shared-eliza-runtime.miniflare.test.ts \
+            --test-name-pattern "canonical general search uses real Core and portable SQLite while private scope never dispatches publicly" \
+            --timeout 120000
+
+      - name: Verify Shared capture owner reads
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 1
+        working-directory: packages/cloud/api
+        run: bun --conditions=eliza-source test ./admin/shared-runtime-capture/route.test.ts --timeout 30000
+
+      - name: Verify Shared realtime grounding audit
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 1
+        working-directory: packages/cloud/shared
+        run: bun --conditions=eliza-source test ./src/lib/services/shared-runtime/run-shared-agent-turn.realtime-audit.test.ts --timeout 30000
+
       - name: Run synthetic-world transaction tests
         if: steps.diff.outputs.synthetic_world_changed == 'true'
         run: bun run --cwd packages/testing test:synthetic-world

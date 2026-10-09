@@ -15,7 +15,9 @@ import type {
 import { logger } from "../../utils/logger";
 import {
   currentNwsObservationSource,
+  isCurrentWeatherUnavailableReason,
   isVerifiedCurrentNwsObservation,
+  parseCurrentWeatherSourceDiagnostics,
 } from "./shared-current-weather";
 
 export const MAX_PUBLIC_WEB_GROUNDING_AGE_MS = 24 * 60 * 60 * 1_000;
@@ -116,11 +118,16 @@ export function parseSharedPublicWebGrounding(
     candidate.observedAt <= Date.now() + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS
   ) {
     const query = candidate.query.trim();
+    const sourceDiagnostics = parseCurrentWeatherSourceDiagnostics(candidate.sourceDiagnostics);
     return query
       ? {
           kind: "web_search_unavailable",
           query,
           observedAt: candidate.observedAt,
+          ...(isCurrentWeatherUnavailableReason(candidate.unavailableReason)
+            ? { unavailableReason: candidate.unavailableReason }
+            : {}),
+          ...(sourceDiagnostics ? { sourceDiagnostics } : {}),
         }
       : undefined;
   }
@@ -296,6 +303,8 @@ export function sharedPublicWebGrounding(
       : parseSharedPublicWebGrounding({
           kind: "web_search_unavailable",
           query: data.query,
+          unavailableReason: data.unavailableReason,
+          sourceDiagnostics: data.sourceDiagnostics,
           observedAt,
         });
     const invalidAvailableReceipt = attemptedAvailable && !parsed;

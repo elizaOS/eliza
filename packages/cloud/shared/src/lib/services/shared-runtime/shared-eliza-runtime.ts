@@ -45,6 +45,7 @@ import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos";
 import {
   createWebSearchEdgePlugin,
+  runWebSearchEdge,
   webSearchEdgeAction,
   webSearchEdgePlugin,
 } from "@elizaos/plugin-web-search";
@@ -73,12 +74,17 @@ import type {
 } from "./run-shared-agent-turn";
 import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
 import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
+import { resolveSharedCapabilityIntent } from "./shared-capability-wall";
 import type { OwnerModelCapture } from "./shared-owner-model-capture";
 import { observeOwnerCapture } from "./shared-owner-model-capture";
 import { resolveSharedParticipantName } from "./shared-participant-name";
 import {
   createMatchingRealtimeSearchRunner,
+  normalizedRealtimeQuery,
+  requireTraceableRealtimeSearch,
+  resolveSharedPublicSearchIntent,
   resolveSharedRealtimeRequirement,
+  sharedRealtimePromptPolicy,
 } from "./shared-realtime-grounding";
 import {
   createSharedRuntimeCapabilitiesPlugin,
@@ -1027,11 +1033,22 @@ async function executeMeasuredSharedElizaRuntimeTurn(
 
   const modelPlugin = sharedModelPlugin(modelHandler, Boolean(input.ownerCapture));
   const actionsEnabled = input.messageRole !== "system";
-  const webSearchEnabled =
-    actionsEnabled &&
-    Boolean(
-      input.capabilityText && resolveSharedRealtimeRequirement(input.capabilityText, input.history),
-    );
+  const realtimeRequirement =
+    actionsEnabled && input.capabilityText
+      ? resolveSharedRealtimeRequirement(input.capabilityText, input.history)
+      : undefined;
+  const privateCapabilityIntent =
+    input.capabilityText &&
+    resolveSharedCapabilityIntent(input.capabilityText, {
+      reminders: Boolean(input.execution?.reminders),
+      todos: Boolean(input.execution?.todos),
+    });
+  const publicSearchIntent = realtimeRequirement
+    ? { kind: "prefetched" as const, requirement: realtimeRequirement }
+    : actionsEnabled && input.capabilityText && !privateCapabilityIntent
+      ? resolveSharedPublicSearchIntent(input.capabilityText, input.history)
+      : undefined;
+  const webSearchEnabled = Boolean(publicSearchIntent);
   const reminderPlugin =
     actionsEnabled && input.execution?.reminders
       ? createSharedRemindersEdgePlugin({
@@ -1061,6 +1078,56 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const preflightWebSearchResult = input.preflightActionResults?.find(
     (result) => result.data?.actionName === "WEB_SEARCH",
   );
+  const webSearchPlugin = preflightWebSearchResult
+    ? createWebSearchEdgePlugin(createMatchingRealtimeSearchRunner(preflightWebSearchResult))
+    : publicSearchIntent?.kind === "general"
+      ? createWebSearchEdgePlugin(async (query, options) => {
+          if (
+            normalizedRealtimeQuery(publicSearchIntent.topic) !== normalizedRealtimeQuery(query)
+          ) {
+            return {
+              success: false,
+              text: "That query does not match the explicit public topic authorized for this turn.",
+              error: "PUBLIC_SEARCH_QUERY_SCOPE_MISMATCH",
+              data: { actionName: "WEB_SEARCH" },
+            };
+          }
+          const result = await runWebSearchEdge(query, options);
+          const traceable = requireTraceableRealtimeSearch(result, query);
+          return traceable.success === true
+            ? { ...traceable, modelReplyRequired: true }
+            : traceable;
+        })
+      : undefined;
+  if (webSearchPlugin && publicSearchIntent?.kind === "general") {
+    webSearchPlugin.responseHandlerEvaluators = [
+      {
+        name: "shared.explicit_public_search",
+        priority: 999,
+        deterministicActions: ["WEB_SEARCH"],
+        shouldRun: ({ messageHandler }) =>
+          messageHandler.processMessage === "RESPOND" && !messageHandler.plan.deterministicToolCall,
+        evaluate: () => ({
+          requiresTool: true,
+          addCandidateActions: ["WEB_SEARCH"],
+          clearReply: true,
+          deterministicToolCall: {
+            name: "WEB_SEARCH",
+            params: { query: publicSearchIntent.topic },
+          },
+        }),
+      },
+    ];
+  }
+  const character =
+    publicSearchIntent?.kind === "general"
+      ? {
+          ...input.character,
+          system: [input.character.system, sharedRealtimePromptPolicy(undefined)]
+            .filter(Boolean)
+            .join("\n\n"),
+        }
+      : input.character;
   // A group turn labels each speaker `Participant <n>` (see
   // `group-participant-labels.ts`). That is a slot, not a name, so the model
   // needs one line telling it where real names come from; scoping it to the
@@ -1074,18 +1141,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     adapter,
     character: isGroupTurn
       ? {
-          ...input.character,
-          system: withGroupTurnNamingRule(input.character.system),
+          ...character,
+          system: withGroupTurnNamingRule(character.system),
         }
-      : input.character,
+      : character,
     modelPlugin,
-    ...(preflightWebSearchResult
-      ? {
-          webSearchPlugin: createWebSearchEdgePlugin(
-            createMatchingRealtimeSearchRunner(preflightWebSearchResult),
-          ),
-        }
-      : {}),
+    ...(webSearchPlugin ? { webSearchPlugin } : {}),
     transport: sharedCapabilityTransportForSource(
       input.execution.channel.source,
       input.execution.channel.type,
@@ -1192,7 +1253,9 @@ async function executeMeasuredSharedElizaRuntimeTurn(
             history: input.history,
             preferredName: input.execution.participantName,
           })
-        : undefined;
+        : actionsEnabled
+          ? "Shared user"
+          : "Shared lifecycle";
     timing.markConnectionStarted();
     await runtime.ensureConnection({
       entityId: incomingEntityId,

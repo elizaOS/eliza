@@ -3,12 +3,19 @@
  * Shared without sending private-state requests to a public search provider.
  */
 
-import { type ActionResult, isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
+import {
+  type ActionResult,
+  ElizaError,
+  isBlockedHostname,
+  isPrivateIpAddress,
+} from "@elizaos/core";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 import {
   currentNwsObservationSource,
+  isCurrentWeatherUnavailableReason,
   isVerifiedCurrentNwsObservation,
+  parseCurrentWeatherSourceDiagnostics,
   parseExplicitUsWeatherQuery,
 } from "./shared-current-weather";
 import { sharedSelectedGroundingMetadata } from "./shared-runtime-history-policy";
@@ -42,7 +49,8 @@ const NETWORK_TARGET_LITERAL =
   /(?:https?:\/\/[^\s<>'"]+)|(?:\blocalhost\b)|(?:\b(?:\d{1,3}\.){3}\d{1,3}\b)|(?:\[[0-9a-f:]+\])|(?:\b[0-9a-f]{0,4}:[0-9a-f:]+\b)|(?:\b(?:[a-z0-9-]+\.)+[a-z]{2,63}\b)/iu;
 const MARKETS =
   /\b(?:price|quote|exchange rate|market cap|market price|stock|share price|crypto|cryptocurrency|bitcoin|btc|ethereum|eth|forex|bond yield|commodity|gold price|oil price)\b/i;
-const NEWS = /\b(?:news|headline|breaking|announcement|announced|release today|current events)\b/i;
+const NEWS =
+  /\b(?:news|headlines?|breaking|announcement|announced|release today|current events)\b/i;
 const SPORTS = /\b(?:score|standings|fixture|match result|game result|playoffs|season record)\b/i;
 const PUBLIC_MUTABLE_FACT =
   /\b(?:president|prime minister|governor|mayor|senator|representative|ceo|chief executive|officeholder|software version|release version|public outage|public traffic)\b/i;
@@ -232,10 +240,17 @@ function publicProviderQuery(domain: SharedRealtimeDomain, text: string): string
     return location ? `current public weather in ${location}` : undefined;
   }
   if (domain === "news") {
-    const before = text.match(/\b(?:latest|current|breaking)\s+([^,;?!\n]{1,60}?)\s+news\b/iu)?.[1];
-    const after = text.match(/\b(?:news|headlines?)\s+(?:about|on|for)\s+([^,;?!\n]{1,60})/iu)?.[1];
-    const subject = publicSubjectWords(before ?? after);
-    return subject ? `latest public ${subject} news` : "latest public news";
+    const before = text.match(
+      /\b(?:latest|current|breaking)\s+([^;?!\n]+?)\s+(?:news|headlines?)\b/iu,
+    )?.[1];
+    const after = text.match(
+      /\b(?:news|headlines?)\s+(?:about|on|for)\s+([^;?!\n]+)(?=[;?!\n]|$)/iu,
+    )?.[1];
+    const rawSubject = before ?? after;
+    const subject = boundedPublicSearchTopic(rawSubject);
+    if (rawSubject !== undefined && !subject) return undefined;
+    const query = subject ? `latest public ${subject} news` : "latest public news";
+    return boundedPublicSearchTopic(query);
   }
   if (domain === "sports") {
     const league = text.match(/\b(?:NBA|WNBA|NFL|NHL|MLB|EPL|IPL)\b/iu)?.[0]?.toUpperCase();
@@ -255,6 +270,59 @@ function publicProviderQuery(domain: SharedRealtimeDomain, text: string): string
     )?.[1],
   );
   return role && entity ? `current public ${role} of ${entity}` : undefined;
+}
+
+/** Freshness preflight is an optimization; it is not the entire public-search capability. */
+export type SharedPublicSearchIntent =
+  | { kind: "prefetched"; requirement: SharedRealtimeRequirement }
+  | { kind: "general"; topic: string };
+const EXPLICIT_PUBLIC_SEARCH =
+  /^\s*(?:(?:please|can you|could you|would you)\s+)?(?:search(?:\s+(?:the\s+)?(?:web|internet|online))?(?:\s+for)?|look\s+up|find(?:\s+me)?)\s+(.+)$/iu;
+const GENERAL_PUBLIC_RESEARCH =
+  /\b(?:research|papers?|studies|documentation|reviews?|recommendations?|best|compare|comparison|products?|prices?|versions?|models?|context limits?|benchmarks?)\b/iu;
+function boundedPublicSearchTopic(value: string | undefined): string | undefined {
+  const topic = value
+    ?.trim()
+    .replace(/[.!?]+$/u, "")
+    .trim()
+    .replace(/\s+/gu, " ");
+  if (!topic || !isSharedPublicSearchSafe(topic)) return undefined;
+  if ([...topic].length > 2048) {
+    throw new ElizaError("Public search topics must not exceed 2048 characters", {
+      code: "PUBLIC_SEARCH_QUERY_TOO_LARGE",
+    });
+  }
+  return topic;
+}
+/** Authority comes only from a standalone authenticated public utterance, never history text. */
+export function resolveSharedPublicSearchIntent(
+  message: string,
+  history: readonly SharedTurnMessage[],
+): SharedPublicSearchIntent | undefined {
+  const normalized = message.normalize("NFKC").trim();
+  if (!isSharedPublicSearchSafe(normalized)) return undefined;
+  const requirement = resolveSharedRealtimeRequirement(normalized, history);
+  if (requirement) return { kind: "prefetched", requirement };
+  // Preserve unsupported/missing-location current-data gates instead of broadening them.
+  if (classifyPublicIntent(normalized)) return undefined;
+  const explicitTopic = normalized.match(EXPLICIT_PUBLIC_SEARCH)?.[1];
+  if (
+    !explicitTopic &&
+    (!FACTUAL_REQUEST.test(normalized) ||
+      NON_FACTUAL_REQUEST.test(normalized) ||
+      (!FRESHNESS.test(normalized) && !GENERAL_PUBLIC_RESEARCH.test(normalized)))
+  )
+    return undefined;
+  const topic = boundedPublicSearchTopic(explicitTopic ?? normalized.replace(/[?!]+$/u, ""));
+  // A bare reference cannot authorize a history-derived public query.
+  if (
+    !topic ||
+    /^(?:(?:it|that|this|those|these|above|earlier|previous|same|thing|things|stuff|for|the|a|an|please|again|more)\s*)+$/iu.test(
+      topic,
+    )
+  )
+    return undefined;
+  return { kind: "general", topic };
 }
 
 /** Detects mutable-public intent without granting provider-dispatch authority. */
@@ -346,6 +414,7 @@ export function requireTraceableRealtimeSearch(
   const data = result.data && typeof result.data === "object" ? result.data : {};
   const sources = sourceEvidence(data.sources);
   const receiptObservedAt = data.observedAt;
+  const sourceDiagnostics = parseCurrentWeatherSourceDiagnostics(data.sourceDiagnostics);
   const weather =
     (domain === "weather" || query.startsWith("current public weather in ")) &&
     parseExplicitUsWeatherQuery(query) !== undefined;
@@ -380,7 +449,17 @@ export function requireTraceableRealtimeSearch(
     success: false,
     text: "Live public data is temporarily unavailable from complete, source-bound evidence.",
     error: "Live public data is temporarily unavailable from complete, source-bound evidence.",
-    data: { actionName: "WEB_SEARCH", query, observedAt },
+    data: {
+      actionName: "WEB_SEARCH",
+      query,
+      observedAt,
+      ...(sourceDiagnostics ? { sourceDiagnostics } : {}),
+      ...(isCurrentWeatherUnavailableReason(data.unavailableReason)
+        ? { unavailableReason: data.unavailableReason }
+        : weather
+          ? { unavailableReason: "CURRENT_WEATHER_RECEIPT_UNTRACEABLE" }
+          : {}),
+    },
   };
 }
 
@@ -644,7 +723,7 @@ function claimSupported(
   });
 }
 
-function normalizedRealtimeQuery(value: unknown): string | undefined {
+export function normalizedRealtimeQuery(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US");
   return normalized || undefined;
@@ -775,7 +854,12 @@ export function finalizeSharedRealtimeReply(
 }
 
 /** System-only policy; actual provider results remain untrusted data messages. */
-export function sharedRealtimePromptPolicy(grounding: SharedRuntimePublicGrounding): string {
+export function sharedRealtimePromptPolicy(
+  grounding: SharedRuntimePublicGrounding | undefined,
+): string {
+  if (!grounding) {
+    return "Public-search grounding policy:\n- WEB_SEARCH is available for this turn; do not claim a search has run until its action result confirms success.\n- After a successful search, use only its structured current-turn source objects for public factual claims. Append [[SOURCE_URL:https://exact-supporting-url]] immediately after every supported claim segment, using the exact URL from that result. Never combine a claim from one result with another result's URL.\n- If the action fails or the sources do not support the requested answer, say what you could not verify. Never invent a search, article, attribution, numeric value, or source. Do not repeat the same completed query.";
+  }
   return grounding.kind === "web_search"
     ? "Current-data grounding policy:\n- A complete live public read already ran for this turn. Use only its structured current-turn source objects for mutable factual claims.\n- Keep each claim with its own source: append [[SOURCE_URL:https://exact-supporting-url]] immediately after every claim segment. Never combine a value from one result with another result’s URL.\n- Preserve the source value, timestamp, units or currency. If evidence conflicts or omits the requested value, say you cannot verify it.\n- Never invent a search, article, source, attribution, or numeric value. Do not run a duplicate search for the same query."
     : "Current-data grounding policy:\n- The required live public read failed or lacked complete source-bound evidence. Say you cannot verify the current value and do not provide a number, source, article, or claimed search result.\n- Recover conversationally from corrections; never answer with punctuation alone.";
