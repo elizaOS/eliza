@@ -5,10 +5,25 @@ import { isCanonicalPersonalSharedAgent } from "./personal-shared-identity";
 import { selectedGoogleContextConsent } from "./shared-google-consent";
 import { createSharedGoogleReadPort } from "./shared-google-read-port";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
+import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
+
+/** The canonical private journal is server-derived; a DM label alone is insufficient. */
+export function isPersonalGooglePrivateAudience(
+  agent: SharedRuntimeAgent,
+  channel: { type: ChannelType },
+  room: { roomId?: unknown; userId?: unknown },
+): boolean {
+  return (
+    isCanonicalPersonalSharedAgent(agent) &&
+    channel.type === ChannelType.DM &&
+    normalizeSharedRuntimeRoom(room.roomId, room.userId) === agent.id
+  );
+}
 
 export async function createOwnerBoundSharedGooglePort(
   agent: SharedRuntimeAgent,
   channel: { type: ChannelType },
+  room: { roomId?: unknown; userId?: unknown },
   loadOwner = (id: string) =>
     readPersonalGoogleContextOwner({
       userId: id,
@@ -16,8 +31,8 @@ export async function createOwnerBoundSharedGooglePort(
     }),
   bindPort: typeof createSharedGoogleReadPort = createSharedGoogleReadPort,
 ) {
-  if (!isCanonicalPersonalSharedAgent(agent) || channel.type !== ChannelType.DM) {
-    throw new Error("SHARED_GOOGLE_PERSONAL_DM_REQUIRED");
+  if (!isPersonalGooglePrivateAudience(agent, channel, room)) {
+    throw new Error("SHARED_GOOGLE_PRIVATE_PERSONAL_ROOM_REQUIRED");
   }
   // Only explicit Google action dispatch calls this, not ordinary chat or prewarm.
   const owner = await loadOwner(agent.user_id);
