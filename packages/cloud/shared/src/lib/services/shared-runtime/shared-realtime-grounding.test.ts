@@ -489,6 +489,7 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
     expect(delivered).toContain("ETH is 3,500 USD.");
     expect(delivered).toContain("https://coin.example/eth");
     expect(delivered).not.toContain("draft");
+    expect(delivered).toStartWith("I found part of the answer:");
     expect(delivered).not.toContain("https://coin.example/btc");
   });
 
@@ -1043,10 +1044,12 @@ describe("general public reply formatting", () => {
     expect(result).toStartWith("The limit is 1,200 units.\n\nSource:");
     expect(result).not.toContain("verify the rest");
     expect(result).not.toContain("draft");
+    expect(result).not.toContain("I found part of the answer");
     expect(result).toContain(`Source: ${url}`);
     // Strict source validation still retains only the supported claim.
     expect(finalizeSharedRealtimeReply(reply, receipt)).toContain("The limit is 1,200 units");
     expect(finalizeSharedRealtimeReply(reply, receipt)).not.toContain("draft");
+    expect(finalizeSharedRealtimeReply(reply, receipt)).not.toContain("I found part of the answer");
   });
 
   test("joins standalone punctuation lines only after both cited segments pass validation", () => {
@@ -1111,3 +1114,54 @@ test("deduplicates localized display links while retaining exact source authorit
   expect(forged).not.toContain("unknown.example");
   expect(forged).toContain("couldn’t verify an answer");
 });
+
+test.each(["realtime", "general_public"] as const)(
+  "%s marks a substantive partial answer without exposing rejected content",
+  (mode) => {
+    const url = "https://docs.example.com/limits";
+    const text = "The limit is 1,200 units. The allowance is 6,000 units.";
+    const receipt: SharedRuntimePublicGrounding = {
+      kind: "web_search",
+      query: "public limits",
+      provider: "parallel",
+      observedAt,
+      truncated: false,
+      text,
+      sourceUrls: [url],
+      sources: [{ url, text }],
+    };
+    for (const rejected of [
+      `The allowance is 9,000 units. [[SOURCE_URL:${url}]]`,
+      "The allowance is 6,000 units. [[SOURCE_URL:https://unknown.example/limits]]",
+    ]) {
+      const reply = finalizeSharedRealtimeReply(
+        `The limit is 1,200 units. [[SOURCE_URL:${url}]] ${rejected}`,
+        receipt,
+        undefined,
+        mode,
+      );
+      expect(reply).toStartWith("I found part of the answer:\n\nThe limit is 1,200 units.");
+      expect(reply).not.toContain("9,000");
+      expect(reply).not.toContain("6,000");
+      expect(reply).not.toContain("unknown.example");
+      expect(reply).not.toContain("draft");
+      expect(reply).not.toContain("parallel");
+      expect(reply).toContain(`Source: ${url}`);
+    }
+    const complete = finalizeSharedRealtimeReply(
+      `The limit is 1,200 units [[SOURCE_URL:${url}]].`,
+      receipt,
+      undefined,
+      mode,
+    );
+    expect(complete).not.toContain("I found part of the answer");
+    const unsupported = finalizeSharedRealtimeReply(
+      "The allowance is 6,000 units. [[SOURCE_URL:https://unknown.example/limits]]",
+      receipt,
+      undefined,
+      mode,
+    );
+    expect(unsupported).toContain("couldn’t verify an answer");
+    expect(unsupported).not.toContain("I found part of the answer");
+  },
+);

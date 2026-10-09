@@ -921,6 +921,7 @@ function supportedRealtimeReply(
   SOURCE_MARKER.lastIndex = 0;
   let cursor = 0;
   let omittedUnsupported = false;
+  let omittedSubstantive = false;
   let lastSegmentAccepted = false;
   const diagnostic = {
     markerCount: 0,
@@ -946,6 +947,7 @@ function supportedRealtimeReply(
       lastSegmentAccepted = true;
     } else {
       omittedUnsupported = true;
+      omittedSubstantive ||= /[\p{L}\p{N}]/u.test(claim);
       lastSegmentAccepted = false;
     }
     cursor = (marker.index ?? 0) + marker[0].length;
@@ -957,6 +959,7 @@ function supportedRealtimeReply(
     if (lastSegmentAccepted) segments[segments.length - 1] += tail.replace(/\s+/gu, "");
   } else if (tail) {
     omittedUnsupported = true;
+    omittedSubstantive ||= /[\p{L}\p{N}]/u.test(tail);
   }
   if (segments.length === 0 && onRefusal) {
     try {
@@ -982,6 +985,7 @@ function supportedRealtimeReply(
             : validatedReply,
         selectedUrls,
         omittedUnsupported,
+        omittedSubstantive,
       }
     : undefined;
 }
@@ -1019,7 +1023,8 @@ export function finalizeSharedRealtimeReply(
     seen.add(identity);
     sources.push(canonical);
   }
-  return `${formatSharedMessageText(supported.reply)}\n\n${sources.length === 1 ? "Source" : "Sources"}: ${sources.join("\n")}`;
+  const partial = supported.omittedSubstantive ? "I found part of the answer:\n\n" : "";
+  return `${partial}${formatSharedMessageText(supported.reply)}\n\n${sources.length === 1 ? "Source" : "Sources"}: ${sources.join("\n")}`;
 }
 
 /** System-only policy; actual provider results remain untrusted data messages. */
