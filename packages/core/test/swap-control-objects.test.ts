@@ -85,6 +85,7 @@ describe("model dispatch with swaps enabled", () => {
 	async function dispatch(
 		settings: Record<string, string>,
 		nativeMessages = false,
+		prompt = PROMPT,
 	) {
 		const runtime = createSQLiteTestRuntime({
 			character: { name: "SwapDispatch", bio: "test", settings } as Character,
@@ -105,10 +106,10 @@ describe("model dispatch with swaps enabled", () => {
 				? {
 						messages: [
 							{ role: "system", content: "Fixture system" },
-							{ role: "user", content: PROMPT },
+							{ role: "user", content: prompt },
 						],
 					}
-				: { prompt: PROMPT }),
+				: { prompt }),
 			signal: controller.signal,
 		} as never);
 		if (!received) throw new Error("model handler was not invoked");
@@ -143,6 +144,25 @@ describe("model dispatch with swaps enabled", () => {
 		const wire = String(received.prompt);
 		for (const value of [EMAIL, CARD, SSN, ADDRESS]) {
 			expect(wire).not.toContain(value);
+		}
+	});
+
+	it("swaps an IBAN followed by its BIC, currency or another group", async () => {
+		const ibans = [
+			"ES91 2100 0418 4502 0005 1332",
+			"BE68539007547034",
+			"AT61 1904 3002 3457 3201",
+		];
+		const { received } = await dispatch(
+			{ ELIZA_SECRET_SWAP_ENABLED: "true" },
+			false,
+			`Rent to ${ibans[0]} BIC CAIXESBBXXX, deposit to ${ibans[1]} EUR, ` +
+				`fees to ${ibans[2]} 2026 Q4.`,
+		);
+		const wire = String(received.prompt);
+		expect(wire).toContain("BIC CAIXESBBXXX");
+		for (const iban of ibans) {
+			expect(wire).not.toContain(iban);
 		}
 	});
 
