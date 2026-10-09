@@ -11,7 +11,7 @@ import {
   reserveOwnerModelCapture,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-owner-model-capture-store";
 import { sharedRuntimeConversationRoomId } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-storage-identity";
-import { ChannelType } from "@elizaos/core/types/primitives";
+import { ChannelType } from "@elizaos/core";
 /**
  * Strongly ordered conversation state for shared-runtime agent turns.
  *
@@ -2575,7 +2575,9 @@ export class SharedRuntimeConversation {
       );
       if (cleanup.cleanupExhausted > 0) {
         try {
-          const { logger } = await import("@/lib/utils/logger");
+          const { logger } = await import(
+            "@elizaos/cloud-shared/lib/utils/logger"
+          );
           logger.audit(
             "[SharedRuntimeConversation] owner capture cleanup exhausted",
             { count: cleanup.cleanupExhausted },

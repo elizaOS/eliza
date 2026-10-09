@@ -5,26 +5,39 @@
  */
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realAuth from "@elizaos/cloud-shared/auth";
+import * as realApps from "@elizaos/cloud-shared/lib/services/apps";
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
 import { parseOwnerCapturePolicy } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-owner-model-capture-store";
 import { sharedRuntimeRoomKey } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import { sharedRuntimeConversationRoomId } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-storage-identity";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 
 const originalAuthExports = { ...realAuth };
+const originalAppsExports = { ...realApps };
+let apiKeyId: string | undefined;
+let appScopedKey = false;
+mock.module("@elizaos/cloud-shared/lib/services/apps", () => ({
+  ...originalAppsExports,
+  appsService: {
+    ...realApps.appsService,
+    getByApiKeyId: async () =>
+      appScopedKey ? { id: "capture-reader-app" } : null,
+  },
+}));
 let reader = "33333333-3333-4333-8333-333333333333";
 let authFailure: 401 | 403 | undefined;
 let readerOrganization: string;
 let adminFailure: boolean;
 let adminCalls = 0;
 mock.module("@elizaos/cloud-shared/auth", () => ({
-  requireUserOrApiKeyWithOrg: async () => {
+  requireUserOrApiKeyWithOrg: async (c: Context<AppEnv>) => {
     if (authFailure)
       throw new HTTPException(authFailure, {
         message: "Synthetic auth denial",
       });
+    if (apiKeyId) c.set("apiKeyId", apiKeyId);
     return { id: reader, organization_id: readerOrganization };
   },
   requireAdmin: async () => {
@@ -127,6 +140,8 @@ function privateHeaders(response: Response) {
 }
 const savedFetch = globalThis.fetch;
 beforeEach(() => {
+  apiKeyId = undefined;
+  appScopedKey = false;
   reader = READER;
   readerOrganization = ORG;
   adminFailure = false;
@@ -151,10 +166,34 @@ beforeEach(() => {
 afterAll(() => {
   globalThis.fetch = savedFetch;
   mock.module("@elizaos/cloud-shared/auth", () => originalAuthExports);
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/apps",
+    () => originalAppsExports,
+  );
   mock.restore();
 });
 
 describe("exact-reader private capture Hono retrieval", () => {
+  test("an app key cannot read its issuer's private capture while an owner key can", async () => {
+    reader = OWNER;
+    apiKeyId = CAPTURE;
+    const bindings = env(JSON.stringify({ ...policy, readerUserId: OWNER }));
+    appScopedKey = true;
+    const denied = await request(
+      { roomKey: ROOM, sessionId: SESSION },
+      bindings,
+    );
+    expect(denied.status).toBe(403);
+    privateHeaders(denied);
+    expect(calls).toHaveLength(0);
+    appScopedKey = false;
+    const allowed = await request(
+      { roomKey: ROOM, sessionId: SESSION },
+      bindings,
+    );
+    expect(allowed.status).toBe(200);
+    expect(calls).toHaveLength(1);
+  });
   test("authentication and non-reader admin denial never reach the platform", async () => {
     for (const status of [401, 403] as const) {
       authFailure = status;

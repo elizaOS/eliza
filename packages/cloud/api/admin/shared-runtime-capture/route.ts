@@ -34,6 +34,15 @@ app.post("/read", bodyLimit({ maxSize: 4096 }), async (c) => {
   if (!policy) return c.json({ error: "Capture session unavailable" }, 404);
   if (user.id !== policy.readerUserId)
     return c.json({ error: "Capture reader not authorized" }, 403);
+  // An app-issued key identifies its issuer but grants no private capture access.
+  const apiKeyId = c.get("apiKeyId");
+  if (apiKeyId) {
+    const { appsService } = await import(
+      "@elizaos/cloud-shared/lib/services/apps"
+    );
+    if (await appsService.getByApiKeyId(apiKeyId))
+      return c.json({ error: "Capture reader not authorized" }, 403);
+  }
   const ownerReader = user.id === policy.userId;
   if (ownerReader) {
     if (user.organization_id !== policy.organizationId) {
@@ -67,10 +76,7 @@ app.post("/read", bodyLimit({ maxSize: 4096 }), async (c) => {
     typeof request.roomKey !== "string" ||
     request.roomKey.trim().length === 0 ||
     request.roomKey.length > 512 ||
-    request.roomKey.split("").some((character) => {
-      const code = character.charCodeAt(0);
-      return code <= 31 || code === 127;
-    })
+    /\p{Cc}/u.test(request.roomKey)
   ) {
     return c.json({ error: "Invalid capture request" }, 400);
   }

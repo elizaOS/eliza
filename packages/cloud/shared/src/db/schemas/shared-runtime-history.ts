@@ -1,6 +1,7 @@
 // Defines the shared runtime history Drizzle table shape used by cloud repositories and services.
-import type { CurrentNwsObservation } from "../../lib/services/shared-runtime/shared-current-weather";
+
 import { jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import type { CurrentNwsObservation } from "../../lib/services/shared-runtime/shared-current-weather";
 
 /** Bounded public-read authority retained so a follow-up honors success or unavailability. */
 export type SharedRuntimePublicGrounding =

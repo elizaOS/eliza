@@ -1,5 +1,5 @@
 /** Current public US weather from a named GNIS place and a nearby NWS station.
- * Official docs/limits: see BUDGET-AND-BASE.json. No model, key or private input.
+ * No model, key or private input. Other regions retain the public search path.
  */
 import type { ActionResult } from "@elizaos/core";
 
@@ -159,7 +159,11 @@ export function parseExplicitUsWeatherQuery(
 ): { city: string; state: string } | undefined {
   const prefix = "current public weather in ";
   if (!query.startsWith(prefix)) return undefined;
-  const location = query.slice(prefix.length).normalize("NFKC").trim();
+  const location = query
+    .slice(prefix.length)
+    .normalize("NFKC")
+    .trim()
+    .replace(/,\s*(?:USA|United States(?: of America)?)$/iu, "");
   if (location.length > 160 || /[^\p{L} .'’,-]/u.test(location)) return undefined;
   for (const [state, name] of Object.entries(STATES)) {
     for (const suffix of [name, state]) {

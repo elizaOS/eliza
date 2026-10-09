@@ -372,7 +372,11 @@ export class SharedRuntimeTimingCollector {
         this.#modelCallCount += 1;
         const call: SharedModelCallTiming = selection
           ? { ...selection, durationMs: measured.value }
-          : { provider: "unobserved", fallback: false, durationMs: measured.value };
+          : {
+              provider: "unobserved",
+              fallback: false,
+              durationMs: measured.value,
+            };
         if (call.fallback) {
           this.#modelFallbackCount += 1;
         }

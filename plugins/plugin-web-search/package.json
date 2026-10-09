@@ -43,7 +43,8 @@
         "format:fix": "bunx @biomejs/biome format --write src/",
         "typecheck": "tsc --noEmit -p tsconfig.json",
         "lint:check": "bunx @biomejs/biome check .",
-        "format:check": "bunx @biomejs/biome format ."
+        "format:check": "bunx @biomejs/biome format .",
+        "test": "vitest run --config vitest.config.ts"
     },
     "agentConfig": {
         "pluginType": "elizaos:client:1.0.0",

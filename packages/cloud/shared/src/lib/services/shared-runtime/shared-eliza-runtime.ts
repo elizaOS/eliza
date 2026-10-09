@@ -1313,12 +1313,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       observer.observe("core-result", {
         didRespond: result.didRespond,
         mode: result.mode ?? "unknown",
-        terminalFailure: result.terminalFailure
-          ? {
-              kind: result.terminalFailure.kind,
-              transient: result.terminalFailure.transient,
-            }
-          : null,
+        outcome: result.outcome,
         response: {
           text: result.responseContent?.text ?? null,
           actions: result.responseContent?.actions ?? lastDeliveredContent?.actions ?? [],

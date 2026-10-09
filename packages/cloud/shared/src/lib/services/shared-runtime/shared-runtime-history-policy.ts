@@ -13,7 +13,10 @@ import type {
   SharedRuntimeReminderActionProvenance,
 } from "../../../db/schemas/shared-runtime-history";
 import { logger } from "../../utils/logger";
-import { currentNwsObservationSource, isVerifiedCurrentNwsObservation } from "./shared-current-weather";
+import {
+  currentNwsObservationSource,
+  isVerifiedCurrentNwsObservation,
+} from "./shared-current-weather";
 
 export const MAX_PUBLIC_WEB_GROUNDING_AGE_MS = 24 * 60 * 60 * 1_000;
 export const MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS = 60_000;
@@ -114,13 +117,19 @@ export function parseSharedPublicWebGrounding(
   ) {
     const query = candidate.query.trim();
     return query
-      ? { kind: "web_search_unavailable", query, observedAt: candidate.observedAt }
+      ? {
+          kind: "web_search_unavailable",
+          query,
+          observedAt: candidate.observedAt,
+        }
       : undefined;
   }
   if (
     candidate.kind !== "web_search" ||
     typeof candidate.query !== "string" ||
-    (candidate.provider !== "parallel" && candidate.provider !== "exa" && candidate.provider !== "nws") ||
+    (candidate.provider !== "parallel" &&
+      candidate.provider !== "exa" &&
+      candidate.provider !== "nws") ||
     typeof candidate.text !== "string" ||
     typeof candidate.observedAt !== "number" ||
     !Number.isSafeInteger(candidate.observedAt) ||
@@ -136,13 +145,19 @@ export function parseSharedPublicWebGrounding(
   if (!query || !text || !sources || sources.length === 0) {
     return undefined;
   }
-  const weatherObservation = candidate.provider === "nws" &&
+  const weatherObservation =
+    candidate.provider === "nws" &&
     isVerifiedCurrentNwsObservation(candidate.weatherObservation, query, Date.now(), false)
-    ? candidate.weatherObservation : undefined;
-  if (candidate.provider === "nws" && (
-    !weatherObservation || sources.length !== 1 || sources[0].url !== weatherObservation.sourceUrl ||
-    sources[0].text !== currentNwsObservationSource(weatherObservation).text
-  )) return undefined;
+      ? candidate.weatherObservation
+      : undefined;
+  if (
+    candidate.provider === "nws" &&
+    (!weatherObservation ||
+      sources.length !== 1 ||
+      sources[0].url !== weatherObservation.sourceUrl ||
+      sources[0].text !== currentNwsObservationSource(weatherObservation).text)
+  )
+    return undefined;
   return {
     kind: "web_search",
     query,
@@ -215,7 +230,7 @@ export function parseSharedReminderActionProvenance(
 /** Encodes untrusted evidence as JSON so result text cannot forge envelope boundaries. */
 export function encodeSharedPublicWebGrounding(value: SharedRuntimePublicGrounding): string {
   const parsed = parseSharedPublicWebGrounding(value);
-  if (!parsed || parsed.kind !== "web_search") {
+  if (parsed?.kind !== "web_search") {
     throw new TypeError("Invalid Shared public web grounding");
   }
   return JSON.stringify({
@@ -253,7 +268,11 @@ export function sharedPublicWebGrounding(
   for (let index = (actionResults?.length ?? 0) - 1; index >= 0; index -= 1) {
     const candidate = actionResults?.[index];
     if (!candidate || typeof candidate !== "object") continue;
-    const record = candidate as { success?: unknown; text?: unknown; data?: unknown };
+    const record = candidate as {
+      success?: unknown;
+      text?: unknown;
+      data?: unknown;
+    };
     if (!record.data || typeof record.data !== "object") continue;
     const data = record.data as Record<string, unknown>;
     if (data.actionName !== "WEB_SEARCH") continue;
@@ -403,9 +422,15 @@ function selectedGrounding(
   // A fresh search receipt does not date the weather in an indexed excerpt.
   // Preserve old provenance for follow-up selection, but never project it as
   // current weather evidence. A new verified observation must run instead.
-  if (latest.grounding.query.startsWith("current public weather in ") &&
-      (latest.grounding.provider !== "nws" ||
-       !isVerifiedCurrentNwsObservation(latest.grounding.weatherObservation, latest.grounding.query, now))) {
+  if (
+    latest.grounding.query.startsWith("current public weather in ") &&
+    (latest.grounding.provider !== "nws" ||
+      !isVerifiedCurrentNwsObservation(
+        latest.grounding.weatherObservation,
+        latest.grounding.query,
+        now,
+      ))
+  ) {
     return { ...latest, status: "fresh_search_required" };
   }
   if (
@@ -468,7 +493,10 @@ function groundingProjectionMessages(
   if (options?.nativeToolProjection === false) {
     return [
       groundingAuthorityMarker(selection),
-      { role: "user", content: encodeSharedPublicWebGrounding(selection.grounding) },
+      {
+        role: "user",
+        content: encodeSharedPublicWebGrounding(selection.grounding),
+      },
     ];
   }
   const toolCallId = `persisted-web-${stringToUuid(`shared:${messageIdentity(message)}`)}`;
@@ -529,7 +557,10 @@ export function sharedRuntimeModelHistoryMessages(
     if (selected?.index === index && selected.status === "available") {
       messages.push(...groundingProjectionMessages(message, selected));
     }
-    messages.push({ role: message.role, content: sharedRuntimeModelHistoryContent(message) });
+    messages.push({
+      role: message.role,
+      content: sharedRuntimeModelHistoryContent(message),
+    });
     if (selected?.index === index && selected.status !== "available") {
       messages.push(...groundingProjectionMessages(message, selected));
     }

@@ -279,7 +279,11 @@ function turnActionResults(
     RunSharedAgentTurnResult,
     "actionResults" | "capabilityWall" | "blockedSecondaryCapabilities"
   >,
-  context: { agentId: string; originalIntent: string; clientMessageId?: string },
+  context: {
+    agentId: string;
+    originalIntent: string;
+    clientMessageId?: string;
+  },
 ): unknown[] | undefined {
   const results: unknown[] = [...(turn.actionResults ?? [])];
   if (turn.capabilityWall) {
@@ -595,7 +599,7 @@ function sharedElizaRuntimeExecution(
   turnKey: string | undefined,
   params: Record<string, unknown>,
   funding: SharedRuntimeChatOptions["funding"],
-  executionCtx: BridgeExecutionContext | undefined,
+  _executionCtx: BridgeExecutionContext | undefined,
   mobilePushDispatch?: SharedRuntimeChatOptions["mobilePushDispatch"],
   channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"],
 ): NonNullable<RunSharedAgentTurnInput["execution"]> {
@@ -1902,7 +1906,14 @@ export class SharedRuntimeChatService {
       const sentAt = Date.now();
       const messages: SharedTurnMessage[] = options.transientInput
         ? []
-        : [{ id: messageIds.user, role: messageRole, content: text, createdAt: sentAt }];
+        : [
+            {
+              id: messageIds.user,
+              role: messageRole,
+              content: text,
+              createdAt: sentAt,
+            },
+          ];
       const assistantText = reply.trim();
       if (assistantText) {
         messages.push({
@@ -2230,7 +2241,11 @@ export class SharedRuntimeChatService {
           });
           if (!consumerCanceled) {
             controller.enqueue(
-              encoder.encode(chatSseFrame("error", { message: "Shared runtime stream failed" })),
+              encoder.encode(
+                chatSseFrame("error", {
+                  message: "Shared runtime stream failed",
+                }),
+              ),
             );
           }
         } finally {

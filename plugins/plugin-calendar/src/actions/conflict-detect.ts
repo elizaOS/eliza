@@ -106,6 +106,7 @@ export interface ConflictDetectLoader {
   loadFeed: (args: {
     runtime: IAgentRuntime;
     range: ConflictRange;
+    grantId?: string;
   }) => Promise<ConflictDetectLoadResult>;
   loadFreeBusy?: (args: {
     runtime: IAgentRuntime;
@@ -148,7 +149,12 @@ export function registerConflictDetectHostAdapter(
 interface CalendarConflictFeedService {
   getCalendarFeed(
     requestUrl: URL,
-    request: { side: "owner"; timeMin: string; timeMax: string },
+    request: {
+      side: "owner";
+      timeMin: string;
+      timeMax: string;
+      grantId?: string;
+    },
   ): Promise<LifeOpsCalendarFeed>;
 }
 
@@ -364,7 +370,7 @@ export function createCalendarFeedConflictLoader(): Pick<
   "loadFeed" | "loadFreeBusy"
 > {
   return {
-    loadFeed: async ({ runtime, range }) => {
+    loadFeed: async ({ runtime, range, grantId }) => {
       const service = runtime.getService(CALENDAR_SERVICE_TYPE);
       if (!isCalendarConflictFeedService(service)) {
         throw new CalendarServiceError(
@@ -375,6 +381,7 @@ export function createCalendarFeedConflictLoader(): Pick<
       }
       const feed = await service.getCalendarFeed(INTERNAL_URL, {
         side: "owner",
+        ...(grantId ? { grantId } : {}),
         timeMin: range.start,
         timeMax: range.end,
       });
@@ -408,6 +415,7 @@ export async function evaluateCalendarWriteAvailability(args: {
   endAt: string;
   timeZone: string;
   excludeEventId?: string;
+  grantId?: string;
 }): Promise<
   CalendarAvailabilityEvaluation & {
     localTimes: {
@@ -423,6 +431,7 @@ export async function evaluateCalendarWriteAvailability(args: {
   const loaded = await createCalendarFeedConflictLoader().loadFeed({
     runtime: args.runtime,
     range,
+    ...(args.grantId ? { grantId: args.grantId } : {}),
   });
   const sources = normalizeLoadResult(loaded, {
     id: "owner-calendar-feed",
@@ -476,6 +485,7 @@ export async function evaluateCalendarWriteAvailability(args: {
     const alternativeFeed = await createCalendarFeedConflictLoader().loadFeed({
       runtime: args.runtime,
       range: alternativesRange,
+      ...(args.grantId ? { grantId: args.grantId } : {}),
     });
     const alternativeSources = normalizeLoadResult(alternativeFeed, {
       id: "owner-calendar-feed",
