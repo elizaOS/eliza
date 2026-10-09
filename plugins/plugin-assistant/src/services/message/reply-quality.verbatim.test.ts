@@ -42,3 +42,11 @@ test("short all-caps scaffolds still fail without an explicit matching instructi
     }),
   ).toBe(false);
 });
+
+ test("verbatim pronoun references require context while quoted pronouns remain literals", () => {
+  for (const pronoun of ["it", "this", "that", "them", "these", "those"]) {
+    expect(parseSayLiteralInstruction(`Print ${pronoun} verbatim.`)).toBeNull();
+    expect(parseSayLiteralInstruction(`Echo "${pronoun}" verbatim.`)).toBe(pronoun);
+  }
+  expect(parseSayLiteralInstruction("Say verbatim")).toBe("verbatim");
+});
