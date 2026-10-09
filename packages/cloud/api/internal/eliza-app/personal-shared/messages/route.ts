@@ -1735,7 +1735,7 @@ app.post("/", async (c) => {
       ...(!groupConversationId && account.ownerName
         ? { ownerName: account.ownerName }
         : {}),
-      project: "project" in parsed.data ? parsed.data.project : undefined,
+      ...(!isGroupMessage(parsed.data) ? { project: parsed.data.project } : {}),
     });
     if (groupConversationId && !groupConversationId.startsWith("group:")) {
       throw new Error("Invalid Personal Shared group conversation authority");
