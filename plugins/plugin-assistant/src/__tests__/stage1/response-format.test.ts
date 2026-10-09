@@ -1395,6 +1395,23 @@ describe("Stage 1 response format", () => {
     },
   );
 
+  it("keeps transcript fields after a replyText that opens its code fence inline", async () => {
+    // Text-mode providers can put the fence opener on the field line
+    // (`replyText: ```bash`). The closing fence must not reopen quoted mode,
+    // or every later field is shipped to the user as reply prose.
+    const reply = "```bash\nbun run test\n```";
+    const runtime = makeRuntime([
+      `shouldRespond: RESPOND\ncontexts: simple\nreplyText: ${reply}\ntopics: testing\nemotion: neutral`,
+    ]);
+    const result = await runStage1({
+      runtime,
+      message: makeMessage({ text: "How do I run the tests?" }),
+    });
+    expect(result.kind).toBe("direct_reply");
+    if (result.kind === "direct_reply")
+      expect(result.result.responseContent?.text).toBe(reply);
+  });
+
   it("keeps a completed fictional-facts answer direct despite incidental coding words", async () => {
     const reply =
       "Noted. Mira = PINE-17, Jonah = COVE-42, both fictional. No notes touched.";
