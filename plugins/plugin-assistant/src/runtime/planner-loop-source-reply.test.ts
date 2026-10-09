@@ -151,6 +151,16 @@ it.each(
     expect(counts).toEqual({ models: 1, effects: 0 });
   },
 );
+it.each(["Retyped approved body.", undefined])(
+  "rejects a non-array supplied-source reply after preserving the raw record: %j",
+  async (parts) => {
+    const counts = { models: 0, effects: 0 };
+    await expect(
+      compose("Approved body.", parts, { counts }),
+    ).rejects.toMatchObject({ code: "STAGE1_INVALID_SOURCE_REPLY" });
+    expect(counts).toEqual({ models: 1, effects: 0 });
+  },
+);
 it("source binding cannot move to another original request", async () => {
   await expect(
     compose(
