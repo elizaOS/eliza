@@ -134,7 +134,7 @@ async function exercise(
         args: {
           shouldRespond: "RESPOND",
           thought: "Use the requested scoped read.",
-          contexts: [compoundMissing ? "todos" : "general"],
+          contexts: [kind === "general" ? "web" : compoundMissing ? "todos" : "general"],
           intents: [],
           candidateActionNames:
             kind === "weather-missing"
