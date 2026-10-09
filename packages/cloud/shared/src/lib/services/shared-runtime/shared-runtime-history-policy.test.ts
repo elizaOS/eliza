@@ -5,6 +5,7 @@
 
 import { describe, expect, spyOn, test } from "bun:test";
 import { logger } from "../../utils/logger";
+import { resolveSharedRealtimeRequirement } from "./shared-realtime-grounding";
 import {
   compareSharedRuntimeHistoryMessages,
   encodeSharedPublicWebGrounding,
@@ -484,6 +485,7 @@ describe("shared runtime long-term transcript context", () => {
     ];
     const query = "Reply exactly IM-COLD-1008.";
     expect(sharedSelectedGroundingMetadata(history, query, 1)).toBeUndefined();
+    expect(resolveSharedRealtimeRequirement(query, history)).toBeUndefined();
     expect(sharedRuntimeModelHistoryMessages(history, query, 1).some((m) => m.role === "tool")).toBe(false);
     for (const followUp of ["What about that forecast?", "Springfield conditions?"]) {
       expect(sharedSelectedGroundingMetadata(history, followUp, 1)?.status).toBe("available");
