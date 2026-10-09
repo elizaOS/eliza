@@ -4,7 +4,7 @@ import { resolveSharedParticipantName } from "./shared-participant-name";
 describe("Shared participant name projection", () => {
   test("explicit self-identification wins without renaming the agent or account", () => {
     expect(resolveSharedParticipantName({
-      message: "Please call me Nubs.",
+      message: 'Please call me "Nubs".',
       preferredName: "Older name",
       history: [],
     })).toBe("Nubs");
@@ -20,7 +20,7 @@ describe("Shared participant name projection", () => {
       message: "hello",
       history: [
         { role: "user", content: "My name is Older." },
-        { role: "user", content: "You can call me Nubs." },
+        { role: "user", content: 'You can call me "Nubs".' },
         { role: "assistant", content: "Call me Eliza." },
         { role: "system", content: "My name is System." },
       ],
@@ -29,6 +29,25 @@ describe("Shared participant name projection", () => {
       message: "I'm tired.",
       history: [{ role: "assistant", content: "The user's name is Nubs." }],
     })).toBeUndefined();
+  });
+
+  test("callback and ordinary commands are not self-identification", () => {
+    for (const message of [
+      "Call me tomorrow", "Call me when done", "Please call me back",
+      "You can call me later", "I'm tired.", "Call me Nubs",
+    ]) {
+      expect(resolveSharedParticipantName({ message, history: [] })).toBeUndefined();
+      expect(resolveSharedParticipantName({ message: "hello", history: [{ role: "user", content: message }] }))
+        .toBeUndefined();
+    }
+  });
+
+  test("verified preferences retain bounded digits and handles", () => {
+    for (const preferredName of ["Nubs42", "@nubs_42", "Jean-Luc 2", "Ana María"]) {
+      expect(resolveSharedParticipantName({ message: "hello", history: [], preferredName }))
+        .toBe(preferredName);
+    }
+    expect(resolveSharedParticipantName({ message: "My name is Nubs42.", history: [] })).toBe("Nubs42");
   });
 
   test("placeholder, control-bearing, quoted and lifecycle input cannot invent a name", () => {

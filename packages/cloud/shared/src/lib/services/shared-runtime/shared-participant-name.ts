@@ -4,7 +4,8 @@
  */
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 
-const EXPLICIT_SELF_NAME = /^(?:please\s+)?(?:my name is|call me|you can call me)\s+(.+?)[.!?]?$/iu;
+const EXPLICIT_SELF_NAME = /^(?:my(?: preferred)? name is|i go by)\s+(.+?)[.!?]?$/iu;
+const QUOTED_SELF_NAME = /^(?:please\s+)?(?:call me|you can call me)\s+["“]([^"”]+)["”][.!?]?$/iu;
 
 function usableName(value: string | undefined): string | undefined {
   const name = value?.normalize("NFKC").trim().replace(/\s+/gu, " ");
@@ -12,14 +13,17 @@ function usableName(value: string | undefined): string | undefined {
     !name ||
     name.length > 60 ||
     /[\p{C}]/u.test(value ?? "") ||
-    !/^[\p{L}\p{M}][\p{L}\p{M}'’.-]*(?: [\p{L}\p{M}][\p{L}\p{M}'’.-]*){0,3}$/u.test(name) ||
+    !/[\p{L}]/u.test(name) ||
+    !/^[@\p{L}\p{M}\p{N}][\p{L}\p{M}\p{N}_'’.-]*(?: [\p{L}\p{M}\p{N}][\p{L}\p{M}\p{N}_'’.-]*){0,3}$/u.test(name) ||
     /^(?:shared user|shared lifecycle|user|anonymous|unknown)$/iu.test(name)
   ) return undefined;
   return name;
 }
 
 function explicitSelfName(message: string): string | undefined {
-  return usableName(EXPLICIT_SELF_NAME.exec(message.trim())?.[1]);
+  return usableName(
+    EXPLICIT_SELF_NAME.exec(message.trim())?.[1] ?? QUOTED_SELF_NAME.exec(message.trim())?.[1],
+  );
 }
 
 export function resolveSharedParticipantName(args: {
