@@ -1,3 +1,4 @@
+import { observeOwnerCapture, type OwnerModelCapture } from "./shared-owner-model-capture";
 /**
  * Shared runtime — runs a single agent turn container-free.
  *
@@ -138,6 +139,8 @@ export interface SharedMediaGenerationPort {
 }
 
 export interface RunSharedAgentTurnInput {
+  /** Server-admitted private capture capability; never populated from RPC params. */
+  ownerCapture?: OwnerModelCapture;
   character: SharedAgentCharacter;
   /** Prior conversation (oldest first). The new user message is NOT included. */
   history: SharedTurnMessage[];
@@ -1301,6 +1304,7 @@ export async function runSharedAgentTurn(
       Date.now(),
       realtimeRequirement.domain,
     );
+    observeOwnerCapture(input.ownerCapture, (capture) => capture.observe("preflight", { query: realtimeRequirement.query, domain: realtimeRequirement.domain, result: traceableResult }));
     realtimeActionResults = [traceableResult];
     realtimeGrounding = sharedPublicWebGrounding(realtimeActionResults);
   }

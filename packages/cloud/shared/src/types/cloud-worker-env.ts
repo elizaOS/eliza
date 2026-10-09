@@ -23,6 +23,8 @@ export interface RuntimeDurableObjectNamespace {
 }
 
 export interface Bindings {
+  /** Inactive by default: reviewed server-owned owner/room capture policy JSON. */
+  SHARED_OWNER_MODEL_CAPTURE_POLICY?: string;
   /** Registered Outreachr app, narrow BFF client secret digest, and exact hosted origin. */
   OUTREACHR_APP_ID?: string;
   OUTREACHR_CLIENT_SECRET_SHA256?: string;

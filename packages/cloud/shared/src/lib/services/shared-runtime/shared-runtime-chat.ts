@@ -1,3 +1,4 @@
+import type { OwnerModelCapture } from "./shared-owner-model-capture";
 /**
  * Cache-only shared-tier chat execution for Cloudflare Workers.
  *
@@ -336,6 +337,8 @@ export interface SharedTurnClaimStore {
 }
 
 export interface SharedRuntimeChatOptions {
+  /** Server-only capability reserved by the owning Personal Shared DO. */
+  ownerCapture?: OwnerModelCapture;
   /** Standard request trace propagated through the conversation coordinator. */
   traceId?: string;
   abortSignal?: AbortSignal;
@@ -1425,6 +1428,7 @@ export class SharedRuntimeChatService {
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
+        ownerCapture: options.ownerCapture,
         abortSignal: options.abortSignal,
         character,
         history,
