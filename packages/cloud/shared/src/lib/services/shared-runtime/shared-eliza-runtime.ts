@@ -881,7 +881,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       })();
       const streamUsage = totalUsage
         .then((value) => {
-          modelCall.complete(providerStreamFailure ? "sdk_error" : "sdk_completed", value);
+          // Safe 401/503 error projection is not the stream-success boundary:
+          // other SDK stream failures can still resolve aggregate usage.
+          modelCall.complete(
+            params.signal?.aborted ? "aborted" : failureReported ? "sdk_error" : "sdk_completed",
+            value,
+          );
           const normalized = normalizeUsage(value);
           usage = addUsage(usage, normalized);
           return normalized;
