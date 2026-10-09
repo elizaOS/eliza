@@ -3397,8 +3397,7 @@ test("Clock-only enrollment scopes actual planner discovery and preserves pendin
       type: ChannelType.DM,
     });
     const globalSchema = JSON.stringify(proposeDeviceAction.parameters);
-    const pendingText =
-      "The Clock proposal is awaiting your approval on the phone.";
+    const pendingText = "Review this request on your phone before it can run.";
     const outputs: unknown[] = [
       stage1Response({
         contexts: ["general"],
@@ -3440,14 +3439,6 @@ test("Clock-only enrollment scopes actual planner discovery and preserves pendin
           },
         ],
       },
-      JSON.stringify({
-        thought: "A durable proposal exists; no Clock request was executed.",
-        decision: "FINISH",
-        success: true,
-        requestFullyCovered: false,
-        messageToUser: pendingText,
-        replyEffectStatus: "non_applied",
-      }),
     ];
     const calls: Array<{ type: string; parameters: unknown }> = [];
     const useModel = vi

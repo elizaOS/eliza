@@ -146,3 +146,23 @@ test("actual reminder action reaches inference schema and preserves explicit no-
       }).valid,
     ).toBe(false);
 });
+
+test("operationKey inference schema mirrors the existing strict identifier contract", () => {
+  const tool = actionToTool(proposeDeviceAction).function;
+  expect(tool.parameters?.properties?.operationKey).toMatchObject({
+    type: "string",
+    minLength: 1,
+    maxLength: 128,
+    pattern: "^[A-Za-z0-9][A-Za-z0-9_-]*$",
+  });
+  for (const operationKey of ["a", "A_0-x", "closed-op-123", "a".repeat(128)])
+    expect(
+      validateToolArgs(proposeDeviceAction, { ...args(null), operationKey })
+        .valid,
+    ).toBe(true);
+  for (const operationKey of ["", ":urn", "a:b", "a.b", "a b", "a".repeat(129)])
+    expect(
+      validateToolArgs(proposeDeviceAction, { ...args(null), operationKey })
+        .valid,
+    ).toBe(false);
+});
