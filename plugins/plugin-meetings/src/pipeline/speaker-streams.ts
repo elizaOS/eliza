@@ -324,7 +324,20 @@ export class SpeakerStreamManager {
 
     if (buffer.confirmCount >= this.confirmThreshold) {
       this.emitSegment(buffer, trimmed, this.absoluteWords(buffer, segments));
+      const baseWindowMs = buffer.windowStartMs;
       this.advanceOffset(buffer, segmentEndSec);
+      if (segmentEndSec !== undefined) {
+        // advanceOffset parks the anchor at the confirmation wall-clock
+        // time, but with a segment boundary the still-unconfirmed audio
+        // physically starts at the pre-advance window base plus the
+        // boundary — the same re-anchor the prefix-confirm branch above
+        // applies. Without it, every later segment for this speaker is
+        // stamped late by the ASR round-trip. (With no boundary the
+        // window was fully consumed and the next feedAudio re-anchors
+        // on arrival.)
+        buffer.windowStartMs =
+          baseWindowMs + Math.floor(segmentEndSec * 1000);
+      }
     }
   }
 
