@@ -210,3 +210,60 @@ test("complete source offers persist more than one hundred candidates and source
   assert.equal(selected.candidate.sources.length, 101);
   assert.deepEqual(f.api.load(), selected);
 });
+
+test("look-alike sources and newest-first facts survive an offer; a conflicting source cannot select", (t) => {
+  const f = fixture(t);
+  const conflict = {
+    company: "Test",
+    accountLabel: "Ending 1234",
+    origin: "https://lookalike.example",
+  };
+  const conflicting = {
+    status: "conflicting-source",
+    candidates: [],
+    conflicts: [conflict],
+    unreadable: 1,
+  };
+  const offer = f.api.offer(conflicting, f.task.revision);
+  assert.equal(offer.status, "conflicting-source");
+  assert.deepEqual(offer.conflicts, [conflict]);
+  assert.equal(offer.unreadable, 1);
+  assert.throws(() =>
+    f.api.select(
+      {
+        offerId: offer.offerId,
+        candidateId: candidate.candidateId,
+        expectedRevision: offer.expectedRevision,
+      },
+      conflicting,
+    ),
+  );
+  const { dueDate: _dueDate, ...facts } = candidate.facts;
+  const newest = {
+    ...candidate,
+    facts,
+    receivedAt: "2026-09-20T00:00:00.000Z",
+    mostRecent: true,
+  };
+  const ranked = f.api.offer(
+    { status: "candidate", candidates: [newest], conflicts: [conflict] },
+    f.task.revision,
+  );
+  assert.equal(ranked.candidates[0].mostRecent, true);
+  assert.equal(ranked.candidates[0].facts.dueDate, undefined);
+  for (const bad of [
+    { ...conflicting, conflicts: [] },
+    { ...conflicting, conflicts: [{ ...conflict, body: "private" }] },
+    { ...conflicting, unreadable: 0 },
+    { ...conflicting, candidates: [candidate] },
+    {
+      status: "ambiguous",
+      candidates: [newest, { ...newest, candidateId: "e".repeat(64) }],
+    },
+    {
+      status: "candidate",
+      candidates: [{ ...newest, receivedAt: "2026-09-20T00:00:00Z" }],
+    },
+  ])
+    assert.throws(() => f.api.offer(bad, f.task.revision));
+});

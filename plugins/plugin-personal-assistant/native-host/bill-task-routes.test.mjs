@@ -248,7 +248,8 @@ test("source selection gates the workflow, rereads before committing and reuses 
     ],
   };
   let reads = 0,
-    workflows = 0;
+    workflows = 0,
+    failure = null;
   const gateway = await createTaskGateway({
     bundlePath,
     databasePath: join(directory, "journal.sqlite"),
@@ -269,6 +270,7 @@ test("source selection gates the workflow, rereads before committing and reuses 
       allowedOrigins: ["https://example.org"],
     }),
     discoverBills: async () => {
+      if (failure) throw failure;
       reads++;
       return { status: "candidate", candidates: [candidate] };
     },
@@ -297,6 +299,24 @@ test("source selection gates the workflow, rereads before committing and reuses 
       "source-selection-required",
     );
     assert.equal(workflows, 0);
+    // A failed search names only a fixed reason, never provider text.
+    for (const [reason, expected] of [
+      ["reauth_required", "reauth_required"],
+      ["account_changed", "account_changed"],
+      ["private provider text", "unavailable"],
+    ]) {
+      failure = Object.assign(new Error("private provider text"), {
+        code: "BILL_SOURCES_UNAVAILABLE",
+        reason,
+      });
+      const failed = await req("/tasks/source-task/source-bills");
+      assert.equal(failed.status, 503);
+      assert.deepEqual(await failed.json(), {
+        code: "BILL_DISCOVERY_UNAVAILABLE",
+        reason: expected,
+      });
+    }
+    failure = null;
     const offer = await (await req("/tasks/source-task/source-bills")).json();
     const input = {
       offerId: offer.offerId,
