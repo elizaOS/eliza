@@ -17,7 +17,7 @@ const PHRASE = "Eliza generated this audio attachment.";
 // Rachel — a premade voice available on every ElevenLabs account. Overridable.
 const DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM";
 const TTS_MODEL = process.env.ELEVENLABS_MODEL_ID ?? "eleven_turbo_v2_5";
-const STT_MODEL = process.env.ELEVENLABS_STT_MODEL_ID ?? "scribe_v1";
+const STT_MODEL = process.env.ELEVENLABS_STT_MODEL_ID ?? "scribe_v2";
 
 function skip(reason) {
   console.log(`SKIP real-service-audio-roundtrip: ${reason}`);
