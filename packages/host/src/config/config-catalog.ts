@@ -254,7 +254,15 @@ export function setByPath(
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i];
     if (isUnsafeKey(seg)) return;
-    if (!(seg in current) || typeof current[seg] !== "object") {
+    // null reports typeof "object", so it needs an explicit check:
+    // without one it slips past this guard, becomes the current node,
+    // and the next read/write throws — while every other non-container
+    // intermediate (missing key, string, number) is replaced here.
+    if (
+      !(seg in current) ||
+      current[seg] === null ||
+      typeof current[seg] !== "object"
+    ) {
       current[seg] = /^\d+$/.test(segments[i + 1]) ? [] : {};
     }
     current = current[seg] as Record<string, unknown>;
