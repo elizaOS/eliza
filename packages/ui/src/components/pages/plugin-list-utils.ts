@@ -150,19 +150,17 @@ export function isAdvancedParam(param: PluginParamDef): boolean {
     d.includes("debug")
   );
 }
-/**
- * True when PORT is a whole token of the key (`PORT`, `PORT_FORWARD`,
- * `SERVER_PORT`, `APP_PORT_NUMBER`). A plain substring test also matches
- * unrelated words such as TRANSPORT and PASSPORT, which are not ports.
- */
-function isPortKey(keyUpper: string): boolean {
+
+/** Match a whole key token so TRANSPORT and ACCOUNT keep their declared types. */
+function hasKeyToken(keyUpper: string, token: string): boolean {
   return (
-    keyUpper === "PORT" ||
-    keyUpper.startsWith("PORT_") ||
-    keyUpper.endsWith("_PORT") ||
-    keyUpper.includes("_PORT_")
+    keyUpper === token ||
+    keyUpper.startsWith(`${token}_`) ||
+    keyUpper.endsWith(`_${token}`) ||
+    keyUpper.includes(`_${token}_`)
   );
 }
+
 /** Convert PluginParamDef[] to a JSON Schema + ConfigUiHints for ConfigRenderer. */
 export function paramsToSchema(
   params: PluginParamDef[],
@@ -207,7 +205,7 @@ export function paramsToSchema(
       prop.format = "date";
     }
     // Auto-detect number types from key patterns
-    if (isPortKey(keyUpper) && prop.type === "string") {
+    if (hasKeyToken(keyUpper, "PORT") && prop.type === "string") {
       prop.type = "number";
     } else if (
       (keyUpper.includes("TIMEOUT") ||
@@ -217,7 +215,7 @@ export function paramsToSchema(
     ) {
       prop.type = "number";
     } else if (
-      (keyUpper.includes("COUNT") ||
+      (hasKeyToken(keyUpper, "COUNT") ||
         keyUpper.includes("LIMIT") ||
         keyUpper.startsWith("MAX_")) &&
       prop.type === "string"
@@ -334,7 +332,7 @@ export function paramsToSchema(
       advanced: isAdvancedParam(p),
     };
     // Port numbers — constrain range
-    if (isPortKey(keyUpper)) {
+    if (hasKeyToken(keyUpper, "PORT")) {
       hint.min = 1;
       hint.max = 65535;
       prop.minimum = 1;
@@ -352,7 +350,7 @@ export function paramsToSchema(
     }
     // Count/limit — non-negative
     if (
-      keyUpper.includes("COUNT") ||
+      hasKeyToken(keyUpper, "COUNT") ||
       keyUpper.includes("LIMIT") ||
       keyUpper.startsWith("MAX_")
     ) {
