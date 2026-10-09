@@ -3056,6 +3056,14 @@ public class ElizaAgentService extends Service {
                     throw new IllegalStateException("Direct child shutdown interrupted", interrupted);
                 }
             }
+            if (confirmTermination) {
+                try {
+                    // Resident stop preserves workflow siblings. None may retain the old credential environment.
+                    IpcStartupRecovery.requireSoleUidProcess();
+                } catch (Exception unproven) {
+                    throw new IllegalStateException("Credential consumers remain or inventory is unproven", unproven);
+                }
+            }
             agentProcess = null;
             stdoutPump = null;
             stderrPump = null;
