@@ -180,12 +180,15 @@ export class CameraWeb extends WebPlugin {
     const constraints: MediaStreamConstraints = {
       video: {
         deviceId: options.deviceId ? { exact: options.deviceId } : undefined,
+        // An omitted direction defaults to the back camera, as on both
+        // native bridges; leaving it unconstrained lets the browser pick
+        // a different camera. "external" stays unconstrained.
         facingMode:
           options.direction === "front"
             ? "user"
-            : options.direction === "back"
-              ? "environment"
-              : undefined,
+            : options.direction === "external"
+              ? undefined
+              : "environment",
         width: options.resolution?.width
           ? { ideal: options.resolution.width }
           : { ideal: 1920 },
