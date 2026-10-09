@@ -6,7 +6,7 @@ import {
   type BatchVoiceOptions,
   type BatchVoicePorts,
   type BatchVoiceReply,
-} from "../batch-conversation";
+} from "@elizaos/ui/voice/batch-conversation";
 import {
   createVoiceActivityDetector,
   DEFAULT_VOICE_ACTIVITY,
