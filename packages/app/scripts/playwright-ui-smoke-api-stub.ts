@@ -17,6 +17,7 @@ import {
   parseHostExternalSpecifiers,
   wrapBundleAsHostExternalFactory,
 } from "../../agent/src/api/dynamic-view-host-external.ts";
+import { handleInteractionsRoutes } from "../../agent/src/api/interactions-routes.ts";
 import { fixtureAgentStatus } from "../test/fixtures/agent-status.ts";
 // The declarations + provenance decision live in one place so a removed plugin
 // cannot linger in the stub and a fabricated bundle can never masquerade as the
@@ -3690,7 +3691,17 @@ const server = http.createServer(async (req, res) => {
   // route's designed-empty response instead of surfacing the catch-all 501 as
   // a product console error in lifecycle, interaction, and visual coverage.
   if (req.method === "GET" && url.pathname === "/api/computer-use/sessions") {
-    sendJson(req, res, 200, { sessions: [] });
+    sendJson(req, res, 200, {
+      sessions: [],
+      events: [],
+      readiness: {
+        capture: { available: false, tool: "unavailable" },
+        input: { available: false, tool: "unavailable" },
+        browser: { available: false, tool: "unavailable" },
+        vision: { available: false, modelType: "unavailable" },
+        approvalMode: "disabled",
+      },
+    });
     return;
   }
 
@@ -4061,6 +4072,25 @@ const server = http.createServer(async (req, res) => {
       safariPackagePath: null,
       releaseManifest: null,
     });
+    return;
+  }
+
+  if (url.pathname === "/api/interactions/composer") {
+    await handleInteractionsRoutes({
+      req,
+      res,
+      method: req.method ?? "GET",
+      pathname: url.pathname,
+      runtime: null,
+      json: (_res, data, status = 200) => sendJson(req, res, status, data),
+      error: (_res, message, status = 500) =>
+        sendJson(req, res, status, { error: message }),
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/lifeops/reminders") {
+    sendJson(req, res, 200, { reminders: [] });
     return;
   }
 
