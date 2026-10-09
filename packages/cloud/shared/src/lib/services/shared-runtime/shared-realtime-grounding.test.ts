@@ -987,6 +987,63 @@ describe("General public citation mode", () => {
     ).not.toContain(paraphrase);
   });
 
+  test("normalizes clear general numeric formats in claims and cited evidence without changing strict mode", () => {
+    for (const claim of [
+      "The project quota is 1.2 million and the user quota is 6k units per minute.",
+      "The project quota is 1.2M and the user quota is 6K units per minute.",
+      "The user quota is 6 thousand units per minute.",
+    ])
+      expect(general(claim)).toContain(claim);
+    const abbreviatedSource = {
+      ...official,
+      sources: [{ url, text: "The project quota is 1.2M; the user quota is 6k units per minute." }],
+    };
+    const full = "The project quota is 1,200,000 and the user quota is 6,000 units per minute.";
+    expect(general(full, abbreviatedSource)).toContain(full);
+    const billionSource = {
+      ...official,
+      sources: [{ url, text: "The limit is 2,000,000,000 units." }],
+    };
+    expect(general("The limit is 2 billion units.", billionSource)).toContain("2 billion");
+    expect(general("The limit is 2B units.", billionSource)).toContain("2B");
+    const currencySource = {
+      ...official,
+      sources: [{ url, text: "The amount is 1,200,000 USD." }],
+    };
+    expect(general("The amount is 1.2M USD.", currencySource)).toContain("1.2M USD");
+    expect(general("The amount is 1.2M EUR.", currencySource)).not.toContain("1.2M EUR");
+    const fractionalSource = {
+      ...official,
+      sources: [{ url, text: "The amount is 1,234.5 USD." }],
+    };
+    expect(general("The amount is 1.2345k USD.", fractionalSource)).toContain("1.2345k USD");
+    const roundingSource = { ...official, sources: [{ url, text: "The limit is 1,005 units." }] };
+    expect(general("The limit is 1.005k units.", roundingSource)).toContain("1.005k units");
+    const draft = `The project quota is 1.2M units. [[SOURCE_URL:${url}]]`;
+    expect(finalizeSharedRealtimeReply(draft, official)).not.toContain("1.2M units");
+  });
+
+  test("does not expand ambiguous units, invented values, malformed counts or overflowing magnitudes", () => {
+    for (const claim of [
+      "The project quota is 9 million units.",
+      "The project quota is 9M units.",
+      "The user quota is 6m units.",
+      "The user quota is 6MB.",
+      "The user quota is 6m/s.",
+      "The user quota is 6M/s.",
+      "The project quota is 1,20 million units.",
+      "The project quota is 1.2.3M units.",
+      "The project quota is 999999999999999B units.",
+      "The user quota is 0.00001k units.",
+    ])
+      expect(general(claim)).not.toContain(claim);
+    const malformedSource = {
+      ...official,
+      sources: [{ url, text: "The project quota is 1,20 million units." }],
+    };
+    expect(general("The project quota is 12 units.", malformedSource)).not.toContain("12 units");
+  });
+
   test("refuses fabricated numeric values, unsupported recognized units and untrusted receipts or URLs", () => {
     for (const claim of [
       "Each project can use 9,000,000 quota units per minute.",
