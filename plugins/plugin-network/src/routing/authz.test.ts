@@ -8,10 +8,12 @@ describe("Network own-word boundary", () => {
     const quotedOptOut =
       'My friend said "stop\u200b texting me" but I still want updates';
     const quotedSafety = "He wrote: made me uncom\u200bfortable, but I am fine";
+    const repeatedQuotedOptOut = 'Do not stop texting. "stop texting"';
 
     assert(!ownWords(quotedOptOut).includes("stop texting"));
     assert.deepEqual(detectNetworkSignals(quotedOptOut), []);
     assert.deepEqual(detectNetworkSignals(quotedSafety), []);
+    assert.deepEqual(detectNetworkSignals(repeatedQuotedOptOut), []);
     assert.equal(
       resolveBusyVsPaused("paused", 'They said "I am swam\u200bped"'),
       "paused",

@@ -36,30 +36,67 @@ const norm = (text: string) =>
  * ‘...’ (not apostrophes: "I'm", "don't"), lines starting with ">", what follows "X said" /
  * "wrote" / "texted" up to the end of that sentence or a "but", and a forwarded block to the end.
  */
-export function quotedSpans(text: string): string[] {
-  const spans: string[] = [];
+interface QuotedSpanRange {
+  start: number;
+  end: number;
+}
+
+function capturedRange(
+  match: RegExpMatchArray,
+  value: string,
+): QuotedSpanRange | null {
+  const start = (match.index ?? 0) + match[0].indexOf(value);
+  return start >= (match.index ?? 0)
+    ? { start, end: start + value.length }
+    : null;
+}
+
+function quotedSpanRanges(text: string): QuotedSpanRange[] {
+  const ranges: QuotedSpanRange[] = [];
   for (const match of text.matchAll(/"([^"]{3,})"|“([^”]{3,})”/g)) {
-    spans.push(match[1] ?? match[2] ?? "");
+    const value = match[1] ?? match[2];
+    const range = value ? capturedRange(match, value) : null;
+    if (range) ranges.push(range);
   }
   for (const match of text.matchAll(
     /(?<![\p{L}\p{N}])['‘]([^'‘’\n]{3,}?)['’](?![\p{L}\p{N}])/gu,
   )) {
-    if (match[1]) spans.push(match[1]);
+    const range = match[1] ? capturedRange(match, match[1]) : null;
+    if (range) ranges.push(range);
   }
   for (const match of text.matchAll(
     /\b(?:said|says|wrote|writes|texted|messaged|told me|asked me)\b\s*:?\s*([^\n.;!?]*?)(?=\s+but\b|[\n.;!?]|$)/gi,
   )) {
-    if (match[1] && match[1].trim().length >= 2) spans.push(match[1]);
+    const range =
+      match[1] && match[1].trim().length >= 2
+        ? capturedRange(match, match[1])
+        : null;
+    if (range) ranges.push(range);
   }
   const fwd =
     /(?:^|\n)[ \t]*(?:-{2,}\s*forwarded message\s*-{2,}|begin forwarded message:?|fwd?:)[\s\S]*$/i.exec(
       text,
     );
-  if (fwd) spans.push(fwd[0]);
-  for (const line of text.split("\n")) {
-    if (line.trim().startsWith(">")) spans.push(line.replace(/^\s*>/, ""));
+  if (fwd) {
+    const start = fwd.index;
+    ranges.push({ start, end: start + fwd[0].length });
   }
-  return spans;
+  let lineOffset = 0;
+  for (const line of text.split("\n")) {
+    const marker = /^\s*>/.exec(line);
+    if (marker) {
+      ranges.push({
+        start: lineOffset + marker[0].length,
+        end: lineOffset + line.length,
+      });
+    }
+    lineOffset += line.length + 1;
+  }
+  return ranges;
+}
+
+export function quotedSpans(text: string): string[] {
+  return quotedSpanRanges(text).map(({ start, end }) => text.slice(start, end));
 }
 
 export function evidenceOk(
@@ -146,12 +183,17 @@ const ORDINAL_RE = /\b(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b/gi;
 
 /** Member's own words with quoted third-party spans removed. */
 export function ownWords(memberText: string): string {
-  let own = sanitize(memberText);
+  const own = sanitize(memberText);
   // Find and remove quotes in the same normalized representation. Otherwise a
   // zero-width or compatibility character removed by sanitize() makes the raw
   // quote impossible to find, and third-party text survives as the member's.
-  for (const q of quotedSpans(own)) own = own.replace(q, " ");
-  return own;
+  // Mask the exact ranges instead of replacing by value. The same phrase can
+  // occur outside a quote, and value replacement can remove that earlier copy.
+  const chars = own.split("");
+  for (const { start, end } of quotedSpanRanges(own)) {
+    chars.fill(" ", start, end);
+  }
+  return chars.join("");
 }
 
 export type DateGuard =
