@@ -8,6 +8,11 @@ import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { AgentRuntime, ChannelType, type UUID } from "@elizaos/core/edge";
 import { readFileSync } from "node:fs";
 import { clearCurrentWeatherMetadataCacheForTests } from "./shared-current-weather";
+import type { OwnerModelCapture } from "./shared-owner-model-capture";
+import { createOwnerCaptureBuffer } from "./shared-owner-model-capture";
+import { reserveOwnerModelCapture, readEncryptedOwnerCapture, type OwnerCaptureBudgetStorage } from "./shared-owner-model-capture-store";
+import type { RuntimeR2Bucket } from "../../storage/r2-runtime-binding";
+import { resetKmsClientForTests } from "../../../db/crypto/kms-client";
 import type { RunSharedAgentTurnResult } from "./run-shared-agent-turn";
 import { SharedRuntimeTurnError } from "./shared-runtime-errors";
 
@@ -21,6 +26,8 @@ const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_KEY = process.env.CEREBRAS_API_KEY;
 const ORIGINAL_FALLBACK_KEY = process.env.OPENROUTER_API_KEY;
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+const ORIGINAL_ENVIRONMENT = process.env.ENVIRONMENT;
+const ORIGINAL_KMS_BACKEND = process.env.ELIZA_KMS_BACKEND;
 const fixture = (name: string) => JSON.parse(readFileSync(new URL("./fixtures/" + name, import.meta.url), "utf8"));
 const GNIS = fixture("usgs-springfield-mo-20261009.json");
 const STATION = fixture("nws-ksgf-station-20261009.json");
@@ -35,8 +42,14 @@ beforeEach(() => {
   process.env.CEREBRAS_API_KEY = "offline-preflight-test-key";
   delete process.env.OPENROUTER_API_KEY;
   process.env.NODE_ENV = "production";
+  process.env.ENVIRONMENT = "local";
+  process.env.ELIZA_KMS_BACKEND = "memory";
+  resetKmsClientForTests();
 });
 afterEach(() => {
+  resetKmsClientForTests();
+  if (ORIGINAL_ENVIRONMENT === undefined) delete process.env.ENVIRONMENT; else process.env.ENVIRONMENT = ORIGINAL_ENVIRONMENT;
+  if (ORIGINAL_KMS_BACKEND === undefined) delete process.env.ELIZA_KMS_BACKEND; else process.env.ELIZA_KMS_BACKEND = ORIGINAL_KMS_BACKEND;
   clock.mockRestore();
   clearCurrentWeatherMetadataCacheForTests();
   globalThis.fetch = ORIGINAL_FETCH;
@@ -72,7 +85,7 @@ function modelResponse(content: string | null, calls: Array<{ name: string; args
   });
 }
 
-async function exercise(mode: Mode = {}, reply = MARKED) {
+async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerModelCapture) {
   clearCurrentWeatherMetadataCacheForTests();
   let publicHttpCalls = 0;
   const publicHttpHops: string[] = [];
@@ -257,6 +270,7 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
   try {
     const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
     result = await runSharedAgentTurn({
+      ownerCapture,
       character: { name: "Shared Eliza", system: "You are Eliza.", model: "qwen-3.8-27b" },
       history: [],
       message: mode.ordinary ? "Hello there" : mode.compound ? `${PROMPT} Also perform the other operation.` : PROMPT,
@@ -324,8 +338,77 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
   return { result, failed, failureCategory, publicHttpCalls, publicHttpHops, modelCalls, modelChronology, freeSelectionsBeforeAction, validations, otherActions, actions, coreActionResults, legacyCacheCountAtStop, registeredShortcut };
 }
 
+const CAPTURE_SCOPE = {
+  organizationId: "11111111-1111-4111-a111-111111111111",
+  userId: "22222222-2222-4222-a222-222222222222",
+  roomId: "33333333-3333-4333-a333-333333333333",
+  traceId: "a".repeat(32),
+};
+function privateCaptureBoundary() {
+  const rows = new Map<string, unknown>(); const ciphertext = new Map<string, string>();
+  const pending: Promise<unknown>[] = [];
+  const storage: OwnerCaptureBudgetStorage = {
+    async transaction<T>(fn: Parameters<OwnerCaptureBudgetStorage["transaction"]>[0]): Promise<T> {
+      return await fn({ get: async <V>(key: string) => structuredClone(rows.get(key)) as V | undefined,
+        put: async <V>(key: string, value: V) => { rows.set(key, structuredClone(value)); } }) as T;
+    },
+  };
+  const bucket: RuntimeR2Bucket = {
+    async get(key) {
+      const value = ciphertext.get(key);
+      return value === undefined ? null : { size: new TextEncoder().encode(value).byteLength, body: new Response(value).body!, text: async () => value };
+    },
+    async put(key, value, options) {
+      expect(options?.onlyIf).toEqual({ etagDoesNotMatch: "*" });
+      if (typeof value !== "string" || ciphertext.has(key)) throw new Error("Synthetic immutable R2 boundary rejected");
+      ciphertext.set(key, value); return { version: "synthetic-private-version" };
+    },
+    async delete(key) { ciphertext.delete(key); },
+  };
+  const now = Date.now();
+  const policy = { version: 1, sessionId: "44444444-4444-4444-a444-444444444444",
+    organizationId: CAPTURE_SCOPE.organizationId, userId: CAPTURE_SCOPE.userId, readerUserId: CAPTURE_SCOPE.userId,
+    roomId: CAPTURE_SCOPE.roomId, issuedAt: now - 1, expiresAt: now + 60_000, retainUntil: now + 86_000_000,
+    maxTurns: 1, maxCalls: 32, maxBytes: 4 * 1024 * 1024 };
+  return { storage, bucket, ciphertext, pending, policy };
+}
+
 test("genuine preflight enters canonical execution without free-query selection", async () => {
-  const actual = await exercise();
+  expect(AgentRuntime.ownerToolExecutionObserverVersion).toBe(1);
+  const boundary = privateCaptureBoundary();
+  const admitted = await reserveOwnerModelCapture({ policyValue: JSON.stringify(boundary.policy),
+    verifiedPersonalShared: true, scope: CAPTURE_SCOPE, storage: boundary.storage, bucket: boundary.bucket,
+    waitUntil: (work) => { boundary.pending.push(work); } });
+  expect(admitted.state).toBe("admitted");
+  const actual = await exercise({}, MARKED, admitted.capture);
+  admitted.capture!.finish({ boundary: "offline-cloud-response-ready", reply: actual.result?.reply, responded: actual.result?.responded });
+  await Promise.all(boundary.pending);
+  expect(admitted.persistence.state).toBe("stored");
+  const readback = await readEncryptedOwnerCapture({ storage: boundary.storage, bucket: boundary.bucket,
+    locator: admitted.locator!, principal: { ...CAPTURE_SCOPE, authenticatedOwner: true }, roomId: CAPTURE_SCOPE.roomId });
+  expect(readback.objectAuthenticated).toBe(true);
+  const capture = readback.payload!;
+  expect(capture.coverage.actionArguments).toBe("canonical-observer");
+  expect(capture.coverage.callsObserved).toBe(actual.modelCalls);
+  expect(capture.coverage.pendingCalls).toBe(0);
+  expect(capture.coverage.pendingTimings).toBe(0);
+  expect(capture.coverage.toolExecutionsStarted).toBeGreaterThan(0);
+  expect(capture.coverage.toolExecutionsSettled).toBe(capture.coverage.toolExecutionsStarted);
+  expect(capture.coverage.pendingToolExecutions).toBe(0);
+  expect(capture.usageCoverage.state).toBe("complete");
+  const requests = capture.events.filter((event) => event.kind === "sdk-request");
+  expect(requests.length).toBe(actual.modelCalls);
+  expect(JSON.stringify(requests)).toContain(PROMPT);
+  expect(JSON.stringify(requests)).toContain("WEB_SEARCH");
+  const sdkInputs = requests.map((event) => (event.payload as { input: { tools?: Array<{ name: string; inputSchema?: unknown }> } }).input);
+  expect(sdkInputs.some((input) => input.tools?.some((tool) => tool.name === "WEB_SEARCH" && typeof tool.inputSchema === "object"))).toBe(true);
+  expect(JSON.stringify(capture.events)).not.toContain("offline-preflight-test-key");
+  expect([...boundary.ciphertext.values()].join("")).not.toContain(PROMPT);
+  const starts = capture.events.filter((event) => event.kind === "action-started").map((event) => event.payload as { executionId: string; args: unknown });
+  const settled = capture.events.filter((event) => event.kind === "action-completed").map((event) => event.payload as { executionId: string; result: unknown });
+  expect(starts.every((started) => settled.some((terminal) => terminal.executionId === started.executionId))).toBe(true);
+  expect(JSON.stringify(starts)).toContain(QUERY);
+  expect(JSON.stringify(settled)).toContain(SOURCE_URL);
   expect(actual.registeredShortcut).toBe(true);
   expect(actual.publicHttpCalls).toBe(4);
   expect(actual.publicHttpHops).toEqual([GNIS_URL, POINT_URL, STATIONS_URL, SOURCE_URL]);
@@ -355,7 +438,22 @@ test("canonical denial and unsupported source claims retain their gates", async 
     );
     expect(unsupported.result?.reply).not.toContain("69.8°C");
   }
-  const denied = await exercise({ deny: true });
+  const denialCapture = createOwnerCaptureBuffer(CAPTURE_SCOPE, { maxCalls: 32, maxBytes: 4 * 1024 * 1024, expiresAt: Date.now() + 60_000 }, () => {});
+  let observedGateCount = 0;
+  const throwingObserver: OwnerModelCapture = { ...denialCapture,
+    async canonicalTool(event) {
+      denialCapture.canonicalTool(event);
+      if (event.phase === "gate") observedGateCount += 1;
+      denialCapture.omission();
+      throw new Error("Synthetic asynchronous owner observer refusal");
+    },
+  };
+  const denied = await exercise({ deny: true }, MARKED, throwingObserver);
+  await Promise.resolve();
+  expect(observedGateCount).toBeGreaterThan(0);
+  expect(denialCapture.snapshot().coverage.toolExecutionsStarted).toBe(0);
+  expect(denialCapture.snapshot().coverage.pendingToolExecutions).toBe(0);
+  expect(denialCapture.snapshot().coverage.exactFull).toBe(false);
   expect(denied.validations).toBeGreaterThan(0);
   expect(denied.actions).toHaveLength(0);
   expect(denied.publicHttpCalls).toBe(4);

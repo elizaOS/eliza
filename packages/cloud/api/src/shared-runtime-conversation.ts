@@ -1981,7 +1981,7 @@ export class SharedRuntimeConversation {
       }
       let ownerCapture: Awaited<ReturnType<typeof reserveOwnerModelCapture>> | undefined;
       const capturePolicy = parseOwnerCapturePolicy(this.env.SHARED_OWNER_MODEL_CAPTURE_POLICY);
-      if (capturePolicy && personal && isCanonicalPersonalSharedAgent(agent) &&
+      if (capturePolicy && payload.rpc.method === "message.send" && personal && isCanonicalPersonalSharedAgent(agent) &&
           (validatedChannel?.type ?? ChannelType.DM) === ChannelType.DM && this.env.BLOB) {
         const channelId = sharedRuntimeRoomKey(agent.id, payload.rpc.params?.roomId, payload.rpc.params?.userId);
         const roomId = sharedRuntimeConversationRoomId(channelId);
