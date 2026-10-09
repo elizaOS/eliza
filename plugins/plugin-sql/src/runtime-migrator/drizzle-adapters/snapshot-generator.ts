@@ -154,7 +154,7 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
                 columnToSet.default = `'${column.default.toISOString()}'`;
               }
             } else if (isPgArrayType(sqlTypeLowered) && Array.isArray(column.default)) {
-              columnToSet.default = `'${buildArrayString(column.default as SqlArrayDefaultElement[], sqlTypeLowered)}'`;
+              columnToSet.default = `'${escapeSingleQuotes(buildArrayString(column.default as SqlArrayDefaultElement[], sqlTypeLowered))}'`;
             } else {
               columnToSet.default = column.default as string | number | boolean;
             }

@@ -19,6 +19,11 @@ export interface TaskChoiceMessages {
  * the same guards still prevent any duplicate or late `onChoose` dispatch.
  * Options of a widget that is no longer pending are hidden in that mode; the
  * received status remains.
+ *
+ * With `consumeOnChoose`, a tap removes the options at once and shows the
+ * chosen label. The options come back only if `onChoose` fails. After it
+ * succeeds, `onAccepted` receives the chosen label so the host can show it as
+ * the person's answer; the generic received status is then not shown.
  */
 export function TaskChoice({
   widget,
@@ -28,6 +33,8 @@ export function TaskChoice({
   expiredMessage = "This choice has expired.",
   messages,
   explainUnavailable = false,
+  consumeOnChoose = false,
+  onAccepted,
 }: {
   widget: TaskChoiceWidget;
   taskId: string;
@@ -36,6 +43,8 @@ export function TaskChoice({
   expiredMessage?: string;
   messages?: Partial<TaskChoiceMessages>;
   explainUnavailable?: boolean;
+  consumeOnChoose?: boolean;
+  onAccepted?: (label: string) => void;
 }) {
   validateTaskChoiceWidget(widget);
   const [busy, setBusy] = useState(false),
@@ -44,6 +53,8 @@ export function TaskChoice({
     );
   const [failed, setFailed] = useState(false);
   const [checkingNotice, setCheckingNotice] = useState(false);
+  // The option a consumed tap chose; cleared only when the choice fails.
+  const [chosen, setChosen] = useState<string | null>(null);
   const locked = useRef(false),
     generation = useRef(0),
     active = useRef(widget.callbackData);
@@ -53,6 +64,7 @@ export function TaskChoice({
     setFailed(false);
     setCheckingNotice(false);
     setBusy(false);
+    setChosen(null);
     const duration = Date.parse(widget.expiresAt) - Date.now();
     setExpired(duration <= 0);
     const timer = setTimeout(
@@ -87,11 +99,16 @@ export function TaskChoice({
     setFailed(false);
     setCheckingNotice(false);
     setBusy(true);
+    if (consumeOnChoose) setChosen(value);
     const ticket = generation.current;
     try {
       await onChoose(value);
     } catch {
-      if (ticket === generation.current) setFailed(true);
+      if (ticket === generation.current) {
+        setFailed(true);
+        setChosen(null);
+      }
+      return;
     } finally {
       if (
         ticket === generation.current &&
@@ -101,10 +118,22 @@ export function TaskChoice({
         setBusy(false);
       }
     }
+    // Presentation failure cannot turn an acknowledged choice into a retry.
+    if (ticket === generation.current) {
+      const label = widget.block.options.find(
+        (option) => option.value === value,
+      )?.label;
+      if (label !== undefined) onAccepted?.(label);
+    }
   }
   if (taskId !== widget.taskId) return null;
   const unavailable = pending || busy || expired || widget.state !== "pending";
-  const showOptions = !explainUnavailable || widget.state === "pending";
+  const showOptions =
+    (!explainUnavailable || widget.state === "pending") && chosen === null;
+  const chosenLabel =
+    chosen === null
+      ? null
+      : widget.block.options.find((option) => option.value === chosen)?.label;
   return (
     <fieldset>
       <legend>
@@ -139,7 +168,8 @@ export function TaskChoice({
       {expired && widget.state === "pending" && (
         <p role="status">{expiredMessage}</p>
       )}
-      {widget.state !== "pending" && (
+      {chosenLabel && <p data-chosen="">{chosenLabel}</p>}
+      {widget.state !== "pending" && !consumeOnChoose && (
         <p role="status">{messages?.received ?? "Your choice was received."}</p>
       )}
     </fieldset>
