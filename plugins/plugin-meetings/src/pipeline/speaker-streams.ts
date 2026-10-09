@@ -335,8 +335,7 @@ export class SpeakerStreamManager {
         // stamped late by the ASR round-trip. (With no boundary the
         // window was fully consumed and the next feedAudio re-anchors
         // on arrival.)
-        buffer.windowStartMs =
-          baseWindowMs + Math.floor(segmentEndSec * 1000);
+        buffer.windowStartMs = baseWindowMs + Math.floor(segmentEndSec * 1000);
       }
     }
   }
