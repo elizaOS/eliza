@@ -465,8 +465,8 @@ export const extractSymbols = (
           /\$([A-Z0-9]{2,10})\b/gi,
           // After articles (a/an)
           /\b(?:a|an)\s+([A-Z0-9]{2,10})\b/gi,
-          // Standalone caps
-          /\b[A-Z0-9]{2,10}\b/g,
+          // Bare candidates need a letter; explicit symbol syntax can be numeric.
+          /\b(?=[A-Z0-9]{0,9}[A-Z])[A-Z0-9]{2,10}\b/g,
           // Quoted symbols
           /["']([A-Z0-9]{2,10})["']/gi,
           // Common price patterns
@@ -478,10 +478,6 @@ export const extractSymbols = (
     const matches = Array.from(text.matchAll(pattern));
     for (const match of matches) {
       const symbol = (match[1] || match[0]).toUpperCase();
-      // A token symbol contains at least one letter. In loose mode the
-      // standalone pattern otherwise returns a bare number from an
-      // ordinary query ("top 10 trending tokens") as a token symbol.
-      if (mode === "loose" && !/[A-Z]/.test(symbol)) continue;
       symbols.add(symbol);
     }
   });
