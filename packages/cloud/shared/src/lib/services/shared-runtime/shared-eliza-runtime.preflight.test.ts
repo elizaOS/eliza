@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { AgentRuntime, ChannelType } from "@elizaos/core/edge";
 import type { RunSharedAgentTurnResult } from "./run-shared-agent-turn";
+import { SharedRuntimeTurnError } from "./shared-runtime-errors";
 
 const SOURCE_URL = "https://weather.example/current";
 const CLAIM = "Springfield, Missouri is 75 Fahrenheit and sunny.";
@@ -14,16 +15,20 @@ const QUERY = "current public weather in Springfield, Missouri";
 const PROMPT = "What is the current weather in Springfield, Missouri?";
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_KEY = process.env.CEREBRAS_API_KEY;
+const ORIGINAL_FALLBACK_KEY = process.env.OPENROUTER_API_KEY;
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 
 beforeEach(() => {
   process.env.CEREBRAS_API_KEY = "offline-preflight-test-key";
+  delete process.env.OPENROUTER_API_KEY;
   process.env.NODE_ENV = "production";
 });
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
   if (ORIGINAL_KEY === undefined) delete process.env.CEREBRAS_API_KEY;
   else process.env.CEREBRAS_API_KEY = ORIGINAL_KEY;
+  if (ORIGINAL_FALLBACK_KEY === undefined) delete process.env.OPENROUTER_API_KEY;
+  else process.env.OPENROUTER_API_KEY = ORIGINAL_FALLBACK_KEY;
   if (ORIGINAL_NODE_ENV === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
 });
@@ -34,7 +39,7 @@ function modelResponse(content: string | null, calls: Array<{ name: string; args
     id: "offline-preflight",
     object: "chat.completion",
     created: 0,
-    model: "gemma-4-31b",
+    model: "qwen-3.8-27b",
     choices: [{
       index: 0,
       message: {
@@ -107,7 +112,11 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
     },
   );
   globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
-    if (String(url) === "https://search.parallel.ai/mcp") {
+    const target = url instanceof Request ? url.url : String(url);
+    const body = init?.body === undefined && url instanceof Request
+      ? await url.clone().text()
+      : String(init?.body ?? "");
+    if (target === "https://search.parallel.ai/mcp") {
       searches += 1;
       if (searches > 1) throw new Error("Additional external search exceeded the offline budget");
       return Response.json({
@@ -121,10 +130,10 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
         }] },
       });
     }
-    if (!String(url).startsWith("https://api.cerebras.ai/")) {
+    if (target !== "https://api.cerebras.ai/v1/chat/completions") {
       throw new Error("Unexpected network boundary in offline Core test");
     }
-    const request = JSON.parse(String(init?.body)) as {
+    const request = JSON.parse(body) as {
       tools?: Array<{ function?: { name?: string } }>;
       messages?: Array<Record<string, unknown>>;
     };
@@ -167,10 +176,11 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
   }) as typeof fetch;
   let result: RunSharedAgentTurnResult | undefined;
   let failed = false;
+  let failureCategory: "canonical_action_denied" | "canonical_search_unavailable" | undefined;
   try {
     const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
     result = await runSharedAgentTurn({
-      character: { name: "Shared Eliza", system: "You are Eliza.", model: "gemma-4-31b" },
+      character: { name: "Shared Eliza", system: "You are Eliza.", model: "qwen-3.8-27b" },
       history: [],
       message: mode.ordinary ? "Hello there" : mode.compound ? `${PROMPT} Also perform the other operation.` : PROMPT,
       ...(mode.ordinary ? {} : { capabilityText: mode.compound ? `${PROMPT} Also perform the other operation.` : PROMPT }),
@@ -186,13 +196,32 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
       },
     });
   } catch (error) {
-    if (!mode.deny && !mode.unavailable) throw error;
+    if (!(error instanceof SharedRuntimeTurnError)) throw error;
+    const kinds: unknown[] = [];
+    let current: unknown = error;
+    for (let depth = 0; depth < 8 && current && typeof current === "object"; depth += 1) {
+      const record = current as { kind?: unknown; context?: { failureKind?: unknown }; cause?: unknown };
+      kinds.push(record.kind, record.context?.failureKind);
+      current = record.cause;
+    }
+    if (mode.deny && validations > 0 && actions.length === 0 && kinds.includes("missing_capability")) {
+      failureCategory = "canonical_action_denied";
+    } else if (
+      mode.unavailable &&
+      actions.length > 0 &&
+      actions.every((action) => !action.success) &&
+      kinds.some((kind) => kind === "handler_error" || kind === "missing_capability" || kind === "planner_exhaustion")
+    ) {
+      failureCategory = "canonical_search_unavailable";
+    } else {
+      throw error;
+    }
     failed = true;
   } finally {
     initialization.mockRestore();
     for (const spy of restorers) spy.mockRestore();
   }
-  return { result, failed, searches, modelCalls, freeSelectionsBeforeAction, validations, otherActions, actions, canonicalReceiptSeen, registeredShortcut };
+  return { result, failed, failureCategory, searches, modelCalls, freeSelectionsBeforeAction, validations, otherActions, actions, canonicalReceiptSeen, registeredShortcut };
 }
 
 test("genuine preflight enters canonical execution without free-query selection", async () => {
@@ -214,7 +243,11 @@ test("canonical denial and unsupported source claims retain their gates", async 
   expect(denied.validations).toBeGreaterThan(0);
   expect(denied.actions).toHaveLength(0);
   expect(denied.searches).toBe(1);
-  expect(denied.failed || !denied.result?.reply.startsWith(CLAIM)).toBe(true);
+  if (denied.failed) {
+    expect(denied.failureCategory).toBe("canonical_action_denied");
+  } else {
+    expect(denied.result?.reply).toMatch(/couldn’t safely bind|can’t verify|denied/i);
+  }
 });
 
 test("compound work remains planner-owned and retains the other action", async () => {
@@ -235,5 +268,10 @@ test("ordinary chat and unavailable preflight keep their existing paths", async 
   const unavailable = await exercise({ unavailable: true });
   expect(unavailable.registeredShortcut).toBe(false);
   expect(unavailable.searches).toBe(1);
-  expect(unavailable.failed || !unavailable.result?.reply.startsWith(CLAIM)).toBe(true);
+  expect(unavailable.actions).toEqual([{ query: QUERY, success: false }]);
+  if (unavailable.failed) {
+    expect(unavailable.failureCategory).toBe("canonical_search_unavailable");
+  } else {
+    expect(unavailable.result?.reply).toContain("can’t verify the current value");
+  }
 });
