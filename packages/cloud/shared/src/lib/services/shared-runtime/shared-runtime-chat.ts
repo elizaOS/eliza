@@ -71,6 +71,11 @@ import {
 } from "../organization-inference-admission";
 import { hydrationSettledWithin, SHARED_TURN_HYDRATION_WAIT_MS } from "./bounded-hydration";
 import {
+  formatNetworkSharedTurnForModel,
+  type NetworkSharedTurnObservation,
+  networkSharedTurnMatches,
+} from "./network-shared-context";
+import {
   formatPersonalSharedFallbackAccountContext,
   type PersonalSharedFallbackAccountState,
 } from "./personal-fallback-account-state";
@@ -364,6 +369,8 @@ export interface SharedRuntimeChatOptions {
    * agent-scoped facts that converge with Dedicated memory.
    */
   trustedAccountState?: PersonalSharedFallbackAccountState;
+  /** Server-resolved Network observation; RPC params cannot supply it. */
+  trustedNetworkContext?: NetworkSharedTurnObservation;
   mobilePushDispatch?: NonNullable<
     NonNullable<RunSharedAgentTurnInput["execution"]>["mobilePush"]
   >["dispatch"];
@@ -784,8 +791,11 @@ function stableUuid(raw: string): string {
 }
 
 /** Content identity for conflict detection: same key + different text is rejected. */
-function sharedTurnPayloadHash(text: string): string {
-  return crypto.createHash("sha256").update(text).digest("hex");
+function sharedTurnPayloadHash(text: string, networkScopeId?: string): string {
+  return crypto
+    .createHash("sha256")
+    .update(networkScopeId ? JSON.stringify({ text, networkScopeId }) : text)
+    .digest("hex");
 }
 
 /**
@@ -798,8 +808,9 @@ async function claimSharedTurn(
   claims: SharedTurnClaimStore,
   claimKey: string,
   text: string,
+  networkScopeId?: string,
 ): Promise<SharedTurnTerminalResult | undefined> {
-  const decision = await claims.claim(claimKey, sharedTurnPayloadHash(text));
+  const decision = await claims.claim(claimKey, sharedTurnPayloadHash(text, networkScopeId));
   if (decision.state === "conflict") throw new SharedTurnConflictError();
   return decision.state === "replay" ? decision.result : undefined;
 }
@@ -976,6 +987,25 @@ async function characterFor(
     throw new SharedRuntimeCacheWarmingError("Character cache is warming. Retry shortly.");
   }
   return projectSharedAgentCharacter(agent, linked);
+}
+
+/** Adds the complete approved self-context only to its account/app/room character. */
+function networkContextCharacter(
+  agent: SharedRuntimeAgent,
+  params: Record<string, unknown>,
+  character: SharedAgentCharacter,
+  network: SharedRuntimeChatOptions["trustedNetworkContext"],
+): SharedAgentCharacter {
+  if (!network) return character;
+  if (!networkSharedTurnMatches(agent, params.roomId, network)) {
+    throw new ElizaError("Network self-context does not match this Shared turn scope", {
+      code: "NETWORK_SHARED_CONTEXT_SCOPE_INVALID",
+    });
+  }
+  return {
+    ...character,
+    system: [character.system, formatNetworkSharedTurnForModel(network)].join("\n\n"),
+  };
 }
 
 function billingPrompt(
@@ -1378,9 +1408,24 @@ export class SharedRuntimeChatService {
     }
     const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
     const messageRole = options.trustedMessageRole ?? "user";
+    if (
+      options.trustedNetworkContext &&
+      !networkSharedTurnMatches(agent, params.roomId, options.trustedNetworkContext)
+    ) {
+      throw new ElizaError("Network context does not match this Personal conversation", {
+        code: "NETWORK_SHARED_CONTEXT_SCOPE_INVALID",
+      });
+    }
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
-      const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
+      const replay = await claimSharedTurn(
+        options.turnClaims,
+        claimKey,
+        text,
+        options.trustedNetworkContext && "membership" in options.trustedNetworkContext
+          ? options.trustedNetworkContext.membership.scopeId
+          : undefined,
+      );
       if (replay) {
         return {
           jsonrpc: "2.0",
@@ -1392,13 +1437,19 @@ export class SharedRuntimeChatService {
         };
       }
     }
-    const [character, loadedHistory] = await Promise.all([
+    const [loadedCharacter, loadedHistory] = await Promise.all([
       characterFor(agent, {
         cacheOnly: Boolean(options.historyStore),
         executionCtx: options.executionCtx,
       }),
       loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
+    const character = networkContextCharacter(
+      agent,
+      params,
+      loadedCharacter,
+      options.trustedNetworkContext,
+    );
     const history = constrainTrustedLifecycleHistory(loadedHistory, options);
     let billing: BillingTurn | null;
     try {
@@ -1603,10 +1654,25 @@ export class SharedRuntimeChatService {
     if (!text) return sseError("message.send requires params.text");
     const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
     const messageRole = options.trustedMessageRole ?? "user";
+    if (
+      options.trustedNetworkContext &&
+      !networkSharedTurnMatches(agent, params.roomId, options.trustedNetworkContext)
+    ) {
+      throw new ElizaError("Network context does not match this Personal conversation", {
+        code: "NETWORK_SHARED_CONTEXT_SCOPE_INVALID",
+      });
+    }
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
       const claimStartedAt = performance.now();
-      const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
+      const replay = await claimSharedTurn(
+        options.turnClaims,
+        claimKey,
+        text,
+        options.trustedNetworkContext && "membership" in options.trustedNetworkContext
+          ? options.trustedNetworkContext.membership.scopeId
+          : undefined,
+      );
       timings.turn_claim = elapsedTurnMs(claimStartedAt);
       if (replay) {
         return withTurnTimingHeaders(
@@ -1634,13 +1700,19 @@ export class SharedRuntimeChatService {
       }
     }
     const hydrateStartedAt = performance.now();
-    const [character, loadedHistory] = await Promise.all([
+    const [loadedCharacter, loadedHistory] = await Promise.all([
       characterFor(agent, {
         cacheOnly: Boolean(options.historyStore),
         executionCtx: options.executionCtx,
       }),
       loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
+    const character = networkContextCharacter(
+      agent,
+      params,
+      loadedCharacter,
+      options.trustedNetworkContext,
+    );
     const history = constrainTrustedLifecycleHistory(loadedHistory, options);
     timings.turn_hydrate = elapsedTurnMs(hydrateStartedAt);
     let billing: BillingTurn | null;

@@ -17,6 +17,8 @@ import {
   applyCorsHeaders,
   handleCorsOptions,
 } from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { networkContextForPersonalSurface } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-context";
+import { prepareNetworkSharedTurn } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-turn";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
@@ -203,10 +205,20 @@ app.post("/", async (c) => {
       origin,
     );
   }
+  const requestedNetworkApp =
+    raw && typeof raw === "object" && "networkApp" in raw
+      ? raw.networkApp
+      : undefined;
+  let trustedNetworkContext = await prepareNetworkSharedTurn(
+    c,
+    r.agent,
+    requestedNetworkApp,
+    text,
+  );
   const target = await resolveSharedSurfaceTarget({
     agent: r.agent,
     personal: "agentKind" in r,
-    conversationId,
+    conversationId: trustedNetworkContext ? r.agent.id : conversationId,
     namespace: worker.namespace,
   });
   if (!target.ok) {
@@ -220,6 +232,11 @@ app.post("/", async (c) => {
       origin,
     );
   }
+  trustedNetworkContext = networkContextForPersonalSurface(
+    trustedNetworkContext,
+    r.agent,
+    target.roomId,
+  );
   let result: { text: string; agentName: string };
   try {
     result = await sharedRestMessageSend(
@@ -237,6 +254,7 @@ app.post("/", async (c) => {
       target.accountState,
       c.get("traceId"),
       c.req.raw.signal,
+      trustedNetworkContext,
     );
   } catch (error) {
     // error-policy:J1 route boundary translates bridge/billing failures to HTTP responses.

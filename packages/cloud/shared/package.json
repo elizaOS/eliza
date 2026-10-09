@@ -664,7 +664,11 @@
     "./lib/services/organization-upgrade-payment": "./src/lib/services/organization-upgrade-payment.ts",
     "./lib/services/organization-upgrade-command": "./src/lib/services/organization-upgrade-command.ts",
     "./lib/services/organization-downgrade-command": "./src/lib/services/organization-downgrade-command.ts",
-    "./lib/services/organization-schedule-maintenance": "./src/lib/services/organization-schedule-maintenance.ts"
+    "./lib/services/organization-schedule-maintenance": "./src/lib/services/organization-schedule-maintenance.ts",
+    "./lib/auth/verified-phone-account": "./src/lib/auth/verified-phone-account.ts",
+    "./lib/services/shared-runtime/network-membership-client": "./src/lib/services/shared-runtime/network-membership-client.ts",
+    "./lib/services/shared-runtime/network-shared-turn": "./src/lib/services/shared-runtime/network-shared-turn.ts",
+    "./lib/services/shared-runtime/network-shared-context": "./src/lib/services/shared-runtime/network-shared-context.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",

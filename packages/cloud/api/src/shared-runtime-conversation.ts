@@ -22,6 +22,10 @@ import {
   SHARED_TURN_HYDRATION_WAIT_MS,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/bounded-hydration";
 import type { CachedAgentSandbox } from "@elizaos/cloud-shared/lib/services/shared-runtime/cached-agent-dates";
+import {
+  networkSharedTurnMatches,
+  parseNetworkSharedTurnContext,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-context";
 import { parsePersonalSharedFallbackAccountState } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-fallback-account-state";
 import { isCanonicalPersonalSharedAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
 import type {
@@ -67,6 +71,7 @@ type ConversationRequest =
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
       trustedAccountState?: unknown;
+      trustedNetworkContext?: unknown;
     }
   | {
       operation: "stream";
@@ -90,6 +95,7 @@ type ConversationRequest =
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
       trustedAccountState?: unknown;
+      trustedNetworkContext?: unknown;
     }
   | {
       operation: "prewarm";
@@ -1399,6 +1405,38 @@ export class SharedRuntimeConversation {
       );
     }
     const validatedAccountState = accountState ?? undefined;
+    const suppliedNetwork =
+      "trustedNetworkContext" in payload
+        ? payload.trustedNetworkContext
+        : undefined;
+    const networkContext =
+      suppliedNetwork === undefined
+        ? undefined
+        : parseNetworkSharedTurnContext(suppliedNetwork);
+    if (
+      suppliedNetwork !== undefined &&
+      (!networkContext ||
+        !(
+          payload.operation === "personal-bridge" ||
+          payload.operation === "personal-stream"
+        ) ||
+        !networkSharedTurnMatches(
+          payload.agent,
+          payload.rpc.params?.roomId,
+          networkContext,
+        ) ||
+        (validatedAccountState && "membership" in networkContext))
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid Network conversation scope",
+          code: "invalid_network_scope",
+        },
+        { status: 400 },
+      );
+    }
+
     // Deletion fence: once the agent behind this room is purged, every later
     // operation (save, hydration, history read, forwarded turn) fails closed
     // instead of re-creating state for a deleted agent. The `delete` op stays
@@ -2006,6 +2044,7 @@ export class SharedRuntimeConversation {
           transientInput: payload.transientInput,
           trustedUserUtterance: payload.trustedUserUtterance,
           channel: validatedChannel,
+          ...(networkContext ? { trustedNetworkContext: networkContext } : {}),
           ...(personal && validatedAccountState
             ? { trustedAccountState: validatedAccountState }
             : {}),
@@ -2028,6 +2067,7 @@ export class SharedRuntimeConversation {
         transientInput: payload.transientInput,
         trustedUserUtterance: payload.trustedUserUtterance,
         channel: validatedChannel,
+        ...(networkContext ? { trustedNetworkContext: networkContext } : {}),
         ...(personal && validatedAccountState
           ? { trustedAccountState: validatedAccountState }
           : {}),

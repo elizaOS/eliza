@@ -20,6 +20,8 @@ import {
   handleCorsOptions,
 } from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import { coordinateSharedStream } from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
+import { networkContextForPersonalSurface } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-context";
+import { prepareNetworkSharedTurn } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-turn";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
@@ -30,7 +32,7 @@ import type {
   AppEnv,
   RuntimeDurableObjectNamespace,
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 
 // Streaming responses can be long-running
@@ -75,6 +77,7 @@ async function __hono_POST(
     namespace: RuntimeDurableObjectNamespace;
     executionCtx: BridgeExecutionContext;
   },
+  context: Context<AppEnv>,
 ) {
   try {
     // A missing/malformed JSON body is caller error: a typed 400, not the
@@ -102,6 +105,22 @@ async function __hono_POST(
     }
 
     let rpcRequest = parsed.data as BridgeRequest;
+    let trustedNetworkContext = await prepareNetworkSharedTurn(
+      context,
+      resolved.agent,
+      rpcRequest.params?.networkApp,
+      parsed.data.params.text,
+    );
+    if (trustedNetworkContext)
+      rpcRequest = {
+        ...rpcRequest,
+        params: {
+          ...rpcRequest.params,
+          roomId: resolved.agent.id,
+          userId: resolved.agent.user_id,
+        },
+      };
+
     // A personal turn follows its entitlement route (#25146): Dedicated
     // ownership is refused with its agent id, and a withdrawn Dedicated is
     // answered in the scoped fallback journal with the account state.
@@ -112,13 +131,14 @@ async function __hono_POST(
         >["accountState"]
       | undefined;
     if (resolved.agentKind === "personal") {
-      const requestedRoom = parsed.data.params.roomId;
+      const requestedRoom = rpcRequest.params?.roomId;
       const target = await resolveSharedSurfaceTarget({
         agent: resolved.agent,
         personal: true,
-        conversationId: requestedRoom?.trim()
-          ? requestedRoom
-          : resolved.agent.id,
+        conversationId:
+          typeof requestedRoom === "string" && requestedRoom.trim()
+            ? requestedRoom
+            : resolved.agent.id,
         namespace: resolved.namespace,
       });
       if (!target.ok) {
@@ -131,6 +151,11 @@ async function __hono_POST(
           CORS_METHODS,
         );
       }
+      trustedNetworkContext = networkContextForPersonalSurface(
+        trustedNetworkContext,
+        resolved.agent,
+        target.roomId,
+      );
       if (target.accountState) {
         trustedAccountState = target.accountState;
         rpcRequest = {
@@ -148,6 +173,7 @@ async function __hono_POST(
         executionCtx: resolved.executionCtx,
         namespace: resolved.namespace,
         agentKind: resolved.agentKind,
+        ...(trustedNetworkContext ? { trustedNetworkContext } : {}),
         trustedUserUtterance: parsed.data.params.text,
         ...(trustedAccountState ? { trustedAccountState } : {}),
       },
@@ -275,6 +301,7 @@ __hono_app.post("/", async (c) => {
       namespace: worker.namespace,
       executionCtx: worker.executionCtx,
     },
+    c,
   );
 });
 export default __hono_app;

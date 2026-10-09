@@ -24,6 +24,11 @@ export interface RuntimeDurableObjectNamespace {
 }
 
 export interface Bindings {
+  /** Explicit per-turn Network context; absent disables the integration. */
+  NETWORK_SHARED_ENABLED?: string;
+  /** Private server-owned Network HTTP service binding; no public fetch fallback. */
+  NETWORK_MEMBERSHIP?: import("../lib/services/shared-runtime/network-membership-client").NetworkMembershipFetcher;
+  NETWORK_MEMBERSHIP_SERVER_TOKEN?: string;
   /** Trusted execution environment for app inference; must match the registered app client mode. */
   APP_INFERENCE_EXECUTION_ENVIRONMENT?: "test" | "live";
   // ---- Deployment environment ----
