@@ -328,3 +328,63 @@ describe("MCP binary resource persistence", () => {
     }
   );
 });
+
+describe("MCP resource selection through model feedback", () => {
+  it.each(["fixture:///2", "fixture:///unlisted-linked-result"])(
+    "repairs a missing server selection and reads %s through real stdio",
+    async (uri) => {
+      const peer = fileURLToPath(new URL("./fixtures/resource-result-server.mjs", import.meta.url));
+      const { runtime, service } = await start("text", "", peer);
+      expect(Object.keys(service.getProviderData().data.mcp.pages.resources)).toEqual([
+        "fixture:///2",
+      ]);
+      let smallCalls = 0;
+      const feedback: string[] = [];
+      runtime.registerModel(
+        ModelType.TEXT_SMALL,
+        async () => {
+          smallCalls++;
+          return smallCalls === 1
+            ? JSON.stringify({ serverName: "missing-peer", uri, noResourceAvailable: false })
+            : "The full resource reached the action.";
+        },
+        "resource-selection-fixture",
+        1000
+      );
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_runtime, parameters) => {
+          feedback.push(parameters.prompt);
+          return JSON.stringify({ serverName: "pages", uri, noResourceAvailable: false });
+        },
+        "resource-selection-fixture",
+        1000
+      );
+      const message: Memory = {
+        id: stringToUuid(`mcp-selection-${uri}`),
+        agentId: runtime.agentId,
+        entityId: runtime.agentId,
+        roomId: stringToUuid(`mcp-selection-room-${uri}`),
+        content: { text: `Read the resource at ${uri} from the connected pages server.` },
+      };
+      const result = await mcpAction.handler(
+        runtime,
+        message,
+        undefined,
+        { parameters: { action: "read_resource" } },
+        async () => []
+      );
+      expect(result).toMatchObject({ success: true, data: { output: "last-page resource" } });
+      expect(feedback).toHaveLength(1);
+      expect(feedback[0]).toContain('Server "missing-peer" not found or not connected');
+      expect(smallCalls).toBe(2);
+      const memories = await runtime.getMemories({
+        roomId: message.roomId,
+        tableName: "resources",
+        count: 10,
+      });
+      expect(memories).toHaveLength(1);
+      expect(memories[0].content.text).toContain("last-page resource");
+    }
+  );
+});
