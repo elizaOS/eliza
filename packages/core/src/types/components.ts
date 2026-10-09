@@ -16,7 +16,7 @@ import type {
 } from "./contexts";
 import type { EffectReceipt } from "./effects";
 import type { DisclosureSubject, Memory } from "./memory";
-import type { Content, JsonPrimitive, JsonValue } from "./primitives";
+import type { Content, JsonPrimitive, JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
 
