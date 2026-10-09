@@ -5,7 +5,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, expect, mock, test } from "bun:test";
-import { svcSign } from "@thenetwork/plugin-network/svc-auth";
+import { svcSign } from "@elizaos/plugin-network/svc-auth";
 
 const SECRET = "deliver-route-secret-0123456789abcdef";
 const users: Record<string, { id: string; organization_id: string }> = {

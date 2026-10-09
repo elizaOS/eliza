@@ -69,6 +69,6 @@
     "pg": "^8.23.0",
     "typescript": "^6.0.3",
     "ws": "^8.21.3",
-    "@thenetwork/plugin-network": "file:../../../../packages/plugin-network"
+    "@elizaos/plugin-network": "workspace:*"
   }
 }

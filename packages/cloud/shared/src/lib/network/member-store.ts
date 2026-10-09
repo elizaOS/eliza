@@ -18,12 +18,12 @@ import type {
   NetworkStore,
   SetStateExecution,
   SetStateInput,
-} from "@thenetwork/plugin-network";
+} from "@elizaos/plugin-network";
 import {
   createServiceNetworkStore,
   NetworkServiceClient,
   parseServiceTurn,
-} from "@thenetwork/plugin-network";
+} from "@elizaos/plugin-network";
 import { type SQL, sql } from "drizzle-orm";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { personalSharedProjectScope } from "../services/shared-runtime/personal-shared-identity";

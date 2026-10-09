@@ -747,9 +747,9 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
+        "@elizaos/plugin-network": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
         "@msgpack/msgpack": "3.1.3",
-        "@thenetwork/plugin-network": "file:../../../../packages/plugin-network",
         "@types/pg": "^8.23.1",
         "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
@@ -920,7 +920,7 @@
       "dependencies": {
         "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/core": "workspace:*",
-        "@thenetwork/plugin-network": "file:../../../../../packages/plugin-network",
+        "@elizaos/plugin-network": "workspace:*",
         "@upstash/redis": "^1.37.0",
         "hashring": "^3.2.0",
         "hono": "4.13.8",
@@ -980,6 +980,7 @@
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-mcp": "workspace:*",
         "@elizaos/plugin-native-inference": "workspace:*",
+        "@elizaos/plugin-network": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/plugin-sqlite": "workspace:*",
@@ -995,7 +996,6 @@
         "@solana/kit": "^6.0.0",
         "@solana/spl-token": "^0.4.14",
         "@solana/web3.js": "1.98.4",
-        "@thenetwork/plugin-network": "file:../../../../packages/plugin-network",
         "@upstash/redis": "^1.37.0",
         "@x402/svm": "2.21.0",
         "ai": "^6.0.170",
@@ -2469,6 +2469,18 @@
         "react-dom": "^19.0.0",
       },
     },
+    "plugins/plugin-network": {
+      "name": "@elizaos/plugin-network",
+      "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.3",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+      },
+    },
     "plugins/plugin-notes": {
       "name": "@elizaos/plugin-notes",
       "version": "2.0.0",
@@ -3690,6 +3702,8 @@
     "@elizaos/plugin-native-settings": ["@elizaos/plugin-native-settings@workspace:plugins/plugin-native-settings"],
 
     "@elizaos/plugin-native-wifi": ["@elizaos/plugin-native-wifi@workspace:plugins/plugin-native-wifi"],
+
+    "@elizaos/plugin-network": ["@elizaos/plugin-network@workspace:plugins/plugin-network"],
 
     "@elizaos/plugin-notes": ["@elizaos/plugin-notes@workspace:plugins/plugin-notes"],
 
@@ -9395,15 +9409,11 @@
 
     "@elizaos/capacitor-websiteblocker/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
 
-    "@elizaos/cloud-api/@thenetwork/plugin-network": ["@thenetwork/plugin-network@file:../packages/plugin-network", { "devDependencies": { "typescript": "^6.0.3" }, "peerDependencies": { "@elizaos/core": "*" }, "optionalPeers": ["@elizaos/core"] }],
-
     "@elizaos/cloud-api/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
 
     "@elizaos/cloud-e2e/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@elizaos/cloud-infra/yaml": ["yaml@2.9.1", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw=="],
-
-    "@elizaos/cloud-shared/@thenetwork/plugin-network": ["@thenetwork/plugin-network@file:../packages/plugin-network", { "devDependencies": { "typescript": "^6.0.3" }, "peerDependencies": { "@elizaos/core": "*" }, "optionalPeers": ["@elizaos/core"] }],
 
     "@elizaos/cloud-shared/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
 
@@ -9414,8 +9424,6 @@
     "@elizaos/core/yaml": ["yaml@2.9.1", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw=="],
 
     "@elizaos/gateway-discord/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
-
-    "@elizaos/gateway-webhook/@thenetwork/plugin-network": ["@thenetwork/plugin-network@file:../packages/plugin-network", { "devDependencies": { "typescript": "^6.0.3" }, "peerDependencies": { "@elizaos/core": "*" }, "optionalPeers": ["@elizaos/core"] }],
 
     "@elizaos/gateway-webhook/hono": ["hono@4.13.8", "", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
 

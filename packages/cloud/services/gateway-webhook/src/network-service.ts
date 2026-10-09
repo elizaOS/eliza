@@ -8,8 +8,8 @@
  * The service owns STOP/START/leave; the gateway mirrors the resulting consent into its ledger
  * so the send-time fence (mid-turn STOP, /internal/deliver) stays correct.
  */
-import { NetworkServiceClient } from "@thenetwork/plugin-network/client";
-import type { NetworkAppId, TurnContext, TurnRequest, TurnResponse } from "@thenetwork/plugin-network/contract";
+import { NetworkServiceClient } from "@elizaos/plugin-network/client";
+import type { NetworkAppId, TurnContext, TurnRequest, TurnResponse } from "@elizaos/plugin-network/contract";
 import type { ChatEvent } from "./adapters/types";
 import type { NetworkConsentLedger } from "./network-compliance";
 

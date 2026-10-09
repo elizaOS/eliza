@@ -29,7 +29,7 @@ import {
   stableStringify,
   type UUID,
 } from "@elizaos/core";
-import type { NetworkRouting, NetworkStore } from "@thenetwork/plugin-network";
+import type { NetworkRouting, NetworkStore } from "@elizaos/plugin-network";
 import {
   isSharedGroupReminderDelivery,
   type ScheduledTaskRunner,
@@ -44,7 +44,7 @@ import type {
 import { getDefaultModels } from "../../eliza/config";
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
-import { isNetworkStateIntent } from "@thenetwork/plugin-network";
+import { isNetworkStateIntent } from "@elizaos/plugin-network";
 import { hasLanguageModelProviderConfigured } from "../../providers/language-model";
 import { logger } from "../../utils/logger";
 import {

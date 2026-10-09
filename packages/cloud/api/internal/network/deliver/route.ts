@@ -1,14 +1,14 @@
 /**
  * The Network service's outbound sends (takeover; thenetwork repo:
  * docs/design/eliza-conversation-layer.md). Signed with SERVICE_TURN_SECRET
- * (`@thenetwork/plugin-network/svc-auth`), idempotent by the request id.
+ * (`@elizaos/plugin-network/svc-auth`), idempotent by the request id.
  * Delivery goes through the gateway's /internal/deliver (consent fence,
  * provider idempotency); once accepted, the text is appended to the member's
  * Network agent history, so a later "yes" has the question in context.
  */
 
-import type { DeliverRequest, DeliverResponse } from "@thenetwork/plugin-network/contract";
-import { svcVerify } from "@thenetwork/plugin-network/svc-auth";
+import type { DeliverRequest, DeliverResponse } from "@elizaos/plugin-network/contract";
+import { svcVerify } from "@elizaos/plugin-network/svc-auth";
 import { Hono } from "hono";
 import { usersRepository } from "@/db/repositories/users";
 import { networkProactiveSendDeps, sendNetworkProactiveMessage } from "@/lib/network/proactive-send";

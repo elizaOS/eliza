@@ -16,12 +16,12 @@ import {
   expect,
   test,
 } from "bun:test";
-import { NetworkServiceClient } from "@thenetwork/plugin-network/client";
+import { NetworkServiceClient } from "@elizaos/plugin-network/client";
 import type {
   TurnRequest,
   TurnResponse,
-} from "@thenetwork/plugin-network/contract";
-import { svcVerify } from "@thenetwork/plugin-network/svc-auth";
+} from "@elizaos/plugin-network/contract";
+import { svcVerify } from "@elizaos/plugin-network/svc-auth";
 import type { ChatEvent, PlatformAdapter } from "../src/adapters/types";
 import { redisNetworkConsentLedger } from "../src/network-compliance";
 import { createRedis, type GatewayRedis } from "../src/redis";

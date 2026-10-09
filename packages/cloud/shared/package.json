@@ -62,7 +62,7 @@
     "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-todos": "workspace:*",
-    "@thenetwork/plugin-network": "file:../../../../packages/plugin-network",
+    "@elizaos/plugin-network": "workspace:*",
     "@elizaos/plugin-web-search": "workspace:*",
     "@fal-ai/client": "^1.10.1",
     "@huggingface/tokenizers": "0.2.0",

@@ -39,7 +39,7 @@ import { type AgentCapabilityTransport } from "@elizaos/core/capability-catalog"
 import { createAssistantPlugin, generateMediaAction } from "@elizaos/plugin-assistant";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
-import { createNetworkEdgePlugin, NETWORK_ACTION_FIELD } from "@thenetwork/plugin-network";
+import { createNetworkEdgePlugin, NETWORK_ACTION_FIELD } from "@elizaos/plugin-network";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos";
 import {
   createWebSearchEdgePlugin,
