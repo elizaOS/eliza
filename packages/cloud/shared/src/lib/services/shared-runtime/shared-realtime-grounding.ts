@@ -895,7 +895,10 @@ export function validateSharedRealtimeReply(
 }
 
 /** Normalize explicit magnitude spellings only for general public citations. */
-function normalizeGeneralNumericFormats(text: string): string | undefined {
+function normalizeGeneralNumericFormats(
+  text: string,
+  mode: "claim" | "evidence" = "claim",
+): string | undefined {
   let invalid = false;
   const normalized = text.replace(
     /(?<![\p{L}\p{N}_.+-])([+-]?\d[\d,.]*)(?:[ \t]+(thousand|million|billion)\b|([kmb])(?![\p{L}\p{N}_/]))/giu,
@@ -904,7 +907,7 @@ function normalizeGeneralNumericFormats(text: string): string | undefined {
       if (suffix && !["k", "K", "M", "B"].includes(suffix)) return original;
       if (!/^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/u.test(rawNumber)) {
         invalid = true;
-        return original;
+        return mode === "evidence" ? " " : original;
       }
       const magnitude = word?.toLowerCase();
       const exponent =
@@ -917,12 +920,12 @@ function normalizeGeneralNumericFormats(text: string): string | undefined {
       const expanded = Number(`${rawNumber.replaceAll(",", "")}e${exponent}`);
       if (!Number.isFinite(expanded) || Math.abs(expanded) > Number.MAX_SAFE_INTEGER) {
         invalid = true;
-        return original;
+        return mode === "evidence" ? " " : original;
       }
       return String(expanded);
     },
   );
-  return invalid ? undefined : normalized;
+  return invalid && mode === "claim" ? undefined : normalized;
 }
 
 /**
@@ -952,7 +955,12 @@ function generalPublicClaimSupported(
   // URLs are provenance, not numeric claims. Source text is bounded by the
   // current-turn receipt; never search another result to support this citation.
   const factualText = normalizeGeneralNumericFormats(normalized.replace(HTTP_URL, " "));
-  const evidence = normalizeGeneralNumericFormats(evidenceClauses(source.text).join("\n"));
+  // An invalid magnitude contributes no support, but must not poison unrelated
+  // valid evidence. Never leave its raw digits for numericValues to reinterpret.
+  const evidence = normalizeGeneralNumericFormats(
+    evidenceClauses(source.text).join("\n"),
+    "evidence",
+  );
   if (factualText === undefined || evidence === undefined) {
     diagnostic.failedPredicateMask |= 2;
     return false;
@@ -996,6 +1004,7 @@ function supportedRealtimeReply(
   SOURCE_MARKER.lastIndex = 0;
   let cursor = 0;
   let omittedUnsupported = false;
+  let lastSegmentAccepted = false;
   const diagnostic = {
     markerCount: 0,
     knownSourceMarkerCount: 0,
@@ -1017,12 +1026,21 @@ function supportedRealtimeReply(
       : claimSupported(claim, source, diagnostic))) {
       segments.push(claim);
       selectedUrls.push(marker[1]);
+      lastSegmentAccepted = true;
     } else {
       omittedUnsupported = true;
+      lastSegmentAccepted = false;
     }
     cursor = (marker.index ?? 0) + marker[0].length;
   }
-  if (reply.slice(cursor).trim()) omittedUnsupported = true;
+  const tail = reply.slice(cursor).trim();
+  if (tail && mode === "general_public" && /^[\s.!?,;:…]+$/u.test(tail)) {
+    // Punctuation after a citation is not an uncited factual claim. Attach it
+    // only to the immediately preceding accepted segment, never omitted text.
+    if (lastSegmentAccepted) segments[segments.length - 1] += tail.replace(/\s+/gu, "");
+  } else if (tail) {
+    omittedUnsupported = true;
+  }
   if (segments.length === 0 && onRefusal) {
     try {
       onRefusal({
@@ -1038,8 +1056,15 @@ function supportedRealtimeReply(
       // Diagnostic delivery must not change the existing refusal outcome.
     }
   }
+  const validatedReply = segments.join("\n");
   return segments.length > 0
-    ? { reply: segments.join("\n"), selectedUrls, omittedUnsupported }
+    ? {
+        reply: mode === "general_public"
+          ? validatedReply.replace(/\n[ \t]*([.!?,;:…]+)(?=[ \t]*(?:\n|$))/gu, "$1")
+          : validatedReply,
+        selectedUrls,
+        omittedUnsupported,
+      }
     : undefined;
 }
 
@@ -1066,7 +1091,9 @@ export function finalizeSharedRealtimeReply(
     return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}${observed}, checked ${new Date(grounding.observedAt).toISOString()})`;
   });
   const omission = supported.omittedUnsupported
-    ? "\n\nI left out part of the draft because it was not supported by the live source."
+    ? mode === "general_public"
+      ? "\n\nI couldn’t verify the rest."
+      : "\n\nI left out part of the draft because it was not supported by the live source."
     : "";
   return `${supported.reply}${omission}\n\n${sources.join("\n")}`;
 }

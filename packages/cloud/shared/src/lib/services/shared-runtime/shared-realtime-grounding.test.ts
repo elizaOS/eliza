@@ -1047,6 +1047,22 @@ describe("General public citation mode", () => {
     expect(general("The project quota is 12 units.", malformedSource)).not.toContain("12 units");
   });
 
+  test("invalid evidence magnitudes do not poison valid numbers or lend their ambiguous digits", () => {
+    const mixedSource = {
+      ...official,
+      sources: [{ url, text: "Raised 1,5 million euros; revenue 3 billion." }],
+    };
+    expect(general("Revenue is 3 billion.", mixedSource)).toContain("Revenue is 3 billion.");
+    for (const claim of [
+      "Raised 1,5 million euros.",
+      "Raised 15.",
+      "Raised 1.5 million euros.",
+      "Raised 1.5M euros.",
+    ]) {
+      expect(general(claim, mixedSource)).not.toContain(claim);
+    }
+  });
+
   test("refuses fabricated numeric values, unsupported recognized units and untrusted receipts or URLs", () => {
     for (const claim of [
       "Each project can use 9,000,000 quota units per minute.",
@@ -1086,5 +1102,58 @@ describe("General public citation mode", () => {
     // the model. It must not be described as a semantic-entailment validator.
     const scopeSwap = "The project quota is 6,000 quota units per minute.";
     expect(general(scopeSwap)).toContain(scopeSwap);
+  });
+});
+
+describe("general public reply formatting", () => {
+  const url = "https://docs.example.com/limits";
+  const receipt: SharedRuntimePublicGrounding = {
+    kind: "web_search",
+    query: "public documentation limits",
+    provider: "parallel",
+    observedAt: Date.UTC(2026, 9, 9),
+    truncated: false,
+    text: "The limit is 1,200 units. The allowance is 6,000 units.",
+    sourceUrls: [url],
+    sources: [{ url, text: "The limit is 1,200 units. The allowance is 6,000 units." }],
+  };
+  const general = (reply: string) =>
+    finalizeSharedRealtimeReply(reply, receipt, undefined, "general_public");
+
+  test("attaches punctuation after a validated citation without claiming facts were omitted", () => {
+    const reply = `The limit is 1,200 units [[SOURCE_URL:${url}]].`;
+    const result = general(reply);
+    expect(result).toStartWith("The limit is 1,200 units.\n\nSource:");
+    expect(result).not.toContain("verify the rest");
+    expect(result).not.toContain("draft");
+    expect(result).toContain(`Source: docs.example.com — ${url}`);
+    // The strict realtime path keeps its existing tail/refusal behavior.
+    expect(finalizeSharedRealtimeReply(reply, receipt)).toContain(
+      "I left out part of the draft because it was not supported by the live source.",
+    );
+  });
+
+  test("joins standalone punctuation lines only after both cited segments pass validation", () => {
+    const reply = `The limit is 1,200 units [[SOURCE_URL:${url}]].\n\nThe allowance is 6,000 units [[SOURCE_URL:${url}]].`;
+    const result = general(reply);
+    expect(result).toStartWith("The limit is 1,200 units.\n\nThe allowance is 6,000 units.");
+    expect(result).not.toMatch(/\n[.!?]\s*\n/u);
+    expect(result).not.toContain("verify the rest");
+    expect(result).toContain("checked 2026-10-09T00:00:00.000Z");
+  });
+
+  test("still omits uncited facts and invalid numeric citations with a human partial-verification notice", () => {
+    const supported = `The limit is 1,200 units [[SOURCE_URL:${url}]]`;
+    for (const tail of [
+      ".\nThe allowance is 9,000 units.",
+      `\nThe allowance is 9,000 units [[SOURCE_URL:${url}]].`,
+    ]) {
+      const result = general(supported + tail);
+      expect(result).toContain("The limit is 1,200 units");
+      expect(result).not.toContain("9,000");
+      expect(result).toContain("I couldn’t verify the rest.");
+      expect(result).not.toContain("draft");
+      expect(result).toContain(`Source: docs.example.com — ${url}`);
+    }
   });
 });
