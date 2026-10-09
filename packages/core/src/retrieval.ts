@@ -1952,6 +1952,17 @@ function usesWebsearchSyntax(value: string): boolean {
 type WebsearchClause = { terms: string[]; negated: boolean };
 
 /**
+ * Search tokens without leading or trailing `_`, `:`, `/`, `.` or `-`, so a
+ * sentence-final `beta.` or a `note:` label reads as the word Postgres indexes.
+ * Interior punctuation (`abc-123`, `example.com`) stays part of the token.
+ */
+function websearchWords(text: string): string[] {
+	return messageSearchTokens(text)
+		.map((token) => token.replace(/^[_:/.-]+|[_:/.-]+$/g, ""))
+		.filter((word) => word.length > 0);
+}
+
+/**
  * Reads a folded query like `websearch_to_tsquery`: quoted text is one phrase,
  * a leading `-` negates the next term or phrase, a standalone `or` starts an
  * alternative, and everything else is ANDed. Each clause's words are
@@ -1965,7 +1976,7 @@ function parseWebsearchQuery(foldedQuery: string): WebsearchClause[][] {
 			groups.push([]);
 			continue;
 		}
-		const terms = messageSearchTokens(quoted ?? bare ?? "");
+		const terms = websearchWords(quoted ?? bare ?? "");
 		if (terms.length > 0) {
 			groups[groups.length - 1].push({ terms, negated: minus === "-" });
 		}
@@ -1982,7 +1993,7 @@ function websearchRank(
 	groups: WebsearchClause[][],
 	document: string,
 ): number | null {
-	const words = messageSearchTokens(document);
+	const words = websearchWords(document);
 	const length = Math.max(document.length, 1);
 	let best: number | null = null;
 	for (const group of groups) {

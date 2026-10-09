@@ -167,6 +167,22 @@ describe("durable SQLite agent adapter", () => {
     );
     expect.soft(await search('"alpha beta"')).toEqual([adjacent, farm].sort());
     expect.soft(await search("alpha -far")).toEqual([adjacent, farm].sort());
+
+    // Postgres reads a sentence-final `beta.` or `far.` as `beta` or `far`.
+    const sentence = "we ship alpha beta.";
+    const tooFar = "alpha is too far.";
+    await adapter.createMemories(
+      [sentence, tooFar].map((text) => ({
+        memory: { ...memory(text), embedding: undefined },
+        tableName: "messages",
+      })),
+    );
+    expect
+      .soft(await search('"alpha beta"'))
+      .toEqual([adjacent, farm, sentence].sort());
+    expect
+      .soft(await search("alpha -far"))
+      .toEqual([adjacent, farm, sentence].sort());
   });
 
   it("deletes document fragments when the document is deleted", async () => {
