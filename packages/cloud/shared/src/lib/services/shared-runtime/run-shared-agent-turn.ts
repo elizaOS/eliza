@@ -1471,7 +1471,10 @@ export async function runSharedAgentTurn(
   if (
     !publicSearchIntent &&
     ["sms", "telegram"].includes(
-      sharedCapabilityTransportForSource(execution.channel.source, execution.channel.type),
+      sharedCapabilityTransportForSource(
+        input.execution?.channel.source,
+        input.execution?.channel.type,
+      ),
     )
   ) {
     const reply = formatSharedMessageText(turn.reply);
