@@ -150,6 +150,19 @@ export function isAdvancedParam(param: PluginParamDef): boolean {
     d.includes("debug")
   );
 }
+/**
+ * True when PORT is a whole token of the key (`PORT`, `PORT_FORWARD`,
+ * `SERVER_PORT`, `APP_PORT_NUMBER`). A plain substring test also matches
+ * unrelated words such as TRANSPORT and PASSPORT, which are not ports.
+ */
+function isPortKey(keyUpper: string): boolean {
+  return (
+    keyUpper === "PORT" ||
+    keyUpper.startsWith("PORT_") ||
+    keyUpper.endsWith("_PORT") ||
+    keyUpper.includes("_PORT_")
+  );
+}
 /** Convert PluginParamDef[] to a JSON Schema + ConfigUiHints for ConfigRenderer. */
 export function paramsToSchema(
   params: PluginParamDef[],
@@ -194,7 +207,7 @@ export function paramsToSchema(
       prop.format = "date";
     }
     // Auto-detect number types from key patterns
-    if (keyUpper.includes("PORT") && prop.type === "string") {
+    if (isPortKey(keyUpper) && prop.type === "string") {
       prop.type = "number";
     } else if (
       (keyUpper.includes("TIMEOUT") ||
@@ -321,7 +334,7 @@ export function paramsToSchema(
       advanced: isAdvancedParam(p),
     };
     // Port numbers — constrain range
-    if (keyUpper.includes("PORT")) {
+    if (isPortKey(keyUpper)) {
       hint.min = 1;
       hint.max = 65535;
       prop.minimum = 1;
