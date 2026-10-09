@@ -150,6 +150,17 @@ export function isAdvancedParam(param: PluginParamDef): boolean {
     d.includes("debug")
   );
 }
+
+/** Match a whole key token so TRANSPORT and ACCOUNT keep their declared types. */
+function hasKeyToken(keyUpper: string, token: string): boolean {
+  return (
+    keyUpper === token ||
+    keyUpper.startsWith(`${token}_`) ||
+    keyUpper.endsWith(`_${token}`) ||
+    keyUpper.includes(`_${token}_`)
+  );
+}
+
 /** Convert PluginParamDef[] to a JSON Schema + ConfigUiHints for ConfigRenderer. */
 export function paramsToSchema(
   params: PluginParamDef[],
@@ -194,7 +205,7 @@ export function paramsToSchema(
       prop.format = "date";
     }
     // Auto-detect number types from key patterns
-    if (keyUpper.includes("PORT") && prop.type === "string") {
+    if (hasKeyToken(keyUpper, "PORT") && prop.type === "string") {
       prop.type = "number";
     } else if (
       (keyUpper.includes("TIMEOUT") ||
@@ -204,7 +215,7 @@ export function paramsToSchema(
     ) {
       prop.type = "number";
     } else if (
-      (keyUpper.includes("COUNT") ||
+      (hasKeyToken(keyUpper, "COUNT") ||
         keyUpper.includes("LIMIT") ||
         keyUpper.startsWith("MAX_")) &&
       prop.type === "string"
@@ -321,7 +332,7 @@ export function paramsToSchema(
       advanced: isAdvancedParam(p),
     };
     // Port numbers — constrain range
-    if (keyUpper.includes("PORT")) {
+    if (hasKeyToken(keyUpper, "PORT")) {
       hint.min = 1;
       hint.max = 65535;
       prop.minimum = 1;
@@ -339,7 +350,7 @@ export function paramsToSchema(
     }
     // Count/limit — non-negative
     if (
-      keyUpper.includes("COUNT") ||
+      hasKeyToken(keyUpper, "COUNT") ||
       keyUpper.includes("LIMIT") ||
       keyUpper.startsWith("MAX_")
     ) {

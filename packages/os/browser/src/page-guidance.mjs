@@ -167,11 +167,11 @@ export function pageGuidance(request) {
     "button{font:700 22px/1 var(--face);color:#141414;border:0;border-radius:20px;background:#fff;box-shadow:inset 0 0 0 1.5px #4a342899;cursor:pointer;margin:0}button:focus-visible{outline:3px solid #141414;outline-offset:3px}.answered button{cursor:default}" +
     ".cards{display:flex;flex-direction:column;gap:10px}.card{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:64px;padding:12px 20px;border-radius:16px;text-align:left}.value{font:700 22px/28px var(--face);overflow-wrap:anywhere}.purpose{font:500 17px/22px var(--face);color:#4a3428}" +
     ".actions{display:flex;gap:10px}.actions button{flex:1 1 0}.actions button,.close{height:64px;padding:0 28px;white-space:nowrap}.actions .primary{background:#b3aad3;box-shadow:none}[hidden]{display:none!important}" +
-    ".pointer{position:fixed;left:0;top:0;width:28px;height:32px;pointer-events:none;transition:left 1.4s cubic-bezier(.45,0,.25,1),top 1.4s cubic-bezier(.45,0,.25,1)}.pointer svg{display:block;fill:#141414;filter:drop-shadow(0 2px 3px #14141359)}.tapring{position:absolute;left:-15px;top:-16px;width:36px;height:36px;box-sizing:border-box;border:4px solid #141414;border-radius:50%;opacity:0}.tapping .tapring{animation:tap .7s ease-out forwards}" +
+    ".pointer{position:fixed;left:0;top:0;width:28px;height:32px;pointer-events:none;transition:left 1.4s cubic-bezier(.45,0,.25,1),top 1.4s cubic-bezier(.45,0,.25,1)}.pointer svg{display:block;fill:#141414;filter:drop-shadow(0 2px 3px #14141359)}" +
     ".tag{position:absolute;left:24px;top:28px;display:flex;align-items:center;gap:8px;height:34px;padding:0 12px 0 8px;border-radius:9px;background:#b3aad3;color:#141414;box-shadow:0 3px 10px #14141340;font:700 18px/1 var(--face);white-space:nowrap}.initial{display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;background:#141414;color:#b3aad3;font-size:12px}" +
     ".pointer.paused{transition:none}.paused svg{fill:#73726c}.paused .tag{background:#4a4a47;color:#fff}.paused .initial{background:#fff;color:#4a4a47}" +
     ".tap{position:fixed;width:36px;height:36px;border:4px solid #141414;border-radius:50%;box-sizing:border-box;pointer-events:none;animation:tap .7s ease-out forwards}@keyframes tap{0%{transform:scale(.4);opacity:1}to{transform:scale(1.6);opacity:0}}" +
-    "@media (prefers-reduced-motion:reduce){.ring.pulse,.tap,.tapping .tapring{animation:none}.label,.pointer{transition:none}.label{transform:none}}";
+    "@media (prefers-reduced-motion:reduce){.ring.pulse,.tap{animation:none}.label,.pointer{transition:none}.label{transform:none}}";
   const element = (tag, className, text) => {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -194,7 +194,7 @@ export function pageGuidance(request) {
   const nameTag = element("span", "name", name);
   const tag = element("span", "tag");
   tag.append(element("span", "initial", initial), nameTag);
-  pointer.append(element("span", "tapring"), svg, tag);
+  pointer.append(svg, tag);
   const tap = element("div", "tap");
   tap.setAttribute("aria-hidden", "true");
   // Reduced motion and in-place updates show everything without movement.
@@ -332,7 +332,6 @@ export function pageGuidance(request) {
     appearedAt = 0;
     if (!state.paused) {
       pointer.style.display = "none";
-      pointer.classList.remove("tapping");
       if (travel !== "done") travel = "idle";
     }
   };
@@ -407,7 +406,6 @@ export function pageGuidance(request) {
       hide();
       if (!point) return;
       cursor.point = point;
-      pointer.classList.remove("tapping");
       pointer.classList.add("paused");
       place(point);
       nameTag.textContent = `${name} · paused`;
@@ -556,8 +554,9 @@ export function pageGuidance(request) {
           rect.top + rect.height / 2,
         ];
         const now = Date.now();
-        // Travel from where the cursor was last seen, tap the air (show-only),
-        // then hide. An action pointer stays on its target instead.
+        // Travel from where the cursor was last seen, then hide. A show-only
+        // guide never plays a tap: the person presses this control, not Eliza.
+        // An action pointer stays on its target instead.
         if (travel === "idle") {
           pointer.style.transition = "none";
           place(
@@ -574,16 +573,8 @@ export function pageGuidance(request) {
           travel = "moving";
           travelAt = now;
         } else if (travel === "moving" && now - travelAt >= 1400) {
-          if (request.action) travel = "done";
-          else {
-            travel = "tapping";
-            travelAt = now;
-            pointer.classList.add("tapping");
-          }
-        } else if (travel === "tapping" && now - travelAt >= 700) {
           travel = "done";
-          pointer.classList.remove("tapping");
-          pointer.style.display = "none";
+          if (!request.action) pointer.style.display = "none";
         }
         if (travel !== "done") {
           label.hidden = true;

@@ -106,7 +106,13 @@ export class ElizaIntentWeb extends WebPlugin implements ElizaIntentPlugin {
         }
       })(),
     });
-    return { ok: true };
+    // Pairing persistence is native-only (UserDefaults on iOS). This
+    // fallback stores nothing, so reporting success here would tell the
+    // caller it is paired while getPairingStatus keeps reporting
+    // unpaired — the exact simulated success this fallback must not do.
+    throw this.unavailable(
+      "ElizaIntent.setPairingStatus requires iOS native runtime (pairing persistence).",
+    );
   }
 }
 

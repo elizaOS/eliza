@@ -2,8 +2,10 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 /** Validate a downstream HOME APK and stage an additive AOSP product overlay.
+ * An optional reviewed list of runtime permissions is granted on first boot.
  * This does not claim agent payload, privileged permissions, default HOME policy,
  * image boot, or release qualification. The caller owns those separate gates.
+ * Pinned browser and vault APKs are staged by stage-browser-apps.ts.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -17,7 +19,13 @@ export interface LauncherDescriptor {
   packageName: string;
   apkSha256: string;
   certificateSha256: string;
+  /**
+   * Runtime permissions the image grants this launcher on first boot, through
+   * a product default-permissions file. Each must be declared by the APK.
+   */
+  defaultPermissions?: string[];
 }
+const PERMISSION = /^android\.permission\.[A-Z][A-Z0-9_]{0,63}$/;
 export function validateDescriptor(value: unknown): LauncherDescriptor {
   if (!value || typeof value !== "object")
     throw new Error("Launcher descriptor must be an object");
@@ -42,6 +50,18 @@ export function validateDescriptor(value: unknown): LauncherDescriptor {
   for (const key of ["apkSha256", "certificateSha256"] as const) {
     if (!/^[a-f0-9]{64}$/.test(d[key])) throw new Error(`Invalid ${key}`);
   }
+  if (
+    d.defaultPermissions !== undefined &&
+    (!Array.isArray(d.defaultPermissions) ||
+      !d.defaultPermissions.length ||
+      d.defaultPermissions.length > 32 ||
+      new Set(d.defaultPermissions).size !== d.defaultPermissions.length ||
+      d.defaultPermissions.some(
+        (permission) =>
+          typeof permission !== "string" || !PERMISSION.test(permission),
+      ))
+  )
+    throw new Error("Invalid default permissions");
   return d;
 }
 
@@ -184,11 +204,24 @@ export function validateInspection(
     throw new Error("Debug launcher requires --development");
   if (launcherSigner(signatures) !== d.certificateSha256)
     throw new Error("Launcher signer mismatch or multiple signers");
+  const declared = new Set(
+    [...badging.matchAll(/^uses-permission: name='([^']+)'/gm)].map(
+      (match) => match[1],
+    ),
+  );
+  for (const permission of d.defaultPermissions ?? [])
+    if (!declared.has(permission))
+      throw new Error(`Launcher does not declare ${permission}`);
 }
 export function renderOverlay(d: LauncherDescriptor) {
+  const permissionsModule = `${d.moduleName}DefaultPermissions`;
+  const permissions = d.defaultPermissions?.length
+    ? `<?xml version="1.0" encoding="utf-8"?>\n<!-- Generated from the reviewed launcher descriptor. -->\n<exceptions>\n    <exception package="${d.packageName}">\n${d.defaultPermissions.map((permission) => `        <permission name="${permission}" fixed="false"/>\n`).join("")}    </exception>\n</exceptions>\n`
+    : null;
   return {
-    blueprint: `// Generated from a hash- and signer-verified downstream launcher.\nandroid_app_import {\n    name: "${d.moduleName}",\n    apk: "Launcher.apk",\n    presigned: true,\n    preprocessed: true,\n    product_specific: true,\n    dex_preopt: { enabled: false },\n}\n`,
-    product: `# Additive: default HOME selection and privilege policy belong to device provisioning.\nPRODUCT_PACKAGES += ${d.moduleName}\n`,
+    blueprint: `// Generated from a hash- and signer-verified downstream launcher.\nandroid_app_import {\n    name: "${d.moduleName}",\n    apk: "Launcher.apk",\n    presigned: true,\n    preprocessed: true,\n    product_specific: true,\n    dex_preopt: { enabled: false },\n}\n${permissions ? `\n// First-boot runtime grants the person can still revoke (fixed="false").\nprebuilt_etc {\n    name: "${permissionsModule}",\n    src: "default-permissions.xml",\n    sub_dir: "default-permissions",\n    filename: "default-permissions-${d.packageName}.xml",\n    product_specific: true,\n}\n` : ""}`,
+    product: `# Additive: default HOME selection and privilege policy belong to device provisioning.\nPRODUCT_PACKAGES += ${d.moduleName}${permissions ? ` ${permissionsModule}` : ""}\n`,
+    permissions,
   };
 }
 export function stageLauncher(options: {
@@ -230,6 +263,11 @@ export function stageLauncher(options: {
     const overlay = renderOverlay(d);
     fs.writeFileSync(path.join(temporary, "Android.bp"), overlay.blueprint);
     fs.writeFileSync(path.join(temporary, "product.mk"), overlay.product);
+    if (overlay.permissions)
+      fs.writeFileSync(
+        path.join(temporary, "default-permissions.xml"),
+        overlay.permissions,
+      );
     fs.writeFileSync(
       path.join(temporary, "launcher.json"),
       `${JSON.stringify({ ...d, development: options.development }, null, 2)}\n`,

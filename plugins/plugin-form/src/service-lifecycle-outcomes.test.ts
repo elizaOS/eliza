@@ -99,6 +99,63 @@ describe("form lifecycle outcomes", () => {
     });
   });
 
+  it.each([
+    { name: "enum without options", enum: ["red", "blue"] },
+    { name: "enum with empty options", enum: ["red", "blue"], options: [] },
+    { name: "empty enum", enum: [] },
+  ])(
+    "persists invalid enum selections and waits for correction: $name",
+    async (choice) => {
+      service.registerForm({
+        id: "color-choice",
+        name: "Color choice",
+        controls: [
+          {
+            key: "color",
+            type: "select",
+            required: true,
+            enum: choice.enum,
+            options: "options" in choice ? choice.options : undefined,
+          },
+        ],
+      });
+      const session = await service.startSession(
+        "color-choice",
+        entityId,
+        roomId,
+      );
+      await service.updateField(
+        session.id,
+        entityId,
+        "color",
+        "green",
+        1,
+        "manual",
+      );
+      const invalid = await getSessionById(runtime, entityId, session.id);
+      expect(invalid?.fields.color.status).toBe("invalid");
+      expect(invalid?.fields.color.error).toBe(
+        `Must be one of: ${choice.enum.join(", ")}`,
+      );
+      expect(invalid?.status).toBe("active");
+      if (choice.enum.length > 0) {
+        await service.updateField(
+          session.id,
+          entityId,
+          "color",
+          "red",
+          1,
+          "manual",
+        );
+        const corrected = await getSessionById(runtime, entityId, session.id);
+        expect(corrected?.fields.color.status).toBe("filled");
+        expect(corrected?.fields.color.value).toBe("red");
+        expect(corrected?.fields.color.error).toBeUndefined();
+        expect(corrected?.status).toBe("ready");
+      }
+    },
+  );
+
   async function cancelThroughEvaluator() {
     const context = { runtime, message, state, options: {} };
     const prepared = await prepare(context);

@@ -3,13 +3,28 @@ import { readBillAttachments } from "./bill-attachment-reader.mjs";
 import { gmailSourceLink } from "./bill-source-link.mjs";
 import { BillHostError } from "./errors.mjs";
 
-const unavailable = () =>
+/** Fixed read-failure reasons. The renderer can say what to do next. */
+export const BILL_SOURCE_FAILURE_REASONS = Object.freeze([
+  "reauth_required",
+  "insufficient_scope",
+  "account_changed",
+  "unavailable",
+  "timeout",
+]);
+const unavailable = (reason = "unavailable") =>
   Object.assign(
     new BillHostError(
       "Bill sources are unavailable. Recheck the connected account and task.",
     ),
-    { code: "BILL_SOURCES_UNAVAILABLE" },
+    { code: "BILL_SOURCES_UNAVAILABLE", reason },
   );
+// Only a typed read-port code passes through; provider text never does.
+const failureReason = (error) =>
+  BILL_SOURCE_FAILURE_REASONS.includes(error?.reason)
+    ? error.reason
+    : BILL_SOURCE_FAILURE_REASONS.includes(error?.code)
+      ? error.code
+      : "unavailable";
 const hash = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const text = (v, max = 300) =>
@@ -79,6 +94,11 @@ function matches(m, c) {
     time < c.before
   );
 }
+/**
+ * A message for another company, account or website is a look-alike. It is
+ * reported with its safe identity facts, never selected. A message whose
+ * facts are not complete or valid is unreadable and is skipped.
+ */
 function candidate(
   parsed,
   detail,
@@ -91,27 +111,37 @@ function candidate(
 ) {
   if (
     !parsed ||
-    !text(parsed.invoiceId, 128) ||
+    ![parsed.company, parsed.accountLabel, parsed.origin].every((v) => text(v))
+  )
+    return { unreadable: true };
+  if (
     parsed.company !== c.company ||
     parsed.accountLabel !== c.accountLabel ||
-    parsed.origin !== c.providerOrigin ||
+    parsed.origin !== c.providerOrigin
+  )
+    return {
+      conflict: {
+        company: parsed.company,
+        accountLabel: parsed.accountLabel,
+        origin: parsed.origin,
+      },
+    };
+  if (
+    !text(parsed.invoiceId, 128) ||
     !Number.isSafeInteger(parsed.amountMinor) ||
     parsed.amountMinor < 0 ||
     !/^[A-Z]{3}$/.test(parsed.currency) ||
     !Number.isInteger(parsed.currencyDigits) ||
     parsed.currencyDigits < 0 ||
     parsed.currencyDigits > 4 ||
-    !date(parsed.dueDate) ||
-    (parsed.serviceAddress != null && !text(parsed.serviceAddress))
+    (parsed.dueDate != null && !date(parsed.dueDate)) ||
+    (parsed.serviceAddress != null && !text(parsed.serviceAddress)) ||
+    (parsed.servicePeriod != null &&
+      (!date(parsed.servicePeriod.startsOn) ||
+        !date(parsed.servicePeriod.endsOn) ||
+        parsed.servicePeriod.startsOn > parsed.servicePeriod.endsOn))
   )
-    throw unavailable();
-  if (
-    parsed.servicePeriod != null &&
-    (!date(parsed.servicePeriod.startsOn) ||
-      !date(parsed.servicePeriod.endsOn) ||
-      parsed.servicePeriod.startsOn > parsed.servicePeriod.endsOn)
-  )
-    throw unavailable();
+    return { unreadable: true };
   // Canonical invoice identity is independent of message delivery and amount.
   // Contradictory revisions of the same invoice must remain ambiguous.
   const billId = hash([
@@ -127,7 +157,7 @@ function candidate(
     amountMinor: parsed.amountMinor,
     currency: parsed.currency,
     currencyDigits: parsed.currencyDigits,
-    dueDate: parsed.dueDate,
+    ...(parsed.dueDate != null ? { dueDate: parsed.dueDate } : {}),
     ...(parsed.serviceAddress != null
       ? { serviceAddress: parsed.serviceAddress }
       : {}),
@@ -148,6 +178,7 @@ function candidate(
   return {
     billId,
     sourceRef: `bill-source:${billId}`,
+    receivedAt: new Date(Date.parse(detail.message.receivedAt)).toISOString(),
     facts,
     sources: [
       {
@@ -206,9 +237,11 @@ export class BillSourceDiscovery {
       const found = new Map(),
         invoices = new Map(),
         seen = new Set(),
-        tokens = new Set();
+        tokens = new Set(),
+        conflicts = new Map();
       let token,
-        conflict = false;
+        conflict = false,
+        unreadable = 0;
       await check();
       for (;;) {
         const result = await this.google.searchGmailMessagesPage({
@@ -235,7 +268,14 @@ export class BillSourceDiscovery {
             typeof detail.bodyText !== "string"
           )
             throw unavailable();
-          const parsed = await this.parse(detail, c);
+          // One message the reviewed parser cannot read does not end the
+          // search. Read-port failures below still do.
+          let parsed;
+          try {
+            parsed = await this.parse(detail, c);
+          } catch {
+            parsed = undefined;
+          }
           await check();
           const documents = await readBillAttachments({
             google: this.google,
@@ -249,18 +289,28 @@ export class BillSourceDiscovery {
           });
           if (documents.incomplete)
             return { status: "incomplete", candidates: [] };
+          if (parsed === undefined && !documents.found.length) unreadable++;
           const extracted = [
-            ...(parsed === null ? [] : [{ parsed }]),
+            ...(parsed == null ? [] : [{ parsed }]),
             ...documents.found,
           ];
           for (const document of extracted) {
             const value = candidate(
-                document.parsed,
-                detail,
-                c,
-                document.source,
-              ),
-              version = hash(value.facts),
+              document.parsed,
+              detail,
+              c,
+              document.source,
+            );
+            if (value.unreadable) {
+              unreadable++;
+              continue;
+            }
+            if (value.conflict) {
+              const key = hash(value.conflict);
+              if (!conflicts.has(key)) conflicts.set(key, value.conflict);
+              continue;
+            }
+            const version = hash(value.facts),
               key = `${value.billId}:${version}`,
               previous = found.get(key);
             if (
@@ -269,8 +319,11 @@ export class BillSourceDiscovery {
             )
               conflict = true;
             invoices.set(value.billId, version);
-            if (previous) previous.sources.push(...value.sources);
-            else found.set(key, { ...value, candidateId: hash(key) });
+            if (previous) {
+              previous.sources.push(...value.sources);
+              if (value.receivedAt > previous.receivedAt)
+                previous.receivedAt = value.receivedAt;
+            } else found.set(key, { ...value, candidateId: hash(key) });
           }
         }
         token = result.nextPageToken;
@@ -281,24 +334,38 @@ export class BillSourceDiscovery {
         tokens.add(token);
       }
       await check();
+      // Newest first. The person sees which bill arrived most recently.
+      const candidates = [...found.values()].sort((a, b) =>
+        b.receivedAt.localeCompare(a.receivedAt),
+      );
+      if (candidates.length) candidates[0].mostRecent = true;
+      const notes = {
+        ...(unreadable ? { unreadable } : {}),
+        ...(conflicts.size ? { conflicts: [...conflicts.values()] } : {}),
+      };
       if (conflict)
         return {
           status: "ambiguous",
           reason: "conflicting-invoice",
-          candidates: [...found.values()],
+          candidates,
+          ...notes,
         };
-      const candidates = [...found.values()];
       return {
         status:
-          candidates.length === 0
-            ? "missing"
-            : candidates.length === 1
-              ? "candidate"
-              : "ambiguous",
+          candidates.length === 1
+            ? "candidate"
+            : candidates.length > 1
+              ? "ambiguous"
+              : conflicts.size
+                ? "conflicting-source"
+                : unreadable
+                  ? "incomplete"
+                  : "missing",
         candidates,
+        ...notes,
       };
-    } catch {
-      throw unavailable();
+    } catch (error) {
+      throw unavailable(failureReason(error));
     } // Provider/parser errors may contain private message bodies.
   }
 }
