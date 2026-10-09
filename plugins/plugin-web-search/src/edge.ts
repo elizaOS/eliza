@@ -52,10 +52,34 @@ const SOURCE_URL_KEYS = new Set(["url", "source_url", "sourceUrl"]);
 const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
 const SOURCE_TEXT_ARRAY_KEYS = new Set(["excerpts"]);
 
+// Trailing prose punctuation (",", ".", ";") is not part of a URL found in
+// text. A trailing ")" is prose punctuation only when it is unbalanced: a
+// URL can itself end in a closing paren (Wikipedia-style paths), and those
+// parens belong to the URL.
+function stripTrailingProsePunctuation(value: string): string {
+    let candidate = value;
+    for (;;) {
+        const trimmed = candidate.replace(/[,.;]+$/u, "");
+        if (trimmed !== candidate) {
+            candidate = trimmed;
+            continue;
+        }
+        if (candidate.endsWith(")")) {
+            const opens = candidate.split("(").length - 1;
+            const closes = candidate.split(")").length - 1;
+            if (closes > opens) {
+                candidate = candidate.slice(0, -1);
+                continue;
+            }
+        }
+        return candidate;
+    }
+}
+
 function publicHttpUrl(value: unknown): string | undefined {
     if (typeof value !== "string") return undefined;
     try {
-        const parsed = new URL(value.replace(/[),.;]+$/u, ""));
+        const parsed = new URL(stripTrailingProsePunctuation(value));
         if (
             (parsed.protocol === "https:" || parsed.protocol === "http:") &&
             !parsed.username &&
