@@ -167,7 +167,12 @@ export function parseSayLiteralInstruction(
   );
   if (!match) return null;
   // Unquoted pronouns refer to prior context rather than the literal word.
-  if (match[4] && !match[1] && !match[3] && /^(?:it|this|that|them|these|those)$/iu.test(match[2])) {
+  if (
+    match[4] &&
+    !match[1] &&
+    !match[3] &&
+    /^(?:it|this|that|them|these|those)$/iu.test(match[2])
+  ) {
     return null;
   }
   return match[2];
