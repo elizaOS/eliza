@@ -8,8 +8,9 @@ import {
   resolveCloudTimeoutMs,
 } from "../utils/config";
 import { webStreamToNodeStream } from "../utils/helpers";
-import { warmingRetryWaitSeconds } from "../utils/warming";
 import { createElizaCloudClient } from "../utils/sdk-client";
+import { isOpenAiVoiceAlias } from "../utils/voice-aliases.js";
+import { warmingRetryWaitSeconds } from "../utils/warming";
 
 /**
  * Narrow client interface the speech handler actually exercises. Lets tests
@@ -86,9 +87,7 @@ function normalizeTextInput(
  * Returns `undefined` when nothing usable was provided so the upstream
  * can apply its own default (currently `eleven_flash_v2_5`).
  */
-function resolveModelId(
-  options: CloudTextToSpeechParams,
-): string | undefined {
+function resolveModelId(options: CloudTextToSpeechParams): string | undefined {
   if (options.modelId && options.modelId.trim()) {
     return options.modelId.trim();
   }
@@ -107,43 +106,21 @@ function resolveModelId(
  * Pull an ElevenLabs `voiceId` out of (in order):
  *   1. options.voiceId — explicit ElevenLabs voice id (preferred)
  *   2. options.voice — OpenAI-style voice name (rejected unless it looks
- *      like an ElevenLabs id, i.e. neither an OpenAI alias nor "nova")
+ *      like an ElevenLabs id, i.e. not a known OpenAI voice alias)
  *
  * Returns `undefined` when nothing usable was provided so the upstream
  * can apply its own default voice.
  */
-function resolveVoiceId(
-  options: CloudTextToSpeechParams,
-): string | undefined {
+function resolveVoiceId(options: CloudTextToSpeechParams): string | undefined {
   if (options.voiceId && options.voiceId.trim()) {
     return options.voiceId.trim();
   }
   const voice = options.voice?.trim();
   if (!voice) return undefined;
-  // OpenAI-style voice names are not ElevenLabs voice ids. The docblock
-  // above states the rule for all of them, but only "nova" was actually
-  // rejected — and only in exact case — so "alloy", "Nova", and the rest
-  // were forwarded upstream as opaque ids. The cloud-config normalizer
-  // in this plugin keeps the same alias set and compares case-insensitively;
-  // mirror it here: treat every alias as unset so the upstream falls back
-  // to the cloud default voice.
-  if (OPENAI_STYLE_VOICE_ALIASES.has(voice.toLowerCase())) return undefined;
+  // Let the upstream choose its default for provider-specific aliases.
+  if (isOpenAiVoiceAlias(voice)) return undefined;
   return voice;
 }
-
-/** OpenAI-style voice names — never valid ElevenLabs voice ids. Mirrors
- * `OPENAI_STYLE_VOICE_ALIASES` in `../cloud-config/server-cloud-tts.ts`. */
-const OPENAI_STYLE_VOICE_ALIASES = new Set([
-  "alloy",
-  "ash",
-  "ballad",
-  "coral",
-  "echo",
-  "nova",
-  "sage",
-  "shimmer",
-  "verse",
-]);
 
 async function fetchTextToSpeech(
   runtime: IAgentRuntime,
@@ -169,7 +146,10 @@ async function fetchTextToSpeech(
           ...(voiceId ? { voiceId } : {}),
           ...(modelId ? { modelId } : {}),
         },
-        timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_TTS_TIMEOUT_MS", 60_000),
+        timeoutMs: resolveCloudTimeoutMs(
+          "ELIZAOS_CLOUD_TTS_TIMEOUT_MS",
+          60_000,
+        ),
       })) as Response;
       if (warmingRetries < 2) {
         const waitSeconds = await warmingRetryWaitSeconds(res);
@@ -197,7 +177,9 @@ async function fetchTextToSpeech(
     return await webStreamToNodeStream(res.body);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to fetch speech from ElizaOS Cloud TTS: ${message}`);
+    throw new Error(
+      `Failed to fetch speech from ElizaOS Cloud TTS: ${message}`,
+    );
   }
 }
 
@@ -348,7 +330,11 @@ export async function handleTextToSpeech(
   const resolvedModel =
     options.modelId ||
     options.model ||
-    (getSetting(runtime, "ELIZAOS_CLOUD_TTS_MODEL", "eleven_flash_v2_5") as string);
+    (getSetting(
+      runtime,
+      "ELIZAOS_CLOUD_TTS_MODEL",
+      "eleven_flash_v2_5",
+    ) as string);
   logger.log(`[ELIZAOS_CLOUD] Using TEXT_TO_SPEECH model: ${resolvedModel}`);
   try {
     const speechStream = await fetchTextToSpeech(runtime, options);
