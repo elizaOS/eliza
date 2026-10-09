@@ -75,4 +75,14 @@ describe("wallet shim chain switch", () => {
     ).rejects.toThrow(/valid chainId/);
     expect(await ethereum.request({ method: "eth_chainId" })).toBe("0x89");
   });
+
+  it("reports the shortest 0x chain id after a padded or uppercase switch", async () => {
+    const ethereum = installShim();
+    await ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: "0X00000089" }],
+    });
+    expect(await ethereum.request({ method: "eth_chainId" })).toBe("0x89");
+    expect(await ethereum.request({ method: "net_version" })).toBe("137");
+  });
 });

@@ -47,6 +47,7 @@ import {
   type ModelAttemptContext,
   type ModelRegistrationMetadata,
   ModelType,
+  modelOutputIncompleteEvidence,
   modelProviderErrorDetail,
   normalizePromptSegments,
   type PromptSegment,
@@ -809,6 +810,11 @@ async function runEvaluatorWithSelectedModel(
     // stage WITH the request messages and the provider's real error detail,
     // then rethrow for the planner-loop's degrade/propagate policy.
     const detail = modelProviderErrorDetail(error);
+    const failureEvidence = modelOutputIncompleteEvidence(error);
+    // The provider rejected before returning raw output, so its billed usage
+    // has not reached the evaluator's existing per-call accounting callback.
+    if (failureEvidence?.usage)
+      reportEvaluatorUsage({ usage: failureEvidence.usage }, params.onUsage);
     await recordEvaluationStage({
       runtime: params.runtime,
       recorder: params.recorder,
@@ -820,6 +826,7 @@ async function runEvaluatorWithSelectedModel(
       provider: preparedAttempt?.provider ?? params.provider,
       messages: (preparedAttempt?.input ?? renderedInput).messages,
       providerOptions: preparedAttempt?.providerOptions ?? providerOptions,
+      failureEvidence,
       raw: `[evaluator model call failed] ${
         error instanceof Error ? error.message : String(error)
       }${detail?.providerMessage ? ` | provider: ${detail.providerMessage}` : ""}${
@@ -962,6 +969,7 @@ async function recordEvaluationStage(args: {
   provider?: string;
   messages?: ChatMessage[];
   providerOptions?: Record<string, unknown>;
+  failureEvidence?: ReturnType<typeof modelOutputIncompleteEvidence>;
   raw: string | { text?: string; object?: unknown; providerMetadata?: unknown };
   output: EvaluatorOutput;
   startedAt: number;
@@ -980,8 +988,10 @@ async function recordEvaluationStage(args: {
           ? args.raw.text
           : JSON.stringify(args.raw.object ?? {});
     const contextRequest = evaluatorContextRequest(args.output.raw);
-    const usage = extractEvaluatorUsage(args.raw);
-    const modelName = extractEvaluatorModelName(args.raw);
+    const usage =
+      args.failureEvidence?.usage ?? extractEvaluatorUsage(args.raw);
+    const modelName =
+      args.failureEvidence?.model ?? extractEvaluatorModelName(args.raw);
     const stage: RecordedStage = {
       // Distinct restoration calls can share the same millisecond and attempt label.
       stageId: `stage-eval-iter-${args.iteration}-${args.startedAt}${
@@ -996,14 +1006,22 @@ async function recordEvaluationStage(args: {
       model: {
         modelType: args.modelType,
         modelName,
-        provider: extractEvaluatorProviderName(args.raw) ?? args.provider,
+        provider:
+          args.failureEvidence?.provider ??
+          extractEvaluatorProviderName(args.raw) ??
+          args.provider,
         messages: args.messages,
         tools: [],
         toolCalls: [],
-        providerOptions: args.providerOptions,
+        providerOptions: args.failureEvidence
+          ? { ...args.providerOptions, outputEvidence: args.failureEvidence }
+          : args.providerOptions,
+        finishReason: args.failureEvidence?.finishReason,
         response: responseText,
         usage,
-        costUsd: usage ? computeCallCostUsd(modelName, usage) : undefined,
+        costUsd:
+          args.failureEvidence?.costUsd ??
+          (usage ? computeCallCostUsd(modelName, usage) : undefined),
       },
       evaluation: {
         success: args.output.success,
@@ -1103,7 +1121,7 @@ function extractEvaluatorUsage(
 }
 
 function reportEvaluatorUsage(
-  raw: Awaited<ReturnType<EvaluatorRuntime["useModel"]>>,
+  raw: Parameters<typeof extractEvaluatorUsage>[0],
   onUsage: RunEvaluatorParams["onUsage"],
 ): void {
   const usage = extractEvaluatorUsage(raw);

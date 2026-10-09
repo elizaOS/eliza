@@ -51,6 +51,7 @@ import {
   getViewClientScope,
   type ViewClientScope,
 } from "../runtime/view-client-context.ts";
+import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import type { ViewInteractResult } from "./pending-request-map.ts";
 import {
   detectClientPlatform,
@@ -345,6 +346,20 @@ export interface ViewsRouteContext
 }
 function callerRoles(ctx: ViewsRouteContext): RoleGateRole[] {
   return ctx.callerAuthorization?.ok ? [ctx.callerAuthorization.role] : [];
+}
+function navigationOwner(
+  ctx: ViewsRouteContext,
+  runtime: IAgentRuntime,
+): string | undefined {
+  const authority = ctx.callerAuthorization;
+  if (!authority?.ok || authority.role !== "OWNER") return undefined;
+  // Preserve a verified session principal. The existing single-owner native
+  // boundary may instead supply OWNER alone; use its canonical runtime owner.
+  return (
+    authority.identityId ??
+    authority.principal ??
+    resolveHostSessionAccessContext(authority, runtime)?.requesterEntityId
+  );
 }
 const PREFIX = "/api/views";
 export async function handleViewsRoutes(
@@ -741,7 +756,10 @@ export async function handleViewsRoutes(
     // process-global current-view/provider context would leak one client's
     // deep link to other clients and leave ghost state when its socket is stale.
     // The targeted frame or completed action is the only commit edge for it.
-    const commitCurrentViewState = (committedViewPath: string | null) => {
+    const commitCurrentViewState = (
+      committedViewPath: string | null,
+      announceSwitch = true,
+    ) => {
       if (isCloseNavigation) {
         clearCurrentViewState(viewRuntime, scope);
         return;
@@ -790,7 +808,7 @@ export async function handleViewsRoutes(
       // Emit the first-class VIEW_SWITCHED interaction event (#8792) so a
       // proactive decider can comment. Only on a real change (no spam on
       // re-navigates), and fire-and-forget so it never blocks the response.
-      if (viewChanged && ctx.runtime) {
+      if (viewChanged && ctx.runtime && announceSwitch) {
         void ctx.runtime
           .emitEvent(EventType.VIEW_SWITCHED, {
             runtime: ctx.runtime,
@@ -823,6 +841,91 @@ export async function handleViewsRoutes(
     // completed-action has a caller-scoped terminal fallback, so sanitized
     // canonical state can commit immediately. Voice/originating-client has no
     // fallback and commits only after its targeted renderer accepts delivery.
+    if (body?.delivery === "completed-action" && body.prepareOnly === true) {
+      const ownerId = navigationOwner(ctx, viewRuntime);
+      const handoffId = normalizeCompletedActionHandoffId(
+        body.completedActionHandoffId,
+      );
+      // A prepared navigation is not an active view and grants no view interaction.
+      if (
+        !ownerId ||
+        !originatingClientId ||
+        !entry ||
+        !handoffId ||
+        resolvedViewType !== "gui" ||
+        Object.keys(body).some(
+          (key) =>
+            ![
+              "clientId",
+              "delivery",
+              "completedActionHandoffId",
+              "viewType",
+              "prepareOnly",
+            ].includes(key),
+        ) ||
+        action ||
+        subview ||
+        alwaysOnTop ||
+        layoutViews ||
+        layout ||
+        placement ||
+        payload !== undefined
+      ) {
+        error(
+          res,
+          "Navigation preparation requires an owner, renderer and plain registered destination",
+          409,
+        );
+        return true;
+      }
+      let settled: Promise<ViewInteractResult>;
+      try {
+        settled = viewInteractionHost(viewRuntime, ctx.hostKey).waitFor(
+          handoffId,
+          originatingClientId,
+          entry,
+          120000,
+          { ownerId, navigation: true },
+        );
+      } catch (cause) {
+        if (
+          !(cause instanceof ElizaError) ||
+          (cause.code !== "VIEW_NAVIGATION_BUSY" &&
+            cause.code !== "VIEW_REQUEST_PENDING")
+        )
+          throw cause;
+        error(res, cause.message, 409);
+        return true;
+      }
+      // Return the handoff before waiting for its renderer; awaiting here deadlocks.
+      void settled
+        .then((result) => {
+          if (!result.success) return;
+          assertRuntimeViewEntry(viewRuntime, entry);
+          // Explicit native navigation is not an invitation to a proactive greeting.
+          commitCurrentViewState(entry.path ?? null, false);
+        })
+        .catch((error) => {
+          viewRuntime.reportError("VIEWS.preparedNavigation", error, {
+            viewId: id,
+            handoffId,
+          });
+        });
+      json(res, {
+        ok: true,
+        status: "prepared",
+        viewId: id,
+        completedActionHandoffId: handoffId,
+        navigationBinding: {
+          requestId: handoffId,
+          clientId: originatingClientId,
+          viewId: id,
+          viewType: resolvedViewType,
+          installationId: entry.installationId,
+        },
+      });
+      return true;
+    }
     if (body?.delivery !== "originating-client") {
       commitCurrentViewState(committedViewPath);
     }
@@ -1114,6 +1217,7 @@ export async function handleViewsRoutes(
         installationId: body.installationId,
       },
       callerRoles(ctx),
+      navigationOwner(ctx, viewRuntime),
     );
     if (!claimId) {
       error(
@@ -1157,8 +1261,12 @@ export async function handleViewsRoutes(
       error(res, "Missing client id for view interaction result", 400);
       return true;
     }
-    viewInteractionHost(viewRuntime, ctx.hostKey).resolve(clientId, result);
-    json(res, { ok: true });
+    const accepted = viewInteractionHost(viewRuntime, ctx.hostKey).resolve(
+      clientId,
+      result,
+      navigationOwner(ctx, viewRuntime),
+    );
+    json(res, { ok: true, accepted });
     return true;
   }
   // ── POST /api/views/:id/interact ──────────────────────────────────────────
