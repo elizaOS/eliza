@@ -243,18 +243,61 @@ test("account revocation, cancellation and changed task context suppress late re
     code: "BILL_SOURCES_UNAVAILABLE",
   });
 });
-test("malformed money, dates, duplicate fields and provider errors never become candidates", async () => {
+test("malformed money, dates and duplicate fields are skipped, never candidates", async () => {
   for (const text of [
     body.replace("23.45", "9007199254740993.00"),
     body.replace("2026-09-30", "2026-02-30"),
     body + "Amount: USD 1.00\n",
-    body.replace("https://water.example", "https://lookalike.example"),
   ]) {
-    await assert.rejects(
-      fixture({ text: () => text }).discovery.discover(context, signal()),
-      { code: "BILL_SOURCES_UNAVAILABLE" },
+    assert.deepEqual(
+      await fixture({ text: () => text }).discovery.discover(context, signal()),
+      { status: "incomplete", candidates: [], unreadable: 1 },
     );
+    // One unreadable message does not hide a readable bill, and is reported.
+    const mixed = await fixture({
+      messages: [message("m1"), message("m2")],
+      text: (id) => (id === "m2" ? text : body),
+    }).discovery.discover(context, signal());
+    assert.equal(mixed.status, "candidate");
+    assert.equal(mixed.unreadable, 1);
+    assert.equal(mixed.candidates[0].sources.length, 1);
   }
+});
+test("a look-alike bill is reported as a conflicting source with safe facts only", async () => {
+  const lookalike = body.replace(
+    "https://water.example",
+    "https://lookalike.example",
+  );
+  const only = await fixture({ text: () => lookalike }).discovery.discover(
+    context,
+    signal(),
+  );
+  assert.deepEqual(only, {
+    status: "conflicting-source",
+    candidates: [],
+    conflicts: [
+      {
+        company: "Water Test",
+        accountLabel: "Ending 1234",
+        origin: "https://lookalike.example",
+      },
+    ],
+  });
+  assert.equal(JSON.stringify(only).includes("SEP-1"), false);
+  const both = await fixture({
+    messages: [message("m1"), message("m2")],
+    text: (id) => (id === "m2" ? lookalike : body),
+  }).discovery.discover(context, signal());
+  assert.equal(both.status, "candidate");
+  assert.equal(both.candidates[0].facts.origin, "https://water.example");
+  assert.equal(both.conflicts.length, 1);
+  const all = await fixture({
+    messages: Array.from({ length: 6 }, (_, i) => message(`other${i}`)),
+    text: (id) => body.replace("Water Test", `Other ${id}`),
+  }).discovery.discover(context, signal());
+  assert.equal(all.conflicts.length, 6);
+});
+test("provider read failures still fail the whole search with a typed reason", async () => {
   const f = fixture({
     text: () => {
       throw new Error("private token and full message");
@@ -262,7 +305,55 @@ test("malformed money, dates, duplicate fields and provider errors never become 
   });
   await assert.rejects(
     f.discovery.discover(context, signal()),
-    (error) => !error.message.includes("private"),
+    (error) =>
+      !error.message.includes("private") &&
+      error.code === "BILL_SOURCES_UNAVAILABLE" &&
+      error.reason === "unavailable",
+  );
+  for (const reason of [
+    "reauth_required",
+    "insufficient_scope",
+    "account_changed",
+    "timeout",
+  ]) {
+    const g = fixture();
+    g.google.searchGmailMessagesPage = async () => {
+      throw Object.assign(new Error("provider text"), { code: reason });
+    };
+    await assert.rejects(g.discovery.discover(context, signal()), {
+      code: "BILL_SOURCES_UNAVAILABLE",
+      reason,
+    });
+  }
+});
+test("a bill without a due date is a candidate; candidates come newest first", async () => {
+  const noDue = await fixture({
+    text: () => body.replace("Due date: 2026-09-30\n", ""),
+  }).discovery.discover(context, signal());
+  assert.equal(noDue.status, "candidate");
+  assert.equal(noDue.candidates[0].facts.dueDate, undefined);
+  const f = fixture({
+    messages: [
+      message("m1"),
+      { ...message("m2"), receivedAt: "2026-09-20T00:00:00Z" },
+    ],
+    text: (id) => (id === "m2" ? body.replace("SEP-1", "SEP-2") : body),
+  });
+  f.google.getGmailMessageDetail = async (input) => ({
+    message:
+      input.messageId === "m2"
+        ? { ...message("m2"), receivedAt: "2026-09-20T00:00:00Z" }
+        : message(input.messageId),
+    bodyText: input.messageId === "m2" ? body.replace("SEP-1", "SEP-2") : body,
+  });
+  const ranked = await f.discovery.discover(context, signal());
+  assert.equal(ranked.status, "ambiguous");
+  assert.deepEqual(
+    ranked.candidates.map((c) => [c.receivedAt, c.mostRecent]),
+    [
+      ["2026-09-20T00:00:00.000Z", true],
+      ["2026-09-10T00:00:00.000Z", undefined],
+    ],
   );
 });
 test("scope inputs are frozen across provider awaits and optional periods are preserved", async () => {

@@ -5,13 +5,24 @@ const unavailable = () =>
   new NativeCloudServiceError("Managed Google task reads unavailable");
 const id = (value) =>
   typeof value === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(value);
-/** Host-only adapter: request owns credentials, account lifetime and bounded JSON transport. */
+/**
+ * Host-only adapter: request owns credentials, account lifetime and bounded
+ * JSON transport. With `accountId`, every read must name that grant. Without
+ * it, each read names the grant its task is bound to.
+ */
 export function createManagedGoogleReadPort({ accountId, request }) {
-  if (!id(accountId) || typeof request !== "function") throw unavailable();
-  const query = (input, extra) => {
-    if (input?.accountId !== accountId) throw unavailable();
-    return new URLSearchParams({ side: "owner", grantId: accountId, ...extra });
+  if (
+    (accountId !== undefined && !id(accountId)) ||
+    typeof request !== "function"
+  )
+    throw unavailable();
+  const grant = (input) => {
+    if (!id(input?.accountId) || (accountId && input.accountId !== accountId))
+      throw unavailable();
+    return input.accountId;
   };
+  const query = (input, extra) =>
+    new URLSearchParams({ side: "owner", grantId: grant(input), ...extra });
   const message = (value) => {
     if (
       !value ||
@@ -79,6 +90,7 @@ export function createManagedGoogleReadPort({ accountId, request }) {
       const value = await request(
         `/api/v1/eliza/google/gmail/search?${params}`,
         1024 * 1024,
+        input.accountId,
       );
       // An old server that silently truncates results is not a complete-search provider.
       if (
@@ -103,6 +115,7 @@ export function createManagedGoogleReadPort({ accountId, request }) {
       const value = await request(
         `/api/v1/eliza/google/gmail/read?${query(input, { messageId: input.messageId })}`,
         36 * 1024 * 1024,
+        input.accountId,
       );
       if (
         value?.message?.externalId !== input.messageId ||
@@ -135,9 +148,10 @@ export function createManagedGoogleReadPort({ accountId, request }) {
       const value = await request(
         `/api/v1/eliza/google/gmail/read?${params}`,
         Math.ceil(input.maxBytes / 3) * 4 + 65536,
+        input.accountId,
       );
       if (
-        value?.grantId !== accountId ||
+        value?.grantId !== input.accountId ||
         value.messageId !== input.messageId ||
         value.partId !== input.partId ||
         value.encoding !== "base64url" ||

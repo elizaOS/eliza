@@ -40,6 +40,29 @@ describe("bounded foreground shell capture", () => {
     expect(result.artifact.stdout).toMatchObject({ bytes: 0, characters: 0 });
     expect(result.projection).toMatchObject({ stdout: "", stderr: "" });
   });
+  it("keeps source and stored line counts independent of chunks and segments", async () => {
+    for (const chunks of [
+      ["hello", "\n"],
+      ["one\n", "", "two"],
+      ["", "one", "", "\ntwo", "\n", ""],
+      ["a".repeat(32 * 1024), "\n"],
+    ]) {
+      const capture = await ForegroundShellCapture.create();
+      for (const chunk of chunks) {
+        capture.write("stdout", chunk);
+        capture.write("stderr", chunk);
+      }
+      const result = await capture.finalize(runtime(), outcome());
+      const source = chunks.join("");
+      const lines = source.split("\n").length - (source.endsWith("\n") ? 1 : 0);
+      for (const stream of ["stdout", "stderr"] as const) {
+        expect(result.artifact.source[stream].lines).toBe(lines);
+        expect(result.artifact[stream].lines).toBe(lines);
+        expect(result.projection[stream]).toBe(source);
+      }
+      expect(await retrieve(result.artifact.handle)).toBe(source);
+    }
+  });
   it("returns the private artifact through the host runShell boundary", async () => {
     captureHostExecutionBaseline();
     const result = await runShell(runtime(), {
@@ -127,7 +150,16 @@ describe("bounded foreground shell capture", () => {
       );
       const { stdout } = await promisify(execFile)(
         process.execPath,
-        ["--expose-gc", "--import", "tsx", child, String(bytes)],
+        // Fix the child heap budget so V8 cannot defer collection based on
+        // host RAM. The existing RSS and live-heap limits remain unchanged.
+        [
+          "--expose-gc",
+          "--max-old-space-size=128",
+          "--import",
+          "tsx",
+          child,
+          String(bytes),
+        ],
         {
           cwd: path.dirname(child),
           maxBuffer: 1024 * 1024,
@@ -150,7 +182,9 @@ describe("bounded foreground shell capture", () => {
         report.peakRss - report.baselineRss - report.modelCharacters * 2,
     );
     for (const [index, delta] of deltas.entries()) {
-      expect(delta).toBeLessThan(160 * 1024 * 1024);
+      expect(delta, JSON.stringify(reports[index])).toBeLessThan(
+        160 * 1024 * 1024,
+      );
       expect(
         (reports[index]?.peakHeap ?? Number.POSITIVE_INFINITY) -
           (reports[index]?.baselineHeap ?? 0),

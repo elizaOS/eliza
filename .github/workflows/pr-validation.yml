@@ -1,6 +1,6 @@
 # This workflow is the sole pull-request and merge-candidate validation authority.
 # It checks mergeability and workflow syntax, then builds and
-# statically validates the affected workspace closure. A narrow, mock-backed
+# statically validates the selected workspace closure. A narrow, mock-backed
 # billing replay E2E, path-scoped real PostgreSQL subscription-authority proof,
 # and the bounded synthetic-world transaction suite are the affected-path test
 # exceptions. Provider, device, deployment, and destructive-effect lanes remain
@@ -175,11 +175,12 @@ jobs:
         if: steps.core_scope.outputs.core_bootstrap_required == 'true'
         run: bun run build:core
 
-      - name: Build affected workspace closure
+      - name: Build selected workspace closure
         if: steps.affected.outputs.source == 'true'
         env:
-          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.ts run build --concurrency=4 --affected --output-logs=errors-only
+          RUN_TURBO_AFFECTED: ${{ steps.affected.outputs.full == 'false' && '1' || '0' }}
+          TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
+        run: node packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
 
       - name: Verify personal Shared chat entry without paid activation
         if: steps.affected.outputs.app == 'true'
@@ -255,15 +256,16 @@ jobs:
         if: steps.diff.outputs.synthetic_world_changed == 'true'
         run: bun run --cwd packages/testing test:synthetic-world
 
-      - name: Lint and typecheck affected workspaces in parallel
+      - name: Lint and typecheck selected workspaces in parallel
         if: steps.affected.outputs.source == 'true'
         env:
-          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
+          RUN_TURBO_AFFECTED: ${{ steps.affected.outputs.full == 'false' && '1' || '0' }}
+          TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
         run: |
           set -euo pipefail
-          NODE_OPTIONS=--max-old-space-size=2048 node packages/scripts/run-turbo.ts run lint:check --concurrency=1 --affected &
+          NODE_OPTIONS=--max-old-space-size=2048 node packages/scripts/run-turbo.ts run lint:check --concurrency=1 &
           lint_pid=$!
-          node packages/scripts/run-turbo.ts run typecheck --concurrency=1 --affected &
+          node packages/scripts/run-turbo.ts run typecheck --concurrency=1 &
           types_pid=$!
           status=0
           wait "$lint_pid" || status=$?
