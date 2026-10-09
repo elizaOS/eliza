@@ -36,9 +36,13 @@ export class LocationWeb extends WebPlugin {
     if (!Number.isFinite(timeout) || timeout <= 0) {
       throw new Error("timeout must be a positive finite number");
     }
+    // The shared contract defaults accuracy to "high", and the Android and
+    // iOS bridges substitute "high" when the caller omits it. Resolve the
+    // effective value the same way so an omitted accuracy is not silently
+    // low accuracy on web.
+    const accuracy = options?.accuracy ?? "high";
     return {
-      enableHighAccuracy:
-        options?.accuracy === "best" || options?.accuracy === "high",
+      enableHighAccuracy: accuracy === "best" || accuracy === "high",
       maximumAge: Math.trunc(maxAge),
       timeout: Math.trunc(timeout),
     };
