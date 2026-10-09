@@ -134,7 +134,18 @@ export function convertMarkdownToTelegram(markdown: string): string {
 
   // 4. Bold text: standard markdown bold **text**
   //    Telegram bold is delimited by single asterisks: *text*
-  converted = converted.replace(/\*\*([^*]+)\*\*/g, (_match, content) => {
+  //    First stash a whole escaped span: in `\**not bold**` the opening
+  //    delimiter is escaped, so the span is literal text — the
+  //    escaped-delimiter rule the italic steps below state. Stashing the
+  //    span (not just its opener) matters: the pair's closing `**` is not
+  //    itself backslash-preceded, so left in the text the bold pattern
+  //    would read it as the opener of a later span and mispair the two.
+  //    The closer lookbehind covers a span whose only escape is at its
+  //    end (`**a\**` stays literal too).
+  converted = converted.replace(/\\\*\*([^*]+)\*\*/g, (match) =>
+    storeReplacement(escapePlainText(match)),
+  );
+  converted = converted.replace(/\*\*([^*]+)(?<!\\)\*\*/g, (_match, content) => {
     const formattedContent = escapePlainText(content);
     const formatted = `*${formattedContent}*`;
     boldInner.set(replacements.length, formattedContent);
