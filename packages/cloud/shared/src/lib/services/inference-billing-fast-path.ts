@@ -20,7 +20,6 @@ import {
 } from "./credits";
 import {
   invalidateOrgBalanceHint,
-  lowerOrgBalanceHint,
   readOrgBalanceHint,
   writeOrgBalanceHint,
 } from "./inference-auth-cache";
@@ -304,6 +303,7 @@ export type InferenceDebitCollectionOutcome =
       attemptedAmountUsd: number;
       collectedAmountUsd: number;
       newBalanceUsd: number;
+      balanceRevision: string;
       transactionId: string;
     }
   | {
@@ -311,6 +311,7 @@ export type InferenceDebitCollectionOutcome =
       attemptedAmountUsd: number;
       collectedAmountUsd: 0;
       newBalanceUsd: number;
+      balanceRevision: string;
       transactionId: null;
       reason: "insufficient_balance" | "below_minimum" | "org_not_found";
     };
@@ -463,9 +464,9 @@ export async function debitInferenceCost(
       });
     }
     try {
-      if (options.preserveBalanceHintDuringFencedHandoff) {
-        await lowerOrgBalanceHint(ctx.organizationId, result.newBalance, Date.now());
-      }
+      // For fenced debits, the Durable Object already holds this revision.
+      // Publish its atomic observation directly; reading and lowering the old
+      // cache value first adds no authority and writes it with an old revision.
       await republishOrgBalanceHintAfterDebit(
         ctx.organizationId,
         result.newBalance,
@@ -494,6 +495,7 @@ export async function debitInferenceCost(
       attemptedAmountUsd: amountUsd,
       collectedAmountUsd: persistedAmountUsd,
       newBalanceUsd: result.newBalance,
+      balanceRevision: result.balanceRevision,
       transactionId: transaction.id,
     };
   }
@@ -525,6 +527,7 @@ export async function debitInferenceCost(
     attemptedAmountUsd: amountUsd,
     collectedAmountUsd: 0,
     newBalanceUsd: result.newBalance,
+    balanceRevision: result.balanceRevision,
     transactionId: null,
     reason: result.reason ?? "insufficient_balance",
   };

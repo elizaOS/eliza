@@ -1068,6 +1068,13 @@ async function admitWithFundingPolicy(
       return attachInferenceAdmissionLease(result, inferenceLease, params);
     }
 
+    // A zero-cost outcome can settle against the admission observation. The
+    // gate ignores older revisions and cannot raise an equal-revision ceiling.
+    // Paid outcomes replace this with the balance returned by the debit itself.
+    let settledBalance: InferenceAdmissionBalanceObservation = {
+      balanceUsd: balanceHint.balanceUsd,
+      balanceRevision: balanceHint.balanceRevision,
+    };
     const settle = async (actualCostUsd: number): Promise<CreditReconciliationResult> => {
       if (actualCostUsd <= 0) {
         return {
@@ -1084,6 +1091,10 @@ async function admitWithFundingPolicy(
         preserveBalanceHintDuringFencedHandoff: true,
         inferenceBalanceFence,
       });
+      settledBalance = {
+        balanceUsd: outcome.newBalanceUsd,
+        balanceRevision: outcome.balanceRevision,
+      };
       return {
         reservedAmount: outcome.collectedAmountUsd,
         actualCost: actualCostUsd,
@@ -1111,6 +1122,7 @@ async function admitWithFundingPolicy(
       },
       inferenceLease,
       params,
+      () => settledBalance,
     );
   }
 
