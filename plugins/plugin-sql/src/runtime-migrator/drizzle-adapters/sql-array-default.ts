@@ -59,6 +59,10 @@ export function buildArrayString(array: SqlArrayDefaultElement[], sqlType: strin
   });
 }
 
+function quoteArrayElement(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
 function renderArray(
   array: SqlArrayDefaultElement[],
   baseType: string,
@@ -106,7 +110,7 @@ function renderArray(
         if (serialized === undefined) {
           failUnbounded("chars", { reason: "object default is not JSON serializable" });
         }
-        rendered = `"${serialized.replaceAll('"', '\\"')}"`;
+        rendered = quoteArrayElement(serialized);
       } else {
         if (
           typeof value === "string" &&
@@ -117,7 +121,7 @@ function renderArray(
             max: MAX_SQL_ARRAY_DEFAULT_CHARS,
           });
         }
-        rendered = `"${value}"`;
+        rendered = quoteArrayElement(String(value));
       }
       reserveChars(budget, rendered.length);
       values[index] = rendered;
