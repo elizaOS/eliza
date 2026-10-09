@@ -15,14 +15,15 @@ import {
 } from "./url-ingest.ts";
 
 beforeEach(() => {
-  __setDocumentUrlFetchImplForTests(async () =>
-    new Response(
-      "<html><body><p>It&#x27;s &#8217;snowing&#8217; &#8211; end. Keep &#0; and &#xD800; and &#1114112;.</p></body></html>",
-      {
-        status: 200,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      },
-    ),
+  __setDocumentUrlFetchImplForTests(
+    async () =>
+      new Response(
+        "<html><body><p>It&#x27;s &#8217;snowing&#8217; &#8211; end. Keep &#0; and &#xD800; and &#1114112;.</p></body></html>",
+        {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        },
+      ),
   );
 });
 
@@ -32,7 +33,9 @@ afterEach(() => {
 
 describe("url-ingest numeric HTML entities", () => {
   it("decodes hex and decimal references and leaves out-of-range refs intact", async () => {
-    const doc = await fetchDocumentFromUrl("https://example.com/entity-check.html");
+    const doc = await fetchDocumentFromUrl(
+      "https://example.com/entity-check.html",
+    );
     expect(doc.contentType).toBe("html");
     expect(doc.content).toContain("It's");
     expect(doc.content).toContain("\u2019snowing\u2019");
