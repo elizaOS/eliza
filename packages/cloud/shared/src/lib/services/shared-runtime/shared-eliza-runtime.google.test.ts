@@ -154,6 +154,7 @@ async function exercise(publicRead: boolean) {
     }
     return model(reply);
   }) as typeof fetch;
+  let googleRegistered = false;
   let runtimeSpy: ReturnType<typeof spyOn> | undefined;
   try {
     // Observe the actual runtime's returned results, without seeding any completion state.
@@ -162,6 +163,7 @@ async function exercise(publicRead: boolean) {
         const initialize = initializeOriginal;
         await initialize.call(this, options);
         webRegistered = this.actions.some((action) => action.name === "WEB_SEARCH");
+        googleRegistered = this.actions.some((action) => action.name === "GOOGLE_CONTEXT");
         const service = this.messageService!;
         const handle = service.handleMessage.bind(service);
         service.handleMessage = async (...args) => {
@@ -221,6 +223,7 @@ async function exercise(publicRead: boolean) {
     expect(modelCalls).toBeLessThanOrEqual(12);
     if (publicRead) {
       expect(webRegistered).toBe(true);
+      expect(googleRegistered).toBe(false);
       expect(publicCalls).toBe(1);
       expect(reads).toBe(0);
       expect(binds).toBe(0);
@@ -231,6 +234,7 @@ async function exercise(publicRead: boolean) {
       expect(turn.reply).not.toContain("PRIVATE_HISTORY_MARKER");
     } else {
       expect(webRegistered).toBe(false);
+      expect(googleRegistered).toBe(true);
       expect(publicCalls).toBe(0);
       expect(reads).toBe(1);
       expect(binds).toBe(1);

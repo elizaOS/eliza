@@ -1274,7 +1274,8 @@ export async function runSharedAgentTurn(
               webSearch: Boolean(publicSearchIntent),
               reminders: remindersEnabled,
               todos: todosEnabled,
-              googleContext: actionsEnabled && Boolean(input.execution?.google),
+              googleContext:
+                actionsEnabled && !publicSearchIntent && Boolean(input.execution?.google),
               media:
                 actionsEnabled &&
                 execution.authenticatedPersonalSharedUser === true &&

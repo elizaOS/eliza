@@ -1041,10 +1041,6 @@ async function executeMeasuredSharedElizaRuntimeTurn(
 
   const modelPlugin = sharedModelPlugin(modelHandler, Boolean(input.ownerCapture));
   const actionsEnabled = input.messageRole !== "system";
-  const googlePlugin =
-    actionsEnabled && input.execution?.google
-      ? createSharedGoogleContextPlugin(input.execution.google)
-      : undefined;
   const realtimeRequirement =
     actionsEnabled && input.capabilityText && !isSharedGoogleContextRequest(input.capabilityText)
       ? resolveSharedRealtimeRequirement(input.capabilityText, input.history)
@@ -1065,6 +1061,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ? resolveSharedPublicSearchIntent(input.capabilityText, input.history)
       : undefined;
   const webSearchEnabled = Boolean(publicSearchIntent);
+  // Public-search turns must not also expose a private data source to the model.
+  const googlePlugin =
+    actionsEnabled && !webSearchEnabled && input.execution?.google
+      ? createSharedGoogleContextPlugin(input.execution.google)
+      : undefined;
   const reminderPlugin =
     actionsEnabled && input.execution?.reminders
       ? createSharedRemindersEdgePlugin({
@@ -1252,7 +1253,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         throw new Error("Eliza Shared runtime initialized without its REMINDERS action");
       }
       if (
-        input.execution?.google &&
+        googlePlugin &&
         !runtime.actions.some((action) => action.name === GOOGLE_CONTEXT_ACTION)
       ) {
         throw new Error("Eliza Shared runtime initialized without its owner Google action");
