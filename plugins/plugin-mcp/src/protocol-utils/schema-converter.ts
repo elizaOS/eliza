@@ -302,14 +302,10 @@ export function validateParamsAgainstSchema(
         errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
       }
 
-      const declaresInteger = Array.isArray(prop.type)
-        ? prop.type.includes("integer")
+      const requiresInteger = Array.isArray(prop.type)
+        ? prop.type.includes("integer") && !prop.type.includes("number")
         : prop.type === "integer";
-      if (
-        declaresInteger &&
-        typeof value === "number" &&
-        !Number.isInteger(value)
-      ) {
+      if (requiresInteger && typeof value === "number" && !Number.isInteger(value)) {
         errors.push(`Parameter '${name}' expected integer, got ${value}`);
       }
 
