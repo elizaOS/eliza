@@ -132,25 +132,24 @@ export function convertMarkdownToTelegram(markdown: string): string {
     },
   );
 
+  // Protect escaped asterisks before interpreting emphasis. Consuming pairs
+  // of backslashes also preserves whether the next asterisk is escaped.
+  // Code and link destinations were already stored above and stay unchanged.
+  converted = converted.replace(/\\([\\*])/g, (_match, literal) =>
+    storeReplacement(escapePlainText(literal)),
+  );
+
   // 4. Bold text: standard markdown bold **text**
   //    Telegram bold is delimited by single asterisks: *text*
-  //    First stash a whole escaped span: in `\**not bold**` the opening
-  //    delimiter is escaped, so the span is literal text — the
-  //    escaped-delimiter rule the italic steps below state. Stashing the
-  //    span (not just its opener) matters: the pair's closing `**` is not
-  //    itself backslash-preceded, so left in the text the bold pattern
-  //    would read it as the opener of a later span and mispair the two.
-  //    The closer lookbehind covers a span whose only escape is at its
-  //    end (`**a\**` stays literal too).
-  converted = converted.replace(/\\\*\*([^*]+)\*\*/g, (match) =>
-    storeReplacement(escapePlainText(match)),
+  converted = converted.replace(
+    /\*\*(?!\s)([^*]+)(?<!\s)\*\*/g,
+    (_match, content) => {
+      const formattedContent = escapePlainText(content);
+      const formatted = `*${formattedContent}*`;
+      boldInner.set(replacements.length, formattedContent);
+      return storeReplacement(formatted);
+    },
   );
-  converted = converted.replace(/\*\*([^*]+)(?<!\\)\*\*/g, (_match, content) => {
-    const formattedContent = escapePlainText(content);
-    const formatted = `*${formattedContent}*`;
-    boldInner.set(replacements.length, formattedContent);
-    return storeReplacement(formatted);
-  });
 
   // 5. Strikethrough: standard markdown uses ~~text~~,
   //    while Telegram uses ~text~
@@ -164,14 +163,12 @@ export function convertMarkdownToTelegram(markdown: string): string {
   //    Standard markdown italic can be written as either *text* or _text_.
   //    In Telegram MarkdownV2 italic must be delimited by underscores.
   //    Process asterisk-based italic first.
-  //    (Using negative lookbehind/lookahead to avoid matching bold **)
+  //    Bold spans have already been stored; remaining single delimiters
+  //    can sit beside literal unmatched asterisks.
   //    As in CommonMark, a `*` followed by whitespace cannot open italic and
   //    one preceded by whitespace cannot close it, so `2 * 3 * 4` stays literal.
-  //    A preceding backslash means an already-escaped delimiter and never
-  //    opens or closes italic — the rule the underscore step below states —
-  //    so `\*not italic\*` stays literal.
   converted = converted.replace(
-    /(?<!\*|\\)\*(?!\s)([^*\n]+)(?<!\s|\\)\*(?!\*)/g,
+    /\*(?![\s*])([^*\n]+)(?<!\s)\*/g,
     (_match, content) => {
       const formattedContent = escapePlainText(content);
       const formatted = `_${formattedContent}_`;
