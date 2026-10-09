@@ -1344,11 +1344,11 @@ describe("Shared Eliza Workerd runtime", () => {
     });
     expect(JSON.stringify(searchResults)).not.toContain('"sources"');
     expect(JSON.stringify(searchResults)).not.toContain("search_id");
-    expect(modelRequests).toHaveLength(5);
+    expect(modelRequests).toHaveLength(3);
     expect(result.usage).toMatchObject({
-      promptTokens: 220,
-      completionTokens: 64,
-      totalTokens: 284,
+      promptTokens: 120,
+      completionTokens: 36,
+      totalTokens: 156,
     });
     expect(result.history.at(-1)?.grounding).toEqual({
       kind: "web_search",
