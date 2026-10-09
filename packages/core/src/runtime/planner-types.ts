@@ -27,6 +27,7 @@ import type {
 	ToolChoice,
 	ToolDefinition,
 } from "../types/model";
+import type { Content } from "../types/primitives";
 import type { State } from "../types/state";
 import type { ContextObject } from "./context-object";
 import type { ChainingLoopConfig } from "./limits";
@@ -330,6 +331,8 @@ export interface PlannerLoopResult {
 	trajectory: PlannerTrajectory;
 	evaluator?: EvaluatorOutput;
 	finalMessage?: string;
+	/** Authentic source-bound content, when the settled-reply host supplied literal sources. */
+	finalContent?: Content;
 	/**
 	 * Machine-readable terminal failure that survives independent text delivery.
 	 * The message service propagates this outside `responseContent`, so a host
@@ -373,6 +376,11 @@ export interface PlannerLoopParams {
 	postToolReplySeed?: {
 		toolCall: PlannerToolCall;
 		result: PlannerToolResult;
+		/** Already authorized immutable data, not dialogue memory or additional read authority. */
+		sourceReply?: {
+			scope: { agentId: string; roomId: string; messageId: string };
+			sources: readonly { id: string; text: string }[];
+		};
 	};
 	/** Host persists resumed execution before dispatch and after settled results. */
 	onCheckpoint?: (

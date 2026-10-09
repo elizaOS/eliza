@@ -4,6 +4,7 @@ import {
   isNativeNotesQuery,
   type NativeNotesReadReplyOrigin,
   NOTES_QUERY_CAPABILITY,
+  validateNativeNotesReadReply,
 } from "@elizaos/contracts/native-notes-query";
 import type { ContextObject, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { stableStringify, withActionGatePolicy } from "@elizaos/core";
@@ -537,11 +538,11 @@ export class DeviceActionService {
         )
           throw new DeviceActionError("Original read completion retired");
         signal.throwIfAborted();
-        const reply = {
+        const reply = validateNativeNotesReadReply({
           ...completionOrigin(binding),
           messageId: completionReplyId(binding, hint.attemptId),
           text,
-        };
+        });
         const next: DeviceReadCompletion = {
           ...current.binding,
           state: "prepared",
