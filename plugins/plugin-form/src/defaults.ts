@@ -115,6 +115,11 @@ export function applyFormDefaults(
   }
 
   return {
+    // Spread remaining properties first so the derived fields below win.
+    // Spreading last would overwrite the completed controls (and every
+    // other derived default) with the caller's raw values.
+    ...form,
+
     // Required fields
     id,
     // Derive name from id if not provided
@@ -165,9 +170,6 @@ export function applyFormDefaults(
 
     // Debug defaults to off for performance
     debug: form.debug ?? FORM_DEFINITION_DEFAULTS.debug,
-
-    // Spread remaining properties (override defaults)
-    ...form,
   };
 }
 
