@@ -290,7 +290,11 @@ export class KaminoLiquidityService extends Service {
           address: tokenData.address || tokenIdentifier,
           price: tokenData.price || 0,
           liquidity: tokenData.liquidity || 0,
-          decimals: tokenData.decimals || 9,
+          decimals:
+            typeof tokenData.decimals === "number" &&
+            Number.isFinite(tokenData.decimals)
+              ? tokenData.decimals
+              : 9,
           marketCap: tokenData.mc || 0,
           volume24h: tokenData.volume24h || 0,
           priceChange24h: tokenData.priceChange24hPercent || 0,
