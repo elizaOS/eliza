@@ -15,7 +15,13 @@ export function formatTrajectoryDuration(ms: number | null): string {
   // browser garbage "NaNh" / "Infinityh" / "-1ms" instead of the designed
   // placeholder.
   if (ms === null || !Number.isFinite(ms) || ms < 0) return "—";
-  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 1000) {
+    const roundedMs = Math.round(ms);
+    // Roll over at the boundary like the s->m and m->h branches below:
+    // 999.5ms rounds to 1000, which must render as "1.0s", not "1000ms".
+    if (roundedMs >= 1000) return "1.0s";
+    return `${roundedMs}ms`;
+  }
   const seconds = ms / 1000;
   if (seconds < 60) {
     const rounded = Math.round(seconds * 10) / 10;
