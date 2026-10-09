@@ -511,12 +511,12 @@ export async function synthesizeDeviceReadReply(
           messageId: binding.origin.original.id,
         })
       : undefined;
-    if (output.finalContent && (!rendering || rendering.text !== text)) fail();
+    if (!rendering || rendering.text !== text) fail();
     if (
       evaluatePlannedReplyEgress({
         providers: {},
         request: binding.origin.original.content.text,
-        reply: rendering ? rendering.prose : text,
+        reply: rendering.prose,
         actionResults: [seed],
         actions: [],
       }).verdict !== "allow"
