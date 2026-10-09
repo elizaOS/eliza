@@ -1,6 +1,12 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
+  ListToolsRequestSchema,
+  ReadResourceRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 
 const mode = process.argv[2] ?? "only";
 const wav = Buffer.alloc(44 + 1600);
@@ -26,33 +32,47 @@ const image = {
 };
 const server = new Server(
   { name: "audio-result-reproduction", version: "1.0.0" },
-  { capabilities: { tools: {} } }
+  { capabilities: { tools: {}, resources: {} } }
 );
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     { name: "sample", description: "Return an audio attachment", inputSchema: { type: "object" } },
   ],
 }));
+const resources = [image, audio, image].map((item, index) => ({
+  uri: `fixture:///media/${index}`,
+  mimeType: item.mimeType,
+  blob: item.data,
+}));
+server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+  resources: [{ uri: "fixture:///media", name: "Binary resources" }],
+}));
+server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
+  resourceTemplates: [],
+}));
+server.setRequestHandler(ReadResourceRequestSchema, async () => ({ contents: resources }));
 server.setRequestHandler(CallToolRequestSchema, async () => ({
   content:
-    mode === "only"
-      ? [audio, audio]
-      : mode === "resource"
-        ? [
-            {
-              type: "resource_link",
-              name: "report",
-              uri: "file:///private/report",
-              description: "Complete resource metadata",
-              mimeType: "text/plain",
-              size: 42,
-            },
-          ]
-        : mode === "image"
-          ? [image]
-          : mode === "text"
-            ? [{ type: "text", text: "Text control" }]
-            : [{ type: "text", text: "Captured tone" }, audio, image, audio],
+    mode === "binary"
+      ? resources.map((resource) => ({ type: "resource", resource }))
+      : mode === "only"
+        ? [audio, audio]
+        : mode === "resource"
+          ? [
+              {
+                type: "resource_link",
+                name: "report",
+                uri: "file:///private/report",
+                description: "Complete resource metadata",
+                mimeType: "text/plain",
+                size: 42,
+              },
+            ]
+          : mode === "image"
+            ? [image]
+            : mode === "text"
+              ? [{ type: "text", text: "Text control" }]
+              : [{ type: "text", text: "Captured tone" }, audio, image, audio],
   ...(mode === "error" ? { isError: true } : {}),
 }));
 await server.connect(new StdioServerTransport());

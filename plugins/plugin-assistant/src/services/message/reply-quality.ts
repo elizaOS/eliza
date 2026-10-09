@@ -163,9 +163,19 @@ export function parseSayLiteralInstruction(
     .replace(/^\s*(?:<@!?\d+>\s*|@\S+\s+|[^()\n]{0,80}\(@\d+\)\s*)/u, "")
     .trim();
   const match = body.match(
-    /^(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with|back|(?:(?:the|a|an)\s+)?(?:single|one)\s+(?:word|phrase|token)|the\s+(?:word|phrase|token))){0,2}\s*:?\s*["'“”‘’]?([\p{L}\p{N}]{1,40})["'“”‘’]?(?:\s+verbatim)?\s*[.!?]*$/iu,
+    /^(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with|back|(?:(?:the|a|an)\s+)?(?:single|one)\s+(?:word|phrase|token)|the\s+(?:word|phrase|token))){0,2}\s*:?\s*(["'“”‘’]?)([\p{L}\p{N}]{1,40})(["'“”‘’]?)(\s+verbatim)?\s*[.!?]*$/iu,
   );
-  return match ? match[1] : null;
+  if (!match) return null;
+  // Unquoted pronouns refer to prior context rather than the literal word.
+  if (
+    match[4] &&
+    !match[1] &&
+    !match[3] &&
+    /^(?:it|this|that|them|these|those)$/iu.test(match[2])
+  ) {
+    return null;
+  }
+  return match[2];
 }
 
 export function isTerseReplyWorthKeeping(args: {
