@@ -350,6 +350,23 @@ export function completionReplyId(
   );
 }
 
+/** Synchronous retirement fence used at the actual model/write boundary after waits. */
+export function assertDeviceReadCompletionCurrent(
+  runtime: IAgentRuntime,
+  binding: DeviceReadCompletion,
+  signal: AbortSignal,
+  assertHostCurrent?: () => void,
+): void {
+  signal.throwIfAborted();
+  assertHostCurrent?.();
+  if (
+    Date.parse(binding.expiresAt) <= Date.now() ||
+    deviceReadHostContextRevision(runtime) !==
+      binding.origin.hostContextRevision
+  )
+    fail();
+}
+
 /** The sole inference uses the existing guarded no-tools post-tool reply lane. */
 export async function synthesizeDeviceReadReply(
   runtime: IAgentRuntime,
@@ -357,6 +374,7 @@ export async function synthesizeDeviceReadReply(
   request: ApprovalRequest,
   signal: AbortSignal,
   recheck?: () => Promise<void>,
+  assertHostCurrent?: () => void,
 ): Promise<string> {
   signal.throwIfAborted();
   const result = deviceReadResult(request);
@@ -389,12 +407,12 @@ export async function synthesizeDeviceReadReply(
     useModel: async (type, params, provider) => {
       if (++calls !== 1) fail();
       await recheck?.();
-      signal.throwIfAborted();
-      if (
-        deviceReadHostContextRevision(runtime) !==
-        binding.origin.hostContextRevision
-      )
-        fail();
+      assertDeviceReadCompletionCurrent(
+        runtime,
+        binding,
+        signal,
+        assertHostCurrent,
+      );
       return runtime.useModel(
         type,
         { ...params, signal } as GenerateTextParams,

@@ -58,6 +58,7 @@ import {
 } from "./notes-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import {
+  assertDeviceReadCompletionCurrent,
   bindDeviceCompletion,
   captureDeviceReadReplyOrigin,
   completionHint,
@@ -407,6 +408,7 @@ export class DeviceActionService {
     hint: DeviceReadCompletionHint,
     signal: AbortSignal,
     recheck?: () => Promise<void>,
+    assertHostCurrent?: () => void,
   ): Promise<DeviceReadCompletion["reply"]> {
     signal.throwIfAborted();
     const claimed = await this.access(c, async (q, row, tx) => {
@@ -449,7 +451,13 @@ export class DeviceActionService {
         claimed.binding.origin.original.id,
       );
       await recheck?.();
-      signal.throwIfAborted();
+      const assertCurrent = await this.assertReadReplyCurrent(
+        c,
+        hint,
+        signal,
+        assertHostCurrent,
+      );
+      assertCurrent();
       if (!originalReadRequestMatches(claimed.binding, original))
         throw new DeviceActionError("Original read request changed");
       return claimed.binding.reply;
@@ -485,9 +493,24 @@ export class DeviceActionService {
         binding,
         claimed.request,
         signal,
-        recheck,
+        async () => {
+          await recheck?.();
+          await this.assertReadReplyCurrent(
+            c,
+            hint,
+            signal,
+            assertHostCurrent,
+            ["claimed"],
+          );
+        },
+        assertHostCurrent,
       );
-      signal.throwIfAborted();
+      assertDeviceReadCompletionCurrent(
+        this.runtime,
+        binding,
+        signal,
+        assertHostCurrent,
+      );
       return await this.access(c, async (q, row, tx) => {
         const current = await this.boundReadCompletion(
           q,
@@ -547,7 +570,8 @@ export class DeviceActionService {
       throw cause;
     }
   }
-  /** Host callback persists through the canonical same-room message writer. */
+  /** Host callback carries the supplied synchronous fence through the canonical
+   * same-room writer's lookup and room-lease waits, up to actual createMemory. */
   async completeReadReply(
     c: DeviceCredential,
     hint: DeviceReadCompletionHint,
@@ -555,8 +579,10 @@ export class DeviceActionService {
     persist: (
       reply: NonNullable<DeviceReadCompletion["reply"]>,
       signal: AbortSignal,
+      assertCurrent: () => void,
     ) => Promise<void>,
     recheck?: () => Promise<void>,
+    assertHostCurrent?: () => void,
   ): Promise<NonNullable<DeviceReadCompletion["reply"]>> {
     await this.readCompletionRoom(c, hint);
     await recheck?.();
@@ -576,15 +602,25 @@ export class DeviceActionService {
     controllers.set(hint.proposalId, owned);
     const current = AbortSignal.any([signal, owned.controller.signal]);
     try {
-      const reply = await this.prepareReadReply(c, hint, current, recheck);
+      const reply = await this.prepareReadReply(
+        c,
+        hint,
+        current,
+        recheck,
+        assertHostCurrent,
+      );
       current.throwIfAborted();
       if (!reply)
         throw new DeviceActionError("Original read reply unavailable");
-      await this.assertReadReplyCurrent(c, hint, current);
-      current.throwIfAborted();
       await recheck?.();
-      current.throwIfAborted();
-      await persist(reply, current);
+      const assertCurrent = await this.assertReadReplyCurrent(
+        c,
+        hint,
+        current,
+        assertHostCurrent,
+      );
+      assertCurrent();
+      await persist(reply, current, assertCurrent);
       current.throwIfAborted();
       await this.finishReadReply(c, hint, current);
       current.throwIfAborted();
@@ -598,8 +634,13 @@ export class DeviceActionService {
     c: DeviceCredential,
     hint: DeviceReadCompletionHint,
     signal: AbortSignal,
-  ): Promise<void> {
-    await this.access(c, async (q, row, tx) => {
+    assertHostCurrent?: () => void,
+    states: readonly DeviceReadCompletion["state"][] = [
+      "prepared",
+      "delivered",
+    ],
+  ): Promise<() => void> {
+    const binding = await this.access(c, async (q, row, tx) => {
       const current = await this.boundReadCompletion(
         q,
         row,
@@ -611,7 +652,7 @@ export class DeviceActionService {
       );
       if (
         !current ||
-        !["prepared", "delivered"].includes(current.binding.state) ||
+        !states.includes(current.binding.state) ||
         current.binding.origin.requestId !== hint.requestId ||
         current.binding.origin.conversationId !== hint.conversationId ||
         current.binding.origin.original.id !== hint.inReplyTo ||
@@ -619,8 +660,17 @@ export class DeviceActionService {
       )
         throw new DeviceActionError("Original read completion retired");
       signal.throwIfAborted();
+      return current.binding;
     });
-    signal.throwIfAborted();
+    const assertCurrent = () =>
+      assertDeviceReadCompletionCurrent(
+        this.runtime,
+        binding,
+        signal,
+        assertHostCurrent,
+      );
+    assertCurrent();
+    return assertCurrent;
   }
   async finishReadReply(
     c: DeviceCredential,

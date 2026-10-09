@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import {
   AgentRuntime,
+  ChannelType,
   type ContextObject,
   conversationClientUserMemoryId,
   type IDatabaseAdapter,
@@ -1098,3 +1099,127 @@ it("a host missing its protected revision retains a typed receipt without any co
     await f.pg.close();
   }
 });
+
+it.each(["expiry", "enrollment"] as const)(
+  "retirement during final fresh authority await blocks model admission: %s",
+  async (kind) => {
+    const f = await fixture();
+    try {
+      const attempt = await f.apply(),
+        hint = (await f.service.readCompletionHint(
+          f.credential,
+          f.outcome.request.id,
+          f.digest,
+          attempt,
+        ))!;
+      let enter!: () => void, release!: () => void;
+      const entered = new Promise<void>((yes) => {
+          enter = yes;
+        }),
+        gate = new Promise<void>((yes) => {
+          release = yes;
+        });
+      const pending = f.service.prepareReadReply(
+        f.credential,
+        hint,
+        new AbortController().signal,
+        async () => {
+          enter();
+          await gate;
+        },
+      );
+      await entered;
+      if (kind === "expiry")
+        vi.spyOn(Date, "now").mockReturnValue(
+          f.outcome.request.expiresAt.getTime() + 1,
+        );
+      else await f.service.revoke(f.credential);
+      release();
+      await expect(pending).rejects.toThrow();
+      expect(f.model).not.toHaveBeenCalled();
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it.each(["expiry", "provider", "runtime"] as const)(
+  "canonical prewrite lookup retirement creates no assistant memory: %s",
+  async (kind) => {
+    const f = await fixture();
+    try {
+      const { persistAssistantConversationMemory } = await import(
+        "../../../packages/agent/src/api/chat-routes.ts"
+      );
+      const attempt = await f.apply(),
+        hint = (await f.service.readCompletionHint(
+          f.credential,
+          f.outcome.request.id,
+          f.digest,
+          attempt,
+        ))!;
+      let enter!: () => void,
+        release!: () => void,
+        valid = true,
+        replyId = "";
+      const entered = new Promise<void>((yes) => {
+          enter = yes;
+        }),
+        gate = new Promise<void>((yes) => {
+          release = yes;
+        });
+      const original = f.runtime.getMemoriesByIds.bind(f.runtime);
+      f.runtime.getMemoriesByIds = async (...args) => {
+        enter();
+        await gate;
+        return original(...args);
+      };
+      const create = vi.spyOn(f.runtime, "createMemory");
+      const pending = f.service.completeReadReply(
+        f.credential,
+        hint,
+        new AbortController().signal,
+        async (reply, _signal, assertCurrent) => {
+          replyId = reply.messageId;
+          await persistAssistantConversationMemory(
+            f.runtime,
+            f.original.roomId,
+            { text: reply.text, inReplyTo: reply.inReplyTo as UUID },
+            ChannelType.API,
+            undefined,
+            reply.messageId as UUID,
+            undefined,
+            assertCurrent,
+          );
+        },
+        undefined,
+        () => {
+          if (!valid) throw Error("Runtime retired");
+        },
+      );
+      await entered;
+      if (kind === "expiry")
+        vi.spyOn(Date, "now").mockReturnValue(
+          f.outcome.request.expiresAt.getTime() + 1,
+        );
+      else if (kind === "provider")
+        f.runtime.getSetting = (key: string) =>
+          key === "ELIZA_HOST_CONTEXT_REVISION"
+            ? "replacement-provider-revision"
+            : null;
+      else valid = false;
+      release();
+      await expect(pending).rejects.toThrow();
+      expect(f.model).toHaveBeenCalledTimes(1);
+      expect(create).not.toHaveBeenCalled();
+      expect(
+        (
+          await f.pg.query("SELECT id FROM original_memories WHERE id=$1", [
+            replyId,
+          ])
+        ).rows,
+      ).toHaveLength(0);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
