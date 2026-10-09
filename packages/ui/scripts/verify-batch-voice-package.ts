@@ -162,6 +162,8 @@ try {
         normalBuilds: ["core", "voice", "ui"],
         packedConsumerTypes: true,
         packedRuntimeTurn: true,
+        packedOwnerInputPause: true,
+        packedExactReplyResume: true,
         browserTargetNoNodeRealmTurn: true,
         inputCount: inputs.length,
         inputs,

@@ -40,14 +40,25 @@ export type BatchVoicePhase =
   | "listening"
   | "transcribing"
   | "thinking"
+  | "awaiting-user-input"
   | "preparing-speech"
   | "speaking"
   | "error";
+/** Exact delivery correlation only; the host still owns approval and authority. */
+export interface BatchVoiceAwaitingUserInput {
+  proposalId: string;
+  digest: string;
+  requestId: string;
+  conversationId: string;
+  userMessageId: string;
+  assistantMessageId: string;
+}
 export interface BatchVoiceState {
   phase: BatchVoicePhase;
   transcript?: string;
   replyId?: string;
   error?: unknown;
+  awaitingUserInput?: BatchVoiceAwaitingUserInput;
 }
 export interface BatchVoiceCapture<Clip> {
   stop(): Promise<Clip>;
@@ -61,6 +72,11 @@ export interface BatchVoiceReply {
   text: string;
   complete: boolean;
   interrupted?: boolean;
+  /** Durable owner-input barrier, never approval or permission to execute. */
+  awaitingUserInput?: Pick<
+    BatchVoiceAwaitingUserInput,
+    "proposalId" | "digest"
+  >;
 }
 export interface BatchVoicePorts<Clip> {
   /** Canonical room established by the host before opening the microphone. */
@@ -136,6 +152,11 @@ interface Session<Clip> {
   committed: ReturnType<typeof deferred<Committed>>;
   hasCommit: boolean;
   replyIds: Set<string>;
+  awaitingInput?: {
+    pause: BatchVoiceAwaitingUserInput;
+    reply: ReturnType<typeof deferred<BatchVoiceReply>>;
+    resolved: boolean;
+  };
 }
 
 /** Provider-free batch loop. Hosts own microphone, credentials, transport and real playback. */
@@ -191,11 +212,16 @@ export class BatchVoiceConversation<Clip> {
       throw new RangeError("Invalid capture duration");
   }
   getSnapshot(): BatchVoiceState {
-    return { ...this.state };
+    return {
+      ...this.state,
+      ...(this.state.awaitingUserInput
+        ? { awaitingUserInput: { ...this.state.awaitingUserInput } }
+        : {}),
+    };
   }
   private publish(state: BatchVoiceState) {
     this.state = state;
-    this.ports.onState?.({ ...state });
+    this.ports.onState?.(this.getSnapshot());
   }
   private current(session: Session<Clip>) {
     return (
@@ -292,6 +318,57 @@ export class BatchVoiceConversation<Clip> {
         if (!this.session) this.publish({ phase: "error", error });
       });
     }
+  }
+  /** Deliver the already-authorized result of this exact paused turn. No send,
+   * capture, approval or provider action is performed by this method. */
+  resume(input: {
+    pause: BatchVoiceAwaitingUserInput;
+    reply: BatchVoiceReply;
+  }): boolean {
+    if (!input || typeof input !== "object" || Array.isArray(input))
+      return false;
+    const session = this.session,
+      held = session?.awaitingInput;
+    if (!session || !held || held.resolved) return false;
+    try {
+      this.check(session);
+    } catch {
+      this.recheck();
+      return false;
+    }
+    const { pause, reply } = input,
+      original = held.pause;
+    if (
+      !pause ||
+      !reply ||
+      pause.proposalId !== original.proposalId ||
+      pause.digest !== original.digest ||
+      pause.requestId !== original.requestId ||
+      pause.conversationId !== original.conversationId ||
+      pause.userMessageId !== original.userMessageId ||
+      pause.assistantMessageId !== original.assistantMessageId ||
+      reply.requestId !== original.requestId ||
+      reply.conversationId !== original.conversationId ||
+      reply.userMessageId !== original.userMessageId ||
+      typeof reply.assistantMessageId !== "string" ||
+      !reply.assistantMessageId.trim() ||
+      session.replyIds.has(reply.assistantMessageId) ||
+      reply.complete !== true ||
+      reply.interrupted ||
+      reply.awaitingUserInput !== undefined ||
+      typeof reply.text !== "string"
+    )
+      return false;
+    held.resolved = true;
+    held.reply.resolve({
+      requestId: reply.requestId,
+      conversationId: reply.conversationId,
+      userMessageId: reply.userMessageId,
+      assistantMessageId: reply.assistantMessageId,
+      text: reply.text,
+      complete: true,
+    });
+    return true;
   }
   async stop(): Promise<void> {
     const session = this.session;
@@ -460,7 +537,7 @@ export class BatchVoiceConversation<Clip> {
       const turnId = crypto.randomUUID();
       this.publish({ phase: "thinking", transcript: turn.text });
       this.check(session);
-      const reply = await this.wait(
+      let reply = await this.wait(
         this.ports.send({
           turnId,
           text: turn.text,
@@ -475,11 +552,60 @@ export class BatchVoiceConversation<Clip> {
         reply.conversationId !== this.conversationId ||
         !reply.userMessageId?.trim() ||
         !reply.assistantMessageId?.trim() ||
-        reply.complete !== true ||
         reply.interrupted ||
         session.replyIds.has(reply.assistantMessageId) ||
         typeof reply.text !== "string"
       )
+        throw new BatchVoiceError(
+          "reply",
+          "The voice reply was not confirmed for this turn.",
+        );
+      if (reply.awaitingUserInput !== undefined) {
+        const pause = reply.awaitingUserInput;
+        if (!pause || typeof pause !== "object")
+          throw new BatchVoiceError(
+            "reply",
+            "The owner-input pause was not confirmed for this turn.",
+          );
+        const { proposalId, digest } = pause;
+        if (
+          reply.complete !== false ||
+          typeof proposalId !== "string" ||
+          !proposalId.trim() ||
+          typeof digest !== "string" ||
+          !digest.trim()
+        )
+          throw new BatchVoiceError(
+            "reply",
+            "The owner-input pause was not confirmed for this turn.",
+          );
+        const held = {
+          pause: {
+            proposalId,
+            digest,
+            requestId: turnId,
+            conversationId: this.conversationId,
+            userMessageId: reply.userMessageId,
+            assistantMessageId: reply.assistantMessageId,
+          },
+          reply: deferred<BatchVoiceReply>(),
+          resolved: false,
+        };
+        session.replyIds.add(reply.assistantMessageId);
+        session.awaitingInput = held;
+        this.publish({
+          phase: "awaiting-user-input",
+          transcript: turn.text,
+          replyId: reply.assistantMessageId,
+          awaitingUserInput: { ...held.pause },
+        });
+        reply = await this.wait(held.reply.promise, session);
+        this.check(session);
+        if (session.awaitingInput !== held || !held.resolved)
+          throw new BatchVoiceError("reply", "The paused voice turn changed.");
+        session.awaitingInput = undefined;
+      }
+      if (reply.complete !== true)
         throw new BatchVoiceError(
           "reply",
           "The voice reply was not confirmed for this turn.",
