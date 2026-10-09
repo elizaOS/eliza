@@ -15,7 +15,7 @@ export {
  * Playback / TTS logic for voice chat — text processing, sentence splitting,
  * speech text extraction, and mouth animation helpers.
  */
-import { ElizaError, sanitizeSpeechText } from "@elizaos/core/protocol";
+import { ElizaError, sanitizeSpeechText } from "@elizaos/core/speech";
 export type SpeechSegmentKind = "full" | "first-sentence" | "remainder";
 export const MOUTH_OPEN_STEP = 0.02;
 // ── Text processing helpers ───────────────────────────────────────────

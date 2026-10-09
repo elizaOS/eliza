@@ -3,7 +3,7 @@ import {
   type ShouldRespondContext,
   shouldRespondToVoiceTurn,
   type VoiceTurnSignal,
-} from "@elizaos/voice";
+} from "@elizaos/voice/turn";
 import { TurnAggregator, type TurnAggregatorOptions } from "./end-of-turn";
 import {
   isTtsEchoGateActive,
