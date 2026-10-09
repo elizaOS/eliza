@@ -721,7 +721,7 @@ export function replyClaimsCompletedSideEffect(
 // visible-context-recall exception.
 const EMPTY_TRACKED_STATE_CLAIM_PATTERNS: readonly RegExp[] = [
   // Standalone/coordinated TODO absence clauses each own their qualifier.
-  /(?:^|[.!?\n;,]|\band\s+)\s*(?:no|zero)\s+(?:(?:active|open|pending|completed|cancelled|canceled|entire)\s+)?(?:todos?|to[- ]dos?)\b/gi,
+  /(?:^|(?<=[.!?\n;,])|(?<=\band[ \t]))[ \t]*(?:no|zero)\s+(?:(?:active|open|pending|completed|cancelled|canceled|entire)\s+)?(?:todos?|to[- ]dos?)\b/gi,
   // Possessive collection assertions need proof even without a date qualifier.
   /\byou\s+(?:(?:currently|presently)\s+)?(?:have\s+(?:no|zero)|(?:do\s+not|don['’]t)\s+have\s+(?:any|a|an))\s+(?:(?:new|saved|tracked|recorded|active|open|pending)\s+)?(?:notes?|tasks?|todos?|to[- ]dos?|reminders?|habits?|goals?|entries)\b/gi,
   // "your task list is empty", "the todo list looks clear"

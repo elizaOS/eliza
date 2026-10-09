@@ -1,11 +1,12 @@
 /** Actual TODO list execution and production egress entry; no model, provider or database. */
-import { expect, test } from "bun:test";
+
 import {
   type ActionResult,
   type IAgentRuntime,
   type Memory,
   stringToUuid,
 } from "@elizaos/core";
+import { expect, test } from "vitest";
 import { createTodoAction } from "../../../plugin-todos/src/actions/todo";
 import type { TodoStore } from "../../../plugin-todos/src/store";
 import type { Todo } from "../../../plugin-todos/src/types";
@@ -168,6 +169,11 @@ test("actual scoped empty TODO read grounds production compound reply without re
     scope: "entire_current_inventory",
   });
   expect(f.verdict("Your todo list is empty.", [entire])).toBe("allow");
+  for (const unsupported of [
+    "I checked. No todos or reminders.",
+    "I checked. No todos yesterday.",
+  ])
+    expect(f.verdict(unsupported, [entire])).toBe("reject");
   const count = f.calls.length;
   expect((await f.list({ limit: 0 })).success).toBe(false);
   expect(f.calls.length).toBe(count);
