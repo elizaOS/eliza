@@ -716,8 +716,11 @@ function googleHost(t, google) {
         return Response.json({ ok: true });
       }
       if (path === "/api/v1/eliza/google/gmail/search") {
-        if (google.searchFailures?.length)
-          return new Response(null, { status: google.searchFailures.shift() });
+        if (google.searchFailures?.length) {
+          const status = google.searchFailures.shift();
+          google.afterFailure?.();
+          return new Response(null, { status });
+        }
         await google.beforeSearch?.();
         return Response.json({ messages: [], nextPageToken: null });
       }
@@ -880,9 +883,41 @@ test("task reads report typed reasons and retry only transient failures", async 
   await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
     code: "unavailable",
   });
-  google.searchFailures = [401];
+  // Cloud's 401 or 403 rejects the Eliza Cloud sign-in, not the Google
+  // connection, so it is never reported as a Gmail reconnect.
+  for (const status of [401, 403]) {
+    google.searchFailures = [status];
+    await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
+      code: "cloud_sign_in_required",
+    });
+  }
+  // Cloud's Google connector answers 409 when the Google token needs a
+  // reconnect. A fresh status check names the case.
+  google.searchFailures = [409];
   await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
     code: "reauth_required",
+  });
+  google.searchFailures = [409];
+  google.afterFailure = () => {
+    google.scopes = [METADATA_SCOPE];
+  };
+  await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
+    code: "insufficient_scope",
+  });
+  google.scopes = undefined;
+  google.searchFailures = [409];
+  google.afterFailure = () => {
+    google.connectionId = GRANT_B;
+  };
+  await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
+    code: "account_changed",
+  });
+  google.connectionId = GRANT_A;
+  google.afterFailure = undefined;
+  // The Google connection no longer exists.
+  google.searchFailures = [404];
+  await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
+    code: "account_changed",
   });
   // A refusal is never retried.
   google.searchFailures = [400, 400];

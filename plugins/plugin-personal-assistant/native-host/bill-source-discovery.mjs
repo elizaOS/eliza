@@ -6,6 +6,7 @@ import { BillHostError } from "./errors.mjs";
 /** Fixed read-failure reasons. The renderer can say what to do next. */
 export const BILL_SOURCE_FAILURE_REASONS = Object.freeze([
   "reauth_required",
+  "cloud_sign_in_required",
   "insufficient_scope",
   "account_changed",
   "unavailable",
@@ -94,10 +95,19 @@ function matches(m, c) {
     time < c.before
   );
 }
+/** Identity facts a look-alike message can differ in, in report order. */
+export const BILL_SOURCE_CONFLICT_FIELDS = Object.freeze([
+  "company",
+  "accountLabel",
+  "origin",
+]);
 /**
  * A message for another company, account or website is a look-alike. It is
- * reported with its safe identity facts, never selected. A message whose
- * facts are not complete or valid is unreadable and is skipped.
+ * reported only by which identity facts differ, never selected. Its own
+ * company, account and website come from an untrusted email and are never
+ * shown, so a spoofed message cannot put a destination in front of the
+ * person. A message whose facts are not complete or valid is unreadable and
+ * is skipped.
  */
 function candidate(
   parsed,
@@ -121,9 +131,11 @@ function candidate(
   )
     return {
       conflict: {
-        company: parsed.company,
-        accountLabel: parsed.accountLabel,
-        origin: parsed.origin,
+        differs: BILL_SOURCE_CONFLICT_FIELDS.filter((key) =>
+          key === "origin"
+            ? parsed.origin !== c.providerOrigin
+            : parsed[key] !== c[key],
+        ),
       },
     };
   if (
@@ -241,7 +253,16 @@ export class BillSourceDiscovery {
         conflicts = new Map();
       let token,
         conflict = false,
-        unreadable = 0;
+        unreadable = 0,
+        newestUnreadable = "";
+      // A newer message that cannot be read may be the current bill.
+      const skip = (detail) => {
+        unreadable++;
+        const at = new Date(
+          Date.parse(detail.message.receivedAt),
+        ).toISOString();
+        if (at > newestUnreadable) newestUnreadable = at;
+      };
       await check();
       for (;;) {
         const result = await this.google.searchGmailMessagesPage({
@@ -289,7 +310,7 @@ export class BillSourceDiscovery {
           });
           if (documents.incomplete)
             return { status: "incomplete", candidates: [] };
-          if (parsed === undefined && !documents.found.length) unreadable++;
+          if (parsed === undefined && !documents.found.length) skip(detail);
           const extracted = [
             ...(parsed == null ? [] : [{ parsed }]),
             ...documents.found,
@@ -302,7 +323,7 @@ export class BillSourceDiscovery {
               document.source,
             );
             if (value.unreadable) {
-              unreadable++;
+              skip(detail);
               continue;
             }
             if (value.conflict) {
@@ -338,11 +359,20 @@ export class BillSourceDiscovery {
       const candidates = [...found.values()].sort((a, b) =>
         b.receivedAt.localeCompare(a.receivedAt),
       );
-      if (candidates.length) candidates[0].mostRecent = true;
       const notes = {
         ...(unreadable ? { unreadable } : {}),
         ...(conflicts.size ? { conflicts: [...conflicts.values()] } : {}),
       };
+      // An older readable bill is never offered as current while a newer
+      // message from the biller could not be read.
+      if (candidates.length && newestUnreadable > candidates[0].receivedAt)
+        return {
+          status: "incomplete",
+          reason: "newer-unreadable",
+          candidates: [],
+          ...notes,
+        };
+      if (candidates.length) candidates[0].mostRecent = true;
       if (conflict)
         return {
           status: "ambiguous",

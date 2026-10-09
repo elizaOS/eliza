@@ -90,74 +90,75 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     offsetLeft: visualViewport?.offsetLeft ?? 0,
     offsetTop: visualViewport?.offsetTop ?? 0,
   });
-  if (command.subaction === "snapshot") {
-    const readVisibleText = (root) => {
-      const visibleText = [];
-      const collectText = (node) => {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const visibility = node.parentElement
-            ? getComputedStyle(node.parentElement).visibility
-            : "visible";
-          if (
-            visibility !== "hidden" &&
-            visibility !== "collapse" &&
-            node.textContent.trim()
-          )
-            visibleText.push(node.textContent);
-          return;
-        }
-        if (!(node instanceof Element)) return;
+  // Shared by the snapshot and the commit guard so both name a node alike.
+  const readVisibleText = (root) => {
+    const visibleText = [];
+    const collectText = (node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const visibility = node.parentElement
+          ? getComputedStyle(node.parentElement).visibility
+          : "visible";
         if (
-          node.matches("input,textarea,select,script,style,noscript") ||
-          node.isContentEditable
+          visibility !== "hidden" &&
+          visibility !== "collapse" &&
+          node.textContent.trim()
         )
-          return;
-        const style = getComputedStyle(node);
-        if (style.display === "none") return;
-        for (const child of node.childNodes) collectText(child);
-      };
-      collectText(root);
-      return visibleText.join("\n").trim();
-    };
-    // Accessible name in the usual order. Never reads a form control value
-    // except the visible caption of a button-type input.
-    const idText = (value) =>
-      (value || "")
-        .split(/\s+/)
-        .map((id) => id && document.getElementById(id))
-        .filter(Boolean)
-        .map((ref) => readVisibleText(ref) || ref.getAttribute("aria-label"))
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-    const accessibleName = (node) => {
-      const labelled = idText(node.getAttribute("aria-labelledby"));
-      if (labelled) return labelled;
-      const aria = node.getAttribute("aria-label")?.trim();
-      if (aria) return aria;
-      const labels = [...(node.labels ?? [])]
-        .map((label) => readVisibleText(label))
-        .filter(Boolean)
-        .join(" ");
-      if (labels) return labels;
+          visibleText.push(node.textContent);
+        return;
+      }
+      if (!(node instanceof Element)) return;
       if (
-        node instanceof HTMLInputElement &&
-        ["button", "submit", "reset"].includes(node.type)
-      )
-        return node.value || (node.type === "submit" ? "Submit" : "");
-      if (node instanceof HTMLInputElement && node.type === "image")
-        return node.alt || node.title || "";
-      if (node instanceof HTMLInputElement && node.type === "password")
-        return node.getAttribute("placeholder") || node.title || "Password";
-      if (
-        node instanceof HTMLInputElement ||
-        node instanceof HTMLTextAreaElement ||
-        node instanceof HTMLSelectElement ||
+        node.matches("input,textarea,select,script,style,noscript") ||
         node.isContentEditable
       )
-        return node.getAttribute("placeholder") || node.title || "";
-      return readVisibleText(node) || node.title || "";
+        return;
+      const style = getComputedStyle(node);
+      if (style.display === "none") return;
+      for (const child of node.childNodes) collectText(child);
     };
+    collectText(root);
+    return visibleText.join("\n").trim();
+  };
+  // Accessible name in the usual order. Never reads a form control value
+  // except the visible caption of a button-type input.
+  const idText = (value) =>
+    (value || "")
+      .split(/\s+/)
+      .map((id) => id && document.getElementById(id))
+      .filter(Boolean)
+      .map((ref) => readVisibleText(ref) || ref.getAttribute("aria-label"))
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  const accessibleName = (node) => {
+    const labelled = idText(node.getAttribute("aria-labelledby"));
+    if (labelled) return labelled;
+    const aria = node.getAttribute("aria-label")?.trim();
+    if (aria) return aria;
+    const labels = [...(node.labels ?? [])]
+      .map((label) => readVisibleText(label))
+      .filter(Boolean)
+      .join(" ");
+    if (labels) return labels;
+    if (
+      node instanceof HTMLInputElement &&
+      ["button", "submit", "reset"].includes(node.type)
+    )
+      return node.value || (node.type === "submit" ? "Submit" : "");
+    if (node instanceof HTMLInputElement && node.type === "image")
+      return node.alt || node.title || "";
+    if (node instanceof HTMLInputElement && node.type === "password")
+      return node.getAttribute("placeholder") || node.title || "Password";
+    if (
+      node instanceof HTMLInputElement ||
+      node instanceof HTMLTextAreaElement ||
+      node instanceof HTMLSelectElement ||
+      node.isContentEditable
+    )
+      return node.getAttribute("placeholder") || node.title || "";
+    return readVisibleText(node) || node.title || "";
+  };
+  if (command.subaction === "snapshot") {
     // Marks fields whose value is a secret. The value itself is never read.
     const sensitivity = (node) => {
       const autocomplete = (node.getAttribute("autocomplete") || "")
@@ -307,6 +308,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     )
       return denied();
     const label = [
+      accessibleName(node),
       node.getAttribute("aria-label"),
       node.textContent,
       node.title,

@@ -188,12 +188,17 @@ const gmailBodyRead = (scopes) =>
     "https://www.googleapis.com/auth/gmail.modify",
     "https://mail.google.com/",
   ].some((scope) => scopes.includes(scope));
-/** Typed task-read failure. `code` is one fixed reason; no provider text. */
+/**
+ * Typed task-read failure. `code` is one fixed reason; no provider text.
+ * reauth_required: the Google connection must be reconnected.
+ * cloud_sign_in_required: Eliza Cloud refused the saved sign-in itself.
+ */
 const googleReadFailure = (code) =>
   new NativeCloudServiceError(`Google task read failed (${code})`, {
     status:
       {
         reauth_required: 401,
+        cloud_sign_in_required: 401,
         insufficient_scope: 403,
         account_changed: 409,
         timeout: 504,
@@ -1847,7 +1852,7 @@ export function createCloudRoutes({
           await check(googleEpoch);
           const key = await usableCredential();
           await check(googleEpoch);
-          if (!key) throw fail(message("cloudAccountUnavailable"), 401);
+          if (!key) throw googleReadFailure("cloud_sign_in_required");
           const response = await request(path, {
             key,
             authorityGeneration: epoch,
@@ -1855,8 +1860,19 @@ export function createCloudRoutes({
           });
           if (!response.ok) {
             void response.body?.cancel().catch(() => {});
-            if (response.status === 401)
-              throw googleReadFailure("reauth_required");
+            // Cloud's own 401/403 rejects the Eliza Cloud sign-in, not Google.
+            if (response.status === 401 || response.status === 403)
+              throw googleReadFailure("cloud_sign_in_required");
+            // The Google connection no longer exists.
+            if (response.status === 404)
+              throw googleReadFailure("account_changed");
+            // Cloud's Google connector answers 409 when the Google token
+            // cannot be refreshed, the grant was revoked or it is
+            // metadata-only. The caller rechecks status to tell them apart.
+            if (response.status === 409)
+              throw Object.assign(googleReadFailure("reauth_required"), {
+                googleConflict: true,
+              });
             throw Object.assign(googleReadFailure("unavailable"), {
               retry: response.status === 429 || response.status >= 500,
             });
@@ -1912,7 +1928,16 @@ export function createCloudRoutes({
         const googleEpoch = googleGeneration;
         if ((await currentAccountId(googleEpoch)) !== grantId)
           throw googleReadFailure("account_changed");
-        return readJson(path, maxBytes, googleEpoch);
+        try {
+          return await readJson(path, maxBytes, googleEpoch);
+        } catch (error) {
+          if (!error?.googleConflict) throw error;
+          // Name the Google conflict from the connection's current status:
+          // gone or replaced, metadata-only, or a token that needs reconnect.
+          if ((await currentAccountId(googleEpoch)) !== grantId)
+            throw googleReadFailure("account_changed");
+          throw googleReadFailure("reauth_required");
+        }
       },
     });
     return Object.assign(port, {
