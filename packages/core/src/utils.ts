@@ -10,6 +10,7 @@ import type { ModelRegistrationMetadata } from "./types/model";
 import { type Content, ContentType, type JsonValue } from "./types/primitives";
 import type { IAgentRuntime } from "./types/runtime";
 import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
+import { extractFirstSentence } from "./utils/text-splitting";
 import { formatTimestamp as formatTimestampBase } from "./utils/time-format";
 import { toWellFormedUnicode, truncateWellFormed } from "./utils/unicode.js";
 
@@ -647,13 +648,13 @@ export function truncateToCompleteSentence(
 		return truncateWellFormed(text, maxLength);
 	}
 
-	// Attempt to truncate at the last period within the limit
-	const lastPeriodIndex = text.lastIndexOf(".", maxLength - 1);
-	if (lastPeriodIndex !== -1) {
-		const truncatedAtPeriod = text.slice(0, lastPeriodIndex + 1).trim();
-		if (truncatedAtPeriod.length > 0) {
-			return truncatedAtPeriod;
-		}
+	// Attempt to truncate at a sentence end within the limit. The boundary
+	// must come from the sentence scanner, not from a search for the last
+	// period: a period inside a number ("3.5") or an abbreviation ("e.g.")
+	// is not a sentence end, and cutting there fabricates one mid-token.
+	const firstSentence = extractFirstSentence(text.slice(0, maxLength));
+	if (firstSentence.complete && firstSentence.first.length > 0) {
+		return firstSentence.first;
 	}
 
 	// If no period, truncate to the nearest whitespace within the limit.
