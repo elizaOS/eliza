@@ -17,7 +17,7 @@
  * so the shell capture path and the native voice engine never drift.
  */
 
-import { scoreEndOfTurnHeuristic } from "@elizaos/voice";
+import { scoreEndOfTurnHeuristic } from "@elizaos/voice/turn";
 
 /**
  * Probability in [0,1] that `transcript` is a COMPLETE turn (the speaker is

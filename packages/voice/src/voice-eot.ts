@@ -4,7 +4,7 @@
  * The native composite classifier also uses this syntactic signal alongside
  * its semantic model when that model is available.
  */
-import { trimEndCharacters } from "@elizaos/core/protocol";
+import { trimEndCharacters } from "@elizaos/core/speech";
 
 /** Conjunctions that strongly suggest the speaker is mid-clause. */
 const TRAILING_CONJUNCTIONS = new Set([
