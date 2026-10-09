@@ -48,7 +48,12 @@ const STEP_STATUSES = new Set<WorkflowStepStatus>([
   "failed",
 ]);
 
-export const WORKFLOW_RE = /\[WORKFLOW\]\n([\s\S]*?)\n\[\/WORKFLOW\]/g;
+// Same marker tolerance as the sibling block parsers (form, maps,
+// choice): spaces/tabs inside the brackets and around the marker, and
+// CRLF or LF line endings. A bare-\n pattern silently rendered
+// workflow blocks from CRLF-relayed messages as raw JSON.
+export const WORKFLOW_RE =
+  /\[[ \t]*WORKFLOW[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*WORKFLOW[ \t]*\]/g;
 
 function generateId(): string {
   if (

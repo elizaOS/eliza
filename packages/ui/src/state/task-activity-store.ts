@@ -117,7 +117,7 @@ function statusFromLifecycle(
     case "stopped":
       return prev === "running" ? "success" : "idle";
     case "ready":
-      return prev === "idle" ? "idle" : prev;
+      return "idle";
     default:
       return prev;
   }
