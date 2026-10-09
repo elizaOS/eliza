@@ -415,8 +415,9 @@ function importOptionalPlugin<T = unknown>(specifier: string): Promise<T> {
 }
 async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   if (browserPluginModule) return browserPluginModule;
-  browserPluginModulePromise ??= importOptionalPlugin<BrowserPluginModule>(
-    "@elizaos/plugin-browser",
+  // The native-client decoder must resolve inside the node_modules-free bundle.
+  browserPluginModulePromise ??= import(
+    /* @vite-ignore */ "@elizaos/plugin-browser"
   ).then((browser) => {
     browserPluginModule = browser;
     return browser;
