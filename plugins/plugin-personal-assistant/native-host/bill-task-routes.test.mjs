@@ -302,6 +302,7 @@ test("source selection gates the workflow, rereads before committing and reuses 
     // A failed search names only a fixed reason, never provider text.
     for (const [reason, expected] of [
       ["reauth_required", "reauth_required"],
+      ["cloud_sign_in_required", "cloud_sign_in_required"],
       ["account_changed", "account_changed"],
       ["private provider text", "unavailable"],
     ]) {

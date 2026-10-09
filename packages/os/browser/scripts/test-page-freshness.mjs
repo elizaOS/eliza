@@ -149,7 +149,7 @@ try {
   await page.evaluate(() => {
     document.body.insertAdjacentHTML(
       "beforeend",
-      '<input id="secret" type="password" aria-label="Secret"><input id="otp" autocomplete="one-time-code" aria-label="Code"><button id="signin" type="button">Sign in</button><button id="pay" type="button">Pay now</button><button id="verify" type="button">Verify</button><button id="confirm" type="button">Confirm payment</button><div id="make" role="button" tabindex="0">Make a payment</div><a id="schedule" href="#scheduled">Schedule payment</a><input id="proceed" type="button" value="Continue to review">',
+      '<input id="secret" type="password" aria-label="Secret"><input id="otp" autocomplete="one-time-code" aria-label="Code"><button id="signin" type="button">Sign in</button><button id="pay" type="button">Pay now</button><button id="verify" type="button">Verify</button><button id="confirm" type="button">Confirm payment</button><div id="make" role="button" tabindex="0">Make a payment</div><a id="schedule" href="#scheduled">Schedule payment</a><input id="proceed" type="button" value="Continue to review"><span id="lbl-pay">Pay this bill</span><div id="lb-div" role="button" tabindex="0" aria-labelledby="lbl-pay">&rarr;</div><span id="lbl-send">Send my payment</span><button id="lb-btn" type="button" aria-labelledby="lbl-send"><svg aria-hidden="true" width="8" height="8"></svg></button>',
     );
     document.querySelector("#go").type = "button";
   });
@@ -167,6 +167,8 @@ try {
       { selector: "#make", action: "click" },
       { selector: "#schedule", action: "click" },
       { selector: "#proceed", action: "click" },
+      { selector: "#lb-div", action: "click" },
+      { selector: "#lb-btn", action: "click" },
     ],
   };
   for (const [label, subaction] of [
@@ -180,6 +182,9 @@ try {
     ["Make a payment", "click"],
     ["Schedule payment", "click"],
     ["Continue to review", "click"],
+    // Named only by aria-labelledby: the guard uses the snapshot's name.
+    ["Pay this bill", "click"],
+    ["Send my payment", "click"],
   ]) {
     state = await snapshot();
     assert.equal(

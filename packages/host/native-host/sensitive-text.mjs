@@ -60,10 +60,30 @@ function sensitive(text) {
     return true;
   if (/\b(?:otp|pin|cvv|cvc)\s*(?:is\s+|[:=]\s*)\d{3,10}\b/i.test(text))
     return true;
+  // "my code is 4 8 2 9 1 7", "the code they sent is 482917" and
+  // "482917 is the code". A zip, postal or area code is not a secret.
+  if (
+    /(?<!\b(?:zip|postal|post|area|country|dialing)\s+)\b(?:pass)?code\b(?:\s+[a-z']+){0,4}?\s*(?:[:=]\s*)?\d(?:[\s-]?\d){3,7}(?!\d)/i.test(
+      text,
+    ) ||
+    /(?<!\d)\d(?:[\s-]?\d){3,7}\s+(?:is|was)\s+(?:the|my|your|our)\s+(?:[a-z]+\s+){0,2}?(?:pass)?code\b/i.test(
+      text,
+    )
+  )
+    return true;
   // Bare short codes are commonly pasted from verification messages.
   // Speech recognition may space the digits ("1 2 3 4"). Amounts such as
-  // "12.50" or "1,000" are not codes.
-  if (/^\s*\d(?:[ -]?\d){3,7}\s*[.!?]?\s*$/.test(text)) return true;
+  // "12.50" or "1,000", a phone number such as "555-1234" and a time such
+  // as "10 30" are not codes.
+  const bare = text.trim().replace(/[.!?]$/, "");
+  if (/^\d{4,8}$/.test(bare) || /^\d(?: \d){3,7}$/.test(bare)) return true;
+  if (
+    /^\d{2,}(?:[ -]\d{2,})+$/.test(bare) &&
+    bare.replace(/\D/g, "").length >= 6 &&
+    bare.replace(/\D/g, "").length <= 8 &&
+    !/^\d{3}[ -]\d{4}$/.test(bare)
+  )
+    return true;
   for (const candidate of text.matchAll(/(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)/g)) {
     const digits = candidate[0].replace(/\D/g, "");
     if (/^(\d)\1+$/.test(digits)) continue;

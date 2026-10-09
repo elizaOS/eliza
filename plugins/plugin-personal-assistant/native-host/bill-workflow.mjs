@@ -181,15 +181,26 @@ export class BillWorkflow {
       await this.clearGuidance();
       if (!(await this.stillAuthorized()))
         return blocked("Task authorization changed.");
-      // The website already shows this bill paid or scheduled, but neither
-      // this task nor an earlier task for this owner and bill reviewed or
-      // submitted a payment. It is not a payment this helper made.
-      if (
+      // The website already shows this bill paid or scheduled, but this task
+      // neither reviewed nor submitted a payment and saved no outcome. It is
+      // not this task's payment when no task submitted one, or when an earlier
+      // task already saved its outcome: that payment is the earlier task's
+      // record. Only an earlier submission still waiting for its outcome is
+      // finished here.
+      const ownHistory =
+        typeof this.outcomes?.load === "function" &&
         typeof this.outcomes?.loadReview === "function" &&
-        typeof this.outcomes?.loadAttempt === "function" &&
-        !this.outcomes.loadReview() &&
-        !this.hasPaymentHistory()
-      )
+        typeof this.outcomes?.loadAttempt === "function"
+          ? Boolean(
+              this.outcomes.load() ||
+                this.outcomes.loadReview() ||
+                this.outcomes.loadAttempt(),
+            )
+          : true;
+      const earlierOutcome = Boolean(
+        this.outcomes?.hasPriorOutcome?.(this.bill),
+      );
+      if (!ownHistory && (earlierOutcome || !this.hasPaymentHistory()))
         return {
           kind: "prior-outcome",
           status: decision.status,
@@ -201,6 +212,9 @@ export class BillWorkflow {
             (decision.status === "scheduled"
               ? "The website shows this bill is already scheduled."
               : "The website shows this bill is already paid.") +
+            (earlierOutcome
+              ? " An earlier task already recorded a payment for this bill."
+              : "") +
             " This task did not review a payment, so it is not saved as this task's payment. Check the website's records before you pay again.",
         };
       return this.outcomes

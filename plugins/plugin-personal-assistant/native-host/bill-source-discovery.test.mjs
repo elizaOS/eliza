@@ -263,7 +263,7 @@ test("malformed money, dates and duplicate fields are skipped, never candidates"
     assert.equal(mixed.candidates[0].sources.length, 1);
   }
 });
-test("a look-alike bill is reported as a conflicting source with safe facts only", async () => {
+test("a look-alike bill is reported only by which facts differ, never its own website", async () => {
   const lookalike = body.replace(
     "https://water.example",
     "https://lookalike.example",
@@ -275,15 +275,10 @@ test("a look-alike bill is reported as a conflicting source with safe facts only
   assert.deepEqual(only, {
     status: "conflicting-source",
     candidates: [],
-    conflicts: [
-      {
-        company: "Water Test",
-        accountLabel: "Ending 1234",
-        origin: "https://lookalike.example",
-      },
-    ],
+    conflicts: [{ differs: ["origin"] }],
   });
   assert.equal(JSON.stringify(only).includes("SEP-1"), false);
+  assert.equal(JSON.stringify(only).includes("lookalike"), false);
   const both = await fixture({
     messages: [message("m1"), message("m2")],
     text: (id) => (id === "m2" ? lookalike : body),
@@ -295,7 +290,56 @@ test("a look-alike bill is reported as a conflicting source with safe facts only
     messages: Array.from({ length: 6 }, (_, i) => message(`other${i}`)),
     text: (id) => body.replace("Water Test", `Other ${id}`),
   }).discovery.discover(context, signal());
-  assert.equal(all.conflicts.length, 6);
+  // Six look-alikes that differ the same way are one report, and no
+  // company name from those emails is passed on.
+  assert.deepEqual(all.conflicts, [{ differs: ["company"] }]);
+  assert.equal(JSON.stringify(all).includes("Other"), false);
+});
+test("an older bill is not offered when a newer email from the biller cannot be read", async () => {
+  const dated = (id) =>
+    id === "m2"
+      ? { ...message("m2"), receivedAt: "2026-09-25T00:00:00Z" }
+      : { ...message(id), receivedAt: "2026-09-05T00:00:00Z" };
+  const run = (newer) => {
+    const f = fixture({
+      messages: [dated("m1"), dated("m2")],
+      text: (id) => (id === "m2" ? newer : body),
+    });
+    f.google.getGmailMessageDetail = async (input) => ({
+      message: dated(input.messageId),
+      bodyText: input.messageId === "m2" ? newer : body,
+    });
+    return f.discovery.discover(context, signal());
+  };
+  // The newer bill's amount is rejected by the parser.
+  assert.deepEqual(await run(body.replace("23.45", "9007199254740993.00")), {
+    status: "incomplete",
+    reason: "newer-unreadable",
+    candidates: [],
+    unreadable: 1,
+  });
+  // The newer bill repeats a field the parser must reject.
+  assert.deepEqual(await run(`${body}Amount: USD 1.00\n`), {
+    status: "incomplete",
+    reason: "newer-unreadable",
+    candidates: [],
+    unreadable: 1,
+  });
+  // An older unreadable message does not hide the newest readable bill.
+  const f = fixture({
+    messages: [dated("m1"), dated("m2")],
+  });
+  f.google.getGmailMessageDetail = async (input) => ({
+    message: dated(input.messageId),
+    bodyText:
+      input.messageId === "m1"
+        ? body.replace("23.45", "9007199254740993.00")
+        : body,
+  });
+  const newest = await f.discovery.discover(context, signal());
+  assert.equal(newest.status, "candidate");
+  assert.equal(newest.unreadable, 1);
+  assert.equal(newest.candidates[0].mostRecent, true);
 });
 test("provider read failures still fail the whole search with a typed reason", async () => {
   const f = fixture({
@@ -312,6 +356,7 @@ test("provider read failures still fail the whole search with a typed reason", a
   );
   for (const reason of [
     "reauth_required",
+    "cloud_sign_in_required",
     "insufficient_scope",
     "account_changed",
     "timeout",
