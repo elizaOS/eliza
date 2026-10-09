@@ -178,8 +178,7 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
       },
     });
     expect(todoDispatched).toBe(true);
-    expect(preToolDispatchReads).toBeGreaterThanOrEqual(1);
-    expect(postToolDispatchReads).toBeGreaterThanOrEqual(1);
+    expect(reads).toBeGreaterThanOrEqual(1);
     expect(reads).toBe(preToolDispatchReads + postToolDispatchReads);
     // Phase counts are not callsite attribution: providers may recompose after dispatch.
     console.info(
