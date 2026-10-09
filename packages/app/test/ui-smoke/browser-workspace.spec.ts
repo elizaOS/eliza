@@ -162,6 +162,7 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
     }
     await expect(await mobileMenuItem("Close all tabs")).toBeDisabled();
     await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
   };
   const expectCloseAllEnabled = async () => {
     if (!compactToolbar) {
@@ -170,6 +171,7 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
     }
     await expect(await mobileMenuItem("Close all tabs")).toBeEnabled();
     await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
   };
   const createNewTab = async () => {
     if (!compactToolbar) {
