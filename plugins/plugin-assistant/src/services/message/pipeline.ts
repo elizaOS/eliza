@@ -80,7 +80,10 @@ import {
 import { createJsonFileTrajectoryRecorder } from "../../runtime/trajectory-recorder";
 import { deviceActionForCapabilities } from "../device-actions/action.ts";
 import { deviceOperationSupportedByCapabilities } from "../device-actions/contract.ts";
-import { getDeviceActionTurn } from "../device-actions/service.ts";
+import {
+  getDeviceActionTurn,
+  setDeviceReadReplyContext,
+} from "../device-actions/service.ts";
 import type { EvaluatorService } from "../evaluator";
 import {
   buildRuntimeActionLookup,
@@ -1816,6 +1819,12 @@ export async function runV5MessageRuntimeStage1(
             ". Do not repeat it. Send only additional follow-up text if the planner or tool work adds something new.",
         })
       : effectivePlannerContext;
+    if (senderRole === "OWNER")
+      setDeviceReadReplyContext(
+        args.runtime,
+        args.message,
+        plannerContextAfterEarlyReply,
+      );
     const evaluatorEffects: EvaluatorEffects = {
       copyToClipboard: false,
       messageToUser: () => undefined,

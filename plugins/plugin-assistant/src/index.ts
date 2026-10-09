@@ -282,10 +282,12 @@ export {
   DEVICE_VIEWS,
   DeviceActionError,
 } from "./services/device-actions/contract.ts";
+export type { DeviceReadCompletionHint } from "./services/device-actions/read-completion.ts";
 export {
   DeviceActionService,
   type DeviceCredential,
   deviceProposalDigest,
+  setDeviceReadReplyConversation,
   withDeviceActionTurn,
 } from "./services/device-actions/service.ts";
 export * from "./services/evaluator.ts";

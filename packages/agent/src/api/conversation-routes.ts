@@ -98,6 +98,7 @@ import {
   parseReplyRecoveryHistorySelection,
   projectToolResultForModel,
   resolvePlannedReplyEgress,
+  setDeviceReadReplyConversation,
   shouldSkipResponseMemoryPersistence,
   withDeviceActionTurn,
 } from "@elizaos/plugin-assistant";
@@ -667,7 +668,7 @@ function createRequestDisconnectAbortTracker({
  * token, the trusted-local bypass and cookie sessions keep the existing
  * disconnect-as-cancel behavior.
  */
-async function resolvePairedSessionToken(
+export async function resolvePairedSessionToken(
   req: http.IncomingMessage,
   principal: TrustedApiPrincipal,
   runtime: AgentRuntime | null | undefined,
@@ -1331,7 +1332,7 @@ function captureConversationConnection(
   const ownerId = ensureAdminEntityIdForRuntime(state, runtime);
   const worldId = stringToUuid(`${agentName}-web-chat-world`);
   const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
-  return captureConversationConnectionDescriptor({
+  const descriptor = captureConversationConnectionDescriptor({
     runtime,
     conversationId: conv.id,
     roomId: conv.roomId,
@@ -1346,6 +1347,8 @@ function captureConversationConnection(
     callerUserName: caller.userName,
     requestFence,
   });
+  setDeviceReadReplyConversation(runtime, conv.id, conv.roomId);
+  return descriptor;
 }
 async function establishConversationConnection(
   descriptor: ConversationConnectionDescriptor,
