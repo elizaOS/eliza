@@ -20,6 +20,7 @@ import {
   sharedRuntimeFreshGroundingProjectionMessages,
   sharedRuntimeGroundingProjectionMessages,
   sharedRuntimeModelHistoryMessages,
+  sharedSelectedGroundingMetadata,
 } from "./shared-runtime-history-policy";
 
 const TEST_SOURCE_EVIDENCE = {
@@ -462,6 +463,71 @@ describe("shared runtime long-term transcript context", () => {
     expect(encoded).toContain("untrusted_public_web_search_result");
     expect(encoded).toContain("origin guard and credential relay");
     expect(projected.filter((message) => message.role === "tool")).toHaveLength(1);
+  });
+
+  test("a numeric control nonce cannot recall an unrelated weather receipt", () => {
+    const history: SharedRuntimeHistoryMessageLike[] = [
+      { role: "user", content: "IM-WX-877-1008: What is the weather in Springfield, Missouri?" },
+      {
+        role: "assistant",
+        content: "Weather result.",
+        grounding: {
+          kind: "web_search",
+          query: "Springfield Missouri current weather",
+          provider: "parallel",
+          text: "Cloudy, 64F.",
+          observedAt: 1,
+          ...TEST_SOURCE_EVIDENCE,
+          truncated: false,
+        },
+      },
+    ];
+    const query = "Reply exactly IM-COLD-1008.";
+    expect(sharedSelectedGroundingMetadata(history, query, 1)).toBeUndefined();
+    expect(sharedRuntimeModelHistoryMessages(history, query, 1).some((m) => m.role === "tool")).toBe(false);
+    for (const followUp of ["What about that forecast?", "Springfield conditions?"]) {
+      expect(sharedSelectedGroundingMetadata(history, followUp, 1)?.status).toBe("available");
+    }
+  });
+
+  test("a shared year alone does not connect unrelated named subjects", () => {
+    const history: SharedRuntimeHistoryMessageLike[] = [{
+      role: "assistant",
+      content: "Weather result.",
+      grounding: {
+        kind: "web_search",
+        query: "Springfield weather 2026",
+        provider: "parallel",
+        text: "Weather evidence.",
+        observedAt: 1,
+        ...TEST_SOURCE_EVIDENCE,
+        truncated: false,
+      },
+    }];
+    for (const query of ["Japan GDP 2026", "Reply exactly 2026."]) {
+      expect(sharedSelectedGroundingMetadata(history, query, 1)).toBeUndefined();
+    }
+    expect(sharedSelectedGroundingMetadata(history, "Springfield weather in 2026?", 1)?.query)
+      .toBe("Springfield weather 2026");
+  });
+
+  test("alphanumeric named subjects and deictic numeric follow-ups remain selectable", () => {
+    const history: SharedRuntimeHistoryMessageLike[] = [{
+      role: "assistant",
+      content: "Research result.",
+      grounding: {
+        kind: "web_search",
+        query: "GPT4 adoption 2026",
+        provider: "parallel",
+        text: "Research evidence.",
+        observedAt: 1,
+        ...TEST_SOURCE_EVIDENCE,
+        truncated: false,
+      },
+    }];
+    for (const query of ["GPT4 adoption in 2026?", "What about that in 2027?"]) {
+      expect(sharedSelectedGroundingMetadata(history, query, 1)?.status).toBe("available");
+    }
   });
 
   test("result-text term stuffing cannot select unrelated grounding", () => {

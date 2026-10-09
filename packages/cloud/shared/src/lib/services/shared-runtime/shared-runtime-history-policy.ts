@@ -309,7 +309,11 @@ function groundingWords(value: string): Set<string> {
     value
       .toLowerCase()
       .match(/[\p{L}\p{N}]+/gu)
-      ?.filter((word) => word.length > 2 && !GROUNDING_STOP_WORDS.has(word)) ?? [],
+      // A shared number (including a control nonce or year) is not a topic.
+      // Keep named/alphanumeric subjects; immediate deictic follow-ups are separate.
+      ?.filter(
+        (word) => word.length > 2 && /[\p{L}]/u.test(word) && !GROUNDING_STOP_WORDS.has(word),
+      ) ?? [],
   );
 }
 
