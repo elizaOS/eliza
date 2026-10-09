@@ -287,6 +287,8 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
   results: readonly ActionResult[];
   actions: readonly Action[];
   evaluator?: EvaluatorOutput;
+  currentScope?: Pick<IAgentRuntime, "agentId"> &
+    Pick<Memory, "entityId" | "id">;
 }): boolean {
   if (args.kind === "completed_side_effect") {
     return (
@@ -314,6 +316,62 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
       const action = actionsByName.get(normalizeActionIdentifier(name));
       const tags = new Set(action?.tags ?? []);
       const scopes = emptyTrackedStateClaimScopes(args.reply);
+      if (
+        observation?.resource === "todos" &&
+        observation.count === 0 &&
+        args.currentScope !== undefined &&
+        typeof args.currentScope.agentId === "string" &&
+        typeof args.currentScope.entityId === "string" &&
+        args.currentScope.agentId.length > 0 &&
+        args.currentScope.entityId.length > 0 &&
+        observation.agentId === args.currentScope.agentId &&
+        observation.entityId === args.currentScope.entityId &&
+        observation.messageId === args.currentScope.id &&
+        typeof args.currentScope.id === "string" &&
+        args.currentScope.id.length > 0 &&
+        result.data?.agentId === observation.agentId &&
+        result.data?.entityId === observation.entityId &&
+        result.data?.op === "list" &&
+        Array.isArray(result.data?.todos) &&
+        result.data.todos.length === 0 &&
+        ((observation.scope === "active_current_inventory" &&
+          result.data?.includeCompleted === false) ||
+          (observation.scope === "entire_current_inventory" &&
+            result.data?.includeCompleted === true)) &&
+        typeof observation.observedAt === "string" &&
+        Number.isFinite(Date.parse(observation.observedAt)) &&
+        tags.has("resource:tracked-work") &&
+        tags.has("resource:todos") &&
+        tags.has("capability:read") &&
+        scopes.length > 0 &&
+        scopes.every(
+          (scope) =>
+            scope === "todos_active" ||
+            (scope === "todos_all" &&
+              observation.scope === "entire_current_inventory"),
+        ) &&
+        !args.results.slice(resultIndex + 1).some((later) => {
+          const laterName = later.data?.actionName;
+          const laterAction =
+            typeof laterName === "string"
+              ? actionsByName.get(normalizeActionIdentifier(laterName))
+              : undefined;
+          if (!laterAction?.tags?.includes("resource:todos")) return false;
+          if (
+            later.data?.op === "list" &&
+            later.data?.readOnlyOperation === true
+          )
+            return false;
+          // Missing owner scope is not evidence that a later mutation is unrelated.
+          return (
+            (later.data?.agentId === undefined ||
+              later.data.agentId === observation.agentId) &&
+            (later.data?.entityId === undefined ||
+              later.data.entityId === observation.entityId)
+          );
+        })
+      )
+        return true;
       if (
         observation?.resource === "notes" &&
         observation.scope === "entire_current_inventory" &&
@@ -615,6 +673,9 @@ export function evaluatePlannedReplyEgress(args: {
   actionResults: readonly ActionResult[];
   actions: readonly Action[];
   evaluator?: EvaluatorOutput;
+  /** Trusted current turn identity, supplied by runtime/message, never tool data. */
+  currentScope?: Pick<IAgentRuntime, "agentId"> &
+    Pick<Memory, "entityId" | "id">;
 }): PlannedReplyEgressDecision {
   const reply = args.reply.trim();
   if (!reply) return { verdict: "allow" };
@@ -672,6 +733,7 @@ export function evaluatePlannedReplyEgress(args: {
         reply,
         results: args.actionResults,
         actions: args.actions,
+        currentScope: args.currentScope,
       })
     ) {
       return { verdict: "allow" };
@@ -703,6 +765,11 @@ export async function resolvePlannedReplyEgress(args: {
   beforeContextRestore?: () => Promise<void>;
 }): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
   const decision = evaluatePlannedReplyEgress({
+    currentScope: {
+      agentId: args.runtime.agentId,
+      entityId: args.message.entityId,
+      id: args.message.id,
+    },
     reply: args.reply,
     request: getUserMessageText(args.message),
     providers: args.providers,
@@ -763,6 +830,11 @@ export async function resolvePlannedReplyEgress(args: {
     withoutObservedTimestampLabels(args.reply, actionResults()) !==
       args.reply &&
     evaluatePlannedReplyEgress({
+      currentScope: {
+        agentId: args.runtime.agentId,
+        entityId: args.message.entityId,
+        id: args.message.id,
+      },
       reply: args.reply,
       request: getUserMessageText(args.message),
       providers: args.providers,
@@ -867,6 +939,11 @@ export async function resolvePlannedReplyEgress(args: {
   const proof = resolveProof();
   const rewrittenDecision = reply
     ? evaluatePlannedReplyEgress({
+        currentScope: {
+          agentId: args.runtime.agentId,
+          entityId: args.message.entityId,
+          id: args.message.id,
+        },
         reply,
         request: getUserMessageText(args.message),
         providers: args.providers,

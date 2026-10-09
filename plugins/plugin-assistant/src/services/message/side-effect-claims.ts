@@ -721,7 +721,7 @@ export function replyClaimsCompletedSideEffect(
 // visible-context-recall exception.
 const EMPTY_TRACKED_STATE_CLAIM_PATTERNS: readonly RegExp[] = [
   // Possessive collection assertions need proof even without a date qualifier.
-  /\byou\s+(?:(?:currently|presently)\s+)?(?:have\s+(?:no|zero)|(?:do\s+not|don['’]t)\s+have\s+(?:any|a|an))\s+(?:(?:new|saved|tracked|recorded)\s+)?(?:notes?|tasks?|todos?|to[- ]dos?|reminders?|habits?|goals?|entries)\b/gi,
+  /\byou\s+(?:(?:currently|presently)\s+)?(?:have\s+(?:no|zero)|(?:do\s+not|don['’]t)\s+have\s+(?:any|a|an))\s+(?:(?:new|saved|tracked|recorded|active|open|pending)\s+)?(?:notes?|tasks?|todos?|to[- ]dos?|reminders?|habits?|goals?|entries)\b/gi,
   // "your task list is empty", "the todo list looks clear"
   /\b(?:task|todo|to[- ]do|reminder|goal|habit)s?\s+list\s+(?:is|looks|seems|appears)\s+(?:empty|clear|blank)\b/gi,
   // "no notes, tasks, or messages from earlier today", "no tasks logged"
@@ -795,8 +795,9 @@ const NO_RECORD_CHANGE_CLAUSE =
 /** Returns each asserted absence clause under the same quotation, question and conditional policy as the egress detector. */
 export function emptyTrackedStateClaimScopes(
   reply: string,
-): Array<"notes" | "unsupported"> {
-  const scopes: Array<"notes" | "unsupported"> = [];
+): Array<"notes" | "todos_active" | "todos_all" | "unsupported"> {
+  const scopes: Array<"notes" | "todos_active" | "todos_all" | "unsupported"> =
+    [];
   const text = reply
     .trim()
     .replace(NO_RECORD_CHANGE_CLAUSE, (clause) => " ".repeat(clause.length));
@@ -843,7 +844,25 @@ export function emptyTrackedStateClaimScopes(
         !/\b(?:yesterday|last|previous|earlier|before|ever|never|deleted)\b/iu.test(
           sentence,
         );
-      scopes.push(noteOnly ? "notes" : "unsupported");
+      const todoOnly =
+        /\b(?:todos?|to[- ]dos?)\b/iu.test(match[0]) &&
+        !/\b(?:notes?|tasks?|reminders?|habits?|goals?|entries|schedule|calendar|events?|messages?|emails?|files?|documents?|contacts?|everything|anything|nothing\s+else)\b/iu.test(
+          sentence,
+        ) &&
+        !/\b(?:yesterday|last|previous|earlier|before|ever|never|deleted)\b/iu.test(
+          sentence,
+        );
+      scopes.push(
+        noteOnly
+          ? "notes"
+          : todoOnly
+            ? /\b(?:active|open|pending)\s+(?:todos?|to[- ]dos?)\b/iu.test(
+                sentence,
+              )
+              ? "todos_active"
+              : "todos_all"
+            : "unsupported",
+      );
     }
   }
   return scopes;
