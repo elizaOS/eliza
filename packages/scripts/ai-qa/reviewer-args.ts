@@ -50,8 +50,11 @@ export function parseReviewerArgs(argv, { defaultVerdictMd } = {}) {
       } else if (argument === "--verdict-md") {
         options.verdictMd = value;
       } else {
-        const concurrency = Number(value);
-        if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
+        // Canonical decimal only, like lib/cli-numbers: Number() would
+        // coerce "1e3" into 1000 concurrent model calls and "0x10" into
+        // 16 instead of failing closed as this module's contract states.
+        const concurrency = /^[1-9]\d*$/.test(value) ? Number(value) : NaN;
+        if (!Number.isSafeInteger(concurrency)) {
           throw new Error(
             `--concurrency must be a positive safe integer (received ${JSON.stringify(value)})`,
           );
