@@ -31,6 +31,7 @@ const EXACT_PUBLIC_PATHS = new Set([
   "/invite/accept",
   "/join",
   "/login",
+  "/network/sign-in",
   "/oidc/continue",
   "/pricing",
   "/privacy-policy",
