@@ -161,6 +161,12 @@ export class LocationWeb extends WebPlugin {
 
   async clearWatch(options: { watchId: string }): Promise<void> {
     const watchId = typeof options?.watchId === "string" ? options.watchId : "";
+    // Both native bridges reject a missing or blank watchId; resolving
+    // silently here makes a failed cleanup indistinguishable from a
+    // stopped watch for callers that rely on rejection.
+    if (!watchId) {
+      throw new Error("Missing watchId");
+    }
     const nativeWatchId = this.watches.get(watchId);
     if (nativeWatchId !== undefined) {
       this.getGeolocation().clearWatch(nativeWatchId);
