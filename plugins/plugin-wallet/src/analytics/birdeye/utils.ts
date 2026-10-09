@@ -465,8 +465,8 @@ export const extractSymbols = (
           /\$([A-Z0-9]{2,10})\b/gi,
           // After articles (a/an)
           /\b(?:a|an)\s+([A-Z0-9]{2,10})\b/gi,
-          // Standalone caps
-          /\b[A-Z0-9]{2,10}\b/g,
+          // Bare candidates need a letter; explicit symbol syntax can be numeric.
+          /\b(?=[A-Z0-9]{0,9}[A-Z])[A-Z0-9]{2,10}\b/g,
           // Quoted symbols
           /["']([A-Z0-9]{2,10})["']/gi,
           // Common price patterns

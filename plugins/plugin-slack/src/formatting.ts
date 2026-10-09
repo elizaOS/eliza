@@ -229,18 +229,24 @@ function convertCodeBlocks(text: string, codeSink: string[]): string {
  * Converts markdown links to Slack mrkdwn links
  */
 function convertLinks(text: string): string {
-  return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, linkText, url) => {
-    const trimmedUrl = url.trim();
-    const trimmedText = linkText.trim();
-    // If link text matches URL, just use URL
-    if (
-      trimmedText === trimmedUrl ||
-      trimmedText === trimmedUrl.replace(/^mailto:/, "")
-    ) {
-      return `<${escapeSlackLinkUrl(trimmedUrl)}>`;
-    }
-    return `<${escapeSlackLinkUrl(trimmedUrl)}|${escapeSlackMrkdwnSegment(trimmedText)}>`;
-  });
+  // The URL group tolerates one level of balanced parentheses, as the
+  // Telegram converter does: a plain [^)]+ capture cuts a Wikipedia-style
+  // URL at its inner closing paren and leaves a malformed link token.
+  return text.replace(
+    /\[([^\]]+)\]\(((?:[^()]|\([^()]*\))+)\)/g,
+    (_, linkText, url) => {
+      const trimmedUrl = url.trim();
+      const trimmedText = linkText.trim();
+      // If link text matches URL, just use URL
+      if (
+        trimmedText === trimmedUrl ||
+        trimmedText === trimmedUrl.replace(/^mailto:/, "")
+      ) {
+        return `<${escapeSlackLinkUrl(trimmedUrl)}>`;
+      }
+      return `<${escapeSlackLinkUrl(trimmedUrl)}|${escapeSlackMrkdwnSegment(trimmedText)}>`;
+    },
+  );
 }
 
 /**

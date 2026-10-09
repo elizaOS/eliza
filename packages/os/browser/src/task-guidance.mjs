@@ -8,6 +8,13 @@ import { BridgeError } from "./protocol.mjs";
 const optionalText = (value, max) =>
   value === undefined ||
   (typeof value === "string" && value.trim() !== "" && value.length <= max);
+const actionSentence = (value) =>
+  typeof value === "string" &&
+  value.trim() &&
+  value.length <= 200 &&
+  /^[^\p{Cc}\p{Cf}]+$/u.test(value)
+    ? value
+    : undefined;
 /** Label words and offer answers are trusted host data, never model or page text. */
 function validLabel(g) {
   if (
@@ -183,11 +190,14 @@ export function createTaskGuidance(api, authorize) {
               action: command.subaction,
               assistantName: policy.assistantName,
               fonts: guideFonts,
-              text: {
-                click: "I will select this control.",
-                fill: "I will enter the approved information here.",
-                scroll: "I will scroll this area.",
-              }[command.subaction],
+              // The trusted host may word the preview for this step.
+              text:
+                actionSentence(command.actionText) ??
+                {
+                  click: "I will select this control.",
+                  fill: "I will enter the approved information here.",
+                  scroll: "I will scroll this area.",
+                }[command.subaction],
             },
           ]);
           if (shown.accepted !== true) throw stale();

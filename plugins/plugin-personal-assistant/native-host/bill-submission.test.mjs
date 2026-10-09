@@ -507,3 +507,85 @@ test("invalid stored review and failed review write clear guidance without offer
     db.close();
   }
 });
+
+test("a bill the website already shows paid is not saved as this task's payment", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "bill-prior-outcome-"));
+  const db = new DatabaseSync(join(dir, "db"));
+  const owner = {
+    actorId: "a",
+    agentId: "agent",
+    connector: { source: "test", accountId: "account" },
+  };
+  const task = {
+    id: "fresh",
+    revision: 1,
+    epoch: 1,
+    status: "active",
+    operations: [],
+    allowedOrigins: [bill.origin],
+    observation: { id: "observed" },
+  };
+  const runtime = { owner, get: () => task, observe: async () => {} };
+  try {
+    const outcomes = createBillOutcomeStore(db, { get: () => task }).forTask(
+      runtime,
+      task.id,
+    );
+    let saved = 0;
+    const save = outcomes.save.bind(outcomes);
+    outcomes.save = (...args) => {
+      saved++;
+      return save(...args);
+    };
+    const workflow = new BillWorkflow({
+      deriveBillDecision,
+      controls,
+      runtime,
+      actuator: {
+        readObservation: () => ({
+          observation: { id: "observed" },
+          snapshot: snapshot({
+            "Payment status": "Paid",
+            Confirmation: "OLD-1",
+          }),
+        }),
+        quiesce: async () => {},
+      },
+      bill,
+      taskId: task.id,
+      outcomes,
+    });
+    for (const [status, text] of [
+      ["Paid", /already paid/],
+      ["Scheduled", /already scheduled/],
+    ]) {
+      workflow.actuator.readObservation = () => ({
+        observation: { id: "observed" },
+        snapshot: snapshot({ "Payment status": status, Confirmation: "OLD-1" }),
+      });
+      const result = await workflow.refresh();
+      assert.equal(result.kind, "prior-outcome");
+      assert.equal(result.status, status.toLowerCase());
+      assert.equal(result.reference, "OLD-1");
+      assert.match(result.message, text);
+    }
+    assert.equal(saved, 0);
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS n FROM bill_outcomes_v1").get().n,
+      0,
+    );
+    // Once this task recorded a submission, the same observation is its outcome.
+    outcomes.recordSubmission(deriveBillDecision(bill, snapshot()), "observed");
+    workflow.actuator.readObservation = () => ({
+      observation: { id: "observed" },
+      snapshot: snapshot({ "Payment status": "Paid", Confirmation: "NEW-1" }),
+    });
+    const outcome = await workflow.refresh();
+    assert.equal(outcome.kind, "outcome");
+    assert.equal(outcome.company, "Power");
+    assert.equal(saved, 1);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

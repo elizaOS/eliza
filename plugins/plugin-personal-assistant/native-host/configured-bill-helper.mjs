@@ -30,6 +30,16 @@ export async function createConfiguredBillHelper({
   )
     throw new BillHostError("Incomplete bill reconciliation policy");
   const config = hostPolicy.validateConfiguration(configuration);
+  // Optional emailed sign-in codes: the reviewed provider parser and
+  // challenge reader come from host policy; reads use the same Google port.
+  const googleCode = hostPolicy.googleCode;
+  if (
+    googleCode != null &&
+    (!config.googleSource ||
+      typeof googleCode.challengeForBill !== "function" ||
+      typeof googleCode.parse !== "function")
+  )
+    throw new BillHostError("Incomplete Google verification configuration");
   const controls = validateBillControls(config.controls);
   const extraction = config.googleSource?.extractionProfile
     ? createLabelledBillExtractor(config.googleSource.extractionProfile)
@@ -84,6 +94,23 @@ export async function createConfiguredBillHelper({
     )
       throw new Error("Unconfigured bill task");
   };
+  // A configured grantId is fixed. Otherwise each task epoch reads the Google
+  // account that was connected when it first searched, and every read checks
+  // that this is still the connected account.
+  const grants = new Map();
+  const grantForTask = async (task) => {
+    requireTask(task);
+    if (config.googleSource.grantId) return config.googleSource.grantId;
+    const bound = grants.get(task.id);
+    if (bound?.epoch === task.epoch) return bound.accountId;
+    if (typeof googleReadPort.currentAccountId !== "function")
+      throw new BillHostError("Google account binding unavailable");
+    const accountId = await googleReadPort.currentAccountId();
+    const current = grants.get(task.id);
+    if (current?.epoch === task.epoch) return current.accountId;
+    grants.set(task.id, { epoch: task.epoch, accountId });
+    return accountId;
+  };
   let host;
   let closing;
   const close = () => {
@@ -132,10 +159,9 @@ export async function createConfiguredBillHelper({
                   }
                 : {}),
               scopeForTask: async (task) => {
-                requireTask(task);
                 const source = config.googleSource;
                 return {
-                  accountId: source.grantId,
+                  accountId: await grantForTask(task),
                   billingAccountRef: source.billingAccountRef,
                   recipient: source.recipient,
                   senders: source.senders,
@@ -147,6 +173,16 @@ export async function createConfiguredBillHelper({
                   providerOrigin: config.bill.origin,
                 };
               },
+            },
+          }
+        : {}),
+      ...(googleCode
+        ? {
+            google: {
+              service: googleReadPort,
+              parse: googleCode.parse,
+              challengeForBill: googleCode.challengeForBill,
+              accountForTask: grantForTask,
             },
           }
         : {}),

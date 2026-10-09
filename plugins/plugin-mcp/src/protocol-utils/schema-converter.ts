@@ -302,6 +302,13 @@ export function validateParamsAgainstSchema(
         errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
       }
 
+      const requiresInteger = Array.isArray(prop.type)
+        ? prop.type.includes("integer") && !prop.type.includes("number")
+        : prop.type === "integer";
+      if (requiresInteger && typeof value === "number" && !Number.isInteger(value)) {
+        errors.push(`Parameter '${name}' expected integer, got ${value}`);
+      }
+
       if (prop.enum && !prop.enum.includes(value)) {
         errors.push(
           `Parameter '${name}' must be one of: ${prop.enum.map((v) => JSON.stringify(v)).join(", ")}`
