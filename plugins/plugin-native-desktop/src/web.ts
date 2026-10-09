@@ -457,7 +457,17 @@ export class DesktopWeb extends WebPlugin {
     rtf?: string;
     hasImage: boolean;
   }> {
-    return { text: await navigator.clipboard.readText(), hasImage: false };
+    const items = await navigator.clipboard.read();
+    const textItem = items.find((item) => item.types.includes("text/plain"));
+    const text = textItem
+      ? await (await textItem.getType("text/plain")).text()
+      : undefined;
+    return {
+      text: text || undefined,
+      hasImage: items.some((item) =>
+        item.types.some((type) => type.startsWith("image/")),
+      ),
+    };
   }
   async clearClipboard(): Promise<void> {
     await navigator.clipboard.writeText("");
