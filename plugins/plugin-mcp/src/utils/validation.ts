@@ -311,8 +311,36 @@ export async function validateToolSelectionArgument(
   }
   return { success: true, data };
 }
-export function validateResourceSelection(selection: unknown): ValidationResult<ResourceSelection> {
-  return validateMcpResourceSelection(selection) as ValidationResult<ResourceSelection>;
+export function validateResourceSelection(
+  selection: unknown,
+  state: State
+): ValidationResult<ResourceSelection> {
+  const basicResult = validateMcpResourceSelection(
+    selection
+  ) as ValidationResult<ResourceSelection>;
+  if (basicResult.success === false || basicResult.data.noResourceAvailable) {
+    return basicResult;
+  }
+  const data = basicResult.data;
+  // Mirror validateToolSelectionName: the module contract requires the
+  // selection to target a connected server and an existing resource.
+  // Without this, a hallucinated server or URI passes validation and the
+  // read fails later, outside the retry-and-feedback loop.
+  const mcpData = (state.values.mcp ?? {}) as Record<string, McpServerInfo>;
+  const server = mcpData[data.serverName ?? ""];
+  if (server?.status !== "connected") {
+    return {
+      success: false,
+      error: `Server "${data.serverName}" not found or not connected`,
+    };
+  }
+  if (!data.uri || !server.resources?.[data.uri]) {
+    return {
+      success: false,
+      error: `Resource "${data.uri}" not found on server "${data.serverName}"`,
+    };
+  }
+  return basicResult;
 }
 interface ToolDescription {
   readonly description?: string;
