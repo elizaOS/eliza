@@ -8,10 +8,7 @@ import { SteerLiquidityService } from "./steerLiquidityService.js";
 
 const TOKEN = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-function vault(
-  apy: number,
-  apr: number,
-): SteerVaultDetailInput {
+function vault(apy: number, apr: number): SteerVaultDetailInput {
   return {
     address: "0x1111111111111111111111111111111111111111",
     name: "vault",
