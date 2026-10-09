@@ -118,7 +118,13 @@ toml = [
 [[package]]
 name = "eliza-adapter"
 version = "0.1.0"
-source = { editable = "../eliza-adapter" }
+source = { editable = "../../harnesses/eliza" }
+dependencies = [
+    { name = "elizaos-benchmark-support" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "elizaos-benchmark-support", editable = "../../" }]
 
 [[package]]
 name = "elizaos-agentbench"
@@ -138,13 +144,18 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "eliza-adapter", editable = "../eliza-adapter" },
-    { name = "openpyxl", specifier = ">=3.1.0" },
+    { name = "eliza-adapter", editable = "../../harnesses/eliza" },
+    { name = "openpyxl", specifier = ">=3.1,<4" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
 ]
 provides-extras = ["dev"]
+
+[[package]]
+name = "elizaos-benchmark-support"
+version = "0.1.0"
+source = { editable = "../../" }
 
 [[package]]
 name = "et-xmlfile"
