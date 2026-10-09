@@ -5,11 +5,13 @@
  */
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { HTTPException } from "hono/http-exception";
+import * as realAuth from "@/lib/auth/workers-hono-auth";
 import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-identity";
 import { parseOwnerCapturePolicy } from "@/lib/services/shared-runtime/shared-owner-model-capture-store";
 import { sharedRuntimeRoomKey } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import { sharedRuntimeConversationRoomId } from "@/lib/services/shared-runtime/shared-runtime-storage-identity";
 
+const originalAuthExports = { ...realAuth };
 let reader = "33333333-3333-4333-8333-333333333333";
 let authFailure: 401 | 403 | undefined;
 mock.module("@/lib/auth/workers-hono-auth", () => ({
@@ -70,7 +72,11 @@ beforeEach(() => {
   upstreamStatus = 200; upstreamThrows = false; upstreamBody = { capture: "synthetic-private-capture" };
   globalThis.fetch = (async () => { throw new Error("OFFLINE_NETWORK_FORBIDDEN"); }) as typeof fetch;
 });
-afterAll(() => { globalThis.fetch = savedFetch; mock.restore(); });
+afterAll(() => {
+  globalThis.fetch = savedFetch;
+  mock.module("@/lib/auth/workers-hono-auth", () => originalAuthExports);
+  mock.restore();
+});
 
 describe("exact-reader private capture Hono retrieval", () => {
   test("authentication and non-reader admin denial never reach the platform", async () => {
