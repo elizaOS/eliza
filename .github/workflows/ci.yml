@@ -99,7 +99,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --pull=always --detach --name "$LOGIN_TEST_POSTGRES_CONTAINER" \
+          public_pull_config="$(mktemp -d "$RUNNER_TEMP/public-postgres-pull.XXXXXX")"
+          trap 'rm -rf "$public_pull_config"' EXIT
+          printf '{}\n' > "$public_pull_config/config.json"
+          docker --config "$public_pull_config" run --pull=always --detach --name "$LOGIN_TEST_POSTGRES_CONTAINER" \
             --env POSTGRES_PASSWORD=login_test --publish 5432:5432 \
             --health-cmd "pg_isready -U postgres" --health-interval 10s \
             --health-timeout 5s --health-retries 5 postgres:17

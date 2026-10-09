@@ -35,6 +35,20 @@ runs:
           exit 1
         fi
 
+    - name: Configure Docker Hub cache for required PostgreSQL
+      if: inputs.setup-db == 'true' && inputs.db-backend == 'postgres'
+      uses: ./.github/actions/setup-public-image-cache
+
+    - name: Pull public PostgreSQL image before builds
+      if: inputs.setup-db == 'true' && inputs.db-backend == 'postgres'
+      shell: bash
+      run: |
+        set -euo pipefail
+        public_pull_config="$(mktemp -d "$RUNNER_TEMP/public-postgres-pull.XXXXXX")"
+        trap 'rm -rf "$public_pull_config"' EXIT
+        printf '{}\n' > "$public_pull_config/config.json"
+        docker --config "$public_pull_config" pull pgvector/pgvector:pg16
+
     - name: Install cloud workspace dependencies
       uses: ./.github/actions/setup-bun-workspace
       with:
