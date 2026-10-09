@@ -133,6 +133,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   requests.length = 0;
+  reasoningEffortSetting = undefined;
   reply = verdict;
   replyToolCall = undefined;
   rejectSchema = false;
@@ -148,9 +149,12 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllEnvs());
 
+let reasoningEffortSetting: string | undefined;
+
 function runtime(): IAgentRuntime {
   return {
-    getSetting: () => undefined,
+    getSetting: (key: string) =>
+      key === "OPENAI_REASONING_EFFORT" ? reasoningEffortSetting : undefined,
     character: { name: "Ada", system: "Preserve the complete caller context." },
     emitEvent: vi.fn(),
     getService: () => null,
@@ -272,7 +276,7 @@ describe("Qwen3.8 response-schema wire contract", () => {
   it.each([false, true])(
     "transmits the history-reconciliation reasoning opt-in and explicit overrides (stream=%s)",
     async (stream) => {
-      vi.stubEnv("OPENAI_REASONING_EFFORT", "none");
+      reasoningEffortSetting = "none";
       const cases = [
         { options: {}, effort: "none" },
         { options: { eliza: { thinking: "on" } }, effort: "low" },
@@ -303,7 +307,7 @@ describe("Qwen3.8 response-schema wire contract", () => {
   it.each([false, true])(
     "transmits preferred native-tool reasoning with explicit override=%s",
     async (override) => {
-      vi.stubEnv("OPENAI_REASONING_EFFORT", "");
+      reasoningEffortSetting = undefined;
       const body = "Keep  two spaces and Mira’s 'literal' quotes.";
       replyToolCall = {
         id: "literal-1",
@@ -337,7 +341,7 @@ describe("Qwen3.8 response-schema wire contract", () => {
       } as never);
       expect(requests).toHaveLength(1);
       expect(requests[0]).toMatchObject({ tool_choice: "required" });
-      expect(requests[0].reasoning_effort).toBe(override ? "none" : "low");
+      expect(requests[0].reasoning_effort).toBe(override ? "none" : "high");
       expect(result).toMatchObject({ toolCalls: [{ name: "SAVE_LITERAL", arguments: { body } }] });
     }
   );
@@ -993,6 +997,7 @@ describe("Qwen3.8 response-schema wire contract", () => {
         json_schema: { name: "response", strict: true, schema: original },
       });
       requests.length = 0;
+      reasoningEffortSetting = undefined;
       rejectSchema = true;
       await expect(invoke({ schema })).rejects.toThrow(/Unsupported response schema fixture/);
       expect(requests).toHaveLength(1);
