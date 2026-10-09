@@ -7,6 +7,7 @@ import {
   ELIZA_RETRYABLE_HEADER,
 } from "@elizaos/cloud-services-common/personal-shared-failure";
 import { ChannelType } from "@elizaos/core";
+import { svcSign, svcVerify } from "@elizaos/plugin-network/svc-auth";
 import type { SharedGroupReminderDelivery } from "@elizaos/plugin-scheduling";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -25,6 +26,7 @@ import {
 import { personalSharedGroupsRepository } from "@/db/repositories/personal-shared-groups";
 import type { AgentSandbox } from "@/db/schemas/agent-sandboxes";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
+import { acceptedNetworkGatewayReceipt } from "@/lib/network/gateway-delivery-receipt";
 import {
   evaluateNetworkInboundGate,
   isNetworkProject,
@@ -43,7 +45,10 @@ import { enrichInboundImageMedia } from "@/lib/services/eliza-app/inbound-media-
 import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
-import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
+import {
+  coordinateNetworkDelivery,
+  coordinateSharedHistory,
+} from "@/lib/services/shared-runtime/conversation-coordinator";
 import {
   GROUP_OWNER_FALLBACK_LABEL,
   groupParticipantLabel,
@@ -310,6 +315,7 @@ const sharedMessageSchema = z.union([
       // The Network takeover: the service's open-turn context, attached by
       // the gateway (internal auth). Validated strictly downstream.
       networkTurn: z.unknown().optional(),
+      networkHandled: z.unknown().optional(),
     })
     .refine(
       (input) => input.platform === "blooio" || input.mediaUrls === undefined,
@@ -639,8 +645,9 @@ app.post("/", async (c) => {
 
     stage = "validation";
     let raw: unknown;
+    const originalBody = await c.req.text();
     try {
-      raw = await c.req.json();
+      raw = JSON.parse(originalBody);
     } catch {
       // error-policy:J3 malformed provider input is explicitly invalid.
       return jsonError(
@@ -764,17 +771,299 @@ app.post("/", async (c) => {
       networkProject &&
       c.env.NETWORK_PERSONAL_CONTINUITY_ENABLED !== "true"
     ) {
-      return jsonError(
-        c,
+      return c.json(
+        {
+          success: false,
+          error:
+            "Network Personal continuity requires migration qualification.",
+          code: "network_personal_continuity_disabled",
+          retryable: false,
+        },
         503,
-        "Network Personal continuity requires migration qualification.",
-        "network_personal_continuity_disabled",
+      );
+    }
+    if (
+      "networkHandled" in parsed.data &&
+      parsed.data.networkHandled !== undefined
+    ) {
+      if (
+        !networkProject ||
+        auth.service !== "webhook-gateway" ||
+        (parsed.data.platform !== "blooio" && parsed.data.platform !== "twilio")
+      )
+        return jsonError(
+          c,
+          403,
+          "Invalid handled-turn authority",
+          "access_denied",
+        );
+      const handled = z
+        .object({
+          request: z
+            .object({
+              messageId: z.string().min(1),
+              channel: z.enum(["blooio", "twilio"]),
+              from: z.string(),
+              text: z.string(),
+              receivedAt: z.number().int().positive(),
+            })
+            .passthrough(),
+          response: z
+            .object({
+              outcome: z.literal("handled"),
+              replies: z.array(
+                z.string().refine((value) => value.trim().length > 0),
+              ),
+              replyIds: z.array(z.string().min(1)),
+              delivery: z.literal("collected"),
+              replyKind: z.enum(["reply", "compliance"]),
+              accountEligible: z.boolean(),
+              reason: z.string(),
+              app: z.enum(["ntwrk", "slop", "peon", "friends"]).nullable(),
+              memberId: z.string().nullable(),
+            })
+            .passthrough(),
+        })
+        .safeParse(parsed.data.networkHandled);
+      const proof = await svcVerify(String(c.env.SERVICE_TURN_SECRET ?? ""), {
+        method: "POST",
+        path: new URL(c.req.url).pathname,
+        headers: c.req.raw.headers,
+        body: originalBody,
+      });
+      if (!handled.success || !proof.ok)
+        return jsonError(c, 403, "Invalid handled-turn proof", "access_denied");
+      const { request: inbound, response: admitted } = handled.data;
+      if (
+        proof.id !== inbound.messageId ||
+        inbound.from !== parsed.data.phoneNumber ||
+        inbound.channel !== parsed.data.platform ||
+        parsed.data.messageId !==
+          `${inbound.channel}:network:${inbound.messageId}` ||
+        inbound.text.trim() !== parsed.data.message ||
+        admitted.replies.length !== admitted.replyIds.length ||
+        new Set(admitted.replyIds).size !== admitted.replyIds.length
+      )
+        return jsonError(
+          c,
+          403,
+          "Handled turn does not match sender",
+          "access_denied",
+        );
+      const text = admitted.replies.join("\n\n");
+      if (text.length > 1600)
+        return jsonError(
+          c,
+          400,
+          "Handled reply exceeds delivery size",
+          "validation_error",
+        );
+      const command = inbound.text.trim().toLowerCase();
+      const complianceCommand =
+        admitted.replyKind === "compliance" &&
+        ["stop", "help", "start"].includes(command)
+          ? (command as "stop" | "help" | "start")
+          : undefined;
+      if (!admitted.accountEligible) {
+        // Policy acknowledgements for an ineligible sender do not provision an
+        // account or persist their private text. The collected service response
+        // and authenticated inbound channel are the only authority to send.
+        if (admitted.replyKind !== "compliance")
+          return jsonError(c, 403, "Sender is not eligible", "access_denied");
+        if (!text)
+          return c.json({
+            success: true,
+            data: {
+              delivery: {
+                ok: true,
+                replayed: false,
+                providerMessageIds: [],
+                history: false,
+              },
+            },
+          });
+        const base = String(c.env.ELIZA_APP_WEBHOOK_GATEWAY_URL ?? "").replace(
+          /\/+$/,
+          "",
+        );
+        const secret = c.env.GATEWAY_INTERNAL_SECRET;
+        if (!base || typeof secret !== "string" || !secret)
+          return jsonError(
+            c,
+            503,
+            "Gateway unavailable",
+            "service_unavailable",
+          );
+        const idempotencyKey = `network:policy:${inbound.channel}:${inbound.messageId}`;
+        const body = JSON.stringify({
+          platform: inbound.channel,
+          project: "network",
+          phoneNumber: inbound.from,
+          text,
+          idempotencyKey,
+          ...(complianceCommand
+            ? {
+                networkCompliance: {
+                  command: complianceCommand,
+                  messageId: inbound.messageId,
+                },
+              }
+            : {}),
+        });
+        const headers = await svcSign(String(c.env.SERVICE_TURN_SECRET ?? ""), {
+          method: "POST",
+          path: "/internal/deliver",
+          id: idempotencyKey,
+          body,
+        });
+        const sent = await fetch(`${base}/internal/deliver`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Internal-Secret": secret,
+            ...headers,
+          },
+          body,
+          signal: AbortSignal.timeout(10000),
+        });
+        const receipt = (await sent.json()) as Record<string, unknown>;
+        const accepted = acceptedNetworkGatewayReceipt(
+          sent.status,
+          receipt,
+          idempotencyKey,
+        );
+        const ok = Boolean(accepted);
+        return Response.json(
+          {
+            success: ok,
+            data: {
+              delivery: ok
+                ? {
+                    ok: true,
+                    replayed: receipt.replayed === true,
+                    providerMessageIds: accepted?.providerMessageIds ?? [],
+                    acceptedAt: accepted?.acceptedAt,
+                    history: false,
+                  }
+                : {
+                    ok: false,
+                    error:
+                      receipt.acceptance === "not_accepted"
+                        ? "rejected"
+                        : "unknown",
+                    retryable:
+                      receipt.acceptance === "not_accepted" &&
+                      receipt.retryable === true,
+                  },
+            },
+          },
+          {
+            status: ok
+              ? 200
+              : receipt.acceptance === "not_accepted"
+                ? 422
+                : 202,
+          },
+        );
+      }
+      const worker = resolveSharedRuntimeWorkerRequestContext(c);
+      if ("error" in worker)
+        return jsonError(
+          c,
+          503,
+          "Conversation owner unavailable",
+          "service_unavailable",
+        );
+      const account = await resolvePersonalDeliveryProjection(
+        c.env,
+        { platform: "phone", phoneNumber: inbound.from },
+        elizaAppUserService,
+      );
+      if (account.dedicatedTarget)
+        return c.json(
+          {
+            success: false,
+            error: "Dedicated owns this conversation",
+            code: "personal_eliza_dedicated",
+            activeAgentId: account.dedicatedTarget.id,
+            retryable: false,
+          },
+          409,
+        );
+      const delivered = await coordinateNetworkDelivery(
+        {
+          project: "network",
+          app: admitted.app ?? "ntwrk",
+          userId: account.userId,
+          organizationId: account.organizationId,
+          phoneNumber: inbound.from,
+          platform: inbound.channel,
+          idempotencyKey: `network:handled:${inbound.channel}:${inbound.messageId}`,
+          text,
+          handled: {
+            messageId: inbound.messageId,
+            replyIds: admitted.replyIds,
+          },
+          inbound: {
+            id: parsed.data.messageId,
+            text: inbound.text,
+            createdAt: inbound.receivedAt,
+          },
+          ...(complianceCommand
+            ? {
+                compliance: {
+                  command: complianceCommand,
+                  messageId: parsed.data.messageId,
+                },
+              }
+            : {}),
+        },
+        { namespace: worker.namespace },
+      );
+      const receipt = (await delivered.json()) as Record<string, unknown>;
+      return Response.json(
+        {
+          success: receipt.ok === true,
+          data: {
+            code: "network_handled_delivery",
+            account: {
+              userId: account.userId,
+              organizationId: account.organizationId,
+            },
+            delivery: receipt,
+          },
+        },
+        { status: delivered.status },
       );
     }
     // The Network takeover: the Network service owns joins and invites. A
     // direct turn it already admitted (the gateway attaches its signed open
     // turn) skips the Cloud-side invite gate and invite link; without a
     // configured service this is always false and the gates run as before.
+    if (
+      networkProject &&
+      "networkTurn" in parsed.data &&
+      parsed.data.networkTurn !== undefined
+    ) {
+      const turn = parsed.data.networkTurn as {
+        messageId?: unknown;
+        channel?: unknown;
+      };
+      const proof = await svcVerify(String(c.env.SERVICE_TURN_SECRET ?? ""), {
+        method: "POST",
+        path: new URL(c.req.url).pathname,
+        headers: c.req.raw.headers,
+        body: originalBody,
+      });
+      if (
+        auth.service !== "webhook-gateway" ||
+        !proof.ok ||
+        proof.id !== turn.messageId ||
+        turn.channel !== parsed.data.platform ||
+        parsed.data.messageId !== `${turn.channel}:network:${turn.messageId}`
+      )
+        return jsonError(c, 403, "Invalid Network turn proof", "access_denied");
+    }
     const serviceVouchedNetworkTurn =
       networkProject &&
       "networkTurn" in parsed.data &&

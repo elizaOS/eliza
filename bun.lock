@@ -2473,6 +2473,7 @@
       "name": "@elizaos/plugin-network",
       "version": "0.1.0",
       "dependencies": {
+        "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {

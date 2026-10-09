@@ -46,7 +46,11 @@ export function createMemberContextProvider(
       if (member.facets.length > 0) {
         lines.push(`About: ${member.facets.join("; ")}`);
       }
-      if (member.activeItems.length > 0) {
+      if (member.activeItems === null)
+        lines.push(
+          "Active Network items are unavailable this turn; do not claim the inbox is empty.",
+        );
+      if (member.activeItems && member.activeItems.length > 0) {
         lines.push("Active items:");
         for (const item of member.activeItems) {
           lines.push(`- [${item.kind}] ${item.summary}`);

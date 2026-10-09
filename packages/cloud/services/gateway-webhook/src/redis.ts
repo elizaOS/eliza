@@ -25,6 +25,7 @@ interface SetOptions {
 }
 
 export interface GatewayRedis {
+  eval?(script: string, keys: string[], args: string[]): Promise<unknown>;
   get<T = unknown>(key: string): Promise<T | null>;
   set(key: string, value: string, options?: SetOptions): Promise<unknown>;
   del(key: string): Promise<unknown>;
@@ -38,6 +39,10 @@ export interface GatewayRedis {
 
 class NativeRedisAdapter implements GatewayRedis {
   constructor(private readonly client: IORedis) {}
+
+  async eval(script: string, keys: string[], args: string[]): Promise<unknown> {
+    return await this.client.eval(script, keys.length, ...keys, ...args);
+  }
 
   async get<T = unknown>(key: string): Promise<T | null> {
     const value = await this.client.get(key);
@@ -101,6 +106,10 @@ class MemoryRedisAdapter implements GatewayRedis {
     const mod = requireCJS("ioredis-mock") as RedisMockModule<IORedis>;
     const RedisMockCtor = resolveRedisMockConstructor(mod);
     this.client = new RedisMockCtor();
+  }
+
+  async eval(script: string, keys: string[], args: string[]): Promise<unknown> {
+    return await this.client.eval(script, keys.length, ...keys, ...args);
   }
 
   async get<T = unknown>(key: string): Promise<T | null> {

@@ -18,19 +18,19 @@ bun run --cwd packages/cloud/shared test   # tests
 
 No standalone build script is defined; this package is consumed or executed from source.
 
-Network turns retain a server-owned project marker but use the account's original
-Personal assistant and canonical room. `NETWORK_PERSONAL_CONTINUITY_ENABLED` is
-absent by default: Network Cloud turns and delivery remain disabled until legacy
-Network history, todos and reminders are inventoried and any migration has durable
-receipts. Enabling this flag is not evidence that migration is complete. The old
-Network address is exposed only by `legacyNetworkPersonalSharedAgentId` for inventory;
-this candidate performs no alias, import or deletion. This is an inbound identity candidate. Account-bound Network delivery is
-unimplemented and disabled, even with the flag enabled. A
-Dedicated lookup alone cannot prevent cutover/deletion racing provider dispatch.
-The canonical conversation owner must hold admission through provider acceptance
-and history append before this delivery path can be enabled.
+Network turns retain server-owned app authority while using the account's original
+Personal assistant and canonical history. `NETWORK_PERSONAL_CONTINUITY_ENABLED`
+defaults off pending legacy history/todo/reminder inventory, reviewed migration
+receipts and staging qualification. This code creates no alias or migration.
 
-The continuity flag gates Cloud turns and direct delivery only. It does not gate
-the gateway's deterministic handled replies. Those replies can precede Cloud
-account resolution and have no Cloud history append. First-text Cloud account
-creation and complete canonical history for handled turns remain unqualified.
+The canonical conversation owner persists delivery intent before gateway I/O,
+serializes sends with cutover/deletion, stores verified provider receipts before
+history append, and replays completion without resending. Unknown outcomes permit
+only read-only receipt recovery through the existing room alarm. Pending delivery
+fences lifecycle changes until resolved. Dedicated ownership refuses before send.
+
+Gateway handled turns require authenticated channel provenance and a signed service
+admission. Eligible first contacts use the existing phone account owner and record
+inbound plus accepted replies in that same history. Proactive/relay traffic never
+creates accounts. Ineligible policy acknowledgements create no Cloud account or
+history. STOP remains line-wide; a newer scoped START permits only its own app.

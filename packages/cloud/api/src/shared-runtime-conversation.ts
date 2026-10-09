@@ -6,6 +6,8 @@
  * and updated asynchronously as a recoverable reporting/backup mirror.
  */
 
+import { NetworkServiceClient } from "@elizaos/plugin-network/client";
+import { svcSign } from "@elizaos/plugin-network/svc-auth";
 import {
   CloudApnsProvider,
   resolveCloudApnsConfig,
@@ -16,8 +18,10 @@ import {
   type MobilePushPlatform,
   type MobilePushTokenRecord,
 } from "@/lib/mobile-push/types";
+import { acceptedNetworkGatewayReceipt } from "@/lib/network/gateway-delivery-receipt";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
+import type { SharedNetworkDelivery } from "@/lib/services/shared-runtime/conversation-coordinator";
 import {
   personalSharedAgentId,
   personalSharedProjectScope,
@@ -35,6 +39,7 @@ import type {
 } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import { SharedRuntimeTurnError } from "@/lib/services/shared-runtime/shared-runtime-errors";
 import { mergeSharedRuntimeHistoryMessages } from "@/lib/services/shared-runtime/shared-runtime-history-policy";
+import { sharedRuntimeRoomKey } from "@/lib/services/shared-runtime/shared-runtime-room-identity";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const RELEASE_QUEUE_BEFORE_BODY_HEADER = "X-Eliza-Release-Coordinator-Queue";
@@ -43,6 +48,13 @@ const RELEASE_QUEUE_BEFORE_BODY_HEADER = "X-Eliza-Release-Coordinator-Queue";
 // `Date` columns arrive as ISO strings; `handle` rehydrates them before any
 // service consumes the row (the CONVERSATIONS-500 defect class).
 type ConversationRequest =
+  | {
+      operation: "network-delivery";
+      reconcileOnly?: true;
+      agentId: string;
+      roomId: string;
+      delivery: SharedNetworkDelivery;
+    }
   | {
       operation: "bridge";
       agent: CachedAgentSandbox;
@@ -98,20 +110,6 @@ type ConversationRequest =
       operation: "lifecycle";
       agentId: string;
       roomId: string;
-      event: { id: string; content: string; createdAt: number };
-    }
-  | {
-      /**
-       * Appends an already-delivered proactive send (e.g. a Network intro) to
-       * the account's original Personal DM history as an assistant turn, so the
-       * agent knows what it sent when the member replies.
-       */
-      operation: "project-proactive-turn";
-      agentId: string;
-      roomId: string;
-      project: string;
-      userId: string;
-      organizationId: string;
       event: { id: string; content: string; createdAt: number };
     }
   | { operation: "push-list"; agentId: string }
@@ -172,6 +170,26 @@ type ConversationRequest =
       holderId: string;
     }
   | { operation: "delete"; agentId: string };
+
+interface NetworkDeliveryIntent {
+  hash: string;
+  providerKey: string;
+  state:
+    | "prepared"
+    | "dispatching"
+    | "unknown"
+    | "accepted"
+    | "complete"
+    | "rejected";
+  delivery: SharedNetworkDelivery;
+  inbound?: SharedNetworkDelivery["inbound"];
+  receipt?: { providerMessageIds: string[]; acceptedAt: string };
+  serviceReceiptPending?: boolean;
+  refusal?: { error: "opted_out" | "rejected"; retryable: boolean };
+}
+const NETWORK_DELIVERY_ACK_KEY = "network-delivery-ack-pending";
+const NETWORK_DELIVERY_ACTIVE_KEY = "network-delivery-active";
+const NETWORK_DELIVERY_PREFIX = "network-delivery:";
 
 interface StoredConversation {
   agentId: string;
@@ -240,6 +258,8 @@ const STREAM_STALL_TIMEOUT_MS = 120_000;
 const MAX_SNAPSHOT_MESSAGES = 40;
 
 interface StoredAlarmDeadlines {
+  networkDeliveryRetryAt?: number;
+  networkDeliveryAckRetryAt?: number;
   mirrorRetryAt?: number;
   idleExpiryAt?: number;
 }
@@ -607,9 +627,12 @@ export class SharedRuntimeConversation {
           ALARM_DEADLINES_KEY,
         )) ?? {};
       const next = mutate(current);
-      const times = [next.mirrorRetryAt, next.idleExpiryAt].filter(
-        (time): time is number => typeof time === "number",
-      );
+      const times = [
+        next.mirrorRetryAt,
+        next.idleExpiryAt,
+        next.networkDeliveryRetryAt,
+        next.networkDeliveryAckRetryAt,
+      ].filter((time): time is number => typeof time === "number");
       if (times.length === 0) {
         await this.state.storage.delete(ALARM_DEADLINES_KEY);
         await this.state.storage.deleteAlarm();
@@ -1292,6 +1315,430 @@ export class SharedRuntimeConversation {
       });
   }
 
+  private async acknowledgeNetworkDelivery(
+    key: string,
+    intent: NetworkDeliveryIntent,
+  ): Promise<void> {
+    const handled = intent.delivery.handled;
+    if (!handled || !intent.receipt) return;
+    const pending =
+      (await this.state.storage.get<string[]>(NETWORK_DELIVERY_ACK_KEY)) ?? [];
+    await this.state.storage.put({
+      [key]: { ...intent, serviceReceiptPending: true },
+      [NETWORK_DELIVERY_ACK_KEY]: [...new Set([...pending, key])],
+    });
+    await this.updateAlarmDeadlines((current) => ({
+      ...current,
+      networkDeliveryAckRetryAt: Date.now() + RETRY_DELAY_MS,
+    }));
+    try {
+      const client = new NetworkServiceClient({
+        baseUrl: String(this.env.NETWORK_SERVICE_URL ?? ""),
+        secret: String(this.env.SERVICE_TURN_SECRET ?? ""),
+      });
+      await client.turnReceipt({
+        channel: intent.delivery.platform,
+        messageId: handled.messageId,
+        replyIds: handled.replyIds,
+        outcome: "accepted",
+        providerMessageIds: intent.receipt.providerMessageIds,
+        historyRecorded: true,
+      });
+      const remaining = (
+        (await this.state.storage.get<string[]>(NETWORK_DELIVERY_ACK_KEY)) ?? []
+      ).filter((value) => value !== key);
+      await this.state.storage.put({
+        [key]: { ...intent, serviceReceiptPending: false },
+        [NETWORK_DELIVERY_ACK_KEY]: remaining,
+      });
+      if (remaining.length === 0)
+        await this.updateAlarmDeadlines(
+          ({ networkDeliveryAckRetryAt: _due, ...rest }) => rest,
+        );
+    } catch (error) {
+      const { logger } = await import("@/lib/utils/logger");
+      logger.warn("[Network delivery] service acknowledgement pending", {
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
+      // Provider acceptance/history are already durable. Retry only this
+      // idempotent service acknowledgement, never the send.
+    }
+  }
+
+  private async networkDelivery(
+    payload: Extract<ConversationRequest, { operation: "network-delivery" }>,
+  ): Promise<Response> {
+    const d = payload.delivery;
+    const failure = (error: string, status = 422, retryable = false) =>
+      Response.json(
+        {
+          ok: false,
+          error:
+            error === "unknown" || error === "opted_out" || error === "invalid"
+              ? error
+              : "rejected",
+          ...(error === "unknown" ||
+          error === "opted_out" ||
+          error === "invalid"
+            ? {}
+            : { code: error }),
+          retryable,
+        },
+        { status },
+      );
+    if (this.env.NETWORK_PERSONAL_CONTINUITY_ENABLED !== "true")
+      return failure("network_personal_continuity_disabled", 503);
+    if (
+      d?.project !== "network" ||
+      typeof d.text !== "string" ||
+      (d.handled &&
+        (typeof d.handled.messageId !== "string" ||
+          !d.handled.messageId ||
+          !Array.isArray(d.handled.replyIds) ||
+          !d.handled.replyIds.every(
+            (value) => typeof value === "string" && value.trim(),
+          ) ||
+          new Set(d.handled.replyIds).size !== d.handled.replyIds.length ||
+          !d.inbound ||
+          d.inbound.id !== `${d.platform}:network:${d.handled.messageId}` ||
+          (d.text.trim()
+            ? d.handled.replyIds.length === 0
+            : d.handled.replyIds.length !== 0))) ||
+      (d.app !== undefined &&
+        !["ntwrk", "slop", "peon", "friends"].includes(d.app)) ||
+      typeof d.userId !== "string" ||
+      !d.userId.trim() ||
+      typeof d.organizationId !== "string" ||
+      !d.organizationId.trim() ||
+      (d.platform !== "blooio" && d.platform !== "twilio") ||
+      typeof d.phoneNumber !== "string" ||
+      !/^\+[1-9]\d{6,14}$/.test(d.phoneNumber) ||
+      typeof d.idempotencyKey !== "string" ||
+      !d.idempotencyKey.trim() ||
+      d.idempotencyKey.length > 200 ||
+      d.text.length > 1600 ||
+      (!d.text.trim() && !d.inbound) ||
+      payload.agentId !== personalSharedAgentId(d) ||
+      payload.roomId !== payload.agentId ||
+      (d.inbound &&
+        (typeof d.inbound.id !== "string" ||
+          !d.inbound.id.trim() ||
+          typeof d.inbound.text !== "string" ||
+          !d.inbound.text.trim() ||
+          !Number.isSafeInteger(d.inbound.createdAt) ||
+          d.inbound.createdAt <= 0)) ||
+      (d.compliance &&
+        (!d.inbound ||
+          !["stop", "help", "start"].includes(d.compliance.command) ||
+          d.compliance.messageId !== d.inbound.id ||
+          d.inbound.text.trim().toLowerCase() !== d.compliance.command))
+    )
+      return failure("invalid", 400);
+    const namespace = this.env.SHARED_RUNTIME_CONVERSATIONS as
+      | DurableObjectNamespace
+      | undefined;
+    if (
+      !namespace ||
+      !this.state.id.equals(
+        namespace.idFromName(`${payload.agentId}:${payload.agentId}`),
+      )
+    )
+      return failure("invalid_room", 400);
+    const digest = async (value: string) =>
+      [
+        ...new Uint8Array(
+          await crypto.subtle.digest(
+            "SHA-256",
+            new TextEncoder().encode(value),
+          ),
+        ),
+      ]
+        .map((x) => x.toString(16).padStart(2, "0"))
+        .join("");
+    const key = NETWORK_DELIVERY_PREFIX + (await digest(d.idempotencyKey));
+    const hash = await digest(
+      JSON.stringify([
+        payload.agentId,
+        d.project,
+        d.app ?? null,
+        d.userId,
+        d.organizationId,
+        d.phoneNumber,
+        d.platform,
+        d.idempotencyKey,
+        d.text,
+        d.inbound ? [d.inbound.id, d.inbound.text] : null,
+        d.handled ? [d.handled.messageId, d.handled.replyIds] : null,
+        d.compliance ? [d.compliance.command, d.compliance.messageId] : null,
+      ]),
+    );
+    let intent = await this.state.storage.get<NetworkDeliveryIntent>(key);
+    if (intent && intent.hash !== hash)
+      return failure("delivery_conflict", 409);
+    if (payload.reconcileOnly && (!intent || intent.state === "prepared"))
+      return failure("unknown", 202);
+    if (intent?.state === "complete" || intent?.state === "rejected") {
+      if ((await this.state.storage.get(NETWORK_DELIVERY_ACTIVE_KEY)) === key) {
+        await this.state.storage.delete(NETWORK_DELIVERY_ACTIVE_KEY);
+        await this.updateAlarmDeadlines(
+          ({ networkDeliveryRetryAt: _due, ...rest }) => rest,
+        );
+      }
+      if (intent.state === "complete" && intent.receipt) {
+        if (intent.serviceReceiptPending)
+          await this.acknowledgeNetworkDelivery(key, intent);
+        return Response.json({
+          ok: true,
+          replayed: true,
+          providerMessageIds: intent.receipt.providerMessageIds,
+          acceptedAt: intent.receipt.acceptedAt,
+          history: true,
+        });
+      }
+      return failure(
+        intent.refusal?.error ?? "rejected",
+        422,
+        intent.refusal?.retryable ?? false,
+      );
+    }
+    const active = await this.state.storage.get<string>(
+      NETWORK_DELIVERY_ACTIVE_KEY,
+    );
+    if (active && active !== key) return failure("delivery_pending", 423, true);
+    const base = String(this.env.ELIZA_APP_WEBHOOK_GATEWAY_URL ?? "").replace(
+      /\/+$/,
+      "",
+    );
+    const secret = this.env.GATEWAY_INTERNAL_SECRET;
+    if (!base || typeof secret !== "string" || !secret)
+      return failure("unavailable", 503, true);
+    if (
+      d.handled &&
+      (typeof this.env.NETWORK_SERVICE_URL !== "string" ||
+        !this.env.NETWORK_SERVICE_URL ||
+        typeof this.env.SERVICE_TURN_SECRET !== "string" ||
+        this.env.SERVICE_TURN_SECRET.length < 32)
+    )
+      return failure("service_receipt_unavailable", 503, true);
+    const replayed = Boolean(intent);
+    if (!intent || intent.state === "prepared") {
+      if (await this.activeCutoverSeal())
+        return failure("personal_eliza_dedicated", 409);
+      if (
+        (await this.activeProvisionalConvergenceSeal()) ||
+        (await this.activeProvisionalConvergenceReservation())
+      )
+        return failure("personal_convergence_in_progress", 423, true);
+      const allowed = await this.runWithBindings(async () => {
+        const [{ usersRepository }, { findActivePersonalDedicatedTarget }] =
+          await Promise.all([
+            import("@/db/repositories/users"),
+            import("@/lib/services/agent-tier-upgrade-target"),
+          ]);
+        const user = await usersRepository.findByPhoneNumberWithOrganization(
+          d.phoneNumber,
+        );
+        if (
+          !user ||
+          user.id !== d.userId ||
+          user.organization_id !== d.organizationId ||
+          user.phone_number !== d.phoneNumber ||
+          !user.phone_verified ||
+          !user.is_active ||
+          user.deleted_at ||
+          !user.organization?.is_active
+        )
+          return false;
+        return !(await findActivePersonalDedicatedTarget(
+          d.organizationId,
+          d.userId,
+          payload.agentId,
+        ));
+      });
+      if (!allowed) {
+        if (intent) {
+          await this.state.storage.put(key, {
+            ...intent,
+            state: "rejected",
+            refusal: { error: "rejected", retryable: false },
+          });
+          await this.state.storage.delete(NETWORK_DELIVERY_ACTIVE_KEY);
+        }
+        return failure("account_unavailable", 409);
+      }
+      intent ??= {
+        hash,
+        providerKey: `network:personal:${payload.agentId.slice(9)}:${await digest(d.idempotencyKey)}`,
+        state: "prepared",
+        delivery: d,
+        ...(d.inbound ? { inbound: d.inbound } : {}),
+      };
+      // This durable fence survives eviction. Cutover/deletion cannot overtake
+      // an unresolved send even after the in-memory room queue is lost.
+      await this.state.storage.put({
+        [key]: intent,
+        [NETWORK_DELIVERY_ACTIVE_KEY]: key,
+      });
+    }
+    // Reuse the room's existing multiplexed alarm for lossless receipt/history
+    // recovery. Dispatching/unknown intents can only perform a read-only query.
+    await this.updateAlarmDeadlines((current) => ({
+      ...current,
+      networkDeliveryRetryAt: Date.now() + RETRY_DELAY_MS,
+    }));
+    if (intent.state === "prepared" && intent.inbound)
+      await this.historyStore(true).merge(
+        payload.agentId,
+        sharedRuntimeRoomKey(payload.agentId, payload.roomId),
+        [
+          {
+            id: `network-inbound:${intent.inbound.id}`,
+            role: "user",
+            content: intent.inbound.text,
+            createdAt: intent.inbound.createdAt,
+          },
+        ],
+      );
+    if (!d.text.trim()) {
+      intent = {
+        ...intent,
+        state: "complete",
+        receipt: {
+          providerMessageIds: [],
+          acceptedAt: new Date().toISOString(),
+        },
+      };
+    } else if (!intent.receipt) {
+      const recovering = intent.state !== "prepared";
+      if (!recovering) {
+        await this.state.storage.put(key, { ...intent, state: "dispatching" });
+      }
+      const gatewayBody = JSON.stringify({
+        platform: d.platform,
+        project: "network",
+        ...(d.app ? { app: d.app } : {}),
+        phoneNumber: d.phoneNumber,
+        text: d.text,
+        idempotencyKey: intent.providerKey,
+        ...(d.compliance ? { networkCompliance: d.compliance } : {}),
+      });
+      const path = recovering
+        ? "/internal/deliver/receipt"
+        : "/internal/deliver";
+      let response: Response | undefined;
+      let receipt: Record<string, unknown> | null = null;
+      try {
+        const signed = d.compliance
+          ? await svcSign(String(this.env.SERVICE_TURN_SECRET ?? ""), {
+              method: "POST",
+              path,
+              id: intent.providerKey,
+              body: gatewayBody,
+            })
+          : {};
+        response = await fetch(`${base}${path}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Internal-Secret": secret,
+            ...signed,
+          },
+          body: gatewayBody,
+          signal: AbortSignal.timeout(10000),
+        });
+        receipt = (await response.json()) as Record<string, unknown>;
+      } catch {
+        // Any failure after a durable dispatch intent is ambiguous. A retry is
+        // read-only receipt recovery, never another provider send.
+      }
+      const accepted = acceptedNetworkGatewayReceipt(
+        response?.status ?? 0,
+        receipt,
+        intent.providerKey,
+      );
+      if (accepted) {
+        intent = {
+          ...intent,
+          state: "accepted",
+          receipt: {
+            acceptedAt: accepted.acceptedAt,
+            providerMessageIds: accepted.providerMessageIds,
+          },
+        };
+        await this.state.storage.put(key, intent);
+      } else if (
+        !recovering &&
+        receipt?.success === false &&
+        receipt.acceptance === "not_accepted"
+      ) {
+        intent = {
+          ...intent,
+          state: "rejected",
+          refusal: {
+            error:
+              receipt.code === "recipient_opted_out" ? "opted_out" : "rejected",
+            retryable: false,
+          },
+        };
+        await this.state.storage.put(key, intent);
+        await this.state.storage.delete(NETWORK_DELIVERY_ACTIVE_KEY);
+        return failure(intent.refusal?.error ?? "rejected", 422);
+      } else {
+        await this.state.storage.put(key, { ...intent, state: "unknown" });
+        return failure("unknown", 202);
+      }
+    }
+    if (intent.receipt && d.text.trim())
+      await this.historyStore(true).merge(
+        payload.agentId,
+        sharedRuntimeRoomKey(payload.agentId, payload.roomId),
+        [
+          {
+            id: `network-delivered:${intent.providerKey}`,
+            role: "assistant",
+            content: d.text,
+            createdAt: Date.parse(intent.receipt.acceptedAt),
+          },
+        ],
+      );
+    intent = {
+      ...intent,
+      state: "complete",
+      ...(d.handled ? { serviceReceiptPending: true } : {}),
+    };
+    const pendingAcknowledgements = d.handled
+      ? ((await this.state.storage.get<string[]>(NETWORK_DELIVERY_ACK_KEY)) ??
+        [])
+      : [];
+    await this.state.storage.put({
+      [key]: intent,
+      ...(d.handled
+        ? {
+            [NETWORK_DELIVERY_ACK_KEY]: [
+              ...new Set([...pendingAcknowledgements, key]),
+            ],
+          }
+        : {}),
+    });
+    if (d.handled)
+      await this.updateAlarmDeadlines((current) => ({
+        ...current,
+        networkDeliveryAckRetryAt: Date.now() + RETRY_DELAY_MS,
+      }));
+    await this.state.storage.delete(NETWORK_DELIVERY_ACTIVE_KEY);
+    await this.updateAlarmDeadlines(
+      ({ networkDeliveryRetryAt: _due, ...rest }) => rest,
+    );
+    if (d.handled) await this.acknowledgeNetworkDelivery(key, intent);
+    return Response.json({
+      ok: true,
+      replayed,
+      providerMessageIds: intent.receipt?.providerMessageIds ?? [],
+      acceptedAt: intent.receipt?.acceptedAt,
+      history: true,
+    });
+  }
+
   private async handle(request: Request): Promise<Response> {
     const payload = (await request.json()) as ConversationRequest;
     if (
@@ -1303,6 +1750,16 @@ export class SharedRuntimeConversation {
       return Response.json(
         { success: false, code: "network_personal_continuity_disabled" },
         { status: 503 },
+      );
+    }
+    if (
+      payload.operation !== "network-delivery" &&
+      payload.operation !== "history" &&
+      (await this.state.storage.get(NETWORK_DELIVERY_ACTIVE_KEY))
+    ) {
+      return Response.json(
+        { success: false, code: "network_delivery_pending", retryable: false },
+        { status: 423 },
       );
     }
     const suppliedChannel = "channel" in payload ? payload.channel : undefined;
@@ -1336,6 +1793,8 @@ export class SharedRuntimeConversation {
         { status: 410 },
       );
     }
+    if (payload.operation === "network-delivery")
+      return await this.networkDelivery(payload);
     if (payload.operation === "push-list") {
       return Response.json({ tokens: await this.mobilePushTokens() });
     }
@@ -1745,65 +2204,6 @@ export class SharedRuntimeConversation {
           {
             id: payload.event.id,
             role: "system",
-            content: payload.event.content,
-            createdAt: payload.event.createdAt,
-          },
-          historyStore,
-        );
-      });
-      return Response.json({ success: true });
-    }
-    if (payload.operation === "project-proactive-turn") {
-      // A server-authorized Network send may append only to the same account's
-      // canonical Personal DM. Product capabilities cannot select another room.
-      if (this.env.NETWORK_PERSONAL_CONTINUITY_ENABLED !== "true") {
-        return Response.json(
-          { success: false, code: "network_personal_continuity_disabled" },
-          { status: 503 },
-        );
-      }
-      const cutover = await this.activeCutoverSeal();
-      if (cutover) {
-        return Response.json(
-          {
-            success: false,
-            code: cutover.committed
-              ? "personal_eliza_dedicated"
-              : "personal_cutover_in_progress",
-          },
-          { status: cutover.committed ? 409 : 423 },
-        );
-      }
-      const project = personalSharedProjectScope(payload.project);
-      if (
-        !project ||
-        typeof payload.userId !== "string" ||
-        typeof payload.organizationId !== "string" ||
-        payload.agentId !==
-          personalSharedAgentId({
-            userId: payload.userId,
-            organizationId: payload.organizationId,
-          }) ||
-        payload.roomId !== payload.agentId ||
-        !payload.event?.id?.trim() ||
-        !payload.event.content?.trim() ||
-        !Number.isFinite(payload.event.createdAt)
-      ) {
-        return Response.json(
-          { success: false, code: "invalid_project_proactive_turn" },
-          { status: 400 },
-        );
-      }
-      await this.runWithBindings(async () => {
-        const { sharedRuntimeChatService } = await import(
-          "@/lib/services/shared-runtime/shared-runtime-chat"
-        );
-        await sharedRuntimeChatService.recordLifecycleEvent(
-          payload.agentId,
-          payload.roomId,
-          {
-            id: payload.event.id,
-            role: "assistant",
             content: payload.event.content,
             createdAt: payload.event.createdAt,
           },
@@ -2264,6 +2664,70 @@ export class SharedRuntimeConversation {
       return;
     }
     const now = Date.now();
+    if (
+      typeof deadlines.networkDeliveryRetryAt === "number" &&
+      deadlines.networkDeliveryRetryAt <= now
+    ) {
+      await this.updateAlarmDeadlines(
+        ({ networkDeliveryRetryAt: _due, ...rest }) => rest,
+      );
+      const key = await this.state.storage.get<string>(
+        NETWORK_DELIVERY_ACTIVE_KEY,
+      );
+      const intent = key
+        ? await this.state.storage.get<NetworkDeliveryIntent>(key)
+        : undefined;
+      if (intent) {
+        const agentId = personalSharedAgentId(intent.delivery);
+        const recovered = await this.fetch(
+          new Request(
+            "https://shared-runtime.internal/network-delivery-recovery",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                operation: "network-delivery",
+                agentId,
+                roomId: agentId,
+                delivery: intent.delivery,
+              }),
+            },
+          ),
+        );
+        await recovered.body?.cancel();
+      }
+    }
+    if (
+      typeof deadlines.networkDeliveryAckRetryAt === "number" &&
+      deadlines.networkDeliveryAckRetryAt <= now
+    ) {
+      await this.updateAlarmDeadlines(
+        ({ networkDeliveryAckRetryAt: _due, ...rest }) => rest,
+      );
+      for (const key of (await this.state.storage.get<string[]>(
+        NETWORK_DELIVERY_ACK_KEY,
+      )) ?? []) {
+        const intent = await this.state.storage.get<NetworkDeliveryIntent>(key);
+        if (intent?.state === "complete" && intent.serviceReceiptPending) {
+          const agentId = personalSharedAgentId(intent.delivery);
+          const response = await this.fetch(
+            new Request(
+              "https://shared-runtime.internal/network-service-receipt-recovery",
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  operation: "network-delivery",
+                  agentId,
+                  roomId: agentId,
+                  delivery: intent.delivery,
+                  reconcileOnly: true,
+                }),
+              },
+            ),
+          );
+          await response.body?.cancel();
+        }
+      }
+    }
     if (
       typeof deadlines.mirrorRetryAt === "number" &&
       deadlines.mirrorRetryAt <= now

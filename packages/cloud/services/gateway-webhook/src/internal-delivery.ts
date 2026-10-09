@@ -1,5 +1,6 @@
 /** Delivers authenticated proactive messages through the gateway-owned connector. */
 
+import { svcVerify } from "@elizaos/plugin-network/svc-auth";
 import { BlooioApiResponseError, blooioAdapter } from "./adapters/blooio";
 import { TelegramApiResponseError, telegramAdapter } from "./adapters/telegram";
 import { twilioAdapter } from "./adapters/twilio";
@@ -26,7 +27,7 @@ interface InternalDeliveryDependencies {
   networkConsentLedger?: NetworkConsentLedger;
 }
 
-type InternalWebhookDelivery =
+type InternalWebhookDelivery = (
   | {
       platform: "telegram";
       project: string;
@@ -58,17 +59,22 @@ type InternalWebhookDelivery =
       phoneNumber: string;
       text: string;
       idempotencyKey: string;
-    };
+    }
+) & {
+  app?: "ntwrk" | "slop" | "peon" | "friends";
+  networkCompliance?: { command: "stop" | "help" | "start"; messageId: string };
+};
 
 const DELIVERY_RECEIPT_TTL_SECONDS = 14 * 24 * 60 * 60;
 
-type DeliveryReceipt =
+type DeliveryReceipt = (
   | { state: "indeterminate" }
   | {
       state: "complete";
       acceptedAt?: string;
       providerMessageIds: string[];
-    };
+    }
+) & { hash?: string };
 
 function parseReceipt(value: unknown): DeliveryReceipt | undefined {
   if (value === "complete")
@@ -89,7 +95,10 @@ function parseReceipt(value: unknown): DeliveryReceipt | undefined {
       typeof value === "string" ? JSON.parse(value) : value
     ) as Record<string, unknown>;
     if (parsed.state === "dispatching" || parsed.state === "indeterminate") {
-      return { state: "indeterminate" };
+      return {
+        state: "indeterminate",
+        ...(typeof parsed.hash === "string" ? { hash: parsed.hash } : {}),
+      };
     }
     if (
       parsed.state === "complete" &&
@@ -98,6 +107,7 @@ function parseReceipt(value: unknown): DeliveryReceipt | undefined {
     ) {
       return {
         state: "complete",
+        ...(typeof parsed.hash === "string" ? { hash: parsed.hash } : {}),
         ...(typeof parsed.acceptedAt === "string" &&
         Number.isFinite(Date.parse(parsed.acceptedAt))
           ? { acceptedAt: parsed.acceptedAt }
@@ -127,6 +137,11 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
     return undefined;
   }
   if (
+    input.app !== undefined &&
+    !["ntwrk", "slop", "peon", "friends"].includes(String(input.app))
+  )
+    return undefined;
+  if (
     input.platform === "telegram" &&
     typeof input.connectorAccountId === "string" &&
     input.connectorAccountId.trim().length >= 3 &&
@@ -141,6 +156,9 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
     return {
       platform: "telegram",
       project: input.project,
+      ...(typeof input.app === "string"
+        ? { app: input.app as InternalWebhookDelivery["app"] }
+        : {}),
       connectorAccountId: input.connectorAccountId,
       chatId: input.chatId,
       ...(typeof input.providerThreadId === "string"
@@ -159,6 +177,9 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
     return {
       platform: "blooio",
       project: input.project,
+      ...(typeof input.app === "string"
+        ? { app: input.app as InternalWebhookDelivery["app"] }
+        : {}),
       phoneNumber: input.phoneNumber,
       text: input.text.trim(),
       idempotencyKey: input.idempotencyKey,
@@ -177,6 +198,9 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
     return {
       platform: "twilio",
       project: input.project,
+      ...(typeof input.app === "string"
+        ? { app: input.app as InternalWebhookDelivery["app"] }
+        : {}),
       phoneNumber: input.phoneNumber,
       text: input.text.trim(),
       idempotencyKey: input.idempotencyKey,
@@ -196,6 +220,9 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
     return {
       platform: "blooio",
       project: input.project,
+      ...(typeof input.app === "string"
+        ? { app: input.app as InternalWebhookDelivery["app"] }
+        : {}),
       connectorAccountId: input.connectorAccountId,
       chatId: input.chatId,
       text: input.text.trim(),
@@ -205,13 +232,69 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
   return undefined;
 }
 
+async function deliveryHash(
+  delivery: InternalWebhookDelivery,
+): Promise<string> {
+  const body = JSON.stringify([
+    delivery.platform,
+    delivery.project,
+    delivery.app ?? null,
+    "phoneNumber" in delivery ? delivery.phoneNumber : delivery.chatId,
+    delivery.text,
+    delivery.idempotencyKey,
+  ]);
+  return [
+    ...new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body)),
+    ),
+  ]
+    .map((x) => x.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** Read-only receipt recovery; never invokes a connector, even when no receipt exists. */
+export async function readInternalDeliveryReceipt(
+  request: Request,
+  dependencies: InternalDeliveryDependencies,
+): Promise<Response> {
+  const delivery = parseDelivery(await request.json().catch(() => null));
+  if (!delivery)
+    return Response.json({ success: false, error: "invalid" }, { status: 400 });
+  const value = await dependencies.redis.get(
+    `internal-delivery:${delivery.platform}:${delivery.project}:${delivery.idempotencyKey}`,
+  );
+  const receipt = parseReceipt(value);
+  if (!receipt || receipt.hash !== (await deliveryHash(delivery)))
+    return Response.json(
+      { success: false, acceptance: "unknown", retryable: false },
+      { status: 202 },
+    );
+  if (
+    receipt.state !== "complete" ||
+    !receipt.acceptedAt ||
+    receipt.providerMessageIds.length === 0
+  )
+    return Response.json(
+      { success: false, acceptance: "unknown", retryable: false },
+      { status: 202 },
+    );
+  return Response.json({
+    success: true,
+    replayed: true,
+    idempotencyKey: delivery.idempotencyKey,
+    acceptedAt: receipt.acceptedAt,
+    providerMessageIds: receipt.providerMessageIds,
+  });
+}
+
 export async function deliverInternalMessage(
   request: Request,
   dependencies: InternalDeliveryDependencies,
 ): Promise<Response> {
   let raw: unknown;
+  const rawBody = await request.text();
   try {
-    raw = await request.json();
+    raw = JSON.parse(rawBody);
   } catch {
     // error-policy:J3 malformed internal input is explicitly rejected.
     return Response.json(
@@ -227,6 +310,41 @@ export async function deliverInternalMessage(
     );
   }
 
+  let compliance = false;
+  const proof =
+    raw && typeof raw === "object"
+      ? (raw as Record<string, unknown>).networkCompliance
+      : undefined;
+  if (proof !== undefined) {
+    const p = proof as Record<string, unknown>;
+    const verified = await svcVerify(process.env.SERVICE_TURN_SECRET, {
+      method: "POST",
+      path: new URL(request.url).pathname,
+      headers: request.headers,
+      body: rawBody,
+    });
+    if (
+      !p ||
+      !["stop", "help", "start"].includes(String(p.command)) ||
+      typeof p.messageId !== "string" ||
+      !p.messageId ||
+      !verified.ok ||
+      verified.id !== delivery.idempotencyKey ||
+      !isNetworkProject(delivery.project) ||
+      !("phoneNumber" in delivery)
+    )
+      return Response.json(
+        {
+          success: false,
+          acceptance: "not_accepted",
+          retryable: false,
+          error: "invalid compliance proof",
+        },
+        { status: 403 },
+      );
+    compliance = true;
+  }
+  const hash = await deliveryHash(delivery);
   const config = resolveSharedWebhookConfig(
     delivery.platform,
     delivery.project,
@@ -265,7 +383,11 @@ export async function deliverInternalMessage(
 
   // The Network's consent ledger wins over every proactive send: an address
   // that replied STOP is refused before any claim or provider work.
-  if (isNetworkProject(delivery.project) && "phoneNumber" in delivery) {
+  if (
+    isNetworkProject(delivery.project) &&
+    "phoneNumber" in delivery &&
+    !compliance
+  ) {
     let optedOut: boolean;
     try {
       optedOut = await isNetworkAddressOptedOut(
@@ -273,6 +395,7 @@ export async function deliverInternalMessage(
           redisNetworkConsentLedger(dependencies.redis),
         delivery.project,
         delivery.phoneNumber,
+        delivery.app,
       );
     } catch {
       // error-policy:J1 no provider call occurs when consent is unknown.
@@ -320,7 +443,25 @@ export async function deliverInternalMessage(
     );
   }
   const existing = parseReceipt(existingValue);
+  if (existing?.hash && existing.hash !== hash)
+    return Response.json(
+      {
+        success: false,
+        acceptance: "not_accepted",
+        retryable: false,
+        error: "delivery conflict",
+      },
+      { status: 409 },
+    );
   if (existing?.state === "complete") {
+    if (
+      delivery.idempotencyKey.startsWith("network:personal:") &&
+      (!existing.acceptedAt || existing.providerMessageIds.length === 0)
+    )
+      return Response.json(
+        { success: false, acceptance: "unknown", retryable: false },
+        { status: 202 },
+      );
     const acceptedAt = existing.acceptedAt ?? new Date().toISOString();
     return Response.json({
       success: true,
@@ -409,9 +550,13 @@ export async function deliverInternalMessage(
     // Provider dispatch may succeed before any transport error becomes visible.
     // Persist the tombstone first for every connector; only a proven rejection
     // or a validated receipt may replace it with retryable/complete state.
-    await dependencies.redis.set(dedupeKey, "indeterminate", {
-      ex: DELIVERY_RECEIPT_TTL_SECONDS,
-    });
+    await dependencies.redis.set(
+      dedupeKey,
+      JSON.stringify({ state: "indeterminate", hash }),
+      {
+        ex: DELIVERY_RECEIPT_TTL_SECONDS,
+      },
+    );
     connectorAttempted = true;
     const receipt = await adapter.sendReplyWithReceipt(
       config,
@@ -426,6 +571,7 @@ export async function deliverInternalMessage(
       dedupeKey,
       JSON.stringify({
         state: "complete",
+        hash,
         acceptedAt,
         providerMessageIds: receipt.providerMessageIds,
       } satisfies DeliveryReceipt),

@@ -8,7 +8,12 @@
  * literal because this package must not import outside itself (Eliza Cloud installs a copy of
  * this directory alone, so a relative path into packages/core does not resolve there).
  */
-export type ParticipationState = "open" | "normal" | "quiet" | "receiving" | "paused";
+export type ParticipationState =
+  | "open"
+  | "normal"
+  | "quiet"
+  | "receiving"
+  | "paused";
 
 export const NETWORK_CONTEXTS = ["network", "social", "settings"] as const;
 
@@ -44,7 +49,7 @@ export interface NetworkMemberContext {
   stateUntil: string | null;
   /** Shareable profile facets only; private facets never reach the plugin. */
   facets: string[];
-  activeItems: Array<{ kind: string; summary: string }>;
+  activeItems: Array<{ kind: string; summary: string }> | null;
 }
 
 export interface SetStateInput {
@@ -115,6 +120,10 @@ export interface NetworkTurnAuthority {
  * a message id or client message id alone can repeat across members, and the store would
  * replay another member's change.
  */
-export function setStateIdempotencyKey(authority: NetworkTurnAuthority, origin: string, ordinal: number): string {
+export function setStateIdempotencyKey(
+  authority: NetworkTurnAuthority,
+  origin: string,
+  ordinal: number,
+): string {
   return `network:set_state:v2:${authority.app ?? "default"}:${authority.memberId}:${origin}:${ordinal}`;
 }

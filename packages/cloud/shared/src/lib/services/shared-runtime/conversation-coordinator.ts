@@ -16,6 +16,7 @@ import type {
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fetch";
+import { personalSharedAgentId } from "./personal-shared-identity";
 import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
@@ -198,6 +199,42 @@ export async function coordinateSharedLifecycleEvent(
   );
   await requireCoordinatorResponse(response, "conversation lifecycle");
   await response.arrayBuffer();
+}
+
+export interface SharedNetworkDelivery {
+  project: "network";
+  app?: "ntwrk" | "slop" | "peon" | "friends";
+  userId: string;
+  organizationId: string;
+  phoneNumber: string;
+  platform: "blooio" | "twilio";
+  idempotencyKey: string;
+  text: string;
+  handled?: { messageId: string; replyIds: string[] };
+  inbound?: { id: string; text: string; createdAt: number };
+  compliance?: { command: "stop" | "help" | "start"; messageId: string };
+}
+
+/** The canonical room owns admission, the durable send intent, receipt and transcript. */
+export async function coordinateNetworkDelivery(
+  delivery: SharedNetworkDelivery,
+  options: SharedConversationHistoryCoordinatorOptions & { reconcileOnly?: true },
+): Promise<Response> {
+  const agentId = personalSharedAgentId(delivery);
+  return await coordinatorStub(requireHistoryCoordinator(options), agentId, agentId).fetch(
+    "https://shared-runtime.internal/network-delivery",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "network-delivery",
+        ...(options.reconcileOnly ? { reconcileOnly: true } : {}),
+        agentId,
+        roomId: agentId,
+        delivery,
+      }),
+    },
+  );
 }
 
 function coordinatorRoom(roomId?: unknown, userId?: unknown): string {

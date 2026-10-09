@@ -74,6 +74,8 @@ export function detectNetworkKeyword(
 
 export interface NetworkConsentEntry {
   project: string;
+  /** Service-owned app scope; absent/null is the shared line. */
+  app?: "ntwrk" | "slop" | "peon" | "friends" | null;
   channel: Platform;
   address: string;
   state: "opted_in" | "opted_out";
@@ -160,6 +162,7 @@ export interface NetworkConsentLedger {
   current(
     project: string,
     address: string,
+    app?: NetworkConsentEntry["app"],
   ): Promise<NetworkConsentEntry | null>;
   record(entry: NetworkConsentEntry): Promise<void>;
 }
@@ -188,7 +191,11 @@ function parseConsentEntry(value: unknown): NetworkConsentEntry | null {
     typeof entry.address !== "string" ||
     (entry.state !== "opted_in" && entry.state !== "opted_out") ||
     typeof entry.source !== "string" ||
-    typeof entry.at !== "string"
+    typeof entry.at !== "string" ||
+    !Number.isFinite(Date.parse(entry.at)) ||
+    (entry.app !== undefined &&
+      entry.app !== null &&
+      !["ntwrk", "slop", "peon", "friends"].includes(String(entry.app)))
   ) {
     return null;
   }
@@ -204,29 +211,64 @@ export function redisNetworkConsentLedger(
   redis: GatewayRedis,
   durable?: NetworkConsentSink,
 ): NetworkConsentLedger {
-  const currentKey = (project: string, address: string) =>
-    `network-consent:${project}:${consentAddress(address)}`;
+  const currentKey = (
+    project: string,
+    address: string,
+    app?: NetworkConsentEntry["app"],
+  ) =>
+    `network-consent:${project}${app ? `:app:${app}` : ""}:${consentAddress(address)}`;
   const historyKey = (project: string, address: string) =>
     `network-consent-log:${project}:${consentAddress(address)}`;
   return {
-    async current(project, address) {
-      return parseConsentEntry(
-        await redis.get<unknown>(currentKey(project, address)),
-      );
+    async current(project, address, app) {
+      const value = await redis.get<unknown>(currentKey(project, address, app));
+      const entry = parseConsentEntry(value);
+      if (value !== null && value !== undefined && !entry)
+        throw new Error("Consent projection is unreadable");
+      return entry;
     },
     async record(entry) {
-      const normalized = { ...entry, address: consentAddress(entry.address) };
+      if (!Number.isFinite(Date.parse(entry.at)))
+        throw new Error("Invalid consent timestamp");
+      const normalized = {
+        ...entry,
+        at: new Date(entry.at).toISOString(),
+        address: consentAddress(entry.address),
+      };
       const serialized = JSON.stringify(normalized);
       // State first: once this write lands every later send is refused, even
       // if the audit append below fails.
-      await redis.set(currentKey(entry.project, entry.address), serialized);
+      if (!redis.eval)
+        throw new Error("Atomic consent projection is unavailable");
+      const changed = await redis.eval(
+        `
+        local value = redis.call('GET', KEYS[1])
+        if value then
+          local oldAt = string.match(value, '"at"%s*:%s*"([^"]+)"')
+          local oldState = string.match(value, '"state"%s*:%s*"([^"]+)"')
+          if not oldAt or (oldState ~= 'opted_in' and oldState ~= 'opted_out') then return -1 end
+          if oldAt > ARGV[2] then return 0 end
+          if oldAt == ARGV[2] and (oldState == ARGV[3] or oldState == 'opted_out') then return 0 end
+        end
+        redis.call('SET', KEYS[1], ARGV[1])
+        return 1
+      `,
+        [currentKey(entry.project, entry.address, entry.app)],
+        [serialized, normalized.at, normalized.state],
+      );
+      if (Number(changed) < 0)
+        throw new Error("Consent projection is unreadable");
+      if (Number(changed) !== 1) return;
       await redis.lpush(historyKey(entry.project, entry.address), serialized);
       await redis.ltrim(
         historyKey(entry.project, entry.address),
         0,
         CONSENT_HISTORY_LIMIT - 1,
       );
-      if (!durable) return;
+      // The legacy Cloud audit table is line-scoped. Do not turn an app
+      // resume into a global opt-in there; the Network service retains its
+      // canonical app ledger and this Redis projection retains the same scope.
+      if (!durable || entry.app) return;
       // Durable copy after the fast path. A failure is queued, never thrown:
       // the opt-out is already enforced, and the confirmation must still go out.
       try {
@@ -244,8 +286,15 @@ export async function isNetworkAddressOptedOut(
   ledger: NetworkConsentLedger,
   project: string,
   address: string,
+  app?: NetworkConsentEntry["app"],
 ): Promise<boolean> {
-  return (await ledger.current(project, address))?.state === "opted_out";
+  const global = await ledger.current(project, address);
+  const scoped = app ? await ledger.current(project, address, app) : null;
+  const current =
+    scoped && (!global || Date.parse(scoped.at) > Date.parse(global.at))
+      ? scoped
+      : global;
+  return current?.state === "opted_out";
 }
 
 export type NetworkInboundCompliance =

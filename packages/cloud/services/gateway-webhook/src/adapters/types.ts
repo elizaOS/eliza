@@ -4,6 +4,8 @@ import { ElizaError } from "@elizaos/core";
 export type Platform = "telegram" | "blooio" | "twilio" | "whatsapp";
 
 export interface ChatEvent {
+  /** Gateway-owned first-ingress time, retained under the existing webhook dedupe scope. */
+  gatewayReceivedAtMs?: number;
   platform: Platform;
   messageId: string;
   platformRecordId?: string;

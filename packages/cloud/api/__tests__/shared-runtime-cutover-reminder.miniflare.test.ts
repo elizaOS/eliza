@@ -9,7 +9,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { svcSign } from "@elizaos/plugin-network/svc-auth";
+import { svcSign, svcVerify } from "@elizaos/plugin-network/svc-auth";
+import { exportSPKI, generateKeyPair, SignJWT } from "jose";
 import { Miniflare } from "miniflare";
 import {
   legacyNetworkPersonalSharedAgentId,
@@ -44,7 +45,7 @@ const RUNTIME_BOUNDARIES = {
 } as const;
 
 const RUNTIME_STUBS = {
-  usersRepository: `export const usersRepository = { async findByPhoneNumberWithOrganization() { return { id: "continuity-user", organization_id: "continuity-org" }; } };`,
+  usersRepository: `export const usersRepository = { async findByPhoneNumberWithOrganization(phone) { return { id: phone === "+14155550802" ? "handled-user" : "continuity-user", organization_id: phone === "+14155550802" ? "handled-org" : "continuity-org", phone_number: phone, phone_verified: true, is_active: true, deleted_at: null, organization: { is_active: true } }; } };`,
   apiErrors: `
     export class InsufficientCreditsError extends Error {}
     export class RateLimitError extends Error {}
@@ -160,21 +161,76 @@ const RUNTIME_STUBS = {
       },
     };
   `,
-  sharedRuntimeErrors: "export class SharedRuntimeTurnError extends Error {}",
+  sharedRuntimeErrors:
+    "export class SharedRuntimeTurnError extends Error {} export class SharedRuntimeCacheWarmingError extends Error {} export class SharedTurnConflictError extends Error {}",
   tierUpgradeTarget:
     "export async function findActivePersonalDedicatedTarget() { return null; }",
 } as const;
+
+const HANDLED_ROUTE_STUBS: Record<string, string> = {
+  "@/lib/observability/http-telemetry":
+    "export function resolveElizaTraceId() { return 'controlled-trace'; }",
+  "@/db/repositories/personal-shared-group-consent":
+    "export const personalSharedGroupConsentRepository = {};",
+  "@/db/repositories/personal-shared-group-participants":
+    "export const personalSharedGroupParticipantsRepository = {};",
+  "@/db/repositories/personal-shared-groups":
+    "export const personalSharedGroupsRepository = {};",
+  "@/lib/network/invite-lookup": "export const networkInviteLookup = {};",
+  "@/lib/network/member-store":
+    'export function serviceNetworkStoreFactory() { throw new Error("Handled turns must not load model context"); }',
+  "@/lib/network/membership": "export const networkMembership = {};",
+  "@/lib/services/eliza-app":
+    'export const elizaAppUserService = { async resolvePersonalDelivery(input) { globalThis.__phoneOwnerCalls = (globalThis.__phoneOwnerCalls ?? 0) + 1; if (input.platform !== "phone") throw new Error("Unexpected account owner"); return { userId: input.phoneNumber === "+14155550802" ? "handled-user" : "continuity-user", organizationId: input.phoneNumber === "+14155550802" ? "handled-org" : "continuity-org", dedicatedTarget: null, isNew: globalThis.__phoneOwnerCalls === 1, resolution: "fixture-phone-owner" }; } };',
+  "@/lib/services/eliza-app/blooio-media-allowlist":
+    "export function isAllowedBlooioMediaUrl() { return false; }",
+  "@/lib/services/eliza-app/describe-inbound-media":
+    "export const MAX_INBOUND_MEDIA_IMAGES = 4;",
+  "@/lib/services/eliza-app/inbound-media-enrichment":
+    'export function enrichInboundImageMedia() { throw new Error("No model or provider enrichment is allowed"); }',
+  "@/lib/services/eliza-app/onboarding-chat":
+    'export function runOnboardingChat() { throw new Error("Unexpected onboarding model"); }',
+  "@/lib/services/eliza-sandbox": "export const elizaSandboxService = {};",
+  "@/lib/services/personal-dedicated-delivery":
+    'export function preparePersonalDedicatedDelivery() { throw new Error("Dedicated must refuse before send"); }',
+  "@/lib/services/shared-runtime/personal-shared-agent":
+    'export function personalSharedAgent() { throw new Error("Handled replies do not create a second runtime"); }',
+  "@/lib/services/shared-runtime/prewarm-shared-agent":
+    'export function prewarmPersonalSharedAgentTurnCaches() { throw new Error("Handled replies do not prewarm a model"); }',
+  "@/lib/services/shared-runtime/resolve-shared-agent":
+    "export function resolveSharedRuntimeWorkerRequestContext(c) { return { namespace: c.env.SHARED_RUNTIME_CONVERSATIONS, executionCtx: { waitUntil() {} } }; }",
+  "@/lib/services/shared-runtime/shared-rest-adapter":
+    'export function sharedRestMessageSend() { throw new Error("Handled replies must not infer"); } export function sharedTurnServerTiming() { return ""; }',
+};
 
 describe("Personal Shared cutover reminder containment in Workerd", () => {
   let buildDirectory: string;
   let miniflare: Miniflare;
   const modelRequests: string[] = [];
+  const gatewayRequests: Array<Record<string, unknown>> = [];
+  const serviceAcknowledgements: Array<Record<string, unknown>> = [];
+  let gatewayJWT: string;
+  let publicKey: string;
+  let serviceReplyMode: "accepted" | "oversize" | "redirect" = "accepted";
   let releaseFinalizationGate = () => {};
   const finalizationGate = new Promise<void>((resolve) => {
     releaseFinalizationGate = resolve;
   });
 
   beforeAll(async () => {
+    const pair = await generateKeyPair("ES256", { extractable: true });
+    publicKey = Buffer.from(await exportSPKI(pair.publicKey)).toString(
+      "base64",
+    );
+    gatewayJWT = await new SignJWT({ service: "webhook-gateway" })
+      .setProtectedHeader({ alg: "ES256" })
+      .setSubject("controlled-gateway")
+      .setIssuer("eliza-cloud")
+      .setAudience("eliza-cloud-internal")
+      .setIssuedAt()
+      .setExpirationTime("60s")
+      .setJti("controlled-gateway-token")
+      .sign(pair.privateKey);
     const apiDirectory = fileURLToPath(new URL("../", import.meta.url));
     buildDirectory = await mkdtemp(
       join(tmpdir(), "shared-cutover-reminder-workerd-"),
@@ -191,6 +247,10 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       `
         import { SharedRuntimeConversation } from ${JSON.stringify(coordinatorSource)};
         import networkDeliver from ${JSON.stringify(join(apiDirectory, "internal/network/deliver/route.ts"))};
+        import handledMessages from ${JSON.stringify(join(apiDirectory, "internal/eliza-app/personal-shared/messages/route.ts"))};
+        import { Hono } from ${JSON.stringify(fileURLToPath(import.meta.resolve("hono")))};
+        import { runWithCloudBindingsAsync } from ${JSON.stringify(join(sharedSourceDirectory, "lib/runtime/cloud-bindings.ts"))};
+        const handledApp = new Hono().route("/api/internal/eliza-app/personal-shared/messages", handledMessages);
 
         export class TestSharedRuntimeConversation extends SharedRuntimeConversation {
           constructor(state, env) {
@@ -226,7 +286,9 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
           constructor(state, env) { super(state, { ...env, NETWORK_PERSONAL_CONTINUITY_ENABLED: undefined }); }
         }
         export default {
-          async fetch(request, env) {
+          async fetch(request, env, ctx) {
+            if (new URL(request.url).pathname === "/__test/phone-owner-count") return Response.json({ calls: globalThis.__phoneOwnerCalls ?? 0 });
+            if (new URL(request.url).pathname === "/api/internal/eliza-app/personal-shared/messages") return await runWithCloudBindingsAsync(env, () => handledApp.fetch(request, env, ctx));
             if (new URL(request.url).pathname === "/signed-deliver") return await networkDeliver.fetch(new Request("https://runtime.test/", request), env);
             const name = request.headers.get("x-test-room");
             if (!name) return new Response("missing room", { status: 400 });
@@ -256,6 +318,11 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
           plugins: [{
             name: "shared-cutover-reminder-runtime-boundaries",
             setup(build) {
+              const handledStubs = ${JSON.stringify(HANDLED_ROUTE_STUBS)};
+              handledStubs["@/lib/services/eliza-app/user-service"] = handledStubs["@/lib/services/eliza-app"];
+              build.onLoad({ filter: /jwt-internal-denylist[.]ts$/ }, () => ({ loader: "ts", contents: "export function isDenylistConfigured() { return false; } export async function isJtiRevoked() { throw new Error('Bounded Gateway JWT must skip denylist I/O'); } export async function revokeInternalToken() { throw new Error('No token mutation in fixture'); }" }));
+              build.onResolve({ filter: /^@\\// }, (args) => handledStubs[args.path] ? { path: args.path, namespace: "handled-unused-boundary" } : undefined);
+              build.onLoad({ filter: /.*/, namespace: "handled-unused-boundary" }, (args) => ({ loader: "ts", contents: handledStubs[args.path] }));
               build.onResolve({ filter: /^@elizaos\\/core(?:\\/edge)?$/ }, () => ({
                 path: "core-edge",
                 namespace: "shared-cutover-test-stub",
@@ -277,10 +344,6 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
               build.onLoad(
                 { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.databaseClient.source)}) },
                 () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.databaseClient)} }),
-              );
-              build.onLoad(
-                { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.cloudBindings.source)}) },
-                () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.cloudBindings)} }),
               );
               build.onLoad(
                 { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.sharedRuntimeChat.source)}) },
@@ -362,6 +425,41 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
           await finalizationGate;
           return new Response("released");
         }
+        if (new URL(request.url).hostname === "network-service-probe.test") {
+          const raw = await request.text();
+          const proof = await svcVerify(
+            "continuity-fixture-service-secret-0123456789",
+            {
+              method: "POST",
+              path: new URL(request.url).pathname,
+              headers: request.headers,
+              body: raw,
+            },
+          );
+          expect(proof.ok).toBe(true);
+          serviceAcknowledgements.push(JSON.parse(raw));
+          if (serviceReplyMode === "oversize")
+            return new Response("x".repeat(4 * 1024 * 1024 + 1));
+          if (serviceReplyMode === "redirect")
+            return new Response(null, {
+              status: 302,
+              headers: {
+                Location:
+                  "https://forbidden-redirect.test/credentials-must-not-follow",
+              },
+            });
+          return Response.json({ ok: true, replayed: false });
+        }
+        if (new URL(request.url).hostname === "gateway-probe.test") {
+          const body = (await request.json()) as Record<string, unknown>;
+          gatewayRequests.push(body);
+          return Response.json({
+            success: true,
+            idempotencyKey: body.idempotencyKey,
+            acceptedAt: "2026-10-09T12:00:00.000Z",
+            providerMessageIds: ["controlled-network-receipt"],
+          });
+        }
         modelRequests.push(request.url);
         return Response.json(
           { error: "unexpected inference" },
@@ -369,6 +467,8 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
         );
       },
       bindings: {
+        JWT_SIGNING_PUBLIC_KEY: publicKey,
+        NETWORK_SERVICE_URL: "https://network-service-probe.test",
         NETWORK_PERSONAL_CONTINUITY_ENABLED: "true",
         SERVICE_TURN_SECRET: "continuity-fixture-service-secret-0123456789",
         GATEWAY_INTERNAL_SECRET: "fixture-gateway-secret",
@@ -579,12 +679,13 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     ]);
     releaseFinalizationGate();
   }, 120_000);
-  test("Network accepted sends extend the original Personal history, with tenant, room, activation and cutover fences", async () => {
+  test("canonical Network delivery extends Personal history once and honors ownership fences before dispatch", async () => {
     const account = {
       userId: "continuity-user",
       organizationId: "continuity-org",
     };
     const agentId = personalSharedAgentId(account);
+    const name = `${agentId}:${agentId}`;
     const oldId = legacyNetworkPersonalSharedAgentId(account);
     const original = {
       id: "original-personal-turn",
@@ -594,7 +695,7 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     };
     expect(
       (
-        await post(agentId, "/__test/seed", {
+        await post(name, "/__test/seed", {
           conversation: {
             agentId,
             channelId: agentId,
@@ -605,54 +706,38 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
         })
       ).status,
     ).toBe(200);
-    const legacyHistory = [
-      {
-        ...original,
-        id: "legacy-network-turn",
-        content:
-          "Retain this separate legacy history until a reviewed migration.",
-      },
-    ];
-    expect(
-      (
-        await post(oldId, "/__test/seed", {
-          conversation: {
-            agentId: oldId,
-            channelId: oldId,
-            history: legacyHistory,
-            dirty: false,
-            version: 1,
-          },
-        })
-      ).status,
-    ).toBe(200);
-    const payload = {
-      operation: "project-proactive-turn",
-      agentId,
-      roomId: agentId,
+    const delivery = {
       project: "network",
+      app: "slop",
       ...account,
-      event: {
-        id: "network-accepted-intro",
-        content: "A Network intro in the same conversation.",
-        createdAt: 1787184001000,
-      },
+      phoneNumber: "+14155550801",
+      platform: "blooio",
+      idempotencyKey: "owned-intro-1",
+      text: "A Network intro in the same conversation.",
     };
-    for (let i = 0; i < 2; i++)
-      expect((await post(agentId, "/proactive", payload)).status).toBe(200);
-    const read = await post(agentId, "/history", {
-      operation: "history",
+    const payload = {
+      operation: "network-delivery",
       agentId,
       roomId: agentId,
+      delivery,
+    };
+    const first = await post(name, "/network-delivery", payload);
+    expect(first.status).toBe(200);
+    expect(await first.json()).toMatchObject({
+      ok: true,
+      history: true,
+      replayed: false,
+      providerMessageIds: ["controlled-network-receipt"],
     });
-    expect(await read.json()).toEqual({
-      history: [original, { ...payload.event, role: "assistant" }],
+    const replay = await post(name, "/network-delivery", payload);
+    expect(await replay.json()).toMatchObject({
+      ok: true,
+      history: true,
+      replayed: true,
     });
-    expect(personalSharedAgentId({ ...account, project: "network" })).toBe(
-      agentId,
-    );
+    expect(gatewayRequests).toHaveLength(1);
     for (const project of [undefined, "network"]) {
-      const next = await post(agentId, "/bridge", {
+      const next = await post(name, "/bridge", {
         operation: "personal-bridge",
         agent: {
           id: agentId,
@@ -671,83 +756,34 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       expect(next.status).toBe(200);
       expect(await next.json()).toMatchObject({
         result: {
-          history: [original, { ...payload.event, role: "assistant" }],
+          history: [original, { role: "assistant", content: delivery.text }],
         },
       });
     }
-    const retained = await post(oldId, "/history", {
-      operation: "history",
-      agentId: oldId,
-      roomId: oldId,
-    });
-    expect(await retained.json()).toEqual({ history: legacyHistory });
-    for (const forged of [
-      { ...payload, project: "eliza-app" },
-      { ...payload, userId: "foreign-user" },
-      { ...payload, organizationId: "foreign-org" },
-      { ...payload, roomId: "group:foreign" },
-      { ...payload, agentId: oldId, roomId: oldId },
-    ])
-      expect((await post(agentId, "/proactive", forged)).status).toBe(400);
-    expect((await post(agentId, "/disabled/proactive", payload)).status).toBe(
-      503,
-    );
     expect(
       (
-        await post(agentId, "/disabled/bridge", {
-          operation: "personal-bridge",
-          agent: {
-            id: agentId,
-            user_id: account.userId,
-            organization_id: account.organizationId,
-            execution_tier: "shared",
-            project: "network",
-          },
-          rpc: {
-            jsonrpc: "2.0",
-            method: "message.send",
-            params: { roomId: agentId, text: "disabled Network turn" },
-          },
+        await post(name, "/network-delivery", {
+          ...payload,
+          delivery: { ...delivery, text: "Changed same key" },
         })
       ).status,
+    ).toBe(409);
+    for (const forged of [
+      { ...payload, roomId: "group:foreign" },
+      { ...payload, agentId: oldId, roomId: oldId },
+      { ...payload, delivery: { ...delivery, userId: "foreign-user" } },
+      { ...payload, delivery: { ...delivery, organizationId: "foreign-org" } },
+      { ...payload, delivery: { ...delivery, project: "eliza-app" } },
+    ])
+      expect((await post(name, "/network-delivery", forged)).status).toBe(400);
+    expect(gatewayRequests).toHaveLength(1);
+    expect(
+      (await post(name, "/disabled/network-delivery", payload)).status,
     ).toBe(503);
-    const disabledHistory = await post(agentId, "/disabled/history", {
-      operation: "history",
-      agentId,
-      roomId: agentId,
-    });
-    expect(await disabledHistory.json()).toEqual({ history: [] });
-    async function rejectedDelivery(kind: string) {
-      const body = JSON.stringify({
-        id: `unqualified-${kind}`,
-        to: "+14155550801",
-        text: "Must not send",
-        app: "slop",
-        memberId: "synthetic-member",
-        kind,
-      });
-      const signed = await svcSign(
-        "continuity-fixture-service-secret-0123456789",
-        { method: "POST", path: "/", id: `unqualified-${kind}`, body },
-      );
-      const response = await miniflare.dispatchFetch(
-        "https://runtime.test/signed-deliver",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json", ...signed },
-          body,
-        },
-      );
-      expect(response.status).toBe(503);
-      expect(await response.json()).toEqual({
-        ok: false,
-        error: "network_personal_delivery_unqualified",
-      });
-    }
     const token = "continuity-cutover";
     expect(
       (
-        await post(agentId, "/cutover-seal", {
+        await post(name, "/cutover-seal", {
           operation: "cutover-seal",
           agentId,
           roomId: agentId,
@@ -758,27 +794,213 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
         })
       ).status,
     ).toBe(200);
-    await Promise.all([
-      rejectedDelivery("proactive"),
-      rejectedDelivery("relay"),
-      rejectedDelivery("reply"),
-    ]);
-    expect((await post(agentId, "/proactive", payload)).status).toBe(423);
     expect(
       (
-        await post(agentId, "/cutover-commit", {
+        await post(name, "/network-delivery", {
+          ...payload,
+          delivery: { ...delivery, idempotencyKey: "after-seal" },
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await post(name, "/cutover-commit", {
           operation: "cutover-commit",
           token,
         })
       ).status,
     ).toBe(200);
-    expect((await post(agentId, "/proactive", payload)).status).toBe(409);
-    await Promise.all([
-      rejectedDelivery("proactive"),
-      post(agentId, "/delete", { operation: "delete", agentId }),
-      rejectedDelivery("relay"),
-    ]);
-    await rejectedDelivery("reply");
+    expect(
+      (
+        await post(name, "/network-delivery", {
+          ...payload,
+          delivery: { ...delivery, idempotencyKey: "after-cutover" },
+        })
+      ).status,
+    ).toBe(409);
+    expect(gatewayRequests).toHaveLength(1);
+    expect(
+      (await post(name, "/delete", { operation: "delete", agentId })).status,
+    ).toBe(200);
+    expect((await post(name, "/network-delivery", payload)).status).toBe(410);
+    expect(gatewayRequests).toHaveLength(1);
     expect(modelRequests).toEqual([]);
   }, 120_000);
+  test("first handled text requires real Gateway JWT and service proof, then reuses the phone owner and canonical history", async () => {
+    const path = "/api/internal/eliza-app/personal-shared/messages";
+    const request = {
+      messageId: "first-handled-phone",
+      channel: "blooio",
+      from: "+14155550802",
+      to: null,
+      text: "Join friends",
+      transport: "imessage",
+      receivedAt: 1791540000000,
+    };
+    const response = {
+      outcome: "handled",
+      replies: ["What are you looking for?"],
+      replyIds: ["first-handled-output"],
+      delivery: "collected",
+      replyKind: "reply",
+      accountEligible: true,
+      reason: "join_asked",
+      app: "friends",
+      memberId: null,
+    };
+    const payload = {
+      platform: "blooio",
+      project: "network",
+      connectorAccountId: "controlled-connector",
+      phoneNumber: request.from,
+      messageId: `blooio:network:${request.messageId}`,
+      message: request.text,
+      networkHandled: { request, response },
+    };
+    const count = async () =>
+      (
+        (await (
+          await miniflare.dispatchFetch(
+            "https://runtime.test/__test/phone-owner-count",
+          )
+        ).json()) as { calls: number }
+      ).calls;
+    async function submit(value = payload, jwt = gatewayJWT, sign = true) {
+      const body = JSON.stringify(value);
+      const proof = sign
+        ? await svcSign("continuity-fixture-service-secret-0123456789", {
+            method: "POST",
+            path,
+            id: request.messageId,
+            body,
+          })
+        : {};
+      return await miniflare.dispatchFetch(`https://runtime.test${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwt}`,
+          ...proof,
+        },
+        body,
+      });
+    }
+    const before = await count();
+    const sends = gatewayRequests.length;
+    expect((await submit(payload, "invalid-token")).status).toBe(401);
+    expect((await submit(payload, gatewayJWT, false)).status).toBe(403);
+    expect(
+      (await submit({ ...payload, phoneNumber: "+14155550803" })).status,
+    ).toBe(403);
+    expect(await count()).toBe(before);
+    expect(gatewayRequests).toHaveLength(sends);
+    // A separate account keeps this case independent of the earlier synthetic deletion.
+    const accepted = await submit();
+    expect(accepted.status, await accepted.clone().text()).toBe(200);
+    expect(await accepted.json()).toMatchObject({
+      success: true,
+      data: {
+        account: { userId: "handled-user", organizationId: "handled-org" },
+        delivery: {
+          ok: true,
+          history: true,
+          providerMessageIds: ["controlled-network-receipt"],
+        },
+      },
+    });
+    expect((await submit()).status).toBe(200);
+    expect(gatewayRequests).toHaveLength(sends + 1);
+    expect(serviceAcknowledgements.at(-1)).toMatchObject({
+      channel: "blooio",
+      messageId: request.messageId,
+      replyIds: response.replyIds,
+      outcome: "accepted",
+      historyRecorded: true,
+    });
+    const ownerId = personalSharedAgentId({
+      userId: "handled-user",
+      organizationId: "handled-org",
+    });
+    const history = await post(`${ownerId}:${ownerId}`, "/history", {
+      operation: "history",
+      agentId: ownerId,
+      roomId: ownerId,
+    });
+    expect(await history.json()).toMatchObject({
+      history: [
+        { role: "user", content: request.text },
+        { role: "assistant", content: response.replies[0] },
+      ],
+    });
+    serviceReplyMode = "oversize";
+    const bounded = {
+      ...payload,
+      messageId: "blooio:network:bounded-service-ack",
+      networkHandled: {
+        request: { ...request, messageId: "bounded-service-ack" },
+        response: { ...response, replyIds: ["bounded-output"] },
+      },
+    };
+    const boundedBody = JSON.stringify(bounded);
+    const boundedProof = await svcSign(
+      "continuity-fixture-service-secret-0123456789",
+      { method: "POST", path, id: "bounded-service-ack", body: boundedBody },
+    );
+    const issue = () =>
+      miniflare.dispatchFetch(`https://runtime.test${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${gatewayJWT}`,
+          ...boundedProof,
+        },
+        body: boundedBody,
+      });
+    expect((await issue()).status).toBe(200);
+    const afterBoundedSend = gatewayRequests.length;
+    serviceReplyMode = "redirect";
+    expect((await issue()).status).toBe(200);
+    expect(modelRequests).toEqual([]);
+    serviceReplyMode = "accepted";
+    expect((await issue()).status).toBe(200);
+    expect(gatewayRequests).toHaveLength(afterBoundedSend);
+    const calls = await count();
+    const policy = {
+      ...payload,
+      messageId: `blooio:network:ineligible-handled`,
+      networkHandled: {
+        request: { ...request, messageId: "ineligible-handled" },
+        response: {
+          ...response,
+          accountEligible: false,
+          replyKind: "compliance",
+          reason: "under_age",
+          replyIds: ["policy-output"],
+        },
+      },
+    };
+    const body = JSON.stringify(policy);
+    const signed = await svcSign(
+      "continuity-fixture-service-secret-0123456789",
+      { method: "POST", path, id: "ineligible-handled", body },
+    );
+    const policyAck = await miniflare.dispatchFetch(
+      `https://runtime.test${path}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${gatewayJWT}`,
+          ...signed,
+        },
+        body,
+      },
+    );
+    expect(policyAck.status).toBe(200);
+    expect(await policyAck.json()).toMatchObject({
+      data: { delivery: { ok: true, history: false } },
+    });
+    expect(await count()).toBe(calls);
+    expect(modelRequests).toEqual([]);
+  }, 120000);
 });

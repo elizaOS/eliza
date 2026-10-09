@@ -104,7 +104,7 @@ import {
   parseSharedReminderActionProvenance,
   sharedRuntimeModelHistoryMessages,
 } from "./shared-runtime-history-policy";
-import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
+import { sharedRuntimeRoomKey, stableUuid } from "./shared-runtime-room-identity";
 import {
   replayedSharedProviderTiming,
   type SharedProviderTimingReceipt,
@@ -766,14 +766,6 @@ function combinedTurnContext(
   return parts.length ? parts.join("\n\n") : undefined;
 }
 
-function stableUuid(raw: string): string {
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
-    return raw;
-  }
-  const hash = crypto.createHash("sha256").update(raw).digest("hex");
-  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
-}
-
 /** Content identity for conflict detection: same key + different text is rejected. */
 function sharedTurnPayloadHash(text: string): string {
   return crypto.createHash("sha256").update(text).digest("hex");
@@ -815,18 +807,11 @@ function turnMessageIds(
   };
 }
 
-export function sharedRuntimeChannelId(agentId: string, roomId: string): string {
-  const room = roomId.trim() || "default";
-  return stableUuid(`cloud-bridge-channel:${agentId}:${room}`);
-}
-
-export { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
-
-/** Storage-safe runtime room key derived from the coordinator's canonical room label. */
-export function sharedRuntimeRoomKey(agentId: string, roomId?: unknown, userId?: unknown): string {
-  const room = normalizeSharedRuntimeRoom(roomId, userId);
-  return sharedRuntimeChannelId(agentId, room);
-}
+export {
+  normalizeSharedRuntimeRoom,
+  sharedRuntimeChannelId,
+  sharedRuntimeRoomKey,
+} from "./shared-runtime-room-identity";
 
 function isTurn(value: unknown): value is SharedTurnMessage {
   const candidate = record(value);

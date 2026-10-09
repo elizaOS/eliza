@@ -16,7 +16,10 @@ import {
   enforceForwarderSecret,
   validateInternalSecret,
 } from "./internal-auth";
-import { deliverInternalMessage } from "./internal-delivery";
+import {
+  deliverInternalMessage,
+  readInternalDeliveryReceipt,
+} from "./internal-delivery";
 import { handleInternalEvent } from "./internal-event-handler";
 import { logger } from "./logger";
 import {
@@ -109,6 +112,12 @@ app.post("/drain", (c) => {
 
 app.post("/internal/event", async (c) => {
   return handleInternalEvent(c.req.raw, { redis });
+});
+
+app.post("/internal/deliver/receipt", async (c) => {
+  if (!validateInternalSecret(c.req.raw))
+    return c.json({ success: false, error: "unauthorized" }, 401);
+  return readInternalDeliveryReceipt(c.req.raw, { redis });
 });
 
 app.post("/internal/deliver", async (c) => {

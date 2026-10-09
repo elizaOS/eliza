@@ -35,9 +35,10 @@
   },
   "sideEffects": false,
   "files": [
-    "dist"
+    "src"
   ],
   "dependencies": {
+    "@elizaos/cloud-services-common": "workspace:*",
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {

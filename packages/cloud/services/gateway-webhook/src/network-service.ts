@@ -9,11 +9,17 @@
  * so the send-time fence (mid-turn STOP, /internal/deliver) stays correct.
  */
 import { NetworkServiceClient } from "@elizaos/plugin-network/client";
-import type { NetworkAppId, TurnContext, TurnRequest, TurnResponse } from "@elizaos/plugin-network/contract";
+import type {
+  NetworkAppId,
+  TurnContext,
+  TurnRequest,
+  TurnResponse,
+} from "@elizaos/plugin-network/contract";
 import type { ChatEvent } from "./adapters/types";
 import type { NetworkConsentLedger } from "./network-compliance";
 
 export interface NetworkOpenTurn {
+  channel: TurnRequest["channel"];
   app: NetworkAppId;
   memberId: string;
   messageId: string;
@@ -21,7 +27,13 @@ export interface NetworkOpenTurn {
 }
 
 export type NetworkServiceTurn =
-  | { kind: "reply"; texts: string[]; reason: string }
+  | {
+      kind: "reply";
+      texts: string[];
+      reason: string;
+      request: TurnRequest;
+      handled: Extract<TurnResponse, { outcome: "handled" }>;
+    }
   | { kind: "open"; turn: NetworkOpenTurn }
   | { kind: "continue"; reason: string };
 
@@ -47,7 +59,12 @@ export function takeoverAppliesTo(
 ): boolean {
   const raw = env.NETWORK_TAKEOVER_ALLOWLIST?.trim();
   if (!raw) return true;
-  const allowed = new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
+  const allowed = new Set(
+    raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
   return allowed.has(sender.trim());
 }
 
@@ -55,14 +72,20 @@ const TRANSPORTS = new Set(["imessage", "sms", "rcs"]);
 
 export function turnRequestFor(event: ChatEvent): TurnRequest {
   const protocol = event.protocol?.toLowerCase();
+  const receivedAt = event.gatewayReceivedAtMs ?? event.providerSentAtMs;
+  if (!Number.isSafeInteger(receivedAt) || !receivedAt || receivedAt <= 0)
+    throw new Error("Network turn requires a durable ingress timestamp");
   return {
     messageId: event.messageId,
     channel: event.platform === "twilio" ? "twilio" : "blooio",
     from: event.senderId,
     to: event.channelId ?? null,
     text: event.text,
-    transport: protocol && TRANSPORTS.has(protocol) ? (protocol as TurnRequest["transport"]) : "unknown",
-    receivedAt: event.providerSentAtMs ?? Date.now(),
+    transport:
+      protocol && TRANSPORTS.has(protocol)
+        ? (protocol as TurnRequest["transport"])
+        : "unknown",
+    receivedAt,
   };
 }
 
@@ -72,26 +95,56 @@ export async function runNetworkServiceTurn(
   ledger: NetworkConsentLedger,
   project: string,
   event: ChatEvent,
-  now: () => Date = () => new Date(),
 ): Promise<NetworkServiceTurn> {
-  const res: TurnResponse = await client.turn(turnRequestFor(event));
+  const request = turnRequestFor(event);
+  const res: TurnResponse = await client.turn(request);
   if (res.outcome === "handled") {
     // Line-wide consent changes only: an app-scoped leave does not stop the shared line.
-    if (res.consent?.scope === "all") {
+    if (res.consent) {
+      if (
+        (res.consent.scope !== "all" && res.consent.scope !== "app") ||
+        (res.consent.state !== "opted_in" &&
+          res.consent.state !== "opted_out") ||
+        !Number.isSafeInteger(res.consent.at) ||
+        res.consent.at <= 0 ||
+        (res.consent.scope === "all" &&
+          (res.consent.app !== null || res.consent.state !== "opted_out")) ||
+        (res.consent.scope === "app" &&
+          !["ntwrk", "slop", "peon", "friends"].includes(
+            String(res.consent.app),
+          ))
+      )
+        throw new Error("Invalid canonical service consent");
       await ledger.record({
         project,
+        app: res.consent.scope === "app" ? res.consent.app : null,
         channel: event.platform,
         address: event.senderId,
         state: res.consent.state,
         source: `service:${res.reason}`,
         providerMessageId: event.messageId,
-        at: now().toISOString(),
+        at: new Date(res.consent.at).toISOString(),
       });
     }
-    return { kind: "reply", texts: res.replies.filter((t) => t.trim().length > 0), reason: res.reason };
+    return {
+      kind: "reply",
+      texts: res.replies,
+      reason: res.reason,
+      request,
+      handled: res,
+    };
   }
   if (res.outcome === "open") {
-    return { kind: "open", turn: { app: res.app, memberId: res.memberId, messageId: event.messageId, context: res.context } };
+    return {
+      kind: "open",
+      turn: {
+        channel: res.channel,
+        app: res.app,
+        memberId: res.memberId,
+        messageId: event.messageId,
+        context: res.context,
+      },
+    };
   }
   return { kind: "continue", reason: res.reason };
 }
