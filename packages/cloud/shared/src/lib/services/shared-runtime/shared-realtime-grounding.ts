@@ -894,10 +894,66 @@ export function validateSharedRealtimeReply(
   return count > 0 && reply.slice(cursor).trim().length === 0;
 }
 
+/**
+ * General RAG checks citation provenance and numeric presence, not semantic
+ * entailment. In particular, it cannot prove same-page attribution/scope.
+ * Realtime claims continue to use the unchanged strict validator above.
+ */
+function generalPublicClaimSupported(
+  claim: string,
+  source: SourceEvidence,
+  diagnostic: { failedPredicateMask: number },
+): boolean {
+  const normalized = claim.trim();
+  if (!normalized || /^[\s?!.,-]{1,12}$/u.test(normalized)) {
+    diagnostic.failedPredicateMask |= 128;
+    return false;
+  }
+  if (!source.text.trim()) {
+    diagnostic.failedPredicateMask |= 128;
+    return false;
+  }
+  const urls = replyUrls(normalized);
+  if (!urls || urls.some((url) => url !== canonicalPublicUrl(source.url))) {
+    diagnostic.failedPredicateMask |= 64;
+    return false;
+  }
+  // URLs are provenance, not numeric claims. Source text is bounded by the
+  // current-turn receipt; never search another result to support this citation.
+  const factualText = normalized.replace(HTTP_URL, " ");
+  const evidence = evidenceClauses(source.text).join("\n");
+  const numbers = numericValues(evidence);
+  if (numericValues(factualText).some((value) => !numericSupported(value, numbers))) {
+    diagnostic.failedPredicateMask |= 2;
+    return false;
+  }
+  const numericUnits = numericUnitTuples(evidence);
+  if (
+    numericUnitTuples(factualText).some(
+      (claimUnit) =>
+        !numericUnits.some(
+          (candidate) =>
+            candidate.unit === claimUnit.unit &&
+            numericSupported(claimUnit.value, [candidate.value]),
+        ),
+    )
+  ) {
+    diagnostic.failedPredicateMask |= 4;
+    return false;
+  }
+  const units = new Set(claimUnits(evidence));
+  if (claimUnits(factualText).some((unit) => !units.has(unit))) {
+    diagnostic.failedPredicateMask |= 8;
+    return false;
+  }
+  return true;
+}
+
 function supportedRealtimeReply(
   reply: string,
   grounding: AvailableGrounding,
-  onRefusal?: (diagnostic: SharedRealtimeBindingDiagnostic) => void,
+  onRefusal: ((diagnostic: SharedRealtimeBindingDiagnostic) => void) | undefined,
+  mode: "realtime" | "general_public",
 ):
   | { reply: string; selectedUrls: string[]; omittedUnsupported: boolean }
   | undefined {
@@ -921,7 +977,9 @@ function supportedRealtimeReply(
         diagnostic.knownSourceMarkerCount + 1,
       );
     const claim = reply.slice(cursor, marker.index).trim();
-    if (source && claimSupported(claim, source, diagnostic)) {
+    if (source && (mode === "general_public"
+      ? generalPublicClaimSupported(claim, source, diagnostic)
+      : claimSupported(claim, source, diagnostic))) {
       segments.push(claim);
       selectedUrls.push(marker[1]);
     } else {
@@ -955,11 +1013,12 @@ export function finalizeSharedRealtimeReply(
   reply: string,
   grounding: SharedRuntimePublicGrounding | undefined,
   onRefusal?: (diagnostic: SharedRealtimeBindingDiagnostic) => void,
+  mode: "realtime" | "general_public" = "realtime",
 ): string {
   if (!hasTraceableRealtimeGrounding(grounding)) {
     return "I can’t verify the current value from a complete, traceable live source right now, so I won’t guess. Please try again shortly.";
   }
-  const supported = supportedRealtimeReply(reply, grounding, onRefusal);
+  const supported = supportedRealtimeReply(reply, grounding, onRefusal, mode);
   if (!supported) {
     return `I found live public results, but I couldn’t safely bind the requested claim to one complete source, so I won’t guess.\n\nSource provider: ${grounding.provider} (checked ${new Date(grounding.observedAt).toISOString()})`;
   }

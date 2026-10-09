@@ -540,13 +540,14 @@ test("general Gmail documentation uses canonical query and source footer after r
   const prior = await exercise();
   expect(prior.result?.internalGrounding?.kind).toBe("web_search");
   if (!prior.result) throw new Error("Actual weather history was not produced");
-  const actual = await exercise({ general: true, history: prior.result.history }, `${GENERAL_CLAIM} [[SOURCE_URL:${GENERAL_SOURCE}]]`);
+  const paraphrase = "Gmail API calls are rate-limited.";
+  const actual = await exercise({ general: true, history: prior.result.history }, `${paraphrase} [[SOURCE_URL:${GENERAL_SOURCE}]]`);
   expect(actual.failed).toBe(false);
   expect(actual.publicHttpCalls).toBe(1);
   expect(actual.actions).toEqual([{ query: GENERAL_TOPIC, success: true }]);
   expect(actual.freeSelectionsBeforeAction).toBe(0);
   expect(actual.coreActionResults).toContainEqual({ actionName: "WEB_SEARCH", query: GENERAL_TOPIC, success: true });
-  expect(actual.result?.reply).toContain(GENERAL_CLAIM);
+  expect(actual.result?.reply).toContain(paraphrase);
   expect(actual.result?.reply).toContain(`Source: developers.google.com — ${GENERAL_SOURCE}`);
   expect(actual.result?.reply).not.toContain("SOURCE_URL:");
   expect(actual.result?.reply).not.toContain("Springfield");
