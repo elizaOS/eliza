@@ -3794,7 +3794,7 @@ export function withTurnScopeToolArg(
     ? {
         ...TURN_SCOPE_ARG_SCHEMA,
         description:
-          "Follow the shared Batch scope instruction. Use the same scope on every call in this batch. Stripped before execution.",
+          'Required on every native call, with the same value throughout the batch. "final": this batch covers the remaining operations; evaluation still follows. "more_work_pending": results must ground a later operation. Stripped before execution.',
       }
     : TURN_SCOPE_ARG_SCHEMA;
   return tools.map((tool) => {
@@ -4342,7 +4342,10 @@ async function dispatchPlannerModelCall(params: {
       for (const [parameter, entry] of Object.entries(
         propertiesData.descriptors,
       )) {
-        if (!entry.enumerable) continue;
+        // Native completion control must be understandable on the chosen
+        // tool, including a tool just loaded by discovery. Keep domain prose
+        // sharing, but never turn required scope into a cross-tool pointer.
+        if (!entry.enumerable || parameter === TURN_SCOPE_ARG) continue;
         const schemaData = ownDataDescriptors(entry.value);
         const description = schemaData?.descriptors.description?.value;
         if (
