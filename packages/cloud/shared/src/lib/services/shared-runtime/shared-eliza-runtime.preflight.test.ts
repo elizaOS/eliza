@@ -1,15 +1,18 @@
 /**
  * Real Core/Edge execution with deterministic HTTP boundaries; no provider traffic.
- * Budget: one existing preflight, zero extra searches, zero initial free-query
- * selection for a qualified single read. Post-tool model work remains canonical.
+ * Budget: four mocked public HTTP GETs per cold weather read (GNIS, NWS point,
+ * station collection, observation), zero duplicate public reads in canonical
+ * execution. Real model dispatch is intercepted at HTTP; no paid requests.
  */
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { AgentRuntime, ChannelType, type UUID } from "@elizaos/core/edge";
+import { readFileSync } from "node:fs";
+import { clearCurrentWeatherMetadataCacheForTests } from "./shared-current-weather";
 import type { RunSharedAgentTurnResult } from "./run-shared-agent-turn";
 import { SharedRuntimeTurnError } from "./shared-runtime-errors";
 
-const SOURCE_URL = "https://weather.example/current";
-const CLAIM = "Springfield, Missouri is 75 Fahrenheit and sunny.";
+const SOURCE_URL = "https://api.weather.gov/stations/KSGF/observations/latest";
+const CLAIM = "Springfield, Missouri is 69.8°F and Clear.";
 const MARKED = `${CLAIM} [[SOURCE_URL:${SOURCE_URL}]]`;
 const QUERY = "current public weather in Springfield, Missouri";
 const USER_MESSAGE_ID = "35fa7289-3e70-4c0b-a64a-52fb8cc9a10d";
@@ -18,13 +21,24 @@ const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_KEY = process.env.CEREBRAS_API_KEY;
 const ORIGINAL_FALLBACK_KEY = process.env.OPENROUTER_API_KEY;
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+const fixture = (name: string) => JSON.parse(readFileSync(new URL("./fixtures/" + name, import.meta.url), "utf8"));
+const GNIS = fixture("usgs-springfield-mo-20261009.json");
+const STATION = fixture("nws-ksgf-station-20261009.json");
+const OBSERVATION = fixture("nws-ksgf-observation-20261009.json");
+const POINT_URL = "https://api.weather.gov/points/37.2153,-93.2982";
+const STATIONS_URL = "https://api.weather.gov/gridpoints/SGF/67,35/stations";
+const GNIS_URL = "https://dashboard.waterdata.usgs.gov/service/geocoder/get/location/1.0?term=Springfield&include=gnis&states=MO&maxSuggestions=20";
+let clock: ReturnType<typeof spyOn>;
 
 beforeEach(() => {
+  clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-09T02:16:00Z"));
   process.env.CEREBRAS_API_KEY = "offline-preflight-test-key";
   delete process.env.OPENROUTER_API_KEY;
   process.env.NODE_ENV = "production";
 });
 afterEach(() => {
+  clock.mockRestore();
+  clearCurrentWeatherMetadataCacheForTests();
   globalThis.fetch = ORIGINAL_FETCH;
   if (ORIGINAL_KEY === undefined) delete process.env.CEREBRAS_API_KEY;
   else process.env.CEREBRAS_API_KEY = ORIGINAL_KEY;
@@ -59,7 +73,9 @@ function modelResponse(content: string | null, calls: Array<{ name: string; args
 }
 
 async function exercise(mode: Mode = {}, reply = MARKED) {
-  let searches = 0;
+  clearCurrentWeatherMetadataCacheForTests();
+  let publicHttpCalls = 0;
+  const publicHttpHops: string[] = [];
   let modelCalls = 0;
   let freeSelectionsBeforeAction = 0;
   let validations = 0;
@@ -138,19 +154,26 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
     const body = init?.body === undefined && url instanceof Request
       ? await url.clone().text()
       : String(init?.body ?? "");
-    if (target === "https://search.parallel.ai/mcp") {
-      searches += 1;
-      if (searches > 1) throw new Error("Additional external search exceeded the offline budget");
-      return Response.json({
-        jsonrpc: "2.0",
-        id: "offline-preflight",
-        result: { content: [{
-          type: "text",
-          text: JSON.stringify({ results: mode.unavailable ? [] : [{
-            url: SOURCE_URL, title: "Springfield, Missouri weather", text: CLAIM,
-          }] }),
-        }] },
-      });
+    if ([GNIS_URL, POINT_URL, STATIONS_URL, SOURCE_URL].includes(target)) {
+      publicHttpCalls += 1;
+      publicHttpHops.push(target);
+      if (publicHttpCalls > 4 || publicHttpHops.filter((hop) => hop === target).length > 1) {
+        throw new Error("Duplicate public HTTP exceeded the offline cold-read budget");
+      }
+      expect(init?.redirect).toBe("error");
+      let payload: unknown;
+      if (target === GNIS_URL) payload = GNIS;
+      else if (target === POINT_URL) {
+        // Point route/geometry matches retained actual hop receipt; body is a
+        // minimal synthetic transport fixture, not a retained raw point body.
+        payload = { geometry: { type: "Point", coordinates: [-93.2982, 37.2153] },
+          properties: { observationStations: STATIONS_URL } };
+      } else if (target === STATIONS_URL) payload = { features: [STATION] };
+      else {
+        payload = structuredClone(OBSERVATION);
+        if (mode.unavailable) (payload as typeof OBSERVATION).properties.temperature.value = null;
+      }
+      return Response.json(payload);
     }
     if (target !== "https://api.cerebras.ai/v1/chat/completions") {
       throw new Error("Unexpected network boundary in offline Core test");
@@ -160,6 +183,7 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
       messages?: Array<Record<string, unknown>>;
     };
     modelCalls += 1;
+    if (modelCalls > 12) throw new Error("Offline model-dispatch count bound exceeded");
     const names = request.tools?.map((tool) => tool.function?.name) ?? [];
     const system = (request.messages ?? [])
       .filter((message) => message.role === "system" && typeof message.content === "string")
@@ -293,15 +317,18 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
     for (const spy of restorers) spy.mockRestore();
   }
   console.info("[offline-preflight-chronology]", {
-    modelChronology, legacyCacheCountAtStop, coreResultCount: coreActionResults.length,
+    mode: { compound: !!mode.compound, deny: !!mode.deny, ordinary: !!mode.ordinary, unavailable: !!mode.unavailable, unsupported: !!mode.expectGroundingFailure },
+    publicHttpCalls, publicHttpHops, modelCalls, modelChronology, legacyCacheCountAtStop, coreResultCount: coreActionResults.length,
+    failed, failureCategory: failureCategory ?? null,
   });
-  return { result, failed, failureCategory, searches, modelCalls, freeSelectionsBeforeAction, validations, otherActions, actions, coreActionResults, legacyCacheCountAtStop, registeredShortcut };
+  return { result, failed, failureCategory, publicHttpCalls, publicHttpHops, modelCalls, modelChronology, freeSelectionsBeforeAction, validations, otherActions, actions, coreActionResults, legacyCacheCountAtStop, registeredShortcut };
 }
 
 test("genuine preflight enters canonical execution without free-query selection", async () => {
   const actual = await exercise();
   expect(actual.registeredShortcut).toBe(true);
-  expect(actual.searches).toBe(1);
+  expect(actual.publicHttpCalls).toBe(4);
+  expect(actual.publicHttpHops).toEqual([GNIS_URL, POINT_URL, STATIONS_URL, SOURCE_URL]);
   expect(actual.freeSelectionsBeforeAction).toBe(0);
   expect(actual.actions).toEqual([{ query: QUERY, success: true }]);
   expect(actual.coreActionResults).toEqual([{ actionName: "WEB_SEARCH", query: QUERY, success: true }]);
@@ -311,7 +338,8 @@ test("genuine preflight enters canonical execution without free-query selection"
 });
 
 test("canonical denial and unsupported source claims retain their gates", async () => {
-  const unsupported = await exercise({ expectGroundingFailure: true }, `Springfield, Missouri is 75 EUR. [[SOURCE_URL:${SOURCE_URL}]]`);
+  const unsupported = await exercise({ expectGroundingFailure: true }, `Springfield, Missouri is 69.8°C and Clear. [[SOURCE_URL:${SOURCE_URL}]]`);
+  expect(unsupported.publicHttpCalls).toBe(4);
   expect(unsupported.actions).toEqual([{ query: QUERY, success: true }]);
   if (unsupported.failed) {
     expect(unsupported.failureCategory).toBe("reply_grounding_failed");
@@ -325,12 +353,12 @@ test("canonical denial and unsupported source claims retain their gates", async 
       "I found live public results, but I couldn’t safely bind the requested claim to one complete source, so I won’t guess.\n\n" +
       `Source provider: ${grounding.provider} (checked ${new Date(grounding.observedAt).toISOString()})`,
     );
-    expect(unsupported.result?.reply).not.toContain("75 EUR");
+    expect(unsupported.result?.reply).not.toContain("69.8°C");
   }
   const denied = await exercise({ deny: true });
   expect(denied.validations).toBeGreaterThan(0);
   expect(denied.actions).toHaveLength(0);
-  expect(denied.searches).toBe(1);
+  expect(denied.publicHttpCalls).toBe(4);
   if (denied.failed) {
     expect(denied.failureCategory).toBe("canonical_action_denied");
   } else {
@@ -343,19 +371,19 @@ test("compound work remains planner-owned and retains the other action", async (
   expect(actual.freeSelectionsBeforeAction).toBeGreaterThan(0);
   expect(actual.actions).toHaveLength(1);
   expect(actual.otherActions).toBe(1);
-  expect(actual.searches).toBe(1);
+  expect(actual.publicHttpCalls).toBe(4);
   expect(actual.result?.actionResults?.some((result) => result.data?.actionName === "OTHER_ACTION")).toBe(true);
 });
 
 test("ordinary chat and unavailable preflight keep their existing paths", async () => {
   const ordinary = await exercise({ ordinary: true });
   expect(ordinary.registeredShortcut).toBe(false);
-  expect(ordinary.searches).toBe(0);
+  expect(ordinary.publicHttpCalls).toBe(0);
   expect(ordinary.modelCalls).toBe(1);
   expect(ordinary.result?.reply).toBe("Hello! Happy to help.");
   const unavailable = await exercise({ unavailable: true });
   expect(unavailable.registeredShortcut).toBe(false);
-  expect(unavailable.searches).toBe(1);
+  expect(unavailable.publicHttpCalls).toBe(4);
   expect(unavailable.actions).toEqual([{ query: QUERY, success: false }]);
   if (unavailable.failed) {
     expect(unavailable.failureCategory).toBe("canonical_search_unavailable");
