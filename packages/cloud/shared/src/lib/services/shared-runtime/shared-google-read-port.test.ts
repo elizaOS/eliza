@@ -119,7 +119,12 @@ describe("server-owned Shared Google read seam", () => {
       deps,
     );
     for (const request of [
-      { kind: "other", timeMin: "2026-10-08", timeMax: "2026-10-09", timeZone: "UTC" },
+      {
+        kind: "other",
+        timeMin: "2026-10-08",
+        timeMax: "2026-10-09",
+        timeZone: "UTC",
+      },
       { kind: "calendar", timeMin: "2026-10-08", timeMax: "2026-10-09" },
       { kind: "gmail_search", query: 42 },
       null,
@@ -130,11 +135,26 @@ describe("server-owned Shared Google read seam", () => {
     expect(calls).toHaveLength(0);
   });
 
-  test("calendar read preserves the complete authorized interval and event fields", async () => {
+  test("calendar read preserves the requested month with a bounded Shared page", async () => {
     const { calls, deps } = fixture();
     deps.fetchManagedGoogleCalendarFeed = async (args) => {
       calls.push({ name: "calendar", args });
-      return { calendarId: "primary", events: [], syncedAt: "2026-10-08" };
+      return {
+        calendarId: "primary",
+        truncated: true,
+        syncedAt: "2026-10-08",
+        events: [
+          {
+            externalId: "e1",
+            title: "t".repeat(300),
+            location: "l".repeat(300),
+            startAt: "2026-11-01",
+            endAt: "2026-11-02",
+            isAllDay: true,
+            description: "excluded",
+          } as Awaited<ReturnType<typeof deps.fetchManagedGoogleCalendarFeed>>["events"][number],
+        ],
+      };
     };
     const port = createSharedGoogleReadPort(
       {
@@ -152,13 +172,18 @@ describe("server-owned Shared Google read seam", () => {
         timeMax: "2026-11-09T00:00:00Z",
         timeZone: "UTC",
       }),
-    ).toMatchObject({ events: [] });
+    ).toMatchObject({
+      hasMore: true,
+      truncated: true,
+      events: [{ id: "e1", title: "t".repeat(256), location: "l".repeat(256) }],
+    });
     expect(calls[1]).toMatchObject({
       name: "calendar",
       args: {
         grantId: "grant",
         calendarId: "primary",
         timeMax: "2026-11-09T00:00:00.000Z",
+        limits: { maxEvents: 20, maxPages: 1 },
       },
     });
   });
@@ -199,25 +224,32 @@ describe("server-owned Shared Google read seam", () => {
           grantId: "grant",
           personalContextRead: true,
           query: "meeting",
-          maxResults: 50,
+          maxResults: 5,
         },
       },
     ]);
     expect(Object.keys(port).sort()).toEqual(["connect", "read"]);
   });
-  test("search follows provider cursors and keeps all selected fields", async () => {
+  test("search uses one five-message page and declares partial bounded projection", async () => {
     const { deps } = fixture();
     const message = {
       externalId: "m1",
       subject: "s".repeat(300),
       from: "f".repeat(300),
       snippet: "x".repeat(900),
+      receivedAt: "2026-10-08",
+      extraPrivateMetadata: "must not enter model context",
     } as Awaited<ReturnType<typeof deps.fetchManagedGoogleGmailSearch>>["messages"][number];
     let pages = 0;
     deps.fetchManagedGoogleGmailSearch = async (args) => {
       pages++;
-      expect(args.pageToken).toBe(pages === 1 ? undefined : "next");
-      return { messages: [message], syncedAt: "now", nextPageToken: pages === 1 ? "next" : null };
+      expect(args.maxResults).toBe(5);
+      expect(args.pageToken).toBeUndefined();
+      return {
+        messages: Array.from({ length: 6 }, () => message),
+        syncedAt: "now",
+        nextPageToken: "next",
+      };
     };
     const port = createSharedGoogleReadPort(
       {
@@ -228,27 +260,27 @@ describe("server-owned Shared Google read seam", () => {
       },
       deps,
     );
-    expect(await port.read({ kind: "gmail_search", query: "meeting" })).toMatchObject({
-      messages: [message, message],
+    const result = await port.read({ kind: "gmail_search", query: "meeting" });
+    expect(result).toMatchObject({ hasMore: true, truncated: true });
+    if (result.kind !== "private_google_gmail_search") throw new Error("WRONG_KIND");
+    expect(result.messages).toHaveLength(5);
+    expect(result.messages[0]).toEqual({
+      id: "m1",
+      subject: "s".repeat(256),
+      from: "f".repeat(256),
+      snippet: "x".repeat(512),
+      receivedAt: "2026-10-08",
     });
-    expect(pages).toBe(2);
-    deps.fetchManagedGoogleGmailSearch = async () => ({
-      messages: [],
-      syncedAt: "now",
-      nextPageToken: "repeat",
-    });
-    await expect(port.read({ kind: "gmail_search", query: "meeting" })).rejects.toThrow(
-      "repeated a page token",
-    );
+    expect(pages).toBe(1);
   });
 
-  test("message body and metadata survive beyond the former truncation boundary", async () => {
+  test("message body is bounded and reports truncation without dumping metadata", async () => {
     const { deps } = fixture();
     const result = {
       message: { externalId: "m1", subject: "s".repeat(300) } as Awaited<
         ReturnType<typeof deps.readManagedGoogleGmailMessage>
       >["message"],
-      bodyText: "x".repeat(9000) + "complete ending",
+      bodyText: `${"x".repeat(9000)}complete ending`,
       attachments: [],
     };
     deps.readManagedGoogleGmailMessage = async () => result;
@@ -261,6 +293,13 @@ describe("server-owned Shared Google read seam", () => {
       },
       deps,
     );
-    expect(await port.read({ kind: "gmail_message", messageId: "m1" })).toMatchObject(result);
+    expect(await port.read({ kind: "gmail_message", messageId: "m1" })).toEqual({
+      kind: "private_google_gmail_message",
+      untrustedContent: true,
+      id: "m1",
+      subject: "s".repeat(256),
+      bodyText: "x".repeat(8000),
+      truncated: true,
+    });
   });
 });

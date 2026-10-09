@@ -27,20 +27,27 @@ export type SharedGoogleReadRequest =
 function bounded(value: string, maximum: number): string {
   const result = value.trim();
   if (!result || result.length > maximum || /[\p{C}]/u.test(result)) {
-    throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", { code: "SHARED_GOOGLE_INVALID_INPUT" });
+    throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", {
+      code: "SHARED_GOOGLE_INVALID_INPUT",
+    });
   }
   return result;
 }
 
 function validateReadRequest(value: unknown): SharedGoogleReadRequest {
   if (!value || typeof value !== "object")
-    throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", { code: "SHARED_GOOGLE_INVALID_INPUT" });
+    throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", {
+      code: "SHARED_GOOGLE_INVALID_INPUT",
+    });
   const request = value as Record<string, unknown>;
   if (request.kind === "gmail_search" && typeof request.query === "string") {
     return { kind: "gmail_search", query: bounded(request.query, 256) };
   }
   if (request.kind === "gmail_message" && typeof request.messageId === "string") {
-    return { kind: "gmail_message", messageId: bounded(request.messageId, 256) };
+    return {
+      kind: "gmail_message",
+      messageId: bounded(request.messageId, 256),
+    };
   }
   if (
     request.kind === "calendar" &&
@@ -62,7 +69,9 @@ function validateReadRequest(value: unknown): SharedGoogleReadRequest {
       timeZone: bounded(request.timeZone, 100),
     };
   }
-  throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", { code: "SHARED_GOOGLE_INVALID_INPUT" });
+  throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", {
+    code: "SHARED_GOOGLE_INVALID_INPUT",
+  });
 }
 
 export function createSharedGoogleReadPort(
@@ -98,7 +107,11 @@ export function createSharedGoogleReadPort(
           code: "SHARED_GOOGLE_EXPLICIT_GRANT_REQUIRED",
         });
       await owner.authorizePrivateRead(request);
-      const selected = { ...scope, grantId, personalContextRead: true as const };
+      const selected = {
+        ...scope,
+        grantId,
+        personalContextRead: true as const,
+      };
       const status = await deps.getManagedGoogleConnectorStatus(selected);
       const capability =
         request.kind === "calendar" ? "google.calendar.read" : "google.gmail.triage";
@@ -112,34 +125,34 @@ export function createSharedGoogleReadPort(
         });
       }
       if (request.kind === "gmail_search") {
-        let result = await deps.fetchManagedGoogleGmailSearch({
+        // Cost: one list page and at most five metadata reads; no inbox drain.
+        const result = await deps.fetchManagedGoogleGmailSearch({
           ...selected,
-          query: bounded(request.query, 256),
-          maxResults: 50,
+          query: request.query,
+          maxResults: 5,
         });
-        const messages = [...result.messages];
-        const seenTokens = new Set<string>();
-        while (result.nextPageToken) {
-          const pageToken = result.nextPageToken;
-          if (seenTokens.has(pageToken)) {
-            throw new ElizaError("Google Gmail search repeated a page token", {
-              code: "SHARED_GOOGLE_PAGINATION_FAILED",
-            });
-          }
-          seenTokens.add(pageToken);
-          result = await deps.fetchManagedGoogleGmailSearch({
-            ...selected,
-            query: request.query,
-            maxResults: 50,
-            pageToken,
-          });
-          messages.push(...result.messages);
-        }
+        const hasMore = Boolean(result.nextPageToken) || result.messages.length > 5;
+        const selectedMessages = result.messages.slice(0, 5);
         return {
           kind: "private_google_gmail_search" as const,
           untrustedContent: true as const,
           observedAt: result.syncedAt,
-          messages,
+          hasMore,
+          truncated:
+            hasMore ||
+            selectedMessages.some(
+              (message) =>
+                message.subject.length > 256 ||
+                message.from.length > 256 ||
+                message.snippet.length > 512,
+            ),
+          messages: selectedMessages.map((message) => ({
+            id: message.externalId,
+            subject: message.subject.slice(0, 256),
+            from: message.from.slice(0, 256),
+            snippet: message.snippet.slice(0, 512),
+            receivedAt: message.receivedAt,
+          })),
         };
       }
       if (request.kind === "gmail_message") {
@@ -151,12 +164,16 @@ export function createSharedGoogleReadPort(
           kind: "private_google_gmail_message" as const,
           untrustedContent: true as const,
           id: result.message.externalId,
-          ...result,
+          subject: result.message.subject.slice(0, 256),
+          bodyText: result.bodyText.slice(0, 8_000),
+          truncated: result.bodyText.length > 8_000 || result.message.subject.length > 256,
         };
       }
       const result = await deps.fetchManagedGoogleCalendarFeed({
         ...selected,
         calendarId: "primary",
+        // Cost: one page, at most twenty events, independent of window length.
+        limits: { maxEvents: 20, maxPages: 1 },
         timeMin: request.timeMin,
         timeMax: request.timeMax,
         timeZone: request.timeZone,
@@ -165,7 +182,21 @@ export function createSharedGoogleReadPort(
         kind: "private_google_calendar" as const,
         untrustedContent: true as const,
         observedAt: result.syncedAt,
-        events: result.events,
+        hasMore: result.truncated === true || result.events.length > 20,
+        truncated:
+          result.truncated === true ||
+          result.events.length > 20 ||
+          result.events
+            .slice(0, 20)
+            .some((event) => event.title.length > 256 || event.location.length > 256),
+        events: result.events.slice(0, 20).map((event) => ({
+          id: event.externalId,
+          title: event.title.slice(0, 256),
+          startAt: event.startAt,
+          endAt: event.endAt,
+          isAllDay: event.isAllDay,
+          location: event.location.slice(0, 256),
+        })),
       };
     },
   };
