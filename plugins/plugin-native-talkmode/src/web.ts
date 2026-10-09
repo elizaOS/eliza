@@ -72,6 +72,23 @@ export class TalkModeWeb extends WebPlugin {
       console.warn("[TalkMode] Speech synthesis not available on web");
     }
 
+    // A repeated start replaces the live recognizer, as on both native
+    // bridges (iOS stops recognition first; Android destroys the previous
+    // recognizer). Without this the old recognizer kept listening and
+    // publishing transcripts alongside its replacement — and past stop(),
+    // which only stops the newest instance.
+    if (this.recognition) {
+      const previous = this.recognition;
+      this.recognition = null;
+      this.enabled = false;
+      try {
+        previous.stop();
+      } catch {
+        // A recognizer that already ended can throw on stop; it is being
+        // discarded either way.
+      }
+    }
+
     try {
       // Build and start the recognizer transactionally. Browser implementations
       // may throw from construction, property setup, or start(); none of those
@@ -81,6 +98,9 @@ export class TalkModeWeb extends WebPlugin {
       recognition.interimResults = true;
 
       recognition.onresult = (event: SpeechRecognitionResultEvent) => {
+        // A replaced recognizer can still deliver a queued result before
+        // its end event; only the live recognizer may publish.
+        if (this.recognition !== recognition) return;
         const result = event.results[event.results.length - 1];
         const first = result?.[0];
         if (!first || typeof first.transcript !== "string") return;
@@ -97,6 +117,7 @@ export class TalkModeWeb extends WebPlugin {
       };
 
       recognition.onerror = (event: { error: string; message?: string }) => {
+        if (this.recognition !== recognition) return;
         this.notifyListeners("error", {
           code: event.error,
           message: event.message || event.error,
@@ -105,6 +126,7 @@ export class TalkModeWeb extends WebPlugin {
       };
 
       recognition.onend = () => {
+        if (this.recognition !== recognition) return;
         // Chrome ends a continuous session spontaneously, including mid-
         // utterance while state is "speaking". Recognition is never paused
         // during speak (it keeps capturing), so restart whenever the session
