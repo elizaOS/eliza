@@ -390,7 +390,12 @@ function checkLinks({ repoRoot, docFiles, contentByFile }) {
     if (!anchorCache.has(filePath)) {
       const markdown =
         contentByFile.get(filePath) ?? fs.readFileSync(filePath, "utf8");
-      anchorCache.set(filePath, anchorsFor(markdown));
+      // Anchors live in rendered markdown: a "heading" inside a code
+      // fence creates no anchor on the rendered page, and it must not
+      // consume a duplicate-heading number either. The link side of
+      // this checker already strips fences before parsing; the anchor
+      // side must apply the same view of the document.
+      anchorCache.set(filePath, anchorsFor(stripCodeFences(markdown)));
     }
     return anchorCache.get(filePath);
   }
