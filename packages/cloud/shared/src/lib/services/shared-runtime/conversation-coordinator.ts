@@ -129,6 +129,8 @@ export async function coordinateSharedPushDispatch(
 }
 
 export interface SharedCutoverSeal {
+  /** Exact fallback interval whose database revision fences recovery. */
+  fallback?: { id: string; generation: number; revision: number; roomId: string };
   token: string;
   leaseMs: number;
   organizationId: string;
@@ -522,6 +524,7 @@ export async function coordinateSharedCutoverSeal(
         organizationId: seal.organizationId,
         userId: seal.userId,
         dedicatedAgentId: seal.dedicatedAgentId,
+        ...(seal.fallback ? { fallback: seal.fallback } : {}),
       }),
     },
   );
