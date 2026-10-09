@@ -231,17 +231,16 @@ function sharedModelPlugin(
     params: GenerateTextParams,
     registeredModelType?: string,
   ) => Promise<string | NativeTextModelResult | TextStreamResult>,
-  captureTypes = false,
 ): Plugin {
   return {
     name: "shared-cerebras-model",
     description: "Platform-funded text generation for the Shared Workerd runtime.",
     services: [...SHARED_NOTIFICATION_SERVICES],
     models: {
-      [ModelType.RESPONSE_HANDLER]: captureTypes ? (runtime, params) => handler(runtime, params, ModelType.RESPONSE_HANDLER) : handler,
-      [ModelType.ACTION_PLANNER]: captureTypes ? (runtime, params) => handler(runtime, params, ModelType.ACTION_PLANNER) : handler,
-      [ModelType.TEXT_SMALL]: captureTypes ? (runtime, params) => handler(runtime, params, ModelType.TEXT_SMALL) : handler,
-      [ModelType.TEXT_LARGE]: captureTypes ? (runtime, params) => handler(runtime, params, ModelType.TEXT_LARGE) : handler,
+      [ModelType.RESPONSE_HANDLER]: (runtime, params) => handler(runtime, params, ModelType.RESPONSE_HANDLER),
+      [ModelType.ACTION_PLANNER]: (runtime, params) => handler(runtime, params, ModelType.ACTION_PLANNER),
+      [ModelType.TEXT_SMALL]: (runtime, params) => handler(runtime, params, ModelType.TEXT_SMALL),
+      [ModelType.TEXT_LARGE]: (runtime, params) => handler(runtime, params, ModelType.TEXT_LARGE),
     },
     modelMetadata: {
       [ModelType.RESPONSE_HANDLER]: { streamable: true },
@@ -576,6 +575,17 @@ async function executeSharedElizaRuntimeTurn(
     observeOwnerCapture(input.ownerCapture, (capture) => capture.observe("runtime-timing", receipt));
     logger.info("[shared-eliza-runtime] turn latency", receipt);
     try {
+      // Always-on numeric telemetry for platform-funded turns; no capture grant
+      // or verbose logging is needed. SDK completion is not action success.
+      logger.audit("[shared-eliza-runtime] model usage", {
+        traceId: receipt.traceId,
+        outcome,
+        ...timing.modelDiagnostics(),
+      });
+    } catch {
+      // Diagnostic sink failures must not replace the genuine turn outcome.
+    }
+    try {
       input.onRuntimeTiming?.(receipt);
     } catch (error) {
       // error-policy:J7 diagnostics must not kill the loop. Once the genuine
@@ -664,7 +674,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       getTrajectoryContext()?.secretSwapSession?.entries.map((entry) => entry.value) ?? [],
     ));
     let selectedProvider: { provider: string; fallback: boolean } | undefined;
-    const modelCall = timing.prepareModelCall();
+    const modelCall = timing.prepareModelCall({
+      modelType: registeredModelType,
+      purpose: getTrajectoryContext()?.purpose,
+      requestedModel: input.model,
+    });
     let captureCall: number | undefined;
     const finishModelCall = () => {
       const receipt = modelCall.finish();
@@ -678,6 +692,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       // provider failure. Neither messages, stacks, headers, request values nor
       // response bodies cross this logging boundary.
       try {
+        modelCall.complete(params.signal?.aborted ? "aborted" : "sdk_error");
         const diagnostic = sharedModelFailureDiagnostic(error, operation);
         firstModelFailure ??= diagnostic;
         recordSharedRuntimeFailureDiagnostic(error, {
@@ -711,6 +726,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       finishModelCall();
       throw error;
     }
+    modelCall.setSdkModel(model.modelId);
     if (!providerDispatched) {
       providerDispatched = true;
       await input.onProviderDispatch?.();
@@ -865,9 +881,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       })();
       const streamUsage = totalUsage
         .then((value) => {
+          modelCall.complete(providerStreamFailure ? "sdk_error" : "sdk_completed", value);
           const normalized = normalizeUsage(value);
           usage = addUsage(usage, normalized);
           return normalized;
+        })
+        .catch((error) => {
+          modelCall.complete(params.signal?.aborted ? "aborted" : "sdk_error");
+          throw error;
         })
         .finally(finishModelCall);
       const normalizedToolCalls = toolCalls.then((calls) =>
@@ -896,6 +917,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       modelInvocationStarted = true;
       modelCall.begin();
       result = await generateText({ ...generation });
+      modelCall.complete("sdk_completed", result.usage);
     } catch (error) {
       // error-policy:J2 qualified HTTP failures retain only their safe runtime projection.
       reportModelFailure(error, "generate");
@@ -941,7 +963,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     } as NativeTextModelResult;
   };
 
-  const modelPlugin = sharedModelPlugin(modelHandler, Boolean(input.ownerCapture));
+  const modelPlugin = sharedModelPlugin(modelHandler);
   const actionsEnabled = input.messageRole !== "system";
   const realtimeRequirement = actionsEnabled && input.capabilityText
     ? resolveSharedRealtimeRequirement(input.capabilityText, input.history)

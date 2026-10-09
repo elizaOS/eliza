@@ -62,6 +62,30 @@ export interface SharedModelCallSelection {
   fallback: boolean;
 }
 
+/** SDK invocation metadata only; never prompt, output, tool arguments or reasoning. */
+export interface SharedModelCallDiagnostic {
+  ordinal: number;
+  startOffsetMs: number | null;
+  modelType: string;
+  purpose: string;
+  requestedModel: string | null;
+  sdkModel: string | null;
+  outcome: "sdk_completed" | "sdk_error" | "aborted" | "unknown";
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+}
+
+function modelIdentifier(value: unknown): string | null {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/.test(value)
+    ? value
+    : null;
+}
+
+function tokenCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
 export interface SharedModelCallTiming {
   provider: SharedModelCallProvider;
   durationMs: number;
@@ -302,7 +326,8 @@ export class SharedRuntimeTimingCollector {
   #modelCallCount = 0;
   #modelFallbackCount = 0;
   #modelProviders = new Set<SharedModelProvider>();
-  #modelCalls: SharedModelCallTiming[] = [];
+  #modelCalls: (SharedModelCallTiming & { diagnostic?: SharedModelCallDiagnostic })[] = [];
+  #modelInvocationOrdinal = 0;
   #modelClamped = false;
 
   constructor(
@@ -348,20 +373,66 @@ export class SharedRuntimeTimingCollector {
    * recorded as `unobserved` so a failed or unattributed call is never reported
    * as a healthy call against a real provider.
    */
-  prepareModelCall(): {
+  prepareModelCall(metadata?: { modelType: unknown; purpose: unknown; requestedModel: unknown }): {
     select: (selection: SharedModelCallSelection) => void;
     begin: () => void;
+    setSdkModel: (model: unknown) => void;
+    complete: (
+      outcome: SharedModelCallDiagnostic["outcome"],
+      usage?: {
+        inputTokens?: unknown;
+        outputTokens?: unknown;
+        totalTokens?: unknown;
+      },
+    ) => void;
     finish: () => SharedModelCallTiming | undefined;
   } {
     let selection: SharedModelCallSelection | null = null;
     let startedAt: number | null = null;
     let finished = false;
+    const diagnostic: SharedModelCallDiagnostic | undefined = metadata
+      ? {
+          ordinal: 0,
+          startOffsetMs: null,
+          modelType: ["RESPONSE_HANDLER", "ACTION_PLANNER", "TEXT_SMALL", "TEXT_LARGE"].includes(
+            typeof metadata.modelType === "string" ? metadata.modelType : "",
+          )
+            ? (metadata.modelType as string)
+            : "unknown",
+          purpose: ["should_respond", "response", "action", "evaluation", "hook"].includes(
+            typeof metadata.purpose === "string" ? metadata.purpose : "",
+          )
+            ? (metadata.purpose as string)
+            : "unknown",
+          requestedModel: modelIdentifier(metadata.requestedModel),
+          sdkModel: null,
+          outcome: "sdk_error",
+          inputTokens: null,
+          outputTokens: null,
+          totalTokens: null,
+        }
+      : undefined;
     return {
+      setSdkModel: (model) => {
+        if (!finished && diagnostic) diagnostic.sdkModel = modelIdentifier(model);
+      },
+      complete: (outcome, usage) => {
+        if (finished || !diagnostic) return;
+        diagnostic.outcome = outcome;
+        diagnostic.inputTokens = tokenCount(usage?.inputTokens);
+        diagnostic.outputTokens = tokenCount(usage?.outputTokens);
+        diagnostic.totalTokens = tokenCount(usage?.totalTokens);
+      },
       select: (selected) => {
         selection = selected;
       },
       begin: () => {
-        startedAt ??= this.#now();
+        if (startedAt !== null) return;
+        startedAt = this.#now();
+        if (diagnostic) {
+          diagnostic.ordinal = ++this.#modelInvocationOrdinal;
+          diagnostic.startOffsetMs = boundedDuration(this.#startedAt, startedAt);
+        }
       },
       finish: () => {
         if (finished || startedAt === null) return;
@@ -380,9 +451,42 @@ export class SharedRuntimeTimingCollector {
         if (total > MAX_SHARED_PROVIDER_TIMING_MS) this.#modelClamped = true;
         this.#modelDurationMs = Math.min(total, MAX_SHARED_PROVIDER_TIMING_MS);
         if (call.provider !== "unobserved") this.#modelProviders.add(call.provider);
-        this.#modelCalls.push(call);
+        this.#modelCalls.push({
+          ...call,
+          ...(diagnostic ? { diagnostic: { ...diagnostic } } : {}),
+        });
         return { ...call };
       },
+    };
+  }
+
+  /** One bounded audit projection. SDK retries are not separate invocations here. */
+  modelDiagnostics(): {
+    callCount: number;
+    omittedCallCount: number;
+    calls: (SharedModelCallTiming & SharedModelCallDiagnostic)[];
+  } {
+    const calls = this.#modelCalls.slice(0, 16).map((call) => ({
+      provider: call.provider,
+      fallback: call.fallback,
+      durationMs: call.durationMs,
+      ...(call.diagnostic ?? {
+        ordinal: 0,
+        startOffsetMs: null,
+        modelType: "unknown",
+        purpose: "unknown",
+        requestedModel: null,
+        sdkModel: null,
+        outcome: "unknown" as const,
+        inputTokens: null,
+        outputTokens: null,
+        totalTokens: null,
+      }),
+    }));
+    return {
+      callCount: this.#modelCallCount,
+      omittedCallCount: this.#modelCallCount - calls.length,
+      calls,
     };
   }
 
@@ -453,7 +557,11 @@ export class SharedRuntimeTimingCollector {
         fallbackCount: this.#modelFallbackCount,
         selectedProvider: summarizeSelectedProviders(this.#modelProviders),
         callsTruncated: false,
-        calls: this.#modelCalls.map((call) => ({ ...call })),
+        calls: this.#modelCalls.map((call) => ({
+          provider: call.provider,
+          fallback: call.fallback,
+          durationMs: call.durationMs,
+        })),
       },
       routing: {
         decision: this.#routingDecision,
