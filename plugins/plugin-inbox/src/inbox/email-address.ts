@@ -73,6 +73,7 @@ function extractAsciiEmailToken(value: string): string | null {
     if (
       start < at &&
       dot > 0 &&
+      !domain.startsWith(".") &&
       domain.length - dot - 1 >= 2 &&
       [...domain.slice(dot + 1)].every(isAsciiLetter)
     ) {
