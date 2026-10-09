@@ -33,10 +33,14 @@ function isAsciiDomainCharacter(character: string): boolean {
  * angle spans first keeps `displayed@wrong.example <real@sender.example>`
  * resolving to the real sender instead of the spoofed display token.
  */
-function extractFromAngleSpans(
+function extractAddress(
   value: string,
   extractToken: (span: string) => string | null,
 ): string | null {
+  if (!value.includes("<") && !value.includes(">")) {
+    return extractToken(value);
+  }
+  // Invalid angle syntax must not fall back to the display name.
   let searchFrom = 0;
   while (searchFrom < value.length) {
     const open = value.indexOf("<", searchFrom);
@@ -51,10 +55,7 @@ function extractFromAngleSpans(
 }
 
 export function extractAsciiEmailAddress(value: string): string | null {
-  return (
-    extractFromAngleSpans(value, extractAsciiEmailToken) ??
-    extractAsciiEmailToken(value)
-  );
+  return extractAddress(value, extractAsciiEmailToken);
 }
 
 function extractAsciiEmailToken(value: string): string | null {
@@ -93,10 +94,7 @@ function isLooseAddressCharacter(character: string): boolean {
 }
 
 export function extractLooseEmailAddress(value: string): string | null {
-  return (
-    extractFromAngleSpans(value, extractLooseEmailToken) ??
-    extractLooseEmailToken(value)
-  );
+  return extractAddress(value, extractLooseEmailToken);
 }
 
 function extractLooseEmailToken(value: string): string | null {
