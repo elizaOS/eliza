@@ -4,7 +4,8 @@
  * All model HTTP is synthetic; all other network is denied by the fixture.
  */
 import { expect, spyOn, test } from "bun:test";
-import { AgentRuntime, ChannelType } from "@elizaos/core";
+import { AgentRuntime, ChannelType, stringToUuid } from "@elizaos/core";
+import type { TodoStore } from "@elizaos/plugin-todos";
 import { personalSharedAgentId } from "./personal-shared-identity";
 import { runSharedAgentTurn } from "./run-shared-agent-turn";
 import { runSharedElizaRuntimeTurn } from "./shared-eliza-runtime";
@@ -39,9 +40,12 @@ function model(content: string | null, tool?: { name: string; args: object }) {
     usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
   });
 }
-async function exercise(kind: "general" | "weather" | "weather-missing" | "private") {
+async function exercise(
+  kind: "general" | "weather" | "weather-missing" | "compound-missing" | "private",
+) {
   const publicRead = kind !== "private";
-  const weatherRead = kind === "weather" || kind === "weather-missing";
+  const compoundMissing = kind === "compound-missing";
+  const weatherRead = kind === "weather" || kind === "weather-missing" || compoundMissing;
   const savedFetch = globalThis.fetch;
   const saved = {
     cerebras: process.env.CEREBRAS_API_KEY,
@@ -51,7 +55,8 @@ async function exercise(kind: "general" | "weather" | "weather-missing" | "priva
   let reads = 0,
     binds = 0,
     publicCalls = 0,
-    modelCalls = 0;
+    modelCalls = 0,
+    todoReads = 0;
   let webRegistered = false,
     googleRegistered = false,
     googleCapabilityOffered = false;
@@ -59,11 +64,13 @@ async function exercise(kind: "general" | "weather" | "weather-missing" | "priva
   const publicTopic = 'Gmail API documentation for C# client SDK "rate  limits"';
   const weatherQuery = "current public weather in Phoenix, AZ";
   const publicUrl = "https://developers.google.com/gmail/api/reference/quotas";
-  const reply = weatherRead
-    ? "I could not verify current weather from the available source."
-    : publicRead
-      ? `Gmail API documentation describes API rate limits. [[SOURCE_URL:${publicUrl}]]`
-      : "No matching invoices were found.";
+  const reply = compoundMissing
+    ? "Your todo list is empty. I could not verify current weather."
+    : weatherRead
+      ? "I could not verify current weather from the available source."
+      : publicRead
+        ? `Gmail API documentation describes API rate limits. [[SOURCE_URL:${publicUrl}]]`
+        : "No matching invoices were found.";
   process.env.CEREBRAS_API_KEY = "offline-google-unit-key";
   delete process.env.OPENROUTER_API_KEY;
   process.env.NODE_ENV = "production";
@@ -124,10 +131,12 @@ async function exercise(kind: "general" | "weather" | "weather-missing" | "priva
         args: {
           shouldRespond: "RESPOND",
           thought: "Use the requested scoped read.",
-          contexts: ["general"],
+          contexts: [compoundMissing ? "todos" : "general"],
           intents: [],
           candidateActionNames:
-            kind === "weather-missing" ? [] : [publicRead ? "WEB_SEARCH" : "GOOGLE_CONTEXT"],
+            kind === "weather-missing"
+              ? []
+              : [compoundMissing ? "TODO" : publicRead ? "WEB_SEARCH" : "GOOGLE_CONTEXT"],
           requiresTool: kind !== "weather-missing",
           replyText: kind === "weather-missing" ? reply : "",
           replyEffectStatus: "none",
@@ -157,6 +166,9 @@ async function exercise(kind: "general" | "weather" | "weather-missing" | "priva
       publicCalls === 0
     )
       throw new Error("PUBLIC_QUERY_MUST_BE_BOUND_BEFORE_EXECUTOR");
+    if (compoundMissing && /(?:^|\n)planner_stage:\n/.test(system) && names.includes("TODO")) {
+      return model(null, { name: "TODO", args: { action: "list" } });
+    }
     if (weatherRead && /(?:^|\n)planner_stage:\n/.test(system) && names.includes("WEB_SEARCH")) {
       return model(null, { name: "WEB_SEARCH", args: { query: weatherQuery } });
     }
@@ -206,6 +218,31 @@ async function exercise(kind: "general" | "weather" | "weather-missing" | "priva
       userId: "22222222-2222-4222-8222-222222222222",
       organizationId: "11111111-1111-4111-8111-111111111111",
     });
+    const todoScope = {
+      agentId: stringToUuid(agentKey),
+      entityId: stringToUuid(`${agentKey}:owner`),
+    };
+    const unrequestedTodoWrite = async (): Promise<never> => {
+      throw new Error("OFFLINE_UNREQUESTED_TODO_OPERATION");
+    };
+    const todoStore: TodoStore = {
+      list: async (filter) => {
+        expect(filter.agentId).toBe(todoScope.agentId);
+        expect(filter.entityId).toBe(todoScope.entityId);
+        todoReads += 1;
+        return [];
+      },
+      applyMutation: unrequestedTodoWrite,
+      readCutoverState: unrequestedTodoWrite,
+      listMutationRecords: unrequestedTodoWrite,
+      importMutationRecords: unrequestedTodoWrite,
+      create: unrequestedTodoWrite,
+      get: unrequestedTodoWrite,
+      update: unrequestedTodoWrite,
+      delete: unrequestedTodoWrite,
+      writeList: unrequestedTodoWrite,
+      clear: unrequestedTodoWrite,
+    };
     const input: Parameters<typeof runSharedAgentTurn>[0] = {
       character: { name: "Eliza", system: "You are a concise assistant.", model: "qwen-3.8-27b" },
       history: publicRead
@@ -216,21 +253,26 @@ async function exercise(kind: "general" | "weather" | "weather-missing" | "priva
             },
           ]
         : [],
-      message: weatherRead
-        ? "What is the weather in Phoenix, AZ?"
-        : publicRead
-          ? `Search the web for ${publicTopic}?`
-          : "Search Gmail for API documentation invoices.",
-      capabilityText: weatherRead
-        ? "What is the weather in Phoenix, AZ?"
-        : publicRead
-          ? `Search the web for ${publicTopic}?`
-          : "Search Gmail for API documentation invoices.",
+      message: compoundMissing
+        ? "Show my todos and what is the weather in Phoenix, AZ?"
+        : weatherRead
+          ? "What is the weather in Phoenix, AZ?"
+          : publicRead
+            ? `Search the web for ${publicTopic}?`
+            : "Search Gmail for API documentation invoices.",
+      capabilityText: compoundMissing
+        ? "Show my todos and what is the weather in Phoenix, AZ?"
+        : weatherRead
+          ? "What is the weather in Phoenix, AZ?"
+          : publicRead
+            ? `Search the web for ${publicTopic}?`
+            : "Search Gmail for API documentation invoices.",
       execution: {
         agentKey,
         roomKey: agentKey,
         channel: { type: ChannelType.DM, source: "blooio" },
         authenticatedPersonalSharedUser: true,
+        ...(compoundMissing ? { todos: { scope: todoScope, store: todoStore } } : {}),
         google: async () => {
           binds += 1;
           if (publicRead) throw new Error("PUBLIC_READ_MUST_NOT_BIND_PRIVATE_GOOGLE");
@@ -278,8 +320,18 @@ async function exercise(kind: "general" | "weather" | "weather-missing" | "priva
       expect(turn.usage?.totalTokens).toBe(0);
     } else expect(modelCalls).toBeGreaterThan(0);
     expect(modelCalls).toBeLessThanOrEqual(12);
+    if (compoundMissing) {
+      expect(todoReads).toBeGreaterThan(0);
+      expect(turn.actionResults).toContainEqual(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({ actionName: "TODO", op: "list" }),
+        }),
+      );
+      expect(turn.reply).toContain("todo");
+    }
     if (publicRead) {
-      expect(webRegistered).toBe(kind !== "weather-missing");
+      expect(webRegistered).toBe(kind === "general" || kind === "weather");
       expect(googleRegistered).toBe(false);
       expect(googleCapabilityOffered).toBe(false);
       expect(publicCalls).toBe(weatherRead ? 0 : 2);
@@ -329,6 +381,7 @@ test("actual Core keeps complete public Google queries separate from consented o
   await exercise("general");
   await exercise("weather");
   await exercise("weather-missing");
+  await exercise("compound-missing");
   await exercise("private");
 });
 const initializeOriginal = AgentRuntime.prototype.initialize;

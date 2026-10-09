@@ -1287,7 +1287,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         throw new Error("Eliza Shared runtime initialized without its GENERATE_MEDIA action");
       }
     }
-    if (publicSearchIntent?.kind === "prefetched" && !preflightWebSearchResult) {
+    if (
+      publicSearchIntent?.kind === "prefetched" &&
+      !preflightWebSearchResult &&
+      !privateCapabilityIntent
+    ) {
       // A missing server receipt is not permission to search from private history
       // or read Google instead. No model/public/private provider has dispatched.
       const reply = finalizeSharedRealtimeReply("", undefined);
