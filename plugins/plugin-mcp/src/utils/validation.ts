@@ -1,8 +1,8 @@
 /**
  * Validators for model-produced tool/resource selections and the feedback prompts
- * used to re-prompt on failure. A selection must target a connected server and an
- * existing tool/resource, and tool arguments must satisfy the tool's own input
- * schema; an explicit noTool/noResourceAvailable signal is accepted as valid.
+ * used to re-prompt on failure. Selections target a connected server. Tools must
+ * exist and their arguments must satisfy the tool schema; resource URIs are
+ * resolved by the server. Explicit noTool/noResourceAvailable signals are valid.
  */
 
 import { createRequire } from "node:module";
