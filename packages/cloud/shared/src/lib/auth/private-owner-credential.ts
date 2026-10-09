@@ -3,13 +3,14 @@ import {
   readPrivateOwnerAccountAuthority,
   readPrivateOwnerApiKeyAuthority,
 } from "../../db/repositories/private-owner-credential";
+import type { Variables } from "../../types/cloud-worker-env";
 import { ForbiddenError } from "../api/cloud-worker-errors";
 import type { MobileAppAuthRuntimeEnv } from "../services/mobile-app-auth";
 
 export async function requirePrivateOwnerCredential(args: {
   userId: string;
   organizationId: string;
-  authMethod: "session" | "api_key" | "wallet_signature" | undefined;
+  authMethod: Variables["authMethod"];
   apiKeyId?: string;
   apiKeyHash?: string;
   env: MobileAppAuthRuntimeEnv;
@@ -19,6 +20,8 @@ export async function requirePrivateOwnerCredential(args: {
     if (!(await readPrivateOwnerAccountAuthority(args))) throw refuse();
     return;
   }
+  // An unproven anonymous-method principal is not an owner credential.
+  // Signed-in anonymous account rows still use the legitimate session branch.
   if (args.authMethod !== "api_key" || !args.apiKeyId || !args.apiKeyHash) throw refuse();
   const rows = await readPrivateOwnerApiKeyAuthority({
     apiKeyId: args.apiKeyId,

@@ -30,7 +30,7 @@ const pg = new PGlite();
 const database = drizzle(pg);
 const originalDb = { ...realDb },
   originalAuth = { ...realAuth };
-let authMethod: "session" | "api_key" = "api_key";
+let authMethod: AppEnv["Variables"]["authMethod"] = "api_key";
 let historyConsumers = 0,
   namespaceCalls = 0;
 const savedFetch = globalThis.fetch;
@@ -78,9 +78,16 @@ app.route("/google", statusRoute);
 app.route("/capture", captureRoute);
 const quote = (value: string) => `"${value.replaceAll('"', '""')}"`;
 beforeAll(async () => {
-  globalThis.fetch = async () => {
-    throw new Error("NETWORK_FORBIDDEN");
-  };
+  globalThis.fetch = Object.assign(
+    async () => {
+      throw new Error("NETWORK_FORBIDDEN");
+    },
+    {
+      preconnect: () => {
+        throw new Error("NETWORK_FORBIDDEN");
+      },
+    },
+  );
   const enums = new Set<string>();
   for (const table of [
     organizations,
@@ -171,7 +178,7 @@ function request(path: string) {
           : { Cookie: "steward-token=synthetic" },
     }),
     env(),
-    { waitUntil() {}, passThroughOnException() {} },
+    { props: {}, waitUntil() {}, passThroughOnException() {} },
   );
 }
 async function mobile() {
@@ -213,6 +220,8 @@ test("standard owner keys and already-authenticated Steward/phone sessions retai
     "UPDATE users SET is_anonymous=true,expires_at=NOW()+interval '1 day'",
   );
   expect((await request(`/admit/${AGENT}`)).status).toBe(200);
+  authMethod = "anonymous";
+  expect((await request(`/admit/${AGENT}`)).status).toBe(403);
   expect(historyConsumers).toBe(3);
 });
 test("real acknowledged first-party mobile lineage outlives authorization-code TTL", async () => {
