@@ -156,8 +156,11 @@ export function convertMarkdownToTelegram(markdown: string): string {
   //    (Using negative lookbehind/lookahead to avoid matching bold **)
   //    As in CommonMark, a `*` followed by whitespace cannot open italic and
   //    one preceded by whitespace cannot close it, so `2 * 3 * 4` stays literal.
+  //    A preceding backslash means an already-escaped delimiter and never
+  //    opens or closes italic — the rule the underscore step below states —
+  //    so `\*not italic\*` stays literal.
   converted = converted.replace(
-    /(?<!\*)\*(?!\s)([^*\n]+)(?<!\s)\*(?!\*)/g,
+    /(?<!\*|\\)\*(?!\s)([^*\n]+)(?<!\s|\\)\*(?!\*)/g,
     (_match, content) => {
       const formattedContent = escapePlainText(content);
       const formatted = `_${formattedContent}_`;
