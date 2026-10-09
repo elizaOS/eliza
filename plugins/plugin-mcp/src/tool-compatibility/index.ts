@@ -8,7 +8,10 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { detectModelProvider, type McpToolCompatibility } from "./base";
 import { AnthropicMcpCompatibility } from "./providers/anthropic";
 import { GoogleMcpCompatibility } from "./providers/google";
-import { OpenAIMcpCompatibility } from "./providers/openai";
+import {
+  OpenAIMcpCompatibility,
+  OpenAIReasoningMcpCompatibility,
+} from "./providers/openai";
 
 export {
   type ArrayConstraints,
@@ -30,7 +33,11 @@ export async function createMcpToolCompatibility(
 
   switch (modelInfo.provider) {
     case "openai": {
-      return new OpenAIMcpCompatibility(modelInfo);
+      // Reasoning models reject constraint keywords the plain class keeps;
+      // the hosted factory already selects the reasoning policy for them.
+      return modelInfo.isReasoningModel
+        ? new OpenAIReasoningMcpCompatibility(modelInfo)
+        : new OpenAIMcpCompatibility(modelInfo);
     }
     case "anthropic": {
       return new AnthropicMcpCompatibility(modelInfo);
@@ -50,7 +57,9 @@ export function createMcpToolCompatibilitySync(
 
   switch (modelInfo.provider) {
     case "openai": {
-      return new OpenAIMcpCompatibility(modelInfo);
+      return modelInfo.isReasoningModel
+        ? new OpenAIReasoningMcpCompatibility(modelInfo)
+        : new OpenAIMcpCompatibility(modelInfo);
     }
     case "anthropic": {
       return new AnthropicMcpCompatibility(modelInfo);
