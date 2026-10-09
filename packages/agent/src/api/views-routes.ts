@@ -878,13 +878,25 @@ export async function handleViewsRoutes(
         );
         return true;
       }
-      const settled = viewInteractionHost(viewRuntime, ctx.hostKey).waitFor(
-        handoffId,
-        originatingClientId,
-        entry,
-        120000,
-        { ownerId, navigation: true },
-      );
+      let settled: Promise<ViewInteractResult>;
+      try {
+        settled = viewInteractionHost(viewRuntime, ctx.hostKey).waitFor(
+          handoffId,
+          originatingClientId,
+          entry,
+          120000,
+          { ownerId, navigation: true },
+        );
+      } catch (cause) {
+        if (
+          !(cause instanceof ElizaError) ||
+          (cause.code !== "VIEW_NAVIGATION_BUSY" &&
+            cause.code !== "VIEW_REQUEST_PENDING")
+        )
+          throw cause;
+        error(res, cause.message, 409);
+        return true;
+      }
       // Return the handoff before waiting for its renderer; awaiting here deadlocks.
       void settled
         .then((result) => {
