@@ -34,9 +34,9 @@ app.post("/read", bodyLimit({ maxSize: 4096 }), async (c) => {
     return c.json({ error: "Invalid capture request" }, 400);
   }
   const request = body as Record<string, unknown>;
-  if (Object.keys(request).sort().join(",") !== "captureId,roomKey,sessionId" ||
+  if (!["roomKey,sessionId", "captureId,roomKey,sessionId"].includes(Object.keys(request).sort().join(",")) ||
       typeof request.sessionId !== "string" || !UUID.test(request.sessionId) ||
-      typeof request.captureId !== "string" || !UUID.test(request.captureId) ||
+      (request.captureId !== undefined && (typeof request.captureId !== "string" || !UUID.test(request.captureId))) ||
       typeof request.roomKey !== "string" || request.roomKey.trim().length === 0 ||
       request.roomKey.length > 512 || /[\u0000-\u001f\u007f]/u.test(request.roomKey)) {
     return c.json({ error: "Invalid capture request" }, 400);
@@ -56,7 +56,7 @@ app.post("/read", bodyLimit({ maxSize: 4096 }), async (c) => {
       "https://shared-runtime.internal/owner-capture/read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: policy.sessionId, captureId: request.captureId, readerUserId: user.id }),
+        body: JSON.stringify({ sessionId: policy.sessionId, ...(request.captureId === undefined ? {} : { captureId: request.captureId }), readerUserId: user.id }),
         signal: AbortSignal.timeout(20_000),
       },
     );
