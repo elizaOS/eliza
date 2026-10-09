@@ -449,11 +449,14 @@ jobs:
             packages/cloud/shared packages/core \
             package.json bun.lock bunfig.toml turbo.json \
             tsconfig.json tsconfig.base.json .github/actions/setup-bun-workspace \
-            .github/workflows/pr-validation.yml; then
+            .github/actions/setup-public-image-cache .github/workflows/pr-validation.yml; then
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
+      - name: Configure Docker Hub cache for required PostgreSQL
+        if: steps.authority-diff.outputs.run == 'true'
+        uses: ./.github/actions/setup-public-image-cache
       - if: steps.authority-diff.outputs.run == 'true'
         uses: ./.github/actions/setup-bun-workspace
         with:

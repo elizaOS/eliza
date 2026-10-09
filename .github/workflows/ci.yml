@@ -86,22 +86,32 @@ jobs:
     needs: preflight
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_PASSWORD: login_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       LOGIN_TEST_DATABASE_URL: postgres://postgres:login_test@127.0.0.1:5432/postgres
+      LOGIN_TEST_POSTGRES_CONTAINER: eliza-login-postgres-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      # GitHub starts services before steps, so configure this fresh runner's
+      # daemon before pulling the owned PostgreSQL container. Keep Hub fallback.
+      - name: Configure runner Docker Hub cache
+        uses: ./.github/actions/setup-public-image-cache
+      - name: Start owned PostgreSQL for login contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --pull=always --detach --name "$LOGIN_TEST_POSTGRES_CONTAINER" \
+            --env POSTGRES_PASSWORD=login_test --publish 5432:5432 \
+            --health-cmd "pg_isready -U postgres" --health-interval 10s \
+            --health-timeout 5s --health-retries 5 postgres:17
+          for ((attempt = 0; attempt < 45; attempt++)); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' "$LOGIN_TEST_POSTGRES_CONTAINER")"
+            if [ "$status" = healthy ]; then exit 0; fi
+            if [ "$status" = unhealthy ]; then break; fi
+            sleep 2
+          done
+          docker logs "$LOGIN_TEST_POSTGRES_CONTAINER"
+          echo "::error::Owned PostgreSQL container did not become healthy within 90 seconds."
+          exit 1
       - uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -118,6 +128,9 @@ jobs:
         run: bunx playwright install --with-deps chromium
       - name: Browser and required PostgreSQL contracts
         run: bun run --cwd packages/auth test:integration
+      - name: Remove owned login PostgreSQL container
+        if: always()
+        run: docker rm --force --volumes "$LOGIN_TEST_POSTGRES_CONTAINER" >/dev/null 2>&1 || true
   required:
     name: All Tests Passed
     if: ${{ always() && !cancelled() }}
