@@ -339,7 +339,7 @@ async function handleReadResource(
           message,
           callback,
           input: resourceSelection,
-          validationFn: (data) => validateResourceSelection(data),
+          validationFn: (data) => validateResourceSelection(data, resourceState),
           createFeedbackPromptFn: (originalResponse, errorMessage, state, userMessage) =>
             createResourceSelectionFeedbackPrompt(
               typeof originalResponse === "string"
