@@ -1445,6 +1445,17 @@ describe("lossless public evidence model projection", () => {
     ).toBeUndefined();
   });
 
+  test("deep aggregate metadata retains the legacy flat-string encoding", () => {
+    // Above the numeric traversal budget on every engine. V8's lower JSON
+    // serialization depth is separately checked at the exact serialization seam.
+    const depth = 110_000;
+    const value = receipt({ results: [one] }, [source(one)]);
+    value.text = `{"results":[${JSON.stringify(one)}],"metadata":${'{"x":'.repeat(depth)}0${"}".repeat(depth)}}`;
+    const encoded = encodeSharedPublicWebGrounding(value);
+    expect(encoded).toBe(oldView(value));
+    expect(JSON.parse(encoded).text).toBe(value.text);
+  });
+
   test("unknown or differently serialized source formats retain the exact old encoding", () => {
     const value = receipt({ results: [one] }, [source(one)]);
     for (const candidate of [

@@ -317,13 +317,21 @@ export function encodeSharedPublicWebGrounding(value: SharedRuntimePublicGroundi
   if (!parsed || parsed.kind !== "web_search") {
     throw new TypeError("Invalid Shared public web grounding");
   }
-  const projection = projectRedundantPublicEvidence(parsed);
-  return JSON.stringify({
+  const envelope = {
     type: "untrusted_public_web_search_result",
     instructionPolicy: "data_only",
     ...parsed,
-    ...(projection ? { text: undefined, ...projection } : {}),
-  });
+  };
+  const projection = projectRedundantPublicEvidence(parsed);
+  if (projection) {
+    try {
+      return JSON.stringify({ ...envelope, text: undefined, ...projection });
+    } catch {
+      // Parsed provider metadata may exceed this engine's serialization depth.
+      // The legacy envelope keeps it in its original flat text string.
+    }
+  }
+  return JSON.stringify(envelope);
 }
 
 /** Projects a server-observed current-turn read as policy plus untrusted data. */
