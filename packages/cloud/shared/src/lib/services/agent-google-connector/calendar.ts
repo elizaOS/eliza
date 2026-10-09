@@ -295,30 +295,16 @@ export async function fetchManagedGoogleCalendarFeed(args: {
   timeMin: string;
   timeMax: string;
   timeZone: string;
-  /** Optional caller budget; omitted preserves the general dashboard feed. */
-  limits?: { maxEvents: number; maxPages: number };
 }): Promise<{
-  truncated?: boolean;
   calendarId: string;
   events: ManagedGoogleCalendarEvent[];
   syncedAt: string;
 }> {
-  if (
-    args.limits &&
-    (!Number.isSafeInteger(args.limits.maxEvents) ||
-      args.limits.maxEvents < 1 ||
-      args.limits.maxEvents > MAX_GOOGLE_CALENDAR_FEED_EVENTS ||
-      !Number.isSafeInteger(args.limits.maxPages) ||
-      args.limits.maxPages < 1 ||
-      args.limits.maxPages > 10)
-  ) {
-    fail(400, "Invalid Google Calendar read budget.");
-  }
   const baseParams = new URLSearchParams({
     singleEvents: "true",
     orderBy: "startTime",
     showDeleted: "false",
-    maxResults: String(args.limits ? Math.min(2500, args.limits.maxEvents) : 2500),
+    maxResults: "2500",
     timeMin: args.timeMin,
     timeMax: args.timeMax,
     fields:
@@ -329,14 +315,8 @@ export async function fetchManagedGoogleCalendarFeed(args: {
   const events: ManagedGoogleCalendarEvent[] = [];
   let pageToken: string | undefined;
   const seenPageTokens = new Set<string>();
-  let pages = 0;
-  let truncated = false;
   do {
-    pages += 1;
     const params = new URLSearchParams(baseParams);
-    if (args.limits) {
-      params.set("maxResults", String(Math.min(2500, args.limits.maxEvents - events.length)));
-    }
     if (pageToken) {
       params.set("pageToken", pageToken);
     }
@@ -352,12 +332,6 @@ export async function fetchManagedGoogleCalendarFeed(args: {
       items?: GoogleCalendarApiEvent[];
       nextPageToken?: string;
     };
-    if (args.limits && (parsed.items?.length ?? 0) > Number(params.get("maxResults"))) {
-      fail(
-        502,
-        "Google Calendar returned more events than the requested page limit; narrow the requested time range.",
-      );
-    }
     const normalizedPage = (parsed.items ?? [])
       .map((event) => normalizeGoogleCalendarEvent(args.calendarId, event, args.timeZone))
       .filter((event): event is ManagedGoogleCalendarEvent => event !== null);
@@ -376,16 +350,11 @@ export async function fetchManagedGoogleCalendarFeed(args: {
       seenPageTokens.add(nextPageToken);
     }
     pageToken = nextPageToken;
-    if (args.limits && (pages >= args.limits.maxPages || events.length >= args.limits.maxEvents)) {
-      truncated ||= Boolean(pageToken);
-      break;
-    }
   } while (pageToken);
 
   return {
     calendarId: args.calendarId,
     events,
-    ...(args.limits ? { truncated } : {}),
     syncedAt: new Date().toISOString(),
   };
 }

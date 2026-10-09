@@ -1119,16 +1119,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
             : traceable;
         })
       : undefined;
-  const publicWebSearchAction = webSearchEnabled
-    ? (webSearchPlugin ?? webSearchEdgePlugin).actions?.find(
-        (action) => action.name === webSearchEdgeAction.name,
-      )
-    : undefined;
   const googlePlugin =
-    actionsEnabled && input.execution?.google && !publicSearchIntent && !publicWebSearchAction
+    actionsEnabled && input.execution?.google && !publicSearchIntent
       ? createSharedGoogleContextPlugin(input.execution.google)
       : undefined;
-  if (webSearchPlugin && publicWebSearchAction && publicSearchIntent?.kind === "general") {
+  if (webSearchPlugin && publicSearchIntent?.kind === "general") {
     webSearchPlugin.responseHandlerEvaluators = [
       {
         name: "shared.explicit_public_search",
@@ -1273,8 +1268,9 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         publicSearchIntent &&
         runtime.actions.some((action) => action.name === GOOGLE_CONTEXT_ACTION)
       ) {
-        throw new Error(
+        throw new ElizaError(
           "Eliza Shared public-search runtime must not register private Google actions",
+          { code: "SHARED_PUBLIC_SEARCH_PRIVATE_ACTION" },
         );
       }
       if (input.execution?.todos && !runtime.actions.some((action) => action.name === "TODO")) {

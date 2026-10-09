@@ -58,38 +58,6 @@ afterEach(() => {
 });
 
 describe("fetchManagedGoogleCalendarFeed pagination", () => {
-  test("Shared optional budget stops at one page and declares remaining data", async () => {
-    const requestedUrls: string[] = [];
-    installFetchSequence((_i, input) => {
-      requestedUrls.push(String(input));
-      return page(
-        "more",
-        Array.from({ length: 20 }, (_, j) => calendarEvent(j)),
-      );
-    });
-    const result = await fetchManagedGoogleCalendarFeed({
-      ...FEED_ARGS,
-      limits: { maxEvents: 20, maxPages: 1 },
-    });
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-    expect(new URL(requestedUrls[0]).searchParams.get("maxResults")).toBe("20");
-    expect(result.events).toHaveLength(20);
-    expect(result.truncated).toBe(true);
-  });
-
-  test("Shared rejects oversized provider pages without discarding events", async () => {
-    installFetchSequence(() =>
-      page(
-        "more",
-        Array.from({ length: 21 }, (_, j) => calendarEvent(j)),
-      ),
-    );
-    await expect(
-      fetchManagedGoogleCalendarFeed({ ...FEED_ARGS, limits: { maxEvents: 20, maxPages: 1 } }),
-    ).rejects.toThrow("more events than the requested page limit");
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-  });
-
   test("complete results survive the former twenty-event boundary", async () => {
     installFetchSequence((i) =>
       page(

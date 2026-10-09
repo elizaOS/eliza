@@ -27,45 +27,20 @@ export type SharedGoogleReadRequest =
 function bounded(value: string, maximum: number): string {
   const result = value.trim();
   if (!result || result.length > maximum || /[\p{C}]/u.test(result)) {
-    throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", {
-      code: "SHARED_GOOGLE_INVALID_INPUT",
-    });
+    throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", { code: "SHARED_GOOGLE_INVALID_INPUT" });
   }
   return result;
 }
 
-function requireCompleteText(value: string, maximum: number, field: string): void {
-  if (value.length > maximum) {
-    throw new ElizaError(
-      `Selected Google ${field} exceeds ${maximum} characters. No partial content was returned. Narrow the selection or choose a smaller item.`,
-      { code: "SHARED_GOOGLE_CONTENT_LIMIT_EXCEEDED" },
-    );
-  }
-}
-
-function requirePageLimit(count: number, maximum: number): void {
-  if (count > maximum) {
-    throw new ElizaError(
-      "Google returned more records than the requested page limit. No partial result was returned. Narrow the selection.",
-      { code: "SHARED_GOOGLE_CONTENT_LIMIT_EXCEEDED" },
-    );
-  }
-}
-
 function validateReadRequest(value: unknown): SharedGoogleReadRequest {
   if (!value || typeof value !== "object")
-    throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", {
-      code: "SHARED_GOOGLE_INVALID_INPUT",
-    });
+    throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", { code: "SHARED_GOOGLE_INVALID_INPUT" });
   const request = value as Record<string, unknown>;
   if (request.kind === "gmail_search" && typeof request.query === "string") {
     return { kind: "gmail_search", query: bounded(request.query, 256) };
   }
   if (request.kind === "gmail_message" && typeof request.messageId === "string") {
-    return {
-      kind: "gmail_message",
-      messageId: bounded(request.messageId, 256),
-    };
+    return { kind: "gmail_message", messageId: bounded(request.messageId, 256) };
   }
   if (
     request.kind === "calendar" &&
@@ -87,9 +62,7 @@ function validateReadRequest(value: unknown): SharedGoogleReadRequest {
       timeZone: bounded(request.timeZone, 100),
     };
   }
-  throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", {
-    code: "SHARED_GOOGLE_INVALID_INPUT",
-  });
+  throw new ElizaError("SHARED_GOOGLE_INVALID_INPUT", { code: "SHARED_GOOGLE_INVALID_INPUT" });
 }
 
 export function createSharedGoogleReadPort(
@@ -125,11 +98,7 @@ export function createSharedGoogleReadPort(
           code: "SHARED_GOOGLE_EXPLICIT_GRANT_REQUIRED",
         });
       await owner.authorizePrivateRead(request);
-      const selected = {
-        ...scope,
-        grantId,
-        personalContextRead: true as const,
-      };
+      const selected = { ...scope, grantId, personalContextRead: true as const };
       const status = await deps.getManagedGoogleConnectorStatus(selected);
       const capability =
         request.kind === "calendar" ? "google.calendar.read" : "google.gmail.triage";
@@ -143,32 +112,34 @@ export function createSharedGoogleReadPort(
         });
       }
       if (request.kind === "gmail_search") {
-        // Cost: one list page and at most five metadata reads; no inbox drain.
-        const result = await deps.fetchManagedGoogleGmailSearch({
+        let result = await deps.fetchManagedGoogleGmailSearch({
           ...selected,
-          query: request.query,
-          maxResults: 5,
+          query: bounded(request.query, 256),
+          maxResults: 50,
         });
-        requirePageLimit(result.messages.length, 5);
-        for (const message of result.messages) {
-          requireCompleteText(message.subject, 256, "message subject");
-          requireCompleteText(message.from, 256, "message sender");
-          requireCompleteText(message.snippet, 512, "message snippet");
+        const messages = [...result.messages];
+        const seenTokens = new Set<string>();
+        while (result.nextPageToken) {
+          const pageToken = result.nextPageToken;
+          if (seenTokens.has(pageToken)) {
+            throw new ElizaError("Google Gmail search repeated a page token", {
+              code: "SHARED_GOOGLE_PAGINATION_FAILED",
+            });
+          }
+          seenTokens.add(pageToken);
+          result = await deps.fetchManagedGoogleGmailSearch({
+            ...selected,
+            query: request.query,
+            maxResults: 50,
+            pageToken,
+          });
+          messages.push(...result.messages);
         }
-        const hasMore = Boolean(result.nextPageToken);
         return {
           kind: "private_google_gmail_search" as const,
           untrustedContent: true as const,
           observedAt: result.syncedAt,
-          hasMore,
-          truncated: hasMore,
-          messages: result.messages.map((message) => ({
-            id: message.externalId,
-            subject: message.subject,
-            from: message.from,
-            snippet: message.snippet,
-            receivedAt: message.receivedAt,
-          })),
+          messages,
         };
       }
       if (request.kind === "gmail_message") {
@@ -176,45 +147,25 @@ export function createSharedGoogleReadPort(
           ...selected,
           messageId: bounded(request.messageId, 256),
         });
-        requireCompleteText(result.message.subject, 256, "message subject");
-        requireCompleteText(result.bodyText, 8_000, "message body");
         return {
           kind: "private_google_gmail_message" as const,
           untrustedContent: true as const,
           id: result.message.externalId,
-          subject: result.message.subject,
-          bodyText: result.bodyText,
-          truncated: false,
+          ...result,
         };
       }
       const result = await deps.fetchManagedGoogleCalendarFeed({
         ...selected,
         calendarId: "primary",
-        // Cost: one page, at most twenty events, independent of window length.
-        limits: { maxEvents: 20, maxPages: 1 },
         timeMin: request.timeMin,
         timeMax: request.timeMax,
         timeZone: request.timeZone,
       });
-      requirePageLimit(result.events.length, 20);
-      for (const event of result.events) {
-        requireCompleteText(event.title, 256, "event title");
-        requireCompleteText(event.location, 256, "event location");
-      }
       return {
         kind: "private_google_calendar" as const,
         untrustedContent: true as const,
         observedAt: result.syncedAt,
-        hasMore: result.truncated === true,
-        truncated: result.truncated === true,
-        events: result.events.map((event) => ({
-          id: event.externalId,
-          title: event.title,
-          startAt: event.startAt,
-          endAt: event.endAt,
-          isAllDay: event.isAllDay,
-          location: event.location,
-        })),
+        events: result.events,
       };
     },
   };
