@@ -23,18 +23,10 @@ export type ThreadSummary = {
 
 const INBOUND_SMS_TYPE = 1;
 
-/**
- * Message and thread ids are numeric provider row ids carried as strings.
- * A lexicographic compare orders "9" after "10", which breaks the date
- * tie-breaks below; compare numerically when both ids parse as numbers.
- */
+// Numeric collation orders provider row IDs without losing 64-bit precision.
+// It also gives mixed numeric/text IDs a consistent ordering.
 function compareIds(a: string, b: string): number {
-  const aNum = Number(a);
-  const bNum = Number(b);
-  if (Number.isFinite(aNum) && Number.isFinite(bNum) && a.trim() !== "" && b.trim() !== "") {
-    return aNum - bNum;
-  }
-  return a.localeCompare(b);
+  return a.localeCompare(b, undefined, { numeric: true });
 }
 
 export function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
