@@ -439,14 +439,19 @@ function redisTelegramDeliveryLedger(
   const chunkKey = (chunkIndex: number, chunkDigest: string) =>
     `${dedupKey}:chunk:${chunkIndex}:${chunkDigest}`;
   const decodeChunk = (
-    encoded: string | null,
+    encoded: unknown,
   ): { state: TelegramDeliveryState; providerMessageId?: string } | null => {
     if (encoded === "uncertain" || encoded === "delivered") {
       return { state: encoded };
     }
     if (!encoded) return null;
     try {
-      const parsed = JSON.parse(encoded) as {
+      // Every GatewayRedis adapter JSON-parses on get(), so a stored JSON
+      // record arrives already parsed; accept both shapes, the way
+      // parseHeldWebhook in cutover-hold.ts does.
+      const parsed = (
+        typeof encoded === "string" ? JSON.parse(encoded) : encoded
+      ) as {
         state?: unknown;
         providerMessageId?: unknown;
       };
@@ -465,6 +470,17 @@ function redisTelegramDeliveryLedger(
     }
     return null;
   };
+  // The stored plan reads back as an array through the JSON-parsing
+  // adapters and as its JSON string through a raw one; compare by content
+  // either way, or an identical plan re-registration always conflicts.
+  const planMatches = (
+    existing: unknown,
+    chunkDigests: readonly string[],
+  ): boolean =>
+    Array.isArray(existing)
+      ? existing.length === chunkDigests.length &&
+        existing.every((digest, index) => digest === chunkDigests[index])
+      : existing === JSON.stringify(chunkDigests);
   return {
     async read() {
       const state = await redis.get<string>(dedupKey);
@@ -486,28 +502,28 @@ function redisTelegramDeliveryLedger(
     },
     async preparePlan(chunkDigests) {
       const encoded = JSON.stringify(chunkDigests);
-      const existing = await redis.get<string>(planKey);
+      const existing = await redis.get(planKey);
       if (existing !== null) {
-        return existing === encoded ? "prepared" : "conflict";
+        return planMatches(existing, chunkDigests) ? "prepared" : "conflict";
       }
       const claimed = await redis.set(planKey, encoded, {
         nx: true,
         ex: TELEGRAM_DELIVERY_TTL_SECONDS,
       });
       if (claimed) return "prepared";
-      return (await redis.get<string>(planKey)) === encoded
+      return planMatches(await redis.get(planKey), chunkDigests)
         ? "prepared"
         : "conflict";
     },
     async readChunk(chunkIndex, chunkDigest) {
       return (
-        decodeChunk(await redis.get<string>(chunkKey(chunkIndex, chunkDigest)))
+        decodeChunk(await redis.get(chunkKey(chunkIndex, chunkDigest)))
           ?.state ?? null
       );
     },
     async readChunkProviderMessageId(chunkIndex, chunkDigest) {
       return (
-        decodeChunk(await redis.get<string>(chunkKey(chunkIndex, chunkDigest)))
+        decodeChunk(await redis.get(chunkKey(chunkIndex, chunkDigest)))
           ?.providerMessageId ?? null
       );
     },
