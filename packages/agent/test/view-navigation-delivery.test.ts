@@ -1,5 +1,9 @@
 /** Real loopback HTTP and registered-view delivery, with actor roles and renderer targets isolated. */
-import { createServer } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 import {
   type Action,
@@ -26,6 +30,7 @@ import {
   type ToolDefinition,
   type UUID,
 } from "@elizaos/core";
+import { findViewActionHandoff } from "@elizaos/core/protocol";
 import { createMockRuntime } from "@elizaos/testing";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -54,14 +59,19 @@ import { notesPlugin } from "../../../plugins/plugin-notes/src/plugin.ts";
 import { briefAction } from "../../../plugins/plugin-personal-assistant/src/actions/brief.ts";
 import { createTrackedWorkRecapDirectRoutingRule } from "../../../plugins/plugin-personal-assistant/src/lifeops/briefing/direct-routing.ts";
 import { viewsAction } from "../src/actions/views.ts";
+import { registerInProcessApi } from "../src/api/in-process-api.ts";
 import { normalizeWsClientId } from "../src/api/server-helpers-auth.ts";
+import { closeViewInteractionHost } from "../src/api/view-interaction-host.ts";
 import {
   closeRuntimeViewRegistry,
   getView,
   registerBuiltinViews,
   registerPluginViews,
 } from "../src/api/views-registry.ts";
-import { handleViewsRoutes } from "../src/api/views-routes.ts";
+import {
+  getCurrentViewState,
+  handleViewsRoutes,
+} from "../src/api/views-routes.ts";
 import { createElizaPlugin } from "../src/runtime/eliza-plugin.ts";
 import { installPromptOptimizations } from "../src/runtime/prompt-optimization.ts";
 import {
@@ -91,9 +101,11 @@ async function fixture(
   delivered = 1,
   suppliedRuntime?: IAgentRuntime,
   handleTurn?: () => Promise<unknown>,
+  inProcess = false,
 ) {
   const frames: Array<{ client: string; frame: object }> = [];
   let requests = 0;
+  let kernelRequests = 0;
   const runtime =
     suppliedRuntime ??
     ({
@@ -133,9 +145,15 @@ async function fixture(
     { pluginDir: process.cwd(), indexEmbeddings: false },
   );
   const hostKey = {};
-  const server = createServer((req, res) => {
+  const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
     requests++;
-    if (req.headers.authorization !== "Bearer local-navigation-test") {
+    const otherOwner =
+      inProcess &&
+      req.headers.authorization === "Bearer other-navigation-owner";
+    if (
+      req.headers.authorization !== "Bearer local-navigation-test" &&
+      !otherOwner
+    ) {
       res.writeHead(401).end();
       return;
     }
@@ -154,7 +172,7 @@ async function fixture(
         .catch((error) => res.writeHead(500).end(String(error)));
       return;
     }
-    void handleViewsRoutes({
+    await handleViewsRoutes({
       req,
       res,
       method: req.method ?? "GET",
@@ -162,7 +180,11 @@ async function fixture(
       url,
       hostKey,
       runtime,
-      callerAuthorization: { ok: true, role: "OWNER", identityId: owner },
+      callerAuthorization: {
+        ok: true,
+        role: "OWNER",
+        identityId: otherOwner ? "55555555-5555-4555-8555-555555555555" : owner,
+      },
       json: (response, body) => {
         response.writeHead(200, { "Content-Type": "application/json" });
         response.end(JSON.stringify(body));
@@ -181,11 +203,24 @@ async function fixture(
     }).catch((error) => {
       res.writeHead(500).end(String(error));
     });
+  };
+  const server = createServer((req, res) => {
+    void handleRequest(req, res);
   });
+  const unregister = inProcess
+    ? registerInProcessApi(runtime, {
+        handle: async (req, res) => {
+          kernelRequests++;
+          await handleRequest(req, res);
+        },
+      })
+    : undefined;
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   vi.stubEnv("ELIZA_API_PORT", String((server.address() as AddressInfo).port));
   vi.stubEnv("ELIZA_API_TOKEN", "local-navigation-test");
   cleanup.push(async () => {
+    unregister?.();
+    closeViewInteractionHost(hostKey);
     closeRuntimeViewRegistry(runtime);
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -194,6 +229,7 @@ async function fixture(
     runtime,
     frames,
     requests: () => requests,
+    kernelRequests: () => kernelRequests,
     hostKey,
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
   };
@@ -2190,4 +2226,435 @@ describe("inferred visual scope invalidation", () => {
       );
     },
   );
+});
+
+describe("native completed-action navigation", () => {
+  it("retires an unclaimed prepared navigation with its owning host", async () => {
+    const f = await fixture(0, undefined, undefined, true);
+    vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+    };
+    await selectNavigation(f, input);
+    const result = await show(f.runtime, "notes", input);
+    if (!result || typeof result === "boolean" || !result.values)
+      throw Error("Missing prepared result");
+    closeViewInteractionHost(f.hostKey);
+    const response = await fetch(f.url + "/api/views/interact-claim", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer local-navigation-test",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(result.values.navigationBinding),
+    });
+    expect(response.ok).toBe(false);
+    expect(
+      getCurrentViewState(f.runtime, {
+        hostKey: f.hostKey,
+        clientId: "origin-client",
+      }),
+    ).toBeNull();
+    expect(f.frames).toHaveLength(0);
+  });
+
+  it("prepares through the registered kernel and commits only an exact owner/renderer claim and switch result", async () => {
+    const f = await fixture(0, undefined, undefined, true);
+    vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+      uiView: "chat",
+    };
+    await selectNavigation(f, input);
+    const events = vi.spyOn(f.runtime, "emitEvent");
+    const result = await show(f.runtime, "notes", input);
+    expect(result).toMatchObject({
+      success: true,
+      verifiedUserFacing: true,
+      data: { navigation: { status: "prepared" } },
+      values: { navigationPrepared: true, completedActionDelivered: false },
+    });
+    expect(
+      result && typeof result !== "boolean" && result.userFacingText,
+    ).not.toContain("Opened");
+    expect(f.kernelRequests()).toBe(1);
+    expect(f.frames).toHaveLength(0);
+    const scope = { hostKey: f.hostKey, clientId: "origin-client" };
+    expect(getCurrentViewState(f.runtime, scope)).toBeNull();
+    if (
+      !result ||
+      typeof result === "boolean" ||
+      !result.values ||
+      !isObjectRecord(result.values.navigationBinding)
+    )
+      throw Error("Missing prepared binding");
+    const binding = result.values.navigationBinding;
+    const post = (
+      path: string,
+      body: unknown,
+      authorization = "Bearer local-navigation-test",
+    ) =>
+      fetch(f.url + path, {
+        method: "POST",
+        headers: { authorization, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect(
+      (
+        await post(
+          "/api/views/interact-claim",
+          binding,
+          "Bearer other-navigation-owner",
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await post("/api/views/interact-claim", {
+          ...binding,
+          clientId: "other-client",
+        })
+      ).status,
+    ).toBe(409);
+    const claimed = await post("/api/views/interact-claim", binding);
+    expect(claimed.status).toBe(200);
+    const { claimId } = await claimed.json();
+    // Request IDs share one host map, so a different renderer or owner must
+    // not replace this claim by colliding with its caller-provided ID.
+    for (const authorization of [
+      "Bearer local-navigation-test",
+      "Bearer other-navigation-owner",
+    ])
+      expect(
+        (
+          await post(
+            "/api/views/notes/navigate",
+            {
+              clientId: "other-client",
+              delivery: "completed-action",
+              completedActionHandoffId: binding.requestId,
+              viewType: "gui",
+              prepareOnly: true,
+            },
+            authorization,
+          )
+        ).status,
+      ).toBe(409);
+    // Once execution is claimed, a later preparation cannot revoke its ack
+    // or introduce a second claim that can commit out of order.
+    const nextNavigation = {
+      clientId: "origin-client",
+      delivery: "completed-action",
+      completedActionHandoffId: "claimed-navigation-next",
+      viewType: "gui",
+      prepareOnly: true,
+    };
+    expect(
+      (await post("/api/views/notes/navigate", nextNavigation)).status,
+    ).toBe(409);
+    const settled = {
+      ...binding,
+      claimId,
+      success: true,
+      result: { switched: true },
+    };
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...settled,
+          claimId: "wrong",
+        })
+      ).json(),
+    ).toMatchObject({ accepted: false });
+    expect(
+      await (
+        await post(
+          "/api/views/interact-result",
+          settled,
+          "Bearer other-navigation-owner",
+        )
+      ).json(),
+    ).toMatchObject({ accepted: false });
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...settled,
+          result: { switched: true, personalText: "not authorized" },
+        })
+      ).json(),
+    ).toMatchObject({ accepted: false });
+    expect(getCurrentViewState(f.runtime, scope)).toBeNull();
+    expect(
+      await (await post("/api/views/interact-result", settled)).json(),
+    ).toMatchObject({ accepted: true });
+    await vi.waitFor(() =>
+      expect(getCurrentViewState(f.runtime, scope)?.viewId).toBe("notes"),
+    );
+    const nextPrepared = await post(
+      "/api/views/notes/navigate",
+      nextNavigation,
+    );
+    expect(nextPrepared.status).toBe(200);
+    const nextBinding = (await nextPrepared.json()).navigationBinding;
+    // Unclaimed preparations remain replaceable; only issued execution claims
+    // prevent supersession.
+    const superseding = await post("/api/views/notes/navigate", {
+      ...nextNavigation,
+      completedActionHandoffId: "unclaimed-navigation-newer",
+    });
+    expect(superseding.status).toBe(200);
+    const latestBinding = (await superseding.json()).navigationBinding;
+    expect((await post("/api/views/interact-claim", nextBinding)).status).toBe(
+      409,
+    );
+    const latestClaim = await post("/api/views/interact-claim", latestBinding);
+    expect(latestClaim.status).toBe(200);
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...latestBinding,
+          claimId: (await latestClaim.json()).claimId,
+          success: true,
+          result: { switched: true },
+        })
+      ).json(),
+    ).toMatchObject({ accepted: true });
+    expect(events).not.toHaveBeenCalled();
+    expect(
+      await (await post("/api/views/interact-result", settled)).json(),
+    ).toMatchObject({ accepted: false });
+    expect(f.frames).toHaveLength(0);
+  });
+  it.each([
+    { disposition: "planning", plan: {} },
+    {
+      disposition: "direct",
+      plan: { intents: ["Read condition", "Open Notes only when true"] },
+    },
+  ])(
+    "keeps conditional/compound native navigation in planning without an automatic effect: %j",
+    async ({ disposition, plan }) => {
+      const f = await fixture(0, undefined, undefined, true);
+      const input = clientMessage();
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        viewDelivery: "completed-action",
+      };
+      const selected = await selectNavigation(f, input, { disposition }, plan);
+      expect(selected.plan.deterministicToolCall).toBeUndefined();
+      expect(f.kernelRequests()).toBe(0);
+      expect(f.requests()).toBe(0);
+      expect(f.frames).toHaveLength(0);
+    },
+  );
+
+  it("allows direct Notes falling through mixed routing candidates to prepare via the real promoted planner action", async () => {
+    const f = await fixture(0, undefined, undefined, true);
+    vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+    };
+    const selected = await selectNavigation(
+      f,
+      input,
+      {},
+      {
+        candidateActions: ["PROPOSE_DEVICE_ACTION", "VIEWS"],
+        parentActionHints: ["PROPOSE_DEVICE_ACTION"],
+      },
+    );
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    expect(selected.plan.candidateActions).toContain("PROPOSE_DEVICE_ACTION");
+    expect(f.kernelRequests()).toBe(0);
+    const navigation = createElizaPlugin().actions?.find(
+      (action) => action.name === "VIEWS_SHOW",
+    );
+    if (!navigation?.handler) throw Error("Missing promoted navigation action");
+    const received: unknown[] = [];
+    await runPlannerLoop({
+      context: {
+        id: String(input.id),
+        metadata: { roomId: input.roomId, messageId: input.id },
+        events: [],
+      },
+      runtime: {
+        useModel: async (): Promise<GenerateTextResult> => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "planned-notes",
+              name: "VIEWS_SHOW",
+              arguments: { view: "notes", eliza_turn_scope: "final" },
+            },
+          ],
+        }),
+      },
+      executeToolCall: async (call) => {
+        expect(call.name).toBe("VIEWS_SHOW");
+        const view = call.params?.view;
+        if (typeof view !== "string") throw Error("Missing planned view");
+        const result = await navigation.handler(f.runtime, input, undefined, {
+          parameters: { view },
+        });
+        if (!result || typeof result === "boolean")
+          throw Error("Missing action result");
+        received.push({ ...result, actionName: call.name });
+        return result as never;
+      },
+      evaluate: async () => ({
+        success: true,
+        decision: "FINISH",
+        thought: "Only preparation is proved.",
+        messageToUser: "Opening Notes.",
+        raw: {},
+      }),
+    });
+    expect(received).toEqual([
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          navigation: expect.objectContaining({ status: "prepared" }),
+        }),
+        values: expect.objectContaining({
+          navigationPrepared: true,
+          completedActionDelivered: false,
+        }),
+      }),
+    ]);
+    const handoff = findViewActionHandoff(received);
+    expect(handoff).toMatchObject({
+      viewId: "notes",
+      navigationPrepared: true,
+      navigationBinding: { clientId: "origin-client", viewId: "notes" },
+    });
+    const promoted = received[0];
+    if (!isObjectRecord(promoted) || !isObjectRecord(promoted.values))
+      throw Error("Missing promoted result");
+    for (const actionName of [
+      "VIEWS_LIST",
+      "VIEWS_OPEN",
+      "VIEWS_SHOW_RECORD",
+      "PROPOSE_DEVICE_ACTION",
+    ]) {
+      expect(findViewActionHandoff([{ ...promoted, actionName }])).toBeNull();
+    }
+    expect(
+      findViewActionHandoff([
+        { ...promoted, values: { ...promoted.values, mode: "open" } },
+      ]),
+    ).toBeNull();
+    expect(f.kernelRequests()).toBe(1);
+    expect(f.frames).toHaveLength(0);
+    expect(
+      getCurrentViewState(f.runtime, {
+        hostKey: f.hostKey,
+        clientId: "origin-client",
+      }),
+    ).toBeNull();
+    const binding = handoff?.navigationBinding;
+    if (!binding) throw Error("Promoted navigation was not parsed");
+    const post = (path: string, body: unknown) =>
+      fetch(f.url + path, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer local-navigation-test",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    const claim = await post("/api/views/interact-claim", binding);
+    expect(claim.status).toBe(200);
+    const { claimId } = await claim.json();
+    expect(
+      getCurrentViewState(f.runtime, {
+        hostKey: f.hostKey,
+        clientId: "origin-client",
+      }),
+    ).toBeNull();
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...binding,
+          claimId,
+          success: true,
+          result: { switched: true },
+        })
+      ).json(),
+    ).toMatchObject({ accepted: true });
+    await vi.waitFor(() =>
+      expect(
+        getCurrentViewState(f.runtime, {
+          hostKey: f.hostKey,
+          clientId: "origin-client",
+        })?.viewId,
+      ).toBe("notes"),
+    );
+  });
+
+  it("does not auto-execute conditional navigation when the planner prerequisite is false", async () => {
+    const f = await fixture(0, undefined, undefined, true);
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "completed-action",
+    };
+    const selected = await selectNavigation(
+      f,
+      input,
+      { disposition: "planning" },
+      {
+        intents: [
+          "Check prerequisite",
+          "Open Notes only when prerequisite is true",
+        ],
+        candidateActions: ["VIEWS", "CHECK_CONDITION"],
+      },
+    );
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    const executed: string[] = [];
+    await runPlannerLoop({
+      context: {
+        id: String(input.id),
+        metadata: { roomId: input.roomId, messageId: input.id },
+        events: [],
+      },
+      runtime: {
+        useModel: async (): Promise<GenerateTextResult> => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "condition",
+              name: "CHECK_CONDITION",
+              arguments: { eliza_turn_scope: "final" },
+            },
+          ],
+        }),
+      },
+      executeToolCall: async (call) => {
+        executed.push(call.name);
+        return {
+          success: true,
+          data: { condition: false },
+          text: "Condition is false.",
+        };
+      },
+      evaluate: async () => ({
+        success: true,
+        decision: "FINISH",
+        thought: "Prerequisite false; do not navigate.",
+        messageToUser: "The condition was not met.",
+        raw: {},
+      }),
+    });
+    expect(executed).toEqual(["CHECK_CONDITION"]);
+    expect(f.kernelRequests()).toBe(0);
+    expect(f.requests()).toBe(0);
+    expect(f.frames).toHaveLength(0);
+  });
 });

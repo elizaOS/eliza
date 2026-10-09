@@ -530,6 +530,8 @@ export {
 	isProviderContextOverflowFailure,
 	isProviderSchemaRejection,
 	isTransientModelError,
+	type ModelOutputEvidence,
+	modelOutputIncompleteEvidence,
 	modelProviderErrorDetail,
 	PROVIDER_CONTEXT_OVERFLOW,
 } from "./utils/model-errors";
@@ -563,6 +565,7 @@ export * from "./utils/unicode.js";
 
 export * from "./utils/union-find.ts";
 export { uuidFromString, validateUuid } from "./utils/uuid.js";
+export { createCompletedActionNavigationState } from "./views/completed-action-navigation.ts";
 export {
 	collapseViewDeclarations,
 	dedupeModalities,
@@ -589,6 +592,10 @@ export {
 	SURFACE_ISOLATION_LEVELS,
 	surfaceGrants,
 } from "./views/surface-manifest.js";
+export {
+	findViewActionHandoff,
+	type ViewActionHandoff,
+} from "./views/view-action-handoff.ts";
 export * from "./views/view-command-matcher.js";
 export * from "./views/view-interact-protocol.js";
 export * from "./voice-cancellation-token.js";

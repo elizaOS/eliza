@@ -136,16 +136,24 @@ export const webSearch: Action & Record<string, unknown> = {
       // NOT delivered as a user-facing callback. Delivering them dumped the raw
       // search JSON/article text straight into the chat (chunked into several
       // messages) before the synthesized reply. Errors DO still call back.
+      const text = result.text;
+      const data = {
+        actionName: "WEB_SEARCH",
+        query,
+        provider: result.provider,
+        value: text,
+        truncated: result.truncated,
+      };
+      // Cost: no new I/O. The model sees the complete body once, in text;
+      // raw data.value stays intact for receipts and runtime consumers.
+      // Equality is guaranteed here by construction, never inferred by the renderer.
+      const { value: _value, ...promptData } = data;
       return {
-        text: result.text,
+        text,
         success: true,
-        data: {
-          actionName: "WEB_SEARCH",
-          query,
-          provider: result.provider,
-          value: result.text,
-          truncated: result.truncated,
-        },
+        data,
+        promptData,
+        promptDataMode: "replace-data",
       };
     } catch (err) {
       // error-policy:J1 Action failures are returned to the planner for recovery.

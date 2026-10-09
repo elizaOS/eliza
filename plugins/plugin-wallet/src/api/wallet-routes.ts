@@ -54,6 +54,7 @@ export interface WalletRpcReadinessSnapshot {
 }
 
 import * as ethers from "ethers";
+import { prefixEvmHex } from "../chains/evm/routes/evm-hex.js";
 
 type CloudWalletProvider = "privy" | "steward";
 interface CloudWalletDescriptor {
@@ -583,7 +584,7 @@ function normalizeBrowserHexData(value: unknown): string | undefined {
   if (!trimmed) {
     return undefined;
   }
-  return trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
+  return prefixEvmHex(trimmed);
 }
 function safeParseBrowserBigInt(value: string): bigint {
   try {

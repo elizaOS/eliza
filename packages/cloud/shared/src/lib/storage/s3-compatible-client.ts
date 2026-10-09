@@ -71,22 +71,32 @@ function readBool(value: string | undefined): boolean | undefined {
   return undefined;
 }
 
+/**
+ * Read one storage environment variable with surrounding whitespace removed.
+ * Unset, empty, and whitespace-only all become `undefined`, so every rule below
+ * treats them the same way. `??` alone is not enough: an empty string is not
+ * nullish, so `STORAGE_ACCESS_KEY_ID=""` would suppress the `R2_*` fallback.
+ */
+function nonEmptyEnv(name: string): string | undefined {
+  return process.env[name]?.trim() || undefined;
+}
+
 function resolveProvider(): ObjectStorageProvider | null {
-  const raw = process.env.STORAGE_PROVIDER?.trim().toLowerCase();
+  const raw = nonEmptyEnv("STORAGE_PROVIDER")?.toLowerCase();
   if (raw === "r2" || raw === "supabase" || raw === "s3") return raw;
-  if (raw && raw.length > 0) {
+  if (raw) {
     throw new Error(`STORAGE_PROVIDER="${raw}" is invalid. Expected one of: r2, supabase, s3.`);
   }
-  if (process.env.R2_ACCOUNT_ID) return "r2";
-  if (process.env.STORAGE_ENDPOINT) return "s3";
+  if (nonEmptyEnv("R2_ACCOUNT_ID")) return "r2";
+  if (nonEmptyEnv("STORAGE_ENDPOINT")) return "s3";
   return null;
 }
 
 function resolveEndpoint(provider: ObjectStorageProvider): string {
-  const explicit = process.env.STORAGE_ENDPOINT?.trim();
+  const explicit = nonEmptyEnv("STORAGE_ENDPOINT");
   if (explicit) return explicit;
   if (provider === "r2") {
-    const accountId = process.env.R2_ACCOUNT_ID?.trim();
+    const accountId = nonEmptyEnv("R2_ACCOUNT_ID");
     if (!accountId) {
       throw new Error("STORAGE_PROVIDER=r2 requires either STORAGE_ENDPOINT or R2_ACCOUNT_ID.");
     }
@@ -96,23 +106,36 @@ function resolveEndpoint(provider: ObjectStorageProvider): string {
 }
 
 function resolveRegion(provider: ObjectStorageProvider): string {
-  const explicit = process.env.STORAGE_REGION?.trim();
+  const explicit = nonEmptyEnv("STORAGE_REGION");
   if (explicit) return explicit;
   if (provider === "r2") return "auto";
   if (provider === "supabase") return "local";
   throw new Error("STORAGE_PROVIDER=s3 requires STORAGE_REGION to be set.");
 }
 
+/**
+ * The credential pair the given provider would use, or `undefined` entries when
+ * it is incomplete. Shared so readiness and construction cannot disagree.
+ */
+function credentialsFromEnv(provider: ObjectStorageProvider): {
+  accessKeyId: string | undefined;
+  secretAccessKey: string | undefined;
+} {
+  return {
+    accessKeyId:
+      nonEmptyEnv("STORAGE_ACCESS_KEY_ID") ??
+      (provider === "r2" ? nonEmptyEnv("R2_ACCESS_KEY_ID") : undefined),
+    secretAccessKey:
+      nonEmptyEnv("STORAGE_SECRET_ACCESS_KEY") ??
+      (provider === "r2" ? nonEmptyEnv("R2_SECRET_ACCESS_KEY") : undefined),
+  };
+}
+
 function resolveCredentials(provider: ObjectStorageProvider): {
   accessKeyId: string;
   secretAccessKey: string;
 } {
-  const accessKeyId =
-    process.env.STORAGE_ACCESS_KEY_ID ??
-    (provider === "r2" ? process.env.R2_ACCESS_KEY_ID : undefined);
-  const secretAccessKey =
-    process.env.STORAGE_SECRET_ACCESS_KEY ??
-    (provider === "r2" ? process.env.R2_SECRET_ACCESS_KEY : undefined);
+  const { accessKeyId, secretAccessKey } = credentialsFromEnv(provider);
   if (!accessKeyId || !secretAccessKey) {
     const hint =
       provider === "r2"
@@ -176,20 +199,26 @@ export function getSingleAttemptObjectStorageClient(): S3Client | null {
   return singleAttemptCached;
 }
 
+/**
+ * Whether the current environment can build an object storage client.
+ *
+ * Callers use this as the guard in front of {@link getObjectStorageClient}, so
+ * it must read the environment through the same rules construction does. A
+ * truthiness test on the raw value is not enough: `STORAGE_ENDPOINT="   "` is
+ * truthy, but construction trims it, finds no endpoint, and throws.
+ */
 export function objectStorageConfigured(): boolean {
   const provider = resolveProvider();
   if (!provider) return false;
-  const accessKeyId =
-    process.env.STORAGE_ACCESS_KEY_ID ??
-    (provider === "r2" ? process.env.R2_ACCESS_KEY_ID : undefined);
-  const secretAccessKey =
-    process.env.STORAGE_SECRET_ACCESS_KEY ??
-    (provider === "r2" ? process.env.R2_SECRET_ACCESS_KEY : undefined);
+  const { accessKeyId, secretAccessKey } = credentialsFromEnv(provider);
   if (!accessKeyId || !secretAccessKey) return false;
   if (provider === "r2") {
-    return Boolean(process.env.STORAGE_ENDPOINT || process.env.R2_ACCOUNT_ID);
+    return Boolean(nonEmptyEnv("STORAGE_ENDPOINT") || nonEmptyEnv("R2_ACCOUNT_ID"));
   }
-  return Boolean(process.env.STORAGE_ENDPOINT);
+  // `resolveRegion` requires an explicit region for s3 and supplies a default
+  // for the other providers, so readiness has to ask the same question.
+  if (provider === "s3" && !nonEmptyEnv("STORAGE_REGION")) return false;
+  return Boolean(nonEmptyEnv("STORAGE_ENDPOINT"));
 }
 
 export function resetObjectStorageClientForTests(): void {

@@ -487,7 +487,9 @@
                 ),
               );
             }
-            chainId = trimmedChain;
+            // EIP-1193 chain ids are the shortest 0x hex form. Echoing
+            // "0X00000089" makes a dApp that compares against "0x89" miss the switch.
+            chainId = "0x" + parsedChain.toString(16);
             emitter.emit("chainChanged", chainId);
             return Promise.resolve(null);
           }
