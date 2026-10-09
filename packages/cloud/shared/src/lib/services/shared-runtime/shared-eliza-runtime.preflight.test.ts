@@ -13,7 +13,7 @@ import { createOwnerCaptureBuffer } from "./shared-owner-model-capture";
 import { reserveOwnerModelCapture, readEncryptedOwnerCapture, type OwnerCaptureBudgetStorage } from "./shared-owner-model-capture-store";
 import type { RuntimeR2Bucket } from "../../storage/r2-runtime-binding";
 import { resetKmsClientForTests } from "../../../db/crypto/kms-client";
-import type { RunSharedAgentTurnResult } from "./run-shared-agent-turn";
+import type { SharedTurnMessage, RunSharedAgentTurnResult } from "./run-shared-agent-turn";
 import { SharedRuntimeTurnError } from "./shared-runtime-errors";
 
 const SOURCE_URL = "https://api.weather.gov/stations/KSGF/observations/latest";
@@ -22,6 +22,10 @@ const MARKED = `${CLAIM} [[SOURCE_URL:${SOURCE_URL}]]`;
 const QUERY = "current public weather in Springfield, Missouri";
 const USER_MESSAGE_ID = "35fa7289-3e70-4c0b-a64a-52fb8cc9a10d";
 const PROMPT = "What is the current weather in Springfield, Missouri?";
+const GENERAL_TOPIC = "Gmail API documentation rate limits";
+const GENERAL_PROMPT = `Search the web for ${GENERAL_TOPIC}.`;
+const GENERAL_SOURCE = "https://developers.google.com/gmail/api/reference/quotas";
+const GENERAL_CLAIM = "Gmail API documentation describes API rate limits.";
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_KEY = process.env.CEREBRAS_API_KEY;
 const ORIGINAL_FALLBACK_KEY = process.env.OPENROUTER_API_KEY;
@@ -61,7 +65,7 @@ afterEach(() => {
   else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
 });
 
-type Mode = { compound?: boolean; deny?: boolean; ordinary?: boolean; unavailable?: boolean; expectGroundingFailure?: boolean };
+type Mode = { general?: boolean; history?: SharedTurnMessage[]; compound?: boolean; deny?: boolean; ordinary?: boolean; unavailable?: boolean; expectGroundingFailure?: boolean };
 function modelResponse(content: string | null, calls: Array<{ name: string; args: object }> = []) {
   return Response.json({
     id: "offline-preflight",
@@ -176,6 +180,19 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
     const body = init?.body === undefined && url instanceof Request
       ? await url.clone().text()
       : String(init?.body ?? "");
+    if (mode.general && target === "https://search.parallel.ai/mcp") {
+      publicHttpCalls += 1;
+      publicHttpHops.push(target);
+      expect(publicHttpCalls).toBe(1);
+      expect(actions).toHaveLength(0);
+      expect(JSON.parse(body).params.arguments).toEqual({
+        objective: GENERAL_TOPIC, search_queries: [GENERAL_TOPIC],
+      });
+      expect(body).not.toContain("Springfield");
+      return Response.json({ jsonrpc: "2.0", id: 1, result: { content: [{ type: "text",
+        text: JSON.stringify({ results: [{ url: GENERAL_SOURCE, title: "Gmail API quotas", excerpt: GENERAL_CLAIM }] }),
+      }] } });
+    }
     if ([GNIS_URL, POINT_URL, STATIONS_URL, SOURCE_URL].includes(target)) {
       publicHttpCalls += 1;
       publicHttpHops.push(target);
@@ -260,7 +277,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
       if (names.includes("WEB_SEARCH") && actions.length === 0 && !mode.deny) {
         freeSelectionsBeforeAction += 1;
         return modelResponse(null, [{
-          name: "WEB_SEARCH", args: { query: QUERY, eliza_turn_scope: mode.compound ? "more_work_pending" : "final" },
+          name: "WEB_SEARCH", args: { ...(mode.general ? {} : { query: QUERY }), eliza_turn_scope: mode.compound ? "more_work_pending" : "final" },
         }]);
       }
       if (mode.compound && actions.length > 0 && otherActions === 0) {
@@ -282,9 +299,9 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
     result = await runSharedAgentTurn({
       ownerCapture,
       character: { name: "Shared Eliza", system: "You are Eliza.", model: "qwen-3.8-27b" },
-      history: [],
-      message: mode.ordinary ? "Hello there" : mode.compound ? `${PROMPT} Also perform the other operation.` : PROMPT,
-      ...(mode.ordinary ? {} : { capabilityText: mode.compound ? `${PROMPT} Also perform the other operation.` : PROMPT }),
+      history: mode.history ?? [],
+      message: mode.general ? GENERAL_PROMPT : mode.ordinary ? "Hello there" : mode.compound ? `${PROMPT} Also perform the other operation.` : PROMPT,
+      ...(mode.ordinary ? {} : { capabilityText: mode.general ? GENERAL_PROMPT : mode.compound ? `${PROMPT} Also perform the other operation.` : PROMPT }),
       messageIds: {
         user: USER_MESSAGE_ID,
         assistant: "3639b50e-f237-4b9a-99fa-75d890c1f97d",
@@ -510,4 +527,21 @@ test("ordinary chat and unavailable preflight keep their existing paths", async 
   } else {
     expect(unavailable.result?.reply).toContain("can’t verify the current value");
   }
+});
+
+
+test("general Gmail documentation uses canonical query and source footer after real weather history", async () => {
+  const prior = await exercise();
+  expect(prior.result?.internalGrounding?.kind).toBe("web_search");
+  if (!prior.result) throw new Error("Actual weather history was not produced");
+  const actual = await exercise({ general: true, history: prior.result.history }, `${GENERAL_CLAIM} [[SOURCE_URL:${GENERAL_SOURCE}]]`);
+  expect(actual.failed).toBe(false);
+  expect(actual.publicHttpCalls).toBe(1);
+  expect(actual.actions).toEqual([{ query: GENERAL_TOPIC, success: true }]);
+  expect(actual.freeSelectionsBeforeAction).toBe(0);
+  expect(actual.coreActionResults).toContainEqual({ actionName: "WEB_SEARCH", query: GENERAL_TOPIC, success: true });
+  expect(actual.result?.reply).toContain(GENERAL_CLAIM);
+  expect(actual.result?.reply).toContain(`Source: developers.google.com — ${GENERAL_SOURCE}`);
+  expect(actual.result?.reply).not.toContain("SOURCE_URL:");
+  expect(actual.result?.reply).not.toContain("Springfield");
 });

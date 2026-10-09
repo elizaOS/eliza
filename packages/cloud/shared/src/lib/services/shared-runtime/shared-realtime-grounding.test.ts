@@ -2,13 +2,16 @@
 
 import { describe, expect, test } from "bun:test";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
+import { resolveSharedCapabilityIntent } from "./shared-capability-wall";
 import {
   createMatchingRealtimeSearchRunner,
   finalizeSharedRealtimeReply,
   isSharedPublicSearchSafe,
   requireTraceableRealtimeSearch,
+  resolveSharedPublicSearchIntent,
   resolveSharedRealtimeRequirement,
   type SharedRealtimeBindingDiagnostic,
+  sharedRealtimePromptPolicy,
   validateSharedRealtimeReply,
 } from "./shared-realtime-grounding";
 
@@ -905,5 +908,33 @@ describe("Shared realtime binding refusal diagnostics", () => {
     );
     expect(observations[0]?.reason).toBe("claim_not_supported");
     expect((observations[0]?.failedPredicateMask ?? 0) & 2).toBe(2);
+  });
+});
+
+
+describe("general public search hotfix boundaries", () => {
+  test("pending policy is truthful before action and keeps completed-read policy", () => {
+    const pending = sharedRealtimePromptPolicy(undefined);
+    expect(pending).toContain("do not claim a search has run");
+    expect(pending).toContain("[[SOURCE_URL:");
+    expect(pending).not.toContain("already ran");
+    expect(sharedRealtimePromptPolicy(grounding)).toContain("A complete live public read already ran");
+  });
+  test("private, mixed, bare-history and oversized topics never become public dispatch", () => {
+    const history = [{ role: "assistant" as const, content: "PRIVATE_HISTORY_MARKER", grounding }];
+    expect(resolveSharedCapabilityIntent("Search the web for Gmail API documentation rate limits.")).toBeNull();
+    expect(resolveSharedCapabilityIntent("Search Gmail for invoices")?.kind).toBe("blocked-primary");
+    expect(resolveSharedCapabilityIntent("Search the web for Gmail API docs and read my inbox")?.kind).toBe("blocked-primary");
+    const punctuationTopic = 'Gmail API documentation for C# client SDK "rate  limits"';
+    expect(resolveSharedPublicSearchIntent(`Search the web for ${punctuationTopic}`, [])).toEqual({ kind: "general", topic: punctuationTopic });
+    for (const message of ["Search Gmail for invoices", "Search the web for Gmail API docs and read my inbox", "Search the web for alice@example.com", "Search the web for http://127.0.0.1"]) {
+      expect(resolveSharedPublicSearchIntent(message, history)).toBeUndefined();
+    }
+    expect(resolveSharedPublicSearchIntent("Search the web for that", [{ role: "assistant", content: "PRIVATE_HISTORY_MARKER" }])).toBeUndefined();
+    expect(resolveSharedPublicSearchIntent("Search the web for that", history)).toEqual({
+      kind: "prefetched",
+      requirement: { domain: "markets", query: "BTC price current", correction: true },
+    });
+    expect(() => resolveSharedPublicSearchIntent(`Search the web for ${"x".repeat(2049)}`, [])).toThrow("Public search topics must not exceed 2048 characters");
   });
 });

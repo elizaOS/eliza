@@ -46,6 +46,7 @@ import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import {
   createWebSearchEdgePlugin,
+  runWebSearchEdge,
   webSearchEdgeAction,
   webSearchEdgePlugin,
 } from "@elizaos/plugin-web-search/edge";
@@ -81,6 +82,10 @@ import {
   hasTraceableRealtimeGrounding,
   isMatchingRealtimeSearchResult,
   resolveSharedRealtimeRequirement,
+  resolveSharedPublicSearchIntent,
+  normalizedRealtimeQuery,
+  requireTraceableRealtimeSearch,
+  sharedRealtimePromptPolicy,
 } from "./shared-realtime-grounding";
 import {
   createSharedRuntimeCapabilitiesPlugin,
@@ -941,7 +946,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const realtimeRequirement = actionsEnabled && input.capabilityText
     ? resolveSharedRealtimeRequirement(input.capabilityText, input.history)
     : undefined;
-  const webSearchEnabled = Boolean(realtimeRequirement);
+  const privateCapabilityIntent = input.capabilityText && resolveSharedCapabilityIntent(input.capabilityText, {
+    reminders: Boolean(input.execution?.reminders), todos: Boolean(input.execution?.todos),
+  });
+  const publicSearchIntent = realtimeRequirement
+    ? { kind: "prefetched" as const, requirement: realtimeRequirement }
+    : actionsEnabled && input.capabilityText && !privateCapabilityIntent
+      ? resolveSharedPublicSearchIntent(input.capabilityText, input.history) : undefined;
+  const webSearchEnabled = Boolean(publicSearchIntent);
   const reminderPlugin =
     actionsEnabled && input.execution?.reminders
       ? createSharedRemindersEdgePlugin({
@@ -977,7 +989,28 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     : undefined;
   const webSearchPlugin = executablePreflightWebSearchResult
     ? createWebSearchEdgePlugin(createMatchingRealtimeSearchRunner(executablePreflightWebSearchResult))
-    : undefined;
+    : publicSearchIntent?.kind === "general"
+      ? createWebSearchEdgePlugin(async (query, options) => {
+          if (normalizedRealtimeQuery(publicSearchIntent.topic) !== normalizedRealtimeQuery(query)) {
+            return { success: false, text: "That query does not match the explicit public topic authorized for this turn.", error: "PUBLIC_SEARCH_QUERY_SCOPE_MISMATCH", data: { actionName: "WEB_SEARCH" } };
+          }
+          const result = await runWebSearchEdge(publicSearchIntent.topic, options);
+          const traceable = requireTraceableRealtimeSearch(result, publicSearchIntent.topic);
+          return traceable.success === true ? { ...traceable, modelReplyRequired: true } : traceable;
+        })
+      : undefined;
+  if (webSearchPlugin && publicSearchIntent?.kind === "general") {
+    webSearchPlugin.responseHandlerEvaluators = [{
+      name: "shared.explicit_public_search",
+      priority: 999,
+      deterministicActions: ["WEB_SEARCH"],
+      shouldRun: ({ messageHandler }) => messageHandler.processMessage === "RESPOND",
+      evaluate: () => ({
+        requiresTool: true, addCandidateActions: ["WEB_SEARCH"], clearReply: true,
+        deterministicToolCall: { name: "WEB_SEARCH", params: { query: publicSearchIntent.topic } },
+      }),
+    }];
+  }
   if (
     webSearchPlugin &&
     executablePreflightWebSearchResult &&
@@ -1026,6 +1059,9 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   // needs one line telling it where real names come from; scoping it to the
   // channel type keeps every direct turn's prompt byte-identical.
   const isGroupTurn = input.execution.channel.type === ChannelType.GROUP;
+  const character = publicSearchIntent?.kind === "general"
+    ? { ...input.character, system: [input.character.system, sharedRealtimePromptPolicy(undefined)].filter(Boolean).join("\n\n") }
+    : input.character;
   const runtime = createRuntime({
     agentKey: input.agentKey,
     agentId,
@@ -1033,8 +1069,8 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     webSearchEnabled,
     adapter,
     character: isGroupTurn
-      ? { ...input.character, system: withGroupTurnNamingRule(input.character.system) }
-      : input.character,
+      ? { ...character, system: withGroupTurnNamingRule(character.system) }
+      : character,
     modelPlugin,
     ...(webSearchPlugin ? { webSearchPlugin } : {}),
     transport: sharedCapabilityTransportForSource(

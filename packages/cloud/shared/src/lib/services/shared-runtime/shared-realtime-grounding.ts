@@ -5,6 +5,7 @@
 
 import {
   type ActionResult,
+  ElizaError,
   isBlockedHostname,
   isPrivateIpAddress,
 } from "@elizaos/core/edge";
@@ -176,8 +177,8 @@ function classifyPublicStandalone(
     : undefined;
 }
 
-/** Denies Shared public-network tools when the authenticated utterance is private or sensitive. */
-export function isSharedPublicSearchSafe(message: string): boolean {
+/** All literal/control/network guards remain independent of product or private-tool intent. */
+function isSharedPublicSearchLiteralSafe(message: string): boolean {
   if (INVISIBLE_OR_CONTROL.test(message)) return false;
   const normalized = message.normalize("NFKC");
   const networkLiteral = normalized.match(NETWORK_TARGET_LITERAL)?.[0];
@@ -187,19 +188,75 @@ export function isSharedPublicSearchSafe(message: string): boolean {
       .replace(/^\[/u, "")
       .split(/[\]/?#]/u)[0]
       .split(":")[0];
-    // Canonical helpers remain the authority for private/blocked network
-    // targets; public network literals are also denied because user-supplied
-    // targets must never become an SSRF-capable search-provider query.
-    if (isBlockedHostname(hostname) || isPrivateIpAddress(hostname))
-      return false;
+    if (isBlockedHostname(hostname) || isPrivateIpAddress(hostname)) return false;
     return false;
   }
   return (
-    !PRIVATE_STATE.test(normalized) &&
     !SENSITIVE_LITERAL.test(normalized) &&
     !PHONE_LITERAL.test(normalized) &&
     !STREET_ADDRESS_LITERAL.test(normalized) &&
     !COORDINATE_LITERAL.test(normalized)
+  );
+}
+
+/** Complete public product topic from this utterance only; private/mixed intent wins. */
+export function sharedPublicGoogleProductQuery(message: string): string | undefined {
+  const text = message.normalize("NFKC").trim();
+  if (!isSharedPublicSearchLiteralSafe(text) || !/\b(?:gmail|google calendar)\b/iu.test(text))
+    return undefined;
+  const rest = text.replace(/\b(?:gmail|google calendar)\b/giu, "");
+  if (
+    PRIVATE_STATE.test(rest) ||
+    /\b(?:your|their|his|her)\b/iu.test(rest) ||
+    /(?:\band\b|\bthen\b|[;.!?])\s*(?:connect|link|send|manage|update|delete|cancel|create|book|schedule|move|reschedule)\b/iu.test(
+      rest,
+    )
+  )
+    return undefined;
+  // A provider-directed inbox/account operation is not a public documentation query.
+  if (
+    /\b(?:connect|link)\s+(?:gmail|google calendar)\b/iu.test(text) ||
+    /\b(?:read|search|find|check|show|list|summari[sz]e)\s+(?:gmail|google calendar)\s+(?:for|in|inbox|mail|emails?|messages?|events?)\b/iu.test(
+      text,
+    )
+  )
+    return undefined;
+  const explicitWeb =
+    /\b(?:search|find|look up|check|read)\b[^.!?]{0,60}\b(?:web|internet|online)\b/iu.test(text);
+  const publicProductTopic =
+    /\b(?:api|docs?|documentation|sdk|pricing|prices?|help|support|tutorials?|features?|limits?|quotas?|reviews?|news)\b/iu.test(
+      text,
+    );
+  if (!explicitWeb && !publicProductTopic) return undefined;
+  const topic = (text.match(EXPLICIT_PUBLIC_SEARCH)?.[1] ?? text)
+    .trim()
+    .replace(/[.!?]+$/u, "")
+    .trim();
+  // Intent classification must not call the public guard that calls this classifier.
+  return checkPublicSearchTopicSize(topic);
+}
+
+/** One private-Google recognizer shared by registration and public-network admission. */
+export function isSharedPrivateGoogleContextRequest(message: string): boolean {
+  const text = message.normalize("NFKC").trim();
+  if (sharedPublicGoogleProductQuery(text)) return false;
+  return (
+    /\b(?:connect|link|read|search|find|check|show|list|summari[sz]e)\b[^.!?]{0,80}\b(?:gmail|google calendar)\b/iu.test(
+      text,
+    ) ||
+    /\b(?:what|when|which|read|search|find|check|show|list|summari[sz]e)\b[^.!?]{0,60}\bmy (?:[\p{L}\p{N}]+ ){0,3}(?:inbox|mail|emails?|calendar)\b/iu.test(
+      text,
+    )
+  );
+}
+
+/** Denies private/sensitive material; the product exception changes no literal/network guard. */
+export function isSharedPublicSearchSafe(message: string): boolean {
+  const normalized = message.normalize("NFKC");
+  return (
+    isSharedPublicSearchLiteralSafe(normalized) &&
+    !isSharedPrivateGoogleContextRequest(normalized) &&
+    (!PRIVATE_STATE.test(normalized) || Boolean(sharedPublicGoogleProductQuery(normalized)))
   );
 }
 
@@ -304,6 +361,64 @@ function publicProviderQuery(
   return role && entity ? `current public ${role} of ${entity}` : undefined;
 }
 
+/** Freshness preflight is an optimization; it is not the entire public-search capability. */
+export type SharedPublicSearchIntent =
+  | { kind: "prefetched"; requirement: SharedRealtimeRequirement }
+  | { kind: "general"; topic: string };
+const EXPLICIT_PUBLIC_SEARCH =
+  /^\s*(?:(?:please|can you|could you|would you)\s+)?(?:search(?:\s+(?:the\s+)?(?:web|internet|online))?(?:\s+for)?|look\s+up|find(?:\s+me)?)\s+(.+)$/iu;
+const GENERAL_PUBLIC_RESEARCH =
+  /\b(?:research|papers?|studies|documentation|reviews?|recommendations?|best|compare|comparison|products?|prices?|versions?|models?|context limits?|benchmarks?)\b/iu;
+function checkPublicSearchTopicSize(topic: string | undefined): string | undefined {
+  if (!topic) return undefined;
+  if ([...topic].length > 2048) {
+    throw new ElizaError("Public search topics must not exceed 2048 characters", {
+      code: "PUBLIC_SEARCH_QUERY_TOO_LARGE",
+    });
+  }
+  return topic;
+}
+function boundedPublicSearchTopic(value: string | undefined): string | undefined {
+  const topic = value
+    ?.trim()
+    .replace(/[.!?]+$/u, "")
+    .trim()
+    .replace(/\s+/gu, " ");
+  return topic && isSharedPublicSearchSafe(topic) ? checkPublicSearchTopicSize(topic) : undefined;
+}
+/** Authority comes only from a standalone authenticated public utterance, never history text. */
+export function resolveSharedPublicSearchIntent(
+  message: string,
+  history: readonly SharedTurnMessage[],
+): SharedPublicSearchIntent | undefined {
+  const normalized = message.normalize("NFKC").trim();
+  if (!isSharedPublicSearchSafe(normalized)) return undefined;
+  const googlePublicTopic = sharedPublicGoogleProductQuery(normalized);
+  if (googlePublicTopic) return { kind: "general", topic: googlePublicTopic };
+  const requirement = resolveSharedRealtimeRequirement(normalized, history);
+  if (requirement) return { kind: "prefetched", requirement };
+  // Preserve unsupported/missing-location current-data gates instead of broadening them.
+  if (classifyPublicIntent(normalized)) return undefined;
+  const explicitTopic = normalized.match(EXPLICIT_PUBLIC_SEARCH)?.[1];
+  if (
+    !explicitTopic &&
+    (!FACTUAL_REQUEST.test(normalized) ||
+      NON_FACTUAL_REQUEST.test(normalized) ||
+      (!FRESHNESS.test(normalized) && !GENERAL_PUBLIC_RESEARCH.test(normalized)))
+  )
+    return undefined;
+  const topic = boundedPublicSearchTopic(explicitTopic ?? normalized.replace(/[?!]+$/u, ""));
+  // A bare reference cannot authorize a history-derived public query.
+  if (
+    !topic ||
+    /^(?:(?:it|that|this|those|these|above|earlier|previous|same|thing|things|stuff|for|the|a|an|please|again|more)\s*)+$/iu.test(
+      topic,
+    )
+  )
+    return undefined;
+  return { kind: "general", topic };
+}
+
 /** Detects mutable-public intent without granting provider-dispatch authority. */
 export function hasSharedRealtimeIntent(
   message: string,
@@ -323,6 +438,7 @@ export function resolveSharedRealtimeRequirement(
 ): SharedRealtimeRequirement | undefined {
   const normalized = message.normalize("NFKC").trim();
   if (!isSharedPublicSearchSafe(normalized)) return undefined;
+  if (sharedPublicGoogleProductQuery(normalized)) return undefined;
   const direct = classifyPublicStandalone(normalized);
   const correction = CORRECTION.test(normalized);
   if (direct) {
@@ -717,7 +833,7 @@ function claimSupported(
   });
 }
 
-function normalizedRealtimeQuery(value: unknown): string | undefined {
+export function normalizedRealtimeQuery(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value
     .trim()
@@ -863,8 +979,11 @@ export function finalizeSharedRealtimeReply(
 
 /** System-only policy; actual provider results remain untrusted data messages. */
 export function sharedRealtimePromptPolicy(
-  grounding: SharedRuntimePublicGrounding,
+  grounding: SharedRuntimePublicGrounding | undefined,
 ): string {
+  if (!grounding) {
+    return "Public-search grounding policy:\n- WEB_SEARCH is available for this turn; do not claim a search has run until its action result confirms success.\n- After a successful search, use only its structured current-turn source objects for public factual claims. Append [[SOURCE_URL:https://exact-supporting-url]] immediately after every supported claim segment, using the exact URL from that result. Never combine a claim from one result with another result's URL.\n- If the action fails or the sources do not support the requested answer, say what you could not verify. Never invent a search, article, attribution, numeric value, or source. Do not repeat the same completed query.";
+  }
   return grounding.kind === "web_search"
     ? "Current-data grounding policy:\n- A complete live public read already ran for this turn. Use only its structured current-turn source objects for mutable factual claims.\n- Keep each claim with its own source: append [[SOURCE_URL:https://exact-supporting-url]] immediately after every claim segment. Never combine a value from one result with another result’s URL.\n- Preserve the source value, timestamp, units or currency. If evidence conflicts or omits the requested value, say you cannot verify it.\n- Never invent a search, article, source, attribution, or numeric value. Do not run a duplicate search for the same query."
     : "Current-data grounding policy:\n- The required live public read failed or lacked complete source-bound evidence. Say you cannot verify the current value and do not provide a number, source, article, or claimed search result.\n- Recover conversationally from corrections; never answer with punctuation alone.";

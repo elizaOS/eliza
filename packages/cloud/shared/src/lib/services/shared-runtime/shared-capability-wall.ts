@@ -2,6 +2,7 @@
 
 import { ElizaError } from "@elizaos/core/edge";
 import { type CapabilityHandoffRequest, capabilityHandoffTargetAgentId } from "@elizaos/shared";
+import { sharedPublicGoogleProductQuery } from "./shared-realtime-grounding";
 
 export type SharedDedicatedCapability =
   | "calendar"
@@ -223,9 +224,12 @@ export function resolveSharedCapabilityIntent(
 ): SharedCapabilityResolution | null {
   const text = (message ?? "").trim();
   if (!text || hasTrailingSharedActionCancellation(text)) return null;
-  const matches = RULES.flatMap((rule, priority) => matchesForRule(rule, priority, text)).sort(
-    (left, right) => left.index - right.index || left.priority - right.priority,
-  );
+  const publicGoogleProduct = Boolean(sharedPublicGoogleProductQuery(text));
+  const matches = RULES.flatMap((rule, priority) =>
+    publicGoogleProduct && (rule.capability === "cloud-apps" || rule.capability === "calendar")
+      ? []
+      : matchesForRule(rule, priority, text),
+  ).sort((left, right) => left.index - right.index || left.priority - right.priority);
   const primary = matches[0];
   if (!primary) return null;
   if (!isEnabled(primary, capabilities)) {
