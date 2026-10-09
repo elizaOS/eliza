@@ -16,8 +16,6 @@ const RUNTIME_BOUNDARIES = {
     /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]api[\\/]errors\.ts$/,
   apnsProvider:
     /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]mobile-push[\\/]apns-provider\.ts$/,
-  cloudBindings:
-    /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]runtime[\\/]cloud-bindings\.ts$/,
   databaseClient:
     /packages[\\/]cloud[\\/]shared[\\/]src[\\/]db[\\/]client\.ts$/,
   historyRepository:
@@ -50,12 +48,20 @@ const RUNTIME_STUBS = {
   cachedAgentDates: `
     export function rehydrateCachedAgentDates(agent) { return agent; }
   `,
-  cloudBindings: `
-    export async function runWithCloudBindingsAsync(_bindings, operation) {
-      return await operation();
-    }
-  `,
   coreEdge: `
+    export { trimEndCharacters } from ${JSON.stringify(
+      fileURLToPath(
+        new URL(
+          "../../../core/src/utils/string-boundaries.ts",
+          import.meta.url,
+        ),
+      ),
+    )};
+    export { isSensitiveKeyName, redactSensitiveText } from ${JSON.stringify(
+      fileURLToPath(
+        new URL("../../../core/src/security/redact.ts", import.meta.url),
+      ),
+    )};
     export class ElizaError extends Error {}
     export const ChannelType = {
       SELF: "SELF",
@@ -285,10 +291,6 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
               build.onLoad(
                 { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.databaseClient.source)}) },
                 () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.databaseClient)} }),
-              );
-              build.onLoad(
-                { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.cloudBindings.source)}) },
-                () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.cloudBindings)} }),
               );
               build.onLoad(
                 { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.sharedRuntimeChat.source)}) },
