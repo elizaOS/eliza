@@ -107,7 +107,7 @@ export function parseNetworkSiteHandoff(
     throw invalid();
   }
   if (
-    !["http:", "https:"].includes(origin.protocol) ||
+    origin.protocol !== "http:" ||
     !["127.0.0.1", "localhost", "[::1]"].includes(origin.hostname) ||
     destination !== origin.origin ||
     origin.username ||
@@ -501,8 +501,7 @@ export async function mintSsoCode(
   hostname: string,
   challenge: string,
   fetchFn: typeof fetch = fetch,
-  network?: NetworkSiteHandoff,
-  expectedToken?: string,
+  network?: NetworkSiteHandoff & { expectedToken: string },
 ): Promise<SsoMintResult> {
   const base = apiBaseForHostname(hostname);
   if (!base) return { ok: false, error: "Host cannot mint SSO codes" };
@@ -527,7 +526,7 @@ export async function mintSsoCode(
   }
   const token = readStoredStewardToken();
   if (!token) return { ok: false, error: "No local session" };
-  if (network && (!expectedToken || token !== expectedToken)) {
+  if (network && (!network.expectedToken || token !== network.expectedToken)) {
     return { ok: false, error: "The phone sign-in session changed" };
   }
   try {

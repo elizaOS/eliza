@@ -53,6 +53,9 @@ describe("staging Network phone continuation", () => {
   it("rejects malformed and non-staging navigation contexts before mint", async () => {
     const invalidOrigins = [
       "https://evil.example",
+      "https://127.0.0.1:54302",
+      "https://localhost:54302",
+      "https://[::1]:54302",
       "http://127.0.0.1:54302/",
       "http://user@127.0.0.1:54302",
       "http://127.0.0.1:54302/path",
@@ -85,6 +88,7 @@ describe("staging Network phone continuation", () => {
       destination,
       state,
       challenge,
+      expectedToken: "owned-fresh-phone-token",
     });
     expect(response.ok).toBe(false);
     expect(fetchFn).not.toHaveBeenCalled();
@@ -108,13 +112,10 @@ describe("staging Network phone continuation", () => {
     const parsed = parseNetworkSiteHandoff(tuple(), hostname);
     if (!parsed) throw new Error("Expected valid Network fixture");
     expect(
-      await mintSsoCode(
-        hostname,
-        challenge,
-        fetchFn,
-        parsed,
-        "owned-fresh-phone-token",
-      ),
+      await mintSsoCode(hostname, challenge, fetchFn, {
+        ...parsed,
+        expectedToken: "owned-fresh-phone-token",
+      }),
     ).toEqual({
       ok: true,
       code,
@@ -127,13 +128,10 @@ describe("staging Network phone continuation", () => {
     code = `esso_${"d".repeat(64)}`;
     expect(
       (
-        await mintSsoCode(
-          hostname,
-          challenge,
-          fetchFn,
-          parsed,
-          "owned-fresh-phone-token",
-        )
+        await mintSsoCode(hostname, challenge, fetchFn, {
+          ...parsed,
+          expectedToken: "owned-fresh-phone-token",
+        })
       ).ok,
     ).toBe(false);
     expect(
@@ -144,18 +142,20 @@ describe("staging Network phone continuation", () => {
     const beforeChangedSession = calls.length;
     expect(
       (
-        await mintSsoCode(
-          hostname,
-          challenge,
-          fetchFn,
-          parsed,
-          "different-session",
-        )
+        await mintSsoCode(hostname, challenge, fetchFn, {
+          ...parsed,
+          expectedToken: "different-session",
+        })
       ).ok,
     ).toBe(false);
-    expect((await mintSsoCode(hostname, challenge, fetchFn, parsed)).ok).toBe(
-      false,
-    );
+    expect(
+      (
+        await mintSsoCode(hostname, challenge, fetchFn, {
+          ...parsed,
+          expectedToken: "",
+        })
+      ).ok,
+    ).toBe(false);
     expect(calls).toHaveLength(beforeChangedSession);
   });
 });

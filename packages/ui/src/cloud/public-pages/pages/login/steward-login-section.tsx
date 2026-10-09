@@ -1384,8 +1384,7 @@ export default function StewardLoginSection({
           window.location.hostname,
           network.challenge,
           fetch,
-          network,
-          token,
+          { ...network, expectedToken: token },
         );
         if (!minted.ok)
           throw new Error(
