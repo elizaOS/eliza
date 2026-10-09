@@ -8,7 +8,9 @@ import { AgentRuntime, ChannelType, stringToUuid } from "@elizaos/core";
 import type { TodoStore } from "@elizaos/plugin-todos";
 import { personalSharedAgentId } from "./personal-shared-identity";
 import { runSharedAgentTurn } from "./run-shared-agent-turn";
+import { resolveSharedCapabilityIntent } from "./shared-capability-wall";
 import { runSharedElizaRuntimeTurn } from "./shared-eliza-runtime";
+import { resolveSharedRealtimeRequirement } from "./shared-realtime-grounding";
 
 function model(content: string | null, tool?: { name: string; args: object }) {
   return Response.json({
@@ -254,14 +256,14 @@ async function exercise(
           ]
         : [],
       message: compoundMissing
-        ? "Show my todos and what is the weather in Phoenix, AZ?"
+        ? "What is the weather in Phoenix, AZ? Show a checklist."
         : weatherRead
           ? "What is the weather in Phoenix, AZ?"
           : publicRead
             ? `Search the web for ${publicTopic}?`
             : "Search Gmail for API documentation invoices.",
       capabilityText: compoundMissing
-        ? "Show my todos and what is the weather in Phoenix, AZ?"
+        ? "What is the weather in Phoenix, AZ? Show a checklist."
         : weatherRead
           ? "What is the weather in Phoenix, AZ?"
           : publicRead
@@ -294,6 +296,22 @@ async function exercise(
         },
       },
     };
+    if (compoundMissing) {
+      // Prove this exact input reaches both real predicates before exercising
+      // the branch: "my todos" would be correctly blocked as private state.
+      const requirement = resolveSharedRealtimeRequirement(input.capabilityText!, input.history);
+      expect(requirement?.domain).toBe("weather");
+      expect(requirement?.query).toBe(weatherQuery);
+      const privateIntent = resolveSharedCapabilityIntent(input.capabilityText!, {
+        todos: true,
+        googleContext: true,
+      });
+      expect(privateIntent?.kind).toBe("enabled-primary");
+      if (privateIntent?.kind !== "enabled-primary")
+        throw new Error("Compound TODO precondition failed");
+      expect(privateIntent.primary.capability).toBe("todos");
+      // The actual Core result below must additionally prove the TODO list op.
+    }
     const turn = weatherRead
       ? await runSharedElizaRuntimeTurn({
           ...input,
