@@ -118,8 +118,8 @@ const TASKS = [
     args: [
       "test",
       "--preload",
-      "packages/cloud/api/test/e2e/preload.ts",
-      "packages/cloud/api/test/e2e/agent-token-flow.test.ts",
+      "./packages/cloud/api/test/e2e/preload.ts",
+      "./packages/cloud/api/test/e2e/agent-token-flow.test.ts",
       "--timeout",
       "120000",
     ],
