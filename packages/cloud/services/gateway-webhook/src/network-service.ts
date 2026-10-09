@@ -36,6 +36,21 @@ export function networkServiceFromEnv(
   return new NetworkServiceClient({ baseUrl, secret });
 }
 
+/**
+ * Staged rollout: NETWORK_TAKEOVER_ALLOWLIST (comma-separated E.164 numbers).
+ * When set, only these senders take the service path; everyone else keeps the
+ * legacy path. Unset = every sender (full takeover).
+ */
+export function takeoverAppliesTo(
+  sender: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const raw = env.NETWORK_TAKEOVER_ALLOWLIST?.trim();
+  if (!raw) return true;
+  const allowed = new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
+  return allowed.has(sender.trim());
+}
+
 const TRANSPORTS = new Set(["imessage", "sms", "rcs"]);
 
 export function turnRequestFor(event: ChatEvent): TurnRequest {

@@ -32,6 +32,7 @@ import {
 } from "@/lib/network/inbound-gate";
 import { networkInviteLookup } from "@/lib/network/invite-lookup";
 import { networkMembership } from "@/lib/network/membership";
+import { serviceNetworkStoreFactory } from "@/lib/network/member-store";
 import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { sha256Hex } from "@/lib/oidc/crypto";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
@@ -759,7 +760,15 @@ app.post("/", async (c) => {
     // model turn. Other projects skip this block entirely.
     const networkProject =
       "project" in parsed.data && isNetworkProject(parsed.data.project);
-    if (networkProject) {
+    // The Network takeover: the Network service owns joins and invites. A
+    // direct turn it already admitted (the gateway attaches its signed open
+    // turn) skips the Cloud-side invite gate and invite link; without a
+    // configured service this is always false and the gates run as before.
+    const serviceVouchedNetworkTurn =
+      networkProject &&
+      "networkTurn" in parsed.data &&
+      serviceNetworkStoreFactory(parsed.data.networkTurn) !== undefined;
+    if (networkProject && !serviceVouchedNetworkTurn) {
       stage = "account_resolution";
       const gate = await evaluateNetworkInboundGate(
         isGroupMessage(parsed.data)
@@ -1435,6 +1444,7 @@ app.post("/", async (c) => {
     // Idempotent, so every later message is a no-op read-modify of nothing.
     if (
       networkProject &&
+      !serviceVouchedNetworkTurn &&
       (parsed.data.platform === "twilio" ||
         parsed.data.platform === "blooio") &&
       !isGroupMessage(parsed.data)

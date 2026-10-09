@@ -249,4 +249,18 @@ describe("Network takeover: the service owns the turn", () => {
     await inbound("STOP", "+14155550706", "group");
     expect(turns).toEqual([]);
   });
+
+  test("NETWORK_TAKEOVER_ALLOWLIST limits the service path to listed senders", async () => {
+    process.env.NETWORK_TAKEOVER_ALLOWLIST = "+14155550707";
+    try {
+      respond = () => ({ outcome: "handled", replies: ["hi from the service"], app: "ntwrk", memberId: "m7", reason: "joined" });
+      await inbound("hello", "+14155550708");
+      expect(turns).toEqual([]);
+      await inbound("hello", "+14155550707");
+      expect(turns).toHaveLength(1);
+      expect(sent.at(-1)).toEqual({ to: "+14155550707", text: "hi from the service" });
+    } finally {
+      delete process.env.NETWORK_TAKEOVER_ALLOWLIST;
+    }
+  });
 });

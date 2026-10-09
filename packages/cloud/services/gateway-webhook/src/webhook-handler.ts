@@ -46,6 +46,7 @@ import {
   type NetworkOpenTurn,
   networkServiceFromEnv,
   runNetworkServiceTurn,
+  takeoverAppliesTo,
 } from "./network-service";
 import type { GatewayRedis } from "./redis";
 import {
@@ -910,7 +911,13 @@ async function processMessage(
   const networkService =
     deps.networkService === undefined ? networkServiceFromEnv() : deps.networkService;
   const isDirect = !(event.chatType === "group" || event.chatType === "supergroup");
-  if (isNetworkProject(project) && networkService && isDirect && !event.membershipChange) {
+  if (
+    isNetworkProject(project) &&
+    networkService &&
+    isDirect &&
+    !event.membershipChange &&
+    takeoverAppliesTo(event.senderId)
+  ) {
     let outcome: Awaited<ReturnType<typeof runNetworkServiceTurn>>;
     try {
       outcome = await runNetworkServiceTurn(
