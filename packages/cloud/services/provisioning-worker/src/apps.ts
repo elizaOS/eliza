@@ -1,4 +1,5 @@
 #!/usr/bin/env -S npx tsx
+
 /**
  * Apps-control provisioning worker (Eliza Cloud Apps / Product 2).
  *
@@ -40,6 +41,7 @@ import { fileURLToPath } from "node:url";
 import { loadCloudLocalEnv } from "@elizaos/cloud-services-common/node";
 import { APPS_JOB_TYPES } from "@elizaos/cloud-shared/agent-contracts";
 import type { ProcessingResult } from "@elizaos/cloud-shared/node";
+import { parsePositiveInt } from "./config-integer";
 
 type WorkerLogger =
   typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
@@ -60,34 +62,6 @@ export interface AppsWorkerConfig {
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_BATCH_SIZE = 3;
 const workerStartedAt = new Date();
-
-function parsePositiveInt(
-  value: string | undefined,
-  fallback: number,
-  label = "integer",
-): number {
-  if (!value) return fallback;
-  if (/^[1-9]\d*$/.test(value)) {
-    const parsed = Number(value);
-    if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-      throw new Error(
-        `${label} must be a canonical positive integer (received ${JSON.stringify(value)})`,
-      );
-    }
-    return parsed;
-  }
-  // Same fail-closed boundary as the main worker's parser for these keys
-  // (index.ts): anything the old prefix-coercing parseInt could partially
-  // read — trailing units, decimals, leading whitespace — must fail
-  // startup instead of silently becoming a poll interval or batch size.
-  // Fully non-numeric values keep the documented fallback.
-  if (!Number.isNaN(Number.parseInt(value, 10))) {
-    throw new Error(
-      `${label} must be a canonical positive integer (received ${JSON.stringify(value)})`,
-    );
-  }
-  return fallback;
-}
 
 function hasFlag(argv: readonly string[], flag: string): boolean {
   return argv.includes(flag);
