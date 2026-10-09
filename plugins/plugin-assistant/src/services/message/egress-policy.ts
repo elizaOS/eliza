@@ -358,12 +358,8 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
               ? actionsByName.get(normalizeActionIdentifier(laterName))
               : undefined;
           if (!laterAction?.tags?.includes("resource:todos")) return false;
-          if (
-            later.data?.op === "list" &&
-            later.data?.readOnlyOperation === true
-          )
-            return false;
-          // Only a fully valid, distinct scope proves this mutation unrelated.
+          // A later read can supersede emptiness just as a mutation can.
+          // Only a fully valid, distinct scope proves it unrelated.
           // Null, empty and malformed identity values are unknown, not distinct.
           const laterAgentId = validateUuid(later.data?.agentId);
           const laterEntityId = validateUuid(later.data?.entityId);

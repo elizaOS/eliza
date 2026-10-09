@@ -213,6 +213,23 @@ test("TODO proof is scoped read evidence, invalidated by later matching or unkno
       },
     ]),
   ).toBe("allow");
+  const laterNonemptyRead: ActionResult = {
+    success: true,
+    data: {
+      actionName: "TODO",
+      op: "list",
+      readOnlyOperation: true,
+      agentId: f.currentScope.agentId,
+      entityId: f.currentScope.entityId,
+      includeCompleted: false,
+      todos: [{ content: "Current active item" }],
+    },
+  };
+  expect(f.verdict(reply, [read, laterNonemptyRead])).toBe("reject");
+  const freshAfterRead = await f.list();
+  expect(f.verdict(reply, [read, laterNonemptyRead, freshAfterRead])).toBe(
+    "allow",
+  );
   const fresh = await f.list();
   expect(
     f.verdict(reply, [
