@@ -19,12 +19,7 @@ export interface SharedRuntimeInferenceSpan {
  * it means a pooled credential, Groq, or Vast model, none of which the Shared
  * turn needs to attribute individually.
  */
-export type SharedModelProvider =
-  | "cerebras"
-  | "openrouter"
-  | "openai"
-  | "anthropic"
-  | "other";
+export type SharedModelProvider = "cerebras" | "openrouter" | "openai" | "anthropic" | "other";
 
 /**
  * `unobserved` marks a call whose provider selection never fired — the model
@@ -46,9 +41,7 @@ function isSharedModelProvider(value: unknown): value is SharedModelProvider {
   return SHARED_MODEL_PROVIDERS.includes(value as SharedModelProvider);
 }
 
-function isSharedModelCallProvider(
-  value: unknown,
-): value is SharedModelCallProvider {
+function isSharedModelCallProvider(value: unknown): value is SharedModelCallProvider {
   return value === "unobserved" || isSharedModelProvider(value);
 }
 
@@ -151,10 +144,7 @@ export function parseSharedProviderTimingReceipt(
   const observedProviders = new Set(
     modelCalls
       .map((call) => call.provider)
-      .filter(
-        (provider): provider is SharedModelProvider =>
-          provider !== "unobserved",
-      ),
+      .filter((provider): provider is SharedModelProvider => provider !== "unobserved"),
   );
   const providerIsPossible =
     callCount === 0
@@ -169,29 +159,22 @@ export function parseSharedProviderTimingReceipt(
           ? selectedProvider === "none"
           : observedProviders.size > 1
             ? selectedProvider === "mixed"
-            : isSharedModelProvider(selectedProvider) &&
-              observedProviders.has(selectedProvider);
+            : isSharedModelProvider(selectedProvider) && observedProviders.has(selectedProvider);
   const fallbackCountIsPossible =
     typeof fallbackCount === "number" &&
     Number.isInteger(fallbackCount) &&
     fallbackCount >= recordedFallbacks &&
     fallbackCount <= recordedFallbacks + hiddenCalls &&
-    (selectedProvider === "openrouter" ||
-      selectedProvider === "mixed" ||
-      fallbackCount === 0);
+    (selectedProvider === "openrouter" || selectedProvider === "mixed" || fallbackCount === 0);
   const recordedDurationMs =
-    Math.round(
-      modelCalls.reduce((total, call) => total + call.durationMs, 0) * 10,
-    ) / 10;
+    Math.round(modelCalls.reduce((total, call) => total + call.durationMs, 0) * 10) / 10;
   const durationMs = receipt.durationMs;
   const durationIsConsistent =
     typeof durationMs === "number" &&
     Number.isFinite(durationMs) &&
     durationMs >= 0 &&
     durationMs <= MAX_SHARED_PROVIDER_TIMING_MS &&
-    (clamped
-      ? durationMs === MAX_SHARED_PROVIDER_TIMING_MS
-      : durationMs === recordedDurationMs);
+    (clamped ? durationMs === MAX_SHARED_PROVIDER_TIMING_MS : durationMs === recordedDurationMs);
   const replayed = receipt.replayed;
   const emptyReceiptIsConsistent =
     callCount !== 0 ||
@@ -267,10 +250,7 @@ export interface SharedRuntimeTimingReceipt {
 
 type Clock = () => number;
 
-function boundedDuration(
-  startedAt: number | null,
-  completedAt: number | null,
-): number | null {
+function boundedDuration(startedAt: number | null, completedAt: number | null): number | null {
   if (startedAt === null || completedAt === null) return null;
   const value = completedAt - startedAt;
   if (!Number.isFinite(value) || value < 0) return null;
@@ -284,9 +264,7 @@ function boundedDuration(
  * collapsing to zero, because a call slower than the bound is exactly what the
  * receipt exists to expose.
  */
-function clampedCallDuration(
-  measured: number,
-): { value: number; clamped: boolean } | null {
+function clampedCallDuration(measured: number): { value: number; clamped: boolean } | null {
   if (!Number.isFinite(measured) || measured < 0) return null;
   if (measured > MAX_SHARED_PROVIDER_TIMING_MS) {
     return { value: MAX_SHARED_PROVIDER_TIMING_MS, clamped: true };
@@ -394,20 +372,14 @@ export class SharedRuntimeTimingCollector {
         this.#modelCallCount += 1;
         const call: SharedModelCallTiming = selection
           ? { ...selection, durationMs: measured.value }
-          : {
-              provider: "unobserved",
-              fallback: false,
-              durationMs: measured.value,
-            };
+          : { provider: "unobserved", fallback: false, durationMs: measured.value };
         if (call.fallback) {
           this.#modelFallbackCount += 1;
         }
-        const total =
-          Math.round((this.#modelDurationMs + measured.value) * 10) / 10;
+        const total = Math.round((this.#modelDurationMs + measured.value) * 10) / 10;
         if (total > MAX_SHARED_PROVIDER_TIMING_MS) this.#modelClamped = true;
         this.#modelDurationMs = Math.min(total, MAX_SHARED_PROVIDER_TIMING_MS);
-        if (call.provider !== "unobserved")
-          this.#modelProviders.add(call.provider);
+        if (call.provider !== "unobserved") this.#modelProviders.add(call.provider);
         this.#modelCalls.push(call);
         return { ...call };
       },
@@ -435,10 +407,7 @@ export class SharedRuntimeTimingCollector {
       providerDurations.length > 0 ? Math.max(...providerDurations) : null;
   }
 
-  markRoutingDecision(
-    decision: SharedRuntimeRoutingDecision,
-    contextIds: readonly string[],
-  ): void {
+  markRoutingDecision(decision: SharedRuntimeRoutingDecision, contextIds: readonly string[]): void {
     this.#routingDecision = decision;
     this.#contextIds = Array.from(
       new Set(
@@ -456,38 +425,22 @@ export class SharedRuntimeTimingCollector {
       outcome,
       historyMessageCount: this.historyMessageCount,
       phases: {
-        edgeContextDurationMs: boundedDuration(
-          this.#startedAt,
-          this.#edgeContextReadyAt,
-        ),
+        edgeContextDurationMs: boundedDuration(this.#startedAt, this.#edgeContextReadyAt),
         runtimeInitializeDurationMs: boundedDuration(
           this.#runtimeInitializeStartedAt,
           this.#runtimeReadyAt,
         ),
-        connectionDurationMs: boundedDuration(
-          this.#connectionStartedAt,
-          this.#connectionReadyAt,
-        ),
-        historyProjectionDurationMs: boundedDuration(
-          this.#historyStartedAt,
-          this.#historyReadyAt,
-        ),
+        connectionDurationMs: boundedDuration(this.#connectionStartedAt, this.#connectionReadyAt),
+        historyProjectionDurationMs: boundedDuration(this.#historyStartedAt, this.#historyReadyAt),
       },
       offsets: {
-        providerDispatchOffsetMs: boundedDuration(
-          this.#startedAt,
-          this.#providerDispatchedAt,
-        ),
-        providerFirstTextOffsetMs: boundedDuration(
-          this.#startedAt,
-          this.#providerFirstTextAt,
-        ),
+        providerDispatchOffsetMs: boundedDuration(this.#startedAt, this.#providerDispatchedAt),
+        providerFirstTextOffsetMs: boundedDuration(this.#startedAt, this.#providerFirstTextAt),
         completedOffsetMs: boundedDuration(this.#startedAt, completedAt),
       },
       inference: {
         composeStateDurationMs: this.#composeStateDurationMs,
-        shouldRespondAndContextDurationMs:
-          this.#shouldRespondAndContextDurationMs,
+        shouldRespondAndContextDurationMs: this.#shouldRespondAndContextDurationMs,
         responseHandlerFieldsDurationMs: this.#responseHandlerFieldsDurationMs,
         providerTotalDurationMs: this.#providerTotalDurationMs,
         slowestProviderDurationMs: this.#slowestProviderDurationMs,

@@ -1373,9 +1373,7 @@ app.post("/", async (c) => {
     const agent = personalSharedAgent({
       userId: account.userId,
       organizationId: account.organizationId,
-      ...(!groupConversationId && account.ownerName
-        ? { ownerName: account.ownerName }
-        : {}),
+      ...(!groupConversationId && account.ownerName ? { ownerName: account.ownerName } : {}),
     });
     if (groupConversationId && !groupConversationId.startsWith("group:")) {
       throw new Error("Invalid Personal Shared group conversation authority");

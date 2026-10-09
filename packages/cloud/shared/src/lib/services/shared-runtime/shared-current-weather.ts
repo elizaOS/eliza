@@ -147,12 +147,7 @@ function point(v: unknown): [number, number] | undefined {
     ? [c[1], c[0]]
     : undefined;
 }
-export function weatherDistanceKm(
-  a: number,
-  b: number,
-  c: number,
-  d: number,
-): number {
+export function weatherDistanceKm(a: number, b: number, c: number, d: number): number {
   const rad = Math.PI / 180;
   const h =
     Math.sin(((c - a) * rad) / 2) ** 2 +
@@ -165,19 +160,14 @@ export function parseExplicitUsWeatherQuery(
   const prefix = "current public weather in ";
   if (!query.startsWith(prefix)) return undefined;
   const location = query.slice(prefix.length).normalize("NFKC").trim();
-  if (location.length > 160 || /[^\p{L} .'’,-]/u.test(location))
-    return undefined;
+  if (location.length > 160 || /[^\p{L} .'’,-]/u.test(location)) return undefined;
   for (const [state, name] of Object.entries(STATES)) {
     for (const suffix of [name, state]) {
       const pattern = new RegExp("(?:,\\s*|\\s+)" + suffix + "$", "i");
       const match = pattern.exec(location);
       if (!match) continue;
       const city = location.slice(0, match.index).trim();
-      if (
-        city.length >= 2 &&
-        city.length <= 100 &&
-        /^[\p{L}][\p{L} .'’-]*$/u.test(city)
-      )
+      if (city.length >= 2 && city.length <= 100 && /^[\p{L}][\p{L} .'’-]*$/u.test(city))
         return { city, state };
     }
   }
@@ -209,8 +199,7 @@ export function isVerifiedCurrentNwsObservation(
     v.state !== target.state ||
     (v.advisoryNearestCity !== null && !safeText(v.advisoryNearestCity)) ||
     (v.advisoryNearestState !== null &&
-      (typeof v.advisoryNearestState !== "string" ||
-        !/^[A-Z]{2}$/.test(v.advisoryNearestState))) ||
+      (typeof v.advisoryNearestState !== "string" || !/^[A-Z]{2}$/.test(v.advisoryNearestState))) ||
     typeof v.gnisId !== "number" ||
     !Number.isSafeInteger(v.gnisId) ||
     v.gnisId < 1 ||
@@ -236,37 +225,24 @@ export function isVerifiedCurrentNwsObservation(
     return false;
   const timestamp =
     typeof v.timestamp === "string" &&
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(
-      v.timestamp,
-    )
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(v.timestamp)
       ? Date.parse(v.timestamp)
       : NaN;
   return (
     Number.isFinite(timestamp) &&
     timestamp >= 0 &&
     timestamp <= now + CURRENT_WEATHER_LIMITS.futureSkewMs &&
-    (!requireFresh ||
-      now - timestamp <= CURRENT_WEATHER_LIMITS.observationAgeMs) &&
-    weatherDistanceKm(
-      v.cityLatitude,
-      v.cityLongitude,
-      v.pointLatitude,
-      v.pointLongitude,
-    ) <= 1 &&
-    weatherDistanceKm(
-      v.cityLatitude,
-      v.cityLongitude,
-      v.stationLatitude,
-      v.stationLongitude,
-    ) <= CURRENT_WEATHER_LIMITS.stationKm &&
+    (!requireFresh || now - timestamp <= CURRENT_WEATHER_LIMITS.observationAgeMs) &&
+    weatherDistanceKm(v.cityLatitude, v.cityLongitude, v.pointLatitude, v.pointLongitude) <= 1 &&
+    weatherDistanceKm(v.cityLatitude, v.cityLongitude, v.stationLatitude, v.stationLongitude) <=
+      CURRENT_WEATHER_LIMITS.stationKm &&
     weatherDistanceKm(
       v.stationLatitude,
       v.stationLongitude,
       v.observationLatitude,
       v.observationLongitude,
     ) <= CURRENT_WEATHER_LIMITS.observationKm &&
-    v.sourceUrl ===
-      "https://api.weather.gov/stations/" + v.stationId + "/observations/latest"
+    v.sourceUrl === "https://api.weather.gov/stations/" + v.stationId + "/observations/latest"
   );
 }
 export function isCurrentWeatherObservationRequest(text: string): boolean {
@@ -306,10 +282,7 @@ export function currentNwsObservationSource(value: CurrentNwsObservation): {
     }),
   };
 }
-async function controlled<T>(
-  promise: Promise<T>,
-  signal: AbortSignal,
-): Promise<T> {
+async function controlled<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   signal.throwIfAborted();
   return new Promise((resolve, reject) => {
     const abort = () => {
@@ -359,18 +332,14 @@ export async function runCurrentUsWeatherSearch(
       },
     };
   };
-  if (options.observationOnly === false)
-    return unavailable("CURRENT_WEATHER_FORECAST_UNSUPPORTED");
-  if (!target)
-    return unavailable("CURRENT_WEATHER_EXPLICIT_US_CITY_STATE_REQUIRED");
+  if (options.observationOnly === false) return unavailable("CURRENT_WEATHER_FORECAST_UNSUPPORTED");
+  if (!target) return unavailable("CURRENT_WEATHER_EXPLICIT_US_CITY_STATE_REQUIRED");
   const total = new AbortController();
   const timer = setTimeout(
     () => total.abort(new Error("CURRENT_WEATHER_DEADLINE")),
     CURRENT_WEATHER_LIMITS.totalMs,
   );
-  const signal = options.signal
-    ? AbortSignal.any([options.signal, total.signal])
-    : total.signal;
+  const signal = options.signal ? AbortSignal.any([options.signal, total.signal]) : total.signal;
   const fetcher = options.fetchImpl ?? fetch;
   let requests = 0;
   let bytes = 0;
@@ -412,18 +381,13 @@ export async function runCurrentUsWeatherSearch(
         }),
         active,
       );
-      if (!response.ok || !response.body)
-        throw new Error("CURRENT_WEATHER_HTTP_UNAVAILABLE");
+      if (!response.ok || !response.body) throw new Error("CURRENT_WEATHER_HTTP_UNAVAILABLE");
       const contentType = (response.headers.get("content-type") ?? "")
         .split(";")[0]
         .trim()
         .toLowerCase();
       if (
-        ![
-          "application/geo+json",
-          "application/json",
-          "application/ld+json",
-        ].includes(contentType)
+        !["application/geo+json", "application/json", "application/ld+json"].includes(contentType)
       )
         throw new Error("CURRENT_WEATHER_JSON_REQUIRED");
       reader = response.body.getReader();
@@ -467,13 +431,10 @@ export async function runCurrentUsWeatherSearch(
   }
   try {
     let metadata: Metadata | undefined;
-    const cached =
-      options.cache !== false ? metadataCache.get(cacheKey) : undefined;
+    const cached = options.cache !== false ? metadataCache.get(cacheKey) : undefined;
     if (cached && cached.expiresAt > now()) metadata = cached.value;
     if (!metadata) {
-      const geo = new URL(
-        "https://dashboard.waterdata.usgs.gov/service/geocoder/get/location/1.0",
-      );
+      const geo = new URL("https://dashboard.waterdata.usgs.gov/service/geocoder/get/location/1.0");
       geo.searchParams.set("term", target.city);
       geo.searchParams.set("include", "gnis");
       geo.searchParams.set("states", target.state);
@@ -509,17 +470,14 @@ export async function runCurrentUsWeatherSearch(
           matches.some(
             (other) =>
               v.GnisId === other.GnisId &&
-              (v.Latitude !== other.Latitude ||
-                v.Longitude !== other.Longitude),
+              (v.Latitude !== other.Latitude || v.Longitude !== other.Longitude),
           ),
         )
       )
         return unavailable("CURRENT_WEATHER_PLACE_CONTRADICTORY");
-      if (unique.length !== 1)
-        return unavailable("CURRENT_WEATHER_PLACE_AMBIGUOUS_OR_MISSING");
+      if (unique.length !== 1) return unavailable("CURRENT_WEATHER_PLACE_AMBIGUOUS_OR_MISSING");
       const city = unique[0];
-      if (!city)
-        return unavailable("CURRENT_WEATHER_PLACE_AMBIGUOUS_OR_MISSING");
+      if (!city) return unavailable("CURRENT_WEATHER_PLACE_AMBIGUOUS_OR_MISSING");
       const place: Place = {
         city: city.Name,
         state: city.State,
@@ -534,17 +492,12 @@ export async function runCurrentUsWeatherSearch(
           place.longitude.toFixed(4),
       );
       const properties = record(pointBody)?.properties;
-      const relative = record(
-        record(record(properties)?.relativeLocation)?.properties,
-      );
+      const relative = record(record(record(properties)?.relativeLocation)?.properties);
       const pointGeo = point(record(pointBody)?.geometry);
       // relativeLocation describes a nearby named place, not the exact
       // requested municipality. GNIS city/state + point geometry bind the
       // target; a neighboring-town label must not reject valid coordinates.
-      if (
-        !pointGeo ||
-        weatherDistanceKm(place.latitude, place.longitude, ...pointGeo) > 1
-      )
+      if (!pointGeo || weatherDistanceKm(place.latitude, place.longitude, ...pointGeo) > 1)
         return unavailable("CURRENT_WEATHER_NWS_PLACE_MISMATCH");
       const stationUrl = record(properties)?.observationStations;
       if (
@@ -579,32 +532,19 @@ export async function runCurrentUsWeatherSearch(
       }
       stations.sort(
         (a, b) =>
-          Number(!/^[KP][A-Z0-9]{3}$/.test(a.id)) -
-            Number(!/^[KP][A-Z0-9]{3}$/.test(b.id)) ||
-          weatherDistanceKm(
-            place.latitude,
-            place.longitude,
-            a.latitude,
-            a.longitude,
-          ) -
-            weatherDistanceKm(
-              place.latitude,
-              place.longitude,
-              b.latitude,
-              b.longitude,
-            ) ||
+          Number(!/^[KP][A-Z0-9]{3}$/.test(a.id)) - Number(!/^[KP][A-Z0-9]{3}$/.test(b.id)) ||
+          weatherDistanceKm(place.latitude, place.longitude, a.latitude, a.longitude) -
+            weatherDistanceKm(place.latitude, place.longitude, b.latitude, b.longitude) ||
           a.id.localeCompare(b.id),
       );
-      if (!stations.length)
-        return unavailable("CURRENT_WEATHER_NEARBY_STATION_MISSING");
+      if (!stations.length) return unavailable("CURRENT_WEATHER_NEARBY_STATION_MISSING");
       metadata = {
         place,
         pointLatitude: pointGeo[0],
         pointLongitude: pointGeo[1],
         nearestCity: safeText(relative?.city) ? relative.city : null,
         nearestState:
-          typeof relative?.state === "string" &&
-          /^[A-Z]{2}$/.test(relative.state)
+          typeof relative?.state === "string" && /^[A-Z]{2}$/.test(relative.state)
             ? relative.state
             : null,
         stations: stations.slice(0, CURRENT_WEATHER_LIMITS.stations),
@@ -620,10 +560,7 @@ export async function runCurrentUsWeatherSearch(
     }
     for (const station of metadata.stations) {
       try {
-        const sourceUrl =
-          "https://api.weather.gov/stations/" +
-          station.id +
-          "/observations/latest";
+        const sourceUrl = "https://api.weather.gov/stations/" + station.id + "/observations/latest";
         const observation = await get(sourceUrl);
         const p = record(record(observation)?.properties);
         const t = record(p?.temperature);
@@ -702,9 +639,7 @@ export async function runCurrentUsWeatherSearch(
   } catch {
     options.signal?.throwIfAborted();
     return unavailable(
-      signal.aborted
-        ? "CURRENT_WEATHER_DEADLINE"
-        : "CURRENT_WEATHER_SOURCE_UNAVAILABLE",
+      signal.aborted ? "CURRENT_WEATHER_DEADLINE" : "CURRENT_WEATHER_SOURCE_UNAVAILABLE",
     );
   } finally {
     clearTimeout(timer);

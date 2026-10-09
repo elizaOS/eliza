@@ -6,7 +6,6 @@
  */
 
 import { sql } from "drizzle-orm";
-import { sharedOwnerProfileName } from "../../lib/services/shared-runtime/shared-participant-name";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
 import type { AgentSandboxStatus } from "../schemas/agent-sandboxes";
@@ -15,6 +14,7 @@ import { organizations } from "../schemas/organizations";
 import { personalDedicatedUpgradeAuthorities } from "../schemas/personal-dedicated-upgrade-authorities";
 import { userIdentities } from "../schemas/user-identities";
 import { users } from "../schemas/users";
+import { sharedOwnerProfileName } from "../../lib/services/shared-runtime/shared-participant-name";
 
 export interface ReusablePersonalDelivery {
   ownerName?: string;
@@ -158,10 +158,7 @@ export async function findReusablePersonalDelivery(
   );
 
   if (!row) return null;
-  const ownerName = sharedOwnerProfileName({
-    nickname: row.owner_nickname,
-    name: row.owner_name,
-  });
+  const ownerName = sharedOwnerProfileName({ nickname: row.owner_nickname, name: row.owner_name });
   if (!row.dedicated_id) {
     return {
       ...(ownerName ? { ownerName } : {}),
@@ -171,9 +168,7 @@ export async function findReusablePersonalDelivery(
     };
   }
   if (!row.dedicated_status) {
-    throw new Error(
-      `Dedicated target ${row.dedicated_id} has no lifecycle status`,
-    );
+    throw new Error(`Dedicated target ${row.dedicated_id} has no lifecycle status`);
   }
   return {
     ...(ownerName ? { ownerName } : {}),

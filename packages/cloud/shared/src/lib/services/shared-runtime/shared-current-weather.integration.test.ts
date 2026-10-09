@@ -10,13 +10,9 @@ import {
 import { sharedPublicWebGrounding } from "./shared-runtime-history-policy";
 
 const fixture = (name: string) =>
-  JSON.parse(
-    readFileSync(new URL("./fixtures/" + name, import.meta.url), "utf8"),
-  );
+  JSON.parse(readFileSync(new URL("./fixtures/" + name, import.meta.url), "utf8"));
 test("actual NWS source preserves exact C/F facts and rejects city/unit/value swaps or stale observations through production projection/finalizer", async () => {
-  const clock = spyOn(Date, "now").mockReturnValue(
-    Date.parse("2026-10-09T02:16:00Z"),
-  );
+  const clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-09T02:16:00Z"));
   try {
     const geo = fixture("usgs-springfield-mo-20261009.json");
     const station = fixture("nws-ksgf-station-20261009.json");
@@ -29,12 +25,10 @@ test("actual NWS source preserves exact C/F facts and rejects city/unit/value sw
         body = {
           geometry: { type: "Point", coordinates: [-93.2982, 37.2153] },
           properties: {
-            observationStations:
-              "https://api.weather.gov/gridpoints/SGF/67,35/stations",
+            observationStations: "https://api.weather.gov/gridpoints/SGF/67,35/stations",
           },
         };
-      else if (u.pathname === "/gridpoints/SGF/67,35/stations")
-        body = { features: [station] };
+      else if (u.pathname === "/gridpoints/SGF/67,35/stations") body = { features: [station] };
       else if (u.pathname === "/stations/KSGF/observations/latest") body = obs;
       else throw Error("UNEXPECTED_FIXTURE_URL");
       return new Response(JSON.stringify(body), {
@@ -46,12 +40,7 @@ test("actual NWS source preserves exact C/F facts and rejects city/unit/value sw
       fetchImpl,
       cache: false,
     });
-    const checked = requireTraceableRealtimeSearch(
-      result,
-      query,
-      Date.now(),
-      "weather",
-    );
+    const checked = requireTraceableRealtimeSearch(result, query, Date.now(), "weather");
     expect(checked.success).toBe(true);
     const grounding = sharedPublicWebGrounding([checked]);
     expect(grounding?.kind).toBe("web_search");
@@ -65,9 +54,7 @@ test("actual NWS source preserves exact C/F facts and rejects city/unit/value sw
       "Springfield, Missouri is 69.8 Fahrenheit and Clear.",
       "Springfield, Missouri is 21 Celsius and Clear.",
     ]) {
-      expect(validateSharedRealtimeReply(correct + mark, grounding!)).toBe(
-        true,
-      );
+      expect(validateSharedRealtimeReply(correct + mark, grounding!)).toBe(true);
       const final = finalizeSharedRealtimeReply(correct + mark, grounding);
       expect(final).toContain(correct);
       expect(final).toContain(url);
@@ -82,22 +69,14 @@ test("actual NWS source preserves exact C/F facts and rejects city/unit/value sw
       "Springfield, Missouri is 69.8 Celsius and Clear.",
     ]) {
       expect(validateSharedRealtimeReply(wrong + mark, grounding!)).toBe(false);
-      expect(finalizeSharedRealtimeReply(wrong + mark, grounding)).toContain(
-        "won’t guess",
-      );
+      expect(finalizeSharedRealtimeReply(wrong + mark, grounding)).toContain("won’t guess");
     }
-    clock.mockReturnValue(
-      Date.parse(obs.properties.timestamp) + 91 * 60 * 1000,
+    clock.mockReturnValue(Date.parse(obs.properties.timestamp) + 91 * 60 * 1000);
+    expect(requireTraceableRealtimeSearch(result, query, Date.now(), "weather").success).toBe(
+      false,
     );
     expect(
-      requireTraceableRealtimeSearch(result, query, Date.now(), "weather")
-        .success,
-    ).toBe(false);
-    expect(
-      finalizeSharedRealtimeReply(
-        "Springfield, Missouri is 69.8°F and Clear." + mark,
-        grounding,
-      ),
+      finalizeSharedRealtimeReply("Springfield, Missouri is 69.8°F and Clear." + mark, grounding),
     ).toContain("can’t verify");
   } finally {
     clock.mockRestore();

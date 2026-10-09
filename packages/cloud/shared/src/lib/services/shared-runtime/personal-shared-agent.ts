@@ -12,8 +12,7 @@ import { getElizaAgentPublicWebUiUrl } from "../../eliza-agent-web-ui";
 import { getDefaultElizaCharacterData } from "../../utils/default-eliza-character";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 
-const PERSONAL_SHARED_DISCORD_GUILD_NAMESPACE =
-  "b9ea4ce5-636d-4ec4-bc75-6308188f883f";
+const PERSONAL_SHARED_DISCORD_GUILD_NAMESPACE = "b9ea4ce5-636d-4ec4-bc75-6308188f883f";
 
 import {
   type PersonalSharedAccountIdentity,
@@ -39,9 +38,7 @@ export function personalSharedDiscordGuildRoomId(input: {
   channelId: string;
 }): string {
   return uuidv5(
-    [input.agentId, input.discordUserId, input.guildId, input.channelId].join(
-      ":",
-    ),
+    [input.agentId, input.discordUserId, input.guildId, input.channelId].join(":"),
     PERSONAL_SHARED_DISCORD_GUILD_NAMESPACE,
   );
 }
@@ -54,9 +51,7 @@ function localBridgeApiBase(value: string | null): string | null {
   try {
     const url = new URL(value);
     const loopback =
-      url.hostname === "localhost" ||
-      url.hostname === "127.0.0.1" ||
-      url.hostname === "[::1]";
+      url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
     if (
       !loopback ||
       (url.protocol !== "http:" && url.protocol !== "https:") ||
@@ -98,8 +93,7 @@ export function personalDedicatedAgentApiBase(
   // credential leak. Production's configured domain always wins above.
   return baseDomain === undefined
     ? null
-    : (localBridgeApiBase(target.bridge_url) ??
-        localRestApiBase(target.health_url));
+    : (localBridgeApiBase(target.bridge_url) ?? localRestApiBase(target.health_url));
 }
 
 /**
@@ -108,9 +102,7 @@ export function personalDedicatedAgentApiBase(
  * it authenticate the agent *to* Cloud and a runtime rejects them, so falling
  * back to one would turn a missing token into an opaque upstream 401.
  */
-export function dedicatedAgentTransportToken(target: {
-  environment_vars: unknown;
-}): string | null {
+export function dedicatedAgentTransportToken(target: { environment_vars: unknown }): string | null {
   const env = target.environment_vars;
   if (!env || typeof env !== "object" || Array.isArray(env)) return null;
   const value = (env as Record<string, unknown>).ELIZA_API_TOKEN;
@@ -138,9 +130,7 @@ export function personalDedicatedClientApiBase(
 }
 
 /** Build the rowless runtime projection for the authenticated account. */
-export function personalSharedAgent(
-  identity: PersonalSharedAccountIdentity,
-): SharedRuntimeAgent {
+export function personalSharedAgent(identity: PersonalSharedAccountIdentity): SharedRuntimeAgent {
   const character = getDefaultElizaCharacterData();
   return {
     id: personalSharedAgentId(identity),

@@ -13,10 +13,7 @@ import type {
   SharedRuntimeReminderActionProvenance,
 } from "../../../db/schemas/shared-runtime-history";
 import { logger } from "../../utils/logger";
-import {
-  currentNwsObservationSource,
-  isVerifiedCurrentNwsObservation,
-} from "./shared-current-weather";
+import { currentNwsObservationSource, isVerifiedCurrentNwsObservation } from "./shared-current-weather";
 
 export const MAX_PUBLIC_WEB_GROUNDING_AGE_MS = 24 * 60 * 60 * 1_000;
 export const MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS = 60_000;
@@ -85,21 +82,17 @@ function publicSourceUrls(value: unknown): string[] | undefined {
   return urls;
 }
 
-function publicSources(
-  value: unknown,
-): Array<{ url: string; text: string }> | undefined {
+function publicSources(value: unknown): Array<{ url: string; text: string }> | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) return undefined;
   const sources: Array<{ url: string; text: string }> = [];
   for (const item of value) {
     if (!item || typeof item !== "object") return undefined;
     const record = item as Record<string, unknown>;
-    if (typeof record.url !== "string" || typeof record.text !== "string")
-      return undefined;
+    if (typeof record.url !== "string" || typeof record.text !== "string") return undefined;
     const urls = publicSourceUrls([record.url]);
     const text = record.text.trim();
-    if (!urls?.[0] || !text || containsUnsafePublicHttpUrl(text))
-      return undefined;
+    if (!urls?.[0] || !text || containsUnsafePublicHttpUrl(text)) return undefined;
     sources.push({ url: urls[0], text });
   }
   return sources;
@@ -121,25 +114,18 @@ export function parseSharedPublicWebGrounding(
   ) {
     const query = candidate.query.trim();
     return query
-      ? {
-          kind: "web_search_unavailable",
-          query,
-          observedAt: candidate.observedAt,
-        }
+      ? { kind: "web_search_unavailable", query, observedAt: candidate.observedAt }
       : undefined;
   }
   if (
     candidate.kind !== "web_search" ||
     typeof candidate.query !== "string" ||
-    (candidate.provider !== "parallel" &&
-      candidate.provider !== "exa" &&
-      candidate.provider !== "nws") ||
+    (candidate.provider !== "parallel" && candidate.provider !== "exa" && candidate.provider !== "nws") ||
     typeof candidate.text !== "string" ||
     typeof candidate.observedAt !== "number" ||
     !Number.isSafeInteger(candidate.observedAt) ||
     candidate.observedAt < 0 ||
-    candidate.observedAt >
-      Date.now() + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS ||
+    candidate.observedAt > Date.now() + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS ||
     candidate.truncated !== false
   ) {
     return undefined;
@@ -150,24 +136,13 @@ export function parseSharedPublicWebGrounding(
   if (!query || !text || !sources || sources.length === 0) {
     return undefined;
   }
-  const weatherObservation =
-    candidate.provider === "nws" &&
-    isVerifiedCurrentNwsObservation(
-      candidate.weatherObservation,
-      query,
-      Date.now(),
-      false,
-    )
-      ? candidate.weatherObservation
-      : undefined;
-  if (
-    candidate.provider === "nws" &&
-    (!weatherObservation ||
-      sources.length !== 1 ||
-      sources[0].url !== weatherObservation.sourceUrl ||
-      sources[0].text !== currentNwsObservationSource(weatherObservation).text)
-  )
-    return undefined;
+  const weatherObservation = candidate.provider === "nws" &&
+    isVerifiedCurrentNwsObservation(candidate.weatherObservation, query, Date.now(), false)
+    ? candidate.weatherObservation : undefined;
+  if (candidate.provider === "nws" && (
+    !weatherObservation || sources.length !== 1 || sources[0].url !== weatherObservation.sourceUrl ||
+    sources[0].text !== currentNwsObservationSource(weatherObservation).text
+  )) return undefined;
   return {
     kind: "web_search",
     query,
@@ -181,9 +156,7 @@ export function parseSharedPublicWebGrounding(
   };
 }
 
-const REMINDER_OPERATIONS = new Set<
-  SharedRuntimeReminderActionProvenance["operation"]
->([
+const REMINDER_OPERATIONS = new Set<SharedRuntimeReminderActionProvenance["operation"]>([
   "create",
   "list",
   "update",
@@ -207,48 +180,32 @@ export function parseSharedReminderActionProvenance(
       candidate.operation as SharedRuntimeReminderActionProvenance["operation"],
     ) ||
     typeof candidate.success !== "boolean" ||
-    (candidate.requiresConfirmation !== undefined &&
-      candidate.requiresConfirmation !== true) ||
-    (candidate.requiresSelection !== undefined &&
-      candidate.requiresSelection !== true) ||
+    (candidate.requiresConfirmation !== undefined && candidate.requiresConfirmation !== true) ||
+    (candidate.requiresSelection !== undefined && candidate.requiresSelection !== true) ||
     typeof candidate.deliveryScope !== "string" ||
     !candidate.deliveryScope.trim() ||
     !Array.isArray(candidate.taskIds) ||
-    candidate.taskIds.some(
-      (taskId) => typeof taskId !== "string" || !taskId.trim(),
-    ) ||
+    candidate.taskIds.some((taskId) => typeof taskId !== "string" || !taskId.trim()) ||
     (candidate.requiresSelection === true
       ? candidate.success !== false ||
         !Array.isArray(candidate.candidateTaskIds) ||
         candidate.candidateTaskIds.length === 0 ||
         candidate.candidateTaskIds.length > 100 ||
-        candidate.candidateTaskIds.some(
-          (taskId) => typeof taskId !== "string" || !taskId.trim(),
-        )
+        candidate.candidateTaskIds.some((taskId) => typeof taskId !== "string" || !taskId.trim())
       : candidate.candidateTaskIds !== undefined)
   ) {
     return undefined;
   }
   return {
     actionName: "REMINDERS",
-    operation:
-      candidate.operation as SharedRuntimeReminderActionProvenance["operation"],
+    operation: candidate.operation as SharedRuntimeReminderActionProvenance["operation"],
     success: candidate.success,
-    ...(candidate.requiresConfirmation === true
-      ? { requiresConfirmation: true }
-      : {}),
-    ...(candidate.requiresSelection === true
-      ? { requiresSelection: true }
-      : {}),
+    ...(candidate.requiresConfirmation === true ? { requiresConfirmation: true } : {}),
+    ...(candidate.requiresSelection === true ? { requiresSelection: true } : {}),
     taskIds: [...new Set(candidate.taskIds.map((taskId) => taskId.trim()))],
-    ...(candidate.requiresSelection === true &&
-    Array.isArray(candidate.candidateTaskIds)
+    ...(candidate.requiresSelection === true && Array.isArray(candidate.candidateTaskIds)
       ? {
-          candidateTaskIds: [
-            ...new Set(
-              candidate.candidateTaskIds.map((taskId) => taskId.trim()),
-            ),
-          ],
+          candidateTaskIds: [...new Set(candidate.candidateTaskIds.map((taskId) => taskId.trim()))],
         }
       : {}),
     deliveryScope: candidate.deliveryScope.trim(),
@@ -256,11 +213,9 @@ export function parseSharedReminderActionProvenance(
 }
 
 /** Encodes untrusted evidence as JSON so result text cannot forge envelope boundaries. */
-export function encodeSharedPublicWebGrounding(
-  value: SharedRuntimePublicGrounding,
-): string {
+export function encodeSharedPublicWebGrounding(value: SharedRuntimePublicGrounding): string {
   const parsed = parseSharedPublicWebGrounding(value);
-  if (parsed?.kind !== "web_search") {
+  if (!parsed || parsed.kind !== "web_search") {
     throw new TypeError("Invalid Shared public web grounding");
   }
   return JSON.stringify({
@@ -283,16 +238,11 @@ export function sharedRuntimeFreshGroundingProjectionMessages(
       status: grounding.kind === "web_search" ? "available" : "unavailable",
       policy: "current_turn_evidence_only",
       observedAt: grounding.observedAt,
-      ...(grounding.kind === "web_search"
-        ? { provider: grounding.provider }
-        : {}),
+      ...(grounding.kind === "web_search" ? { provider: grounding.provider } : {}),
     }),
   };
   return grounding.kind === "web_search"
-    ? [
-        authority,
-        { role: "user", content: encodeSharedPublicWebGrounding(grounding) },
-      ]
+    ? [authority, { role: "user", content: encodeSharedPublicWebGrounding(grounding) }]
     : [authority];
 }
 
@@ -303,17 +253,12 @@ export function sharedPublicWebGrounding(
   for (let index = (actionResults?.length ?? 0) - 1; index >= 0; index -= 1) {
     const candidate = actionResults?.[index];
     if (!candidate || typeof candidate !== "object") continue;
-    const record = candidate as {
-      success?: unknown;
-      text?: unknown;
-      data?: unknown;
-    };
+    const record = candidate as { success?: unknown; text?: unknown; data?: unknown };
     if (!record.data || typeof record.data !== "object") continue;
     const data = record.data as Record<string, unknown>;
     if (data.actionName !== "WEB_SEARCH") continue;
     const observedAt = Date.now();
-    const attemptedAvailable =
-      record.success === true && data.truncated === false;
+    const attemptedAvailable = record.success === true && data.truncated === false;
     let parsed = attemptedAvailable
       ? parseSharedPublicWebGrounding({
           kind: "web_search",
@@ -321,8 +266,7 @@ export function sharedPublicWebGrounding(
           provider: data.provider,
           text: record.text,
           observedAt:
-            typeof data.observedAt === "number" &&
-            Number.isSafeInteger(data.observedAt)
+            typeof data.observedAt === "number" && Number.isSafeInteger(data.observedAt)
               ? data.observedAt
               : observedAt,
           sourceUrls: data.sourceUrls,
@@ -353,10 +297,7 @@ export function sharedPublicWebGrounding(
         {
           success: record.success === true,
           queryType: typeof data.query,
-          providerValue:
-            typeof data.provider === "string"
-              ? data.provider
-              : typeof data.provider,
+          providerValue: typeof data.provider === "string" ? data.provider : typeof data.provider,
           textType: typeof record.text,
         },
       );
@@ -367,9 +308,7 @@ export function sharedPublicWebGrounding(
 }
 
 /** Converts one durable turn into the visible text shown to either model path. */
-export function sharedRuntimeModelHistoryContent(
-  message: SharedRuntimeHistoryMessageLike,
-): string {
+export function sharedRuntimeModelHistoryContent(message: SharedRuntimeHistoryMessageLike): string {
   return message.role === "assistant" && message.interrupted
     ? `[interrupted assistant partial]\n${message.content}`
     : message.content;
@@ -380,8 +319,7 @@ function groundingWords(value: string): Set<string> {
     value
       .toLowerCase()
       .match(/[\p{L}\p{N}]+/gu)
-      ?.filter((word) => word.length > 2 && !GROUNDING_STOP_WORDS.has(word)) ??
-      [],
+      ?.filter((word) => word.length > 2 && !GROUNDING_STOP_WORDS.has(word)) ?? [],
   );
 }
 
@@ -405,9 +343,7 @@ function selectedGrounding(
   const query = groundingWords(queryText);
   const candidates = history.flatMap((message, index) => {
     const grounding =
-      message.role === "assistant"
-        ? parseSharedPublicWebGrounding(message.grounding)
-        : undefined;
+      message.role === "assistant" ? parseSharedPublicWebGrounding(message.grounding) : undefined;
     if (!grounding) return [];
     let precedingUserQuery = "";
     for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
@@ -417,17 +353,12 @@ function selectedGrounding(
     }
     // User text and the validated tool query are trusted selection inputs;
     // assistant prose and provider result text remain excluded.
-    const trustedWords = groundingWords(
-      `${precedingUserQuery}\n${grounding.query}`,
-    );
+    const trustedWords = groundingWords(`${precedingUserQuery}\n${grounding.query}`);
     let overlap = 0;
     for (const word of query) if (trustedWords.has(word)) overlap += 1;
     const immediate = !history
       .slice(index + 1)
-      .some(
-        (laterMessage) =>
-          laterMessage.role === "user" || laterMessage.role === "assistant",
-      );
+      .some((laterMessage) => laterMessage.role === "user" || laterMessage.role === "assistant");
     return [{ index, overlap, immediate, grounding }];
   });
   const topical = candidates.filter((candidate) => candidate.overlap > 0);
@@ -454,16 +385,14 @@ function selectedGrounding(
       })
       .sort(
         (left, right) =>
-          right.grounding.observedAt - left.grounding.observedAt ||
-          right.index - left.index,
+          right.grounding.observedAt - left.grounding.observedAt || right.index - left.index,
       );
   } else if (DEICTIC_GROUNDING_FOLLOW_UP.test(queryText)) {
     ranked = candidates
       .filter((candidate) => candidate.immediate)
       .sort(
         (left, right) =>
-          right.grounding.observedAt - left.grounding.observedAt ||
-          right.index - left.index,
+          right.grounding.observedAt - left.grounding.observedAt || right.index - left.index,
       );
   }
   const latest = ranked[0];
@@ -474,15 +403,9 @@ function selectedGrounding(
   // A fresh search receipt does not date the weather in an indexed excerpt.
   // Preserve old provenance for follow-up selection, but never project it as
   // current weather evidence. A new verified observation must run instead.
-  if (
-    latest.grounding.query.startsWith("current public weather in ") &&
-    (latest.grounding.provider !== "nws" ||
-      !isVerifiedCurrentNwsObservation(
-        latest.grounding.weatherObservation,
-        latest.grounding.query,
-        now,
-      ))
-  ) {
+  if (latest.grounding.query.startsWith("current public weather in ") &&
+      (latest.grounding.provider !== "nws" ||
+       !isVerifiedCurrentNwsObservation(latest.grounding.weatherObservation, latest.grounding.query, now))) {
     return { ...latest, status: "fresh_search_required" };
   }
   if (
@@ -540,16 +463,12 @@ function groundingProjectionMessages(
   selection: SelectedGrounding,
   options?: SharedRuntimeGroundingProjectionOptions,
 ): ModelMessage[] {
-  if (selection.status !== "available")
-    return [groundingAuthorityMarker(selection)];
+  if (selection.status !== "available") return [groundingAuthorityMarker(selection)];
   if (selection.grounding.kind !== "web_search") return [];
   if (options?.nativeToolProjection === false) {
     return [
       groundingAuthorityMarker(selection),
-      {
-        role: "user",
-        content: encodeSharedPublicWebGrounding(selection.grounding),
-      },
+      { role: "user", content: encodeSharedPublicWebGrounding(selection.grounding) },
     ];
   }
   const toolCallId = `persisted-web-${stringToUuid(`shared:${messageIdentity(message)}`)}`;
@@ -610,10 +529,7 @@ export function sharedRuntimeModelHistoryMessages(
     if (selected?.index === index && selected.status === "available") {
       messages.push(...groundingProjectionMessages(message, selected));
     }
-    messages.push({
-      role: message.role,
-      content: sharedRuntimeModelHistoryContent(message),
-    });
+    messages.push({ role: message.role, content: sharedRuntimeModelHistoryContent(message) });
     if (selected?.index === index && selected.status !== "available") {
       messages.push(...groundingProjectionMessages(message, selected));
     }
@@ -629,9 +545,7 @@ export function insertSharedRuntimeGroundingMessages(
   if (groundingMessages.length === 0) return messages;
   // Later planner iterations end in a live tool result, not the user's turn.
   // Anchor evidence before the last user so live tool call/result pairs stay adjacent.
-  const currentUserIndex = messages.findLastIndex(
-    (message) => message.role === "user",
-  );
+  const currentUserIndex = messages.findLastIndex((message) => message.role === "user");
   if (currentUserIndex < 0) return messages;
   // These system messages are emitted only by the server's grounding projection
   // helpers above. Public search text stays in its original user/tool messages.
@@ -648,16 +562,11 @@ export function insertSharedRuntimeGroundingMessages(
   if (!policy) return grounded;
   const first = grounded[0];
   return first?.role === "system"
-    ? [
-        { ...first, content: `${first.content}\n\n${policy}` },
-        ...grounded.slice(1),
-      ]
+    ? [{ ...first, content: `${first.content}\n\n${policy}` }, ...grounded.slice(1)]
     : [{ role: "system", content: policy }, ...grounded];
 }
 
-function isPersistedMessage(
-  value: unknown,
-): value is SharedRuntimeHistoryMessageLike {
+function isPersistedMessage(value: unknown): value is SharedRuntimeHistoryMessageLike {
   return (
     Boolean(value) &&
     typeof value === "object" &&
@@ -670,10 +579,7 @@ function isPersistedMessage(
 }
 
 function messageIdentity(message: SharedRuntimeHistoryMessageLike): string {
-  return (
-    message.id ??
-    `${message.role}\u0000${message.createdAt ?? ""}\u0000${message.content}`
-  );
+  return message.id ?? `${message.role}\u0000${message.createdAt ?? ""}\u0000${message.content}`;
 }
 
 /**
@@ -681,9 +587,11 @@ function messageIdentity(message: SharedRuntimeHistoryMessageLike): string {
  * Legacy query and limit parameters remain accepted for API compatibility but
  * never discard conversation content.
  */
-export function selectSharedRuntimeContext<
-  T extends SharedRuntimeHistoryMessageLike,
->(history: T[], _queryText: string, _limit?: number): T[] {
+export function selectSharedRuntimeContext<T extends SharedRuntimeHistoryMessageLike>(
+  history: T[],
+  _queryText: string,
+  _limit?: number,
+): T[] {
   return history.filter(isPersistedMessage);
 }
 
@@ -694,9 +602,7 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
   if (!current) {
     if (incoming.role !== "assistant") return incoming;
     const { reminderAction: _untrustedReminderAction, ...rest } = incoming;
-    const reminderAction = parseSharedReminderActionProvenance(
-      incoming.reminderAction,
-    );
+    const reminderAction = parseSharedReminderActionProvenance(incoming.reminderAction);
     return {
       ...rest,
       ...(reminderAction ? { reminderAction } : {}),
@@ -720,8 +626,7 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
     return current;
   }
   const chosen = incoming;
-  if (current.role !== "assistant" || incoming.role !== "assistant")
-    return chosen;
+  if (current.role !== "assistant" || incoming.role !== "assistant") return chosen;
   const currentGrounding = parseSharedPublicWebGrounding(current.grounding);
   const incomingGrounding = parseSharedPublicWebGrounding(incoming.grounding);
   const grounding = !currentGrounding
@@ -730,27 +635,18 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
       ? currentGrounding
       : incomingGrounding.observedAt > currentGrounding.observedAt ||
           (incomingGrounding.observedAt === currentGrounding.observedAt &&
-            JSON.stringify(incomingGrounding) >
-              JSON.stringify(currentGrounding))
+            JSON.stringify(incomingGrounding) > JSON.stringify(currentGrounding))
         ? incomingGrounding
         : currentGrounding;
-  const currentReminderAction = parseSharedReminderActionProvenance(
-    current.reminderAction,
-  );
-  const incomingReminderAction = parseSharedReminderActionProvenance(
-    incoming.reminderAction,
-  );
+  const currentReminderAction = parseSharedReminderActionProvenance(current.reminderAction);
+  const incomingReminderAction = parseSharedReminderActionProvenance(incoming.reminderAction);
   const reminderAction =
     currentReminderAction && incomingReminderAction
-      ? JSON.stringify(currentReminderAction) ===
-        JSON.stringify(incomingReminderAction)
+      ? JSON.stringify(currentReminderAction) === JSON.stringify(incomingReminderAction)
         ? currentReminderAction
         : undefined
       : (currentReminderAction ?? incomingReminderAction);
-  const {
-    reminderAction: _untrustedReminderAction,
-    ...chosenWithoutReminderAction
-  } = chosen;
+  const { reminderAction: _untrustedReminderAction, ...chosenWithoutReminderAction } = chosen;
   return {
     ...chosenWithoutReminderAction,
     ...(grounding ? { grounding } : {}),
@@ -763,21 +659,16 @@ export function compareSharedRuntimeHistoryMessages(
   b: { createdAt?: unknown; id?: unknown },
 ): number {
   const aCreated =
-    typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
-      ? a.createdAt
-      : 0;
+    typeof a.createdAt === "number" && Number.isFinite(a.createdAt) ? a.createdAt : 0;
   const bCreated =
-    typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
-      ? b.createdAt
-      : 0;
-  return (
-    aCreated - bCreated || String(a.id ?? "").localeCompare(String(b.id ?? ""))
-  );
+    typeof b.createdAt === "number" && Number.isFinite(b.createdAt) ? b.createdAt : 0;
+  return aCreated - bCreated || String(a.id ?? "").localeCompare(String(b.id ?? ""));
 }
 
-export function mergeSharedRuntimeHistoryMessages<
-  T extends SharedRuntimeHistoryMessageLike,
->(current: T[], incoming: T[]): T[] {
+export function mergeSharedRuntimeHistoryMessages<T extends SharedRuntimeHistoryMessageLike>(
+  current: T[],
+  incoming: T[],
+): T[] {
   const merged = new Map<string, T>();
   for (const message of [...current, ...incoming]) {
     if (!isPersistedMessage(message)) continue;
