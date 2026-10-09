@@ -361,23 +361,12 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
   async startMonitoring(
     options: MobileSignalsStartOptions = {},
   ): Promise<MobileSignalsStartResult> {
-    if (this.monitoring) {
-      // Already monitoring: both native bridges resolve the start result
-      // immediately, without emitting. Falling through to the initial emit
-      // below delivered a duplicate snapshot pair to every listener on
-      // each resume-driven re-start.
-      const snapshot = await buildSnapshot("start");
-      return {
-        enabled: true,
-        supported: true,
-        platform: snapshot.platform,
-        snapshot,
-        healthSnapshot: buildHealthSnapshot("start"),
-      };
+    const starting = !this.monitoring;
+    if (starting) {
+      this.monitoring = true;
+      this.generation += 1;
+      this.attachListeners();
     }
-    this.monitoring = true;
-    this.generation += 1;
-    this.attachListeners();
 
     const generation = this.generation;
     const snapshot = await buildSnapshot("start");
@@ -388,7 +377,7 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
     // after a resolved stop, and report `enabled` from that same active state
     // so the return value never contradicts what was delivered.
     const active = this.monitoring && this.generation === generation;
-    if (active && (options.emitInitial ?? true)) {
+    if (active && starting && (options.emitInitial ?? true)) {
       this.notifyListeners("signal", snapshot);
       this.notifyListeners("signal", healthSnapshot);
     }
