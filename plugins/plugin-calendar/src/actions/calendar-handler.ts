@@ -76,6 +76,7 @@ import {
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_ID,
   ELIZA_CALENDAR_PROVIDER,
+  isElizaCalendarEventId,
 } from "../internal/eliza-calendar.js";
 import { basicEmailValid } from "../internal/email.js";
 import { CalendarServiceError } from "../internal/errors.js";
@@ -5209,7 +5210,12 @@ const calendarAction: CalendarHandlerAction = {
       : undefined;
     if (
       nativeCalendarFailure &&
-      (!nativeGrantId || nativeGrantId === ELIZA_CALENDAR_GRANT_ID)
+      (!nativeGrantId ||
+        nativeGrantId === ELIZA_CALENDAR_GRANT_ID ||
+        isElizaCalendarEventId(
+          detailString(details, "eventId"),
+          runtime.agentId,
+        ))
     ) {
       return {
         success: false,

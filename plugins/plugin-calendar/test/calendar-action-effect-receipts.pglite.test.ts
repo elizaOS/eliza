@@ -24,6 +24,10 @@ import {
 } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import {
+  executeRawSqlTx,
+  type TransactionalDb,
+} from "../../plugin-assistant/src/services/approval/sql.ts";
+import {
   DeviceActionService,
   withDeviceActionTurn,
 } from "../../plugin-assistant/src/services/device-actions/service.ts";
@@ -261,6 +265,52 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
       list.mockRestore();
     }
     expect(googlePages).toHaveBeenCalled();
+    // A connected grant must not turn a built-in event identifier into a
+    // backend lookup before the handler checks the returned source.
+    const builtIn = await calendar.createCalendarEvent(
+      new URL("http://127.0.0.1/"),
+      {
+        grantId: "eliza-calendar",
+        calendarId: "primary",
+        title: "UNSELECTED_BACKEND_EVENT",
+        startAt: "2026-10-10T10:00:00.000Z",
+        endAt: "2026-10-10T11:00:00.000Z",
+        timeZone: "UTC",
+        idempotencyKey: "native-source-prelookup-fixture",
+      },
+    );
+    const backendRead = vi.spyOn(
+      Reflect.get(calendar, "repo"),
+      "getCalendarEventById",
+    );
+    const lookup = vi.spyOn(calendar, "getConditionalCalendarMutationTarget");
+    const extraction = vi.spyOn(runtime, "useModel");
+    const approvalsBefore = await executeRawSqlTx(
+      runtime.adapter.db as TransactionalDb,
+      "SELECT COUNT(*) AS count FROM approval_requests",
+    );
+    for (const grantId of [googleGrant.id, "apple-calendar"])
+      for (const subaction of ["update_event", "delete_event"]) {
+        const rejected = await withDeviceActionTurn(runtime, credentials, () =>
+          execute({ grantId, eventId: builtIn.id }, subaction),
+        );
+        expect(rejected.success).toBe(false);
+        expect(rejected.data).toMatchObject({
+          error: "CALENDAR_NATIVE_RESOURCE_REQUIRED",
+        });
+      }
+    expect(lookup).not.toHaveBeenCalled();
+    expect(backendRead).not.toHaveBeenCalled();
+    expect(extraction).not.toHaveBeenCalled();
+    expect(
+      await executeRawSqlTx(
+        runtime.adapter.db as TransactionalDb,
+        "SELECT COUNT(*) AS count FROM approval_requests",
+      ),
+    ).toEqual(approvalsBefore);
+    lookup.mockRestore();
+    backendRead.mockRestore();
+    extraction.mockRestore();
     const unknown = await withDeviceActionTurn(runtime, credentials, () =>
       execute({ grantId: "connector-account:unavailable" }),
     );
