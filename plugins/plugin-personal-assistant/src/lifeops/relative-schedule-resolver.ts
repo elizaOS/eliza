@@ -65,10 +65,17 @@ function nextProjectedLocalInstant(args: {
 }): number | null {
   const parts = getZonedDateParts(new Date(args.cursorMs), args.timezone);
   const totalMinutes = Math.round(args.localHour * 60);
+  // The local hour is canonical in [12, 36) for bedtime: whole days in it
+  // are the after-midnight carry into the next civil day. That carry must
+  // move the candidate date (as localHourInstantMs does for concrete
+  // anchors); wrapping it away attributes the occurrence to the wrong
+  // sleep-day.
+  const dayDelta = Math.floor(totalMinutes / (24 * 60));
   const minuteOfDay = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
   const offsetMs = args.offsetMinutes * 60000;
   for (let dayOffset = 0; dayOffset < 14; dayOffset += 1) {
-    const date = addDaysToLocalDate(parts, dayOffset);
+    const sleepDay = addDaysToLocalDate(parts, dayOffset);
+    const date = addDaysToLocalDate(parts, dayOffset + dayDelta);
     const candidate = buildUtcDateFromLocalParts(args.timezone, {
       year: date.year,
       month: date.month,
@@ -81,8 +88,17 @@ function nextProjectedLocalInstant(args: {
       continue;
     }
     // Weekday restrictions apply to the anchor's local day (the sleep-day the
-    // occurrence belongs to), not the offsetted fire instant.
-    if (weekdayMatches(candidate, args.timezone, args.allowedWeekdays)) {
+    // occurrence belongs to), not the offsetted fire instant — and not the
+    // civil day the after-midnight carry lands on.
+    const sleepDayMs = buildUtcDateFromLocalParts(args.timezone, {
+      year: sleepDay.year,
+      month: sleepDay.month,
+      day: sleepDay.day,
+      hour: 12,
+      minute: 0,
+      second: 0,
+    }).getTime();
+    if (weekdayMatches(sleepDayMs, args.timezone, args.allowedWeekdays)) {
       return candidate;
     }
   }
