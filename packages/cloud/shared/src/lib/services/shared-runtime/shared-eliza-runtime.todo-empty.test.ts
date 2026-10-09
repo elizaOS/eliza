@@ -50,8 +50,6 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
     postToolDispatchReads = 0,
     preToolDispatchReads = 0,
     modelCalls = 0;
-  const diagnostic: Array<{ request: unknown; response?: unknown; failureName?: string }> = [];
-  let diagnosticBytes = 0;
   let todoDispatched = false;
   let replyRecoveryRequested = false;
   const unrequested = async (): Promise<never> => {
@@ -79,7 +77,7 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
   process.env.CEREBRAS_API_KEY = "offline-todo-fixture-key";
   delete process.env.OPENROUTER_API_KEY;
   process.env.NODE_ENV = "production";
-  const scriptedFetch = (async (input, init) => {
+  globalThis.fetch = (async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (!url.startsWith("https://api.cerebras.ai/"))
       throw new Error("OFFLINE_NON_MODEL_NETWORK_FORBIDDEN");
@@ -144,24 +142,6 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
     }
     return model(reply);
   }) as typeof fetch;
-  globalThis.fetch = (async (input, init) => {
-    const text = input instanceof Request ? await input.clone().text() : String(init?.body ?? "");
-    diagnosticBytes += text.length;
-    if (diagnostic.length >= 12 || text.length > 1024 * 1024 || diagnosticBytes > 4 * 1024 * 1024)
-      throw new Error("SYNTHETIC_DIAGNOSTIC_BOUND");
-    const record: { request: unknown; response?: unknown; failureName?: string } = {
-      request: JSON.parse(text),
-    };
-    diagnostic.push(record);
-    try {
-      const response = await scriptedFetch(input, init);
-      record.response = await response.clone().json();
-      return response;
-    } catch (error) {
-      record.failureName = error instanceof Error ? error.name : "unknown";
-      throw error;
-    }
-  }) as typeof fetch;
   try {
     const turn = await runSharedAgentTurn({
       character: { name: "Eliza", system: "You are a concise assistant.", model: "qwen-3.8-27b" },
@@ -208,19 +188,6 @@ test("actual Core planner carries current-owner empty TODO proof into final egre
       },
     });
   } finally {
-    // Synthetic request bodies only, no headers/keys; retained privately by the offline controller.
-    console.info(
-      "TODO_CORE_DIAGNOSTIC " +
-        JSON.stringify({
-          diagnostic,
-          modelCalls,
-          todoDispatched,
-          replyRecoveryRequested,
-          reads,
-          preToolDispatchReads,
-          postToolDispatchReads,
-        }),
-    );
     globalThis.fetch = savedFetch;
     for (const [name, value] of [
       ["CEREBRAS_API_KEY", saved.cerebras],
