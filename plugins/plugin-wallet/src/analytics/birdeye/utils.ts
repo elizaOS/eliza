@@ -4,7 +4,6 @@
  * and the shared `fetch` wrapper (`makeApiRequest`) used by the Birdeye service.
  */
 import { logger } from "@elizaos/core";
-import { sanitizeWalletDisplayLabel } from "../../security/wallet-context-safety.js";
 import type { BirdeyeApiParams } from "./types/api/common";
 import type {
   TokenMarketSearchResponse,
@@ -445,78 +444,6 @@ export async function makeApiRequest<T>(
     throw error;
   }
 }
-
-export const formatTokenInfo = (
-  token: TokenResult,
-  metadata?: TokenMetadataSingleResponse,
-): string => {
-  const priceFormatted =
-    token.price != null
-      ? token.price < 0.01
-        ? token.price.toExponential(2)
-        : token.price.toFixed(2)
-      : "N/A";
-
-  const volume =
-    token.volume_24h_usd != null
-      ? `$${(token.volume_24h_usd / 1_000_000).toFixed(2)}M`
-      : "N/A";
-
-  const liquidity =
-    token.liquidity != null
-      ? `$${(token.liquidity / 1_000_000).toFixed(2)}M`
-      : "N/A";
-
-  const fdv =
-    token.fdv != null ? `$${(token.fdv / 1_000_000).toFixed(2)}M` : "N/A";
-
-  const priceChange =
-    token.price_change_24h_percent != null
-      ? `${token.price_change_24h_percent > 0 ? "+" : ""}${token.price_change_24h_percent.toFixed(2)}%`
-      : "N/A";
-
-  const trades = token.trade_24h != null ? token.trade_24h.toString() : "N/A";
-
-  const age = token.creation_time
-    ? `${Math.floor((Date.now() - new Date(token.creation_time).getTime()) / (1000 * 60 * 60 * 24))}d`
-    : "N/A";
-
-  const safeName = sanitizeWalletDisplayLabel(token.name || "unknown");
-  const safeSymbol = sanitizeWalletDisplayLabel(token.symbol || "unknown");
-
-  let output =
-    `🪙 ${safeName} @ ${safeSymbol}\n` +
-    `💰 USD: $${priceFormatted} (${priceChange})\n` +
-    `💎 FDV: ${fdv}\n` +
-    `💦 MCap: ${token.market_cap ? `$${(token.market_cap / 1_000_000).toFixed(2)}M` : "N/A"}\n` +
-    `💦 Liq: ${liquidity}\n` +
-    `📊 Vol: ${volume}\n` +
-    `🕰️ Age: ${age}\n` +
-    `🔄 Trades: ${trades}\n` +
-    `🔗 Address: ${token.address}`;
-
-  if (metadata?.success) {
-    const { extensions } = metadata.data;
-    const links: string[] = [];
-
-    if (extensions) {
-      if (extensions.website) links.push(`🌐 [Website](${extensions.website})`);
-      if (extensions.twitter) links.push(`🐦 [Twitter](${extensions.twitter})`);
-      if (extensions.discord) links.push(`💬 [Discord](${extensions.discord})`);
-      if (extensions.medium) links.push(`📝 [Medium](${extensions.medium})`);
-      if (extensions.coingecko_id)
-        links.push(
-          `🦎 [CoinGecko](https://www.coingecko.com/en/coins/${extensions.coingecko_id})`,
-        );
-    }
-
-    if (links.length > 0) {
-      output += `\n\n📱 Social Links:\n${links.join("\n")}`;
-    }
-  }
-
-  return output;
-};
 
 export const extractSymbols = (
   text: string,
