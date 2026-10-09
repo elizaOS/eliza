@@ -228,7 +228,16 @@ export function deviceProposalDigest(request: ApprovalRequest): string {
 }
 const readReplyControllers = new WeakMap<
   IAgentRuntime,
-  Map<string, { ownerId: string; digest: string; controller: AbortController }>
+  Map<
+    string,
+    {
+      ownerId: string;
+      installationId: string;
+      enrollmentId: string;
+      digest: string;
+      controller: AbortController;
+    }
+  >
 >();
 export class DeviceActionService {
   constructor(private readonly runtime: IAgentRuntime) {}
@@ -585,6 +594,7 @@ export class DeviceActionService {
     assertHostCurrent?: () => void,
   ): Promise<NonNullable<DeviceReadCompletion["reply"]>> {
     await this.readCompletionRoom(c, hint);
+    const enrollmentId = (await this.context(c)).enrollmentId;
     await recheck?.();
     signal.throwIfAborted();
     let controllers = readReplyControllers.get(this.runtime);
@@ -596,6 +606,8 @@ export class DeviceActionService {
       throw new DeviceActionError("Original read reply is already running");
     const owned = {
       ownerId: c.subjectUserId,
+      installationId: c.installationId,
+      enrollmentId,
       digest: hint.digest,
       controller: new AbortController(),
     };
@@ -746,7 +758,7 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Unsupported workflow device protocol");
     const hash = keyHash(c.deviceKey);
-    return this.database().transaction(async (tx) => {
+    const registered = await this.database().transaction(async (tx) => {
       await executeRawSqlTx(
         tx,
         `INSERT INTO client_devices (agent_id, subject_user_id, installation_id, enrollment_id, key_hash, label) VALUES (${sqlText(this.runtime.agentId)}, ${sqlText(text(c.subjectUserId, 256))}, ${sqlText(identifier(c.installationId))}, ${sqlText(randomUUID())}, ${sqlText(hash)}, ${sqlText(text(label, 128))}) ON CONFLICT DO NOTHING`,
@@ -759,8 +771,8 @@ export class DeviceActionService {
       return {
         installationId: c.installationId,
         enrollmentId: String(row.enrollment_id),
-        viewProfileVersion: 1,
-        userTextFormatVersion: 1,
+        viewProfileVersion: 1 as const,
+        userTextFormatVersion: 1 as const,
         capabilities: [
           "calendar.local-event.v1",
           CALENDAR_CREATE_CAPABILITY,
@@ -777,6 +789,17 @@ export class DeviceActionService {
         ],
       };
     });
+    // Idempotent registration preserves the same lease. A committed replacement
+    // retires only the previous enrollment for this exact owner/installation.
+    for (const held of readReplyControllers.get(this.runtime)?.values() ?? []) {
+      if (
+        held.ownerId === c.subjectUserId &&
+        held.installationId === c.installationId &&
+        held.enrollmentId !== registered.enrollmentId
+      )
+        held.controller.abort(new Error("Original read enrollment replaced"));
+    }
+    return registered;
   }
   private async lock(
     tx: TransactionalDb,
@@ -889,12 +912,23 @@ export class DeviceActionService {
       );
   }
   async revoke(c: DeviceCredential): Promise<void> {
-    await this.access(c, async (_q, _row, tx) => {
+    const enrollmentId = await this.access(c, async (_q, row, tx) => {
       await executeRawSqlTx(
         tx,
         `UPDATE client_devices SET revoked = TRUE WHERE ${scope(c, this.runtime.agentId)}`,
       );
+      return String(row.enrollment_id);
     });
+    // Retire after the canonical change commits, including a writer currently
+    // held in its prewrite lookup. Never cancel a foreign or newer enrollment.
+    for (const held of readReplyControllers.get(this.runtime)?.values() ?? []) {
+      if (
+        held.ownerId === c.subjectUserId &&
+        held.installationId === c.installationId &&
+        held.enrollmentId === enrollmentId
+      )
+        held.controller.abort(new Error("Original read enrollment revoked"));
+    }
   }
   async propose(
     c: DeviceCredential,
