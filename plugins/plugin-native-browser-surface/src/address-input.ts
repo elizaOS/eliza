@@ -24,10 +24,14 @@ export function parseBrowserAddressInput(
   // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject controls before WHATWG URL normalization.
   if (/[\u0000-\u001f\u007f\\]/.test(value))
     return { kind: "rejected", reason: "invalid-input" };
-  const hostPort = /^[^\s/:]+\.[^\s/:]+:\d+(?:[/?#]|$)/.test(value);
+  // A host with a numeric port is a URL, not a scheme — including
+  // single-label hosts (localhost:3000, nas:8080). Requiring a dot in
+  // the host let those fall into the scheme test below, where the host
+  // name was misread as a protocol and the input was rejected.
+  const hostPort = /^[^\s/:]+:\d+(?:[/?#]|$)/.test(value);
   const explicit = !hostPort && /^[a-z][a-z\d+.-]*:/i.test(value);
   const domain = /^[^\s/?#]+\.[^\s/?#]+(?:[/?#].*)?$/.test(value);
-  if (!explicit && !domain && !value.startsWith("//")) {
+  if (!explicit && !domain && !hostPort && !value.startsWith("//")) {
     if (value.includes("@")) return { kind: "rejected", reason: "credentials" };
     return { kind: "search", query: value };
   }
