@@ -381,7 +381,11 @@ export class GatewayWeb extends WebPlugin {
     const features = isJsonObject(hello.features) ? hello.features : null;
 
     this.sessionId = generateUUID();
-    this.protocol = protocol ?? null;
+    // Both native bridges default a missing protocol field to 3, and the
+    // connect frame negotiates exactly protocol 3, so 3 is the only value
+    // an omitted field can mean. Reporting null here made connect() and
+    // getConnectionInfo() claim no protocol for a normal hello.
+    this.protocol = protocol ?? 3;
     this.role = getString(auth?.role) || this.options?.role || "operator";
     this.scopes = toStringArray(auth?.scopes);
     this.methods = toStringArray(features?.methods);
