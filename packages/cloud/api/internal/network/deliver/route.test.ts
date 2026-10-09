@@ -36,7 +36,12 @@ beforeEach(() => {
 });
 async function post(
   payload: Record<string, unknown>,
-  options: { secret?: string; id?: string; enabled?: string } = {},
+  options: {
+    secret?: string;
+    id?: string;
+    enabled?: string;
+    receipt?: boolean;
+  } = {},
 ) {
   const body = JSON.stringify(payload);
   const signed = await svcSign(options.secret ?? SECRET, {

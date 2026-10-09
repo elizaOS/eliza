@@ -22,8 +22,6 @@ export interface GetUpdatesActionOptions {
   roleGate?: Action["roleGate"];
 }
 
-export const MAX_UPDATES_IN_REPLY = 5;
-
 export function createGetUpdatesAction(
   options: GetUpdatesActionOptions,
 ): Action {
@@ -48,17 +46,14 @@ export function createGetUpdatesAction(
       const { items } = await options.store.readUpdates(
         options.authority.memberId,
       );
-      const shown = items
-        .slice(0, MAX_UPDATES_IN_REPLY)
-        .map((i) => i.summary.trim())
-        .filter(Boolean);
-      const more = items.length - shown.length;
+      // Reading marks all returned items seen. Keep each one in the result.
+      const shown = items.map((item) => item.summary);
       return {
         success: true,
         text:
           shown.length === 0
             ? "No new Network updates."
-            : `Network updates:\n${shown.map((s) => `- ${s}`).join("\n")}${more > 0 ? `\n(+${more} more)` : ""}`,
+            : `Network updates:\n${shown.map((s) => `- ${s}`).join("\n")}`,
         modelReplyRequired: true,
         data: { actionName: "GET_UPDATES", count: items.length },
       };

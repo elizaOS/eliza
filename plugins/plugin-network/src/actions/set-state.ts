@@ -165,8 +165,11 @@ export function createSetStateAction(options: SetStateActionOptions): Action {
       }
       const note =
         typeof params.note === "string" && params.note.trim()
-          ? params.note.trim().slice(0, 280)
+          ? params.note.trim()
           : null;
+      if (note && note.length > 280) {
+        return failure("invalid_param", "note must not exceed 280 characters");
+      }
       // Same authz as the structured route: the member's own words must ask for this state, and
       // dates must be theirs and not in the past. Without an evidence quote, the whole message is it.
       const memberText = sanitize(String(message.content?.text ?? ""));
