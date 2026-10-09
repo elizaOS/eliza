@@ -677,6 +677,42 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     });
   });
 
+  it("ends a day-length DURATION at the same local time across a DST change", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:dst-trip",
+          "DTSTAMP:20261001T080000Z",
+          "DTSTART;TZID=America/New_York:20261031T100000",
+          "DURATION:P1D",
+          "SUMMARY:Overnight trip",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-10-31T00:00:00.000Z",
+        timeMax: "2026-11-02T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    // RFC 5545 3.3.6: P1D is a nominal day, so 10:00 EDT ends 10:00 EST.
+    expect(feed.events).toEqual([
+      expect.objectContaining({
+        title: "Overnight trip",
+        startAt: "2026-10-31T14:00:00.000Z",
+        endAt: "2026-11-01T15:00:00.000Z",
+      }),
+    ]);
+  });
+
   it("rejects an older SEQUENCE without overwriting the current event", async () => {
     const source = await createSource();
     await syncBody(

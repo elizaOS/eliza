@@ -503,7 +503,14 @@ function parseDateProperty(
   };
 }
 
-function parseDurationMs(value: string): number {
+interface ParsedDuration {
+  /** Nominal days (weeks folded in): calendar days in the event's zone. */
+  days: number;
+  /** Exact hours/minutes/seconds in milliseconds. */
+  exactMs: number;
+}
+
+function parseDuration(value: string): ParsedDuration {
   const match = value.match(DURATION_VALUE);
   if (!match) throw new Error("DURATION is not a supported RFC 5545 duration.");
   const sign = match[1] === "-" ? -1 : 1;
@@ -512,13 +519,48 @@ function parseDurationMs(value: string): number {
   const hours = Number(match[4] ?? "0");
   const minutes = Number(match[5] ?? "0");
   const seconds = Number(match[6] ?? "0");
-  const milliseconds =
-    (((weeks * 7 + days) * 24 + hours) * 60 * 60 + minutes * 60 + seconds) *
-    1000;
-  if (milliseconds === 0 || sign < 0) {
+  const parsed = {
+    days: weeks * 7 + days,
+    exactMs: (hours * 60 * 60 + minutes * 60 + seconds) * 1000,
+  };
+  if ((parsed.days === 0 && parsed.exactMs === 0) || sign < 0) {
     throw new Error("DURATION must be a positive, non-zero duration.");
   }
-  return milliseconds;
+  return parsed;
+}
+
+// RFC 5545 3.3.6: day and week durations are nominal, so "P1D" ends at the
+// same local wall-clock time on the next day even across a DST change;
+// hour/minute/second durations are exact.
+function endFromDuration(
+  start: ParsedDateValue,
+  value: string,
+): ParsedDateValue {
+  const duration = parseDuration(value);
+  let instant = start.instant;
+  let localDate = start.localDate;
+  if (duration.days > 0) {
+    // All-day dates are stored at UTC midnight; timed starts keep their
+    // wall-clock time in the event zone.
+    const zone = start.isDate ? "UTC" : start.timezone;
+    const clock = getZonedDateParts(new Date(start.instant), zone);
+    localDate = addDaysToLocalDate(start.localDate, duration.days);
+    const pad = (value: number, width = 2) =>
+      String(value).padStart(width, "0");
+    const resolved = normalizeCalendarDateTimeInTimeZone(
+      `${pad(localDate.year, 4)}-${pad(localDate.month)}-${pad(localDate.day)}T${pad(clock.hour % 24)}:${pad(clock.minute)}:${pad(clock.second)}`,
+      "DTEND",
+      zone,
+    );
+    if (!resolved) throw new Error("DTEND could not be resolved.");
+    instant = resolved;
+  }
+  return {
+    instant: new Date(Date.parse(instant) + duration.exactMs).toISOString(),
+    isDate: start.isDate,
+    timezone: start.timezone,
+    localDate,
+  };
 }
 
 function addOneLocalDay(
@@ -597,14 +639,7 @@ function parseEvent(
   const end = endProperty
     ? parseDateProperty(endProperty, calendarTimezone, "DTEND")
     : duration
-      ? {
-          instant: new Date(
-            Date.parse(start.instant) + parseDurationMs(duration),
-          ).toISOString(),
-          isDate: start.isDate,
-          timezone: start.timezone,
-          localDate: start.localDate,
-        }
+      ? endFromDuration(start, duration)
       : start.isDate
         ? addOneLocalDay(start, "DTEND")
         : start;
