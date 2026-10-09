@@ -74,6 +74,21 @@ function validateStartBlockOptions(
     options?.durationMinutes !== undefined &&
     options.durationMinutes !== null
   ) {
+    // The engine's request parser (and both native bridges) treat these
+    // tokens as a manual block — duration null. Number("manual") is NaN,
+    // so without this mapping the web bridge rejected in-contract manual
+    // blocks that the same options start successfully through the API.
+    const token =
+      typeof options.durationMinutes === "string"
+        ? options.durationMinutes.trim().toLowerCase()
+        : null;
+    if (
+      token === "indefinite" ||
+      token === "manual" ||
+      token === "until-unblocked"
+    ) {
+      return { websites, durationMinutes: null };
+    }
     const parsed =
       typeof options.durationMinutes === "number"
         ? options.durationMinutes
