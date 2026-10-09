@@ -1254,18 +1254,26 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       content: string;
     }[],
   ): Promise<string | null> {
-    if (!this.plugin || !this.loadedPath) {
-      throw new Error("No model loaded. Call load() first.");
-    }
-    if (typeof this.plugin.getFormattedChat !== "function") {
-      return null;
-    }
-    const result = await this.plugin.getFormattedChat({
-      contextId: this.requireContextId(),
-      messages: JSON.stringify(messages),
-      params: { jinja: true },
+    return this.serializeLifecycle(async () => {
+      if (!this.plugin || !this.loadedPath) {
+        throw new Error("No model loaded. Call load() first.");
+      }
+      if (typeof this.plugin.getFormattedChat !== "function") {
+        return null;
+      }
+      try {
+        const result = await this.plugin.getFormattedChat({
+          contextId: this.requireContextId(),
+          messages: JSON.stringify(messages),
+          params: { jinja: true },
+        });
+        return result.prompt ?? null;
+      } catch (error) {
+        // Capacitor proxies expose functions even for absent native methods.
+        if (isObject(error) && error.code === "UNIMPLEMENTED") return null;
+        throw error;
+      }
     });
-    return result.prompt ?? null;
   }
   async embed(options: EmbedOptions): Promise<EmbedResult> {
     // Admission and inference must finish before a queued unload releases their context.
