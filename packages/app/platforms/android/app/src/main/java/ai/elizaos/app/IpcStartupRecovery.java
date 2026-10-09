@@ -45,7 +45,7 @@ final class IpcStartupRecovery implements Closeable {
         return before.st_uid+":"+fields[19]+":"+exe+":"+cmd;
     }
     /** Strong conservative gate: no other process with this full UID is permitted. */
-    private static void requireSoleUidProcess()throws Exception {
+    static void requireSoleUidProcess()throws Exception {
         File self=new File("/proc/"+Process.myPid());String current=identity(self);
         if(Os.stat(self.getPath()).st_uid!=Process.myUid())throw refused("current process UID mismatch");
         File[] processes=new File("/proc").listFiles();if(processes==null || processes.length<20)throw refused("incomplete process inventory");
