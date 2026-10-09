@@ -281,13 +281,75 @@ test("relative reminder uses one authenticated turn anchor and reuses its canoni
   }
 }, 120_000);
 
-test("native operationKey inference schema matches real durable proposal admission",async()=>{
- const {runtime,cleanup}=await createTestRuntime({characterName:"NativeOperationKeyContract"});const service=new DeviceActionService(runtime),credential={subjectUserId:randomUUID(),installationId:randomUUID(),deviceKey:"e".repeat(64),capabilities:["notes.local-record.v1"]};
- try{
-  await service.register(credential,"Closed key schema phone");const operation={type:"create_note",title:"Synthetic note",body:"Exact content"},reason="Owner requested review";
-  expect(actionToTool(proposeDeviceAction).function.parameters?.properties?.operationKey).toMatchObject({type:"string",minLength:1,maxLength:128,pattern:"^[A-Za-z0-9][A-Za-z0-9_-]*$"});
-  for(const operationKey of ["a","A_0-x","closed-op-123","a".repeat(128)]){expect(validateToolArgs(proposeDeviceAction,{operation,reason,operationKey}).valid).toBe(true);await service.proposeWithOutcome(credential,operation,operationKey,reason);}
-  for(const operationKey of ["",":urn","a:b","a.b","a b","a".repeat(129)]){expect(validateToolArgs(proposeDeviceAction,{operation,reason,operationKey}).valid).toBe(false);await expect(service.proposeWithOutcome(credential,operation,operationKey,reason)).rejects.toThrow();}
-  expect(await service.list(credential)).toHaveLength(4);
- }finally{await cleanup();}
+test("native operationKey inference schema matches real durable proposal admission", async () => {
+  const { runtime, cleanup } = await createTestRuntime({
+    characterName: "NativeOperationKeyContract",
+  });
+  const service = new DeviceActionService(runtime),
+    credential = {
+      subjectUserId: randomUUID(),
+      installationId: randomUUID(),
+      deviceKey: "e".repeat(64),
+      capabilities: ["notes.local-record.v1"],
+    };
+  try {
+    await service.register(credential, "Closed key schema phone");
+    const operation = {
+        type: "create_note",
+        title: "Synthetic note",
+        body: "Exact content",
+      },
+      reason = "Owner requested review";
+    expect(
+      actionToTool(proposeDeviceAction).function.parameters?.properties
+        ?.operationKey,
+    ).toMatchObject({
+      type: "string",
+      minLength: 1,
+      maxLength: 128,
+      pattern: "^[A-Za-z0-9][A-Za-z0-9_-]*$",
+    });
+    for (const operationKey of [
+      "a",
+      "A_0-x",
+      "closed-op-123",
+      "a".repeat(128),
+    ]) {
+      expect(
+        validateToolArgs(proposeDeviceAction, {
+          operation,
+          reason,
+          operationKey,
+        }).valid,
+      ).toBe(true);
+      await service.proposeWithOutcome(
+        credential,
+        operation,
+        operationKey,
+        reason,
+      );
+    }
+    for (const operationKey of [
+      "",
+      ":urn",
+      "a:b",
+      "a.b",
+      "a b",
+      "a".repeat(129),
+    ]) {
+      expect(
+        validateToolArgs(proposeDeviceAction, {
+          operation,
+          reason,
+          operationKey,
+        }).valid,
+      ).toBe(false);
+      await expect(
+        service.proposeWithOutcome(credential, operation, operationKey, reason),
+      ).rejects.toThrow();
+    }
+    expect(await service.list(credential)).toHaveLength(4);
+  } finally {
+    await cleanup();
+  }
 });
