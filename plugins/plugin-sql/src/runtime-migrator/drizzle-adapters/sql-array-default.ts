@@ -59,6 +59,10 @@ export function buildArrayString(array: SqlArrayDefaultElement[], sqlType: strin
   });
 }
 
+function quoteArrayElement(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
 function renderArray(
   array: SqlArrayDefaultElement[],
   baseType: string,
@@ -106,7 +110,7 @@ function renderArray(
         if (serialized === undefined) {
           failUnbounded("chars", { reason: "object default is not JSON serializable" });
         }
-        rendered = `"${serialized.replaceAll('"', '\\"')}"`;
+        rendered = quoteArrayElement(serialized);
       } else {
         if (
           typeof value === "string" &&
@@ -117,11 +121,7 @@ function renderArray(
             max: MAX_SQL_ARRAY_DEFAULT_CHARS,
           });
         }
-        // Escape backslashes and quotes for the array literal, as the
-        // object branch above already does for quotes. A raw quote makes
-        // the literal malformed, and a raw backslash is read as an escape
-        // by the array parser, silently changing the stored value.
-        rendered = `"${String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+        rendered = quoteArrayElement(String(value));
       }
       reserveChars(budget, rendered.length);
       values[index] = rendered;
