@@ -12,6 +12,7 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { pushSchema } from "drizzle-kit/api";
+import { inArray } from "drizzle-orm";
 
 const PGLITE_DATABASE_URL = "pglite://memory";
 const ORIGINAL_ENV = {
@@ -236,4 +237,46 @@ describe("public character search pagination is a total order", () => {
     expect(new Set(featured.seen.keys())).toEqual(featuredCatalogIds);
     expect(duplicates(featured.seen)).toHaveLength(0);
   });
+});
+
+test("character username generation stays valid at the collision limit", async () => {
+  expect(schemaFailure).toBe("");
+  const { charactersService } = await import("../../../lib/services/characters");
+  const { validateUsername } = await import("../../../lib/utils/agent-username");
+  const base = "collision-fixture".padEnd(26, "x");
+  const insertedIds = new Set<string>();
+  try {
+    await seed(
+      Array.from({ length: 998 }, (_, index) =>
+        character(USER_ID, "collision", index, {
+          username: index === 0 ? base : `${base}-${index + 1}`,
+        }),
+      ),
+      insertedIds,
+    );
+    const available = await charactersService.generateUniqueUsername(base);
+    expect(available).toBe(`${base}-999`);
+    expect(available).toHaveLength(30);
+    expect(validateUsername(available).valid).toBe(true);
+    await seed([character(USER_ID, "collision", 999, { username: available })], insertedIds);
+    await expect(charactersService.generateUniqueUsername(base)).rejects.toThrow(
+      "Unable to generate unique username after maximum attempts",
+    );
+    const shortBase = "popular-agent";
+    await seed(
+      Array.from({ length: 1500 }, (_, index) =>
+        character(USER_ID, "popular", index, {
+          username: index === 0 ? shortBase : `${shortBase}-${index + 1}`,
+        }),
+      ),
+      insertedIds,
+    );
+    const nextShort = await charactersService.generateUniqueUsername(shortBase);
+    expect(nextShort).toBe("popular-agent-1501");
+    expect(validateUsername(nextShort).valid).toBe(true);
+  } finally {
+    if (insertedIds.size > 0) {
+      await dbWrite.delete(userCharacters).where(inArray(userCharacters.id, [...insertedIds]));
+    }
+  }
 });

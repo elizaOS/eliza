@@ -357,3 +357,222 @@ test("source links open only explicit safe URLs, serialize taps and suppress sta
   assert.equal(await next, false);
   assert.deepEqual(states.at(-1), { opening: false, failed: true });
 });
+
+test("source offers carry arrival order, optional due dates and look-alike sources", () => {
+  const newest = {
+    ...candidate(),
+    receivedAt: "2026-09-20T00:00:00.000Z",
+    mostRecent: true,
+  };
+  delete newest.facts.dueDate;
+  const read = readBillSourceOffer(
+    { ...offer(), candidates: [newest] },
+    validators,
+  );
+  assert.equal(read.candidates[0].mostRecent, true);
+  assert.equal(read.candidates[0].facts.dueDate, undefined);
+  const conflict = {
+    company: "Utility",
+    accountLabel: "Account ending 12",
+    origin: "https://lookalike.example",
+  };
+  assert.equal(
+    readBillSourceOffer(
+      {
+        ...offer(),
+        status: "conflicting-source",
+        candidates: [],
+        conflicts: [conflict],
+        unreadable: 2,
+      },
+      validators,
+    ).conflicts[0].origin,
+    "https://lookalike.example",
+  );
+  assert.equal(
+    readBillSourceOffer(
+      { ...offer(), conflicts: Array(6).fill(conflict) },
+      validators,
+    ).conflicts.length,
+    6,
+  );
+  for (const patch of [
+    { conflicts: [{ ...conflict, origin: "" }] },
+    { unreadable: 0 },
+    { candidates: [{ ...newest, mostRecent: false }] },
+    { candidates: [{ ...newest, receivedAt: "yesterday" }] },
+    {
+      candidates: [
+        { ...candidate(), facts: { ...candidate().facts, dueDate: "soon" } },
+      ],
+    },
+  ])
+    assert.throws(
+      () => readBillSourceOffer({ ...offer(), ...patch }, validators),
+      BillClientResponseError,
+    );
+});
+
+test("a conflicting-source offer cannot dispatch selection", async () => {
+  const { client, calls } = fixture(BillSourceClient);
+  client.start("task1");
+  await tick();
+  calls[0].resolve({ ...offer(), status: "conflicting-source" });
+  await tick();
+  assert.equal(await client.choose("a".repeat(64)), false);
+  assert.equal(calls.length, 1);
+});
+
+test("a failed source search keeps only the host's fixed reason", async () => {
+  for (const [reason, expected] of [
+    ["reauth_required", "reauth_required"],
+    ["insufficient_scope", "insufficient_scope"],
+    ["account_changed", "account_changed"],
+    ["timeout", "timeout"],
+    ["provider said something private", undefined],
+  ]) {
+    const { client, calls } = fixture(BillSourceClient);
+    client.start("task1");
+    await tick();
+    calls[0].reject(Object.assign(new Error("search failed"), { reason }));
+    await tick();
+    assert.equal(client.snapshot().error, "search");
+    assert.equal(client.snapshot().reason, expected);
+    const retry = client.search();
+    assert.equal(client.snapshot().reason, undefined);
+    calls[1].resolve(offer());
+    assert.equal(await retry, true);
+  }
+});
+
+test("prior and saved outcomes are admitted with their company", () => {
+  const outcome = {
+    kind: "outcome",
+    status: "paid",
+    reference: "TEST-1",
+    source: "https://biller.example/receipt",
+    company: "Utility",
+  };
+  assert.equal(
+    readBillDecision({ decision: outcome }, "task1", validators).company,
+    "Utility",
+  );
+  assert.equal(
+    readBillDecision(
+      { decision: { ...outcome, kind: "prior-outcome" } },
+      "task1",
+      validators,
+    ).kind,
+    "prior-outcome",
+  );
+  for (const company of ["", "x".repeat(301), 7])
+    assert.throws(
+      () =>
+        readBillDecision(
+          { decision: { ...outcome, company } },
+          "task1",
+          validators,
+        ),
+      BillClientResponseError,
+    );
+});
+
+test("a shown guide is checked again and renewed before it expires, and reported gone after", async () => {
+  let time = 1000;
+  const pending = [];
+  const timers = {
+    set: (callback, ms) => {
+      const handle = { callback, at: time + ms };
+      pending.push(handle);
+      return handle;
+    },
+    clear: (handle) => {
+      const index = pending.indexOf(handle);
+      if (index >= 0) pending.splice(index, 1);
+    },
+  };
+  const fire = async () => {
+    const next = pending.shift();
+    time = next.at;
+    next.callback();
+    await tick();
+  };
+  const calls = [];
+  const client = new BillDecisionClient({
+    validators,
+    now: () => time,
+    timers,
+    changed: () => {},
+    request: (path, body) => {
+      const d = deferred();
+      calls.push({ path, body, ...d });
+      return d.promise;
+    },
+  });
+  const guided = (expiresAt) => ({
+    decision: {
+      kind: "human-sign-in",
+      guidance: {
+        instruction: "Sign in yourself.",
+        available: true,
+        expiresAt,
+      },
+    },
+  });
+  client.start("task1");
+  await tick();
+  calls[0].resolve(guided(time + 60000));
+  await tick();
+  // A shown guide is checked again on the short interval.
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].at, 1000 + 15000);
+  await fire();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].body, undefined);
+  // Close to expiry, the check runs before the guide ends.
+  calls[1].resolve(guided(time + 8000));
+  await tick();
+  assert.equal(pending[0].at, time + 3000);
+  await fire();
+  calls[2].reject(new Error("offline"));
+  await tick();
+  // A failed renewal tries once more when the guide expires, and then the
+  // guide is reported unavailable.
+  assert.equal(pending[0].at, time + 5000);
+  await fire();
+  assert.equal(client.snapshot().decision.guidance.available, false);
+  calls[3].reject(new Error("offline"));
+  await tick();
+  assert.equal(pending.length, 0);
+  // No checks without a shown guide, and none after stop.
+  client.start("task2");
+  await tick();
+  calls[4].resolve({ decision: { kind: "human-sign-in" } });
+  await tick();
+  assert.equal(pending.length, 0);
+  client.start("task3");
+  await tick();
+  calls[5].resolve(guided(time + 60000));
+  await tick();
+  assert.equal(pending.length, 1);
+  client.stop();
+  assert.equal(pending.length, 0);
+});
+
+test("guide expiry must be a safe time", () => {
+  for (const expiresAt of [-1, 1.5, "soon"])
+    assert.throws(
+      () =>
+        readBillDecision(
+          {
+            decision: {
+              kind: "human-sign-in",
+              guidance: { instruction: "x", available: true, expiresAt },
+            },
+          },
+          "task1",
+          validators,
+        ),
+      BillClientResponseError,
+    );
+});

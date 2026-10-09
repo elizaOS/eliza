@@ -1,3 +1,4 @@
+import { BILL_SOURCE_FAILURE_REASONS } from "./bill-source-discovery.mjs";
 import { BillHostError } from "./errors.mjs";
 
 /** Optional bill-task HTTP facade over the host's existing task runtime and stores. */
@@ -132,14 +133,21 @@ export function createBillTaskRoutes({
           headers: { "Cache-Control": "no-store" },
         });
       } catch (error) {
+        if (error?.code === "BILL_SELECTION_STALE")
+          return Response.json(
+            { code: "BILL_SELECTION_STALE" },
+            { status: 409 },
+          );
+        // A fixed reason (for example reauth_required) tells the person what
+        // to do next. Provider text never leaves the host.
         return Response.json(
           {
-            code:
-              error?.code === "BILL_SELECTION_STALE"
-                ? "BILL_SELECTION_STALE"
-                : "BILL_DISCOVERY_UNAVAILABLE",
+            code: "BILL_DISCOVERY_UNAVAILABLE",
+            reason: BILL_SOURCE_FAILURE_REASONS.includes(error?.reason)
+              ? error.reason
+              : "unavailable",
           },
-          { status: error?.code === "BILL_SELECTION_STALE" ? 409 : 503 },
+          { status: 503 },
         );
       }
     }
