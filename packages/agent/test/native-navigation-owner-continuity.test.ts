@@ -28,7 +28,7 @@ import {
 import { _resetAgentHostBridge } from "../src/runtime/host-bridge.ts";
 import { getViewClientScope } from "../src/runtime/view-client-context.ts";
 
-it.each(["stable", "runtime-replaced"])(
+it.each(["stable", "runtime-replaced", "standalone-root"])(
   "retains paired navigation authority only while its owning runtime is current: %s",
   async (scenario) => {
     const directory = await mkdtemp(
@@ -181,6 +181,9 @@ it.each(["stable", "runtime-replaced"])(
       expect(me.status).toBe(200);
       expect(me.body.identity.id).toBe(identity.id);
       expect(me.body.access.role).toBe("OWNER");
+      const callerToken =
+        scenario === "standalone-root" ? rootToken : paired.session.id;
+      if (scenario === "standalone-root") _resetAgentHostBridge();
       const service = runtime.messageService;
       if (!service) throw Error("Message service missing");
       let actionExecutions = 0;
@@ -211,7 +214,8 @@ it.each(["stable", "runtime-replaced"])(
             text: action.text,
             data: action.data,
           };
-          if (scenario === "stable") expect(action.success).toBe(true);
+          if (scenario !== "runtime-replaced")
+            expect(action.success).toBe(true);
           const result = actionResultToPlannerToolResult({
             ...action,
             data: { ...action.data, actionName: "VIEWS_SHOW" },
@@ -229,19 +233,16 @@ it.each(["stable", "runtime-replaced"])(
           } as never;
         },
       );
-      const created = await request(
-        origin,
-        "/api/conversations",
-        paired.session.id,
-        { title: "Owned navigation auth turn" },
-      );
+      const created = await request(origin, "/api/conversations", callerToken, {
+        title: "Owned navigation auth turn",
+      });
       expect(created.status).toBe(200);
       const responsePending = fetch(
         `${origin}/api/conversations/${created.body.conversation.id}/messages/stream`,
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${paired.session.id}`,
+            Authorization: `Bearer ${callerToken}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
@@ -342,25 +343,25 @@ it.each(["stable", "runtime-replaced"])(
         wrongOwner.session.id,
         binding,
       );
-      expect(wrong.status).toBe(409);
+      expect(wrong.status).toBe(scenario === "standalone-root" ? 401 : 409);
       const wrongClient = await request(
         origin,
         "/api/views/interact-claim",
-        paired.session.id,
+        callerToken,
         { ...binding, clientId: "other-renderer" },
       );
       expect(wrongClient.status).toBe(409);
       const cross = await request(
         `http://127.0.0.1:${otherHost.port}`,
         "/api/views/interact-claim",
-        paired.session.id,
+        callerToken,
         binding,
       );
       expect(cross.status).toBe(409);
       const claim = await request(
         origin,
         "/api/views/interact-claim",
-        paired.session.id,
+        callerToken,
         binding,
       );
       expect(
@@ -371,7 +372,7 @@ it.each(["stable", "runtime-replaced"])(
       const ack = await request(
         origin,
         "/api/views/interact-result",
-        paired.session.id,
+        callerToken,
         {
           ...binding,
           claimId: claim.body.claimId,
