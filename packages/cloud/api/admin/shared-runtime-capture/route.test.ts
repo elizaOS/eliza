@@ -135,8 +135,7 @@ describe("exact-reader private capture Hono retrieval", () => {
       { roomKey: ROOM, sessionId: "not-a-uuid" },
       { roomKey: ROOM, sessionId: SESSION, readerUserId: READER },
       { roomKey: "x".repeat(513), sessionId: SESSION },
-      { roomKey: "owned-room
-other", sessionId: SESSION },
+      { roomKey: "owned-room\nother", sessionId: SESSION },
       { roomKey: "", sessionId: SESSION },
     ]) {
       const result = await request(body);
