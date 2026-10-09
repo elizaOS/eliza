@@ -34,7 +34,10 @@ import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
-import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
+import {
+  type BridgeExecutionContext,
+  normalizeSharedRuntimeRoom,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import {
   classifySharedTurnOutcome,
   recordSharedTurnAttempt,
@@ -295,7 +298,9 @@ app.post("/", async (c) => {
       };
     }
 
-    const conversationId = c.req.param("conversationId") ?? r.agentId;
+    const conversationId = normalizeSharedRuntimeRoom(
+      c.req.param("conversationId") ?? r.agentId,
+    );
     const personal = "agentKind" in r && r.agentKind === "personal";
     const bodyRecord =
       raw && typeof raw === "object"
@@ -325,7 +330,7 @@ app.post("/", async (c) => {
     const target = await resolveSharedSurfaceTarget({
       agent: r.agent,
       personal,
-      conversationId: trustedNetworkContext ? r.agent.id : conversationId,
+      conversationId,
       namespace: worker.namespace,
     });
     if (!target.ok) {

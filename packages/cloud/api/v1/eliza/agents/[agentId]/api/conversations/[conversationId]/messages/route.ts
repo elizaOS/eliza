@@ -27,7 +27,10 @@ import {
   sharedRestMessageSend,
   sharedRestMessagesGet,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-rest-adapter";
-import { sharedTurnClientMessageId } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
+import {
+  normalizeSharedRuntimeRoom,
+  sharedTurnClientMessageId,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
@@ -93,7 +96,9 @@ app.get("/", async (c) => {
       origin,
     );
   }
-  const conversationId = c.req.param("conversationId") ?? r.agentId;
+  const conversationId = normalizeSharedRuntimeRoom(
+    c.req.param("conversationId") ?? r.agentId,
+  );
   // The personal identity follows its entitlement route (#25146): a withdrawn
   // Dedicated reads the scoped fallback journal, never the canonical room.
   const target = await resolveSharedSurfaceTarget({
@@ -187,7 +192,9 @@ app.post("/", async (c) => {
       origin,
     );
   }
-  const conversationId = c.req.param("conversationId") ?? r.agentId;
+  const conversationId = normalizeSharedRuntimeRoom(
+    c.req.param("conversationId") ?? r.agentId,
+  );
   const raw: unknown = await c.req.json().catch(() => ({}));
   const text =
     raw &&
@@ -218,7 +225,7 @@ app.post("/", async (c) => {
   const target = await resolveSharedSurfaceTarget({
     agent: r.agent,
     personal: "agentKind" in r,
-    conversationId: trustedNetworkContext ? r.agent.id : conversationId,
+    conversationId,
     namespace: worker.namespace,
   });
   if (!target.ok) {

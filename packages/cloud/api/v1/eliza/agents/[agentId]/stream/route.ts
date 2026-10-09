@@ -27,7 +27,11 @@ import {
   resolveSharedRuntimeWorkerRequestContext,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
 import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
-import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
+
+import {
+  type BridgeExecutionContext,
+  normalizeSharedRuntimeRoom,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import type {
   AppEnv,
   RuntimeDurableObjectNamespace,
@@ -105,6 +109,11 @@ async function __hono_POST(
     }
 
     let rpcRequest = parsed.data as BridgeRequest;
+    const requestedRoom =
+      typeof rpcRequest.params?.roomId === "string" &&
+      rpcRequest.params.roomId.trim()
+        ? normalizeSharedRuntimeRoom(rpcRequest.params.roomId)
+        : resolved.agent.id;
     let trustedNetworkContext = await prepareNetworkSharedTurn(
       context,
       resolved.agent,
@@ -116,7 +125,6 @@ async function __hono_POST(
         ...rpcRequest,
         params: {
           ...rpcRequest.params,
-          roomId: resolved.agent.id,
           userId: resolved.agent.user_id,
         },
       };
@@ -131,14 +139,10 @@ async function __hono_POST(
         >["accountState"]
       | undefined;
     if (resolved.agentKind === "personal") {
-      const requestedRoom = rpcRequest.params?.roomId;
       const target = await resolveSharedSurfaceTarget({
         agent: resolved.agent,
         personal: true,
-        conversationId:
-          typeof requestedRoom === "string" && requestedRoom.trim()
-            ? requestedRoom
-            : resolved.agent.id,
+        conversationId: requestedRoom,
         namespace: resolved.namespace,
       });
       if (!target.ok) {
@@ -156,13 +160,11 @@ async function __hono_POST(
         resolved.agent,
         target.roomId,
       );
-      if (target.accountState) {
-        trustedAccountState = target.accountState;
-        rpcRequest = {
-          ...rpcRequest,
-          params: { ...rpcRequest.params, roomId: target.roomId },
-        };
-      }
+      trustedAccountState = target.accountState;
+      rpcRequest = {
+        ...rpcRequest,
+        params: { ...rpcRequest.params, roomId: target.roomId },
+      };
     }
 
     const upstreamResponse = await coordinateSharedStream(
