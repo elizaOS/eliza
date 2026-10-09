@@ -271,7 +271,8 @@ test("a selection refused before the click is found again once, then reported", 
     const stopped = await workflow.chooseExistingMethod(decision.reviewKey, {
       operationId: "second",
     });
-    assert.equal(stopped.kind, "unknown-outcome");
+    assert.equal(stopped.kind, "blocked");
+    assert.match(stopped.reason, /No click was sent/);
     assert.deepEqual(proposals, ["second", "second.relocated"]);
     // A failed post-click verification is not proof that no effect occurred.
     evidenceRef = "evidence:post-click";

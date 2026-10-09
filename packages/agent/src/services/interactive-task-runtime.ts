@@ -5,10 +5,10 @@
 import {
   ElizaError,
   type InteractiveTask,
-  type TaskActionProposal,
-  type TaskObservation,
   TASK_ACTION_NOT_DISPATCHED,
   TASK_ACTION_NOT_DISPATCHED_REF,
+  type TaskActionProposal,
+  type TaskObservation,
   type TaskOwner,
   transitionInteractiveTask,
 } from "@elizaos/core/protocol";

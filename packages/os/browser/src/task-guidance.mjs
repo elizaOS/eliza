@@ -191,11 +191,13 @@ export function createTaskGuidance(api, authorize) {
               assistantName: policy.assistantName,
               fonts: guideFonts,
               // The trusted host may word the preview for this step.
-              text: actionSentence(command.actionText) ?? {
-                click: "I will select this control.",
-                fill: "I will enter the approved information here.",
-                scroll: "I will scroll this area.",
-              }[command.subaction],
+              text:
+                actionSentence(command.actionText) ??
+                {
+                  click: "I will select this control.",
+                  fill: "I will enter the approved information here.",
+                  scroll: "I will scroll this area.",
+                }[command.subaction],
             },
           ]);
           if (shown.accepted !== true) throw stale();

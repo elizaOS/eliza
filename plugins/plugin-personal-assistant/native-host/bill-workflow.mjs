@@ -448,19 +448,19 @@ export class BillWorkflow {
       (operation) => operation.proposal.id === operationId,
     );
     const status = operation?.status;
-    // A failed selection was resolved without an uncertain effect, for
-    // example when the page moved before the click. Observe and find the
-    // control once more for the same reviewed details.
-    if (
-      status === "failed" &&
-      operation.evidenceRef === "not-dispatched" &&
-      !relocated
-    )
-      return this.chooseExistingMethod(expectedReviewKey, {
-        operationId: `${operationId}.relocated`,
-        isCurrent,
-        relocated: true,
-      });
+    // Retry only an explicit pre-effect refusal. A verified failure after a
+    // click is not evidence that repeating the click is safe.
+    if (status === "failed" && operation.evidenceRef === "not-dispatched") {
+      if (!relocated)
+        return this.chooseExistingMethod(expectedReviewKey, {
+          operationId: `${operationId}.relocated`,
+          isCurrent,
+          relocated: true,
+        });
+      return blocked(
+        "The saved payment method was not selected. No click was sent.",
+      );
+    }
     if (status !== "succeeded")
       return {
         kind: "unknown-outcome",
