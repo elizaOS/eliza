@@ -542,3 +542,260 @@ describe("canonical activity with native peak-only observations", () => {
     expect(detector({ peak: 0.1 }).shouldStop).toBe(true);
   });
 });
+
+describe("a bound owner-input pause", () => {
+  const proposal = { proposalId: "owned-proposal", digest: "closed-digest" };
+  function pending(
+    input: Parameters<BatchVoicePorts<string>["send"]>[0],
+  ): BatchVoiceReply {
+    return {
+      requestId: input.turnId,
+      conversationId: "room",
+      userMessageId: `user-${input.turnId}`,
+      assistantMessageId: `pending-${input.turnId}`,
+      text: "Review this request before it can run.",
+      complete: false,
+      awaitingUserInput: proposal,
+    };
+  }
+  const completed = (
+    pause: NonNullable<
+      ReturnType<
+        BatchVoiceConversation<string>["getSnapshot"]
+      >["awaitingUserInput"]
+    >,
+  ): BatchVoiceReply => ({
+    requestId: pause.requestId,
+    conversationId: pause.conversationId,
+    userMessageId: pause.userMessageId,
+    assistantMessageId: `approved-${pause.requestId}`,
+    text: "The exact shared note says closed synthetic text.",
+    complete: true,
+  });
+  it("keeps Review available without speech, another capture, another send or automatic retry", async () => {
+    const f = fixture();
+    f.send(async (input) => pending(input));
+    await f.controller.start();
+    await utterance(f);
+    const state = f.controller.getSnapshot();
+    expect(state.phase).toBe("awaiting-user-input");
+    expect(state.awaitingUserInput).toMatchObject({
+      ...proposal,
+      requestId: f.sends[0].turnId,
+      conversationId: "room",
+    });
+    await vi.advanceTimersByTimeAsync(120000);
+    expect(f.captures).toHaveLength(1);
+    expect(f.sends).toHaveLength(1);
+    expect(f.speeches).toHaveLength(0);
+    await f.controller.stop();
+  });
+  it("resumes only the exact paused turn from its new completed reply, then waits for playback before rearming", async () => {
+    const f = fixture();
+    f.send(async (input) => pending(input));
+    await f.controller.start();
+    await utterance(f);
+    const pause = f.controller.getSnapshot().awaitingUserInput!;
+    const reply = completed(pause);
+    expect(f.controller.resume({ pause, reply })).toBe(true);
+    expect(f.controller.resume({ pause, reply })).toBe(false);
+    await settle();
+    expect(f.sends).toHaveLength(1);
+    expect(f.speeches).toHaveLength(1);
+    expect(f.speeches[0]).toMatchObject({
+      turnId: pause.requestId,
+      replyId: reply.assistantMessageId,
+      text: reply.text,
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(f.captures).toHaveLength(1);
+    f.finishPlayback();
+    await settle();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(f.captures).toHaveLength(2);
+    await f.controller.stop();
+  });
+  it.each([
+    "request",
+    "conversation",
+    "user",
+    "proposal",
+    "digest",
+    "queued-assistant",
+    "incomplete",
+    "interrupted",
+  ] as const)(
+    "refuses an unrelated or unfinished continuation: %s",
+    async (kind) => {
+      const f = fixture();
+      f.send(async (input) => pending(input));
+      await f.controller.start();
+      await utterance(f);
+      const pause = f.controller.getSnapshot().awaitingUserInput!,
+        reply = completed(pause),
+        selected = { ...pause };
+      if (kind === "request") reply.requestId = "foreign-request";
+      else if (kind === "conversation") reply.conversationId = "foreign-room";
+      else if (kind === "user") reply.userMessageId = "foreign-user";
+      else if (kind === "proposal") selected.proposalId = "foreign-proposal";
+      else if (kind === "digest") selected.digest = "foreign-digest";
+      else if (kind === "queued-assistant")
+        reply.assistantMessageId = pause.assistantMessageId;
+      else if (kind === "incomplete") reply.complete = false;
+      else reply.interrupted = true;
+      expect(f.controller.resume({ pause: selected, reply })).toBe(false);
+      await settle();
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(f.controller.getSnapshot().phase).toBe("awaiting-user-input");
+      expect(f.speeches).toHaveLength(0);
+      expect(f.captures).toHaveLength(1);
+      await f.controller.stop();
+    },
+  );
+  it("Stop retires a paused request; a late response cannot resume it or a later explicit session", async () => {
+    const f = fixture();
+    f.send(async (input) => pending(input));
+    await f.controller.start();
+    await utterance(f);
+    const pause = f.controller.getSnapshot().awaitingUserInput!,
+      reply = completed(pause);
+    await f.controller.stop();
+    expect(f.controller.resume({ pause, reply })).toBe(false);
+    await f.controller.start();
+    expect(f.controller.resume({ pause, reply })).toBe(false);
+    expect(f.sends).toHaveLength(1);
+    expect(f.speeches).toHaveLength(0);
+    await f.controller.stop();
+  });
+  it("lost lifecycle/account/context ownership cannot admit a completed paused response or resume on return", async () => {
+    const f = fixture();
+    f.send(async (input) => pending(input));
+    await f.controller.start();
+    await utterance(f);
+    const pause = f.controller.getSnapshot().awaitingUserInput!,
+      reply = completed(pause);
+    f.invalidate();
+    expect(f.controller.resume({ pause, reply })).toBe(false);
+    await settle();
+    expect(f.controller.getSnapshot().phase).toBe("idle");
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(f.captures).toHaveLength(1);
+    expect(f.speeches).toHaveLength(0);
+  });
+  it("public paused state cannot mutate the private original-turn binding", async () => {
+    const f = fixture();
+    f.send(async (input) => pending(input));
+    await f.controller.start();
+    await utterance(f);
+    const original = f.controller.getSnapshot().awaitingUserInput!,
+      changed = f.controller.getSnapshot().awaitingUserInput!;
+    changed.requestId = "replacement";
+    expect(f.controller.getSnapshot().awaitingUserInput).toEqual(original);
+    expect(
+      f.controller.resume({ pause: changed, reply: completed(changed) }),
+    ).toBe(false);
+    await f.controller.stop();
+  });
+  it("publishes the pause only after installing its exact one-shot completion receiver", async () => {
+    const f = fixture();
+    f.send(async (input) => pending(input));
+    f.onState((phase) => {
+      if (phase === "awaiting-user-input") {
+        const pause = f.controller.getSnapshot().awaitingUserInput!;
+        expect(f.controller.resume({ pause, reply: completed(pause) })).toBe(
+          true,
+        );
+      }
+    });
+    await f.controller.start();
+    await utterance(f);
+    await settle();
+    expect(f.speeches).toHaveLength(1);
+    expect(f.sends).toHaveLength(1);
+    await f.controller.stop();
+  });
+  it("ordinary incomplete replies and contradictory completed pauses retain failure behavior", async () => {
+    for (const kind of ["unbound", "contradictory"] as const) {
+      const f = fixture();
+      f.send(async (input) => {
+        const reply = pending(input);
+        if (kind === "unbound") delete reply.awaitingUserInput;
+        else reply.complete = true;
+        return reply;
+      });
+      await f.controller.start();
+      await utterance(f);
+      await settle();
+      expect(f.controller.getSnapshot().phase).toBe("error");
+      expect(f.speeches).toHaveLength(0);
+      expect(f.captures).toHaveLength(1);
+      await f.controller.stop();
+    }
+  });
+  it("Stop after accepting a continuation still prevents queued speech and rearm", async () => {
+    const f = fixture();
+    f.send(async (input) => pending(input));
+    await f.controller.start();
+    await utterance(f);
+    const pause = f.controller.getSnapshot().awaitingUserInput!;
+    expect(f.controller.resume({ pause, reply: completed(pause) })).toBe(true);
+    await f.controller.stop();
+    await settle();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(f.speeches).toHaveLength(0);
+    expect(f.captures).toHaveLength(1);
+  });
+  it.each([
+    null,
+    false,
+    {},
+    { proposalId: "", digest: "d" },
+    { proposalId: "p", digest: "" },
+  ])(
+    "malformed pause metadata cannot become speech or a listening retry: %j",
+    async (value) => {
+      const f = fixture();
+      f.send(async (input) => ({
+        ...pending(input),
+        awaitingUserInput: value as BatchVoiceReply["awaitingUserInput"],
+      }));
+      await f.controller.start();
+      await utterance(f);
+      await settle();
+      expect(f.controller.getSnapshot().phase).toBe("error");
+      expect(f.speeches).toHaveLength(0);
+      expect(f.captures).toHaveLength(1);
+      await f.controller.stop();
+    },
+  );
+  it("malformed public resume arguments return false without disturbing the bound pause", async () => {
+    const f = fixture();
+    f.send(async (input) => pending(input));
+    await f.controller.start();
+    await utterance(f);
+    const pause = f.controller.getSnapshot().awaitingUserInput!,
+      reply = completed(pause);
+    for (const input of [
+      null,
+      undefined,
+      false,
+      [],
+      {},
+      { pause, reply: { ...reply, assistantMessageId: 7 } },
+      { pause, reply: { ...reply, assistantMessageId: {} } },
+    ]) {
+      let accepted: unknown;
+      expect(() => {
+        accepted = f.controller.resume(
+          input as unknown as Parameters<typeof f.controller.resume>[0],
+        );
+      }).not.toThrow();
+      expect(accepted).toBe(false);
+      expect(f.controller.getSnapshot().awaitingUserInput).toEqual(pause);
+    }
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(f.speeches).toHaveLength(0);
+    expect(f.captures).toHaveLength(1);
+    await f.controller.stop();
+  });
+});

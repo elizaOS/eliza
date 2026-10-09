@@ -71,9 +71,13 @@ const loop = new BatchVoiceConversation(
         requestId: turn.turnId,
         conversationId: "owned-room",
         userMessageId: "user",
-        assistantMessageId: "assistant",
-        text: "It is noon.",
-        complete: true,
+        assistantMessageId: "queued-assistant",
+        text: "Review the owned request.",
+        complete: false,
+        awaitingUserInput: {
+          proposalId: "owned-proposal",
+          digest: "owned-digest",
+        },
       };
     },
     async speak(turn) {
@@ -104,6 +108,45 @@ now = 600;
 input.onActivity({ peak: 0.2 });
 now = 1300;
 input.onActivity({ peak: 0 });
+for (let i = 0; i < 100; i++) await Promise.resolve();
+const paused = loop.getSnapshot();
+check(
+  paused.phase === "awaiting-user-input" &&
+    captures === 1 &&
+    sends === 1 &&
+    speeches === 0,
+  "Packed owner-input pause holds media",
+);
+const pause = paused.awaitingUserInput;
+check(loop.resume(null) === false, "Malformed public resume is rejected");
+check(
+  loop.resume({
+    pause,
+    reply: {
+      requestId: pause.requestId,
+      conversationId: pause.conversationId,
+      userMessageId: pause.userMessageId,
+      assistantMessageId: 7,
+      text: "Wrong reply",
+      complete: true,
+    },
+  }) === false,
+  "Non-string assistant identity cannot resume",
+);
+check(
+  loop.resume({
+    pause,
+    reply: {
+      requestId: pause.requestId,
+      conversationId: pause.conversationId,
+      userMessageId: pause.userMessageId,
+      assistantMessageId: "assistant",
+      text: "It is noon.",
+      complete: true,
+    },
+  }),
+  "Packed exact original-turn continuation",
+);
 for (let i = 0; i < 100; i++) await Promise.resolve();
 check(
   captures === 1 && transcribes === 1 && sends === 1 && speeches === 1,
