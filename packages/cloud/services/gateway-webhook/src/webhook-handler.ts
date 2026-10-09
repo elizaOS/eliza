@@ -473,7 +473,10 @@ function redisTelegramDeliveryLedger(
   // The stored plan reads back as an array through the JSON-parsing
   // adapters and as its JSON string through a raw one; compare by content
   // either way, or an identical plan re-registration always conflicts.
-  const planMatches = (existing: unknown, chunkDigests: string[]): boolean =>
+  const planMatches = (
+    existing: unknown,
+    chunkDigests: readonly string[],
+  ): boolean =>
     Array.isArray(existing)
       ? existing.length === chunkDigests.length &&
         existing.every((digest, index) => digest === chunkDigests[index])
