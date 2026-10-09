@@ -464,8 +464,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Public pulls must not inherit registry credentials from this runner.
+          public_pull_config="$(mktemp -d "$RUNNER_TEMP/public-postgres-pull.XXXXXX")"
+          trap 'rm -rf "$public_pull_config"' EXIT
+          printf '{}\n' > "$public_pull_config/config.json"
           pull_status=0
-          docker pull "$SUBSCRIPTION_AUTHORITY_POSTGRES_IMAGE" || pull_status=$?
+          docker --config "$public_pull_config" pull "$SUBSCRIPTION_AUTHORITY_POSTGRES_IMAGE" || pull_status=$?
           if [ "$pull_status" -eq 0 ]; then exit 0; fi
           echo "::error::Required PostgreSQL image pull failed before dependency and core builds."
           # Keep only recent daemon errors; never print credential/header lines
