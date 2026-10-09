@@ -265,7 +265,7 @@ export function compilePatches(patches: PatchOp[]): UiSpec | null {
     root?: string;
     elements: Record<string, unknown>;
     state: Record<string, unknown>;
-  } = { elements: {}, state: createSafeRecord() };
+  } = { elements: createSafeRecord(), state: createSafeRecord() };
   for (const patch of patches) {
     if (patch.op !== "add" && patch.op !== "replace") continue;
     const { path, value } = patch as {
@@ -278,7 +278,12 @@ export function compilePatches(patches: PatchOp[]): UiSpec | null {
     if (parts[0] === "root" && parts.length === 1) {
       spec.root = value as string;
     } else if (parts[0] === "elements" && parts.length === 2) {
-      spec.elements[parts[1]] = value;
+      // Same hardening as the state branches below: a blocked id must not
+      // become a key (an id of "__proto__" would replace the container's
+      // prototype instead of creating an element), and the value is
+      // untrusted, so it goes through the sanitizer like state values do.
+      if (BLOCKED_IDS.has(parts[1])) continue;
+      spec.elements[parts[1]] = sanitizePatchValue(value);
     } else if (parts[0] === "state" && parts.length === 1) {
       const nextState = sanitizePatchValue(value);
       spec.state =
