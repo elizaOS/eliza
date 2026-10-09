@@ -6,7 +6,7 @@
  * probes are not generated model/provider completions.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,6 +30,8 @@ import {
 } from "../../shared/src/lib/services/shared-runtime/shared-runtime-chat";
 
 const RUNTIME_BOUNDARIES = {
+  fallbackAuthority:
+    /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]services[\\/]personal-dedicated-fallback\.ts$/,
   apiErrors:
     /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]api[\\/]errors\.ts$/,
   apnsProvider:
@@ -53,6 +55,12 @@ const RUNTIME_BOUNDARIES = {
 } as const;
 
 const RUNTIME_STUBS = {
+  fallbackAuthority: `
+    export async function resolvePersonalFallbackCutoverRecovery() {
+      const response = await fetch("https://fallback-authority.test/state");
+      return await response.json();
+    }
+  `,
   apiErrors: `
     export class InsufficientCreditsError extends Error {}
     export class RateLimitError extends Error {}
@@ -219,6 +227,8 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
   let buildDirectory: string;
   let miniflare: Miniflare;
   const modelRequests: string[] = [];
+  let fallbackResolution = "pending";
+  let fallbackAuthorityReads = 0;
   let releaseFinalizationGate = () => {};
   const finalizationGate = new Promise<void>((resolve) => {
     releaseFinalizationGate = resolve;
@@ -356,6 +366,10 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
                 () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.historyRepository)} }),
               );
               build.onLoad(
+                { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.fallbackAuthority.source)}) },
+                () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.fallbackAuthority)} }),
+              );
+              build.onLoad(
                 { filter: boundary(${JSON.stringify(RUNTIME_BOUNDARIES.tierUpgradeTarget.source)}) },
                 () => ({ loader: "ts", contents: ${JSON.stringify(RUNTIME_STUBS.tierUpgradeTarget)} }),
               );
@@ -411,6 +425,10 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       modules: true,
       script: await readFile(outputPath, "utf8"),
       outboundService: async (request: Request) => {
+        if (new URL(request.url).hostname === "fallback-authority.test") {
+          fallbackAuthorityReads += 1;
+          return Response.json(fallbackResolution);
+        }
         if (new URL(request.url).hostname === "finalization-gate.test") {
           await finalizationGate;
           return new Response("released");
@@ -653,6 +671,183 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       });
     }
     expect(modelRequests).toEqual([]);
+  }, 120_000);
+
+  test("fallback recovery seals its imported snapshot and retains admission fencing after failed import", async () => {
+    if (
+      process.env.DATABASE_URL &&
+      !process.env.DATABASE_URL.startsWith("pglite")
+    ) {
+      throw new Error("Fallback recovery fixture requires isolated PGlite");
+    }
+    process.env.DATABASE_URL = "pglite://memory";
+    const { elizaSandboxService } = await import(
+      "../../shared/src/lib/services/eliza-sandbox"
+    );
+    const { reconcilePersonalFallbackIntoDedicated } = await import(
+      "../../shared/src/lib/services/personal-dedicated-fallback-reconcile"
+    );
+    const agent = {
+      id: "personal:fallback-recovery-workerd",
+      organization_id: "fallback-organization",
+      user_id: "fallback-user",
+      character_id: null,
+      agent_name: "Eliza",
+      agent_config: { character: { name: "Eliza" } },
+      execution_tier: "shared",
+    };
+    const roomId = "fallback:recovery-workerd";
+    const room = `${agent.id}:${roomId}`;
+    const history = [
+      {
+        id: "fallback-user-message",
+        role: "user",
+        content: "Retain this complete turn",
+        createdAt: 1787184000000,
+      },
+    ];
+    const seeded = await post(room, "/__test/seed", {
+      conversation: {
+        agentId: agent.id,
+        channelId: roomId,
+        history,
+        dirty: false,
+        version: 1,
+      },
+    });
+    expect(seeded.status, await seeded.text()).toBe(200);
+    const namespace = {
+      getByName(name: string) {
+        return {
+          fetch: async (url: string | Request, init?: RequestInit) => {
+            const request = new Request(url, init);
+            const response = await post(
+              name,
+              new URL(request.url).pathname,
+              (await request.json()) as Record<string, unknown>,
+            );
+            return new Response(await response.arrayBuffer(), {
+              status: response.status,
+              headers: Object.fromEntries(response.headers),
+            });
+          },
+        };
+      },
+    };
+    const fallback = {
+      id: "fallback-interval",
+      generation: 1,
+      revision: 7,
+      source_agent_id: agent.id,
+      journal_room_id: roomId,
+      organization_id: agent.organization_id,
+      user_id: agent.user_id,
+      dedicated_agent_id: "dedicated-recovery",
+      state: "recovery_pending",
+    } as Parameters<
+      typeof reconcilePersonalFallbackIntoDedicated
+    >[0]["fallback"];
+    let releaseImport = () => {};
+    let startedImport = () => {};
+    const importing = new Promise<void>((resolve) => {
+      startedImport = resolve;
+    });
+    const importGate = new Promise<void>((resolve) => {
+      releaseImport = resolve;
+    });
+    const importer = spyOn(
+      elizaSandboxService,
+      "importCanonicalConversation",
+    ).mockImplementation(async () => {
+      startedImport();
+      await importGate;
+      return null;
+    });
+    const recovery = reconcilePersonalFallbackIntoDedicated({
+      fallback,
+      namespace,
+    });
+    try {
+      await importing;
+      expect(importer).toHaveBeenCalledWith(
+        fallback.dedicated_agent_id,
+        agent.organization_id,
+        agent.id,
+        [
+          {
+            sourceId: history[0].id,
+            role: "user",
+            text: history[0].content,
+            timestamp: history[0].createdAt,
+          },
+        ],
+      );
+      const turn = () =>
+        post(room, "/personal-bridge", {
+          operation: "personal-bridge",
+          agent,
+          rpc: {
+            jsonrpc: "2.0",
+            id: "fallback-account-state",
+            method: "message.send",
+            params: { text: "arrived after snapshot", roomId },
+          },
+        });
+      const held = await turn();
+      expect(held.status, await held.text()).toBe(423);
+      releaseImport();
+      expect(await recovery).toEqual({
+        reconciled: false,
+        reason: "import_failed",
+      });
+
+      // Renew the same attempt with a short lease. Expiry must consult this
+      // interval, not the already-committed original Dedicated upgrade.
+      const sealPayload = {
+        operation: "cutover-seal",
+        agentId: agent.id,
+        roomId,
+        organizationId: agent.organization_id,
+        userId: agent.user_id,
+        dedicatedAgentId: fallback.dedicated_agent_id,
+        token: `fallback-recovery:${fallback.id}:${fallback.revision}`,
+        leaseMs: 1,
+        fallback: { id: fallback.id, generation: 1, revision: 7, roomId },
+      };
+      const resealed = await post(room, "/cutover-seal", sealPayload);
+      expect(resealed.status, await resealed.text()).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const readsBefore = fallbackAuthorityReads;
+      fallbackResolution = "pending";
+      const expired = await turn();
+      expect(expired.status, await expired.text()).toBe(423);
+      expect(fallbackAuthorityReads).toBeGreaterThan(readsBefore);
+      // A late release cannot reopen a snapshot whose import may be in flight.
+      const release = await post(room, "/cutover-release", {
+        operation: "cutover-release",
+        token: `fallback-recovery:${fallback.id}:${fallback.revision}`,
+      });
+      expect(release.status, await release.text()).toBe(409);
+      const stillHeld = await turn();
+      expect(stillHeld.status, await stillHeld.text()).toBe(423);
+      // Only a superseding database revision can invalidate this attempt.
+      fallbackResolution = "released";
+      const resumed = await turn();
+      expect(resumed.status, await resumed.text()).toBe(200);
+      // A database commit with a lost DO acknowledgement closes the old
+      // journal permanently when its lease expires.
+      const finalSeal = await post(room, "/cutover-seal", sealPayload);
+      expect(finalSeal.status, await finalSeal.text()).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      fallbackResolution = "committed";
+      const committed = await turn();
+      expect(committed.status, await committed.text()).toBe(409);
+    } finally {
+      releaseImport();
+      await recovery;
+      importer.mockRestore();
+      fallbackResolution = "pending";
+    }
   }, 120_000);
 
   test("an evicted object reloads a checkpointed interrupted turn before admission", async () => {
