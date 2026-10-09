@@ -417,7 +417,10 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     let personAt = Number.NEGATIVE_INFINITY;
     const controller = new AbortController();
     const watch = {
-      violation: globalThis[watchKey]?.violation ?? null,
+      violation:
+        globalThis[watchKey]?.violation?.scope === policy.guidanceScope
+          ? (globalThis[watchKey]?.violation ?? null)
+          : null,
       stop: () => controller.abort(),
     };
     const report = (kind, event) => {

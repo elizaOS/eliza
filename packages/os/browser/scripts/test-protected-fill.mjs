@@ -182,6 +182,28 @@ try {
     undefined,
   );
   // A date field takes only a real calendar day.
+  // A later binding must record its own violation after an earlier one failed.
+  assert.equal(
+    (
+      await act("Code", "fill", [{ selector: "#otp2", action: "fill-code" }], {
+        text: "654321",
+        policy: { protectedValueKind: "verification-code", guidanceScope: "8" },
+      })
+    ).dispatched,
+    true,
+  );
+  assert.equal(
+    (
+      await runEffects(
+        {
+          subaction: "snapshot",
+          taskPolicy: effectsPolicy([], { guidanceScope: "8" }),
+        },
+        `effects-${++seq}`,
+      )
+    ).effectViolation,
+    "submit",
+  );
   const dateTarget = [{ selector: "#when", action: "fill" }];
   for (const text of ["10/01/2026", "2026-02-30", "2026-13-01"])
     assert.equal(
