@@ -31,6 +31,12 @@ export interface Bindings {
   NETWORK_MEMBERSHIP_SERVER_TOKEN?: string;
   /** Default off. Enable only after legacy Network history inventory/migration and staging qualification. */
   NETWORK_PERSONAL_CONTINUITY_ENABLED?: string;
+  /** Default off. Destination-bound phone handoff is admitted only in staging. */
+  NETWORK_SITE_AUTH_ENABLED?: string;
+  /** One exact loopback Network site origin for staging qualification. */
+  NETWORK_SITE_AUTH_ORIGIN?: string;
+  /** Confidential Network server authority. Worker secret; never a public/Vite variable. */
+  NETWORK_SITE_AUTH_SERVER_TOKEN?: string;
   /** Trusted execution environment for app inference; must match the registered app client mode. */
   APP_INFERENCE_EXECUTION_ENVIRONMENT?: "test" | "live";
   /** Inactive by default: reviewed server-owned owner/room capture policy JSON. */
