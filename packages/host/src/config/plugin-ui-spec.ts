@@ -44,13 +44,10 @@ export function buildPluginConfigUiSpec(plugin: PluginForUiSpec): PluginUiSpec {
     pluginId: plugin.id,
   };
 
-  // Header
-  elements.header = {
-    type: "Stack",
-    props: { gap: "1", children: ["title", "desc"] },
-  };
-  rootChildren.push("header");
-
+  // Header. The child list names only elements this builder creates:
+  // the description element exists only when the plugin has one, so a
+  // fixed ["title", "desc"] list left a dangling reference to an
+  // element absent from the map for every description-less plugin.
   elements.title = {
     type: "Heading",
     props: {
@@ -59,6 +56,7 @@ export function buildPluginConfigUiSpec(plugin: PluginForUiSpec): PluginUiSpec {
     },
   };
 
+  const headerChildren = ["title"];
   if (plugin.description) {
     elements.desc = {
       type: "Text",
@@ -67,7 +65,14 @@ export function buildPluginConfigUiSpec(plugin: PluginForUiSpec): PluginUiSpec {
         className: "text-xs text-muted",
       },
     };
+    headerChildren.push("desc");
   }
+
+  elements.header = {
+    type: "Stack",
+    props: { gap: "1", children: headerChildren },
+  };
+  rootChildren.push("header");
 
   // Status badge
   const statusText = plugin.enabled
