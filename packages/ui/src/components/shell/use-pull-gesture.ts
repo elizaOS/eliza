@@ -475,6 +475,7 @@ export function usePullGesture(
     (event: React.PointerEvent) => {
       const s = start.current;
       if (!s || s.pointerId !== event.pointerId) return;
+      touchCompatibilityCleanup.current?.();
       const committedAxis = axis.current;
       const l = last.current;
       drag.cancel();
