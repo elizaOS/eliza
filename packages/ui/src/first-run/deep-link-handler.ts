@@ -49,7 +49,11 @@ const STEP_TO_FIRST_RUN_TARGET: Record<
 };
 
 function isFirstRunPathTarget(value: string): value is FirstRunPathTarget {
-  return value in STEP_TO_FIRST_RUN_TARGET;
+  // Own keys only: `in` walks the prototype chain, so a deep-link segment
+  // like "constructor" or "__proto__" would pass as a known target and the
+  // inherited value (a built-in function, Object.prototype) would be
+  // pinned as the runtime target instead of no target at all.
+  return Object.hasOwn(STEP_TO_FIRST_RUN_TARGET, value);
 }
 
 /**
