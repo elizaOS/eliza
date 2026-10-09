@@ -799,12 +799,25 @@ export class CanvasWeb extends WebPlugin {
       width: managed.size.width,
       height: managed.size.height,
     };
-    const imageData = managed.ctx.getImageData(
-      rect.x,
-      rect.y,
-      rect.width,
-      rect.height,
-    );
+    // Match the native bridges (and the bridge contract test): reject an
+    // invalid origin or size, and clip an oversized region to the canvas
+    // bounds. Passing the raw rect to getImageData silently resolves
+    // transparent padding for out-of-bounds origins, flips negative
+    // sizes, and attempts an allocation proportional to the requested
+    // size for huge ones.
+    if (
+      rect.x < 0 ||
+      rect.y < 0 ||
+      rect.x >= managed.size.width ||
+      rect.y >= managed.size.height ||
+      rect.width <= 0 ||
+      rect.height <= 0
+    ) {
+      throw new Error("Invalid pixel region");
+    }
+    const width = Math.min(rect.width, managed.size.width - rect.x);
+    const height = Math.min(rect.height, managed.size.height - rect.y);
+    const imageData = managed.ctx.getImageData(rect.x, rect.y, width, height);
 
     return {
       data: imageData.data,
