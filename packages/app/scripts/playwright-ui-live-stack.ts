@@ -1139,7 +1139,7 @@ async function startStubStack(): Promise<StartedStack> {
   try {
     const uiDistDir = await snapshotUiDist(stateDir);
     const apiBase = `http://127.0.0.1:${API_PORT}`;
-    apiChild = spawn("node", [UI_SMOKE_STUB_SCRIPT], {
+    apiChild = spawn("node", [NODE_TSX_RUNNER, UI_SMOKE_STUB_SCRIPT], {
       cwd: REPO_ROOT,
       env: {
         ...process.env,

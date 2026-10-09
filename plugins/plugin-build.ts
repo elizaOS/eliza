@@ -191,6 +191,7 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
       format: t.format,
       sourcemap: t.sourcemap ?? "external",
       minify: t.minify ?? false,
+      jsx: { development: false },
       splitting: t.splitting ?? false,
       external,
       ...(t.format === "cjs" && t.runtimeImportMetaUrl
