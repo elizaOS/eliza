@@ -172,3 +172,84 @@ test("Messages landscape keeps status separate and composer reachable", async ({
     page.getByRole("button", { name: "Send SMS", exact: true }),
   ).toBeEnabled();
 });
+
+for (const width of [1440, 390]) {
+  test(`plugin transport and account stay textual and port stays numeric at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await seedAppStorage(page);
+    await installDefaultAppRoutes(page);
+    await page.route("**/api/plugins", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          plugins: [
+            {
+              id: "review-config",
+              name: "Connection settings",
+              description: "Transport and port configuration",
+              enabled: true,
+              configured: true,
+              envKey: null,
+              category: "feature",
+              source: "bundled",
+              validationErrors: [],
+              validationWarnings: [],
+              parameters: [
+                {
+                  key: "IMESSAGE_TRANSPORT",
+                  type: "string",
+                  description: "Transport: native or blooio",
+                  required: false,
+                  sensitive: false,
+                },
+                {
+                  key: "HEDERA_ACCOUNT_ID",
+                  type: "string",
+                  description: "Account identifier",
+                  required: false,
+                  sensitive: false,
+                },
+                {
+                  key: "SERVER_PORT",
+                  type: "string",
+                  description: "Server listener port",
+                  required: false,
+                  sensitive: false,
+                },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+    await openAppPath(page, "/apps/plugins");
+    await page.locator('li[data-plugin-id="review-config"]').click();
+    const transport = page
+      .locator("#field-review-config-IMESSAGE_TRANSPORT")
+      .getByRole("textbox");
+    await expect(transport).toHaveAttribute("type", "text");
+    await transport.fill("blooio");
+    await expect(transport).toHaveValue("blooio");
+    await expect(transport).not.toHaveAttribute("min", "1");
+    await expect(transport).not.toHaveAttribute("max", "65535");
+    const account = page
+      .locator("#field-review-config-HEDERA_ACCOUNT_ID")
+      .getByRole("textbox");
+    await expect(account).toHaveAttribute("type", "text");
+    await account.fill("0.0.12345");
+    await expect(account).toHaveValue("0.0.12345");
+    await expect(account).not.toHaveAttribute("min", "0");
+    const port = page.getByRole("dialog").getByRole("spinbutton");
+    await expect(port).toHaveAttribute("min", "1");
+    await expect(port).toHaveAttribute("max", "65535");
+    await port.fill("8080");
+    await expect(port).toHaveValue("8080");
+    await page.screenshot({
+      path: testInfo.outputPath(`plugin-port-${width}.jpg`),
+      type: "jpeg",
+      fullPage: true,
+    });
+  });
+}
