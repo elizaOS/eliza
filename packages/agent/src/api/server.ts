@@ -1170,6 +1170,19 @@ async function handleRequest(
   state: ServerState,
   ctx?: RequestContext,
 ): Promise<void> {
+  // Admission and host middleware may await after the dispatcher selects us.
+  // Revalidate the original owner before creating a scope for the current runtime.
+  const parentScope = getViewClientScope();
+  if (
+    getAuthenticatedInProcessAuthorization(req) &&
+    (parentScope?.hostKey !== state ||
+      !parentScope.request ||
+      parentScope.request.signal.aborted ||
+      parentScope.request.runtime !== state.runtime)
+  ) {
+    error(res, "Original authenticated request is no longer active", 403);
+    return;
+  }
   const rawClientId =
     req.headers["x-elizaos-client-id"] ?? req.headers["x-eliza-client-id"];
   const clientId = normalizeWsClientId(
