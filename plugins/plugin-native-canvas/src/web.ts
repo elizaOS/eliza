@@ -799,25 +799,30 @@ export class CanvasWeb extends WebPlugin {
       width: managed.size.width,
       height: managed.size.height,
     };
-    // Match the native bridges (and the bridge contract test): reject an
-    // invalid origin or size, and clip an oversized region to the canvas
-    // bounds. Passing the raw rect to getImageData silently resolves
-    // transparent padding for out-of-bounds origins, flips negative
-    // sizes, and attempts an allocation proportional to the requested
-    // size for huge ones.
-    if (
-      rect.x < 0 ||
-      rect.y < 0 ||
-      rect.x >= managed.size.width ||
-      rect.y >= managed.size.height ||
-      rect.width <= 0 ||
-      rect.height <= 0
-    ) {
+    // Pixel coordinates use integer truncation, as getImageData does. Check
+    // finite inputs first; otherwise Web IDL silently turns NaN into zero.
+    const x = assertFiniteNumber(rect.x, "rect.x");
+    const y = assertFiniteNumber(rect.y, "rect.y");
+    const requestedWidth = assertFiniteNumber(rect.width, "rect.width");
+    const requestedHeight = assertFiniteNumber(rect.height, "rect.height");
+    const width = Math.min(
+      Math.trunc(requestedWidth),
+      managed.canvas.width - Math.trunc(x),
+    );
+    const height = Math.min(
+      Math.trunc(requestedHeight),
+      managed.canvas.height - Math.trunc(y),
+    );
+    // Clip before allocation, matching the Android pixel-region contract.
+    if (x < 0 || y < 0 || width <= 0 || height <= 0) {
       throw new Error("Invalid pixel region");
     }
-    const width = Math.min(rect.width, managed.size.width - rect.x);
-    const height = Math.min(rect.height, managed.size.height - rect.y);
-    const imageData = managed.ctx.getImageData(rect.x, rect.y, width, height);
+    const imageData = managed.ctx.getImageData(
+      Math.trunc(x),
+      Math.trunc(y),
+      width,
+      height,
+    );
 
     return {
       data: imageData.data,
@@ -1521,18 +1526,13 @@ export class CanvasWeb extends WebPlugin {
       ctx.scale(transform.scaleX ?? 1, transform.scaleY ?? 1);
     }
 
-    if (transform.skewX || transform.skewY) {
-      // Skew values are angles (radians, like rotation above); the shear
-      // factors are their tangents. Both native bridges apply tan() —
-      // passing the raw angle shears by the wrong amount.
-      ctx.transform(
-        1,
-        Math.tan(transform.skewY || 0),
-        Math.tan(transform.skewX || 0),
-        1,
-        0,
-        0,
-      );
+    // Native bridges compose the X shear before the Y shear. A single
+    // matrix with both tangents loses the product term when both are set.
+    if (transform.skewX) {
+      ctx.transform(1, 0, Math.tan(transform.skewX), 1, 0, 0);
+    }
+    if (transform.skewY) {
+      ctx.transform(1, Math.tan(transform.skewY), 0, 1, 0, 0);
     }
   }
 
