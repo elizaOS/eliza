@@ -88,13 +88,6 @@ const TASKS = [
     description: "Host app typecheck",
   },
   {
-    id: "app-typecheck",
-    tier: 1,
-    command: "bun",
-    args: ["run", "--cwd", "packages/app", "typecheck"],
-    description: "App-core typecheck",
-  },
-  {
     id: "agent-typecheck",
     tier: 1,
     command: "bun",
