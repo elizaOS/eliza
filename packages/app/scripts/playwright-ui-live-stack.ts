@@ -1139,16 +1139,21 @@ async function startStubStack(): Promise<StartedStack> {
   try {
     const uiDistDir = await snapshotUiDist(stateDir);
     const apiBase = `http://127.0.0.1:${API_PORT}`;
-    apiChild = spawn("node", [NODE_TSX_RUNNER, UI_SMOKE_STUB_SCRIPT], {
-      cwd: REPO_ROOT,
-      env: {
-        ...process.env,
-        FORCE_COLOR: "0",
-        ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
-        ELIZA_UI_SMOKE_STUB_IGNORE_SIGTERM: "1",
+    apiChild = spawn(
+      "node",
+      ["--conditions=eliza-source", "--import", "tsx", UI_SMOKE_STUB_SCRIPT],
+      {
+        cwd: REPO_ROOT,
+        env: {
+          ...process.env,
+          FORCE_COLOR: "0",
+          ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
+          TSX_TSCONFIG_PATH: path.join(REPO_ROOT, "tsconfig.json"),
+          ELIZA_UI_SMOKE_STUB_IGNORE_SIGTERM: "1",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
       },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    );
 
     attachSafeChildOutputObserver({
       child: apiChild,
