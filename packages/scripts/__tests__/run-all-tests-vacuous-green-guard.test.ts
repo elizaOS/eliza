@@ -106,8 +106,11 @@ function rootScript(name) {
 }
 
 describe("root test lane require-work wiring (#13620)", () => {
+  test("the root test command delegates to the guarded integration lane", () => {
+    expect(rootScript("test")).toBe("bun run test:e2e");
+    expect(rootScript("test:e2e")).toContain("--require-work");
+  });
   for (const scriptName of [
-    "test",
     "test:server",
     "test:client",
     "test:plugins",
