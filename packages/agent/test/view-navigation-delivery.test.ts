@@ -30,6 +30,7 @@ import {
   type ToolDefinition,
   type UUID,
 } from "@elizaos/core";
+import { findViewActionHandoff } from "@elizaos/core/protocol";
 import { createMockRuntime } from "@elizaos/testing";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -2434,12 +2435,14 @@ describe("native completed-action navigation", () => {
       },
       executeToolCall: async (call) => {
         expect(call.name).toBe("VIEWS_SHOW");
+        const view = call.params?.view;
+        if (typeof view !== "string") throw Error("Missing planned view");
         const result = await navigation.handler(f.runtime, input, undefined, {
-          parameters: call.params,
+          parameters: { view },
         });
         if (!result || typeof result === "boolean")
           throw Error("Missing action result");
-        received.push(result);
+        received.push({ ...result, actionName: call.name });
         return result as never;
       },
       evaluate: async () => ({
@@ -2462,6 +2465,28 @@ describe("native completed-action navigation", () => {
         }),
       }),
     ]);
+    const handoff = findViewActionHandoff(received);
+    expect(handoff).toMatchObject({
+      viewId: "notes",
+      navigationPrepared: true,
+      navigationBinding: { clientId: "origin-client", viewId: "notes" },
+    });
+    const promoted = received[0];
+    if (!isObjectRecord(promoted) || !isObjectRecord(promoted.values))
+      throw Error("Missing promoted result");
+    for (const actionName of [
+      "VIEWS_LIST",
+      "VIEWS_OPEN",
+      "VIEWS_SHOW_RECORD",
+      "PROPOSE_DEVICE_ACTION",
+    ]) {
+      expect(findViewActionHandoff([{ ...promoted, actionName }])).toBeNull();
+    }
+    expect(
+      findViewActionHandoff([
+        { ...promoted, values: { ...promoted.values, mode: "open" } },
+      ]),
+    ).toBeNull();
     expect(f.kernelRequests()).toBe(1);
     expect(f.frames).toHaveLength(0);
     expect(
@@ -2470,6 +2495,44 @@ describe("native completed-action navigation", () => {
         clientId: "origin-client",
       }),
     ).toBeNull();
+    const binding = handoff?.navigationBinding;
+    if (!binding) throw Error("Promoted navigation was not parsed");
+    const post = (path: string, body: unknown) =>
+      fetch(f.url + path, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer local-navigation-test",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    const claim = await post("/api/views/interact-claim", binding);
+    expect(claim.status).toBe(200);
+    const { claimId } = await claim.json();
+    expect(
+      getCurrentViewState(f.runtime, {
+        hostKey: f.hostKey,
+        clientId: "origin-client",
+      }),
+    ).toBeNull();
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...binding,
+          claimId,
+          success: true,
+          result: { switched: true },
+        })
+      ).json(),
+    ).toMatchObject({ accepted: true });
+    await vi.waitFor(() =>
+      expect(
+        getCurrentViewState(f.runtime, {
+          hostKey: f.hostKey,
+          clientId: "origin-client",
+        })?.viewId,
+      ).toBe("notes"),
+    );
   });
 
   it("does not auto-execute conditional navigation when the planner prerequisite is false", async () => {
