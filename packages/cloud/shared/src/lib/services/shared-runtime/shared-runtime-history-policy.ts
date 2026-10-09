@@ -13,7 +13,10 @@ import type {
   SharedRuntimeReminderActionProvenance,
 } from "../../../db/schemas/shared-runtime-history";
 import { logger } from "../../utils/logger";
-import { currentNwsObservationSource, isVerifiedCurrentNwsObservation } from "./shared-current-weather";
+import {
+  currentNwsObservationSource,
+  isVerifiedCurrentNwsObservation,
+} from "./shared-current-weather";
 
 export const MAX_PUBLIC_WEB_GROUNDING_AGE_MS = 24 * 60 * 60 * 1_000;
 export const MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS = 60_000;
@@ -120,7 +123,9 @@ export function parseSharedPublicWebGrounding(
   if (
     candidate.kind !== "web_search" ||
     typeof candidate.query !== "string" ||
-    (candidate.provider !== "parallel" && candidate.provider !== "exa" && candidate.provider !== "nws") ||
+    (candidate.provider !== "parallel" &&
+      candidate.provider !== "exa" &&
+      candidate.provider !== "nws") ||
     typeof candidate.text !== "string" ||
     typeof candidate.observedAt !== "number" ||
     !Number.isSafeInteger(candidate.observedAt) ||
@@ -136,13 +141,19 @@ export function parseSharedPublicWebGrounding(
   if (!query || !text || !sources || sources.length === 0) {
     return undefined;
   }
-  const weatherObservation = candidate.provider === "nws" &&
+  const weatherObservation =
+    candidate.provider === "nws" &&
     isVerifiedCurrentNwsObservation(candidate.weatherObservation, query, Date.now(), false)
-    ? candidate.weatherObservation : undefined;
-  if (candidate.provider === "nws" && (
-    !weatherObservation || sources.length !== 1 || sources[0].url !== weatherObservation.sourceUrl ||
-    sources[0].text !== currentNwsObservationSource(weatherObservation).text
-  )) return undefined;
+      ? candidate.weatherObservation
+      : undefined;
+  if (
+    candidate.provider === "nws" &&
+    (!weatherObservation ||
+      sources.length !== 1 ||
+      sources[0].url !== weatherObservation.sourceUrl ||
+      sources[0].text !== currentNwsObservationSource(weatherObservation).text)
+  )
+    return undefined;
   return {
     kind: "web_search",
     query,
@@ -403,9 +414,15 @@ function selectedGrounding(
   // A fresh search receipt does not date the weather in an indexed excerpt.
   // Preserve old provenance for follow-up selection, but never project it as
   // current weather evidence. A new verified observation must run instead.
-  if (latest.grounding.query.startsWith("current public weather in ") &&
-      (latest.grounding.provider !== "nws" ||
-       !isVerifiedCurrentNwsObservation(latest.grounding.weatherObservation, latest.grounding.query, now))) {
+  if (
+    latest.grounding.query.startsWith("current public weather in ") &&
+    (latest.grounding.provider !== "nws" ||
+      !isVerifiedCurrentNwsObservation(
+        latest.grounding.weatherObservation,
+        latest.grounding.query,
+        now,
+      ))
+  ) {
     return { ...latest, status: "fresh_search_required" };
   }
   if (

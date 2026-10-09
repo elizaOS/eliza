@@ -343,13 +343,32 @@ describe("webSearchEdgePlugin", () => {
 });
 
 it("direct edge runner distinguishes typed outage from successful zero hits and preserves caller abort", async () => {
-  globalThis.fetch = vi.fn(async () => new Response("not logged", { status: 429 })) as typeof fetch;
-  await expect(runWebSearchEdge("public query")).resolves.toMatchObject({ success: false,
-    data: { actionName: "WEB_SEARCH", unavailable: true, provider: "parallel", reason: "rate_limited", status: 429 } });
-  globalThis.fetch = vi.fn(async () => Response.json({ jsonrpc: "2.0", id: 1, result: { content: [{ type: "text", text: "" }] } })) as typeof fetch;
-  await expect(runWebSearchEdge("empty query")).resolves.toMatchObject({ success: false, text: "Web search returned no results." });
-  const controller = new AbortController(); controller.abort();
-  const fetchImpl = vi.fn(); globalThis.fetch = fetchImpl as typeof fetch;
-  await expect(runWebSearchEdge("aborted query", { signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
-  expect(fetchImpl).not.toHaveBeenCalled();
+    globalThis.fetch = vi.fn(
+        async () => new Response("not logged", { status: 429 })
+    ) as typeof fetch;
+    await expect(runWebSearchEdge("public query")).resolves.toMatchObject({
+        success: false,
+        data: {
+            actionName: "WEB_SEARCH",
+            unavailable: true,
+            provider: "parallel",
+            reason: "rate_limited",
+            status: 429,
+        },
+    });
+    globalThis.fetch = vi.fn(async () =>
+        Response.json({ jsonrpc: "2.0", id: 1, result: { content: [{ type: "text", text: "" }] } })
+    ) as typeof fetch;
+    await expect(runWebSearchEdge("empty query")).resolves.toMatchObject({
+        success: false,
+        text: "Web search returned no results.",
+    });
+    const controller = new AbortController();
+    controller.abort();
+    const fetchImpl = vi.fn();
+    globalThis.fetch = fetchImpl as typeof fetch;
+    await expect(
+        runWebSearchEdge("aborted query", { signal: controller.signal })
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchImpl).not.toHaveBeenCalled();
 });

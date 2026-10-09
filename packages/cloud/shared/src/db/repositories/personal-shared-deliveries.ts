@@ -6,6 +6,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { sharedOwnerProfileName } from "../../lib/services/shared-runtime/shared-participant-name";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
 import type { AgentSandboxStatus } from "../schemas/agent-sandboxes";
@@ -14,7 +15,6 @@ import { organizations } from "../schemas/organizations";
 import { personalDedicatedUpgradeAuthorities } from "../schemas/personal-dedicated-upgrade-authorities";
 import { userIdentities } from "../schemas/user-identities";
 import { users } from "../schemas/users";
-import { sharedOwnerProfileName } from "../../lib/services/shared-runtime/shared-participant-name";
 
 export interface ReusablePersonalDelivery {
   ownerName?: string;

@@ -38,6 +38,10 @@ import {
   SharedMemoryStore,
   type SharedMemoryTurnPair,
 } from "../../../shared/src/lib/services/shared-runtime/shared-memory-store";
+import {
+  createOwnerCaptureBuffer,
+  type OwnerCapturePayload,
+} from "../../../shared/src/lib/services/shared-runtime/shared-owner-model-capture";
 import type { SharedRuntimeAgent } from "../../../shared/src/lib/services/shared-runtime/shared-runtime-agent";
 import {
   classifySharedRuntimeTurnFailure,
@@ -594,7 +598,25 @@ const worker = {
           agentId: "70000000-0000-5000-8000-000000000001" as UUID,
           entityId: "70000000-0000-5000-8000-000000000002" as UUID,
         };
+        let captured: OwnerCapturePayload | undefined;
+        const ownerCapture = createOwnerCaptureBuffer(
+          {
+            organizationId: "70000000-0000-5000-8000-000000000010",
+            userId: scope.entityId,
+            roomId: "70000000-0000-5000-8000-000000000005",
+            traceId: "a".repeat(32),
+          },
+          {
+            maxCalls: 32,
+            maxBytes: 4 * 1024 * 1024,
+            expiresAt: Date.now() + 60_000,
+          },
+          (payload) => {
+            captured = payload;
+          },
+        );
         const result = await runSharedAgentTurn({
+          ownerCapture,
           character: {
             name: "Shared Eliza Workerd Probe",
             system: "You are Eliza.",
@@ -616,7 +638,8 @@ const worker = {
             },
           },
         });
-        return Response.json({ result, storedTodos });
+        ownerCapture.finish({ boundary: "test-bridge", result });
+        return Response.json({ result, storedTodos, captured });
       }
       if (url.pathname === "/reminder-turn") {
         const scheduledTasks: ScheduledTask[] = [];

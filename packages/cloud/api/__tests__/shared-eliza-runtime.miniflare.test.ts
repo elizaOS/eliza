@@ -10,6 +10,7 @@ import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
 import { z } from "zod";
+import type { OwnerCapturePayload } from "../../shared/src/lib/services/shared-runtime/shared-owner-model-capture";
 import { createPrivateWorkerdFailureCapture } from "../test/workerd-failure-capture";
 
 function modelSystemContent(requests: Array<Record<string, unknown>>): string {
@@ -1094,6 +1095,7 @@ describe("Shared Eliza runtime in Workerd", () => {
         actionResults?: Array<Record<string, unknown>>;
       };
       storedTodos: Array<Record<string, unknown>>;
+      captured: OwnerCapturePayload;
     };
     expect(payload.result).toMatchObject({
       reply: "I added Buy milk to your todo list.",
@@ -1128,6 +1130,36 @@ describe("Shared Eliza runtime in Workerd", () => {
     ]);
     const todoRequests = modelRequests.slice(requestsBefore);
     expect(todoRequests).toHaveLength(5);
+    expect(payload.captured.coverage).toMatchObject({
+      callsObserved: todoRequests.length,
+      callsCaptured: todoRequests.length,
+      pendingCalls: 0,
+      pendingTimings: 0,
+      actionArguments: "canonical-observer",
+      toolExecutionsStarted: 1,
+      toolExecutionsSettled: 1,
+      pendingToolExecutions: 0,
+    });
+    expect(payload.captured.events.map((event) => event.kind)).toContain(
+      "action-started",
+    );
+    expect(payload.captured.events.map((event) => event.kind)).toContain(
+      "action-completed",
+    );
+    expect(
+      JSON.stringify(
+        payload.captured.events.filter(
+          (event) => event.kind === "action-started",
+        ),
+      ),
+    ).toContain("Buy milk");
+    expect(
+      JSON.stringify(
+        payload.captured.events.filter(
+          (event) => event.kind === "action-completed",
+        ),
+      ),
+    ).toContain("todos.create");
     const receipts = payload.result.actionResults?.[0]?.effectReceipts;
     if (!Array.isArray(receipts) || typeof receipts[0]?.receiptId !== "string")
       throw new Error("Applied Todo receipt is missing");

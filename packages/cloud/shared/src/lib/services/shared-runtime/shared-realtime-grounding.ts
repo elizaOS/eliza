@@ -6,8 +6,12 @@
 import { type ActionResult, isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
+import {
+  currentNwsObservationSource,
+  isVerifiedCurrentNwsObservation,
+  parseExplicitUsWeatherQuery,
+} from "./shared-current-weather";
 import { sharedSelectedGroundingMetadata } from "./shared-runtime-history-policy";
-import { currentNwsObservationSource, isVerifiedCurrentNwsObservation } from "./shared-current-weather";
 
 export type SharedRealtimeDomain = "markets" | "weather" | "news" | "sports" | "mutable_fact";
 
@@ -342,9 +346,14 @@ export function requireTraceableRealtimeSearch(
   const data = result.data && typeof result.data === "object" ? result.data : {};
   const sources = sourceEvidence(data.sources);
   const receiptObservedAt = data.observedAt;
-  const weather = domain === "weather" || query.startsWith("current public weather in ");
-  const nws = data.provider === "nws" && isVerifiedCurrentNwsObservation(data.weatherObservation, query, observedAt) &&
-    sources?.length === 1 && sources[0].url === data.weatherObservation.sourceUrl &&
+  const weather =
+    (domain === "weather" || query.startsWith("current public weather in ")) &&
+    parseExplicitUsWeatherQuery(query) !== undefined;
+  const nws =
+    data.provider === "nws" &&
+    isVerifiedCurrentNwsObservation(data.weatherObservation, query, observedAt) &&
+    sources?.length === 1 &&
+    sources[0].url === data.weatherObservation.sourceUrl &&
     sources[0].text === currentNwsObservationSource(data.weatherObservation).text;
   if (
     result.success === true &&
@@ -382,7 +391,8 @@ export function hasTraceableRealtimeGrounding(
   return Boolean(
     grounding?.kind === "web_search" &&
       grounding.truncated === false &&
-      (grounding.provider !== "nws" || isVerifiedCurrentNwsObservation(grounding.weatherObservation, grounding.query)) &&
+      (grounding.provider !== "nws" ||
+        isVerifiedCurrentNwsObservation(grounding.weatherObservation, grounding.query)) &&
       grounding.sources &&
       grounding.sources.length > 0,
   );
@@ -415,20 +425,13 @@ function replyUrls(value: string): string[] | undefined {
 
 function canonicalClaimUnit(unit: string): string {
   const normalized = unit.toLocaleLowerCase("en-US");
-  if (normalized === "$" || /^usd|dollars?$/u.test(normalized))
-    return "currency:usd";
-  if (normalized === "€" || /^eur|euros?$/u.test(normalized))
-    return "currency:eur";
-  if (normalized === "£" || /^gbp|pounds?$/u.test(normalized))
-    return "currency:gbp";
-  if (normalized === "¥" || /^jpy|yen$/u.test(normalized))
-    return "currency:jpy";
-  if (normalized === "cad" || normalized === "aud")
-    return `currency:${normalized}`;
-  if (normalized === "btc" || normalized === "eth")
-    return `asset:${normalized}`;
-  if (normalized === "%" || /^percent(?:age)?$/u.test(normalized))
-    return "ratio:percent";
+  if (normalized === "$" || /^usd|dollars?$/u.test(normalized)) return "currency:usd";
+  if (normalized === "€" || /^eur|euros?$/u.test(normalized)) return "currency:eur";
+  if (normalized === "£" || /^gbp|pounds?$/u.test(normalized)) return "currency:gbp";
+  if (normalized === "¥" || /^jpy|yen$/u.test(normalized)) return "currency:jpy";
+  if (normalized === "cad" || normalized === "aud") return `currency:${normalized}`;
+  if (normalized === "btc" || normalized === "eth") return `asset:${normalized}`;
+  if (normalized === "%" || /^percent(?:age)?$/u.test(normalized)) return "ratio:percent";
   if (/^(?:celsius|°\s*c)$/u.test(normalized)) return "temperature:celsius";
   if (/^(?:fahrenheit|°\s*f)$/u.test(normalized)) return "temperature:fahrenheit";
   if (/^kelvin$/u.test(normalized)) return "temperature:kelvin";
@@ -752,10 +755,11 @@ export function finalizeSharedRealtimeReply(
   }
   const sources = [...new Set(supported.selectedUrls)].map((url) => {
     const canonical = canonicalPublicUrl(url);
-    if (!canonical)
-      throw new TypeError("Validated Shared realtime source became invalid");
-    const observed = grounding.provider === "nws" && grounding.weatherObservation
-      ? `, observation ${grounding.weatherObservation.timestamp}` : "";
+    if (!canonical) throw new TypeError("Validated Shared realtime source became invalid");
+    const observed =
+      grounding.provider === "nws" && grounding.weatherObservation
+        ? `, observation ${grounding.weatherObservation.timestamp}`
+        : "";
     return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}${observed}, checked ${new Date(grounding.observedAt).toISOString()})`;
   });
   const omission = supported.omittedUnsupported

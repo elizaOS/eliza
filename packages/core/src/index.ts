@@ -367,6 +367,8 @@ export {
 	type ProcessingRequest,
 	type ProcessingScope,
 } from "./security/processing-policy.js";
+// Bounded owner capture shares the canonical credential redaction policy.
+export { isSensitiveKeyName, redactSensitiveText } from "./security/redact";
 export * from "./security/secret-swap";
 export {
 	attestAuthenticatedApiDeliveryAudience,
@@ -557,6 +559,3 @@ export {
 	ttsDebugTextPreview,
 } from "./utils/tts-debug.js";
 export { validateUuid } from "./utils/uuid.js";
-
-// Bounded owner capture shares the canonical credential redaction policy.
-export { isSensitiveKeyName, redactSensitiveText } from "./security/redact";

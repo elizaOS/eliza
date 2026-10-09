@@ -1,4 +1,3 @@
-import { resolveSharedParticipantName } from "./shared-participant-name";
 /**
  * Runs one Shared turn through the genuine Eliza message pipeline in Workerd.
  * Durable Object history remains authoritative; each turn projects that history
@@ -61,7 +60,6 @@ import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-ru
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { getInteractiveCerebrasLanguageModel } from "../../providers/language-model";
 import { logger } from "../../utils/logger";
-import { resolveSharedParticipantName } from "./shared-participant-name";
 import { withGroupTurnNamingRule } from "./group-participant-labels";
 import type {
   RunSharedAgentTurnInput,
@@ -75,6 +73,9 @@ import type {
 } from "./run-shared-agent-turn";
 import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
 import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
+import type { OwnerModelCapture } from "./shared-owner-model-capture";
+import { observeOwnerCapture } from "./shared-owner-model-capture";
+import { resolveSharedParticipantName } from "./shared-participant-name";
 import {
   createMatchingRealtimeSearchRunner,
   resolveSharedRealtimeRequirement,
@@ -108,8 +109,6 @@ import {
   type SharedRuntimeTimingReceipt,
 } from "./shared-runtime-timing";
 import { SHARED_TURN_MAX_RETRIES } from "./shared-turn-retry-budget";
-import type { OwnerModelCapture } from "./shared-owner-model-capture";
-import { observeOwnerCapture } from "./shared-owner-model-capture";
 
 type NativeTextModelResult = string & {
   text: string;
@@ -230,10 +229,18 @@ function sharedModelPlugin(
     description: "Platform-funded text generation for the Shared Workerd runtime.",
     services: [...SHARED_NOTIFICATION_SERVICES],
     models: {
-      [ModelType.RESPONSE_HANDLER]: captureTypes ? (runtime, params) => handler(runtime, params, ModelType.RESPONSE_HANDLER) : handler,
-      [ModelType.ACTION_PLANNER]: captureTypes ? (runtime, params) => handler(runtime, params, ModelType.ACTION_PLANNER) : handler,
-      [ModelType.TEXT_SMALL]: captureTypes ? (runtime, params) => handler(runtime, params, ModelType.TEXT_SMALL) : handler,
-      [ModelType.TEXT_LARGE]: captureTypes ? (runtime, params) => handler(runtime, params, ModelType.TEXT_LARGE) : handler,
+      [ModelType.RESPONSE_HANDLER]: captureTypes
+        ? (runtime, params) => handler(runtime, params, ModelType.RESPONSE_HANDLER)
+        : handler,
+      [ModelType.ACTION_PLANNER]: captureTypes
+        ? (runtime, params) => handler(runtime, params, ModelType.ACTION_PLANNER)
+        : handler,
+      [ModelType.TEXT_SMALL]: captureTypes
+        ? (runtime, params) => handler(runtime, params, ModelType.TEXT_SMALL)
+        : handler,
+      [ModelType.TEXT_LARGE]: captureTypes
+        ? (runtime, params) => handler(runtime, params, ModelType.TEXT_LARGE)
+        : handler,
     },
     modelMetadata: {
       [ModelType.RESPONSE_HANDLER]: { streamable: true },
@@ -555,7 +562,9 @@ async function executeSharedElizaRuntimeTurn(
   let runtimeReporter: IAgentRuntime | undefined;
   const emitTiming = (outcome: SharedRuntimeTimingOutcome): SharedRuntimeTimingReceipt => {
     const receipt = timing.receipt(outcome);
-    observeOwnerCapture(input.ownerCapture, (capture) => capture.observe("runtime-timing", receipt));
+    observeOwnerCapture(input.ownerCapture, (capture) =>
+      capture.observe("runtime-timing", receipt),
+    );
     logger.info("[shared-eliza-runtime] turn latency", receipt);
     try {
       input.onRuntimeTiming?.(receipt);
@@ -647,16 +656,19 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     registeredModelType = "unknown",
   ): Promise<string | NativeTextModelResult | TextStreamResult> => {
     const capture = input.ownerCapture;
-    observeOwnerCapture(capture, (observer) => observer.protectSecrets(
-      (text) => _runtime.redactSecrets(text),
-      getTrajectoryContext()?.secretSwapSession?.entries.map((entry) => entry.value) ?? [],
-    ));
+    observeOwnerCapture(capture, (observer) =>
+      observer.protectSecrets(
+        (text) => _runtime.redactSecrets(text),
+        getTrajectoryContext()?.secretSwapSession?.entries.map((entry) => entry.value) ?? [],
+      ),
+    );
     let selectedProvider: { provider: string; fallback: boolean } | undefined;
     const modelCall = timing.prepareModelCall();
     let captureCall: number | undefined;
     const finishModelCall = () => {
       const receipt = modelCall.finish();
-      if (receipt) observeOwnerCapture(capture, (observer) => observer.modelTiming(captureCall, receipt));
+      if (receipt)
+        observeOwnerCapture(capture, (observer) => observer.modelTiming(captureCall, receipt));
     };
     let failureReported = false;
     const reportModelFailure = (error: unknown, operation: "resolve" | "generate" | "stream") => {
@@ -699,7 +711,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       params.signal?.throwIfAborted();
       model = getInteractiveCerebrasLanguageModel(
         input.model,
-        (selection) => { selectedProvider = selection; modelCall.select(selection); },
+        (selection) => {
+          selectedProvider = selection;
+          modelCall.select(selection);
+        },
         undefined,
         params.providerOptions,
       );
@@ -739,26 +754,48 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     // Model/provider objects, signals, headers and auth never enter this projection.
     observeOwnerCapture(capture, (observer) => {
       const returned: unknown = observer.request({
-      registeredModelType,
-      purpose: ["should_respond", "response", "action", "evaluation", "hook"].includes(getTrajectoryContext()?.purpose ?? "")
-        ? getTrajectoryContext()?.purpose : "unknown",
-      modelId: input.model,
-      sdkModelId: model.modelId,
-      ...("messages" in generation ? { messages: generation.messages } : { prompt: generation.prompt }),
-      ...(generation.tools ? { tools: Object.entries(generation.tools).map(([name, tool]) => {
-        const schema = "inputSchema" in tool ? tool.inputSchema : undefined;
-        const actualSchema = typeof schema === "object" && schema !== null && "jsonSchema" in schema ? schema.jsonSchema : undefined;
-        if (actualSchema === undefined) observeOwnerCapture(observer, (value) => value.omission());
-        return { name, description: "description" in tool ? tool.description : undefined, inputSchema: actualSchema };
-      }) } : {}),
-      ...(generation.toolChoice === undefined ? {} : { toolChoice: generation.toolChoice }),
-      ...(generation.maxOutputTokens === undefined ? {} : { maxOutputTokens: generation.maxOutputTokens }),
-      ...(generation.temperature === undefined ? {} : { temperature: generation.temperature }),
-      ...(generation.topP === undefined ? {} : { topP: generation.topP }),
-      ...(generation.maxRetries === undefined ? {} : { maxRetries: generation.maxRetries }),
-      ...(generation.allowSystemInMessages === undefined ? {} : { allowSystemInMessages: generation.allowSystemInMessages }),
+        registeredModelType,
+        purpose: ["should_respond", "response", "action", "evaluation", "hook"].includes(
+          getTrajectoryContext()?.purpose ?? "",
+        )
+          ? getTrajectoryContext()?.purpose
+          : "unknown",
+        modelId: input.model,
+        sdkModelId: model.modelId,
+        ...("messages" in generation
+          ? { messages: generation.messages }
+          : { prompt: generation.prompt }),
+        ...(generation.tools
+          ? {
+              tools: Object.entries(generation.tools).map(([name, tool]) => {
+                const schema = "inputSchema" in tool ? tool.inputSchema : undefined;
+                const actualSchema =
+                  typeof schema === "object" && schema !== null && "jsonSchema" in schema
+                    ? schema.jsonSchema
+                    : undefined;
+                if (actualSchema === undefined)
+                  observeOwnerCapture(observer, (value) => value.omission());
+                return {
+                  name,
+                  description: "description" in tool ? tool.description : undefined,
+                  inputSchema: actualSchema,
+                };
+              }),
+            }
+          : {}),
+        ...(generation.toolChoice === undefined ? {} : { toolChoice: generation.toolChoice }),
+        ...(generation.maxOutputTokens === undefined
+          ? {}
+          : { maxOutputTokens: generation.maxOutputTokens }),
+        ...(generation.temperature === undefined ? {} : { temperature: generation.temperature }),
+        ...(generation.topP === undefined ? {} : { topP: generation.topP }),
+        ...(generation.maxRetries === undefined ? {} : { maxRetries: generation.maxRetries }),
+        ...(generation.allowSystemInMessages === undefined
+          ? {}
+          : { allowSystemInMessages: generation.allowSystemInMessages }),
       });
-      if (typeof returned === "number" && Number.isSafeInteger(returned) && returned > 0) captureCall = returned;
+      if (typeof returned === "number" && Number.isSafeInteger(returned) && returned > 0)
+        captureCall = returned;
       else if (returned !== undefined) {
         observeOwnerCapture(observer, (value) => value.omission());
         return returned;
@@ -792,7 +829,13 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         // synchronous streamText failure cannot leave the call recorded as
         // still running, then let the original error propagate untouched.
         reportModelFailure(error, "stream");
-        observeOwnerCapture(capture, (observer) => observer.result(captureCall, { outcome: params.signal?.aborted ? "aborted" : "error", provider: selectedProvider ?? null, usage: null }));
+        observeOwnerCapture(capture, (observer) =>
+          observer.result(captureCall, {
+            outcome: params.signal?.aborted ? "aborted" : "error",
+            provider: selectedProvider ?? null,
+            usage: null,
+          }),
+        );
         finishModelCall();
         throw error;
       }
@@ -813,7 +856,20 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       // completion-shape observer neither changes nor logs the failure payload.
       void Promise.all([rawText, toolCalls, rawFinishReason, totalUsage.catch(() => undefined)])
         .then(([text, calls, reason, sdkUsage]) => {
-          observeOwnerCapture(capture, (observer) => observer.result(captureCall, { outcome: "completed", visibleText: text, toolCalls: calls.map((call) => ({ id: call.toolCallId, name: call.toolName, input: call.input })), finishReason: reason, provider: selectedProvider ?? null, usage: sdkUsage ?? null }));
+          observeOwnerCapture(capture, (observer) =>
+            observer.result(captureCall, {
+              outcome: "completed",
+              visibleText: text,
+              toolCalls: calls.map((call) => ({
+                id: call.toolCallId,
+                name: call.toolName,
+                input: call.input,
+              })),
+              finishReason: reason,
+              provider: selectedProvider ?? null,
+              usage: sdkUsage ?? null,
+            }),
+          );
           lastModelCompletion = sharedModelCompletionDiagnostic(
             "stream",
             text,
@@ -822,7 +878,15 @@ async function executeMeasuredSharedElizaRuntimeTurn(
             sdkUsage,
           );
         })
-        .catch(() => { observeOwnerCapture(capture, (observer) => observer.result(captureCall, { outcome: params.signal?.aborted ? "aborted" : "error", provider: selectedProvider ?? null, usage: null })); });
+        .catch(() => {
+          observeOwnerCapture(capture, (observer) =>
+            observer.result(captureCall, {
+              outcome: params.signal?.aborted ? "aborted" : "error",
+              provider: selectedProvider ?? null,
+              usage: null,
+            }),
+          );
+        });
       // error-policy:J5 aborting the provider stream rejects every pending AI
       // SDK result promise. AgentRuntime observes the textStream rejection as
       // the turn failure; these handlers prevent the sibling promises from
@@ -897,12 +961,31 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     } catch (error) {
       // error-policy:J2 qualified HTTP failures retain only their safe runtime projection.
       reportModelFailure(error, "generate");
-      observeOwnerCapture(capture, (observer) => observer.result(captureCall, { outcome: params.signal?.aborted ? "aborted" : "error", provider: selectedProvider ?? null, usage: null }));
+      observeOwnerCapture(capture, (observer) =>
+        observer.result(captureCall, {
+          outcome: params.signal?.aborted ? "aborted" : "error",
+          provider: selectedProvider ?? null,
+          usage: null,
+        }),
+      );
       throw projectQualifiedSharedProviderFailure(error) ?? error;
     } finally {
       finishModelCall();
     }
-    observeOwnerCapture(capture, (observer) => observer.result(captureCall, { outcome: "completed", visibleText: result.text, toolCalls: result.toolCalls.map((call) => ({ id: call.toolCallId, name: call.toolName, input: call.input })), finishReason: result.finishReason, provider: selectedProvider ?? null, usage: result.usage ?? null }));
+    observeOwnerCapture(capture, (observer) =>
+      observer.result(captureCall, {
+        outcome: "completed",
+        visibleText: result.text,
+        toolCalls: result.toolCalls.map((call) => ({
+          id: call.toolCallId,
+          name: call.toolName,
+          input: call.input,
+        })),
+        finishReason: result.finishReason,
+        provider: selectedProvider ?? null,
+        usage: result.usage ?? null,
+      }),
+    );
     lastModelCompletion = sharedModelCompletionDiagnostic(
       "generate",
       result.text,
@@ -1008,11 +1091,16 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   exposeRuntime(runtime);
   if (input.ownerCapture) {
     if (runtime.ownerToolExecutionObserverVersion === 1) {
-      observeOwnerCapture(input.ownerCapture, (capture) => capture.canonicalActionArgumentsAvailable());
-      runtime.ownerToolExecutionObserver = (observation) => observeOwnerCapture(input.ownerCapture, (capture) => capture.canonicalTool(observation));
+      observeOwnerCapture(input.ownerCapture, (capture) =>
+        capture.canonicalActionArgumentsAvailable(),
+      );
+      runtime.ownerToolExecutionObserver = (observation) =>
+        observeOwnerCapture(input.ownerCapture, (capture) => capture.canonicalTool(observation));
     } else {
       observeOwnerCapture(input.ownerCapture, (capture) => capture.omission());
-      observeOwnerCapture(input.ownerCapture, (capture) => capture.observe("action-omitted", { reason: "canonical-executor-observer-unavailable" }));
+      observeOwnerCapture(input.ownerCapture, (capture) =>
+        capture.observe("action-omitted", { reason: "canonical-executor-observer-unavailable" }),
+      );
     }
   }
   try {
@@ -1211,7 +1299,18 @@ async function executeMeasuredSharedElizaRuntimeTurn(
             },
           },
     );
-    observeOwnerCapture(input.ownerCapture, (observer) => observer.observe("core-result", { didRespond: result.didRespond, mode: result.mode ?? "unknown", terminalFailure: result.terminalFailure ? { kind: result.terminalFailure.kind, transient: result.terminalFailure.transient } : null, response: { text: result.responseContent?.text ?? null, actions: result.responseContent?.actions ?? lastDeliveredContent?.actions ?? [] }, actionResults: result.actionResults ?? [] }));
+    observeOwnerCapture(input.ownerCapture, (observer) =>
+      observer.observe("core-result", {
+        didRespond: result.didRespond,
+        mode: result.mode ?? "unknown",
+        outcome: result.outcome,
+        response: {
+          text: result.responseContent?.text ?? null,
+          actions: result.responseContent?.actions ?? lastDeliveredContent?.actions ?? [],
+        },
+        actionResults: result.actionResults ?? [],
+      }),
+    );
     timing.markInferenceSpans(inferenceTelemetry.summary?.spans ?? []);
     timing.markRoutingDecision(
       result?.didRespond || delivered.length > 0 ? "respond" : "silent",

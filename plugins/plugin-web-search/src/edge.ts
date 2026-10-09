@@ -187,7 +187,11 @@ export async function runWebSearchEdge(
     query: string,
     options: { numResults?: number; signal?: AbortSignal } = {}
 ): Promise<ActionResult> {
-    return runWebSearchWith(query, (value) => searchKeylessWeb(value, { signal: options.signal }), options);
+    return runWebSearchWith(
+        query,
+        (value) => searchKeylessWeb(value, { signal: options.signal }),
+        options
+    );
 }
 
 /** Common receipt handling; the host supplies its authorized browser-first transport. */
@@ -289,8 +293,10 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
             const query = readQuery(parameters);
             if (!query) return await fail("A web search query is required.", callback);
 
-            const candidateSignal = options && typeof options === "object"
-                ? (options as { abortSignal?: unknown }).abortSignal : undefined;
+            const candidateSignal =
+                options && typeof options === "object"
+                    ? (options as { abortSignal?: unknown }).abortSignal
+                    : undefined;
             const signal = candidateSignal instanceof AbortSignal ? candidateSignal : undefined;
             signal?.throwIfAborted();
             const result = await runner(query, { signal });

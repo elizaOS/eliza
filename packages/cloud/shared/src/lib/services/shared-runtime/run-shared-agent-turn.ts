@@ -1,4 +1,4 @@
-import { observeOwnerCapture, type OwnerModelCapture } from "./shared-owner-model-capture";
+import { type OwnerModelCapture, observeOwnerCapture } from "./shared-owner-model-capture";
 /**
  * Shared runtime — runs a single agent turn container-free.
  *
@@ -37,7 +37,6 @@ import {
 } from "@elizaos/plugin-scheduling";
 import type { TodoStore } from "@elizaos/plugin-todos";
 import { runWebSearchEdge } from "@elizaos/plugin-web-search";
-import { isCurrentWeatherObservationRequest, runCurrentUsWeatherSearch } from "./shared-current-weather";
 import type {
   SharedRuntimePublicGrounding,
   SharedRuntimeReminderActionProvenance,
@@ -59,6 +58,11 @@ import {
   type SharedCapabilityResolution,
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
+import {
+  isCurrentWeatherObservationRequest,
+  parseExplicitUsWeatherQuery,
+  runCurrentUsWeatherSearch,
+} from "./shared-current-weather";
 import type { SharedMemoryStore } from "./shared-memory-store";
 import {
   finalizeSharedRealtimeReply,
@@ -1186,12 +1190,14 @@ export async function runSharedAgentTurn(
   if (realtimeRequirement) {
     let searchResult: ActionResult;
     try {
-      searchResult = realtimeRequirement.domain === "weather"
-        ? await runCurrentUsWeatherSearch(realtimeRequirement.query, {
-            signal: input.abortSignal,
-            observationOnly: isCurrentWeatherObservationRequest(publicSearchText ?? message),
-          })
-        : await runWebSearchEdge(realtimeRequirement.query, { signal: input.abortSignal });
+      searchResult =
+        realtimeRequirement.domain === "weather" &&
+        parseExplicitUsWeatherQuery(realtimeRequirement.query)
+          ? await runCurrentUsWeatherSearch(realtimeRequirement.query, {
+              signal: input.abortSignal,
+              observationOnly: isCurrentWeatherObservationRequest(publicSearchText ?? message),
+            })
+          : await runWebSearchEdge(realtimeRequirement.query, { signal: input.abortSignal });
       input.abortSignal?.throwIfAborted();
     } catch (error) {
       input.abortSignal?.throwIfAborted();
@@ -1218,7 +1224,13 @@ export async function runSharedAgentTurn(
       Date.now(),
       realtimeRequirement.domain,
     );
-    observeOwnerCapture(input.ownerCapture, (capture) => capture.observe("preflight", { query: realtimeRequirement.query, domain: realtimeRequirement.domain, result: traceableResult }));
+    observeOwnerCapture(input.ownerCapture, (capture) =>
+      capture.observe("preflight", {
+        query: realtimeRequirement.query,
+        domain: realtimeRequirement.domain,
+        result: traceableResult,
+      }),
+    );
     realtimeActionResults = [traceableResult];
     realtimeGrounding = sharedPublicWebGrounding(realtimeActionResults);
   }

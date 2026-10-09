@@ -4,19 +4,22 @@
  * Requires capture-store source composition; never substitutes parser/hash helpers.
  */
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { HTTPException } from "hono/http-exception";
 import * as realAuth from "@elizaos/cloud-shared/auth";
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
 import { parseOwnerCapturePolicy } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-owner-model-capture-store";
 import { sharedRuntimeRoomKey } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import { sharedRuntimeConversationRoomId } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-storage-identity";
+import { HTTPException } from "hono/http-exception";
 
 const originalAuthExports = { ...realAuth };
 let reader = "33333333-3333-4333-8333-333333333333";
 let authFailure: 401 | 403 | undefined;
 mock.module("@elizaos/cloud-shared/auth", () => ({
   requireAdmin: async () => {
-    if (authFailure) throw new HTTPException(authFailure, { message: "Synthetic auth denial" });
+    if (authFailure)
+      throw new HTTPException(authFailure, {
+        message: "Synthetic auth denial",
+      });
     return { user: { id: reader }, role: "super_admin" };
   },
 }));
@@ -32,14 +35,25 @@ const ROOM = "owned-room";
 const CHANNEL = sharedRuntimeRoomKey(AGENT, ROOM);
 const STORAGE_ROOM = sharedRuntimeConversationRoomId(CHANNEL);
 const policy = {
-  version: 1, sessionId: SESSION, organizationId: ORG, userId: OWNER, readerUserId: READER,
-  roomId: STORAGE_ROOM, issuedAt: 1_000, expiresAt: 61_000, retainUntil: 3_601_000,
-  maxTurns: 16, maxCalls: 32, maxBytes: 65_536,
+  version: 1,
+  sessionId: SESSION,
+  organizationId: ORG,
+  userId: OWNER,
+  readerUserId: READER,
+  roomId: STORAGE_ROOM,
+  issuedAt: 1_000,
+  expiresAt: 61_000,
+  retainUntil: 3_601_000,
+  maxTurns: 16,
+  maxCalls: 32,
+  maxBytes: 65_536,
 };
 const calls: Array<{ name: string; url: string; init: RequestInit }> = [];
 let upstreamStatus = 200;
 let upstreamThrows = false;
-let upstreamBody: object = { capture: "synthetic-private-capture" };
+let upstreamBody: Record<string, unknown> = {
+  capture: "synthetic-private-capture",
+};
 function env(value: unknown = JSON.stringify(policy)) {
   return {
     SHARED_OWNER_MODEL_CAPTURE_POLICY: value,
@@ -48,17 +62,32 @@ function env(value: unknown = JSON.stringify(policy)) {
         fetch: async (url: string, init: RequestInit) => {
           calls.push({ name, url, init });
           if (upstreamThrows) throw new Error("Synthetic platform failure");
-          return Response.json(upstreamBody, { status: upstreamStatus,
-            headers: { "Set-Cookie": "must-not-forward=synthetic", "X-Platform-Only": "hidden" } });
+          return Response.json(upstreamBody, {
+            status: upstreamStatus,
+            headers: {
+              "Set-Cookie": "must-not-forward=synthetic",
+              "X-Platform-Only": "hidden",
+            },
+          });
         },
       }),
     },
   };
 }
 function request(body: unknown, bindings = env()) {
-  return app.request("/read", { method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer synthetic", Cookie: "session=synthetic" },
-    body: JSON.stringify(body) }, bindings as never);
+  return app.request(
+    "/read",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer synthetic",
+        Cookie: "session=synthetic",
+      },
+      body: JSON.stringify(body),
+    },
+    bindings as never,
+  );
 }
 function privateHeaders(response: Response) {
   expect(response.headers.get("Cache-Control")).toBe("private, no-store");
@@ -68,9 +97,18 @@ function privateHeaders(response: Response) {
 }
 const savedFetch = globalThis.fetch;
 beforeEach(() => {
-  reader = READER; authFailure = undefined; calls.length = 0;
-  upstreamStatus = 200; upstreamThrows = false; upstreamBody = { capture: "synthetic-private-capture" };
-  globalThis.fetch = (async () => { throw new Error("OFFLINE_NETWORK_FORBIDDEN"); }) as typeof fetch;
+  reader = READER;
+  authFailure = undefined;
+  calls.length = 0;
+  upstreamStatus = 200;
+  upstreamThrows = false;
+  upstreamBody = { capture: "synthetic-private-capture" };
+  globalThis.fetch = Object.assign(
+    async () => {
+      throw new Error("OFFLINE_NETWORK_FORBIDDEN");
+    },
+    { preconnect: savedFetch.preconnect },
+  );
 });
 afterAll(() => {
   globalThis.fetch = savedFetch;
@@ -82,51 +120,99 @@ describe("exact-reader private capture Hono retrieval", () => {
   test("authentication and non-reader admin denial never reach the platform", async () => {
     for (const status of [401, 403] as const) {
       authFailure = status;
-      const result = await request({ roomKey: ROOM, sessionId: SESSION, captureId: CAPTURE });
-      expect(result.status).toBe(status); privateHeaders(result);
+      const result = await request({
+        roomKey: ROOM,
+        sessionId: SESSION,
+        captureId: CAPTURE,
+      });
+      expect(result.status).toBe(status);
+      privateHeaders(result);
     }
-    authFailure = undefined; reader = OWNER;
-    const denied = await request({ roomKey: ROOM, sessionId: SESSION, captureId: CAPTURE });
-    expect(denied.status).toBe(403); privateHeaders(denied);
+    authFailure = undefined;
+    reader = OWNER;
+    const denied = await request({
+      roomKey: ROOM,
+      sessionId: SESSION,
+      captureId: CAPTURE,
+    });
+    expect(denied.status).toBe(403);
+    privateHeaders(denied);
     expect(calls).toHaveLength(0);
   });
 
   test("actual policy parser and two-stage room identity reject invalid or one-stage scope", async () => {
-    expect(parseOwnerCapturePolicy(JSON.stringify(policy))?.readerUserId).toBe(READER);
+    expect(parseOwnerCapturePolicy(JSON.stringify(policy))?.readerUserId).toBe(
+      READER,
+    );
     expect(CHANNEL).not.toBe(STORAGE_ROOM);
-    for (const value of ["", JSON.stringify({ ...policy, extra: true }),
-      JSON.stringify({ ...policy, maxCalls: 33 }), JSON.stringify({ ...policy, roomId: CHANNEL })]) {
-      const result = await request({ roomKey: ROOM, sessionId: SESSION, captureId: CAPTURE }, env(value));
-      expect(result.status).toBe(404); privateHeaders(result);
+    for (const value of [
+      "",
+      JSON.stringify({ ...policy, extra: true }),
+      JSON.stringify({ ...policy, maxCalls: 33 }),
+      JSON.stringify({ ...policy, roomId: CHANNEL }),
+    ]) {
+      const result = await request(
+        { roomKey: ROOM, sessionId: SESSION, captureId: CAPTURE },
+        env(value),
+      );
+      expect(result.status).toBe(404);
+      privateHeaders(result);
     }
-    const wrongRoom = await request({ roomKey: "other-room", sessionId: SESSION, captureId: CAPTURE });
-    expect(wrongRoom.status).toBe(404); expect(calls).toHaveLength(0);
+    const wrongRoom = await request({
+      roomKey: "other-room",
+      sessionId: SESSION,
+      captureId: CAPTURE,
+    });
+    expect(wrongRoom.status).toBe(404);
+    expect(calls).toHaveLength(0);
   });
 
   test("payload retrieval uses canonical addressing and forwards only the reader locator", async () => {
-    const result = await request({ roomKey: "  owned-room  ", sessionId: SESSION, captureId: CAPTURE });
-    expect(result.status).toBe(200); privateHeaders(result);
-    expect(await result.json()).toEqual(upstreamBody);
+    const result = await request({
+      roomKey: "  owned-room  ",
+      sessionId: SESSION,
+      captureId: CAPTURE,
+    });
+    expect(result.status).toBe(200);
+    privateHeaders(result);
+    expect((await result.json()) as Record<string, unknown>).toEqual(
+      upstreamBody,
+    );
     expect(calls).toHaveLength(1);
     expect(calls[0]!.name).toBe(AGENT + ":" + ROOM);
-    expect(calls[0]!.url).toBe("https://shared-runtime.internal/owner-capture/read");
+    expect(calls[0]!.url).toBe(
+      "https://shared-runtime.internal/owner-capture/read",
+    );
     expect(calls[0]!.init.method).toBe("POST");
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
-      sessionId: SESSION, captureId: CAPTURE, readerUserId: READER,
+      sessionId: SESSION,
+      captureId: CAPTURE,
+      readerUserId: READER,
     });
     const forwarded = new Headers(calls[0]!.init.headers);
-    expect(forwarded.get("Authorization")).toBeNull(); expect(forwarded.get("Cookie")).toBeNull();
+    expect(forwarded.get("Authorization")).toBeNull();
+    expect(forwarded.get("Cookie")).toBeNull();
     expect(calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
     expect(result.headers.get("Set-Cookie")).toBeNull();
     expect(result.headers.get("X-Platform-Only")).toBeNull();
   });
 
   test("status-list omission forwards no capture id or payload selector", async () => {
-    upstreamBody = { captures: [{ captureId: CAPTURE, status: "stored", traceId: "a".repeat(32) }] };
+    upstreamBody = {
+      captures: [
+        { captureId: CAPTURE, status: "stored", traceId: "a".repeat(32) },
+      ],
+    };
     const result = await request({ roomKey: ROOM, sessionId: SESSION });
-    expect(result.status).toBe(200); privateHeaders(result);
-    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ sessionId: SESSION, readerUserId: READER });
-    expect(await result.json()).toEqual(upstreamBody);
+    expect(result.status).toBe(200);
+    privateHeaders(result);
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
+      sessionId: SESSION,
+      readerUserId: READER,
+    });
+    expect((await result.json()) as Record<string, unknown>).toEqual(
+      upstreamBody,
+    );
   });
 
   test("closed request grammar rejects caller identity, malformed ids and unsafe rooms", async () => {
@@ -139,41 +225,83 @@ describe("exact-reader private capture Hono retrieval", () => {
       { roomKey: "", sessionId: SESSION },
     ]) {
       const result = await request(body);
-      expect(result.status).toBe(400); privateHeaders(result);
+      expect(result.status).toBe(400);
+      privateHeaders(result);
     }
     const wrongSession = await request({ roomKey: ROOM, sessionId: CAPTURE });
-    expect(wrongSession.status).toBe(404); expect(calls).toHaveLength(0);
+    expect(wrongSession.status).toBe(404);
+    expect(calls).toHaveLength(0);
   });
 
   test("declared and streaming oversized bodies are rejected before platform forwarding", async () => {
-    const text = JSON.stringify({ roomKey: ROOM, sessionId: SESSION, padding: "x".repeat(5000) });
-    const declared = await app.request("/read", { method: "POST", headers: {
-      "Content-Type": "application/json", "Content-Length": String(new TextEncoder().encode(text).byteLength),
-    }, body: text }, env() as never);
-    expect(declared.status).toBe(413); privateHeaders(declared);
+    const text = JSON.stringify({
+      roomKey: ROOM,
+      sessionId: SESSION,
+      padding: "x".repeat(5000),
+    });
+    const declared = await app.request(
+      "/read",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": String(new TextEncoder().encode(text).byteLength),
+        },
+        body: text,
+      },
+      env() as never,
+    );
+    expect(declared.status).toBe(413);
+    privateHeaders(declared);
     const bytes = new TextEncoder().encode(text);
-    const stream = new ReadableStream<Uint8Array>({ start(controller) {
-      controller.enqueue(bytes.slice(0, 2000)); controller.enqueue(bytes.slice(2000)); controller.close();
-    } });
-    const streaming = await app.fetch(new Request("https://test.invalid/read",
-      { method: "POST", body: stream, duplex: "half" } as RequestInit), env() as never);
-    expect(streaming.status).toBe(413); privateHeaders(streaming);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, 2000));
+        controller.enqueue(bytes.slice(2000));
+        controller.close();
+      },
+    });
+    const streaming = await app.fetch(
+      new Request("https://test.invalid/read", {
+        method: "POST",
+        body: stream,
+        duplex: "half",
+      } as RequestInit),
+      env() as never,
+    );
+    expect(streaming.status).toBe(413);
+    privateHeaders(streaming);
     expect(calls).toHaveLength(0);
   });
 
   test("missing or failed platform binding returns a private service failure", async () => {
-    const missing = env(); delete (missing as { SHARED_RUNTIME_CONVERSATIONS?: unknown }).SHARED_RUNTIME_CONVERSATIONS;
-    const absent = await request({ roomKey: ROOM, sessionId: SESSION }, missing);
-    expect(absent.status).toBe(503); privateHeaders(absent);
+    const missing = env();
+    delete (missing as { SHARED_RUNTIME_CONVERSATIONS?: unknown })
+      .SHARED_RUNTIME_CONVERSATIONS;
+    const absent = await request(
+      { roomKey: ROOM, sessionId: SESSION },
+      missing,
+    );
+    expect(absent.status).toBe(503);
+    privateHeaders(absent);
     upstreamThrows = true;
     const failed = await request({ roomKey: ROOM, sessionId: SESSION });
-    expect(failed.status).toBe(503); privateHeaders(failed);
+    expect(failed.status).toBe(503);
+    privateHeaders(failed);
   });
 
   test("upstream denial remains opaque without invented expiry or absence semantics", async () => {
-    upstreamStatus = 403; upstreamBody = { code: "owner_capture_read_forbidden" };
-    const result = await request({ roomKey: ROOM, sessionId: SESSION, captureId: CAPTURE });
-    expect(result.status).toBe(403); privateHeaders(result);
-    expect(await result.json()).toEqual(upstreamBody);
+    upstreamStatus = 403;
+    upstreamBody = { code: "owner_capture_read_forbidden" };
+    const result = await request({
+      roomKey: ROOM,
+      sessionId: SESSION,
+      captureId: CAPTURE,
+    });
+    expect(result.status).toBe(403);
+    privateHeaders(result);
+    expect((await result.json()) as Record<string, unknown>).toEqual(
+      upstreamBody,
+    );
   });
 });
