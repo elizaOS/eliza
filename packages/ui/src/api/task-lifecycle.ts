@@ -65,6 +65,18 @@ function taskFrom(value: unknown): TaskView | null {
 /** "close" pauses the task and tells the host that the user closed its surface. */
 export type TaskLifecycleCommand = "pause" | "close" | "resume" | "cancel";
 
+/** Pause and Close give up after this long and report the failure. */
+export const TASK_PAUSE_TIMEOUT_MS = 10_000;
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("Task request timed out")), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 /** Renderer state is a projection, never a task authorization or checkpoint. */
 export class TaskLifecycle {
   private generation = 0;
@@ -130,7 +142,7 @@ export class TaskLifecycle {
 
   async refresh() {
     // A background read must never supersede a user control.
-    if (this.state.pending) return;
+    if (this.state.pending || this.starting) return;
     const ticket = ++this.generation;
     try {
       const task = taskFrom(await this.request("/tasks/current"));
@@ -139,13 +151,77 @@ export class TaskLifecycle {
       /* A disconnected runtime is reported by its connection controls. */
     }
   }
+  /**
+   * One request: the host pauses its current task when the request arrives.
+   * It does not wait for a pending start; a task that start creates later is
+   * paused as soon as its reply arrives.
+   */
+  private async pauseCurrent(
+    command: "pause" | "close",
+    ticket: number,
+  ): Promise<boolean> {
+    const pause = () =>
+      withTimeout(
+        this.request(
+          "/tasks/current/pause",
+          command === "close" ? { reason: "close" } : {},
+        ),
+        TASK_PAUSE_TIMEOUT_MS,
+      ).then((reply) => {
+        const task = taskFrom(reply);
+        if (task && !["paused", "completed", "cancelled"].includes(task.status))
+          throw new Error("Invalid task transition");
+        return task;
+      });
+    const starting = this.starting;
+    try {
+      const task = await pause();
+      if (ticket !== this.generation) return false;
+      this.publish({ task, pending: false, error: "" });
+      return true;
+    } finally {
+      if (starting) {
+        // Report the current pause immediately. Retain the owner's pause intent
+        // separately until a pending creation settles, even if its reply is lost.
+        void (async () => {
+          try {
+            await starting;
+          } catch {
+            // A missing reply cannot prove that creation had no effect.
+          }
+          if (ticket !== this.generation) return;
+          const task = await pause();
+          if (ticket === this.generation)
+            this.publish({ task, pending: false, error: "" });
+        })().catch(() => {
+          if (ticket === this.generation)
+            this.publish({
+              ...this.state,
+              pending: false,
+              error: this.messages.pause,
+            });
+        });
+      }
+    }
+  }
+
   async control(command: TaskLifecycleCommand): Promise<boolean> {
     if (this.state.pending && command === "resume") return false;
     this.lastCommand = command;
     const ticket = ++this.generation;
     this.publish({ ...this.state, pending: true, error: "" });
+    if (command === "pause" || command === "close")
+      return this.pauseCurrent(command, ticket).catch(() => {
+        if (ticket === this.generation)
+          this.publish({
+            ...this.state,
+            pending: false,
+            error: this.messages.pause,
+          });
+        return false;
+      });
     try {
-      // Close must also cover a create request whose response has not arrived.
+      // Cancel must also cover a create request whose response has not arrived.
       if (this.starting) {
         try {
           await this.starting;
@@ -154,29 +230,16 @@ export class TaskLifecycle {
         }
       }
       if (ticket !== this.generation) return false;
-      // Read authoritative revision, including when Close precedes startup read.
       const task = taskFrom(await this.request("/tasks/current"));
       if (ticket !== this.generation) return false;
       if (!task) {
         this.publish({ task: null, pending: false, error: "" });
         return true;
       }
-      // Close still reaches a paused task, so the host can remove its paused guide.
-      if (
-        (command === "pause" && task.status === "paused") ||
-        ((command === "pause" || command === "close") &&
-          ["completed", "cancelled"].includes(task.status))
-      ) {
-        this.publish({ task, pending: false, error: "" });
-        return true;
-      }
       const result = taskFrom(
-        await this.request(
-          `/tasks/${encodeURIComponent(task.id)}/${command === "close" ? "pause" : command}`,
-          command === "close"
-            ? { expectedRevision: task.revision, reason: "close" }
-            : { expectedRevision: task.revision },
-        ),
+        await this.request(`/tasks/${encodeURIComponent(task.id)}/${command}`, {
+          expectedRevision: task.revision,
+        }),
       );
       if (ticket !== this.generation) return false;
       if (
@@ -184,14 +247,8 @@ export class TaskLifecycle {
         result.id !== task.id ||
         result.revision <= task.revision ||
         result.epoch < task.epoch ||
-        (command !== "resume" && result.epoch <= task.epoch) ||
-        result.status !==
-          {
-            pause: "paused",
-            close: "paused",
-            resume: "active",
-            cancel: "cancelled",
-          }[command]
+        (command === "cancel" && result.epoch <= task.epoch) ||
+        result.status !== { resume: "active", cancel: "cancelled" }[command]
       )
         throw new Error("Invalid task transition");
       this.publish({ task: result, pending: false, error: "" });
@@ -201,7 +258,7 @@ export class TaskLifecycle {
         this.publish({
           ...this.state,
           pending: false,
-          error: this.messages[command === "close" ? "pause" : command],
+          error: this.messages[command],
         });
       return false;
     }

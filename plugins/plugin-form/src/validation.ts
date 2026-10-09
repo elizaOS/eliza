@@ -506,7 +506,16 @@ function validateSelect(
 ): ValidationResult {
   const options = control.options ?? [];
   if (options.length === 0) {
-    // No options defined - treat as text
+    // Use the declared enum when no option values are available.
+    if (control.enum) {
+      const enumValue = String(value);
+      if (!control.enum.includes(enumValue)) {
+        return {
+          valid: false,
+          error: `Must be one of: ${control.enum.join(", ")}`,
+        };
+      }
+    }
     return { valid: true };
   }
   const strValue = String(value);

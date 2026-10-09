@@ -629,9 +629,12 @@ export class CameraWeb extends WebPlugin {
   }
 
   private assertValidZoom(zoom: unknown): asserts zoom is number {
-    if (typeof zoom !== "number" || !Number.isFinite(zoom) || zoom < 0) {
+    // Zoom is a ratio (1.0 = no zoom). Android rejects non-positive values
+    // and iOS clamps the applied ratio to a 1.0 minimum, so 0 is not a
+    // valid zoom on any platform.
+    if (typeof zoom !== "number" || !Number.isFinite(zoom) || zoom <= 0) {
       throw new Error(
-        `Invalid zoom value: ${zoom}. Must be a non-negative finite number.`,
+        `Invalid zoom value: ${zoom}. Must be a positive finite number.`,
       );
     }
   }
