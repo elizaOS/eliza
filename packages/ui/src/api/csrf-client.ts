@@ -54,7 +54,14 @@ export async function fetchWithCsrf(
     }
   }
   if (!isDedicatedAgentRequest && !headers.has(LAST_ACTIVITY_HEADER_NAME)) {
-    for (const [name, value] of Object.entries(lastActivityHeadersForUrl(url)))
+    // Pass the configured API base like ElizaClient does: without it the
+    // helper can only match the page origin, so on setups where the agent
+    // API lives on another origin (Capacitor/desktop remote mode) these
+    // requests never carry the activity header and the agent's idle
+    // logoff does not slide on real user activity through this client.
+    for (const [name, value] of Object.entries(
+      lastActivityHeadersForUrl(url, getBootConfig().apiBase),
+    ))
       headers.set(name, value);
   }
   if (!headers.has("Authorization")) {
