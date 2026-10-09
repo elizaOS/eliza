@@ -29,6 +29,23 @@ async function parse(
 }
 
 describe("readChatRequestPayload UI language", () => {
+  it.each(["ja", "ja-JP", "JA-jp"])(
+    "keeps Japanese from the client header or explicit body (%s)",
+    async (language) => {
+      expect(
+        (await parse({ "x-elizaos-ui-language": language }))?.preferredLanguage,
+      ).toBe("ja");
+      expect(
+        (
+          await parse(
+            { "x-elizaos-ui-language": "en" },
+            { text: "こんにちは", language },
+          )
+        )?.preferredLanguage,
+      ).toBe("ja");
+    },
+  );
+
   it("reads the X-ElizaOS-UI-Language header sent by the UI client", async () => {
     const payload = await parse({ "x-elizaos-ui-language": "es" });
     expect(payload?.preferredLanguage).toBe("es");

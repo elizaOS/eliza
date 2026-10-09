@@ -88,6 +88,7 @@ import { classifyRegistryPluginRelease } from "../runtime/release-plugin-policy.
 import {
   getViewClientScope,
   runWithViewClient,
+  type ViewClientScope,
 } from "../runtime/view-client-context.ts";
 import {
   AUDIT_EVENT_TYPES,
@@ -182,6 +183,7 @@ import { resolveHostSessionAccessContext } from "./host-session-access-context.t
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { listenHttpServer } from "./http-listener.ts";
 import { registerInProcessApi } from "./in-process-api.ts";
+import { getAuthenticatedInProcessAuthorization } from "./in-process-request.ts";
 import { resolveInboxRequestAuthorization } from "./inbox-request-authorization.ts";
 import {
   type LocalInferenceRouteApi,
@@ -351,13 +353,13 @@ import {
 import { createServerResources } from "./server-resources.ts";
 import { createServerState } from "./server-state.ts";
 import type { ServerState } from "./server-types.ts";
-
 import { isAuthProtectedRoute, serveStaticUi } from "./static-file-server.ts";
 import { isTrajectoryOwnerRequest } from "./trajectory-request-authorization.ts";
 import {
   bindViewRequestHost,
   closeViewInteractionHost,
 } from "./view-interaction-host.ts";
+import { registerBuiltinViews as registerRuntimeBuiltinViews } from "./views-registry.ts";
 import {
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
@@ -1104,6 +1106,7 @@ async function applyRuntimeRestart(
       state.broadcastStatus?.();
       return false;
     }
+    registerRuntimeBuiltinViews(newRuntime);
     await quiesceRuntimeBeforeReplacement(previousRuntime, newRuntime);
     state.runtime = newRuntime;
     state.chatConnectionReady = null;
@@ -1168,15 +1171,50 @@ async function handleRequest(
   state: ServerState,
   ctx?: RequestContext,
 ): Promise<void> {
+  // Admission and host middleware may await after the dispatcher selects us.
+  // Revalidate the original owner before creating a scope for the current runtime.
+  const parentScope = getViewClientScope();
+  if (
+    getAuthenticatedInProcessAuthorization(req) &&
+    (parentScope?.hostKey !== state ||
+      !parentScope.request ||
+      parentScope.request.signal.aborted ||
+      parentScope.request.runtime !== state.runtime)
+  ) {
+    error(res, "Original authenticated request is no longer active", 403);
+    return;
+  }
   const rawClientId =
     req.headers["x-elizaos-client-id"] ?? req.headers["x-eliza-client-id"];
   const clientId = normalizeWsClientId(
     Array.isArray(rawClientId) ? rawClientId[0] : rawClientId,
   );
-  return runWithViewClient(
-    clientId ? { hostKey: state, clientId } : undefined,
-    () => handleRequestForViewClient(req, res, state, ctx),
-  );
+  const requestController = new AbortController();
+  const request: NonNullable<ViewClientScope["request"]> = {
+    runtime: state.runtime,
+    signal: requestController.signal,
+  };
+  const scope: ViewClientScope = {
+    hostKey: state,
+    ...(clientId ? { clientId } : {}),
+    request,
+  };
+  const retire = () => {
+    requestController.abort(
+      new DOMException("The originating HTTP request closed", "AbortError"),
+    );
+  };
+  req.once("aborted", retire);
+  res.once("close", retire);
+  return runWithViewClient(scope, async () => {
+    try {
+      await handleRequestForViewClient(req, res, state, ctx);
+    } finally {
+      retire();
+      req.removeListener("aborted", retire);
+      res.removeListener("close", retire);
+    }
+  });
 }
 async function handleRequestForViewClient(
   req: http.IncomingMessage,
@@ -1249,7 +1287,9 @@ async function handleRequestForViewClient(
       hostSessionAuthorizationAttempted = true;
       const bridge = getAgentHostBridge();
       const resolveAuthorization = bridge.resolveHttpRequestAuthorization;
-      if (typeof resolveAuthorization === "function") {
+      const inherited = getAuthenticatedInProcessAuthorization(req);
+      if (inherited) hostSessionAuthorization = inherited;
+      else if (typeof resolveAuthorization === "function") {
         hostSessionAuthorization = await resolveAuthorization(
           req,
           state.runtime,
@@ -1259,22 +1299,48 @@ async function handleRequestForViewClient(
             allowBearerAuth: true,
           },
         );
-        return hostSessionAuthorization;
+      } else {
+        const authorize = bridge.isHttpRequestAuthorized;
+        // A legacy boolean-only bridge cannot separate cookie from bearer
+        // authority. Do not consult it for an explicitly untrusted origin;
+        // standalone bearer schemes are evaluated by the normal server gates.
+        const authorized =
+          allowHostCookieAuth && typeof authorize === "function"
+            ? await authorize(req, state.runtime)
+            : false;
+        // Legacy boolean-only hosts can still pass the coarse request gate, but
+        // cannot claim OWNER authority for a sensitive account-selection action.
+        hostSessionAuthorization = {
+          ok: authorized,
+          role: authorized ? "USER" : "NONE",
+        };
       }
-      const authorize = bridge.isHttpRequestAuthorized;
-      // A legacy boolean-only bridge cannot separate cookie from bearer
-      // authority. Do not consult it for an explicitly untrusted origin;
-      // standalone bearer schemes are evaluated by the normal server gates.
-      const authorized =
-        allowHostCookieAuth && typeof authorize === "function"
-          ? await authorize(req, state.runtime)
-          : false;
-      // Legacy boolean-only hosts can still pass the coarse request gate, but
-      // cannot claim OWNER authority for a sensitive account-selection action.
-      hostSessionAuthorization = {
-        ok: authorized,
-        role: authorized ? "USER" : "NONE",
-      };
+      const scope = getViewClientScope();
+      if (
+        scope?.hostKey === state &&
+        scope.request &&
+        !scope.request.signal.aborted &&
+        scope.request.runtime === state.runtime
+      ) {
+        // Keep the same verified caller used by inbox and view routes, including
+        // standalone root tokens when no embedding host installs an auth bridge.
+        const requestAuthorization = resolveInboxRequestAuthorization(
+          req,
+          method,
+          pathname,
+          hostSessionAuthorization,
+        );
+        scope.request.authorization = Object.freeze({
+          ...requestAuthorization,
+          ...(requestAuthorization.externalIdentity
+            ? {
+                externalIdentity: Object.freeze({
+                  ...requestAuthorization.externalIdentity,
+                }),
+              }
+            : {}),
+        });
+      }
       return hostSessionAuthorization;
     };
   const isHostSessionAuthorized = async (): Promise<boolean> =>
@@ -3236,6 +3302,9 @@ export async function startApiServer(opts?: {
 }> {
   // Hosts that listen before startEliza must still pass protected admission.
   await ensureProtectedProfileAdmission();
+  // Publish a complete navigation catalog before accepting the first tool turn.
+  // Hosts may attach their runtime later; updateRuntime keeps the same fence.
+  if (opts?.runtime) registerRuntimeBuiltinViews(opts.runtime);
   const apiStartTime = Date.now();
   const hostAdmission = opts?.hostAdmission;
   const hostConfig =
@@ -3528,10 +3597,20 @@ export async function startApiServer(opts?: {
   let unregisterInProcessApi: (() => void) | undefined;
   const bindInProcessApi = () => {
     unregisterInProcessApi?.();
-    unregisterInProcessApi =
-      opts?.skipListen && state.runtime
+    if (state.runtime) {
+      const unregisterHost = registerInProcessApi(
+        state.runtime,
+        routeKernel,
+        state,
+      );
+      const unregisterDefault = opts?.skipListen
         ? registerInProcessApi(state.runtime, routeKernel)
         : undefined;
+      unregisterInProcessApi = () => {
+        unregisterHost();
+        unregisterDefault?.();
+      };
+    } else unregisterInProcessApi = undefined;
   };
   bindInProcessApi();
   const server = http.createServer((req, res) => routeKernel.handle(req, res));
@@ -4810,6 +4889,7 @@ export async function startApiServer(opts?: {
   };
   /** Hot-swap the runtime reference (used after an in-process restart). */
   const updateRuntime = (rt: AgentRuntime): void => {
+    registerRuntimeBuiltinViews(rt);
     void assertX402RoutesValid(rt).catch((err) => {
       logger.error(
         `[x402] runtime route validation failed after update: ${err instanceof Error ? err.message : String(err)}`,

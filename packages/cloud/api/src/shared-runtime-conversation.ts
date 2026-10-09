@@ -1,3 +1,17 @@
+import {
+  isCanonicalPersonalSharedAgent,
+  personalSharedAgentId,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
+import { observeOwnerCapture } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-owner-model-capture";
+import {
+  cleanupDueOwnerCaptures,
+  listOwnerCaptureReservations,
+  parseOwnerCapturePolicy,
+  readEncryptedOwnerCapture,
+  reserveOwnerModelCapture,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-owner-model-capture-store";
+import { sharedRuntimeConversationRoomId } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-storage-identity";
+import { ChannelType } from "@elizaos/core";
 /**
  * Strongly ordered conversation state for shared-runtime agent turns.
  *
@@ -22,8 +36,12 @@ import {
   SHARED_TURN_HYDRATION_WAIT_MS,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/bounded-hydration";
 import type { CachedAgentSandbox } from "@elizaos/cloud-shared/lib/services/shared-runtime/cached-agent-dates";
+import type { SharedCutoverSeal } from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
+import {
+  networkSharedTurnMatches,
+  parseNetworkSharedTurnContext,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-context";
 import { parsePersonalSharedFallbackAccountState } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-fallback-account-state";
-import { isCanonicalPersonalSharedAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
 import type {
   SharedRuntimeChannel,
   SharedTurnMessage,
@@ -67,6 +85,7 @@ type ConversationRequest =
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
       trustedAccountState?: unknown;
+      trustedNetworkContext?: unknown;
     }
   | {
       operation: "stream";
@@ -90,6 +109,7 @@ type ConversationRequest =
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
       trustedAccountState?: unknown;
+      trustedNetworkContext?: unknown;
     }
   | {
       operation: "prewarm";
@@ -115,6 +135,7 @@ type ConversationRequest =
   | { operation: "push-dispatch"; agentId: string; message: MobilePushMessage }
   | {
       operation: "cutover-seal";
+      fallback?: SharedCutoverSeal["fallback"];
       agentId: string;
       roomId: string;
       token: string;
@@ -243,6 +264,7 @@ const MAX_SNAPSHOT_MESSAGES = 40;
 interface StoredAlarmDeadlines {
   mirrorRetryAt?: number;
   idleExpiryAt?: number;
+  ownerCaptureCleanupAt?: number;
 }
 
 interface StoredDeletionTombstone {
@@ -251,6 +273,7 @@ interface StoredDeletionTombstone {
 }
 
 interface StoredCutoverSeal {
+  fallback?: SharedCutoverSeal["fallback"];
   token: string;
   expiresAt: number;
   committed: boolean;
@@ -632,19 +655,20 @@ export class SharedRuntimeConversation {
     await this.runAlarmMutation(async () => {
       // A deadline update that was queued before deletion must not recreate an
       // alarm or storage after the tombstone lands.
-      if (await this.deletionTombstone()) {
-        await this.state.storage.delete(ALARM_DEADLINES_KEY);
-        await this.state.storage.deleteAlarm();
-        return;
-      }
+      const deleted = await this.deletionTombstone();
       const current =
         (await this.state.storage.get<StoredAlarmDeadlines>(
           ALARM_DEADLINES_KEY,
         )) ?? {};
-      const next = mutate(current);
-      const times = [next.mirrorRetryAt, next.idleExpiryAt].filter(
-        (time): time is number => typeof time === "number",
-      );
+      const proposed = mutate(current);
+      const next = deleted
+        ? { ownerCaptureCleanupAt: proposed.ownerCaptureCleanupAt }
+        : proposed;
+      const times = [
+        next.mirrorRetryAt,
+        next.idleExpiryAt,
+        next.ownerCaptureCleanupAt,
+      ].filter((time): time is number => typeof time === "number");
       if (times.length === 0) {
         await this.state.storage.delete(ALARM_DEADLINES_KEY);
         await this.state.storage.deleteAlarm();
@@ -1248,6 +1272,46 @@ export class SharedRuntimeConversation {
     // a stale browser/native session resume the archived Shared transcript.
     if (!seal || seal.committed || seal.expiresAt > Date.now()) return seal;
 
+    if (seal.fallback) {
+      if (
+        !seal.organizationId ||
+        !seal.userId ||
+        !seal.sourceAgentId ||
+        !seal.dedicatedAgentId
+      ) {
+        return { ...seal, recoveryBlocked: true };
+      }
+      const scope = {
+        organizationId: seal.organizationId,
+        userId: seal.userId,
+        sourceAgentId: seal.sourceAgentId,
+        dedicatedAgentId: seal.dedicatedAgentId,
+        fallback: seal.fallback,
+      };
+      const outcome = await this.runWithBindings(async () => {
+        const { resolvePersonalFallbackCutoverRecovery } = await import(
+          "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback"
+        );
+        return await resolvePersonalFallbackCutoverRecovery(scope);
+      });
+      if (outcome === "released") {
+        await this.state.storage.delete(CUTOVER_SEAL_KEY);
+        return null;
+      }
+      if (outcome === "committed") {
+        const recovered = {
+          ...seal,
+          committed: true,
+          recoveryBlocked: undefined,
+        };
+        await this.state.storage.put(CUTOVER_SEAL_KEY, recovered);
+        return recovered;
+      }
+      // Unlike the original upgrade marker, recovery_pending still owns this
+      // journal. Time alone cannot invalidate an in-flight import's snapshot.
+      return outcome === "pending" ? seal : { ...seal, recoveryBlocked: true };
+    }
+
     // The DB marker commits before the final DO transition. If the Worker
     // crashes or loses the acknowledgement between those two durable writes,
     // an expired lease must recover the server-owned marker rather than
@@ -1362,7 +1426,150 @@ export class SharedRuntimeConversation {
       });
   }
 
+  private async readOwnerCapture(request: Request): Promise<Response> {
+    const forbidden = () =>
+      Response.json(
+        { code: "owner_capture_read_forbidden" },
+        { status: 403, headers: { "Cache-Control": "no-store" } },
+      );
+    if (request.method !== "POST" || (await this.deletionTombstone()))
+      return forbidden();
+    const reader = request.body?.getReader();
+    if (!reader) return forbidden();
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    try {
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        bytes += part.value.byteLength;
+        if (bytes > 4096) {
+          await reader.cancel();
+          return forbidden();
+        }
+        chunks.push(part.value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const raw = new Uint8Array(bytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      raw.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(new TextDecoder().decode(raw));
+    } catch {
+      return forbidden();
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      return forbidden();
+    if (
+      ![
+        "readerUserId,sessionId",
+        "captureId,readerUserId,sessionId",
+        "readerUserId,sessionId,verifiedAdmin",
+        "captureId,readerUserId,sessionId,verifiedAdmin",
+      ].includes(Object.keys(body).sort().join(","))
+    )
+      return forbidden();
+    const locator = body as {
+      sessionId?: unknown;
+      captureId?: unknown;
+      readerUserId?: unknown;
+      verifiedAdmin?: unknown;
+    };
+    const policy = parseOwnerCapturePolicy(
+      this.env.SHARED_OWNER_MODEL_CAPTURE_POLICY,
+    );
+    if (
+      !policy ||
+      locator.sessionId !== policy.sessionId ||
+      locator.readerUserId !== policy.readerUserId ||
+      (locator.captureId !== undefined &&
+        typeof locator.captureId !== "string") ||
+      !this.env.BLOB
+    )
+      return forbidden();
+    if (
+      locator.verifiedAdmin !== undefined &&
+      typeof locator.verifiedAdmin !== "boolean"
+    )
+      return forbidden();
+    const authenticatedOwner = locator.readerUserId === policy.userId;
+    const verifiedAdmin = !authenticatedOwner && locator.verifiedAdmin === true;
+    if (!authenticatedOwner && !verifiedAdmin) return forbidden();
+    const principal = {
+      organizationId: policy.organizationId,
+      userId: policy.readerUserId,
+      authenticatedOwner,
+      verifiedAdmin,
+    };
+    const context = await this.state.storage.get<{
+      agentId: string;
+      channelId: string;
+      roomId: string;
+      organizationId: string;
+      userId: string;
+      channelType: string;
+    }>("owner-capture-context:" + policy.sessionId);
+    const conversation =
+      this.conversation ??
+      (await this.state.storage.get<StoredConversation>(CONVERSATION_KEY));
+    if (
+      !context ||
+      !conversation ||
+      context.channelType !== ChannelType.DM ||
+      context.organizationId !== policy.organizationId ||
+      context.userId !== policy.userId ||
+      context.roomId !== policy.roomId ||
+      context.agentId !==
+        personalSharedAgentId({
+          organizationId: policy.organizationId,
+          userId: policy.userId,
+        }) ||
+      conversation.agentId !== context.agentId ||
+      conversation.channelId !== context.channelId ||
+      sharedRuntimeConversationRoomId(context.channelId) !== policy.roomId
+    )
+      return forbidden();
+    try {
+      if (locator.captureId === undefined) {
+        const result = await listOwnerCaptureReservations({
+          storage: this.state.storage,
+          sessionId: policy.sessionId,
+          principal,
+          roomId: policy.roomId,
+        });
+        return Response.json(result, {
+          headers: { "Cache-Control": "no-store" },
+        });
+      }
+      const result = await this.runWithBindings(() =>
+        readEncryptedOwnerCapture({
+          bucket: this.env.BLOB!,
+          storage: this.state.storage,
+          locator: {
+            sessionId: policy.sessionId,
+            captureId: locator.captureId as string,
+          },
+          principal,
+          roomId: policy.roomId,
+        }),
+      );
+      return Response.json(result, {
+        headers: { "Cache-Control": "no-store" },
+      });
+    } catch {
+      return forbidden();
+    }
+  }
+
   private async handle(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname === "/owner-capture/read")
+      return this.readOwnerCapture(request);
     const payload = (await request.json()) as ConversationRequest;
     const suppliedChannel = "channel" in payload ? payload.channel : undefined;
     const channel =
@@ -1399,6 +1606,38 @@ export class SharedRuntimeConversation {
       );
     }
     const validatedAccountState = accountState ?? undefined;
+    const suppliedNetwork =
+      "trustedNetworkContext" in payload
+        ? payload.trustedNetworkContext
+        : undefined;
+    const networkContext =
+      suppliedNetwork === undefined
+        ? undefined
+        : parseNetworkSharedTurnContext(suppliedNetwork);
+    if (
+      suppliedNetwork !== undefined &&
+      (!networkContext ||
+        !(
+          payload.operation === "personal-bridge" ||
+          payload.operation === "personal-stream"
+        ) ||
+        !networkSharedTurnMatches(
+          payload.agent,
+          payload.rpc.params?.roomId,
+          networkContext,
+        ) ||
+        (validatedAccountState && "membership" in networkContext))
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid Network conversation scope",
+          code: "invalid_network_scope",
+        },
+        { status: 400 },
+      );
+    }
+
     // Deletion fence: once the agent behind this room is purged, every later
     // operation (save, hydration, history read, forwarded turn) fails closed
     // instead of re-creating state for a deleted agent. The `delete` op stays
@@ -1839,6 +2078,23 @@ export class SharedRuntimeConversation {
       );
     }
     if (payload.operation === "cutover-seal") {
+      if (
+        payload.fallback !== undefined &&
+        (!payload.fallback ||
+          typeof payload.fallback !== "object" ||
+          typeof payload.fallback.id !== "string" ||
+          !payload.fallback.id ||
+          payload.fallback.roomId !== payload.roomId ||
+          !Number.isSafeInteger(payload.fallback.generation) ||
+          payload.fallback.generation < 1 ||
+          !Number.isSafeInteger(payload.fallback.revision) ||
+          payload.fallback.revision < 1)
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_fallback_seal" },
+          { status: 400 },
+        );
+      }
       const existing = await this.activeCutoverSeal();
       if (existing && existing.token !== payload.token) {
         return Response.json(
@@ -1859,6 +2115,7 @@ export class SharedRuntimeConversation {
         userId: payload.userId,
         sourceAgentId: payload.agentId,
         dedicatedAgentId: payload.dedicatedAgentId,
+        ...(payload.fallback ? { fallback: payload.fallback } : {}),
       };
       await this.state.storage.put(CUTOVER_SEAL_KEY, seal);
       try {
@@ -1875,7 +2132,11 @@ export class SharedRuntimeConversation {
         return Response.json({ success: true, history });
       } catch (error) {
         const current = await this.activeCutoverSeal();
-        if (current?.token === payload.token && !current.committed) {
+        if (
+          current?.token === payload.token &&
+          !current.committed &&
+          !current.fallback
+        ) {
           await this.state.storage.delete(CUTOVER_SEAL_KEY);
         }
         throw error;
@@ -1883,7 +2144,17 @@ export class SharedRuntimeConversation {
     }
     if (payload.operation === "cutover-release") {
       const existing = await this.activeCutoverSeal();
-      if (existing?.token === payload.token && !existing.committed) {
+      if (existing?.token === payload.token && existing.fallback) {
+        return Response.json(
+          { success: false, code: "fallback_recovery_seal_owned_by_revision" },
+          { status: 409 },
+        );
+      }
+      if (
+        existing?.token === payload.token &&
+        !existing.committed &&
+        !existing.fallback
+      ) {
         await this.state.storage.delete(CUTOVER_SEAL_KEY);
       }
       return Response.json({ success: true });
@@ -1931,16 +2202,35 @@ export class SharedRuntimeConversation {
         // that stale clients could hydrate again. DurableObjectTransaction has
         // no deleteAll, so delete its key snapshot in API-sized batches.
         await this.state.storage.transaction(async (txn) => {
-          const keys = [...(await txn.list()).keys()];
+          const cleanup =
+            await txn.get<StoredAlarmDeadlines>(ALARM_DEADLINES_KEY);
+          const keys = [...(await txn.list()).keys()].filter(
+            (key) =>
+              key !== "owner-model-capture-sessions" &&
+              !key.startsWith("owner-model-capture-budget:"),
+          );
           for (let offset = 0; offset < keys.length; offset += 128) {
             await txn.delete(keys.slice(offset, offset + 128));
+          }
+          if (cleanup?.ownerCaptureCleanupAt !== undefined) {
+            await txn.put(ALARM_DEADLINES_KEY, {
+              ownerCaptureCleanupAt: cleanup.ownerCaptureCleanupAt,
+            } satisfies StoredAlarmDeadlines);
           }
           await txn.put(DELETION_TOMBSTONE_KEY, {
             agentId: payload.agentId,
             deletedAt: Date.now(),
           } satisfies StoredDeletionTombstone);
         });
-        await this.state.storage.deleteAlarm();
+        const captureDeadline =
+          await this.state.storage.get<StoredAlarmDeadlines>(
+            ALARM_DEADLINES_KEY,
+          );
+        if (captureDeadline?.ownerCaptureCleanupAt !== undefined)
+          await this.state.storage.setAlarm(
+            captureDeadline.ownerCaptureCleanupAt,
+          );
+        else await this.state.storage.deleteAlarm();
         this.conversation = null;
       });
       // The caller deletes Postgres first, but an already-running mirror can
@@ -1976,7 +2266,7 @@ export class SharedRuntimeConversation {
     }
 
     return await this.runWithBindings(async () => {
-      const { sharedRuntimeChatService } = await import(
+      const { sharedRuntimeChatService, sharedRuntimeRoomKey } = await import(
         "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
       );
       const agent = personal
@@ -2006,6 +2296,7 @@ export class SharedRuntimeConversation {
           transientInput: payload.transientInput,
           trustedUserUtterance: payload.trustedUserUtterance,
           channel: validatedChannel,
+          ...(networkContext ? { trustedNetworkContext: networkContext } : {}),
           ...(personal && validatedAccountState
             ? { trustedAccountState: validatedAccountState }
             : {}),
@@ -2016,26 +2307,108 @@ export class SharedRuntimeConversation {
             : undefined,
         });
       }
-      const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
-        traceId: payload.traceId,
-        executionCtx,
-        historyStore,
-        turnClaims,
-        funding: personal ? "platform" : "organization-credits",
-        trustedMessageRole: payload.trustedMessageRole,
-        trustedHistoryCutoffAt: payload.trustedHistoryCutoffAt,
-        transientInput: payload.transientInput,
-        trustedUserUtterance: payload.trustedUserUtterance,
-        channel: validatedChannel,
-        ...(personal && validatedAccountState
-          ? { trustedAccountState: validatedAccountState }
-          : {}),
-        mobilePushDispatch: personal
-          ? async (message: MobilePushMessage) => {
-              this.enqueueMobilePush(message);
+      let ownerCapture:
+        | Awaited<ReturnType<typeof reserveOwnerModelCapture>>
+        | undefined;
+      const capturePolicy = parseOwnerCapturePolicy(
+        this.env.SHARED_OWNER_MODEL_CAPTURE_POLICY,
+      );
+      if (
+        capturePolicy &&
+        payload.rpc.method === "message.send" &&
+        personal &&
+        isCanonicalPersonalSharedAgent(agent) &&
+        (validatedChannel?.type ?? ChannelType.DM) === ChannelType.DM &&
+        this.env.BLOB
+      ) {
+        const channelId = sharedRuntimeRoomKey(
+          agent.id,
+          payload.rpc.params?.roomId,
+          payload.rpc.params?.userId,
+        );
+        const roomId = sharedRuntimeConversationRoomId(channelId);
+        const { supportsCanonicalOwnerCapture } = await import(
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-eliza-runtime"
+        );
+        if (supportsCanonicalOwnerCapture()) {
+          try {
+            ownerCapture = await reserveOwnerModelCapture({
+              policyValue: this.env.SHARED_OWNER_MODEL_CAPTURE_POLICY,
+              verifiedPersonalShared: true,
+              requiresSessionContext: true,
+              scope: {
+                organizationId: agent.organization_id,
+                userId: agent.user_id,
+                roomId,
+                traceId: payload.traceId ?? "",
+              },
+              storage: this.state.storage,
+              bucket: this.env.BLOB,
+              waitUntil: (work) => this.state.waitUntil(work),
+            });
+            if (
+              ownerCapture.capture &&
+              ownerCapture.cleanupAt &&
+              ownerCapture.sessionCreated
+            ) {
+              await this.updateAlarmDeadlines((deadlines) => ({
+                ...deadlines,
+                ownerCaptureCleanupAt: Math.min(
+                  deadlines.ownerCaptureCleanupAt ?? Infinity,
+                  ownerCapture!.cleanupAt!,
+                ),
+              }));
+              await this.state.storage.put(
+                "owner-capture-context:" + capturePolicy.sessionId,
+                {
+                  agentId: agent.id,
+                  channelId,
+                  roomId,
+                  organizationId: agent.organization_id,
+                  userId: agent.user_id,
+                  channelType: ChannelType.DM,
+                },
+              );
             }
-          : undefined,
-      });
+          } catch {
+            ownerCapture = undefined;
+          }
+        }
+      }
+      let result: Awaited<ReturnType<typeof sharedRuntimeChatService.bridge>>;
+      try {
+        result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
+          ownerCapture: ownerCapture?.capture,
+          ...(networkContext ? { trustedNetworkContext: networkContext } : {}),
+          abortSignal: request.signal,
+          traceId: payload.traceId,
+          executionCtx,
+          historyStore,
+          turnClaims,
+          funding: personal ? "platform" : "organization-credits",
+          trustedMessageRole: payload.trustedMessageRole,
+          trustedHistoryCutoffAt: payload.trustedHistoryCutoffAt,
+          transientInput: payload.transientInput,
+          trustedUserUtterance: payload.trustedUserUtterance,
+          channel: validatedChannel,
+          ...(personal && validatedAccountState
+            ? { trustedAccountState: validatedAccountState }
+            : {}),
+          mobilePushDispatch: personal
+            ? async (message: MobilePushMessage) => {
+                this.enqueueMobilePush(message);
+              }
+            : undefined,
+        });
+      } catch (error) {
+        observeOwnerCapture(ownerCapture?.capture, (capture) =>
+          capture.finish({ boundary: "cloud-bridge", outcome: "failed" }),
+        );
+        throw error;
+      }
+      observeOwnerCapture(ownerCapture?.capture, (capture) =>
+        capture.finish({ boundary: "cloud-bridge-response-ready", result }),
+      );
       const response = Response.json(result);
       // A bridge result is complete before this response exists. Releasing the
       // room here avoids coupling later turns to whether a nested Worker fetch
@@ -2205,6 +2578,9 @@ export class SharedRuntimeConversation {
             code: "shared_runtime_turn_failed",
             failureName: error.failureName,
             retryable: error.retryable,
+            ...(error.failureDiagnostic
+              ? { failureDiagnostic: error.failureDiagnostic }
+              : {}),
           },
           { status: error.retryable ? 503 : 500 },
         );
@@ -2278,7 +2654,7 @@ export class SharedRuntimeConversation {
   }
 
   async alarm(): Promise<void> {
-    if (await this.deletionTombstone()) return;
+    const deleted = await this.deletionTombstone();
     const deadlines =
       await this.state.storage.get<StoredAlarmDeadlines>(ALARM_DEADLINES_KEY);
     if (!deadlines) {
@@ -2293,6 +2669,40 @@ export class SharedRuntimeConversation {
       return;
     }
     const now = Date.now();
+    if (
+      typeof deadlines.ownerCaptureCleanupAt === "number" &&
+      deadlines.ownerCaptureCleanupAt <= now &&
+      this.env.BLOB
+    ) {
+      const cleanup = await this.runWithBindings(() =>
+        cleanupDueOwnerCaptures({
+          storage: this.state.storage,
+          bucket: this.env.BLOB!,
+        }),
+      );
+      await this.updateAlarmDeadlines(
+        ({ ownerCaptureCleanupAt: _done, ...rest }) => ({
+          ...rest,
+          ...(cleanup.nextDeadline === undefined
+            ? {}
+            : { ownerCaptureCleanupAt: cleanup.nextDeadline }),
+        }),
+      );
+      if (cleanup.cleanupExhausted > 0) {
+        try {
+          const { logger } = await import(
+            "@elizaos/cloud-shared/lib/utils/logger"
+          );
+          logger.audit(
+            "[SharedRuntimeConversation] owner capture cleanup exhausted",
+            { count: cleanup.cleanupExhausted },
+          );
+        } catch {
+          /* Reporting never changes retention fencing or cleanup status. */
+        }
+      }
+    }
+    if (deleted) return;
     if (
       typeof deadlines.mirrorRetryAt === "number" &&
       deadlines.mirrorRetryAt <= now

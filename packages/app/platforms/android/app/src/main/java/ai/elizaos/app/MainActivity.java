@@ -94,6 +94,7 @@ public class MainActivity extends BridgeActivity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
 
+        captureNativeNotification(getIntent());
         DeepLinkBufferPlugin.captureIntent(this, getIntent());
         ElizaReminderMessagingService.onReminderOpened(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
@@ -106,6 +107,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(CredentialManagerPlugin.class);
         registerPlugin(GlassBridgePlugin.class);
         registerPlugin(NativeTranscriptPlugin.class);
+        registerPlugin(SlotClockPlugin.class);
         // BridgeActivity appends these after discovery, before the first JS export.
         initialPlugins.add(SafePushNotificationsPlugin.class);
         super.onCreate(savedInstanceState);
@@ -167,6 +169,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onNewIntent(Intent intent) {
+        captureNativeNotification(intent);
         DeepLinkBufferPlugin.captureIntent(this, intent);
         ElizaReminderMessagingService.onReminderOpened(this, intent);
         super.onNewIntent(intent);
@@ -175,8 +178,21 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        NativeNotificationConnectionService.resume(this);
         updateScreenWakePolicy();
         applyImmersiveNavigationBar();
+    }
+
+    private void captureNativeNotification(Intent intent) {
+        try {
+            NativeNotificationAuthority owner = new NativeNotificationAuthority(this);
+            owner.current();
+            NativeNotificationProjector.onOpened(this, intent, owner.owner);
+        } catch (Exception unavailable) {
+            NativeNotificationProjector.onOpened(this, intent, null);
+            // No authenticated current profile means no fallback notification
+            // navigation. No credential or notification content is logged.
+        }
     }
 
     @Override

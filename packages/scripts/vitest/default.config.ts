@@ -53,15 +53,12 @@ export default defineConfig({
     alias: vitestResolveAlias,
   },
   test: {
+    fsModuleCache: true,
     testTimeout: 120_000,
     hookTimeout: isCI ? 300_000 : isWindows ? 180_000 : 120_000,
     pool: "forks",
     maxWorkers: isCI ? ciWorkers : localWorkers,
     restoreMocks: true,
-    // Some shard patterns (for example packages/agent/test) hold only test
-    // infrastructure, not *.test.ts files. Tolerate empty matches so those
-    // shards pass instead of aborting the whole suite.
-    passWithNoTests: true,
     // Give worker forks more heap to survive jsdom-heavy suites.
     execArgv: ["--max-old-space-size=4096"],
     include: [

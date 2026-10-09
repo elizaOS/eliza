@@ -195,7 +195,7 @@ export function startupReducer(
               phase: "error",
               reason: "backend-unreachable",
               message:
-                "Previously configured backend is unreachable. Check your connection or reset.",
+                "Previously configured backend is unreachable. Check your connection and retry.",
               timedOut: false,
             };
           }

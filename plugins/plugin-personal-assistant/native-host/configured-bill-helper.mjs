@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
+import { BillHostError } from "./errors.mjs";
 
 /** Configured native bill composition. Trusted host policy supplies authority and evidence schema. */
 export async function createConfiguredBillHelper({
@@ -18,6 +19,16 @@ export async function createConfiguredBillHelper({
   documentRuntime,
   documentImages,
 }) {
+  const readback =
+    hostPolicy.reconcileMethod != null ||
+    hostPolicy.reconciliationEvidenceRecord != null;
+  if (
+    readback &&
+    [hostPolicy.reconcileMethod, hostPolicy.reconciliationEvidenceRecord].some(
+      (value) => typeof value !== "function",
+    )
+  )
+    throw new BillHostError("Incomplete bill reconciliation policy");
   const config = hostPolicy.validateConfiguration(configuration);
   const controls = validateBillControls(config.controls);
   const extraction = config.googleSource?.extractionProfile
@@ -40,6 +51,7 @@ export async function createConfiguredBillHelper({
   const native = new runtimeModule.NativeSocketBrowserTarget(() =>
     onUnavailable(),
   );
+  const registrationAbort = new AbortController();
   const requireProfile = () => {
     if (native.getProfileId() !== config.profileId)
       throw new Error("Configured browser profile unavailable");
@@ -48,6 +60,18 @@ export async function createConfiguredBillHelper({
     ["bindTask", "guideTask", "execute"].map((method) => [
       method,
       async (...args) => {
+        // Wait only before a new binding, never before replaying an effect or
+        // revocation cleanup. The actuator fences task revisions around binding.
+        if (method === "bindTask" && !args[0]?.revoked) {
+          await native.waitForProfile(config.profileId, {
+            signal: registrationAbort.signal,
+          });
+          if (
+            (await credentialGate()) !== config.actorId ||
+            registrationAbort.signal.aborted
+          )
+            throw new BillHostError("Configured task authorization changed");
+        }
         requireProfile();
         return native[method](...args);
       },
@@ -62,8 +86,9 @@ export async function createConfiguredBillHelper({
   };
   let host;
   let closing;
-  const close = () =>
-    (closing ??= (async () => {
+  const close = () => {
+    registrationAbort.abort();
+    closing ??= (async () => {
       const errors = [];
       try {
         await host?.close();
@@ -77,7 +102,9 @@ export async function createConfiguredBillHelper({
       }
       if (errors.length)
         throw new AggregateError(errors, "Configured helper cleanup failed");
-    })());
+    })();
+    return closing;
+  };
   try {
     host = createBillHelperHost({
       runtimeModule,
@@ -129,6 +156,32 @@ export async function createConfiguredBillHelper({
         requireProfile,
         requireTask,
       }),
+      ...(readback
+        ? {
+            reconcileMethod: async (input) => {
+              requireTask(input.task);
+              const result = await hostPolicy.reconcileMethod(input);
+              requireTask(input.task);
+              if (result?.status === "unknown") return { status: "unknown" };
+              if (!["succeeded", "failed"].includes(result?.status))
+                throw new BillHostError("Invalid bill reconciliation result");
+              const id = randomUUID();
+              const record = hostPolicy.reconciliationEvidenceRecord({
+                ...input,
+                status: result.status,
+              });
+              await writeFile(
+                join(evidenceDirectory, `${id}.json`),
+                `${JSON.stringify(record)}\n`,
+                { mode: 0o600, flag: "wx" },
+              );
+              return {
+                status: result.status,
+                evidenceRef: `${hostPolicy.evidenceNamespace}:${id}`,
+              };
+            },
+          }
+        : {}),
       recordEvidence: async (task, proposal, before, after, status) => {
         requireTask(task);
         const id = randomUUID();

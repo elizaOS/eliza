@@ -27,6 +27,12 @@ import type {
   SteerVaultDetailInput,
   SteerVaultPositionRow,
 } from "../steer-display-types.js";
+import {
+  recordedFeeFraction,
+  recordedSteerCreatedAt,
+  recordedSteerYield,
+  recordedSubgraphInteger,
+} from "./steer-recorded-numbers.js";
 
 type SteerClientCtor = ConstructorParameters<typeof SteerClient>;
 type VaultClientCtor = ConstructorParameters<typeof VaultClient>;
@@ -767,20 +773,15 @@ export class SteerLiquidityService extends Service {
     try {
       const vaultAddress = vault.vaultAddress || vault.address || "";
       const poolAddress = vault.pool?.poolAddress || vault.poolAddress;
-      const rawFeeTier = vault.pool?.feeTier ?? vault.fee ?? 0.3;
-      const feeTier =
-        typeof rawFeeTier === "number"
-          ? rawFeeTier
-          : Number.parseFloat(rawFeeTier) || 0.3;
-
+      const feeTier = recordedFeeFraction(vault.pool?.feeTier ?? vault.fee);
       const apyData = vault.aprData || {};
-      const apy =
-        vault.apy ||
-        vault.apr ||
-        apyData.apr1dAvg ||
-        apyData.apr7dAvg ||
-        apyData.apr14dAvg ||
-        0;
+      const apy = recordedSteerYield(
+        vault.apy,
+        vault.apr,
+        apyData.apr1dAvg,
+        apyData.apr7dAvg,
+        apyData.apr14dAvg,
+      );
 
       const processedVault: SteerVaultDetailInput = {
         address: vaultAddress,
@@ -793,12 +794,7 @@ export class SteerLiquidityService extends Service {
         volume24h: vault.volume24h || 0,
         apy: apy,
         isActive: vault.isActive !== false, // Default to true unless explicitly false
-        createdAt:
-          typeof vault.createdAt === "number"
-            ? vault.createdAt
-            : typeof vault.createdAt === "string"
-              ? Number.parseInt(vault.createdAt, 10) || Date.now()
-              : Date.now(),
+        createdAt: recordedSteerCreatedAt(vault.createdAt, Date.now()),
         strategyType: vault.protocol || vault.strategyType || "Unknown",
         positions: vault.positions || [],
         poolAddress: poolAddress,
@@ -829,8 +825,8 @@ export class SteerLiquidityService extends Service {
           const gqlTvl = this.calculateTvlFromBalances(
             gqlPeek.token0Balance,
             gqlPeek.token1Balance,
-            parseInt(gqlPeek.token0Decimals, 10) || 18,
-            parseInt(gqlPeek.token1Decimals, 10) || 18,
+            recordedSubgraphInteger(gqlPeek.token0Decimals, 18),
+            recordedSubgraphInteger(gqlPeek.token1Decimals, 18),
           );
           if (gqlTvl > 0) processedVault.tvl = gqlTvl;
           const wApr = parseFloat(gqlPeek.weeklyFeeAPR);
@@ -914,7 +910,7 @@ export class SteerLiquidityService extends Service {
       const graphqlData = await this.getVaultDataFromGraphQL(vaultAddress);
       if (graphqlData) {
         logger.log(`Found vault ${vaultAddress} via GraphQL`);
-        const feeTierBp = parseInt(graphqlData.feeTier, 10) || 3000;
+        const feeTierBp = recordedSubgraphInteger(graphqlData.feeTier, 3000);
         return {
           address: vaultAddress,
           name: graphqlData.name,
@@ -941,8 +937,8 @@ export class SteerLiquidityService extends Service {
           tvl: this.calculateTvlFromBalances(
             graphqlData.token0Balance,
             graphqlData.token1Balance,
-            parseInt(graphqlData.token0Decimals, 10) || 18,
-            parseInt(graphqlData.token1Decimals, 10) || 18,
+            recordedSubgraphInteger(graphqlData.token0Decimals, 18),
+            recordedSubgraphInteger(graphqlData.token1Decimals, 18),
           ),
           apy: parseFloat(graphqlData.weeklyFeeAPR) * 52 || 0, // Convert weekly to annual
           isActive: true,
@@ -1684,13 +1680,19 @@ export class SteerLiquidityService extends Service {
           graphqlData: {
             weeklyFeeAPR: parseFloat(graphqlData.weeklyFeeAPR) || 0,
             token0Symbol: graphqlData.token0Symbol,
-            token0Decimals: parseInt(graphqlData.token0Decimals, 10) || 18,
+            token0Decimals: recordedSubgraphInteger(
+              graphqlData.token0Decimals,
+              18,
+            ),
             token1Symbol: graphqlData.token1Symbol,
-            token1Decimals: parseInt(graphqlData.token1Decimals, 10) || 18,
+            token1Decimals: recordedSubgraphInteger(
+              graphqlData.token1Decimals,
+              18,
+            ),
             token0Balance: graphqlData.token0Balance,
             token1Balance: graphqlData.token1Balance,
             totalLPTokensIssued: graphqlData.totalLPTokensIssued,
-            feeTier: parseInt(graphqlData.feeTier, 10) || 3000,
+            feeTier: recordedSubgraphInteger(graphqlData.feeTier, 3000),
             fees0: graphqlData.fees0,
             fees1: graphqlData.fees1,
             strategyToken: graphqlData.strategyToken,
@@ -1707,14 +1709,14 @@ export class SteerLiquidityService extends Service {
             this.calculateTvlFromBalances(
               graphqlData.token0Balance,
               graphqlData.token1Balance,
-              parseInt(graphqlData.token0Decimals, 10) || 18,
-              parseInt(graphqlData.token1Decimals, 10) || 18,
+              recordedSubgraphInteger(graphqlData.token0Decimals, 18),
+              recordedSubgraphInteger(graphqlData.token1Decimals, 18),
             ),
           calculatedTvl: this.calculateTvlFromBalances(
             graphqlData.token0Balance,
             graphqlData.token1Balance,
-            parseInt(graphqlData.token0Decimals, 10) || 18,
-            parseInt(graphqlData.token1Decimals, 10) || 18,
+            recordedSubgraphInteger(graphqlData.token0Decimals, 18),
+            recordedSubgraphInteger(graphqlData.token1Decimals, 18),
           ),
         };
 

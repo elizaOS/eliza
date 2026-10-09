@@ -317,6 +317,91 @@ describe("browser workspace web-mode real-code command flow", () => {
     );
   });
 
+  it("uses document base, external form ownership, submitter data, and disabled controls", async () => {
+    const tab = await openBrowserWorkspaceTab(
+      { show: true, url: "about:blank" },
+      webEnv,
+    );
+    const pageUrl = "https://example.test/page";
+    const targetUrl = "https://example.test/base/submit?q=hello&choice=go";
+    const html = `<base href="https://example.test/base/">
+      <a id="relative" href="details">Details</a>
+      <form id="search" action="submit"><input name="q" value="hello"></form>
+      <button id="external" form="search" name="choice" value="go">Go</button>
+      <button id="ordinary" form="search" type="button">Not submit</button>
+      <fieldset disabled><input id="disabled" type="checkbox"><legend><input id="legend" type="checkbox"></legend></fieldset>`;
+    for (const [url, responseBody] of [
+      [pageUrl, html],
+      [targetUrl, "<h1>Submitted</h1>"],
+      ["https://example.test/base/details", "<h1>Details</h1>"],
+    ]) {
+      await executeBrowserWorkspaceCommand(
+        {
+          id: tab.id,
+          subaction: "network",
+          networkAction: "route",
+          url,
+          responseBody,
+        },
+        webEnv,
+      );
+    }
+    await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "navigate", url: pageUrl },
+      webEnv,
+    );
+    await expect(
+      executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "click", selector: "#disabled" },
+        webEnv,
+      ),
+    ).rejects.toThrow(/disabled/);
+    const legend = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "click", selector: "#legend" },
+      webEnv,
+    );
+    expect(legend.value).toMatchObject({ checked: true });
+    const ordinary = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "click", selector: "#ordinary" },
+      webEnv,
+    );
+    expect(ordinary.value).toMatchObject({ text: "Not submit" });
+    const submitted = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "click", selector: "#external" },
+      webEnv,
+    );
+    expect(submitted.tab?.url).toBe(targetUrl);
+    await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "navigate", url: pageUrl },
+      webEnv,
+    );
+    const followed = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "click", selector: "#relative" },
+      webEnv,
+    );
+    expect(followed.tab?.url).toBe("https://example.test/base/details");
+    await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        subaction: "network",
+        networkAction: "route",
+        url: "https://example.test/empty",
+        responseStatus: 204,
+      },
+      webEnv,
+    );
+    await expect(
+      executeBrowserWorkspaceCommand(
+        {
+          id: tab.id,
+          subaction: "navigate",
+          url: "https://example.test/empty",
+        },
+        webEnv,
+      ),
+    ).resolves.toMatchObject({ tab: { url: "https://example.test/empty" } });
+  });
+
   it("preserves semantic page content beyond the former fixed snapshot ceiling", async () => {
     const tab = await openBrowserWorkspaceTab(
       { show: true, url: "about:blank" },

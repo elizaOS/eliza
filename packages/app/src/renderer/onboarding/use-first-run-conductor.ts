@@ -1468,7 +1468,7 @@ export function useFirstRunConductor(): void {
           // from the text, and both render (#14390 reversibility).
           const connect = makeTurn(
             "first-run:remote-connect",
-            `Enter your remote agent's URL and access token to connect.\n\n[CHOICE:first-run id=remote-back]\n${BACK_TO_RUNTIME_OPTION}\n[/CHOICE]`,
+            `Enter your server URL. You'll be asked for a pairing code if needed.\n\n[CHOICE:first-run id=remote-back]\n${BACK_TO_RUNTIME_OPTION}\n[/CHOICE]`,
             { secretRequest: remoteConnectSecretRequest() },
           );
           seedTurn(connect);

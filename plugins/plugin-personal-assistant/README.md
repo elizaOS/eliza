@@ -91,3 +91,28 @@ passes the task artifact's source identity to the reviewed document loader, and
 binds document/Google ports to the configured actor and grant. Only an explicitly
 optional missing file is ignored; invalid configuration or provenance fails closed.
 It imports the selected runtime through a file URL, preserving paths with spaces.
+
+Existing-method selection persists immutable owner/task/operation-bound review
+metadata before dispatch. Missing or failed storage prevents the click; selection
+records are distinct from payment attempts. `createBillHelperHost.reconcileTask`
+binds exactly one unknown operation to its saved review and delegates to the
+existing read-only runtime/actuator reconciliation path, without replaying it.
+Hosts supply `reconcileMethod` policy. Configured hosts may additionally supply
+`reconciliationEvidenceRecord`; conclusive readback is published only after its
+projected evidence is privately persisted. Unknown observations remain unknown.
+
+Hosts may require current on-screen guidance before offering/selecting a saved
+method by supplying `selectionGuidance: { unavailableMessage }` to the bill helper
+or workflow. Copy stays host-owned. Missing, ambiguous or rejected guidance yields
+human review and no selection record/click. If guidance disappears after a choice
+was offered, the explicit failed attempt pauses the task and settles cleanup;
+explicit Resume obtains a fresh epoch/choice instead of reusing a consumed choice.
+Omitting this policy preserves headless hosts' existing behavior.
+
+Configured native bill hosts wait for the exact expected browser profile before
+a new task binding after service restart. The browser transport owns the bounded
+registration wait; the configured host rechecks account authority and profile
+after it. Closing the host cancels pending waits. Revocation cleanup, guidance
+and browser commands never enter this wait or replay a request. Product page
+policy must allow binding to reach this gate rather than rejecting a temporarily
+unregistered profile during pure policy construction.

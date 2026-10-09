@@ -83,7 +83,7 @@ export async function requestViaAgentTransport(
   context: AgentRequestContext = {},
 ): Promise<Response> {
   const transport =
-    (await getHostRequestTransport(url, "csrf")) ?? fetchAgentTransport;
+    (await getHostRequestTransport(url, "csrf", init)) ?? fetchAgentTransport;
   return transport.request(url, init, {
     timeoutMs: context.timeoutMs ?? defaultFetchTimeoutMs(url, init),
     ...(context.responseType ? { responseType: context.responseType } : {}),

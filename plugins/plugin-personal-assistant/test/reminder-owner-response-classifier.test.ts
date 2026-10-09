@@ -3,11 +3,12 @@
  * semantic (LLM) classifier is the primary judge; the only deterministic path
  * is the exact-match fast-path for replies that ARE a bare resolution word or
  * duration. Deterministic harness — the semantic seam is stubbed at its
- * injection boundary, and the model boundary test stubs runtime.useModel to
- * capture the real prompt.
+ * injection boundary. Model boundary tests capture production dispatch input
+ * through a local handler without external inference.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import {
   type RemindersDeps,
@@ -198,16 +199,26 @@ describe("classifyReminderOwnerResponseSemantically model boundary (#14717)", ()
     prompts: string[];
   } {
     const prompts: string[] = [];
-    const useModel = async (
-      _modelType: string,
-      params: { prompt: string },
-    ): Promise<string> => {
-      prompts.push(params.prompt);
-      return response;
-    };
-    const ctx = {
-      runtime: { useModel } as unknown as IAgentRuntime,
-    } as LifeOpsContext;
+    const runtime = createSQLiteTestRuntime({
+      character: {
+        name: "Reminder input boundary",
+        bio: "Test",
+        settings: {
+          ELIZA_SECRET_SWAP_ENABLED: "true",
+          ELIZA_PII_SWAP_ENABLED: "true",
+        },
+      },
+      logLevel: "fatal",
+    });
+    runtime.registerModel(
+      ModelType.TEXT_SMALL,
+      async (_runtime, params) => {
+        prompts.push(params.prompt);
+        return response;
+      },
+      "reminder-input-test-provider",
+    );
+    const ctx = { runtime } as LifeOpsContext;
     return {
       domain: new RemindersDomain(ctx, {} as RemindersDeps),
       prompts,
@@ -227,7 +238,7 @@ describe("classifyReminderOwnerResponseSemantically model boundary (#14717)", ()
     );
 
     const result = await domain.classifyReminderOwnerResponseSemantically({
-      text: "no, don't skip it — give me 45 minutes",
+      text: "no, don't skip it — give me 45 minutes; card 4111 1111 1111 1111",
       context: {
         title: "dentist appointment",
         attemptedAt: ATTEMPTED_AT,
@@ -242,6 +253,10 @@ describe("classifyReminderOwnerResponseSemantically model boundary (#14717)", ()
     expect(prompt).toContain("no, don't skip it — give me 45 minutes");
     expect(prompt).toContain("dentist appointment");
     expect(prompt).toContain("allowStandaloneResolution: false");
+    expect(prompt).toContain("respondedAt: 2026-07-05T10:02:00.000Z");
+    expect(prompt).not.toContain("respondedAt: <CARD>");
+    expect(prompt).toMatch(/card __ELIZA_SECRET_[a-f0-9]+_\d+__/);
+    expect(prompt).not.toContain("4111 1111 1111 1111");
     expect(result).toMatchObject({
       decision: "explicit_resolution",
       resolution: "snoozed",

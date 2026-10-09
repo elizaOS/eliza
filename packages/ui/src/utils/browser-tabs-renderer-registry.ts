@@ -550,12 +550,9 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
     const SUPPORTED_EVM_CHAIN_IDS = Object.keys(DEFAULT_EVM_RPCS);
     let evmChainId = 1;
     const parseChainId = (value) => {
-      if (typeof value === "number" && Number.isFinite(value)) return value;
-      if (typeof value !== "string") return null;
-      const trimmed = value.trim();
-      if (!trimmed) return null;
-      const parsed = trimmed.startsWith("0x") ? Number.parseInt(trimmed.slice(2), 16) : Number(trimmed);
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+      if (typeof value !== "number" && typeof value !== "string") return null;
+      const parsed = typeof value === "string" ? Number(value.trim()) : value;
+      return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
     };
     const formatChainId = (value) => "0x" + value.toString(16);
     const isSupportedEvmChainId = (value) => SUPPORTED_EVM_CHAIN_IDS.indexOf(String(value)) >= 0;

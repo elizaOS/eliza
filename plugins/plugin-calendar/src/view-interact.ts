@@ -32,6 +32,7 @@ import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
   getZonedDateParts,
+  isRealCalendarDay,
 } from "./internal/time.js";
 import { CalendarService } from "./service/CalendarService.js";
 
@@ -171,6 +172,16 @@ function feedWindow(
       month: Number(match[2]),
       day: Number(match[3]),
     };
+    if (
+      startDate.year < 1 ||
+      startDate.year > 9999 ||
+      !isRealCalendarDay(startDate.year, startDate.month, startDate.day)
+    ) {
+      throw validationError(
+        '"date" must be a real calendar day in YYYY-MM-DD.',
+        "date",
+      );
+    }
   } else {
     const today = getZonedDateParts(now, timeZone);
     startDate = { year: today.year, month: today.month, day: today.day };

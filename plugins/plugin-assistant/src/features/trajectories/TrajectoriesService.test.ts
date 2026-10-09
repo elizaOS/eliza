@@ -348,6 +348,52 @@ describe("TrajectoriesService", () => {
     expect(persisted[1].stepNumber).toBe(1);
   });
 
+  it("keeps a step recorded at epoch instead of rewriting it to now", async () => {
+    const trajectoryId = "00000000-0000-4000-8000-000000000031";
+    const row = makeEmptyTrajectoryRow(trajectoryId);
+    const service = new TrajectoriesService(createRuntimeWithoutSql());
+    const serviceInternals = service as unknown as {
+      executeRawSql: (
+        sqlText: string,
+      ) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+      executeRawSqlTransaction: <T>(
+        work: (
+          execute: (sqlText: string) => Promise<{
+            rows: Array<Record<string, unknown>>;
+            columns: string[];
+          }>,
+        ) => Promise<T>,
+      ) => Promise<T>;
+    };
+
+    serviceInternals.executeRawSql = async (sqlText: string) => {
+      if (sqlText.includes("SELECT * FROM trajectories")) {
+        return { rows: [row], columns: Object.keys(row) };
+      }
+      if (sqlText.includes("UPDATE trajectories SET")) {
+        const stepsJson = extractSqlStringAssignment(sqlText, "steps_json");
+        if (stepsJson) row.steps_json = stepsJson;
+      }
+      return { rows: [], columns: [] };
+    };
+    serviceInternals.executeRawSqlTransaction = (work) =>
+      work(serviceInternals.executeRawSql);
+
+    service.startStep(trajectoryId, {
+      timestamp: 0,
+      agentBalance: 0,
+      agentPoints: 0,
+      agentPnL: 0,
+      openPositions: 0,
+    });
+    await service.flushWriteQueue(trajectoryId);
+
+    const persisted = JSON.parse(row.steps_json);
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0].timestamp).toBe(0);
+    expect(persisted[0].environmentState.timestamp).toBe(0);
+  });
+
   it("does not persist internal embedding calls as trajectory LLM calls", () => {
     const trajectoryId = "00000000-0000-4000-8000-000000000020";
     const stepId = "00000000-0000-4000-8000-000000000021";

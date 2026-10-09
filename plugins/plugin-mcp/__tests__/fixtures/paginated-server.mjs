@@ -8,15 +8,29 @@ import {
   ListResourceTemplatesRequestSchema,
   ListToolsRequestSchema,
   McpError,
+  PingRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
 const [mode, failingList] = process.argv.slice(2);
 const requests = [];
+const capabilityMode = ["resources-only", "tools-only", "no-capabilities"].includes(mode);
+const capabilities = capabilityMode
+  ? {
+      ...(mode === "tools-only" ? { tools: {} } : {}),
+      ...(mode === "resources-only" ? { resources: {} } : {}),
+    }
+  : { tools: {}, resources: {} };
 const server = new Server(
   { name: "paginated-discovery-fixture", version: "1.0.0" },
-  { capabilities: { tools: {}, resources: {} } }
+  { capabilities }
 );
+server.setRequestHandler(PingRequestSchema, async () => {
+  requests.push({ list: "ping", cursor: null });
+  if (failingList === "ping-error") throw new McpError(ErrorCode.InternalError, "ping unavailable");
+  if (failingList === "ping-timeout") return new Promise(() => {});
+  return {};
+});
 
 for (const [schema, key, item] of [
   [
@@ -38,8 +52,15 @@ for (const [schema, key, item] of [
     }),
   ],
 ]) {
+  if (key === "tools" ? !capabilities.tools : !capabilities.resources) continue;
   server.setRequestHandler(schema, async (request) => {
     const cursor = request.params?.cursor;
+    if (mode === "crash-list" && key === "tools" && cursor === undefined) {
+      process.exit(1);
+    }
+    if (mode === "slow-list" && key === "tools" && cursor === undefined) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
     requests.push({ list: key, cursor: cursor ?? null });
     if (key === failingList && mode === "sticky-empty") return { [key]: [item(0)], nextCursor: "" };
     if (key === failingList && mode === "endless")
@@ -59,10 +80,42 @@ for (const [schema, key, item] of [
   });
 }
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => ({
-  content: [{ type: "text", text: JSON.stringify({ tool: request.params.name, requests }) }],
-}));
-server.setRequestHandler(ReadResourceRequestSchema, async (request) => ({
-  contents: [{ uri: request.params.uri, text: "last-page resource" }],
-}));
+if (capabilities.tools) {
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    if (mode.startsWith("result-")) {
+      const content = [];
+      if (mode === "result-mixed" || mode === "result-text")
+        content.push({ type: "text", text: "Text summary from the tool" });
+      if (mode === "result-echo" || mode === "result-echo-spaced") {
+        const json = JSON.stringify(request.params.arguments, null, mode === "result-echo" ? 0 : 2);
+        content.push({ type: "text", text: mode === "result-echo" ? json : ` \n${json}\n ` });
+      }
+      if (mode === "result-mixed")
+        content.push({ type: "image", mimeType: "image/png", data: "AAAA" });
+      return {
+        content,
+        ...(mode === "result-text" ? {} : { structuredContent: request.params.arguments }),
+        ...(mode === "result-error" ? { isError: true } : {}),
+      };
+    }
+    return {
+      content: [{ type: "text", text: JSON.stringify({ tool: request.params.name, requests }) }],
+    };
+  });
+}
+if (capabilities.resources) {
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    if (mode === "slow-read") await new Promise((resolve) => setTimeout(resolve, 400));
+    return {
+      contents: [
+        {
+          uri: request.params.uri,
+          text: capabilityMode
+            ? JSON.stringify({ resource: request.params.uri, requests })
+            : "last-page resource",
+        },
+      ],
+    };
+  });
+}
 await server.connect(new StdioServerTransport());

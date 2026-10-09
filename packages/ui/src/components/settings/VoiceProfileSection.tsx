@@ -93,15 +93,30 @@ const COMMON_RELATIONSHIPS = [
   "roommate",
 ];
 
+/**
+ * Calendar day of a voice sample in the viewer's zone. `toISOString()` is the
+ * UTC day, so a recording at 20:30 in Los Angeles was labeled as the next day.
+ */
+export function voiceSampleRecordedDate(
+  recordedAt: string,
+  timeZone?: string,
+): string | null {
+  const recorded = Date.parse(recordedAt);
+  if (!Number.isFinite(recorded)) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    ...(timeZone ? { timeZone } : {}),
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(recorded));
+}
+
 function sampleLabel(
   sample: VoiceProfile["samples"][number],
   index: number,
 ): string {
   const durationSeconds = Math.max(0, sample.durationMs / 1000).toFixed(1);
-  const recorded = Date.parse(sample.recordedAt);
-  const recordedLabel = Number.isFinite(recorded)
-    ? new Date(recorded).toISOString().slice(0, 10)
-    : null;
+  const recordedLabel = voiceSampleRecordedDate(sample.recordedAt);
   return recordedLabel
     ? `Sample ${index + 1} · ${durationSeconds}s · ${recordedLabel}`
     : `Sample ${index + 1} · ${durationSeconds}s`;

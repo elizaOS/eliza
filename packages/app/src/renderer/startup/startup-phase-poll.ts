@@ -131,9 +131,10 @@ export function isTerminalDedicatedCloudAgentErrorState(args: {
   return classifyTerminalDedicatedCloudAgentErrorState(args);
 }
 /**
- * Decide whether a connection-level startup failure against the persisted
- * active server should be abandoned in favour of the local same-origin backend
- * that is actually serving this page.
+ * Classify a connection-level failure against an implicit startup base for
+ * possible local-origin recovery. The poller separately excludes explicit
+ * runtime targets, persisted servers and established sessions before applying
+ * this fallback.
  *
  * This rescues first-run from a stale `elizaos:active-server` pointing at a
  * remote/cloud backend that is now unreachable or CSP-blocked: without it the
@@ -436,6 +437,14 @@ export async function runPollingBackend(
   // Guards a one-shot recovery: if the saved server is unreachable we clear it
   // and re-point the client at the local origin exactly once, never in a loop.
   let fellBackToLocal = false;
+  const canRecoverToLocalOrigin = () =>
+    !fellBackToLocal &&
+    target === "embedded-local" &&
+    !ctx?.persistedActiveServer &&
+    !ctx?.hadPriorFirstRun &&
+    !completionAtPollStart &&
+    !client.hasToken() &&
+    policy.allowLocalOriginRecovery !== false;
   // Capacitor-native bounded boot (issue #11030): timestamp of the FIRST
   // failure in the current unbroken failure streak. Reset to null by any
   // successful probe; when the streak outlives the native budget the poll
@@ -870,22 +879,12 @@ export async function runPollingBackend(
           dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
           return;
         }
-        // A stale remote that requires auth but has pairing DISABLED is a hard
-        // dead end: this is the "Pairing is not enabled on this server" screen,
-        // which offers no token field and no in-app way forward — the user can
-        // neither pair nor sign in here. We only reach this branch with no token
-        // (see the !hasToken guard above), so there is genuinely nothing the
-        // user can do on this server. Recover to the local origin instead of
-        // stranding them, whether or not they completed a prior first-run — a
-        // returning user who lost their token re-connects through onboarding,
-        // which is strictly better than a wall. allowLoopback: a base pinned at
-        // the agent's raw loopback port (e.g. dev-in-browser at 127.0.0.1:31337)
-        // 401s the browser cross-origin and lands here too — recover to the
-        // same-origin proxy that serves this page. `isRecoverableRemoteBase`
-        // still refuses to recover to the page's own origin (no self-loop), and
-        // pairing-ENABLED remotes keep the pairing gate so users can pair.
+        // Only implicit fresh local bootstrap may fall back to its same-origin
+        // API when this endpoint offers neither pairing nor password sign-in.
+        // A chosen remote remains selected and shows its actual auth gate.
+        // allowLoopback preserves raw local-port to same-origin proxy repair.
         if (
-          !fellBackToLocal &&
+          canRecoverToLocalOrigin() &&
           !auth.pairingEnabled &&
           isRecoverableRemoteBase({ ...recoveryEnv(), allowLoopback: true })
         ) {
@@ -1397,8 +1396,9 @@ export async function runPollingBackend(
         return;
       }
       if (
-        !fellBackToLocal &&
-        policy.allowLocalOriginRecovery !== false &&
+        // A temporary outage cannot revoke an explicit URL selection, even
+        // before first-run/pairing finishes. Only implicit bootstrap may fall back.
+        canRecoverToLocalOrigin() &&
         shouldFallBackToLocalOrigin({ error: err, ...recoveryEnv() })
       ) {
         recoverToLocalOrigin("saved server unreachable");

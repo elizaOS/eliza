@@ -11,6 +11,7 @@
  */
 
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import * as os from "node:os";
@@ -255,7 +256,10 @@ export function resolveDefaultBranch(
   repoUrl: string,
   token?: string,
 ): Promise<string> {
-  const cacheKey = token ? `${repoUrl}#credentialed` : repoUrl;
+  const credentialScope = token
+    ? createHash("sha256").update(token).digest("hex")
+    : "anonymous";
+  const cacheKey = `${repoUrl}#${credentialScope}`;
   const cached = defaultBranchCache.get(cacheKey);
   if (cached) return cached;
   const pending = lookupDefaultBranch(repoUrl, token).then((branch) => {

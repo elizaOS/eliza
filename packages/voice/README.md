@@ -6,4 +6,4 @@ files import their defining modules directly. Native models and provider lifecyc
 remain in their plugins.
 
 From the repository root, run `bun run --cwd packages/voice build`,
-`bun run --cwd packages/voice typecheck` and `bun run --cwd packages/voice test`.
+and `bun run --cwd packages/voice typecheck`.

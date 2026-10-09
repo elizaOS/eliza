@@ -23,6 +23,7 @@ import {
   getTrustedDeliveryAudience,
   getUserMessageText,
   hashString,
+  isPlainObject,
   isObjectRecord as isRecord,
   mergeEffectReceipts,
   ownerExclusiveDisclosureWasUsed,
@@ -453,6 +454,10 @@ function withoutObservedTimestampLabels(
       (result) =>
         result.success !== true ||
         result.data?.awaitingUserInput === true ||
+        result.data?.awaitingDeviceExecution === true ||
+        result.values?.awaitingDeviceExecution === true ||
+        (isPlainObject(result.data?.values) &&
+          result.data.values.awaitingDeviceExecution === true) ||
         result.data?.requiresInput === true,
     )
   )

@@ -11,6 +11,8 @@ import type {
   NativeSocketBrowserTarget,
   NativeTaskBinding,
   NativeTaskContext,
+  NativeTaskGuideAnswer,
+  NativeTaskGuideTone,
 } from "./native-socket-target.js";
 
 export interface TaskBrowserSnapshot {
@@ -95,6 +97,8 @@ export class NativeTaskActuator {
         | { status: "unknown"; evidenceRef?: string }
       >;
       now?: () => number;
+      /** Product display name for the browser overlay; host configuration. */
+      assistantName?: string;
     },
   ) {}
   private now() {
@@ -146,6 +150,9 @@ export class NativeTaskActuator {
       expiresAt: this.now() + policy.leaseMs,
       targets: policy.targets,
       revoked: false,
+      ...(this.options.assistantName === undefined
+        ? {}
+        : { assistantName: this.options.assistantName }),
     };
     const reply = (await this.options.target.bindTask(binding)) as Record<
       string,
@@ -247,7 +254,11 @@ export class NativeTaskActuator {
     });
   }
 
-  /** Host-owned guidance text/target; no renderer-supplied DOM or authorization. */
+  /**
+   * Host-owned guidance text/target; no renderer-supplied DOM or authorization.
+   * The returned revision identifies this guide's offer answers
+   * (`NativeSocketBrowserTarget.onTaskGuideAnswer`).
+   */
   async showGuidance(
     taskId: string,
     owner: TaskOwner,
@@ -255,10 +266,13 @@ export class NativeTaskActuator {
       stepId: string;
       targetRef: string;
       text: string;
+      detail?: string;
+      tone?: NativeTaskGuideTone;
+      answers?: NativeTaskGuideAnswer[];
       restore?: boolean;
     },
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<{ tabId: string; revision: number }> {
     const task = this.task(taskId, owner);
     const { snapshot } = this.readObservation(taskId, owner);
     const binding = this.bindings.get(taskId);
@@ -285,6 +299,9 @@ export class NativeTaskActuator {
           stepId: input.stepId,
           selector: input.targetRef,
           text: input.text,
+          detail: input.detail,
+          tone: input.tone,
+          answers: input.answers,
           restore: input.restore,
           expiresAt: Math.min(binding.expiresAt, this.now() + 60000),
         },
@@ -300,11 +317,54 @@ export class NativeTaskActuator {
         this.guidanceRevisions.get(taskId) !== revision
       )
         fail("Guidance context changed before acknowledgement");
+      return { tabId: binding.policy.tabId, revision };
     } catch (error) {
       if (this.guidanceRevisions.get(taskId) === revision)
         await this.quiesce({ owner, taskId });
       throw error;
     }
+  }
+
+  /**
+   * Product Pause: removes the label and its answers and leaves a paused,
+   * show-only cursor. Like `quiesce`, it may run after task revocation.
+   */
+  async pauseGuidance({
+    owner,
+    taskId,
+  }: {
+    owner: TaskOwner;
+    taskId: string;
+  }): Promise<void> {
+    if (!this.activeGuidance.has(taskId)) return;
+    const binding = this.guidanceOwner(owner, taskId);
+    const revision = (this.guidanceRevisions.get(taskId) ?? 0) + 1;
+    this.guidanceRevisions.set(taskId, revision);
+    const reply = (await binding.guide.call(this.options.target, {
+      kind: "pause",
+      tabId: binding.tabId,
+      taskContext: binding.context,
+      revision,
+    })) as { visible?: boolean };
+    if (
+      reply?.visible !== false ||
+      this.guidanceRevisions.get(taskId) !== revision
+    )
+      fail("Guidance pause was not acknowledged");
+  }
+
+  private guidanceOwner(owner: TaskOwner, taskId: string) {
+    const binding = this.bindings.get(taskId),
+      guide = this.options.target.guideTask;
+    if (
+      !binding ||
+      !guide ||
+      binding.context.actorId !== owner.actorId ||
+      binding.context.accountId !== owner.connector.accountId ||
+      binding.context.agentId !== owner.agentId
+    )
+      fail("Guidance cleanup owner is invalid");
+    return { guide, context: binding.context, tabId: binding.policy.tabId };
   }
 
   /** May run after task revocation. It only removes this owner's cached overlay. */
@@ -316,21 +376,12 @@ export class NativeTaskActuator {
     taskId: string;
   }): Promise<void> {
     if (!this.activeGuidance.has(taskId)) return;
-    const binding = this.bindings.get(taskId),
-      guide = this.options.target.guideTask;
-    if (
-      !binding ||
-      !guide ||
-      binding.context.actorId !== owner.actorId ||
-      binding.context.accountId !== owner.connector.accountId ||
-      binding.context.agentId !== owner.agentId
-    )
-      fail("Guidance cleanup owner is invalid");
+    const binding = this.guidanceOwner(owner, taskId);
     const revision = (this.guidanceRevisions.get(taskId) ?? 0) + 1;
     this.guidanceRevisions.set(taskId, revision);
-    const reply = (await guide.call(this.options.target, {
+    const reply = (await binding.guide.call(this.options.target, {
       kind: "hide",
-      tabId: binding.policy.tabId,
+      tabId: binding.tabId,
       taskContext: binding.context,
       revision,
     })) as { visible?: boolean };

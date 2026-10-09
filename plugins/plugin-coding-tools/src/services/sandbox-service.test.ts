@@ -158,6 +158,45 @@ describe("SandboxService default blocklist", () => {
     expect(blocked.some((b) => b.endsWith(path.join(".ssh")))).toBe(true);
   });
 
+  it("blocks a path under a blocked dir whose child name starts with '..'", async () => {
+    const base = realpathSync(mkdtempSync(path.join(tmpdir(), "ct-dotdot-")));
+    try {
+      const blockedDir = path.join(base, "secrets");
+      mkdirSync(path.join(blockedDir, "..data"), { recursive: true });
+      const svc = await SandboxService.start(
+        mockRuntime({ CODING_TOOLS_BLOCKED_PATHS: blockedDir }),
+      );
+
+      const result = await svc.validatePath(
+        undefined,
+        path.join(blockedDir, "..data", "token"),
+      );
+      expect(result).toMatchObject({ ok: false, reason: "blocked" });
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it("allows a path under a workspace root whose child name starts with '..'", async () => {
+    const base = realpathSync(mkdtempSync(path.join(tmpdir(), "ct-dotdot-")));
+    try {
+      const workspace = path.join(base, "workspace");
+      mkdirSync(path.join(workspace, "..data"), { recursive: true });
+      const svc = await SandboxService.start(
+        mockRuntime({
+          CODING_TOOLS_BLOCKED_PATHS: path.join(base, "unused"),
+          CODING_TOOLS_WORKSPACE_ROOTS: workspace,
+        }),
+      );
+
+      const target = path.join(workspace, "..data", "config.json");
+      const result = await svc.validatePath(undefined, target);
+      expect(result).toEqual({ ok: true, resolved: target });
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
   it("reads coding-tools config from process.env when runtime settings omit it", async () => {
     const previous = process.env.CODING_TOOLS_BLOCKED_PATHS;
     try {

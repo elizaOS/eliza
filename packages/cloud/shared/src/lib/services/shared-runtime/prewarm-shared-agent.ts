@@ -66,6 +66,11 @@ export interface PrewarmSharedAgentOptions {
   stewardUserId?: string;
 }
 
+const PERSONAL_CONVERSATION_PREWARM_TTL_MS = 30_000;
+const PERSONAL_CONVERSATION_PREWARM_MAX_ENTRIES = 4_096;
+// Only completed warmups are memoized; never share pending request I/O.
+const personalConversationPrewarmedUntil = new Map<string, number>();
+
 interface PrewarmLeg {
   leg: string;
   run: Promise<unknown>;
@@ -199,6 +204,33 @@ export async function prewarmPersonalSharedAgentTurnCaches(
         startEmpty: true,
       }),
     });
+  } else {
+    const conversationId = options.conversationId ?? agent.id;
+    const key = JSON.stringify([agent.id, conversationId]);
+    if ((personalConversationPrewarmedUntil.get(key) ?? 0) <= Date.now()) {
+      // Each uncached warmup adds one room RPC. Success skips it for 30s per
+      // actor/room/isolate; concurrent cold requests may each warm rather than
+      // share request I/O. Turns still enforce admission and read ordered history.
+      legs.push({
+        leg: "existing-conversation-runtime",
+        run: (async () => {
+          await coordinateSharedConversationPrewarm(agent.id, conversationId, {
+            namespace,
+            startEmpty: false,
+          });
+          if (
+            personalConversationPrewarmedUntil.size >= PERSONAL_CONVERSATION_PREWARM_MAX_ENTRIES
+          ) {
+            const oldest = personalConversationPrewarmedUntil.keys().next().value;
+            if (oldest !== undefined) personalConversationPrewarmedUntil.delete(oldest);
+          }
+          personalConversationPrewarmedUntil.set(
+            key,
+            Date.now() + PERSONAL_CONVERSATION_PREWARM_TTL_MS,
+          );
+        })(),
+      });
+    }
   }
   await settlePrewarmLegs(agent, legs);
 }

@@ -8,6 +8,7 @@
  */
 import {
   Activity,
+  AlarmClock,
   AppWindow,
   BarChart2,
   Bird,
@@ -88,6 +89,7 @@ const ICONS: Record<string, LucideIcon> = {
   CircleDollarSign,
   ClipboardList,
   Clock,
+  AlarmClock,
   Clock3,
   Cloud,
   CreditCard,

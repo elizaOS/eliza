@@ -138,7 +138,9 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
   switch (type) {
     case "maps_read_selected":
     case "notes_read_selected":
+    case "notes_query":
     case "reminder_read_selected":
+    case "calendar_read_next":
     case "calendar_read_selected":
     case "read_selected_notes":
     case "read_calendar_range":
@@ -149,10 +151,12 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
     case "reminder_complete":
     case "reminder_snooze":
     case "reminder_cancel":
+    case "calendar_create_local":
     case "calendar_create":
     case "calendar_update":
     case "calendar_delete":
     case "clock_handoff":
+    case "clock_alarm":
     case "create_note":
     case "create_reminder":
     case "reminder_create":

@@ -162,6 +162,9 @@ export interface TextGenerationParams {
   /** Stop sequences */
   stopSequences?: string[];
 
+  /** Seed for deterministic sampling */
+  seed?: number;
+
   /** Whether to stream the response */
   stream?: boolean;
 

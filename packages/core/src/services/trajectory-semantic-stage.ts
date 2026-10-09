@@ -27,7 +27,6 @@ export type RecordedStageKind = (typeof RECORDED_STAGE_KINDS)[number];
 
 export const TRAJECTORY_SEMANTIC_STAGE_SCHEMA_VERSION = 1 as const;
 
-const TRAJECTORY_SEMANTIC_STAGE_MAX_DEPTH = 20;
 const TRAJECTORY_SEMANTIC_STAGE_MAX_ID_CHARS = 256;
 
 const SEMANTIC_STAGE_KEYS = new Set([
@@ -127,33 +126,47 @@ function isJsonValue(
 	state: {
 		seen: WeakSet<object>;
 	},
-	depth = 0,
 ): value is JsonValue {
-	if (depth > TRAJECTORY_SEMANTIC_STAGE_MAX_DEPTH) {
-		return false;
+	// Canonical tool schemas can be deeply nested. Walk the complete payload
+	// without imposing a depth cap or consuming the JavaScript call stack.
+	const pending: Array<{ value: unknown } | { leave: object }> = [{ value }];
+	for (let frame = pending.pop(); frame; frame = pending.pop()) {
+		if ("leave" in frame) {
+			state.seen.delete(frame.leave);
+			continue;
+		}
+		const current = frame.value;
+		if (
+			current === null ||
+			typeof current === "boolean" ||
+			typeof current === "string"
+		)
+			continue;
+		if (typeof current === "number") {
+			if (!Number.isFinite(current)) return false;
+			continue;
+		}
+		if (typeof current !== "object" || state.seen.has(current)) return false;
+		state.seen.add(current);
+		// Remove a container only after its descendants, preserving path-local
+		// cycle detection while accepting shared non-cyclic object references.
+		pending.push({ leave: current });
+		if (Array.isArray(current)) {
+			for (let index = current.length - 1; index >= 0; index--) {
+				if (index in current) pending.push({ value: current[index] });
+			}
+			continue;
+		}
+		const prototype = Object.getPrototypeOf(current);
+		if (prototype !== Object.prototype && prototype !== null) return false;
+		const record = asRecord(current);
+		if (!record) return false;
+		const values = Object.values(record);
+		for (let index = values.length - 1; index >= 0; index--) {
+			pending.push({ value: values[index] });
+		}
 	}
-	// Payloads are uncapped. Validate JSON types without serializing every
-	// scalar to account against an unlimited byte budget.
-	if (value === null || typeof value === "boolean") return true;
-	if (typeof value === "string") return true;
-	if (typeof value === "number") return Number.isFinite(value);
-	if (typeof value !== "object") return false;
-	if (state.seen.has(value)) return false;
-	state.seen.add(value);
-	if (Array.isArray(value)) {
-		const valid = value.every((entry) => isJsonValue(entry, state, depth + 1));
-		state.seen.delete(value);
-		return valid;
-	}
-	const prototype = Object.getPrototypeOf(value);
-	if (prototype !== Object.prototype && prototype !== null) return false;
-	const record = asRecord(value);
-	if (!record) return false;
-	const valid = Object.values(record).every((entry) =>
-		isJsonValue(entry, state, depth + 1),
-	);
-	state.seen.delete(value);
-	return valid;
+	return true;
 }
 
 function createSemanticStageValidationState(): {

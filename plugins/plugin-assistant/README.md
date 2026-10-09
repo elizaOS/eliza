@@ -126,8 +126,11 @@ The same validated view reaches action field extraction through the existing
 request-bound dialogue handoff. Explicit full or invalid foreground selections
 retain full-context fallback. Canonical events and historical effect outcomes
 are unchanged. Explicit history
-reads and restoration recover complete originals before dependent work. Plain
+reads and restoration recover complete originals before dependent work. Initial
 replies do not acquire a source-classification field or an extra review call.
+After a successful native full-history read, the existing foreground selector
+and exact source labels are offered together. A complete valid selection can
+guide later stages; missing, stale or incomplete selections keep all originals.
 
 Historical observations qualify only through exact operation declarations on the
 registered action and canonical successful, non-replayed noop receipts. They
@@ -139,7 +142,21 @@ remain inline; stored receipts are unchanged.
 
 `@elizaos/plugin-assistant/device-clock-review` exposes the renderer-safe review coordinator. The host supplies durable approved-journal checks, one-use native consent, dispatch and receipts. Await `retire()` before changing the session owner; failed cancellation remains retryable. An opened receipt confirms dispatch, not final alarm state. Set, dismiss and snooze may mutate alarms immediately after approval.
 
+`clock.handoff.v1` retains its one-off set payload without `days`. Explicit `days` requires `clock.handoff.v2`, including `[]` for one-off; daily is `[1,2,3,4,5,6,7]` and weekdays is `[2,3,4,5,6]`. Values follow [Android AlarmClock.EXTRA_DAYS](https://developer.android.com/reference/android/provider/AlarmClock#EXTRA_DAYS), Sunday=1 through Saturday=7. The exact unique integer array stays bound to the approved proposal; unsupported capabilities or repeat patterns are rejected instead of discarding recurrence.
+
 Run `bun run --cwd plugins/plugin-assistant test:clock-review-export` for source and packed-consumer checks. This uses a controlled host adapter and does not qualify Android Clock behavior.
+
+`clock.alarms.v1` adds Eliza-owned native alarms through `clock_alarm`: set,
+update, delete, enable, dismiss, snooze and show. It never opens an external Clock
+app. Set and update require exact time, label, phone timezone and repeat days;
+targeted changes require the current alarm UUID. The full authenticated phone
+snapshot supplies current alarms and explicit schedule/permission states. A
+stale or unavailable snapshot cannot prove the list is empty. Approval binds
+the durable store's `alarmsRevision` as `clockContextRevision`; native dispatch
+must recheck it. Applied typed receipts report actual saved or scheduled changes,
+not proof that a future alarm will ring. Historical receipt retrieval performs
+no new effect. Older `clock.handoff.v1/v2` clients retain their external handoff;
+owned-alarm clients receive only the owned operation schemas.
 
 ## Authenticated device scope
 

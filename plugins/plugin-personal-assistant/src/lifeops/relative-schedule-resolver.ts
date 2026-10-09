@@ -10,7 +10,11 @@ import {
   parseIsoMs,
 } from "@elizaos/contracts";
 import type { LifeOpsScheduleMergedStateRecord } from "./repository.js";
-import { buildUtcDateFromLocalParts, getZonedDateParts } from "./time.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+} from "./time.js";
 
 const REGULARITY_RANK: Record<LifeOpsRegularityClass, number> = {
   insufficient_data: 0,
@@ -64,10 +68,11 @@ function nextProjectedLocalInstant(args: {
   const minuteOfDay = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
   const offsetMs = args.offsetMinutes * 60000;
   for (let dayOffset = 0; dayOffset < 14; dayOffset += 1) {
+    const date = addDaysToLocalDate(parts, dayOffset);
     const candidate = buildUtcDateFromLocalParts(args.timezone, {
-      year: parts.year,
-      month: parts.month,
-      day: parts.day + dayOffset,
+      year: date.year,
+      month: date.month,
+      day: date.day,
       hour: Math.floor(minuteOfDay / 60),
       minute: minuteOfDay % 60,
       second: 0,

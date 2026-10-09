@@ -76,8 +76,14 @@ export function formatUsd(value: number, locale?: string): string {
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
+  if (seconds < 60) {
+    const text = seconds.toFixed(seconds < 10 ? 1 : 0);
+    if (Number(text) >= 60) return "1m";
+    return `${text}s`;
+  }
   const minutes = Math.floor(seconds / 60);
   const rest = Math.round(seconds % 60);
+  // 119.6s leaves 59.6s, which rounds to 60 and printed "1m 60s".
+  if (rest >= 60) return `${minutes + 1}m`;
   return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
 }

@@ -9,6 +9,9 @@ description = "Benchmark adapter for the TypeScript eliza agent"
 requires-python = ">=3.11"
 dependencies = ["elizaos-benchmark-support==0.1.0"]
 
+[tool.uv.sources]
+elizaos-benchmark-support = { path = "../..", editable = true }
+
 [tool.setuptools.packages.find]
 namespaces = false
 where = ["."]

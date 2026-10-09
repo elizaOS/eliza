@@ -27,7 +27,7 @@ export function CostInsightsCard({
   const runwayLabel =
     costTrending.daysUntilBalanceZero === null
       ? "Stable"
-      : costTrending.daysUntilBalanceZero <= 1
+      : costTrending.daysUntilBalanceZero < 1
         ? "< 1 day"
         : `${costTrending.daysUntilBalanceZero}d`;
 

@@ -28,7 +28,7 @@
     "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.5.15",
     "@types/node": "^22.19.17",
     "bun-types": "1.4.2",
     "ioredis-mock": "^8.13.1",

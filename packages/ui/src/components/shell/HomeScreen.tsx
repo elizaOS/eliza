@@ -110,6 +110,7 @@ const HOME_SCREEN_CSS = `
 [data-home-below-notifications-inner] {
   min-height: 0;
 }
+@media (min-height: 521px) {
 [data-testid="home-content-column"][data-home-has-notifications]:has(
   [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
 ) [data-home-notification-region],
@@ -118,6 +119,7 @@ const HOME_SCREEN_CSS = `
 ) [data-home-notification-region] {
   flex-grow: 1;
   max-height: 100%;
+}
 }
 [data-testid="home-content-column"][data-home-has-notifications]:has(
   [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
@@ -135,6 +137,11 @@ const HOME_SCREEN_CSS = `
    separate fixed header and card regions here can leave less than one row. */
 @media (max-height: 520px) {
   [data-home-scroll-frame] {
+    /* Preserve the content gutter while exposing the notification rims beyond it. */
+    box-sizing: border-box;
+    margin-inline: -.5rem;
+    padding-inline: .5rem;
+    width: calc(100% + 1rem);
     overflow-y: auto;
     overscroll-behavior-y: contain;
   }
@@ -143,7 +150,15 @@ const HOME_SCREEN_CSS = `
     min-height: 100%;
   }
   [data-home-notification-region] {
-    flex-shrink: 0;
+    flex: none;
+    max-height: none;
+  }
+  [data-home-notification-region] [data-testid="home-notification-center"],
+  [data-home-notification-region] [data-testid="home-notification-list"] {
+    flex: none;
+    height: auto;
+    max-height: none;
+    overflow: visible;
   }
   [data-testid="home-content-column"]:not([data-home-has-notifications])
     [data-home-notification-region]:has(

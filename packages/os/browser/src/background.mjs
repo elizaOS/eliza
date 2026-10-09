@@ -6,6 +6,16 @@ import { nativeHost } from "./runtime-config.mjs";
 
 const handleCommand = createCommandHandler(chrome);
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  if (message?.type === "task-guide-answer") {
+    // The page receives only whether the value-free answer reached the host.
+    void Promise.resolve()
+      .then(() => connection.notify(handleCommand.answerGuide(message, sender)))
+      .then(
+        () => reply({ delivered: true }),
+        () => reply({ delivered: false }),
+      );
+    return true;
+  }
   if (message?.type !== "task-manual-activity") return false;
   void handleCommand
     .recordManualActivity(message, sender)
@@ -43,6 +53,7 @@ const connection = new NativeConnection({
         "cancel",
         "task-bind",
         "task-guide",
+        "task-guide-label",
         "task-action-feedback",
         "task-manual-activity",
         "task-protected-fill",

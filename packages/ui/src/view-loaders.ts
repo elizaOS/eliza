@@ -79,3 +79,5 @@ export const loadTriggersView = () =>
 
 export const loadViewInteractRegistry = () =>
   import("./components/views/view-interact-registry.js");
+
+export const loadClockView = () => import("./components/pages/ClockView.js");

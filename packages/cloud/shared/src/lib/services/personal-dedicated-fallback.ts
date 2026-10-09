@@ -57,6 +57,7 @@ import { logger } from "../utils/logger";
 import { checkAgentCreditGate } from "./agent-billing-gate";
 import { AGENT_FUNDING_RETENTION_DAYS } from "./agent-funding-retention";
 import { withPersonalFallbackRecoveryLink } from "./personal-fallback-recovery-link";
+import type { SharedCutoverSeal } from "./shared-runtime/conversation-coordinator";
 import type { PersonalSharedFallbackAccountState } from "./shared-runtime/personal-fallback-account-state";
 
 export type { PersonalDedicatedFallback } from "../../db/schemas/personal-dedicated-fallbacks";
@@ -818,6 +819,40 @@ export async function resolvePersonalDedicatedTrafficAccess(input: {
     retryable: false,
     accountState: route.delivery.accountState,
   };
+}
+
+/** Reconcile a journal seal after a lost acknowledgement or expired lease. */
+export async function resolvePersonalFallbackCutoverRecovery(input: {
+  organizationId: string;
+  userId: string;
+  sourceAgentId: string;
+  dedicatedAgentId: string;
+  fallback: NonNullable<SharedCutoverSeal["fallback"]>;
+}): Promise<"committed" | "pending" | "released" | "conflict"> {
+  const [row] = await dbWrite
+    .select({
+      state: personalDedicatedFallbacks.state,
+      revision: personalDedicatedFallbacks.revision,
+    })
+    .from(personalDedicatedFallbacks)
+    .where(
+      and(
+        eq(personalDedicatedFallbacks.id, input.fallback.id),
+        eq(personalDedicatedFallbacks.organization_id, input.organizationId),
+        eq(personalDedicatedFallbacks.user_id, input.userId),
+        eq(personalDedicatedFallbacks.source_agent_id, input.sourceAgentId),
+        eq(personalDedicatedFallbacks.dedicated_agent_id, input.dedicatedAgentId),
+        eq(personalDedicatedFallbacks.generation, input.fallback.generation),
+        eq(personalDedicatedFallbacks.journal_room_id, input.fallback.roomId),
+      ),
+    )
+    .limit(1);
+  if (!row || row.revision < input.fallback.revision) return "conflict";
+  if (row.state === "recovered") return "committed";
+  // A changed revision makes the old import's final compare-and-swap fail.
+  // Reopening is safe only after that authoritative invalidation.
+  if (row.revision > input.fallback.revision) return "released";
+  return row.state === "recovery_pending" ? "pending" : "conflict";
 }
 
 /**

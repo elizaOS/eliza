@@ -16,6 +16,7 @@ import type {
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox";
 import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fetch";
+import type { NetworkSharedTurnObservation } from "./network-shared-context";
 import type { PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
 import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
@@ -48,6 +49,8 @@ export interface SharedConversationCoordinatorOptions {
   channel?: SharedRuntimeChannel;
   /** Server-resolved Dedicated fallback account state (#25146); never from RPC params. */
   trustedAccountState?: PersonalSharedFallbackAccountState;
+  /** Server-resolved per-turn Network context; never populated from RPC params. */
+  trustedNetworkContext?: NetworkSharedTurnObservation;
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -129,6 +132,8 @@ export async function coordinateSharedPushDispatch(
 }
 
 export interface SharedCutoverSeal {
+  /** Exact fallback interval whose database revision fences recovery. */
+  fallback?: { id: string; generation: number; revision: number; roomId: string };
   token: string;
   leaseMs: number;
   organizationId: string;
@@ -280,6 +285,7 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
     error?: unknown;
     failureName?: unknown;
     retryable?: unknown;
+    failureDiagnostic?: unknown;
   } | null = null;
   try {
     const parsed: unknown = await response.clone().json();
@@ -295,7 +301,11 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
     body?.code === "shared_runtime_turn_failed" &&
     (response.status === 500 || response.status === 503)
   ) {
-    const turnError = SharedRuntimeTurnError.fromClassification(body.failureName, body.retryable);
+    const turnError = SharedRuntimeTurnError.fromClassification(
+      body.failureName,
+      body.retryable,
+      body.failureDiagnostic,
+    );
     const statusMatchesDisposition =
       (response.status === 503 && turnError.retryable) ||
       (response.status === 500 && !turnError.retryable);
@@ -373,6 +383,9 @@ export async function coordinateSharedBridge(
         ...(options.trustedAccountState
           ? { trustedAccountState: options.trustedAccountState }
           : {}),
+        ...(options.trustedNetworkContext
+          ? { trustedNetworkContext: options.trustedNetworkContext }
+          : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     },
@@ -409,6 +422,9 @@ export async function coordinateSharedStream(
         ...(options.channel ? { channel: options.channel } : {}),
         ...(options.trustedAccountState
           ? { trustedAccountState: options.trustedAccountState }
+          : {}),
+        ...(options.trustedNetworkContext
+          ? { trustedNetworkContext: options.trustedNetworkContext }
           : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
@@ -517,6 +533,7 @@ export async function coordinateSharedCutoverSeal(
         organizationId: seal.organizationId,
         userId: seal.userId,
         dedicatedAgentId: seal.dedicatedAgentId,
+        ...(seal.fallback ? { fallback: seal.fallback } : {}),
       }),
     },
   );

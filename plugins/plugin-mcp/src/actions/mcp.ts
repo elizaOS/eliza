@@ -380,7 +380,13 @@ async function handleReadResource(
     }
     const { serverName, uri } = parsedSelection;
     const result = await mcpService.readResource(serverName, uri);
-    const { resourceContent, resourceMeta } = processResourceResult(result, uri);
+    const { resourceContent, resourceMeta, attachments } = processResourceResult(
+      result,
+      uri,
+      runtime,
+      serverName,
+      message.entityId
+    );
     await handleResourceAnalysis(
       runtime,
       message,
@@ -388,6 +394,7 @@ async function handleReadResource(
       serverName,
       resourceContent,
       resourceMeta,
+      attachments,
       callback
     );
     return {
@@ -405,6 +412,9 @@ async function handleReadResource(
         uri,
         reasoning: parsedSelection?.reasoning,
         resourceMeta,
+        attachments,
+        attachmentCount: attachments.length,
+        output: resourceContent,
         contentLength: resourceContent?.length ?? 0,
       },
       success: true,

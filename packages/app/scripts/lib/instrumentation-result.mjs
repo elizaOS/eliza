@@ -103,3 +103,77 @@ export function requireInstrumentationSuccess(output, requestedClasses) {
     cases,
   };
 }
+
+/** A started single test ended by proven external interruption, never a passing test. */
+export function requireInstrumentationInterruption(
+  output,
+  testClass,
+  testMethod,
+) {
+  assert.equal(typeof output, "string");
+  assert.ok(output.length <= 4 * 1024 * 1024);
+  assert.match(
+    testClass ?? "",
+    /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/,
+  );
+  assert.match(testMethod ?? "", /^[A-Za-z][A-Za-z0-9_]*$/);
+  const text = output.replace(/\r\n?/g, "\n");
+  assert.doesNotMatch(
+    text,
+    /FAILURES|INSTRUMENTATION_FAILED|AssumptionViolated|^OK \(/m,
+  );
+  const statuses = [
+    ...text.matchAll(/^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$/gm),
+  ];
+  assert.equal(
+    statuses.length,
+    1,
+    "Require exactly one interrupted test start",
+  );
+  assert.equal(
+    statuses[0][1],
+    "1",
+    "Test completed or failed before interruption",
+  );
+  assert.doesNotMatch(
+    text.slice(0, statuses[0].index),
+    /^INSTRUMENTATION_(?:RESULT|CODE):/m,
+  );
+  const fields = new Map();
+  for (const match of text
+    .slice(0, statuses[0].index)
+    .matchAll(/^INSTRUMENTATION_STATUS: ([A-Za-z][A-Za-z0-9_]*)=(.*)$/gm)) {
+    assert.ok(!fields.has(match[1]), "Duplicate interrupted status field");
+    fields.set(match[1], match[2]);
+  }
+  assert.equal(fields.get("class"), testClass);
+  assert.equal(fields.get("test"), testMethod);
+  assert.equal(fields.get("numtests"), "1");
+  const tail = text.slice(statuses[0].index + statuses[0][0].length);
+  assert.doesNotMatch(tail, /^INSTRUMENTATION_STATUS:/m);
+  const terminals = [...tail.matchAll(/^INSTRUMENTATION_CODE: (-?\d+)\s*$/gm)];
+  assert.equal(
+    terminals.length,
+    1,
+    "Missing or ambiguous interrupted terminal result",
+  );
+  assert.equal(terminals[0][1], "0");
+  assert.equal(
+    [
+      ...tail.matchAll(
+        /^INSTRUMENTATION_RESULT: shortMsg=Process crashed\.\s*$/gm,
+      ),
+    ].length,
+    1,
+  );
+  assert.doesNotMatch(
+    tail.slice(terminals[0].index + terminals[0][0].length),
+    /^INSTRUMENTATION_/m,
+  );
+  return {
+    interrupted: true,
+    started: 1,
+    completed: 0,
+    case: `${testClass}#${testMethod}`,
+  };
+}

@@ -1,0 +1,541 @@
+# This workflow is the sole pull-request and merge-candidate validation authority.
+# It checks mergeability and workflow syntax, then builds and
+# statically validates the affected workspace closure. A narrow, mock-backed
+# billing replay E2E, path-scoped real PostgreSQL subscription-authority proof,
+# and the bounded synthetic-world transaction suite are the affected-path test
+# exceptions. Provider, device, deployment, and destructive-effect lanes remain
+# excluded.
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [develop, staging, main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    types: [checks_requested]
+
+concurrency:
+  group: pr-validation-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  BUN_VERSION: "1.4.2"
+  NODE_VERSION: "24.15.0"
+  NODE_NO_WARNINGS: "1"
+  NODE_OPTIONS: "--max-old-space-size=8192"
+
+jobs:
+  secret-scan:
+    uses: ./.github/workflows/gitleaks.yml
+    with:
+      base_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+      head_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+  source-checks:
+    name: Source checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # Cloud API checking needs an 8 GiB heap. Run one compiler alongside
+      # the separately capped 2 GiB lint process on the 16 GiB runner.
+      NODE_OPTIONS: "--max-old-space-size=8192"
+      RUN_TURBO_CONCURRENCY: "1"
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+
+      - name: Resolve and validate candidate diff
+        id: diff
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          test -n "$merge_base"
+          git merge-tree --write-tree "$BASE_SHA" "$HEAD_SHA" >/dev/null
+          git diff --check "$merge_base"..."$HEAD_SHA"
+
+          status=0
+          git grep -n -E '^(<{7}|>{7})( |$)' "$HEAD_SHA" -- . || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Candidate source contains unresolved merge-conflict markers."
+            exit 1
+          fi
+          if [ "$status" -gt 1 ]; then
+            echo "::error::Merge-conflict marker scan failed with exit $status."
+            exit 1
+          fi
+
+          echo "merge_base=$merge_base" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          if git diff --quiet "$merge_base"..."$HEAD_SHA" -- packages/testing/synthetic-world; then
+            echo "synthetic_world_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "synthetic_world_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node for dependency-free change selection
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Verify change selection with real Git histories
+        run: node --test packages/scripts/ci-affected.integration.test.ts
+
+      - name: Select affected workspaces
+        id: affected
+        env:
+          GITHUB_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: node packages/scripts/ci-affected.ts '${{ steps.diff.outputs.merge_base }}'
+
+      - name: Validate documentation links
+        run: node packages/scripts/check-markdown-links.ts
+
+      - name: Install pinned workflow linters
+        shell: bash
+        run: packages/scripts/github/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
+
+      - name: Lint changed workflows
+        shell: bash
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          workflows=()
+          while IFS= read -r -d '' file; do
+            workflows+=("$file")
+          done < <(git diff --diff-filter=ACMRT --name-only -z "$MERGE_BASE"..."$HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml')
+          if [ "${#workflows[@]}" -eq 0 ]; then
+            echo "No workflow definitions changed."
+            exit 0
+          fi
+          "$RUNNER_TEMP/workflow-linters/actionlint" \
+            -config-file .github/actionlint.yaml \
+            "${workflows[@]}"
+
+      - if: steps.affected.outputs.source == 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          publish-bun-install-cache: "true"
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Apply required dependency compatibility patches
+        if: steps.affected.outputs.source == 'true'
+        run: |
+          bun packages/scripts/patch-punycode-deprecation.ts
+          bun packages/scripts/patch-llama-cpp-capacitor.ts
+          bun packages/scripts/patch-electrobun-linux-cef-profile.ts
+
+      - name: Validate CI Bun version pin contract
+        if: steps.affected.outputs.source == 'true'
+        run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+
+      - name: Upload Bun runtime resolution inventory
+        if: steps.affected.outputs.source == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: bun-runtime-inventory
+          path: ${{ runner.temp }}/bun-runtime-inventory.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Resolve broad core bootstrap
+        if: steps.affected.outputs.source == 'true'
+        id: core_scope
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: |
+          if [[ -f packages/scripts/pr-core-build-scope.ts ]]; then
+            node packages/scripts/pr-core-build-scope.ts "$MERGE_BASE" "$GITHUB_OUTPUT"
+          else
+            echo "Candidate predates scoped bootstrap; retaining the full core build."
+            echo "core_bootstrap_required=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build core contract
+        if: steps.core_scope.outputs.core_bootstrap_required == 'true'
+        run: bun run build:core
+
+      - name: Build affected workspace closure
+        if: steps.affected.outputs.source == 'true'
+        env:
+          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: node packages/scripts/run-turbo.ts run build --concurrency=4 --affected --output-logs=errors-only
+
+      - name: Verify Shared general search with real Workerd and SQLite
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 4
+        working-directory: packages/cloud/api
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset SHARED_ELIZA_LIVE_MODEL_URL SHARED_ELIZA_LIVE_MODEL_ID SHARED_ELIZA_LIVE_WEB_SEARCH
+          bun test ./__tests__/shared-eliza-runtime.miniflare.test.ts \
+            --test-name-pattern "canonical general search uses real Core and portable SQLite while private scope never dispatches publicly" \
+            --timeout 120000
+
+      - name: Verify Shared capture owner reads
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 1
+        working-directory: packages/cloud/api
+        run: bun --conditions=eliza-source test ./admin/shared-runtime-capture/route.test.ts --timeout 30000
+
+      - name: Verify Shared realtime grounding audit
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 1
+        working-directory: packages/cloud/shared
+        run: bun --conditions=eliza-source test ./src/lib/services/shared-runtime/run-shared-agent-turn.realtime-audit.test.ts --timeout 30000
+
+      - name: Run synthetic-world transaction tests
+        if: steps.diff.outputs.synthetic_world_changed == 'true'
+        run: bun run --cwd packages/testing test:synthetic-world
+
+      - name: Lint and typecheck affected workspaces in parallel
+        if: steps.affected.outputs.source == 'true'
+        env:
+          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: |
+          set -euo pipefail
+          NODE_OPTIONS=--max-old-space-size=2048 node packages/scripts/run-turbo.ts run lint:check --concurrency=1 --affected &
+          lint_pid=$!
+          node packages/scripts/run-turbo.ts run typecheck --concurrency=1 --affected &
+          types_pid=$!
+          status=0
+          wait "$lint_pid" || status=$?
+          wait "$types_pid" || status=$?
+          exit "$status"
+
+  billing-payment-replay-e2e:
+    name: Billing payment replay E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      NODE_ENV: test
+      CLOUD_E2E: "1"
+      MOCK_REDIS: "1"
+      MOCK_HETZNER_LATENCY: "0"
+      MOCK_HETZNER_ACTION_MS: "30"
+      CONTROL_PLANE_TICK_MS: "50"
+      DATABASE_URL: pglite://./.eliza-ci/.pgdata
+      HCLOUD_TOKEN: test-token
+      CONTAINER_CONTROL_PLANE_TOKEN: test-token
+      CRON_SECRET: test-cron-secret
+      # These are the workspace entry points actually executed by the keyless
+      # stack. Detection below walks their runtime workspace dependencies, so a
+      # shared/core/plugin change cannot silently skip the replay proof.
+      # packages/app carries a large native/desktop-only dependency graph, so
+      # its browser source and app aliases stay explicit path inputs below.
+      BILLING_REPLAY_WORKSPACE_SEEDS: >-
+        packages/cloud/api
+        packages/cloud/e2e
+        packages/cloud/shared
+        packages/ui
+      BILLING_REPLAY_PATH_INPUTS: >-
+        packages/cloud
+        packages/app
+        packages/app
+        packages/scripts
+        package.json
+        bun.lock
+        bunfig.toml
+        turbo.json
+        tsconfig.json
+        tsconfig.base.json
+        .github/actions/cloud-setup-test-env
+        packages/scripts/github/install-playwright-browsers.sh
+        .github/develop-surface-graph.json
+        .github/workflows/develop-full.yml
+        .github/workflows/pr-validation.yml
+        .github/workflows/cloud-tests.yml
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+      - name: Detect billing replay contract changes
+        id: billing-diff
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { spawnSync } from "node:child_process";
+          import { appendFileSync } from "node:fs";
+          import { listPackages } from "./packages/scripts/lib/workspaces.ts";
+
+          function requiredEnv(name) {
+            const value = process.env[name]?.trim();
+            if (!value) throw new Error(`Missing required environment variable: ${name}`);
+            return value;
+          }
+
+          function git(args, allowedStatuses) {
+            const result = spawnSync("git", args, { encoding: "utf8" });
+            if (result.error) throw result.error;
+            if (result.signal) throw new Error(`git ${args[0]} received ${result.signal}`);
+            if (!allowedStatuses.includes(result.status)) {
+              throw new Error(
+                `git ${args[0]} exited ${result.status}: ${result.stderr.trim()}`,
+              );
+            }
+            return result;
+          }
+
+          const baseSha = requiredEnv("BASE_SHA");
+          const headSha = requiredEnv("HEAD_SHA");
+          const mergeBase = git(["merge-base", baseSha, headSha], [0]).stdout.trim();
+          if (!mergeBase) throw new Error("git merge-base returned no commit");
+
+          const workspaces = listPackages();
+          const byName = new Map(
+            workspaces
+              .filter(({ name }) => typeof name === "string" && name.length > 0)
+              .map((workspace) => [workspace.name, workspace]),
+          );
+          const seedDirs = new Set(
+            requiredEnv("BILLING_REPLAY_WORKSPACE_SEEDS").split(/\s+/),
+          );
+          const seeds = workspaces.filter(({ dir }) => seedDirs.has(dir));
+          const resolvedSeedDirs = new Set(seeds.map(({ dir }) => dir));
+          const missingSeeds = [...seedDirs].filter((dir) => !resolvedSeedDirs.has(dir));
+          if (missingSeeds.length > 0) {
+            throw new Error(`Unknown Billing replay workspace seed(s): ${missingSeeds.join(", ")}`);
+          }
+
+          const closureDirs = new Set();
+          const pending = seeds.map(({ name }) => name);
+          while (pending.length > 0) {
+            const name = pending.pop();
+            if (!name) continue;
+            const workspace = byName.get(name);
+            if (!workspace || closureDirs.has(workspace.dir)) continue;
+            closureDirs.add(workspace.dir);
+            const manifest = workspace.packageJson;
+            for (const dependency of Object.keys({
+              ...manifest.dependencies,
+              ...manifest.optionalDependencies,
+              ...manifest.peerDependencies,
+            })) {
+              if (byName.has(dependency)) pending.push(dependency);
+            }
+          }
+
+          const pathspecs = [
+            ...closureDirs,
+            ...requiredEnv("BILLING_REPLAY_PATH_INPUTS").split(/\s+/),
+          ].sort();
+          const diff = git(
+            ["diff", "--quiet", `${mergeBase}...${headSha}`, "--", ...pathspecs],
+            [0, 1],
+          );
+          appendFileSync(requiredEnv("GITHUB_OUTPUT"), `run=${diff.status === 1}\n`);
+          NODE
+      - if: steps.billing-diff.outputs.run == 'true'
+        uses: ./.github/actions/cloud-setup-test-env
+      - name: Install Playwright browsers
+        if: steps.billing-diff.outputs.run == 'true'
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
+      - name: Run billing payment replay spec
+        if: steps.billing-diff.outputs.run == 'true'
+        run: >-
+          bun run --cwd packages/cloud/e2e test --
+          '(^|/)billing-payment-replay\.spec\.ts$'
+      - name: Upload Playwright evidence
+        if: failure() && steps.billing-diff.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: billing-payment-replay-e2e-${{ github.run_attempt }}
+          path: |
+            test-results/cloud-e2e
+            packages/cloud/e2e/.logs
+          retention-days: 7
+          include-hidden-files: true
+          if-no-files-found: warn
+
+  subscription-authority-postgres:
+    name: Subscription authority PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+      - name: Detect subscription authority changes
+        id: authority-diff
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          test -n "$merge_base"
+          if git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
+            packages/cloud/shared packages/core \
+            package.json bun.lock bunfig.toml turbo.json \
+            tsconfig.json tsconfig.base.json .github/actions/setup-bun-workspace \
+            .github/workflows/pr-validation.yml; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.authority-diff.outputs.run == 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          publish-bun-install-cache: "false"
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+      - name: Build core contract
+        if: steps.authority-diff.outputs.run == 'true'
+        run: bun run build:core
+      - name: Run subscription authority PostgreSQL constraints
+        id: authority-test
+        if: steps.authority-diff.outputs.run == 'true'
+        env:
+          SUBSCRIPTION_AUTHORITY_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/postgres
+        run: |
+          set -euo pipefail
+          container="eliza-subscription-authority-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'docker stop "$container" >/dev/null 2>&1 || true' EXIT
+          docker run --rm --detach --name "$container" \
+            --env POSTGRES_HOST_AUTH_METHOD=trust --publish 5432:5432 postgres:16-alpine
+          for attempt in $(seq 1 60); do
+            if [ "$(docker inspect --format '{{.State.Running}}' "$container")" != "true" ]; then
+              docker logs "$container"
+              echo "::error::PostgreSQL container exited before becoming ready."
+              exit 1
+            fi
+            # The image's initialization server accepts socket connections before
+            # it restarts into the published TCP server. Wait on TCP so the test
+            # cannot connect during that intentional restart window.
+            if docker exec "$container" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              docker logs "$container"
+              echo "::error::PostgreSQL did not become ready on TCP within 60 seconds."
+              exit 1
+            fi
+            sleep 1
+          done
+          # Suites apply migrations beyond their private schemas. Give each
+          # process its own database so concurrent DDL cannot deadlock peers.
+          export CI_POSTGRES_CONTAINER="$container"
+          run_suite() {
+            local suite="$1" database="ci_suite_${BASHPID}" status=0
+            docker exec "$CI_POSTGRES_CONTAINER" createdb -U postgres "$database"
+            SUBSCRIPTION_AUTHORITY_POSTGRES_URL="postgresql://postgres@127.0.0.1:5432/$database" \
+              bun test --config=/dev/null --isolate "$suite" || status=$?
+            docker exec "$CI_POSTGRES_CONTAINER" dropdb -U postgres --force "$database" || status=1
+            return "$status"
+          }
+          export -f run_suite
+          xargs -r -n 1 -P 2 bash -euo pipefail -c 'run_suite "$1"' _ <<'SUITES'
+          packages/cloud/shared/src/db/repositories/account-billing-snapshot.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/app-billing-accounts.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/subscription-cancellation.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-upgrade-commands.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-upgrade-invoice-origins.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-upgrade-finalization.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-target.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-repreview.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-dispatch.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-upgrade-recovery-context.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-recovery.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-historical-target.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-later-period.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-target-search.pglite.test.ts
+          packages/cloud/shared/src/db/repositories/organization-upgrade-observation-lease.postgres.integration.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-preview.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-downgrade-review.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-downgrade-preview.pglite.test.ts
+          packages/cloud/shared/src/db/repositories/organization-downgrade-quotes.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-schedule-effects.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-schedule-dispatch-source.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-schedule-compensation-result.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-schedule-compensation-finalization.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-schedule-finalization.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/organization-schedule-quote-terms-legacy.postgres.integration.test.ts
+          packages/cloud/shared/src/db/organization-schedule-migration-ledger.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-invoice.pglite.test.ts
+          packages/cloud/shared/src/lib/services/organization-upgrade-payment-observation.pglite.test.ts
+          packages/cloud/shared/src/db/repositories/organization-upgrade-binding-migration.pglite.test.ts
+          packages/cloud/shared/src/db/repositories/subscription-reconciliation.postgres.integration.test.ts
+          packages/cloud/shared/src/db/repositories/subscription-renewal.postgres.integration.test.ts
+          SUITES
+      - name: Require subscription authority outcome
+        if: always()
+        env:
+          SHOULD_RUN: ${{ steps.authority-diff.outputs.run }}
+          TEST_OUTCOME: ${{ steps.authority-test.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$SHOULD_RUN" = "true" ] && [ "$TEST_OUTCOME" != "success" ]; then
+            echo "::error::Subscription authority proof was required but finished with $TEST_OUTCOME."
+            exit 1
+          fi
+          if [ "$SHOULD_RUN" = "false" ] && [ "$TEST_OUTCOME" != "skipped" ]; then
+            echo "::error::Subscription authority proof ran outside its affected path."
+            exit 1
+          fi
+
+  required:
+    name: All Tests Passed
+    if: always()
+    needs:
+      - secret-scan
+      - source-checks
+      - billing-payment-replay-e2e
+      - subscription-authority-postgres
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every admission lane
+        env:
+          RESULTS: >-
+            secret-scan=${{ needs.secret-scan.result }}
+            source-checks=${{ needs.source-checks.result }}
+            billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
+            subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}
+        run: |
+          set -euo pipefail
+          for pair in $RESULTS; do
+            name="${pair%%=*}"
+            result="${pair#*=}"
+            if [ "$result" != "success" ]; then
+              echo "::error title=PR admission::$name finished with $result"
+              exit 1
+            fi
+          done

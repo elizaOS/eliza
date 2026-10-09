@@ -1604,8 +1604,10 @@ function processInline(text: string): React.ReactNode {
       continue;
     }
 
-    // Italic: *text* or _text_
-    const italicMatch = remaining.match(/(\*|_)([^*_]+)\1/);
+    // Italic: *text* or _text_. A delimiter followed by whitespace cannot
+    // open italic, and one preceded by whitespace cannot close it, so
+    // "2 * 3 * 4" stays literal in the config preview.
+    const italicMatch = remaining.match(/(\*|_)(?!\s)([^*_]*[^\s*_])\1/);
     if (italicMatch) {
       const before = remaining.substring(0, italicMatch.index);
       if (before) parts.push(processSimpleInline(before, key++));

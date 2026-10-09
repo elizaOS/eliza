@@ -38,6 +38,7 @@ import {
   type EventPayload,
   EventType,
   fetchWithSsrfGuard,
+  formatDiagnosticError,
   getConfiguredOwnerEntityIds,
   getLocalServerUrl,
   type IAgentRuntime,
@@ -120,6 +121,7 @@ import { characterProvider } from "./providers/character.ts";
 import { choiceProvider } from "./providers/choice.ts";
 import { currentTimeProvider } from "./providers/currentTime.ts";
 import { entitiesProvider } from "./providers/entities.ts";
+import { nativeAlarmContextProvider } from "./providers/native-alarm-context.ts";
 import {
   platformChatContextProvider,
   platformUserContextProvider,
@@ -1160,7 +1162,10 @@ const events: PluginEvents = {
             startTime: payload.startTime,
             endTime: payload.endTime,
             duration: payload.duration,
-            error: payload.error,
+            error:
+              payload.error === undefined
+                ? undefined
+                : formatDiagnosticError(payload.error),
             source: payload.source || "unknown",
           } as BaseLogBody,
         },
@@ -1192,7 +1197,10 @@ const events: PluginEvents = {
             startTime: payload.startTime,
             endTime: payload.endTime,
             duration: payload.duration,
-            error: payload.error,
+            error:
+              payload.error === undefined
+                ? undefined
+                : formatDiagnosticError(payload.error),
             source: payload.source || "unknown",
           } as BaseLogBody,
         },
@@ -1252,6 +1260,7 @@ export const basicProviders = [
   platformChatContextProvider,
   platformUserContextProvider,
   providersProvider,
+  nativeAlarmContextProvider,
   recentErrorsProvider,
   recentMessagesProvider,
   replyContextProvider,

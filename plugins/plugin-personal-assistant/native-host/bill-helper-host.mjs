@@ -25,9 +25,11 @@ export function createBillHelperHost({
   policyForTask,
   verify,
   recordEvidence,
+  reconcileMethod,
   google,
   billDiscovery,
   controls,
+  selectionGuidance,
 }) {
   for (const value of [
     runtimeModule?.NativeTaskActuator,
@@ -40,6 +42,8 @@ export function createBillHelperHost({
   ])
     if (typeof value !== "function")
       throw new BillHostError("Incomplete bill helper host configuration");
+  if (reconcileMethod != null && typeof reconcileMethod !== "function")
+    throw new BillHostError("Invalid bill reconciliation policy");
   if (typeof deriveBillDecision !== "function")
     throw new BillHostError("Reviewed bill observation policy is required");
   if (
@@ -114,6 +118,26 @@ export function createBillHelperHost({
             throw new BillHostError("Unbound verification bill");
           return verify(...args, entry.billRecord.bill);
         },
+        reconcile: async (task, proposal, snapshot) => {
+          await requireOwner(host.owner);
+          const recovery = entry.recovery;
+          if (
+            !reconcileMethod ||
+            !recovery ||
+            recovery.taskId !== task.id ||
+            recovery.operationId !== proposal.id
+          )
+            throw new BillHostError("Unbound bill recovery");
+          const result = await reconcileMethod({
+            task,
+            proposal,
+            snapshot,
+            record: recovery.record,
+            bill: recovery.bill,
+          });
+          await requireOwner(host.owner);
+          return result;
+        },
         recordEvidence: async (...args) => {
           await requireOwner(host.owner);
           return recordEvidence(...args);
@@ -135,6 +159,65 @@ export function createBillHelperHost({
       owned.set(key, entry);
       return actuator;
     },
+    reconcileTask: reconcileMethod
+      ? async ({
+          runtime,
+          task,
+          outcomes,
+          sourceSelection,
+          stillAuthorized,
+        }) => {
+          await requireOwner(runtime.owner);
+          if (!reconcileMethod)
+            throw new BillHostError("Bill reconciliation unavailable");
+          const entry = owned.get(ownerKey(runtime.owner));
+          if (
+            !entry ||
+            entry.recovery ||
+            (entry.runtime && entry.runtime !== runtime)
+          )
+            throw new BillHostError("Bill recovery unavailable");
+          const unknown = task.operations.filter(
+            (op) => op.status === "unknown",
+          );
+          if (unknown.length !== 1)
+            throw new BillHostError("No single unknown operation");
+          if (
+            billDiscovery &&
+            (!sourceSelection ||
+              sourceSelection.taskId !== task.id ||
+              !task.allowedOrigins.includes(
+                sourceSelection.candidate?.facts?.origin,
+              ))
+          )
+            throw new BillHostError("Missing saved source selection");
+          const bill = billDiscovery
+            ? {
+                ...sourceSelection.candidate.facts,
+                sourceRef: sourceSelection.candidate.sourceRef,
+              }
+            : billForTask(task);
+          const operationId = unknown[0].proposal.id;
+          const recovery = {
+            taskId: task.id,
+            operationId,
+            record: outcomes.loadMethodSelection(operationId),
+            bill: structuredClone(bill),
+          };
+          entry.runtime = runtime;
+          entry.recovery = recovery;
+          try {
+            return await runtime.reconcile(
+              task.id,
+              task.revision,
+              operationId,
+              stillAuthorized,
+            );
+          } finally {
+            if (entry.recovery === recovery) entry.recovery = null;
+          }
+        }
+      : undefined,
     async discoverBills({ runtime, task, signal }) {
       if (!billDiscovery) throw new BillHostError("Bill discovery unavailable");
       await requireOwner(runtime.owner);
@@ -261,6 +344,7 @@ export function createBillHelperHost({
         signal,
         stillAuthorized,
         controls,
+        selectionGuidance,
         codeCoordinator: entry.coordinator,
       });
     },

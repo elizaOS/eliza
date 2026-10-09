@@ -12,7 +12,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd plugins/plugin-native-location build  # build
-bun run --cwd plugins/plugin-native-location test   # tests
 ```
 
 Android uses framework `LocationManager` providers without requiring Google Play

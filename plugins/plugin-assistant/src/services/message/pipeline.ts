@@ -78,6 +78,8 @@ import {
   runPlannerLoop,
 } from "../../runtime/planner-loop";
 import { createJsonFileTrajectoryRecorder } from "../../runtime/trajectory-recorder";
+import { deviceActionForCapabilities } from "../device-actions/action.ts";
+import { deviceOperationSupportedByCapabilities } from "../device-actions/contract.ts";
 import { getDeviceActionTurn } from "../device-actions/service.ts";
 import type { EvaluatorService } from "../evaluator";
 import {
@@ -1124,9 +1126,18 @@ export async function runV5MessageRuntimeStage1(
     // A focused coding turn receives every action whose ordinary execution gates
     // pass for the coding contexts unless its trusted host selected an explicit
     // per-turn profile. Generic coding mode keeps the complete authorized surface.
+    const scopedTurnActions =
+      getDeviceActionTurn()?.runtime === args.runtime
+        ? args.runtime.actions.map((action) =>
+            deviceActionForCapabilities(
+              action,
+              getDeviceActionTurn()?.credential.capabilities,
+            ),
+          )
+        : args.runtime.actions;
     const useFullSurface = args.codingMode === true;
     const authorizedCodingActions = useFullSurface
-      ? (args.runtime.actions ?? []).filter(
+      ? scopedTurnActions.filter(
           (action) =>
             // The execution gates are the authority for a focused coding turn.
             // Absent an explicit profile, names cannot form a second fixed allowlist
@@ -1145,6 +1156,7 @@ export async function runV5MessageRuntimeStage1(
       ? applyCodingActionProfile(authorizedCodingActions, codingActionProfile)
       : await collectV5PlannerCandidateActions({
           runtime: args.runtime,
+          actions: scopedTurnActions,
           message: args.message,
           state: plannerState,
           selectedContexts,
@@ -1333,7 +1345,12 @@ export async function runV5MessageRuntimeStage1(
     if (
       args.codingMode !== true &&
       !deterministicPlanSelection &&
-      getDeviceActionTurn()?.runtime === args.runtime
+      getDeviceActionTurn()?.runtime === args.runtime &&
+      (deviceOperationSupportedByCapabilities(
+        "open_view",
+        getDeviceActionTurn()?.credential.capabilities,
+      ) ||
+        stageOneCandidates.includes("PROPOSE_DEVICE_ACTION"))
     ) {
       const proposal = plannerCandidateActions.find(
         (action) => action.name === "PROPOSE_DEVICE_ACTION",
@@ -1357,7 +1374,7 @@ export async function runV5MessageRuntimeStage1(
         verifyReplyWithoutActionHints);
     const discoveryCatalogActions = canUseProgressiveActions
       ? collectDiscoveryCatalogActions({
-          actions: args.runtime.actions ?? [],
+          actions: scopedTurnActions,
           message: args.message,
           selectedContexts,
           userRoles: [senderRole],
@@ -1428,6 +1445,7 @@ export async function runV5MessageRuntimeStage1(
           async (names) =>
             collectV5PlannerCandidateActions({
               runtime: args.runtime,
+              actions: scopedTurnActions,
               message: args.message,
               state: plannerState,
               selectedContexts,

@@ -348,11 +348,23 @@ function validateEmail(
  */
 const STRICT_NUMBER_PATTERN = /^[+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
 function parseStrictNumber(input: string): number {
-  const cleaned = input.replace(/[,$]/g, "").trim();
-  if (!STRICT_NUMBER_PATTERN.test(cleaned)) {
+  // A dollar sign is a currency mark only at the start, after an optional
+  // sign. Stripping every "$" turned "1$2" into 12. Anchoring on "^$" alone
+  // rejected "-$50", which is a negative amount.
+  const cleaned = input
+    .trim()
+    .replace(/^([+-]?)\s*\$/, "$1")
+    .trim();
+  if (
+    cleaned.includes(",") &&
+    !/^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d*)?(?:e[+-]?\d+)?$/i.test(cleaned)
+  )
+    return Number.NaN;
+  const normalized = cleaned.replace(/,/g, "");
+  if (!STRICT_NUMBER_PATTERN.test(normalized)) {
     return Number.NaN;
   }
-  return Number(cleaned);
+  return Number(normalized);
 }
 /**
  * Validate number field.
@@ -418,7 +430,8 @@ export function parseBoolean(value: JsonValue): ParsedBoolean {
   if (typeof value === "boolean") {
     return { known: true, value };
   }
-  const literal = String(value).toLowerCase();
+  // Extraction often wraps a literal in spaces. " yes " is yes, not an unknown.
+  const literal = String(value).trim().toLowerCase();
   if (BOOLEAN_TRUE_LITERALS.includes(literal)) {
     return { known: true, value: true };
   }
@@ -603,12 +616,15 @@ function validateFile(
  * matchesMimeType('application/pdf', 'image/*') // false
  */
 export function matchesMimeType(mimeType: string, pattern: string): boolean {
-  if (pattern === "*/*") return true;
-  if (pattern.endsWith("/*")) {
-    const prefix = pattern.slice(0, -1); // "image/" from "image/*"
-    return mimeType.startsWith(prefix);
+  // Type and subtype are case-insensitive. "IMAGE/*" must accept image/png.
+  const type = mimeType.toLowerCase();
+  const expected = pattern.toLowerCase();
+  if (expected === "*/*") return true;
+  if (expected.endsWith("/*")) {
+    const prefix = expected.slice(0, -1); // "image/" from "image/*"
+    return type.startsWith(prefix);
   }
-  return mimeType === pattern;
+  return type === expected;
 }
 /**
  * Format bytes to human-readable string.

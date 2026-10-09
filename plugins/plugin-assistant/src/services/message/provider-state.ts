@@ -32,6 +32,7 @@ export const STAGE1_RESPONSE_STATE_PROVIDERS = [
   "userPersonalityPreferences",
   "BOT_AWARENESS",
   "CHOICE",
+  "CurrentElizaOwnedAlarmSnapshot",
 ] as const;
 
 export const CORE_RESPONSE_STATE_PROVIDERS = [

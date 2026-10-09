@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
+import {
+  TaskLifecycle,
+  type TaskLifecycleState,
+} from "../../ui/src/api/task-lifecycle.ts";
 import { InteractiveTaskChoices } from "../src/services/interactive-task-choices.ts";
 import { createInteractiveTaskHandler } from "../src/services/interactive-task-http.ts";
 import { SqliteTaskPresentation } from "../src/services/interactive-task-presentation.ts";
@@ -391,75 +395,123 @@ describe("task event transport", () => {
   });
 });
 
-it("HTTP control waits for cleanup and retries only cleanup after a missing acknowledgement", async () => {
-  const f = setup(),
-    entered = deferred<void>(),
-    release = deferred<void>();
-  let calls = 0,
-    fail = false;
-  const runtime = new InteractiveTaskRuntime({
-    owner,
-    store: f.store,
-    actuator: {
-      capabilities: [],
-      observe: async () => {
-        throw new Error("unexpected observe");
+it.each(["pause", "close"] as const)(
+  "shared client %s waits for ordered HTTP cleanup and retries only cleanup after a missing acknowledgement",
+  async (command) => {
+    const f = setup(),
+      entered = deferred<void>(),
+      release = deferred<void>();
+    let calls = 0,
+      fail = false;
+    const reasons: unknown[] = [];
+    const runtime = new InteractiveTaskRuntime({
+      owner,
+      store: f.store,
+      actuator: {
+        capabilities: [],
+        observe: async () => {
+          throw new Error("unexpected observe");
+        },
+        execute: async () => {
+          throw new Error("unexpected execute");
+        },
+        quiesce: async ({ reason }) => {
+          reasons.push(reason);
+          calls++;
+          if (calls === 1) {
+            entered.resolve();
+            await release.promise;
+          }
+          if (fail) throw new Error("no removal acknowledgement");
+        },
       },
-      execute: async () => {
-        throw new Error("unexpected execute");
+    });
+    runtime.create(goal("cleanup"));
+    const http = await listenTaskHttp(
+      createInteractiveTaskHandler({
+        runtime,
+        authenticate: async () => owner,
+        authorizeGoal: async (ref) => goal(ref),
+      }),
+    );
+    const states: TaskLifecycleState[] = [];
+    const client = new TaskLifecycle(
+      async (path, body) => {
+        const response = await http.call(path, body);
+        if (!response.ok) throw new Error(`Task HTTP ${response.status}`);
+        return response.json();
       },
-      quiesce: async () => {
-        calls++;
-        if (calls === 1) {
-          entered.resolve();
-          await release.promise;
-        }
-        if (fail) throw new Error("no removal acknowledgement");
+      (state) => states.push(state),
+      {
+        start: "start failed",
+        pause: "pause failed",
+        resume: "resume failed",
+        cancel: "cancel failed",
       },
-    },
-  });
-  runtime.create(goal("cleanup"));
-  const http = await listenTaskHttp(
-    createInteractiveTaskHandler({
-      runtime,
-      authenticate: async () => owner,
-      authorizeGoal: async (ref) => goal(ref),
-    }),
-  );
-  try {
-    let completed = false;
-    const pending = http
-      .call("/tasks/task-1/pause", { expectedRevision: 0 })
-      .then((response) => {
+    );
+    try {
+      let completed = false;
+      const pending = client.control(command).then((response) => {
         completed = true;
         return response;
       });
-    await entered.promise;
-    expect(runtime.get("task-1").status).toBe("paused");
-    expect(completed).toBe(false);
-    release.resolve();
-    expect((await pending).status).toBe(200);
-    fail = true;
-    const cancelled = await http.call("/tasks/task-1/cancel", {
-      expectedRevision: runtime.get("task-1").revision,
-    });
-    expect(cancelled.status).toBe(503);
-    expect(await cancelled.json()).toEqual({
-      code: "TASK_CLEANUP_UNCONFIRMED",
-    });
-    const revision = runtime.get("task-1").revision;
-    fail = false;
-    const refreshed = await http.call("/tasks/current");
-    expect(refreshed.status).toBe(200);
-    expect(await refreshed.json()).toEqual({ task: null });
-    expect(runtime.get("task-1").revision).toBe(revision);
-    expect(calls).toBe(3);
-  } finally {
-    release.resolve();
-    await http.close();
-    f.close();
-  }
-});
+      await entered.promise;
+      expect(runtime.get("task-1").status).toBe("paused");
+      expect(completed).toBe(false);
+      // A host may close a task while its earlier Pause cleanup still awaits an ack.
+      runtime.control("task-1", runtime.get("task-1").revision, "close");
+      await Promise.resolve();
+      const beforePauseAcknowledged = [...reasons];
+      release.resolve();
+      expect(await pending).toBe(true);
+      expect(beforePauseAcknowledged).toEqual([command]);
+      // Close is a pause; only the host cleanup reason differs.
+      for (const body of [
+        { expectedRevision: 1, reason: "pause" },
+        { expectedRevision: 1, reason: "close", extra: true },
+      ])
+        expect((await http.call("/tasks/task-1/pause", body)).status).toBe(400);
+      expect(
+        (
+          await http.call("/tasks/task-1/cancel", {
+            expectedRevision: 1,
+            reason: "close",
+          })
+        ).status,
+      ).toBe(400);
+      expect(await client.control("close")).toBe(true);
+      expect(states.at(-1)).toMatchObject({
+        pending: false,
+        error: "",
+        task: { status: "paused" },
+      });
+      const beforeRepeatedPause = calls;
+      expect(await client.control("pause")).toBe(true);
+      expect(calls).toBe(beforeRepeatedPause);
+      fail = true;
+      const cancelled = await http.call("/tasks/task-1/cancel", {
+        expectedRevision: runtime.get("task-1").revision,
+      });
+      expect(cancelled.status).toBe(503);
+      expect(await cancelled.json()).toEqual({
+        code: "TASK_CLEANUP_UNCONFIRMED",
+      });
+      const revision = runtime.get("task-1").revision;
+      fail = false;
+      const refreshed = await http.call("/tasks/current");
+      expect(refreshed.status).toBe(200);
+      expect(await refreshed.json()).toEqual({ task: null });
+      expect(runtime.get("task-1").revision).toBe(revision);
+      expect(calls).toBe(5);
+      // A retried cleanup keeps the reason of the control that started it.
+      expect(reasons).toEqual([command, "close", "close", "cancel", "cancel"]);
+    } finally {
+      release.resolve();
+      await http.close();
+      f.close();
+    }
+  },
+);
 
 it("does not deliver a choice when an authenticated pause finishes during refresh", async () => {
   const storage = setup();

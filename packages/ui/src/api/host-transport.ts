@@ -5,6 +5,7 @@ export type HostTransportPurpose = "agent" | "csrf" | "cloud";
 export type HostTransportSelector = (
   url: string,
   purpose: HostTransportPurpose,
+  init?: RequestInit,
 ) => AgentRequestTransport | null | Promise<AgentRequestTransport | null>;
 
 let selectTransport: HostTransportSelector = () => null;
@@ -23,8 +24,9 @@ export function configureHostTransport(
 export function getHostRequestTransport(
   url: string,
   purpose: HostTransportPurpose,
+  init?: RequestInit,
 ) {
-  return selectTransport(url, purpose);
+  return selectTransport(url, purpose, init);
 }
 
 export interface NativeAgentLifecycle {

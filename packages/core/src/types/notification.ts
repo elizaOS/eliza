@@ -60,6 +60,9 @@ export type NotificationCategory =
 export interface AgentNotification {
 	/** Stable unique id (also the dedupe identity for the inbox). */
 	id: UUID;
+	/** Coordinates on returned copies only; canonical persisted rows remain unchanged. */
+	nativeEpoch?: string;
+	nativeSequence?: number;
 	/** Short, human-facing headline. Required. */
 	title: string;
 	/** Longer detail line. Optional. */
@@ -137,10 +140,73 @@ export interface NotificationQuery {
 	limit?: number;
 }
 
+/** Native delivery coordinates live beside canonical records, never inside storage rows. */
+export interface NativeNotification
+	extends Pick<
+		AgentNotification,
+		| "id"
+		| "title"
+		| "category"
+		| "priority"
+		| "createdAt"
+		| "deepLink"
+		| "groupKey"
+	> {
+	body: string;
+	readAt: number | null;
+	expiresAt: number | null;
+	nativeEpoch: string;
+	nativeSequence: number;
+	/** Closed presentation metadata; arbitrary producer data never crosses this rail. */
+	data?: { ownerType?: string; conversationId?: string; messageId?: string };
+}
+
+/** Single atomic cache value; original notification objects remain unchanged. */
+export interface NotificationInboxSnapshot {
+	version: 2;
+	notifications: AgentNotification[];
+	nativeEpoch: string;
+	nativeSequence: number;
+	nativeSequences: Record<string, number>;
+}
+
+/** Native pages deliberately have no unread/category filters: a complete page closes gaps. */
+export interface NativeNotificationQuery {
+	nativeEpoch?: string;
+	afterSequence?: number;
+	throughSequence?: number;
+	limit?: number;
+}
+
+export interface NativeNotificationPage {
+	notifications: NativeNotification[];
+	nativeEpoch: string;
+	throughSequence: number;
+	/** Last emitted sequence while incomplete; the fixed fence when complete. */
+	nextSequence: number;
+	complete: boolean;
+	unreadCount: number;
+	serviceStatus: "ready";
+}
+
+export const NATIVE_NOTIFICATION_PAGE_LIMIT = 128;
+export const NATIVE_NOTIFICATION_RECORD_BYTES = 16 * 1024;
+export const NATIVE_NOTIFICATION_PAGE_BYTES = 256 * 1024;
+
 /** The shape the notification stream carries over the agent event bus. */
 export interface NotificationEventData {
 	type: "notification" | "notification_update";
+	/** Authoritative single-item deletion hint; never a new OS arrival. */
+	removed?: boolean;
 	notification: AgentNotification;
+	/** Optional bounded native rail. Standard record contents stay unchanged. */
+	nativeNotification?: NativeNotification;
+	nativeProjectionError?: {
+		code: string;
+		notificationId: string;
+		nativeEpoch: string;
+		nativeSequence: number;
+	};
 	/** Total unread after this notification, so clients can update a badge. */
 	unreadCount: number;
 	/** Index signature for Record<string, unknown> compatibility on the bus. */

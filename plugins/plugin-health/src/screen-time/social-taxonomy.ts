@@ -195,7 +195,7 @@ function targetValues(target: ScreenTimeTarget): string[] {
   ];
 }
 
-function hostnameFromValue(value: string): string | null {
+export function hostnameFromValue(value: string): string | null {
   const trimmed = value.trim().toLowerCase();
   if (!trimmed) return null;
   try {

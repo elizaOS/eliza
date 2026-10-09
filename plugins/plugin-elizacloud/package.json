@@ -152,8 +152,8 @@
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
-    "@storybook/react": "^10.6.0",
+    "@biomejs/biome": "2.5.15",
+    "@storybook/react": "^10.6.1",
     "@clack/prompts": "^1.5.1",
     "@types/bun": "1.4.2",
     "@types/node": "^25.0.3",
@@ -165,7 +165,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "@elizaos/testing": "workspace:*"
   },
   "peerDependencies": {
@@ -193,7 +193,6 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run && bun test __tests__/dist-packaging.test.ts",
-    "test:unit": "vitest run __tests__/unit/",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-elizacloud -- bun run build:unlocked",
     "build:unlocked": "bun run build.ts && bun run build:views && node ../../packages/scripts/plugins/plugin-elizacloud/verify-built-package.ts",

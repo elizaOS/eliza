@@ -84,33 +84,40 @@ export function NotificationsShellBoot(): null {
     // Native-only, gated on granted permission, guarded against double-register.
     // The token POST is what makes the server's APNs/FCM stack a live pipeline.
     const registerPush = () => {
-      void initPushRegistration().catch((error: unknown) => {
-        // error-policy:J1 push registration is an OS/provider transport boundary;
-        // a missing distributor Firebase configuration must not crash the shell.
-        logger.error(
-          { src: "push-registration", error },
-          "[push-registration] native registration unavailable",
-        );
-      });
+      // Pairing can publish token-sync while this shell is behind its auth
+      // gate. Reconcile missed authority changes before reusing the startup
+      // guard; the initializer still rechecks a later permission grant.
+      void refreshPushRegistrationAuthority()
+        .then(() => initPushRegistration())
+        .catch((error: unknown) => {
+          // error-policy:J1 push registration is an OS/provider transport boundary;
+          // a missing distributor Firebase configuration must not crash the shell.
+          logger.error(
+            { src: "push-registration", error },
+            "[push-registration] native registration unavailable",
+          );
+        });
     };
     registerPush();
     // Returning from OS settings may grant permission after the permission
     // request has already finished. The existing initializer rechecks the grant
     // without prompting and keeps successful registration idempotent.
     document.addEventListener(APP_RESUME_EVENT, registerPush);
-    const refreshAuthority = (force = false) => {
-      void refreshPushRegistrationAuthority(undefined, force).catch(
-        (error: unknown) => {
-          // error-policy:J1 the shell transport boundary reports failed revoke or
-          // re-registration without turning an authority switch into a UI crash.
-          logger.error(
-            { src: "push-registration", error },
-            "[push-registration] failed to rotate device push authority",
-          );
-        },
-      );
+    const refreshAuthority = () => {
+      void refreshPushRegistrationAuthority().catch((error: unknown) => {
+        // error-policy:J1 the shell transport boundary reports failed revoke or
+        // re-registration without turning an authority switch into a UI crash.
+        logger.error(
+          { src: "push-registration", error },
+          "[push-registration] failed to rotate device push authority",
+        );
+      });
     };
-    const onBaseAuthorityChange = () => refreshAuthority(true);
+    // setBaseUrl also publishes identical-base restore/reconnect events.
+    // The full profile/base/token authority key decides whether to retire;
+    // forcing retirement here can disable an independent native connection
+    // while the app is backgrounded and cannot start its replacement.
+    const onBaseAuthorityChange = () => refreshAuthority();
     const onTokenAuthorityChange = () => refreshAuthority();
     const unsubscribeBase = client.onBaseUrlChange(onBaseAuthorityChange);
     window.addEventListener("steward-token-sync", onTokenAuthorityChange);

@@ -242,3 +242,21 @@ export function getWeekdayForLocalDate(
 export function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);
 }
+
+export function isRealCalendarDay(
+  year: number,
+  month: number,
+  day: number,
+): boolean {
+  const candidate = new Date(0);
+  candidate.setUTCFullYear(year, month - 1, day);
+  return (
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= 31 &&
+    candidate.getUTCFullYear() === year &&
+    candidate.getUTCMonth() + 1 === month &&
+    candidate.getUTCDate() === day
+  );
+}

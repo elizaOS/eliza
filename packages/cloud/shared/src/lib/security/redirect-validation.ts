@@ -44,8 +44,15 @@ export function getDefaultPlatformRedirectOrigins(): string[] {
   );
 }
 
+function pathAfterBrowserNormalization(value: string): string {
+  // WHATWG URL parsing treats `\` as `/` and drops ASCII tab, LF, and CR,
+  // so `/\evil.example` and `/\t/evil.example` are both `//evil.example`.
+  return value.replace(/[\t\n\r]/g, "").replaceAll("\\", "/");
+}
+
 export function isSafeRelativeRedirectPath(value: string): boolean {
-  return value.startsWith("/") && !value.startsWith("//");
+  const normalized = pathAfterBrowserNormalization(value);
+  return normalized.startsWith("/") && !normalized.startsWith("//");
 }
 
 export function sanitizeRelativeRedirectPath(

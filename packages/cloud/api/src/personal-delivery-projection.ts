@@ -70,6 +70,7 @@ export class PersonalDeliveryAccountResolutionError extends Error {
 }
 
 interface SharedAccountProjection {
+  ownerName?: string;
   profileKey: string;
   userId: string;
   organizationId: string;
@@ -179,6 +180,7 @@ function isPersonalDeliveryResult(
         (typeof (target as Record<string, unknown>).agent_config === "object" &&
           !Array.isArray((target as Record<string, unknown>).agent_config))));
   return (
+    optionalText(candidate.ownerName, 60) &&
     boundedText(candidate.userId) &&
     boundedText(candidate.organizationId) &&
     validTarget &&
@@ -365,6 +367,7 @@ export class PersonalDeliveryProjection {
       return {
         userId: cached.userId,
         organizationId: cached.organizationId,
+        ...(cached.ownerName ? { ownerName: cached.ownerName } : {}),
         dedicatedTarget: null,
         isNew: false,
         resolution: "sender-projection-hit",
@@ -378,6 +381,7 @@ export class PersonalDeliveryProjection {
         profileKey: expectedProfile,
         userId: resolved.userId,
         organizationId: resolved.organizationId,
+        ...(resolved.ownerName ? { ownerName: resolved.ownerName } : {}),
         expiresAt: now + CACHE_TTL_MS,
       };
       await this.state.storage.put(CACHE_KEY, projection);

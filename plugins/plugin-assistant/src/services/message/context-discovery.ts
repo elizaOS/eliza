@@ -37,7 +37,7 @@ export function createContextReadTool(
     name: READ_CONTEXT_TOOL_NAME,
     strict: true,
     description:
-      "Read needed authorized provider references or conversation originals before deciding. Use explicitly advertised provider reference IDs; a routing-context or tool name is not readable unless advertised as a provider reference. Select contexts in HANDLE_RESPONSE; inspect actions via DISCOVER_ACTIONS; for a supplied history index, use the advertised literal-search scopes, a known history:hN, or history:all for full history. Do not enumerate the history index. Returns complete originals; no reply or effects execute.",
+      "Read needed authorized provider references or conversation originals before deciding. Use explicitly advertised provider reference IDs; a routing-context or tool name is not readable unless advertised as a provider reference. Select contexts in HANDLE_RESPONSE; inspect actions via DISCOVER_ACTIONS. For a specific saved-fact lookup, first use an advertised stored-memory reference, a known history:hN, or an advertised literal-search scope for the fact's subject; inspect matched originals and their corrections. Use history:all when targeted reads leave dependencies unresolved, for exhaustive coverage, or before claiming something was never discussed. Do not enumerate the history index. Returns complete originals; no reply or effects execute. When current records, status or timestamps are not supplied by an advertised provider, use HANDLE_RESPONSE to route their read to planner actions. Do not use history:all to repair an unknown routing-context or tool name. Historical messages do not establish current record timestamps or state.",
     parameters: {
       type: "object",
       additionalProperties: false,

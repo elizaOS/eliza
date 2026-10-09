@@ -1,3 +1,4 @@
+import { extractJsonObjects } from "@elizaos/core/protocol";
 /**
  * Local compatibility type for CoordinationLLMResponse — removed from
  * @elizaos/plugin-agent-orchestrator 2.x.
@@ -152,44 +153,98 @@ function isValidActionEnvelope(
   return true;
 }
 
+/** Complete top-level JSON action and its optional Markdown fence. */
+interface ActionSpan {
+  start: number;
+  end: number;
+  fenced: boolean;
+  value: Record<string, unknown> & { action: string };
+}
+
+function findActionSpans(text: string): ActionSpan[] {
+  const spans: ActionSpan[] = [];
+  let cursor = 0;
+  let coveredEnd = 0;
+  // Core owns quote/escape-aware top-level object boundaries. Never rescan
+  // inside a rejected object or reinterpret its nested data as an action.
+  for (const json of extractJsonObjects(text)) {
+    const start = text.indexOf(json, cursor);
+    const end = start + json.length;
+    cursor = end;
+    let value: unknown;
+    try {
+      value = JSON.parse(json);
+    } catch {
+      // error-policy:J3 malformed model JSON remains ordinary display text.
+      continue;
+    }
+    if (!isValidActionEnvelope(value)) continue;
+    const prefix = text.slice(Math.max(0, start - 40), start);
+    const opening = /```(?:json)?\s{0,33}$/.exec(prefix);
+    const closing = /^\s{0,33}```/.exec(text.slice(end, end + 36));
+    const fenceStart = start - (opening?.[0].length ?? 0);
+    const fenced = Boolean(opening && closing && fenceStart >= coveredEnd);
+    const span = {
+      start: fenced ? fenceStart : start,
+      end: fenced ? end + (closing?.[0].length ?? 0) : end,
+      fenced,
+      value: value as Record<string, unknown> & { action: string },
+    };
+    spans.push(span);
+    coveredEnd = span.end;
+  }
+  return spans;
+}
+
+function toCoordinationResponse(
+  parsed: Record<string, unknown> & { action: string },
+): CoordinationLLMResponse | null {
+  const result: CoordinationLLMResponse = {
+    action: parsed.action,
+    reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
+  };
+  if (parsed.action === "respond") {
+    if (parsed.useKeys && Array.isArray(parsed.keys)) {
+      result.useKeys = true;
+      result.keys = parsed.keys.map(String);
+    } else if (typeof parsed.response === "string") {
+      result.response = parsed.response;
+    } else return null;
+  }
+  if (parsed.action === "permission_request") {
+    const permission = parsed.permission;
+    if (!isPermissionId(permission)) return null;
+    const reason = String(parsed.reason ?? "");
+    const feature = String(parsed.feature ?? "");
+    const fallbackOffered = parsed.fallback_offered === true;
+    const rawLabel = parsed.fallback_label;
+    result.permissionRequest = {
+      permission,
+      reason,
+      feature,
+      fallbackOffered,
+      ...(typeof rawLabel === "string" && rawLabel.length > 0
+        ? { fallbackLabel: rawLabel }
+        : {}),
+    };
+  }
+  return result;
+}
+
 /**
  * Strip JSON action blocks from text before displaying in chat.
  * Handles both fenced (```json ... ```) and bare JSON formats.
  */
 export function stripActionBlockFromDisplay(text: string): string {
   const safeText = toWellFormedUnicode(text);
-  // First: fenced ```json action blocks — only strip if the action value is
-  // one of our known orchestrator actions to avoid false-positive stripping.
-  let cleaned = safeText.replace(
-    /```(?:json)?\s{0,32}\n?(\{[\s\S]{0,50000}?"action"[\s\S]{0,50000}?\})\s{0,32}\n?```/g,
-    (_match, json: string) => {
-      try {
-        const parsed = JSON.parse(json);
-        if (isValidActionEnvelope(parsed)) return "";
-      } catch {
-        // malformed JSON — leave as-is
-      }
-      return _match;
-    },
-  );
-
-  // Second: bare JSON action blocks. Walk backwards from end of string to find
-  // the last '{' that starts a valid JSON object containing an "action" key.
-  // Note: this won't match nested objects (e.g. {"action":"respond","ctx":{"k":"v"}})
-  // because JSON.parse would fail on the truncated slice. Safe given our flat action schema.
-  const lastBrace = cleaned.lastIndexOf("{");
-  if (lastBrace >= 0) {
-    const candidate = cleaned.slice(lastBrace);
-    try {
-      const parsed = JSON.parse(candidate);
-      if (isValidActionEnvelope(parsed)) {
-        cleaned = cleaned.slice(0, lastBrace);
-      }
-    } catch {
-      // Not valid JSON — leave text as-is
-    }
+  const chunks: string[] = [];
+  let cursor = 0;
+  for (const span of findActionSpans(safeText)) {
+    chunks.push(safeText.slice(cursor, span.start));
+    cursor = span.end;
   }
-
+  chunks.push(safeText.slice(cursor));
+  const cleaned = chunks.join("");
   return cleaned.trim();
 }
 
@@ -201,49 +256,8 @@ export function stripActionBlockFromDisplay(text: string): string {
 export function parseActionBlock(text: string): CoordinationLLMResponse | null {
   if (!text) return null;
   const safeText = toWellFormedUnicode(text);
-  // Try fenced ```json block first
-  const fenced = safeText.match(
-    /```(?:json)?\s{0,32}\n?(\{[\s\S]{0,50000}?\})\s{0,32}\n?```/,
-  );
-  // Bare JSON fallback: non-greedy match from first { containing "action" to next }
-  const jsonStr =
-    fenced?.[1] ??
-    safeText.match(/\{[^}]{0,50000}"action"[^}]{0,50000}\}/)?.[0];
-  if (!jsonStr) return null;
-  try {
-    const parsed = JSON.parse(jsonStr);
-    if (!isValidActionEnvelope(parsed)) return null;
-    const result: CoordinationLLMResponse = {
-      action: parsed.action,
-      reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
-    };
-    if (parsed.action === "respond") {
-      if (parsed.useKeys && Array.isArray(parsed.keys)) {
-        result.useKeys = true;
-        result.keys = parsed.keys.map(String);
-      } else if (typeof parsed.response === "string") {
-        result.response = parsed.response;
-      } else return null;
-    }
-    if (parsed.action === "permission_request") {
-      const permission = parsed.permission;
-      if (!isPermissionId(permission)) return null;
-      const reason = String(parsed.reason ?? "");
-      const feature = String(parsed.feature ?? "");
-      const fallbackOffered = parsed.fallback_offered === true;
-      const rawLabel = parsed.fallback_label;
-      result.permissionRequest = {
-        permission,
-        reason,
-        feature,
-        fallbackOffered,
-        ...(typeof rawLabel === "string" && rawLabel.length > 0
-          ? { fallbackLabel: rawLabel }
-          : {}),
-      };
-    }
-    return result;
-  } catch {
-    return null;
-  }
+  const spans = findActionSpans(safeText);
+  const span = spans.find((candidate) => candidate.fenced) ?? spans[0];
+  if (!span) return null;
+  return toCoordinationResponse(span.value);
 }

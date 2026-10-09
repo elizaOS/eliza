@@ -656,7 +656,34 @@ type RuntimeDatabaseAdapterSurface = Omit<
 	| "patchTaskMetadata"
 >;
 
+/** Owner-private diagnostic projection from the canonical executor, never model proposals. */
+export interface OwnerToolExecutionObservation {
+	phase: "gate" | "started" | "settled" | "omitted";
+	gate:
+		| "lookup"
+		| "role-context"
+		| "disclosure"
+		| "schema"
+		| "action-validation"
+		| "connector-account"
+		| "execution";
+	gateOutcome: "passed" | "denied" | "failed" | "executed" | "unknown";
+	actionName: string;
+	executionId?: string;
+	toolCallId?: string;
+	args?: unknown;
+	result?: unknown;
+	redactedFields: number;
+	redactedStrings: number;
+	omittedFields: number;
+}
 export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
+	/** Positively attests the canonical executor observation contract. Absent on older Core. */
+	readonly ownerToolExecutionObserverVersion?: 1;
+	/** Server-installed owner capture only. Synchronous, immutable, isolated and default absent. */
+	ownerToolExecutionObserver?: (
+		observation: Readonly<OwnerToolExecutionObservation>,
+	) => void;
 	// Properties
 	/** Database adapter. Set in constructor; required. */
 	adapter: IDatabaseAdapter;

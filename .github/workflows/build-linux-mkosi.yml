@@ -232,7 +232,7 @@ jobs:
 
       - name: Download checksum-pinned Syft
         id: syft
-        uses: anchore/sbom-action/download-syft@6b31fa7e2d592e47d95d2a5e0520a7352d47ead5
+        uses: anchore/sbom-action/download-syft@c8069d6c989aca1923b19e135cc3a77937f16d98
 
       - name: Build clean snapshot-pinned mkosi release disk
         env:
@@ -381,7 +381,7 @@ jobs:
           fi
 
       - name: Attest built image and filesystem SBOM
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-path: |
             ${{ env.WORK_ROOT }}/canonical/*.raw.zst
@@ -555,7 +555,7 @@ jobs:
           done
 
       - name: Attest exact signed publication inputs
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-path: |
             ${{ env.WORK_ROOT }}/publish/*/*

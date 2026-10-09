@@ -261,7 +261,7 @@ describe("delayed fork-workflow approval", () => {
           return [];
         },
         loadActionRequiredPaths: async () => [
-          ".github/workflows/pr-static-smoke.yml",
+          ".github/workflows/pr-validation.yml",
         ],
         timeoutMs: 1_200_000,
         completionGraceMs: 240_000,
@@ -271,7 +271,7 @@ describe("delayed fork-workflow approval", () => {
           sleeps += 1;
         },
       }),
-      /required workflows awaiting maintainer approval: \.github\/workflows\/pr-static-smoke\.yml; approve the listed workflows, then rerun this gate/,
+      /required workflows awaiting maintainer approval: \.github\/workflows\/pr-validation\.yml; approve the listed workflows, then rerun this gate/,
     );
 
     assert.equal(checkLoads, 0);

@@ -29,7 +29,7 @@
   ],
   "peerDependencies": {
     "@capacitor/core": "^8.5.2",
-    "pdfjs-dist": "^6.3.289"
+    "pdfjs-dist": "^6.4.299"
   },
   "scripts": {
     "build": "bun run build:js && bun run build:types",
@@ -55,7 +55,7 @@
   },
   "devDependencies": {
     "@capacitor/core": "^8.5.2",
-    "pdfjs-dist": "^6.3.289",
+    "pdfjs-dist": "^6.4.299",
     "@types/node": "^25.0.6",
     "@typescript/native": "npm:typescript@^7.0.2",
     "tsup": "^8.5.1",

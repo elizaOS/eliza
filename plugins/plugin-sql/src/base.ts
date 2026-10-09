@@ -1901,6 +1901,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .select()
           .from(entityTable)
           .where(eq(entityTable.agentId, agentId))
+          // A bounded page needs a total order: without one Postgres returns
+          // rows in physical order, which an UPDATE rewrites, so "the first
+          // `limit` entities" changes between identical calls. Same order as
+          // queryEntities.
+          .orderBy(asc(entityTable.createdAt), asc(entityTable.id))
           .limit(limit);
 
         return result.map((row: Record<string, unknown>) => ({
@@ -1925,8 +1930,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         WHERE ${entityTable.agentId} = ${agentId}
         AND EXISTS (
           SELECT 1 FROM unnest(${entityTable.names}) AS name
-          WHERE LOWER(name) LIKE LOWER(${`%${query}%`})
+          WHERE name ILIKE ${`%${escapeIlikeLiteral(query)}%`} ESCAPE '\\'
         )
+        ORDER BY
+          -- IDatabaseAdapter contract: exact (case-insensitive) matches first,
+          -- then a total order so the LIMIT keeps the same rows on every call.
+          EXISTS (
+            SELECT 1 FROM unnest(${entityTable.names}) AS name
+            WHERE LOWER(name) = LOWER(${query})
+          ) DESC,
+          ${entityTable.createdAt} ASC,
+          ${entityTable.id} ASC
         LIMIT ${limit}
       `;
 

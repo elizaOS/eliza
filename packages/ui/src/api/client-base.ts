@@ -1894,7 +1894,7 @@ export class ElizaClient {
         requestUrl,
         requestAttempt,
       );
-      const transport = await this.rawRequestTransport(requestUrl);
+      const transport = await this.rawRequestTransport(requestUrl, requestInit);
       return await transport.request(requestUrl, requestInit, { timeoutMs });
     } catch (err) {
       // error-policy:J2 context-adding rethrow — throwRawRequestError wraps
@@ -1986,12 +1986,13 @@ export class ElizaClient {
   }
   private async rawRequestTransport(
     requestUrl: string,
+    init: RequestInit,
   ): Promise<AgentRequestTransport> {
     if (this.requestTransport !== fetchAgentTransport) {
       return this.requestTransport;
     }
     return (
-      (await getHostRequestTransport(requestUrl, "agent")) ??
+      (await getHostRequestTransport(requestUrl, "agent", init)) ??
       this.requestTransport
     );
   }

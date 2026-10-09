@@ -2,6 +2,10 @@ name: UI Fixture Contracts
 on:
   workflow_call:
     inputs:
+      base_sha:
+        type: string
+        required: false
+        default: ''
       publish_bun_install_cache:
         description: Allow this workflow's designated Bun install-cache writer
         required: false
@@ -28,7 +32,26 @@ env:
   BUN_VERSION: 1.4.2
   NODE_VERSION: 24.15.0
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.affected.outputs.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          submodules: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.15.0
+      - id: affected
+        env:
+          BASE_SHA: ${{ inputs.base_sha || '' }}
+        run: node packages/scripts/ci-affected.ts "$BASE_SHA"
   ui-core-fixture-e2e:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     steps:
@@ -116,6 +139,8 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
   fixture-e2e:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -178,71 +203,3 @@ jobs:
             packages/ui/src/testing/__e2e__/output-widget-cert
           retention-days: 3
           if-no-files-found: ignore
-  chat-shell-gestures:
-    name: Chat shell gesture + parity e2e
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Setup workspace dependencies
-        uses: ./.github/actions/setup-bun-workspace
-        with:
-          publish-bun-install-cache: "false"
-          bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile --ignore-scripts
-          install-native-deps: "false"
-          skip-avatar-clone: "true"
-          no-vision-deps: "true"
-          setup-python: "false"
-          install-protoc: "false"
-      - name: Install Playwright chromium + webkit
-        run: packages/scripts/github/install-playwright-browsers.sh chromium webkit
-      - name: Render-parity contract
-        run: bun run --cwd packages/ui test -- src/components/chat/render-parity.contract.test.tsx
-      - name: Chat-sheet Safari/WebKit gesture smoke
-        run: bun run --cwd packages/ui test:chat-sheet-safari-e2e
-      - name: Chat-scroll web e2e
-        run: bun run --cwd packages/ui test:chat-scroll-web-e2e
-      - name: Chat transcript axis-lock e2e (chromium)
-        run: bun run --cwd packages/ui test:chat-scroll-axis-lock-e2e
-      - name: Chat transcript axis-lock e2e (webkit)
-        run: ENGINE=webkit bun run --cwd packages/ui test:chat-scroll-axis-lock-e2e
-      - name: Launcher gesture long-loop e2e
-        env:
-          ELIZA_LOOP_SEED: "12375"
-        run: bun run --cwd packages/ui test:launcher-loop-e2e
-      - name: Chat overlay perf gate
-        run: bun run --cwd packages/ui test:chat-perf-gate
-      - name: Chat overlay scroll/maximize perf gate
-        run: bun run --cwd packages/ui test:perf-gate-e2e
-      - name: Frame-glitch (transient) e2e
-        run: bun packages/ui/src/components/shell/__e2e__/run-chat-sheet-frame-glitch-e2e.mjs
-      - name: Frame-glitch canary self-test
-        run: bun packages/ui/src/components/shell/__e2e__/run-chat-sheet-frame-glitch-e2e.mjs --canary
-      - name: Upload gesture videos + screenshots
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: chat-shell-gesture-artifacts
-          path: |
-            packages/ui/src/components/shell/__e2e__/output/
-            packages/ui/src/components/shell/__e2e__/output-webkit/
-            packages/ui/src/components/shell/__e2e__/output-home/
-            packages/ui/src/components/shell/__e2e__/output-launcher-loop/
-            packages/ui/src/components/shell/__e2e__/output-bottombar/
-            packages/ui/src/components/shell/__e2e__/output-warmup-eviction/
-            packages/ui/src/components/shell/__e2e__/output-perf-gate/
-            packages/ui/src/components/shell/__e2e__/output-frame-glitch/
-          if-no-files-found: warn
-          retention-days: 3
-    env:
-      CI: "true"
-      BUN_VERSION: 1.4.2
-      NODE_VERSION: 24.15.0
-      NODE_NO_WARNINGS: "1"

@@ -14,6 +14,45 @@ Concurrent worktrees should use `bun run --cwd packages/app dev:shared`. UI chan
 require `bun run --cwd packages/app audit:app` and inspection of affected desktop/mobile
 captures.
 
+## Eliza alarms
+
+`/clock` lists this owner's alarms from native Android storage. It provides local
+creation, editing, enable/disable and deletion after a native review gesture.
+The view also prepares chat requests for the agent. Server reminders and FCM
+notifications remain separate. Timers and stopwatch are outside this surface.
+
+Android hosts advertise `clock.alarms.v1`. The existing assistant device-action
+service accepts exact `clock_alarm` proposals for set, update, enable, delete,
+dismiss, snooze and show. Agent reads use the complete authenticated current
+alarm snapshot; proposals bind its native store revision. Native consent checks
+the current profile, owner, exact operation, execution claim and revision before
+any effect. The durable journal retains the actual native result. An unknown
+result never permits automatic replay. Older clients retain the legacy
+`clock.handoff.v1/v2` protocol; this Android host does not dispatch those requests.
+
+`ElizaAlarms` persists definitions and occurrence tokens in device-protected
+storage and schedules exact `AlarmManager.setAlarmClock` events. The system
+receiver restores confirmed schedules after boot, app replacement, clock/timezone
+changes or restored exact-alarm access. Weekly schedules follow the phone's local
+wall clock and preserve selected Calendar days (Sunday=1 through Saturday=7).
+Ringing uses a native foreground service and lock-screen controls with scoped Stop
+and Snooze. Delivery requires no WebView, model, Mac connection or network request.
+Overlapping occurrences remain queued; stale controls cannot affect a successor.
+The app preserves the user's alarm volume and DND settings.
+
+Exact-alarm access and notification access are required to schedule a new wake-up
+alarm. Full-screen access controls the lock-screen presentation; an alarm
+notification remains available when Android does not allow a full-screen intent.
+The Clock view reads these permissions and opens the platform's permission UI.
+After initial authenticated enrollment, cached native ownership permits local
+Clock reads and controls offline. A known rejected session retires that cache;
+existing scheduled alarms remain intact. Credentials never cross the bridge.
+
+Bound chat requests retain their established device executor and selected context;
+Clock enrollment does not replace existing binding headers or caller credentials.
+Native source compilation and contract tests do not prove installed-device ringing.
+A new APK must be built from the changed native sources and tested on the device.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

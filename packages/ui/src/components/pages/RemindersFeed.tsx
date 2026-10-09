@@ -27,6 +27,7 @@ import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { StatusDot } from "../ui/status-badge";
+import { Textarea } from "../ui/textarea";
 
 type ReminderRow = {
   definition: LifeOpsTaskDefinition;
@@ -223,7 +224,11 @@ function AuthorityRemindersFeed({
           verb === "cancel"
             ? { status: "archived" }
             : {
-                title: message,
+                ...(row.definition.cadence.kind === "once" &&
+                row.definition.metadata?.ownerSurface === "OWNER_REMINDERS" &&
+                row.definition.description?.trim()
+                  ? { description: message }
+                  : { title: message }),
                 ...(row.definition.cadence.kind === "once" &&
                 editDue &&
                 originalDue &&
@@ -280,6 +285,10 @@ function AuthorityRemindersFeed({
               (row.definition.cadence.kind === "once"
                 ? row.definition.cadence.dueAt
                 : null);
+            const hasBody =
+              row.definition.cadence.kind === "once" &&
+              row.definition.metadata?.ownerSurface === "OWNER_REMINDERS" &&
+              Boolean(row.definition.description?.trim());
             const cancelled = ["archived", "completed"].includes(
               row.definition.status,
             );
@@ -298,13 +307,23 @@ function AuthorityRemindersFeed({
                       htmlFor={`reminder-message-${row.definition.id}`}
                     >
                       {t("automationsreminders.message")}
-                      <Input
-                        id={`reminder-message-${row.definition.id}`}
-                        className="mt-1"
-                        value={message}
-                        onChange={(e) => setMessage(e.target.value)}
-                        required
-                      />
+                      {hasBody ? (
+                        <Textarea
+                          id={`reminder-message-${row.definition.id}`}
+                          className="mt-1"
+                          value={message}
+                          onChange={(e) => setMessage(e.target.value)}
+                          required
+                        />
+                      ) : (
+                        <Input
+                          id={`reminder-message-${row.definition.id}`}
+                          className="mt-1"
+                          value={message}
+                          onChange={(e) => setMessage(e.target.value)}
+                          required
+                        />
+                      )}
                     </label>
                     {row.definition.cadence.kind === "once" && (
                       <label
@@ -347,7 +366,11 @@ function AuthorityRemindersFeed({
                         disabled={busy !== null}
                         onClick={() => {
                           setEditing(row.definition.id);
-                          setMessage(row.definition.title);
+                          setMessage(
+                            hasBody
+                              ? row.definition.description
+                              : row.definition.title,
+                          );
                           setOriginalDue(due);
                           const date = due ? new Date(due) : null;
                           setEditDue(

@@ -30,6 +30,7 @@ import {
   type SubactionsMap,
   unwrapUserMessageText,
 } from "@elizaos/core";
+import { extractUrls } from "../../utils/extract-urls.ts";
 import { addDocumentFromFilePath } from "./docs-loader.ts";
 import {
   type DocumentListResult,
@@ -283,7 +284,10 @@ const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 ]);
 const DOCUMENT_SCOPE_OPTIONS = [...DOCUMENT_SCOPES, "all-visible"] as const;
 
-const URL_PATTERN = /https?:\/\/[^\s)]+/i;
+/** URL taken from a chat line when the action has no explicit url parameter. */
+export function extractDocumentUrlFromText(text: string): string | null {
+  return extractUrls(text)[0] ?? null;
+}
 
 function isDocumentPathCharacter(char: string, windows: boolean): boolean {
   const code = char.charCodeAt(0);
@@ -642,7 +646,7 @@ function getUrl(
   if (typeof params.url === "string" && params.url.trim()) {
     return params.url.trim();
   }
-  return unwrapUserMessageText(message).match(URL_PATTERN)?.[0] ?? null;
+  return extractDocumentUrlFromText(unwrapUserMessageText(message));
 }
 
 async function scopedAddOptions(

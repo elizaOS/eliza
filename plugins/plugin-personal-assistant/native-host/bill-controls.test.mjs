@@ -76,6 +76,7 @@ test("workflow selects only the configured existing-method target after review",
   const workflow = new BillWorkflow({
     deriveBillDecision,
     controls,
+    outcomes: { recordMethodSelection() {} },
     runtime,
     bill: {},
     taskId: task.id,
@@ -99,6 +100,11 @@ test("workflow selects only the configured existing-method target after review",
   assert.equal(executions, 0);
   await workflow.chooseExistingMethod("review");
   assert.equal(executions, 1);
+  const outcomes = workflow.outcomes;
+  workflow.outcomes = undefined;
+  assert.equal((await workflow.chooseExistingMethod("review")).kind, "blocked");
+  assert.equal(executions, 1);
+  workflow.outcomes = outcomes;
   selectedStatus = "failed";
   assert.equal(
     (await workflow.chooseExistingMethod("review")).kind,

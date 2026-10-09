@@ -24,6 +24,12 @@
       "types": "./dist/api/client-calendar.d.ts",
       "import": "./dist/api/client-calendar.js",
       "default": "./dist/api/client-calendar.js"
+    },
+    "./format": {
+      "eliza-source": "./src/internal/format.ts",
+      "types": "./src/internal/format.ts",
+      "import": "./dist/internal/format.js",
+      "default": "./dist/internal/format.js"
     }
   },
   "scripts": {
@@ -61,7 +67,7 @@
     "googleapis": "^169.0.0",
     "tsup": "^8.5.1",
     "react-dom": "*",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "vite": "^8.3.0"
   },
   "peerDependencies": {

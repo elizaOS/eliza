@@ -336,7 +336,6 @@ export class DefinitionsDomain {
       LIFEOPS_DEFINITION_KINDS,
     );
     const title = requireNonEmptyString(request.title, "title");
-    const description = normalizeOptionalString(request.description) ?? "";
     const originalIntent =
       normalizeOptionalString(request.originalIntent) ?? title;
     const timezone = normalizeValidTimeZone(request.timezone, "timezone");
@@ -346,6 +345,13 @@ export class DefinitionsDomain {
       timezone,
     );
     const cadence = normalizeCadence(request.cadence, windowPolicy);
+    const description =
+      cadence.kind === "once" &&
+      request.metadata?.ownerSurface === "OWNER_REMINDERS" &&
+      typeof request.description === "string" &&
+      request.description.trim().length > 0
+        ? request.description
+        : (normalizeOptionalString(request.description) ?? "");
     if (cadence.kind === "unscheduled" && kind !== "task") {
       fail(400, "unscheduled cadence is only valid for task definitions");
     }
@@ -594,7 +600,12 @@ export class DefinitionsDomain {
           : current.definition.title,
       description:
         request.description !== undefined
-          ? (normalizeOptionalString(request.description) ?? "")
+          ? nextCadence.kind === "once" &&
+            current.definition.metadata.ownerSurface === "OWNER_REMINDERS" &&
+            typeof request.description === "string" &&
+            request.description.trim().length > 0
+            ? request.description
+            : (normalizeOptionalString(request.description) ?? "")
           : current.definition.description,
       originalIntent:
         request.originalIntent !== undefined

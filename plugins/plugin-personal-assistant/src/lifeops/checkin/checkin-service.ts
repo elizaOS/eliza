@@ -38,6 +38,7 @@ import {
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { computeOverdueFollowups } from "../../followup/followup-tracker.js";
 import { resolveOwnerDefinitionSurface } from "../definition-owner-surface.js";
+import { formatCalendarEventTimeRange } from "../google/format-helpers.js";
 import {
   computeMissedOccurrenceStreak,
   computeOccurrenceStreaks,
@@ -55,6 +56,7 @@ import {
   toFiniteNonNegativeNumber,
 } from "./checkin-briefing-ranking.js";
 import type {
+  CheckinBriefingItem,
   CheckinBriefingSection,
   CheckinKind,
   CheckinReport,
@@ -166,8 +168,11 @@ function formatDurationMinutes(durationMin: number | null): string | null {
   ) {
     return null;
   }
-  const hours = Math.floor(durationMin / 60);
-  const minutes = Math.round(durationMin - hours * 60);
+  // Round the whole duration first. 59.5 minutes becomes 60, which is 1h,
+  // not "60m". 119.5 minutes becomes 2h, not "1h60m".
+  const total = Math.round(durationMin);
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
   if (hours === 0) return `${minutes}m`;
   if (minutes === 0) return `${hours}h`;
   return `${hours}h${minutes}m`;
@@ -340,6 +345,12 @@ export function renderMorningCheckinReport(
   const paragraphs = ["Good morning."];
   const unavailable: string[] = [];
   const emptySummaries: string[] = [];
+  const calendarSection = report.briefingSections.find(
+    (section) =>
+      section.key === "calendar_changes" &&
+      (!section.error || section.coverage === "partial"),
+  );
+  const combinedCalendarItems = new Set<CheckinBriefingItem>();
   const clearDay =
     !report.collectorErrors.todaysMeetings &&
     !report.collectorErrors.overdueTodos &&
@@ -348,8 +359,8 @@ export function renderMorningCheckinReport(
   const lists = [
     {
       key: "todaysMeetings" as const,
-      title: "Meetings today",
-      empty: "No meetings listed for today.",
+      title: "Calendar today",
+      empty: "No Calendar events listed for today.",
       rows: report.todaysMeetings,
     },
     {
@@ -376,16 +387,30 @@ export function renderMorningCheckinReport(
       continue;
     }
     const highlights = list.rows.slice(0, 3).map((row) => {
-      const time =
-        "startAt" in row
-          ? report.timezone
-            ? new Intl.DateTimeFormat("en-US", {
-                timeZone: report.timezone,
-                timeStyle: "short",
-              }).format(new Date(row.startAt))
-            : row.startAt
-          : null;
-      return `- ${time ? `${time}: ` : ""}${morningBriefExcerpt(row.title)}`;
+      if (!("startAt" in row)) return `- ${morningBriefExcerpt(row.title)}`;
+      const calendarItem = calendarSection?.items.find((item) => {
+        const event = item.calendarEvent;
+        return (
+          Boolean(event?.id) &&
+          event?.id === row.id &&
+          item.title === row.title &&
+          parseMs(event.startAt) !== null &&
+          parseMs(event.startAt) === parseMs(row.startAt) &&
+          parseMs(event.endAt) !== null &&
+          parseMs(event.endAt) === parseMs(row.endAt) &&
+          row.status !== undefined &&
+          event.status === row.status &&
+          event.isAllDay === row.isAllDay
+        );
+      });
+      if (calendarItem) combinedCalendarItems.add(calendarItem);
+      const facts = [
+        row.status?.toLowerCase() === "confirmed" ? null : row.status,
+        calendarItem?.reason === "on schedule" ? null : calendarItem?.reason,
+      ]
+        .filter(Boolean)
+        .join("; ");
+      return `- ${formatCalendarEventTimeRange({ ...row, timezone: report.timezone })}: ${morningBriefExcerpt(row.title)}${facts ? ` (${facts})` : ""}`;
     });
     const extra = list.rows.length - highlights.length;
     paragraphs.push(
@@ -400,6 +425,12 @@ export function renderMorningCheckinReport(
   const xUnavailable: { label: string; setupUnavailable: boolean }[] = [];
   let gmailDisconnected = false;
   for (const section of report.briefingSections) {
+    if (
+      section.key === "calendar_changes" &&
+      section.error &&
+      section.coverage === "partial"
+    )
+      unavailable.push("Some Calendar information");
     if (section.error && section.coverage !== "partial") {
       if (section.key === "x") {
         unavailable.push("X");
@@ -435,19 +466,28 @@ export function renderMorningCheckinReport(
       }
       continue;
     }
-    const highlights = section.items
-      .slice(0, 3)
-      .map(
-        (item) =>
-          `- ${morningBriefExcerpt(item.title)}${item.detail ? `: ${morningBriefExcerpt(item.detail)}` : ""}`,
-      );
-    const extra = section.items.length - highlights.length;
-    if (section.coverage === "partial" && highlights.length === 0)
+    const items = section.items.filter(
+      (item) => !combinedCalendarItems.has(item),
+    );
+    const highlights = items.slice(0, 3).map((item) => {
+      const detail = item.calendarEvent
+        ? `${formatCalendarEventTimeRange({ ...item.calendarEvent, timezone: report.timezone })}${item.calendarEvent.status && item.calendarEvent.status.toLowerCase() !== "confirmed" ? ` (${item.calendarEvent.status})` : ""}${item.reason && item.reason !== "on schedule" ? `; ${item.reason}` : ""}`
+        : item.detail;
+      return `- ${morningBriefExcerpt(item.title)}${detail ? `: ${morningBriefExcerpt(detail)}` : ""}`;
+    });
+    const extra = items.length - highlights.length;
+    if (
+      section.key === "gmail" &&
+      section.coverage === "partial" &&
+      highlights.length === 0
+    )
       paragraphs.push("Some Gmail inboxes couldn't be checked.");
     if (highlights.length > 0) {
       paragraphs.push(
         `${section.summary}\n${highlights.join("\n")}${extra ? `\n${extra} more items.` : ""}`,
       );
+    } else if (section.key === "calendar_changes" && section.items.length > 0) {
+      paragraphs.push(section.summary);
     }
   }
   if (report.collectorErrors.habitSummaries) {
@@ -538,6 +578,18 @@ function localDayWindow(
     end,
     key: `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`,
   };
+}
+
+/** All-day bounds are civil dates encoded at UTC midnight, not zoned instants. */
+function calendarDayPredicate(day: ReturnType<typeof localDayWindow>): string {
+  return `(
+    (is_all_day = true
+     AND LEFT(start_at, 10) <= ${sqlQuote(day.key)}
+     AND LEFT(end_at, 10) > ${sqlQuote(day.key)})
+    OR (is_all_day = false
+        AND start_at >= ${sqlQuote(day.start.toISOString())}
+        AND start_at < ${sqlQuote(day.end.toISOString())})
+  )`;
 }
 function unavailableSection(
   key: CheckinBriefingSection["key"],
@@ -849,11 +901,10 @@ async function collectTodaysMeetings(
   try {
     const rows = await executeRawSql(
       runtime,
-      `SELECT id, title, start_at, end_at
+      `SELECT id, title, start_at, end_at, status, is_all_day
          FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
-          AND start_at >= ${sqlQuote(day.start.toISOString())}
-          AND start_at < ${sqlQuote(day.end.toISOString())}
+          AND ${calendarDayPredicate(day)}
         ORDER BY start_at ASC
         LIMIT 50`,
     );
@@ -863,6 +914,8 @@ async function collectTodaysMeetings(
         title: toText(row.title) || "(untitled)",
         startAt: toText(row.start_at),
         endAt: toText(row.end_at),
+        status: toText(row.status),
+        isAllDay: toBoolean(row.is_all_day),
       })),
       error: null,
     };
@@ -1239,17 +1292,18 @@ async function collectCalendarChangeSection(
 ): Promise<CheckinBriefingSection> {
   const agentId = String(runtime.agentId);
   const day = localDayWindow(now, timezone);
+  const today = calendarDayPredicate(day);
   const sinceIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   try {
     const rows = await executeRawSql(
       runtime,
-      `SELECT title, start_at, end_at, status, html_link, updated_at
+      `SELECT id, title, start_at, end_at, status, is_all_day, html_link, updated_at,
+              ${today} AS is_today
          FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND side = 'owner'
           AND (
-            (start_at >= ${sqlQuote(day.start.toISOString())}
-             AND start_at < ${sqlQuote(day.end.toISOString())})
+            ${today}
             OR updated_at >= ${sqlQuote(sinceIso)}
           )
         ORDER BY
@@ -1257,14 +1311,7 @@ async function collectCalendarChangeSection(
           start_at ASC
         LIMIT 40`,
     );
-    const todayCount = rows.filter((row) => {
-      const startMs = parseMs(toText(row.start_at));
-      return (
-        startMs !== null &&
-        startMs >= day.start.getTime() &&
-        startMs < day.end.getTime()
-      );
-    }).length;
+    const todayCount = rows.filter((row) => toBoolean(row.is_today)).length;
     const changedCount = rows.filter(
       (row) => (parseMs(toText(row.updated_at)) ?? 0) >= Date.parse(sinceIso),
     ).length;
@@ -1287,6 +1334,13 @@ async function collectCalendarChangeSection(
         return {
           title,
           detail: `${toText(row.start_at)} - ${toText(row.end_at)}${status ? ` (${status})` : ""}`,
+          calendarEvent: {
+            id: toText(row.id),
+            startAt: toText(row.start_at),
+            endAt: toText(row.end_at),
+            status,
+            isAllDay: toBoolean(row.is_all_day),
+          },
           occurredAt: updatedAt ?? toText(row.start_at),
           href: toText(row.html_link) || null,
           reason,

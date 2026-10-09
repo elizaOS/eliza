@@ -248,6 +248,96 @@ describe("Zoom cloud import", () => {
     expect(participantCalls).toBe(101);
   });
 
+  it("imports rosters with guests and rejoined participants", async () => {
+    // Zoom leaves `id` blank for guests who joined without signing in and
+    // returns one row per join, so a signed-in user who rejoins repeats `id`.
+    const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+      if (url.includes("/participants")) {
+        return json({
+          participants: [
+            {
+              id: "user-alice",
+              user_id: "16778240",
+              name: "Alice",
+              join_time: "2026-08-05T12:00:00Z",
+              leave_time: "2026-08-05T12:10:00Z",
+            },
+            {
+              id: "",
+              user_id: "16779264",
+              name: "Guest Bob",
+              join_time: "2026-08-05T12:01:00Z",
+              leave_time: "2026-08-05T12:30:00Z",
+            },
+            {
+              id: "user-alice",
+              user_id: "16780288",
+              name: "Alice",
+              join_time: "2026-08-05T12:12:00Z",
+              leave_time: "2026-08-05T12:30:00Z",
+            },
+          ],
+        });
+      }
+      if (url.includes("/recordings")) {
+        return json({
+          uuid: "meeting-rejoin",
+          recording_files: [
+            {
+              id: "transcript-file",
+              file_type: "VTT",
+              recording_type: "audio_transcript",
+              download_url: "https://zoom.us/download/transcript-file",
+            },
+          ],
+        });
+      }
+      if (url.endsWith("/download/transcript-file")) {
+        return new Response(
+          "WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nAlice: Welcome back.\n\n2\n00:00:04.000 --> 00:00:06.000\nGuest Bob: Thanks.\n\n3\n00:00:07.000 --> 00:00:09.000\nCarol Lee: Dialed in late.\n",
+          { headers: { "content-type": "text/vtt" } },
+        );
+      }
+      return json({ uuid: "meeting-rejoin" });
+    };
+
+    const result = await importZoomCloudMeeting({
+      meetingId: "meeting-rejoin",
+      accessToken: TOKEN,
+      fetchImpl,
+    });
+
+    expect(validateMeetingArtifact(result.artifact)).toEqual({
+      valid: true,
+      errors: [],
+    });
+    expect(result.artifact.platformParticipants).toEqual([
+      {
+        id: "user-alice",
+        displayName: "Alice",
+        joinedAtMs: Date.parse("2026-08-05T12:00:00Z"),
+        leftAtMs: Date.parse("2026-08-05T12:30:00Z"),
+      },
+      {
+        id: "16779264",
+        displayName: "Guest Bob",
+        joinedAtMs: Date.parse("2026-08-05T12:01:00Z"),
+        leftAtMs: Date.parse("2026-08-05T12:30:00Z"),
+      },
+    ]);
+    expect(
+      result.artifact.transcriptSpans.map((span) => span.platformParticipantId),
+    ).toEqual(["user-alice", "16779264", undefined]);
+    // A VTT speaker missing from the roster keeps its own label.
+    expect(result.artifact.diarizedSpeakers[2]).toMatchObject({
+      name: { displayName: "Carol Lee" },
+    });
+    expect(result.artifact.diarizedSpeakers[2]).not.toHaveProperty(
+      "platformParticipantIds",
+    );
+  });
+
   it("fails closed when a streamed recording exceeds its byte quota", async () => {
     const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
       const url = String(input);

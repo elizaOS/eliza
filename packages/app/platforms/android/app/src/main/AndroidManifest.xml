@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
     <queries>
+        <!-- Capability detection must not confuse package invisibility with
+             absent Google Play services and replace a working FCM path. -->
+        <package android:name="com.google.android.gms" />
         <package android:name="${elizaChromiumPackageName}" />
         <package android:name="com.x8bit.bitwarden" />
         <package android:name="com.onepassword.android" />
@@ -24,6 +27,8 @@
         android:required="false" />
 
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:name=".ElizaApplication"
@@ -39,6 +44,21 @@
             android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"
             tools:node="remove" />
         <receiver android:name=".ReminderNotificationDismissReceiver" android:exported="false" />
+        <receiver android:name=".ElizaAlarmReceiver" android:exported="false" android:directBootAware="true">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <service android:name=".ElizaAlarmRingingService" android:exported="false"
+            android:directBootAware="true" android:foregroundServiceType="mediaPlayback" />
+        <activity android:name=".ElizaAlarmRingingActivity" android:exported="false"
+            android:directBootAware="true" android:showWhenLocked="true" android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
         <service android:name=".ElizaReminderMessagingService" android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
@@ -194,10 +214,22 @@
                 android:name="android.view.im"
                 android:resource="@xml/method" />
         </service>
-<service
+        <service
             android:name="ai.elizaos.app.GatewayConnectionService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <service android:name=".NativeNotificationConnectionService"
+            android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="remote-agent-notification-delivery-without-google-play-services" />
+        </service>
+        <receiver android:name=".NativeNotificationConnectionReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name="ai.elizaos.app.ElizaAgentService"
@@ -452,26 +484,6 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SET_ALARM" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SHOW_ALARMS" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SET_TIMER" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SHOW_TIMERS" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.DISMISS_ALARM" />
-                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 

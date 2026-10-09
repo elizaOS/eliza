@@ -2,12 +2,12 @@
  * Organizations service for managing organization data and credit balances.
  */
 
+import { apiKeysRepository } from "../../db/repositories/api-keys";
 import {
-  apiKeysRepository,
   type NewOrganization,
   type Organization,
   organizationsRepository,
-} from "../../db/repositories";
+} from "../../db/repositories/organizations";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";

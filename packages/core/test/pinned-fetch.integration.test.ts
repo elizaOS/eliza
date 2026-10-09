@@ -9,9 +9,15 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { fetchRemoteMedia, MediaFetchError } from "../src/media/fetch.ts";
 import { fetchWithSsrfGuard } from "../src/network/fetch-guard.ts";
 import { nodePinnedFetch } from "../src/network/node-pinned-fetch.ts";
 import { type LookupFn, SsrfBlockedError } from "../src/network/ssrf.ts";
+
+// S3-style 403 for an expired signed URL: 232 bytes, longer than the
+// 200-char error snippet.
+const ACCESS_DENIED_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>AccessDenied</Code><Message>Request has expired</Message><Expires>2026-10-06T00:00:00Z</Expires><ServerTime>2026-10-07T01:00:00Z</ServerTime><RequestId>7Q3XK2M9</RequestId></Error>`;
 
 describe("pinned fetch through a real local HTTP server", () => {
 	let server: Server;
@@ -25,6 +31,18 @@ describe("pinned fetch through a real local HTTP server", () => {
 				res.statusCode = 200;
 				res.setHeader("content-type", "image/png");
 				res.write(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+				return;
+			}
+			if (req.url === "/expired-signed-url") {
+				res.statusCode = 403;
+				res.setHeader("content-type", "application/xml");
+				res.end(ACCESS_DENIED_XML);
+				return;
+			}
+			if (req.url === "/stall-error") {
+				res.statusCode = 500;
+				res.setHeader("content-type", "text/plain");
+				res.write(`upstream exploded ${"x".repeat(1024)}`);
 				return;
 			}
 			if (req.url === "/loop") {
@@ -185,5 +203,37 @@ describe("pinned fetch through a real local HTTP server", () => {
 		} finally {
 			await guarded.release();
 		}
+	});
+
+	async function mediaFetchFailure(path: string): Promise<MediaFetchError> {
+		const failure = await fetchRemoteMedia({
+			url: `http://pinned.example.test:${port}${path}`,
+			lookupFn: async () => [{ address: "127.0.0.1", family: 4 }],
+			pinnedFetchImpl: nodePinnedFetch,
+			ssrfPolicy: { allowedHostnames: ["pinned.example.test"] },
+			maxBytes: 1024 * 1024,
+			timeoutMs: 5000,
+		}).catch((error: unknown) => error);
+		expect(failure).toBeInstanceOf(MediaFetchError);
+		expect((failure as MediaFetchError).code).toBe("http_error");
+		return failure as MediaFetchError;
+	}
+
+	it("keeps a truncated body snippet when a media error body is longer than the snippet", async () => {
+		const { message } = await mediaFetchFailure("/expired-signed-url");
+		expect(message).toContain(
+			'HTTP 403 Forbidden; body: <?xml version="1.0" encoding="UTF-8"?> <Error><Code>AccessDenied</Code><Message>Request has expired</Message>',
+		);
+		const snippet = message.split("; body: ")[1] ?? "";
+		expect(snippet).toHaveLength(200);
+		expect(snippet.endsWith("…")).toBe(true);
+	});
+
+	it("reads only a prefix of a media error body that never ends", async () => {
+		const { message } = await mediaFetchFailure("/stall-error");
+		expect(message).toContain(
+			"HTTP 500 Internal Server Error; body: upstream exploded xxx",
+		);
+		expect(message.split("; body: ")[1]).toHaveLength(200);
 	});
 });

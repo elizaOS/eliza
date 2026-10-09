@@ -320,6 +320,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
   if (method === 'POST' && pathname === '/api/triggers') {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
+    if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+      error(res, 'enabled must be a boolean', 400);
+      return true;
+    }
     const creator = typeof body.createdBy === 'string' ? trim(body.createdBy) || 'api' : 'api';
     const kindParsed = parseTriggerKindStrict(body.kind);
     if (kindParsed !== undefined && kindParsed.ok === false) {
@@ -349,7 +353,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       triggerType:
         typeof body.triggerType === 'string' ? (body.triggerType as TriggerType) : undefined,
       wakeMode: typeof body.wakeMode === 'string' ? (body.wakeMode as TriggerWakeMode) : undefined,
-      enabled: !!(body.enabled ?? true),
+      enabled: body.enabled ?? true,
       createdBy: creator,
       notifyOnOutcome: true,
       timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
@@ -605,6 +609,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     }
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
+    if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+      error(res, 'enabled must be a boolean', 400);
+      return true;
+    }
     if (body.eventFilter != null && !isRecord(body.eventFilter)) {
       error(res, 'eventFilter must be a JSON object', 400);
       return true;

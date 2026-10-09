@@ -20,6 +20,7 @@ import type {
 import {
   __resetDirectActionRoutingRulesForTests,
   getDirectActionRoutingRules,
+  promoteSubactionsToActions,
   registerCandidateActionBackstopRule,
   registerDirectActionRoutingRule,
   runResponseHandlerEvaluators,
@@ -30,7 +31,15 @@ import {
   type TestRuntimeResult,
 } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  ownerAlarmsAction,
+  ownerRemindersAction,
+  ownerRoutinesAction,
+  ownerTodosAction,
+} from "../../../plugin-personal-assistant/src/actions/owner-surfaces";
+import { scheduledTaskAction } from "../../../plugin-personal-assistant/src/actions/scheduled-task";
 import { createOwnerReminderDirectRoutingRule } from "../../../plugin-personal-assistant/src/lifeops/reminders/direct-routing.ts";
+import { createScheduledTaskCandidateBackstopRule } from "../../../plugin-personal-assistant/src/lifeops/scheduled-task/candidate-backstop";
 import { choiceAction } from "../features/basic-capabilities/actions/choice.ts";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
@@ -459,10 +468,7 @@ describe(CLAIM_EVALUATOR_NAME, () => {
     ).toMatchObject({ verdict: "reject", kind: "completed_side_effect" });
   });
 
-  // Ordered before the rule-registration case: the backstop registry is
-  // WeakMap-keyed on the shared real runtime, so this must observe the
-  // pre-registration state.
-  it("still reroutes (candidate-less) when no backstop rule matches", async () => {
+  it("still reroutes (candidate-less) when no request metadata matches", async () => {
     const evaluator = getClaimEvaluator();
     const patch = (await evaluator.evaluate(
       makeContext(
@@ -477,27 +483,81 @@ describe(CLAIM_EVALUATOR_NAME, () => {
     expect(patch.reply).toBeUndefined();
   });
 
-  it("reroutes to the planner with backstop-rule candidates and an honest ack", async () => {
-    const evaluator = getClaimEvaluator();
-    registerCandidateActionBackstopRule(testRuntime.runtime, {
-      actionNames: ["SCHEDULED_TASKS", "SCHEDULED_TASKS_CREATE"],
-      matches: (text) => /\breminders?\b/i.test(text),
-    });
-    const patch = (await evaluator.evaluate(
-      makeContext(
-        simpleReplyHandler("Done — I've set two reminders for your bill."),
-      ),
-    )) as ResponseHandlerPatch;
-    expect(patch.requiresTool).toBe(true);
-    expect(patch.addContexts).toEqual(["general"]);
-    expect(patch.addCandidateActions).toEqual([
-      "SCHEDULED_TASKS",
-      "SCHEDULED_TASKS_CREATE",
-    ]);
-    // The fabricated confirmation must never ship — cleared outright; the
-    // planner path owns whatever the user eventually sees.
-    expect(patch.clearReply).toBe(true);
-    expect(patch.reply).toBeUndefined();
+  it("recovers fabricated completion from current-request metadata without expanding the backstop family", async () => {
+    const isolated = await createTestRuntime();
+    try {
+      for (const parent of [
+        ownerRemindersAction,
+        ownerRoutinesAction,
+        ownerTodosAction,
+        ownerAlarmsAction,
+        scheduledTaskAction,
+      ]) {
+        for (const action of promoteSubactionsToActions(parent))
+          isolated.runtime.registerAction(action);
+      }
+      registerCandidateActionBackstopRule(
+        isolated.runtime,
+        createScheduledTaskCandidateBackstopRule(),
+      );
+      const evaluator = getClaimEvaluator();
+      for (const [userText, expected] of [
+        [
+          'Create a one-time reminder in 30 minutes with this exact message: "Review the demo checklist, ref qa196."',
+          ["OWNER_REMINDERS_CREATE"],
+        ],
+        [
+          "Create a reminder and an alarm",
+          ["OWNER_ALARMS_CREATE", "OWNER_REMINDERS_CREATE"],
+        ],
+      ] as const) {
+        const handler = simpleReplyHandler(
+          "Done. One-time reminder in 30 minutes with the exact message.",
+        );
+        handler.plan.replyEffectStatus = "applied";
+        handler.plan.intents = [];
+        const context = makeContext(handler, {
+          runtime: isolated.runtime,
+          userText,
+        });
+        expect(await evaluator.shouldRun(context)).toBe(true);
+        const patch = (await evaluator.evaluate(
+          context,
+        )) as ResponseHandlerPatch;
+        expect(patch.requiresTool).toBe(true);
+        expect(patch.clearReply).toBe(true);
+        expect(patch.reply).toBeUndefined();
+        expect(patch.addContexts).toEqual(["general"]);
+        if (expected.length === 1)
+          expect(patch.addCandidateActions).toEqual([...expected]);
+        else {
+          // Compound wording retains the shared retriever's alternatives,
+          // while preserving both requested owners and the create operation.
+          expect(patch.addCandidateActions).toEqual(
+            expect.arrayContaining([...expected]),
+          );
+          expect(
+            patch.addCandidateActions?.every((name) =>
+              name.endsWith("_CREATE"),
+            ),
+          ).toBe(true);
+        }
+      }
+      // A fabricated reply does not supply missing request intent.
+      for (const userText of ["", "zqxv", "help me not forget the bill"]) {
+        const patch = (await evaluator.evaluate(
+          makeContext(simpleReplyHandler("Done, I created your reminder."), {
+            runtime: isolated.runtime,
+            userText,
+          }),
+        )) as ResponseHandlerPatch;
+        expect(patch.requiresTool).toBe(true);
+        expect(patch.clearReply).toBe(true);
+        expect(patch.addCandidateActions).toBeUndefined();
+      }
+    } finally {
+      await isolated.cleanup();
+    }
   });
 });
 

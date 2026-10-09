@@ -43,6 +43,8 @@ import {
   groupParticipantLabel,
   redactGroupParticipantHandles,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/group-participant-labels";
+import { networkContextForPersonalSurface } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-context";
+import { prepareNetworkSharedTurnForAccount } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-turn";
 import { personalSharedAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import { prewarmPersonalSharedAgentTurnCaches } from "@elizaos/cloud-shared/lib/services/shared-runtime/prewarm-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
@@ -764,7 +766,7 @@ app.post("/", async (c) => {
 
     stage = "account_resolution";
     const accountStartedAt = performance.now();
-    let account: { userId: string; organizationId: string };
+    let account: { userId: string; organizationId: string; ownerName?: string };
     let accountResolution = "phone-query";
     let groupConversationId: string | undefined;
     let groupActorLabel: string | undefined;
@@ -1327,6 +1329,7 @@ app.post("/", async (c) => {
       account = {
         userId: delivery.userId,
         organizationId: delivery.organizationId,
+        ...(delivery.ownerName ? { ownerName: delivery.ownerName } : {}),
       };
       accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
@@ -1346,6 +1349,7 @@ app.post("/", async (c) => {
       account = {
         userId: delivery.userId,
         organizationId: delivery.organizationId,
+        ...(delivery.ownerName ? { ownerName: delivery.ownerName } : {}),
       };
       accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
@@ -1362,6 +1366,7 @@ app.post("/", async (c) => {
       account = {
         userId: delivery.userId,
         organizationId: delivery.organizationId,
+        ...(delivery.ownerName ? { ownerName: delivery.ownerName } : {}),
       };
       accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
@@ -1370,6 +1375,9 @@ app.post("/", async (c) => {
     const agent = personalSharedAgent({
       userId: account.userId,
       organizationId: account.organizationId,
+      ...(!groupConversationId && account.ownerName
+        ? { ownerName: account.ownerName }
+        : {}),
     });
     if (groupConversationId && !groupConversationId.startsWith("group:")) {
       throw new Error("Invalid Personal Shared group conversation authority");
@@ -1928,6 +1936,32 @@ app.post("/", async (c) => {
                 discordUserId: parsed.data.discordUserId,
               }
             : undefined;
+    // InternalAuth and the existing Personal delivery projection already own
+    // this phone/account binding. Network reads reuse their exact primary
+    // verified projection without authenticating the internal token as a user.
+    const networkObservation =
+      !isGroupMessage(parsed.data) &&
+      (parsed.data.platform === "twilio" ||
+        parsed.data.platform === "blooio") &&
+      capabilityText
+        ? await prepareNetworkSharedTurnForAccount(
+            c.env,
+            agent,
+            {
+              userId: account.userId,
+              organizationId: account.organizationId,
+              phoneNumber: parsed.data.phoneNumber,
+            },
+            undefined,
+            capabilityText,
+            c.req.raw.signal,
+          )
+        : undefined;
+    const trustedNetworkContext = networkContextForPersonalSurface(
+      networkObservation,
+      agent,
+      sharedFallback?.journalRoomId ?? agent.id,
+    );
     const result = groupConversationId
       ? await sharedRestMessageSend(
           agent,
@@ -1941,6 +1975,9 @@ app.post("/", async (c) => {
           groupTrustedDelivery,
           capabilityText,
           { type: ChannelType.GROUP, source: parsed.data.platform },
+          undefined,
+          c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers),
+          c.req.raw.signal,
         )
       : await sharedRestMessageSend(
           agent,
@@ -1957,6 +1994,9 @@ app.post("/", async (c) => {
           capabilityText,
           undefined,
           sharedFallback?.accountState,
+          c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers),
+          c.req.raw.signal,
+          trustedNetworkContext,
         );
     // The same values ship on `Server-Timing` below; a second uncorrelated
     // per-turn log on the hot path would only duplicate them.
@@ -2011,6 +2051,9 @@ app.post("/", async (c) => {
       stage,
       errorName,
       ...(failureCauseName ? { failureCauseName } : {}),
+      ...(error instanceof SharedRuntimeTurnError && error.failureDiagnostic
+        ? { failureDiagnostic: error.failureDiagnostic }
+        : {}),
       retryable,
       ...(error instanceof PersonalDeliveryAccountResolutionError
         ? { projectionFailure: error.projectionFailure }

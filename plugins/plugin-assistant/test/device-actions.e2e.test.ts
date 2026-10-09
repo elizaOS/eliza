@@ -3,12 +3,23 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { LifeOpsConnectorGrant } from "@elizaos/contracts";
 import {
   type ActionResult,
+  actionGateFailure,
   activeCommittedEffectReceipts,
+  ChannelType,
+  executePlannedToolCall,
   type Memory,
+  ModelType,
+  projectDeferredProviders,
+  resolveActionGateFailure,
+  type UUID,
+  validateToolArgs,
 } from "@elizaos/core";
-import { expect, test } from "vitest";
+import { renderContextObject } from "@elizaos/core/protocol";
+import { expect, test, vi } from "vitest";
+import { viewsAction } from "../../../packages/agent/src/actions/views.ts";
 import { handleApprovalRoute } from "../../../packages/agent/src/api/approval-routes.ts";
 import { readChatRequestPayload } from "../../../packages/agent/src/api/chat-routes.ts";
 import {
@@ -17,6 +28,10 @@ import {
   requiresDeviceIdentity,
 } from "../../../packages/agent/src/api/device-action-routes.ts";
 import { buildUserMessages } from "../../../packages/agent/src/api/server-helpers.ts";
+import {
+  closeRuntimeViewRegistry,
+  registerBuiltinViews,
+} from "../../../packages/agent/src/api/views-registry.ts";
 import { createMachineSession } from "../../../packages/app/src/api/auth/sessions.ts";
 import { resolveAuthorizedRouteRole } from "../../../packages/app/src/api/auth.ts";
 import { CORS_ALLOWED_HEADERS } from "../../../packages/app/src/api/server-cors.ts";
@@ -25,6 +40,36 @@ import {
   type DrizzleDatabase,
 } from "../../../packages/app/src/services/auth-store.ts";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
+import { calendarAction as standaloneCalendarAction } from "../../plugin-calendar/src/actions/calendar.ts";
+import { calendarSourcesAction } from "../../plugin-calendar/src/actions/calendar-sources.ts";
+import { __testing as appleCalendarTesting } from "../../plugin-calendar/src/apple-calendar.ts";
+import { calendarPlugin } from "../../plugin-calendar/src/plugin.ts";
+import { CalendarRepository } from "../../plugin-calendar/src/service/CalendarRepository.ts";
+import { CalendarService } from "../../plugin-calendar/src/service/CalendarService.ts";
+import { createDefaultCalendarHostGate } from "../../plugin-calendar/src/service/gate.ts";
+import { LinkedCalendarControlRepository } from "../../plugin-calendar/src/service/linked-calendar-control.ts";
+import {
+  LinkedCalendarRepository,
+  linkedCalendarSemanticHash,
+} from "../../plugin-calendar/src/service/linked-calendar-sync.ts";
+import type { GoogleCalendarEvent } from "../../plugin-google-workspace/src/types.ts";
+import { notesPlugin } from "../../plugin-notes/src/plugin.ts";
+import {
+  NOTES_SERVICE_TYPE,
+  NotesService,
+} from "../../plugin-notes/src/service.ts";
+import { NotesStore } from "../../plugin-notes/src/store.ts";
+import { calendarAction } from "../../plugin-personal-assistant/src/actions/calendar.ts";
+import { ownerDocumentsAction } from "../../plugin-personal-assistant/src/actions/document.ts";
+import { householdCoordinationAction } from "../../plugin-personal-assistant/src/actions/household-coordination.ts";
+import {
+  ownerAlarmsAction,
+  ownerGoalsAction,
+  ownerRemindersAction,
+  ownerRoutinesAction,
+  ownerTodosAction,
+} from "../../plugin-personal-assistant/src/actions/owner-surfaces.ts";
+import { stage1Response } from "../src/__tests__/stage1/fixtures.ts";
 import { runEvaluator } from "../src/runtime/evaluator.ts";
 import {
   APPROVAL_SERVICE,
@@ -36,6 +81,13 @@ import {
   withDeviceActionTurn,
 } from "../src/services/device-actions/service.ts";
 import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
+import {
+  projectDiscoverableContext,
+  readContextRequests,
+} from "../src/services/message/context-discovery.ts";
+import { stage1ResponseStateProviderNames } from "../src/services/message/provider-state.ts";
+import { collectDiscoveryCatalogActions } from "../src/services/message/tool-discovery.ts";
+import { runV5MessageRuntimeStage1 } from "../src/services/message.ts";
 
 // Real HTTP, session authentication, registered proposal tool, SQL migrations,
 // and on-disk PGlite. All identities and requested content are synthetic.
@@ -209,9 +261,28 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       });
       return { status: result.status, body: (await result.json()) as any };
     };
+    const enrolled = await request("/register", { label: "Fixture phone" });
+    expect(enrolled.status).toBe(200);
+    expect(enrolled.body).toMatchObject({ userTextFormatVersion: 1 });
+    const context = await request("/context");
+    expect(context.status).toBe(200);
+    expect(context.body).toMatchObject({
+      agentId: runtimeState.runtime.agentId,
+      subjectUserId: ownerA,
+      installationId: device,
+      enrollmentId: expect.any(String),
+      scope: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect((await request("/context")).body).toEqual(context.body);
     expect(
-      (await request("/register", { label: "Fixture phone" })).status,
-    ).toBe(200);
+      (await request("/context", undefined, "a", "c".repeat(64))).status,
+    ).toBe(409);
+    expect((await request("/context", undefined, "b", deviceKey)).status).toBe(
+      409,
+    );
+    expect(
+      (await request("/context", undefined, "invalid", deviceKey)).status,
+    ).toBe(401);
     expect(
       (await request("/register", { label: "Fixture phone" })).status,
     ).toBe(200);
@@ -246,6 +317,11 @@ test("device approval REST lifecycle survives restart and never duplicates claim
     expect(
       (await request("/register", { label: "Other owner phone" }, "b")).status,
     ).toBe(200);
+    const otherContext = await request("/context", undefined, "b");
+    expect(otherContext.status).toBe(200);
+    expect(otherContext.body.subjectUserId).toBe(ownerB);
+    expect(otherContext.body.scope).not.toBe(context.body.scope);
+    expect(otherContext.body.enrollmentId).not.toBe(context.body.enrollmentId);
     expect(
       (await request("/proposals", undefined, "b")).body.proposals,
     ).toEqual([]);
@@ -410,6 +486,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       removePgliteDirOnCleanup: false,
     });
     origin = await start();
+    expect((await request("/context")).body).toEqual(context.body);
     proposals = (await request("/proposals")).body.proposals;
     expect(proposals[0].state).toBe("approved");
     const claims = await Promise.all([
@@ -975,8 +1052,13 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       expect([...enrolled.body.capabilities].sort()).toEqual(
         [
           ...allCapabilities.split(","),
+          "calendar.create.v1",
+          "calendar.next-read.v1",
+          "notes.query.v1",
           "reminders.local-record.v2",
           "reminders.create.v1",
+          "clock.handoff.v2",
+          "clock.alarms.v1",
         ].sort(),
       );
       expect(enrolled.body.capabilities).toContain("clock.handoff.v1");
@@ -1020,7 +1102,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       const clockSchemas = operationSchema.anyOf!.filter((p) =>
         p.properties?.type.enum?.includes("clock_handoff"),
       );
-      expect(clockSchemas).toHaveLength(4);
+      expect(clockSchemas).toHaveLength(5);
       expect(clockSchemas.every((p) => p.additionalProperties === false)).toBe(
         true,
       );
@@ -1032,6 +1114,177 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       const clockRequest = (path: string, body?: unknown) =>
         request(path, body, "a", deviceKey, capability);
       const service = new DeviceActionService(runtimeState.runtime);
+      const broaderBefore = await service.list(credentials);
+      for (const operation of [
+        { type: "open_view", view: "home" },
+        { type: "create_note", title: "Scope fixture", body: "Exact fixture" },
+        {
+          type: "create_reminder",
+          title: "Scope fixture",
+          dueAt: "2030-01-01T12:00:00Z",
+        },
+        { type: "browser_navigate", url: "https://example.com/" },
+      ])
+        await expect(
+          service.propose(
+            c,
+            operation,
+            `clock-only-${operation.type}`,
+            "Scope fixture",
+          ),
+        ).rejects.toThrow("capability unavailable");
+      expect((await service.list(credentials)).map((item) => item.id)).toEqual(
+        broaderBefore.map((item) => item.id),
+      );
+      expect(
+        (await service.list(c)).every(
+          (item) => item.payload.operation.type === "clock_handoff",
+        ),
+      ).toBe(true);
+      const globalSchema = JSON.stringify(proposeDeviceAction.parameters);
+      const clockContext = await withDeviceActionTurn(
+        runtimeState.runtime,
+        c,
+        () =>
+          createV5MessageContextObject({
+            runtime: runtimeState.runtime,
+            message: {
+              id: randomUUID(),
+              roomId: randomUUID(),
+              entityId: ownerA,
+              agentId: runtimeState.runtime.agentId,
+              content: {
+                text: "Go home.",
+                source: "client_chat",
+                channelType: "DM",
+                metadata: { uiView: "chat", uiViewPath: "/chat" },
+              },
+            } as Memory,
+            state: { values: {}, data: {}, text: "" },
+            selectedContexts: ["general"],
+            includeTools: true,
+            userRoles: ["OWNER"],
+            preselectedActions: [proposeDeviceAction],
+          }),
+      );
+      const capabilityInstruction = clockContext.events.find(
+        (event) => event.id === "authenticated-phone-capability",
+      );
+      const nativeGuidance =
+        capabilityInstruction?.type === "instruction"
+          ? capabilityInstruction.content
+          : undefined;
+      expect(nativeGuidance).not.toContain("candidateActionNames");
+      expect(nativeGuidance).toContain(
+        "select general planning and pending effect status",
+      );
+      expect(nativeGuidance).toContain(
+        'DISCOVER_ACTIONS with names=["PROPOSE_DEVICE_ACTION"]',
+      );
+      expect(nativeGuidance).toContain("if that exact tool is not loaded");
+      expect(nativeGuidance).toContain(
+        'Use operation={"type":"clock_handoff","action":"show"} to open Android Clock alarms without creating or changing alarms.',
+      );
+      expect(nativeGuidance).toContain(
+        "show is not generic open_view or VIEWS_SHOW",
+      );
+      expect(nativeGuidance).toContain(
+        "Supported Clock actions are set, show, dismiss and snooze.",
+      );
+      expect(
+        [
+          ...new Set(
+            clockSchemas.map((branch) => branch.properties?.action.enum?.[0]),
+          ),
+        ].sort(),
+      ).toEqual(["dismiss", "set", "show", "snooze"]);
+      for (const capabilities of [
+        undefined,
+        [],
+        ["unknown.v1"],
+        ["clock.handoff.v2"],
+        ["clock.handoff.v1", "notes.local-record.v1"],
+      ]) {
+        const currentContext = await withDeviceActionTurn(
+          runtimeState.runtime,
+          { ...credentials, capabilities },
+          () =>
+            createV5MessageContextObject({
+              runtime: runtimeState.runtime,
+              message: {
+                id: randomUUID(),
+                roomId: randomUUID(),
+                entityId: ownerA,
+                agentId: runtimeState.runtime.agentId,
+                content: {
+                  text: "Open Android Clock alarms.",
+                  source: "client_chat",
+                },
+              } as Memory,
+              state: { values: {}, data: {}, text: "" },
+              selectedContexts: ["general"],
+              includeTools: true,
+              userRoles: ["OWNER"],
+              preselectedActions: [proposeDeviceAction],
+            }),
+        );
+        const instruction = currentContext.events.find(
+          (event) => event.id === "authenticated-phone-capability",
+        );
+        const guidance =
+          instruction?.type === "instruction" ? instruction.content : "";
+        const tool = currentContext.events.find(
+          (event) =>
+            event.type === "tool" &&
+            event.tool.name === "PROPOSE_DEVICE_ACTION",
+        );
+        const branches =
+          tool?.type === "tool"
+            ? tool.tool.parameters?.properties?.operation.anyOf
+            : [];
+        const clockSupported =
+          capabilities?.some(
+            (value) =>
+              value === "clock.handoff.v1" || value === "clock.handoff.v2",
+          ) === true;
+        expect(
+          guidance.includes(
+            'Use operation={"type":"clock_handoff","action":"show"}',
+          ),
+        ).toBe(clockSupported);
+        if (clockSupported) {
+          expect(
+            branches?.some((branch) =>
+              branch.properties?.type.enum?.includes("clock_handoff"),
+            ),
+          ).toBe(true);
+        } else {
+          // Legacy broad schemas are unchanged; capability admission still rejects Clock.
+          await expect(
+            service.propose(
+              { ...credentials, capabilities },
+              { type: "clock_handoff", action: "show" },
+              `unsupported-clock-show-${String(capabilities)}`,
+              "Unsupported scope fixture",
+            ),
+          ).rejects.toThrow("capability unavailable");
+        }
+      }
+      const inferredClock = clockContext.events.find(
+        (event: any) =>
+          event.type === "tool" && event.tool.name === "PROPOSE_DEVICE_ACTION",
+      ) as any;
+      expect(
+        inferredClock.tool.parameters.properties.operation.anyOf.every(
+          (branch: any) => branch.properties.type.enum[0] === "clock_handoff",
+        ),
+      ).toBe(true);
+      expect(
+        inferredClock.tool.parameters.properties.operation.anyOf.some(
+          (branch: any) => branch.properties.days,
+        ),
+      ).toBe(false);
+      expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(globalSchema);
       const set = {
         type: "clock_handoff",
         action: "set",
@@ -1050,6 +1303,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         operation: unknown,
         context: unknown,
         operationKey = randomUUID(),
+        capabilities = capability,
       ) => {
         mapsActionParameters = {
           operation,
@@ -1062,7 +1316,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
             authorization: `Bearer ${sessions.a}`,
             "x-eliza-device-id": device,
             "x-eliza-device-key": deviceKey,
-            "x-eliza-device-capabilities": capability,
+            "x-eliza-device-capabilities": capabilities,
             "content-type": "application/json",
           },
           body: JSON.stringify({
@@ -1095,6 +1349,8 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         { type: "clock_handoff", action: "dismiss", alarmId: "other" },
         { type: "clock_handoff", action: "snooze", snoozeMinutes: 0 },
         { type: "clock_handoff", action: "snooze", snoozeMinutes: 61 },
+        { ...set, days: [] },
+        { ...set, days: [1, 2, 3, 4, 5, 6, 7] },
       ])
         expect((await proposeOverHttp(operation, observation)).status).toBe(
           409,
@@ -1237,8 +1493,622 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           expect(historical.body.action.data.executed).toBe(false);
         }
       }
+      const repeatCapability = "clock.handoff.v2";
+      const repeatRequest = (path: string, body?: unknown) =>
+        request(path, body, "a", deviceKey, repeatCapability);
+      for (const days of [
+        null,
+        "weekdays",
+        ["2", "3"],
+        [0],
+        [8],
+        [2.5],
+        [2, 2],
+        [1, 2, 3, 4, 5, 6, 7, 1],
+      ]) {
+        expect(
+          (
+            await proposeOverHttp(
+              { ...set, days },
+              observation,
+              randomUUID(),
+              repeatCapability,
+            )
+          ).status,
+        ).toBe(409);
+      }
+      const repeatSetSchema = clockSchemas.find((schema) =>
+        schema.required?.includes("days"),
+      );
+      expect(repeatSetSchema?.properties?.days.items?.enum).toEqual([
+        1, 2, 3, 4, 5, 6, 7,
+      ]);
+      const repeatDigests = new Set<string>();
+      for (const days of [[], [1, 2, 3, 4, 5, 6, 7], [2, 3, 4, 5, 6]]) {
+        const operation = { ...set, hour: 9, minute: 0, days };
+        const key = randomUUID();
+        const proposed = await proposeOverHttp(
+          operation,
+          observation,
+          key,
+          repeatCapability,
+        );
+        expect(proposed.status).toBe(200);
+        const id = proposed.body.action.data.proposalId;
+        const pending = (await repeatRequest("/proposals")).body.proposals.find(
+          (proposal: any) => proposal.id === id,
+        );
+        expect(pending.payload.operation).toEqual(operation);
+        repeatDigests.add(pending.digest);
+        expect(
+          (
+            await repeatRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await clockRequest(`/proposals/${id}/decision`, {
+              digest: pending.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await repeatRequest(`/proposals/${id}/decision`, {
+              digest: pending.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        expect(
+          (
+            await clockRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        const claimed = await repeatRequest(`/proposals/${id}/claim`, {
+          digest: pending.digest,
+        });
+        expect(claimed.status).toBe(200);
+        expect(claimed.body.proposal.payload.operation.days).toEqual(days);
+        const body = {
+          digest: pending.digest,
+          attemptId: claimed.body.proposal.execution.attemptId,
+          receipt: {
+            outcome: "applied",
+            operationId: randomUUID(),
+            result: { kind: "clock-handoff", action: "set", status: "opened" },
+          },
+        };
+        expect(
+          (await clockRequest(`/proposals/${id}/receipt`, body)).status,
+        ).toBe(409);
+        const recorded = await repeatRequest(`/proposals/${id}/receipt`, body);
+        expect(recorded.status).toBe(200);
+        expect(recorded.body.proposal.payload.operation.days).toEqual(days);
+        expect(
+          (await repeatRequest(`/proposals/${id}/receipt`, body)).status,
+        ).toBe(200);
+        const historical = await proposeOverHttp(
+          operation,
+          undefined,
+          key,
+          repeatCapability,
+        );
+        expect(historical.status).toBe(200);
+        expect(historical.body.action.data.executed).toBe(false);
+        expect(historical.body.action.text).toContain(
+          "not proof of its final alarm state",
+        );
+        expect(
+          (
+            await proposeOverHttp(
+              { ...operation, days: days.length ? [] : [2] },
+              observation,
+              key,
+              repeatCapability,
+            )
+          ).status,
+        ).toBe(409);
+      }
+      expect(repeatDigests.size).toBe(3);
+      const ownedCapability = "clock.alarms.v1";
+      const alarmId = randomUUID();
+      const ownedFields = {
+        hour: 9,
+        minute: 0,
+        label: "Eliza alarm fixture",
+        timeZone: "UTC",
+        days: [2, 3, 4, 5, 6],
+      };
+      const ownedContext = {
+        ...observation,
+        alarmsStatus: "available",
+        alarmsObservedAt: Date.now(),
+        alarmsRevision: 12,
+        alarms: [
+          {
+            id: alarmId,
+            ...ownedFields,
+            enabled: true,
+            nextAt: Date.now() + 60_000,
+            scheduleState: "scheduled",
+            generation: 1,
+            lastOutcome: "",
+          },
+        ],
+      };
+      const ownedRequest = (path: string, body?: unknown) =>
+        request(path, body, "a", deviceKey, ownedCapability);
+      const ownedSet = { type: "clock_alarm", action: "set", ...ownedFields };
+      for (const context of [
+        undefined,
+        { ...ownedContext, alarmsStatus: "stale" },
+        { ...ownedContext, alarmsStatus: "unavailable" },
+        { ...ownedContext, alarmsRevision: -1 },
+        {
+          ...ownedContext,
+          alarms: [ownedContext.alarms[0], ownedContext.alarms[0]],
+        },
+      ])
+        expect(
+          (
+            await proposeOverHttp(
+              ownedSet,
+              context,
+              randomUUID(),
+              ownedCapability,
+            )
+          ).status,
+        ).toBe(409);
+      for (const operation of [
+        { ...ownedSet, days: undefined },
+        { ...ownedSet, days: [2, 2] },
+        { type: "clock_alarm", action: "delete", alarmId: randomUUID() },
+        { type: "clock_alarm", action: "dismiss" },
+        { type: "clock_alarm", action: "snooze", alarmId, minutes: 61 },
+        { type: "clock_alarm", action: "enable", alarmId, enabled: "true" },
+        { type: "clock_handoff", action: "show" },
+      ])
+        expect(
+          (
+            await proposeOverHttp(
+              operation,
+              ownedContext,
+              randomUUID(),
+              ownedCapability,
+            )
+          ).status,
+        ).toBe(409);
+      expect(
+        (
+          await proposeOverHttp(
+            ownedSet,
+            ownedContext,
+            randomUUID(),
+            repeatCapability,
+          )
+        ).status,
+      ).toBe(409);
+      const fullSnapshot = {
+        ...ownedContext,
+        alarms: Array.from({ length: 21 }, (_, index) => ({
+          ...ownedContext.alarms[0],
+          id: randomUUID(),
+          label: `Exact label ${index}`,
+        })),
+      };
+      const ownedPlanner = await withDeviceActionTurn(
+        runtimeState.runtime,
+        { ...credentials, capabilities: [ownedCapability, capability] },
+        async () => {
+          const message = {
+            ...memory,
+            content: {
+              text: "Remind me to stretch",
+              metadata: {
+                uiTab: "other metadata retained",
+                clientDevice: { installationId: device, context: fullSnapshot },
+              },
+            },
+          };
+          const originalMessage = JSON.stringify(message);
+          expect(
+            stage1ResponseStateProviderNames(runtimeState.runtime, message, [
+              "OWNER",
+            ]),
+          ).toContain("CurrentElizaOwnedAlarmSnapshot");
+          const state = await runtimeState.runtime.composeState(
+            message,
+            ["CurrentElizaOwnedAlarmSnapshot"],
+            true,
+            true,
+          );
+          expect(
+            runtimeState.runtime.providers.some(
+              (provider) => provider.name === "CurrentElizaOwnedAlarmSnapshot",
+            ),
+          ).toBe(true);
+          const context = await createV5MessageContextObject({
+            runtime: runtimeState.runtime,
+            message,
+            state,
+            selectedContexts: ["general"],
+            includeTools: true,
+            userRoles: ["OWNER"],
+            preselectedActions: [proposeDeviceAction],
+          });
+          const name = "CurrentElizaOwnedAlarmSnapshot";
+          const source = context.events.find(
+            (event) => event.type === "provider" && event.name === name,
+          );
+          expect(source?.type).toBe("provider");
+          const sourceText =
+            source?.type === "provider" ? (source.text ?? "") : "";
+          const selectedSnapshot = fullSnapshot;
+          expect(
+            JSON.parse(sourceText.split("CurrentElizaOwnedAlarmSnapshot: ")[1]),
+          ).toEqual(selectedSnapshot);
+          expect(sourceText).toContain("Exact label 20");
+          const routing = projectDiscoverableContext(context, state);
+          const requested = readContextRequests(
+            { contextRequests: [name] },
+            routing.available,
+          );
+          expect(requested).toEqual([name]);
+          const phaseContexts = [routing.context];
+          for (const providerPhase of ["planning", "completion"] as const) {
+            const phaseContext = await createV5MessageContextObject({
+              runtime: runtimeState.runtime,
+              message,
+              state,
+              selectedContexts: ["general"],
+              includeTools: false,
+              providerPhase,
+              userRoles: ["OWNER"],
+            });
+            phaseContexts.push(
+              projectDeferredProviders({
+                ...phaseContext,
+                metadata: {
+                  ...phaseContext.metadata,
+                  providerDiscoveryEnabled: true,
+                  loadedContextProviders: [],
+                },
+              }).context,
+            );
+          }
+          for (const projected of phaseContexts) {
+            const text = renderContextObject(projected)
+              .promptSegments.map((segment) => segment.content)
+              .join("\n");
+            expect(text).toContain("Full current Eliza alarm records");
+            expect(text).not.toContain("Exact label 0");
+            expect(text).not.toContain("Exact label 20");
+            expect(text).not.toContain("Update replaces all schedule fields");
+          }
+          const restored = projectDiscoverableContext(
+            context,
+            state,
+            new Set(requested),
+          ).context;
+          expect(
+            restored.events.find(
+              (event) => event.type === "provider" && event.name === name,
+            ),
+          ).toEqual(source);
+          const restoredPlanning = projectDeferredProviders({
+            ...context,
+            metadata: {
+              ...context.metadata,
+              providerDiscoveryEnabled: true,
+              loadedContextProviders: requested,
+            },
+          }).context;
+          expect(
+            restoredPlanning.events.find(
+              (event) => event.type === "provider" && event.name === name,
+            ),
+          ).toEqual(source);
+          const withoutCapability = await withDeviceActionTurn(
+            runtimeState.runtime,
+            { ...credentials, capabilities: [capability] },
+            async () =>
+              runtimeState.runtime.composeState(message, [name], true, true),
+          );
+          expect(withoutCapability.data.providers?.[name]?.text ?? "").toBe("");
+          expect(JSON.stringify(message)).toBe(originalMessage);
+          const projectedMessage = context.events.find(
+            (event) =>
+              event.type === "message" && event.message.id === message.id,
+          );
+          expect(
+            projectedMessage?.type === "message" &&
+              projectedMessage.message.content,
+          ).toEqual({
+            ...message.content,
+            metadata: {
+              ...message.content.metadata,
+              clientDevice: {
+                ...message.content.metadata.clientDevice,
+                context: { providerReference: name },
+              },
+            },
+          });
+          expect(
+            renderContextObject(restored)
+              .promptSegments.map((segment) => segment.content)
+              .join("\n"),
+          ).toContain(JSON.stringify(fullSnapshot));
+          const fallback = await createV5MessageContextObject({
+            runtime: runtimeState.runtime,
+            message,
+            state: { values: {}, data: {}, text: "" },
+            userRoles: ["OWNER"],
+          });
+          expect(
+            renderContextObject(fallback)
+              .promptSegments.map((segment) => segment.content)
+              .join("\n"),
+          ).toContain("Exact label 20");
+          return context;
+        },
+      );
+      const ownedTool = ownedPlanner.events.find(
+        (event) =>
+          event.type === "tool" && event.tool.name === "PROPOSE_DEVICE_ACTION",
+      );
+      expect(
+        ownedTool?.type === "tool" &&
+          ownedTool.tool.parameters?.properties?.operation.anyOf.every(
+            (branch) => branch.properties?.type.enum?.[0] === "clock_alarm",
+          ),
+      ).toBe(true);
+      const ownedCases = [
+        ...[[], [1, 2, 3, 4, 5, 6, 7], [2, 3, 4, 5, 6], [2, 4, 6]].map(
+          (days) => ({ operation: { ...ownedSet, days }, status: "scheduled" }),
+        ),
+        {
+          operation: {
+            type: "clock_alarm",
+            action: "update",
+            alarmId,
+            ...ownedFields,
+          },
+          status: "updated",
+        },
+        {
+          operation: { type: "clock_alarm", action: "delete", alarmId },
+          status: "deleted",
+        },
+        {
+          operation: {
+            type: "clock_alarm",
+            action: "enable",
+            alarmId,
+            enabled: true,
+          },
+          status: "enabled",
+        },
+        {
+          operation: {
+            type: "clock_alarm",
+            action: "enable",
+            alarmId,
+            enabled: false,
+          },
+          status: "disabled",
+        },
+        {
+          operation: { type: "clock_alarm", action: "dismiss", alarmId },
+          status: "dismissed",
+        },
+        {
+          operation: {
+            type: "clock_alarm",
+            action: "snooze",
+            alarmId,
+            minutes: 10,
+          },
+          status: "snoozed",
+        },
+        { operation: { type: "clock_alarm", action: "show" }, status: "shown" },
+      ];
+      for (const { operation, status } of ownedCases) {
+        const key = randomUUID();
+        const currentContext =
+          operation.action === "update"
+            ? {
+                ...ownedContext,
+                alarms: [
+                  {
+                    ...ownedContext.alarms[0],
+                    enabled: false,
+                    nextAt: null,
+                    scheduleState: "disabled",
+                  },
+                ],
+              }
+            : ownedContext;
+        const proposed = await proposeOverHttp(
+          operation,
+          currentContext,
+          key,
+          ownedCapability,
+        );
+        expect(proposed.status).toBe(200);
+        expect(proposed.body.metadata.clientDevice.context).toEqual(
+          currentContext,
+        );
+        // Pending proposals still require the authenticated device decision and
+        // claim. These pause flags attest neither a visible dialog nor delivery.
+        expect(proposed.body.action.data).toMatchObject({
+          state: "pending",
+          executed: false,
+          approvalRequired: true,
+        });
+        if (operation.action === "dismiss" || operation.action === "snooze") {
+          expect(proposed.body.action.data.awaitingDeviceExecution).toBe(true);
+          expect(proposed.body.action.data).not.toHaveProperty(
+            "awaitingUserInput",
+          );
+        } else {
+          expect(proposed.body.action.data.awaitingUserInput).toBe(true);
+          expect(proposed.body.action.data).not.toHaveProperty(
+            "awaitingDeviceExecution",
+          );
+        }
+        expect(proposed.body.action.text).toContain(
+          "This tool has performed no device operation.",
+        );
+        expect(proposed.body.action.data).not.toHaveProperty(
+          "requiresConfirmation",
+        );
+        if (operation.action === "dismiss" || operation.action === "snooze") {
+          expect(proposed.body.action.text).toContain(
+            "recorded and pending for the phone",
+          );
+          expect(proposed.body.action.text).toContain(
+            "may request manual review",
+          );
+          expect(proposed.body.action.text).toContain(
+            "do not prove a visible approval dialog",
+          );
+          expect(proposed.body.action.text).toContain(
+            "Await an applied native receipt before claiming completion",
+          );
+        } else {
+          expect(proposed.body.action.text).toBe(
+            "Durable device proposal state: pending. This tool has performed no device operation.",
+          );
+        }
+        const id = proposed.body.action.data.proposalId;
+        const pending = (await ownedRequest("/proposals")).body.proposals.find(
+          (item: any) => item.id === id,
+        );
+        expect(pending.payload.clockContextRevision).toBe(12);
+        expect(pending.payload.operation).toEqual(operation);
+        expect(
+          (
+            await ownedRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await clockRequest(`/proposals/${id}/decision`, {
+              digest: pending.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await ownedRequest(`/proposals/${id}/decision`, {
+              digest: pending.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        const claimed = await ownedRequest(`/proposals/${id}/claim`, {
+          digest: pending.digest,
+        });
+        expect(claimed.status).toBe(200);
+        expect(
+          (
+            await ownedRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        const operationId = randomUUID();
+        const result = {
+          kind: "clock-alarm",
+          action: operation.action,
+          status,
+          ...(operation.action === "show"
+            ? {}
+            : { alarmId: operation.action === "set" ? operationId : alarmId }),
+          ...(["show", "delete"].includes(operation.action)
+            ? {}
+            : {
+                nextAt:
+                  status === "disabled" || status === "updated"
+                    ? null
+                    : Date.now() + 60_000,
+              }),
+        };
+        const receipt = {
+          digest: pending.digest,
+          attemptId: claimed.body.proposal.execution.attemptId,
+          receipt: { outcome: "applied", operationId, result },
+        };
+        expect(
+          (
+            await ownedRequest(`/proposals/${id}/receipt`, {
+              ...receipt,
+              receipt: {
+                ...receipt.receipt,
+                result: { ...result, status: "opened" },
+              },
+            })
+          ).status,
+        ).toBe(409);
+        if (operation.action !== "show")
+          expect(
+            (
+              await ownedRequest(`/proposals/${id}/receipt`, {
+                ...receipt,
+                receipt: {
+                  ...receipt.receipt,
+                  result: { ...result, alarmId: randomUUID() },
+                },
+              })
+            ).status,
+          ).toBe(409);
+        if (["scheduled", "enabled", "snoozed"].includes(status))
+          expect(
+            (
+              await ownedRequest(`/proposals/${id}/receipt`, {
+                ...receipt,
+                receipt: {
+                  ...receipt.receipt,
+                  result: { ...result, nextAt: null },
+                },
+              })
+            ).status,
+          ).toBe(409);
+        const recorded = await ownedRequest(
+          `/proposals/${id}/receipt`,
+          receipt,
+        );
+        expect(recorded.status).toBe(200);
+        expect(recorded.body.proposal.execution.providerReceipt.result).toEqual(
+          result,
+        );
+        const historical = await proposeOverHttp(
+          operation,
+          undefined,
+          key,
+          ownedCapability,
+        );
+        expect(historical.status).toBe(200);
+        expect(historical.body.action.data).toMatchObject({
+          proposalId: id,
+          executed: false,
+          result,
+        });
+        expect(historical.body.action.text).toContain(
+          "not a current alarm read",
+        );
+      }
       console.info(
-        "Clock HTTP/PGlite: 5 outcome lifecycles, capability/schema/timezone rejection, duplicate claims and historical opened-only receipt PASS",
+        "Clock HTTP/PGlite: legacy handoffs plus owned alarm lifecycle, complete snapshots, revision binding, targeted receipts, capability loss and immutable replay PASS",
       );
     }
     {
@@ -2484,6 +3354,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       );
     }
     expect((await request("/revoke", {})).status).toBe(200);
+    expect((await request("/context")).status).toBe(409);
     expect((await request("/proposals")).status).toBe(409);
     expect(
       (await request("/register", { label: "Reused revoked installation" }))
@@ -2497,3 +3368,1115 @@ test("device approval REST lifecycle survives restart and never duplicates claim
     await rm(directory, { recursive: true, force: true });
   }
 }, 120_000);
+
+// Complete Core Stage-1, discovery, planner, evaluator and reply-egress path
+// with a real durable queue. Only model judgments are offline fixtures.
+test("Clock-only enrollment scopes actual planner discovery and preserves pending reply egress", async () => {
+  const fixture = await createRealTestRuntime({
+    characterName: "ClockScopePipelineFixture",
+  });
+  const runtime = fixture.runtime;
+  const credential = {
+    subjectUserId: runtime.agentId,
+    installationId: randomUUID(),
+    deviceKey: "b".repeat(64),
+    capabilities: ["clock.handoff.v1"],
+  };
+  const service = new DeviceActionService(runtime);
+  let navigationServer: Server | undefined;
+  const originalPort = process.env.ELIZA_API_PORT;
+  try {
+    await service.register(credential, "Clock scope fixture");
+    runtime.registerAction(proposeDeviceAction);
+    runtime.registerAction(viewsAction);
+    for (const action of [
+      calendarAction,
+      ownerDocumentsAction,
+      ownerRemindersAction,
+    ])
+      runtime.registerAction(action);
+    registerBuiltinViews(runtime, { indexEmbeddings: false });
+    const roomId = randomUUID() as UUID;
+    const worldId = randomUUID() as UUID;
+    await runtime.createWorld({
+      id: worldId,
+      name: "Clock scope",
+      agentId: runtime.agentId,
+      metadata: { ownership: { ownerId: runtime.agentId } },
+    });
+    await runtime.createRoom({
+      id: roomId,
+      worldId,
+      name: "Clock scope",
+      source: "client_chat",
+      type: ChannelType.DM,
+    });
+    const globalSchema = JSON.stringify(proposeDeviceAction.parameters);
+    const pendingText =
+      "The Clock proposal is awaiting your approval on the phone.";
+    const outputs: unknown[] = [
+      stage1Response({
+        contexts: ["general"],
+        intents: ["Open Clock after my approval"],
+        candidateActionNames: ["PROPOSE_DEVICE_ACTION"],
+        extra: { replyEffectStatus: "none" },
+      }),
+      {
+        text: "",
+        toolCalls: [
+          {
+            id: "discover-clock",
+            name: "DISCOVER_ACTIONS",
+            arguments: {
+              names: [
+                "PROPOSE_DEVICE_ACTION",
+                "VIEWS",
+                "CALENDAR",
+                "OWNER_DOCUMENTS",
+                "OWNER_REMINDERS",
+              ],
+              eliza_turn_scope: "more_work_pending",
+            },
+          },
+        ],
+      },
+      {
+        text: "",
+        toolCalls: [
+          {
+            id: "propose-clock",
+            name: "PROPOSE_DEVICE_ACTION",
+            arguments: {
+              operation: { type: "clock_handoff", action: "show" },
+              operationKey: "scope-pending",
+              reason: "Open requested Clock view after approval",
+              eliza_turn_scope: "final",
+            },
+          },
+        ],
+      },
+      JSON.stringify({
+        thought: "A durable proposal exists; no Clock request was executed.",
+        decision: "FINISH",
+        success: true,
+        requestFullyCovered: false,
+        messageToUser: pendingText,
+        replyEffectStatus: "non_applied",
+      }),
+    ];
+    const calls: Array<{ type: string; parameters: unknown }> = [];
+    const useModel = vi
+      .spyOn(runtime, "useModel")
+      .mockImplementation(async (type, parameters) => {
+        calls.push({ type, parameters });
+        if (!outputs.length) throw new Error(`Unexpected model call: ${type}`);
+        return outputs.shift() as never;
+      });
+    const message: Memory = {
+      id: randomUUID(),
+      roomId,
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      content: {
+        text: "Open Clock after my approval.",
+        source: "client_chat",
+        channelType: ChannelType.DM,
+        metadata: {
+          uiView: "chat",
+          uiTab: "chat",
+          uiViewPath: "/chat",
+          uiViewCapabilities: [],
+          uiViewActionNames: [],
+          viewClientId: "fixture-renderer",
+          clientDevice: {
+            context: {
+              sensitive: false,
+              revision: 1,
+              timeZone: "America/Los_Angeles",
+            },
+          },
+        },
+      },
+    };
+    const pending = await withDeviceActionTurn(runtime, credential, () =>
+      runV5MessageRuntimeStage1({
+        runtime,
+        message,
+        state: { values: { availableContexts: "general" }, data: {}, text: "" },
+        responseId: randomUUID() as UUID,
+      }),
+    );
+    expect(outputs).toHaveLength(0);
+    expect(pending.kind).toBe("planned_reply");
+    if (pending.kind === "planned_reply") {
+      expect(
+        pending.result.responseContent?.text,
+        JSON.stringify(pending.result.actionResults),
+      ).toBe(pendingText);
+      expect(pending.result.requestFulfilled).toBe(false);
+      expect(pending.result.responseContent?.transcriptVisibility).not.toBe(
+        "internal",
+      );
+    }
+    const proposals = await service.list(credential);
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0].state).toBe("pending");
+    expect(proposals[0].execution).toBeNull();
+    const plannerCalls = calls.filter(
+      ({ type }) => type === ModelType.ACTION_PLANNER,
+    );
+    expect(plannerCalls).toHaveLength(2);
+    for (const { parameters } of plannerCalls) {
+      const tools = (
+        parameters as { tools: Array<{ name: string; parameters: any }> }
+      ).tools;
+      const native = tools.find(({ name }) => name === "PROPOSE_DEVICE_ACTION");
+      expect(native).toBeDefined();
+      expect(
+        native!.parameters.properties.operation.anyOf.every(
+          (branch: any) => branch.properties.type.enum[0] === "clock_handoff",
+        ),
+      ).toBe(true);
+      expect(
+        native!.parameters.properties.operation.anyOf.some(
+          (branch: any) => branch.properties.days,
+        ),
+      ).toBe(false);
+    }
+    const reloaded = (
+      plannerCalls[1].parameters as { tools: Array<{ name: string }> }
+    ).tools;
+    expect(reloaded.map(({ name }) => name)).toEqual(
+      expect.arrayContaining([
+        "VIEWS",
+        "CALENDAR",
+        "OWNER_DOCUMENTS",
+        "OWNER_REMINDERS",
+      ]),
+    );
+    expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(globalSchema);
+    const navigationBodies: Array<Record<string, unknown>> = [];
+    navigationServer = createServer(async (req, res) => {
+      let raw = "";
+      for await (const chunk of req) raw += chunk;
+      const body = JSON.parse(raw);
+      navigationBodies.push(body);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          viewId: "chat",
+          completedActionHandoffId: body.completedActionHandoffId,
+          completedActionDelivered: true,
+        }),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      navigationServer!.listen(0, "127.0.0.1", resolve),
+    );
+    const address = navigationServer.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing fixture port");
+    process.env.ELIZA_API_PORT = String(address.port);
+    outputs.push(
+      stage1Response({
+        contexts: ["general"],
+        intents: ["Show Home"],
+        candidateActionNames: ["VIEWS"],
+        extra: { replyEffectStatus: "none" },
+      }),
+      {
+        text: "",
+        toolCalls: [
+          {
+            id: "show-home",
+            name: "VIEWS",
+            arguments: {
+              action: "show",
+              view: "home",
+              eliza_turn_scope: "final",
+            },
+          },
+        ],
+      },
+      JSON.stringify({
+        decision: "FINISH",
+        success: true,
+        thought: "The originating renderer acknowledged navigation.",
+        messageToUser: "Home is open.",
+        replyEffectStatus: "non_applied",
+      }),
+    );
+    const errors = vi.spyOn(runtime, "reportError");
+    const navigation = await withDeviceActionTurn(runtime, credential, () =>
+      runV5MessageRuntimeStage1({
+        runtime,
+        message: {
+          ...message,
+          id: randomUUID(),
+          content: {
+            ...message.content,
+            text: "Go home.",
+            metadata: {
+              ...message.content.metadata,
+              uiView: "notes",
+              uiTab: "notes",
+              uiViewPath: "/notes",
+            },
+          },
+        },
+        state: { values: { availableContexts: "general" }, data: {}, text: "" },
+        responseId: randomUUID() as UUID,
+      }),
+    );
+    expect(outputs).toHaveLength(0);
+    expect(
+      navigationBodies,
+      JSON.stringify(
+        navigation.kind === "planned_reply"
+          ? navigation.result.actionResults
+          : navigation.kind,
+      ),
+    ).toHaveLength(1);
+    expect(navigationBodies[0].clientId).toBe("fixture-renderer");
+    expect(navigationBodies[0]).not.toHaveProperty("closeChat");
+    const navigationWire = calls
+      .filter(({ type }) => type === ModelType.ACTION_PLANNER)
+      .at(-1)!.parameters as { tools: Array<{ name: string }> };
+    expect(navigationWire.tools.map(({ name }) => name)).toContain("VIEWS");
+    expect(navigationWire.tools.map(({ name }) => name)).not.toContain(
+      "PROPOSE_DEVICE_ACTION",
+    );
+    expect(
+      navigation.kind,
+      JSON.stringify(
+        errors.mock.calls.map(([where, error]) => ({
+          where,
+          error: String(error),
+        })),
+      ),
+    ).toBe("planned_reply");
+    if (navigation.kind === "planned_reply")
+      expect(navigation.result.responseContent?.text).toBe("Home is open.");
+    expect((await service.list(credential)).map((item) => item.id)).toEqual(
+      proposals.map((item) => item.id),
+    );
+    useModel.mockRestore();
+  } finally {
+    if (originalPort === undefined) delete process.env.ELIZA_API_PORT;
+    else process.env.ELIZA_API_PORT = originalPort;
+    if (navigationServer)
+      await new Promise<void>((resolve, reject) =>
+        navigationServer!.close((error) => (error ? reject(error) : resolve())),
+      );
+    closeRuntimeViewRegistry(runtime);
+    await fixture.cleanup();
+  }
+});
+
+test.each([
+  { action: "dismiss", scope: "final", verdict: "FINISH" },
+  { action: "snooze", scope: "more_work_pending", verdict: "CONTINUE" },
+])(
+  "owned ringing pipeline settles pending device work once: %j",
+  async ({ action, scope, verdict }) => {
+    const fixture = await createRealTestRuntime({
+      characterName: "PendingDevicePipeline",
+      withLLM: false,
+    });
+    const runtime = fixture.runtime;
+    const credential = {
+      subjectUserId: runtime.agentId,
+      installationId: randomUUID(),
+      deviceKey: "c".repeat(64),
+      capabilities: ["clock.alarms.v1"],
+    };
+    const service = new DeviceActionService(runtime);
+    const alarmId = randomUUID();
+    const pendingText = "Your alarm control request is queued for the phone.";
+    const operation =
+      action === "snooze"
+        ? { type: "clock_alarm", action, alarmId, minutes: 5 }
+        : { type: "clock_alarm", action, alarmId };
+    const outputs: unknown[] = [
+      stage1Response({
+        contexts: ["general"],
+        intents: ["Control my current alarm"],
+        candidateActionNames: ["PROPOSE_DEVICE_ACTION"],
+        extra: { replyEffectStatus: "none" },
+      }),
+      {
+        text: "",
+        toolCalls: [
+          {
+            id: "control",
+            name: "PROPOSE_DEVICE_ACTION",
+            arguments: {
+              operation,
+              operationKey: "owned-pending-control",
+              reason: "Requested ringing control",
+              eliza_turn_scope: scope,
+            },
+          },
+        ],
+      },
+      JSON.stringify({
+        decision: verdict,
+        success: false,
+        requestFullyCovered: false,
+        messageToUser: pendingText,
+        replyEffectStatus: "non_applied",
+        thought:
+          "The request is durable but the device has not returned a completion receipt.",
+      }),
+    ];
+    const calls: string[] = [];
+    const model = vi
+      .spyOn(runtime, "useModel")
+      .mockImplementation(async (type) => {
+        calls.push(type);
+        if (!outputs.length)
+          throw Error("Pending device request caused another model call");
+        return outputs.shift() as never;
+      });
+    try {
+      await service.register(credential, "Owned ringing pipeline");
+      runtime.registerAction(proposeDeviceAction);
+      const worldId = randomUUID() as UUID;
+      const roomId = randomUUID() as UUID;
+      await runtime.createWorld({
+        id: worldId,
+        name: "Pending device",
+        agentId: runtime.agentId,
+        metadata: { ownership: { ownerId: runtime.agentId } },
+      });
+      await runtime.createRoom({
+        id: roomId,
+        worldId,
+        name: "Pending device",
+        source: "client_chat",
+        type: ChannelType.DM,
+      });
+      const message: Memory = {
+        id: randomUUID(),
+        roomId,
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        content: {
+          text: "Control my current alarm.",
+          source: "client_chat",
+          channelType: ChannelType.DM,
+          metadata: {
+            clientDevice: {
+              context: {
+                sensitive: false,
+                revision: 1,
+                timeZone: "UTC",
+                alarmsStatus: "available",
+                alarmsObservedAt: Date.now(),
+                alarmsRevision: 12,
+                alarms: [
+                  {
+                    id: alarmId,
+                    hour: 9,
+                    minute: 0,
+                    label: "Current alarm",
+                    timeZone: "UTC",
+                    days: [],
+                    enabled: true,
+                    nextAt: Date.now() + 60000,
+                    scheduleState: "scheduled",
+                    generation: 1,
+                    lastOutcome: "",
+                  },
+                ],
+              },
+            },
+          },
+        },
+      };
+      const result = await withDeviceActionTurn(runtime, credential, () =>
+        runV5MessageRuntimeStage1({
+          runtime,
+          message,
+          state: {
+            values: { availableContexts: "general" },
+            data: {},
+            text: "",
+          },
+          responseId: randomUUID() as UUID,
+        }),
+      );
+      expect(outputs).toHaveLength(0);
+      expect(result.kind).toBe("planned_reply");
+      if (result.kind === "planned_reply") {
+        expect(result.result.requestFulfilled).toBe(false);
+        expect(result.result.responseContent?.text).toBe(pendingText);
+        expect(result.result.responseContent?.transcriptVisibility).not.toBe(
+          "internal",
+        );
+      }
+      expect(
+        calls.filter((type) => type === ModelType.ACTION_PLANNER),
+      ).toHaveLength(1);
+      const proposals = await service.list(credential);
+      expect(proposals).toHaveLength(1);
+      expect(proposals[0].state).toBe("pending");
+      expect(proposals[0].execution).toBeNull();
+    } finally {
+      model.mockRestore();
+      await fixture.cleanup();
+    }
+  },
+  120000,
+);
+
+test("enrolled phone record authority blocks backend discovery and forced writes without affecting counter-requests", async () => {
+  const fixture = await createRealTestRuntime({
+    characterName: "NativeRecordAuthority",
+  });
+  const runtime = fixture.runtime;
+  const directory = await mkdtemp(join(tmpdir(), "native-note-authority-"));
+  const notes = new NotesService(runtime, {
+    store: new NotesStore({ filePath: join(directory, "notes.json") }),
+  });
+  await notes.initialize();
+  const originalGet = runtime.getService.bind(runtime);
+  const serviceLookup = vi
+    .spyOn(runtime, "getService")
+    .mockImplementation(((name: string) =>
+      name === NOTES_SERVICE_TYPE
+        ? notes
+        : originalGet(name)) as typeof runtime.getService);
+  const credential = {
+    subjectUserId: runtime.agentId,
+    installationId: randomUUID(),
+    deviceKey: "a".repeat(64),
+    capabilities: [
+      "notes.local-record.v1",
+      "calendar.local-event.v1",
+      "reminders.local-record.v2",
+    ],
+  };
+  const service = new DeviceActionService(runtime);
+  const message = {
+    id: randomUUID(),
+    agentId: runtime.agentId,
+    entityId: runtime.agentId,
+    roomId: randomUUID(),
+    content: {
+      text: "Create my phone note",
+      metadata: {
+        clientDevice: {
+          installationId: credential.installationId,
+          capabilities: credential.capabilities,
+        },
+      },
+    },
+  } as Memory;
+  const unrelatedActions = [
+    ownerAlarmsAction,
+    ownerGoalsAction,
+    ownerTodosAction,
+    ownerRoutinesAction,
+    householdCoordinationAction,
+    calendarSourcesAction,
+    calendarAction,
+    standaloneCalendarAction,
+  ];
+  const actions = [
+    ...(notesPlugin.actions ?? []),
+    calendarAction,
+    ownerRemindersAction,
+    proposeDeviceAction,
+    ...unrelatedActions,
+  ];
+  const discover = () =>
+    collectDiscoveryCatalogActions({
+      actions,
+      message,
+      selectedContexts: ["general"],
+      userRoles: ["OWNER"],
+    }).map((action) => action.name);
+  const execute = (content: string, actionMessage: Memory = message) =>
+    executePlannedToolCall(
+      runtime,
+      {
+        message: actionMessage,
+        activeContexts: ["notes"],
+        userRoles: ["OWNER"],
+      },
+      { name: "NOTES_CREATE", params: { content } },
+    );
+  try {
+    await service.register(credential, "Native record owner");
+    for (const action of actions) runtime.registerAction(action);
+    const outside = discover();
+    expect(outside).toContain("NOTES_CREATE");
+    expect(outside).toContain("CALENDAR");
+    expect(outside).toContain("OWNER_REMINDERS");
+    await withDeviceActionTurn(runtime, credential, async () => {
+      const catalog = discover();
+      expect(catalog).not.toContain("NOTES_CREATE");
+      expect(catalog).not.toContain("NOTES_PATCH");
+      expect(catalog).toContain("CALENDAR");
+      expect(catalog).not.toContain("OWNER_REMINDERS");
+      expect(catalog).toContain("PROPOSE_DEVICE_ACTION");
+      for (const action of unrelatedActions) {
+        expect(catalog).toContain(action.name);
+        expect(
+          await resolveActionGateFailure(runtime, action, {
+            message,
+            userRoles: ["OWNER"],
+            evaluateContexts: false,
+          }),
+        ).toBeUndefined();
+      }
+      // The authenticated request scope owns this policy; optional message
+      // metadata must never disable it at discovery or the effect boundary.
+      for (const actionMessage of [
+        { ...message, agentId: undefined },
+        { ...message, agentId: randomUUID() },
+      ]) {
+        expect(
+          await execute("Must not bypass native ownership", actionMessage),
+        ).toMatchObject({ success: false });
+      }
+      for (const action of [
+        ...(notesPlugin.actions ?? []),
+        ownerRemindersAction,
+      ]) {
+        for (const gateContext of [
+          { userRoles: ["OWNER"] as const, activeContexts: ["notes"] as const },
+          {
+            message: { ...message, agentId: undefined },
+            userRoles: ["OWNER"] as const,
+            activeContexts: ["notes"] as const,
+          },
+          {
+            message: { ...message, agentId: randomUUID() },
+            userRoles: ["OWNER"] as const,
+            activeContexts: ["notes"] as const,
+          },
+        ]) {
+          expect(actionGateFailure(action, gateContext)).toContain(
+            "authenticated phone owns",
+          );
+        }
+      }
+      expect(notes.listNotes()).toHaveLength(0);
+      // Plan-step and non-CONTEXT hook execution skip context routing, but
+      // must retain native-record authority at their final handler gate.
+      for (const action of [
+        ...(notesPlugin.actions ?? []),
+        ownerRemindersAction,
+      ]) {
+        expect(
+          await resolveActionGateFailure(runtime, action, {
+            message,
+            userRoles: ["OWNER"],
+            evaluateContexts: false,
+          }),
+        ).toContain("authenticated phone owns");
+      }
+      expect(
+        await execute("Must not reach the server Notes store"),
+      ).toMatchObject({ success: false });
+      expect(notes.listNotes()).toHaveLength(0);
+    });
+    // Forged clientDevice metadata is not authority; an ordinary counter-request still writes its real store.
+    expect(
+      await execute("Ordinary backend note", {
+        ...message,
+        agentId: undefined,
+      }),
+    ).toMatchObject({ success: true });
+    expect(notes.listNotes()).toHaveLength(1);
+    await withDeviceActionTurn(
+      runtime,
+      { ...credential, capabilities: ["clock.handoff.v1"] },
+      async () => {
+        expect(discover()).toContain("NOTES_CREATE");
+        expect(discover()).toContain("CALENDAR");
+        expect(discover()).toContain("OWNER_REMINDERS");
+        expect(await execute("Clock-only caller backend note")).toMatchObject({
+          success: true,
+        });
+      },
+    );
+    let release!: () => void;
+    const held = withDeviceActionTurn(runtime, credential, async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      expect(discover()).not.toContain("NOTES_CREATE");
+    });
+    while (!release) await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(discover()).toContain("NOTES_CREATE");
+    expect(await execute("Concurrent non-phone note")).toMatchObject({
+      success: true,
+    });
+    release();
+    await held;
+    expect(notes.listNotes()).toHaveLength(3);
+    await expect(
+      withDeviceActionTurn(
+        runtime,
+        { ...credential, deviceKey: "b".repeat(64) },
+        async () => execute("Invalid device"),
+      ),
+    ).rejects.toThrow();
+    expect(notes.listNotes()).toHaveLength(3);
+  } finally {
+    serviceLookup.mockRestore();
+    await fixture.cleanup();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 120000);
+
+test("executor decodes typed phone operation JSON before validation and preserves authority", async () => {
+  const fixture = await createRealTestRuntime({
+    characterName: "DeviceOperationJson",
+    withLLM: false,
+  });
+  const runtime = fixture.runtime;
+  const credential = {
+    subjectUserId: runtime.agentId,
+    installationId: randomUUID(),
+    deviceKey: "d".repeat(64),
+    capabilities: ["notes.local-record.v1"],
+  };
+  const service = new DeviceActionService(runtime);
+  const operation = {
+    type: "create_note",
+    title: "Agent QA MAPLE-49",
+    body: "Bring the blue folder.",
+  };
+  const encoded =
+    '{"type":"create_note","title":"Agent QA MAPLE-49","body":"Bring the blue folder."}';
+  const message = {
+    id: randomUUID(),
+    agentId: runtime.agentId,
+    entityId: runtime.agentId,
+    roomId: randomUUID(),
+    content: { text: "Create my phone note" },
+  } as Memory;
+  const execute = (value: unknown) =>
+    executePlannedToolCall(
+      runtime,
+      { message, activeContexts: ["general"], userRoles: ["OWNER"] },
+      {
+        name: "PROPOSE_DEVICE_ACTION",
+        params: {
+          operation: value,
+          operationKey: randomUUID(),
+          reason: "Owner requested this note",
+        },
+      },
+    );
+  try {
+    runtime.registerAction(proposeDeviceAction);
+    await service.register(credential, "Typed operation fixture");
+    await withDeviceActionTurn(runtime, credential, async () => {
+      expect(await execute(encoded)).toMatchObject({
+        success: true,
+        data: { state: "pending", executed: false, approvalRequired: true },
+      });
+      const pending = await service.list(credential);
+      expect(pending).toHaveLength(1);
+      expect(pending[0].payload).toMatchObject({ operation });
+      expect(await execute(operation)).toMatchObject({ success: true });
+      for (const invalid of [
+        '{"type":"create_note",',
+        "null",
+        "[]",
+        "42",
+        JSON.stringify(encoded),
+        JSON.stringify({ ...operation, unexpected: true }),
+        JSON.stringify({ ...operation, body: { text: operation.body } }),
+        { ...operation, type: "unregistered_operation" },
+        { ...operation, unexpected: true },
+      ]) {
+        expect(await execute(invalid)).toMatchObject({ success: false });
+      }
+      expect(await service.list(credential)).toHaveLength(2);
+    });
+    // A decoded object does not grant a native session or unsupported capabilities.
+    expect(await execute(encoded)).toMatchObject({ success: false });
+    await withDeviceActionTurn(
+      runtime,
+      { ...credential, capabilities: ["clock.handoff.v1"] },
+      async () => {
+        expect(await execute(encoded)).toMatchObject({ success: false });
+      },
+    );
+    await expect(
+      withDeviceActionTurn(
+        runtime,
+        { ...credential, deviceKey: "e".repeat(64) },
+        async () => execute(encoded),
+      ),
+    ).rejects.toThrow();
+    expect(await service.list(credential)).toHaveLength(2);
+    // JSON-looking text remains literal when the authored parameter accepts strings.
+    const mixed = validateToolArgs(
+      {
+        ...proposeDeviceAction,
+        parameters: [
+          {
+            name: "operation",
+            required: true,
+            description: "Text or structured value",
+            schema: {
+              anyOf: [
+                { type: "string" },
+                { type: "object", additionalProperties: true },
+              ],
+            },
+          },
+        ],
+      },
+      { operation: encoded },
+    );
+    expect(mixed).toMatchObject({ valid: true, args: { operation: encoded } });
+  } finally {
+    await fixture.cleanup();
+  }
+}, 120000);
+
+test("registered Calendar preserves native ownership and explicit connected sources", async () => {
+  // Real runtime, device enrollment, executor and Calendar persistence. Only
+  // the external Google/EventKit ports use synthetic provider observations.
+  appleCalendarTesting.setNativeCalendarBridgeForTest(null);
+  const fixture = await createRealTestRuntime({
+    characterName: "NativeCalendarSourceAuthority",
+    plugins: [calendarPlugin],
+  });
+  const runtime = fixture.runtime;
+  const calendar = runtime.getService<CalendarService>(
+    CalendarService.serviceType,
+  );
+  if (!calendar) throw Error("Calendar service was not registered");
+  const credential = {
+    subjectUserId: runtime.agentId,
+    installationId: randomUUID(),
+    deviceKey: "b".repeat(64),
+    capabilities: ["calendar.local-event.v1"],
+  };
+  const now = new Date().toISOString();
+  const grant: LifeOpsConnectorGrant = {
+    id: "connector-account:native-fixture",
+    agentId: runtime.agentId,
+    provider: "google",
+    connectorAccountId: "native-fixture",
+    side: "owner",
+    identity: { email: "fixture@example.test" },
+    identityEmail: "fixture@example.test",
+    grantedScopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+    capabilities: ["google.calendar.read", "google.calendar.write"],
+    tokenRef: null,
+    mode: "local",
+    executionTarget: "local",
+    sourceOfTruth: "connector_account",
+    preferredByAgent: true,
+    cloudConnectionId: null,
+    metadata: {},
+    lastRefreshAt: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const googleReads: string[] = [];
+  let providerEvent: GoogleCalendarEvent | undefined;
+  const google = {
+    listCalendars: async () => [
+      {
+        calendarId: "primary",
+        summary: "Connected fixture",
+        primary: true,
+        accessRole: "reader",
+        selected: true,
+        timeZone: "UTC",
+      },
+    ],
+    listEventPage: async (input: { accountId: string }) => {
+      googleReads.push(input.accountId);
+      return {
+        events: providerEvent ? [providerEvent] : [],
+        nextPageToken: null,
+        nextSyncToken: "fixture-sync-token",
+      };
+    },
+  };
+  Object.assign(google, {
+    getEvent: async () => {
+      if (!providerEvent) throw Error("Missing connected event fixture");
+      return providerEvent;
+    },
+  });
+  const originalGet = runtime.getService.bind(runtime);
+  const lookup = vi
+    .spyOn(runtime, "getService")
+    .mockImplementation(((name: string) =>
+      name === "google"
+        ? google
+        : originalGet(name)) as typeof runtime.getService);
+  calendar.setGate({
+    ...createDefaultCalendarHostGate(runtime),
+    getGoogleConnectorAccounts: async () => [
+      {
+        provider: "google",
+        side: "owner",
+        mode: "local",
+        defaultMode: "local",
+        availableModes: ["local"],
+        executionTarget: "local",
+        sourceOfTruth: "connector_account",
+        configured: true,
+        connected: true,
+        reason: "connected",
+        preferredByAgent: true,
+        cloudConnectionId: null,
+        identity: grant.identity,
+        grantedCapabilities: grant.capabilities,
+        grantedScopes: grant.grantedScopes,
+        expiresAt: null,
+        hasRefreshToken: true,
+        grant,
+      },
+    ],
+    requireGoogleCalendarGrant: async (_url, _mode, _side, requestedGrant) => {
+      if (requestedGrant !== grant.id)
+        throw Error("No fixture grant for this source");
+      return grant;
+    },
+  });
+  let appleReads = 0;
+  appleCalendarTesting.setNativeCalendarBridgeForTest({
+    platform: "ios",
+    checkPermissions: async () => ({ calendar: "granted", canRequest: false }),
+    listCalendars: async () => ({
+      ok: true,
+      calendars: [
+        {
+          calendarId: "apple-primary",
+          summary: "Connected Apple fixture",
+          primary: true,
+          accessRole: "owner",
+          timeZone: "UTC",
+        },
+      ],
+    }),
+    listEvents: async () => {
+      appleReads++;
+      return { ok: true, events: [] };
+    },
+    createEvent: async () => {
+      throw Error("No provider write was authorized");
+    },
+    updateEvent: async () => {
+      throw Error("No provider write was authorized");
+    },
+    deleteEvent: async () => {
+      throw Error("No provider write was authorized");
+    },
+  });
+  const url = new URL("http://internal.local/api/calendar");
+  const range = {
+    timeMin: "2026-10-08T00:00:00.000Z",
+    timeMax: "2026-10-09T00:00:00.000Z",
+    timeZone: "UTC",
+  };
+  const message = {
+    id: randomUUID(),
+    agentId: runtime.agentId,
+    entityId: runtime.agentId,
+    roomId: randomUUID(),
+    content: { text: "Read my calendar" },
+  } as Memory;
+  const execute = (params: Record<string, unknown>) =>
+    executePlannedToolCall(
+      runtime,
+      { message, userRoles: ["OWNER"], activeContexts: ["calendar"] },
+      { name: "CALENDAR", params },
+    );
+  try {
+    await new DeviceActionService(runtime).register(
+      credential,
+      "Native Calendar owner",
+    );
+    expect(
+      runtime.actions.find((action) => action.name === "CALENDAR")?.handler,
+    ).toBe(standaloneCalendarAction.handler);
+    const stored = await calendar.createCalendarEvent(url, {
+      title: "Backend fixture",
+      startAt: "2026-10-08T12:00:00.000Z",
+      endAt: "2026-10-08T13:00:00.000Z",
+      timeZone: "UTC",
+      idempotencyKey: "native-calendar-backend-fixture",
+    });
+    const links = new LinkedCalendarRepository(runtime);
+    const initialLink = await links.create({
+      agentId: runtime.agentId,
+      localEventId: stored.id,
+      connectorAccountId: "native-fixture",
+      providerCalendarId: "primary",
+      localRevision: 1,
+    });
+    const semantic = {
+      title: stored.title,
+      description: stored.description,
+      location: stored.location,
+      startAt: stored.startAt,
+      endAt: stored.endAt,
+      timeZone: stored.timezone,
+      isAllDay: stored.isAllDay,
+      attendees: [],
+    };
+    const linked = await links.save(initialLink, {
+      state: "clean",
+      pendingOperation: null,
+      providerEventId: "provider-linked",
+      providerEtag: "old-version",
+      lastCommonSemanticHash: linkedCalendarSemanticHash(semantic),
+    });
+    providerEvent = {
+      id: "provider-linked",
+      calendarId: "primary",
+      title: "Provider edit",
+      description: stored.description,
+      location: stored.location,
+      start: stored.startAt,
+      end: stored.endAt,
+      timeZone: stored.timezone,
+      isAllDay: false,
+      attendees: [],
+      metadata: { etag: "new-version" },
+    } as GoogleCalendarEvent;
+    const controls = new LinkedCalendarControlRepository(runtime);
+    const initialControl = await controls.read();
+    const selected = await controls.selectDestination(initialControl.revision, {
+      connectorAccountId: "native-fixture",
+      providerCalendarId: "primary",
+    });
+    await controls.resume(selected.revision);
+    await withDeviceActionTurn(runtime, credential, async () => {
+      for (const subaction of ["feed", "next_event", "create_event"])
+        for (const source of [
+          {},
+          { grantId: "eliza-calendar", calendarId: "primary" },
+        ])
+          expect(
+            await execute({ subaction, details: { ...range, ...source } }),
+          ).toMatchObject({ success: false });
+      await expect(
+        calendar.getCalendarFeed(url, { ...range, grantId: "eliza-calendar" }),
+      ).rejects.toMatchObject({
+        code: "CALENDAR_NATIVE_RECORD_OWNERSHIP_REQUIRED",
+      });
+      await expect(
+        calendar.createCalendarEvent(url, {
+          title: "Must not create",
+          startAt: range.timeMin,
+          endAt: range.timeMax,
+          timeZone: "UTC",
+        }),
+      ).rejects.toMatchObject({
+        code: "CALENDAR_NATIVE_RECORD_OWNERSHIP_REQUIRED",
+      });
+      await expect(
+        calendar.getConditionalCalendarMutationTarget(url, {
+          grantId: grant.id,
+          eventId: stored.id,
+        }),
+      ).rejects.toMatchObject({
+        code: "CALENDAR_NATIVE_RECORD_OWNERSHIP_REQUIRED",
+      });
+      for (const [grantId, calendarId] of [
+        [grant.id, "primary"],
+        ["apple-calendar", "apple-primary"],
+      ]) {
+        const result = await execute({
+          subaction: "feed",
+          details: { ...range, grantId, calendarId },
+        });
+        expect(result).toMatchObject({ success: true });
+        expect(JSON.stringify(result)).not.toContain("Backend fixture");
+      }
+      const appleReadsBeforeGoogleNext = appleReads;
+      expect(
+        await execute({
+          subaction: "next_event",
+          details: {
+            grantId: grant.id,
+            calendarId: "primary",
+            timeZone: "UTC",
+          },
+        }),
+      ).toMatchObject({ success: true });
+      expect(appleReads).toBe(appleReadsBeforeGoogleNext);
+      const googleReadsBeforeAppleNext = googleReads.length;
+      expect(
+        await execute({
+          subaction: "next_event",
+          details: {
+            grantId: "apple-calendar",
+            calendarId: "apple-primary",
+            timeZone: "UTC",
+          },
+        }),
+      ).toMatchObject({ success: true });
+      expect(googleReads).toHaveLength(googleReadsBeforeAppleNext);
+      const sources = await calendar.listCalendars(url);
+      expect(sources.some((source) => source.provider === "eliza")).toBe(false);
+      expect(sources.map((source) => source.grantId)).toEqual(
+        expect.arrayContaining([grant.id, "apple-calendar"]),
+      );
+    });
+    expect(await links.getById(runtime.agentId, linked.id)).toMatchObject({
+      state: "clean",
+      providerEtag: "old-version",
+      lastErrorCode: null,
+    });
+    const repo = new CalendarRepository(runtime);
+    expect(
+      await repo.getCalendarSyncState(
+        runtime.agentId,
+        "google",
+        "primary",
+        "owner",
+        grant.id,
+      ),
+    ).toMatchObject({ nextSyncToken: null });
+    expect(googleReads).toContain("native-fixture");
+    expect(appleReads).toBeGreaterThan(0);
+    const retained = await calendar.getCalendarFeed(url, {
+      ...range,
+      grantId: "eliza-calendar",
+    });
+    expect(retained.events.map((event) => event.title)).toEqual([
+      "Backend fixture",
+    ]);
+    await calendar.getCalendarFeed(url, {
+      ...range,
+      grantId: grant.id,
+      calendarId: "primary",
+      forceSync: true,
+    });
+    expect(await links.getById(runtime.agentId, linked.id)).toMatchObject({
+      state: "clean",
+      providerEtag: "new-version",
+      lastErrorCode: null,
+    });
+    const reconciled = await calendar.getCalendarFeed(url, {
+      ...range,
+      grantId: "eliza-calendar",
+    });
+    expect(reconciled.events.map((event) => event.title)).toEqual([
+      "Provider edit",
+    ]);
+  } finally {
+    lookup.mockRestore();
+    appleCalendarTesting.setNativeCalendarBridgeForTest(undefined as never);
+    await fixture.cleanup();
+  }
+}, 120000);

@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -16,6 +16,7 @@ import {
   dumpAndroidArtifactBadgingAsync,
   dumpAndroidArtifactManifestAsync,
 } from "../mobile/artifact-inspection/android-tools.ts";
+import { waitAndInterruptAndroidPackage } from "./android-interruption.mjs";
 import {
   acquireDeviceLease,
   activeLeaseStatus,
@@ -23,7 +24,10 @@ import {
   deviceLeaseStateDir,
   readDeviceLease,
 } from "./device-lease.ts";
-import { requireInstrumentationSuccess } from "./instrumentation-result.mjs";
+import {
+  requireInstrumentationInterruption,
+  requireInstrumentationSuccess,
+} from "./instrumentation-result.mjs";
 
 const sha256 = (file) =>
   createHash("sha256").update(fs.readFileSync(file)).digest("hex");
@@ -401,9 +405,9 @@ export async function runIsolatedAndroidTest({
     activeContext,
     scenarioCleanupFailure;
   const owned = new Map();
-  const installedHash = async (name) => {
+  const installedHash = async (name, command = run) => {
     const lines = (
-      await run("shell", "pm", "path", "--user", String(androidUser), name)
+      await command("shell", "pm", "path", "--user", String(androidUser), name)
     )
       .trim()
       .split(/\r?\n/);
@@ -411,7 +415,7 @@ export async function runIsolatedAndroidTest({
     assert.match(lines[0], /^package:\/[^\r\n]+\.apk$/);
     const local = path.join(directory, `${name}-installed.apk`);
     try {
-      await run("pull", lines[0].slice(8), local);
+      await command("pull", lines[0].slice(8), local);
       return sha256(local);
     } finally {
       fs.rmSync(local, { force: true });
@@ -592,7 +596,10 @@ export async function runIsolatedAndroidTest({
         return instrumentation;
       };
       const phaseNames = new Set();
+      let phaseActive = false;
+      let pendingInterruptionRecovery = null;
       context.instrumentPhase = async (name, args = []) => {
+        assert.ok(!phaseActive, "Another instrumentation phase is active");
         assert.match(name, /^[A-Za-z][A-Za-z0-9_-]*$/);
         assert.ok(!phaseNames.has(name), "Duplicate instrumentation phase");
         validateRunnerArgs(args);
@@ -606,16 +613,205 @@ export async function runIsolatedAndroidTest({
           "Instrumentation requires both owned packages in the active variant",
         );
         phaseNames.add(name);
+        phaseActive = true;
         const phase = { name, passed: false };
         record.phases ??= [];
         record.phases.push(phase);
         try {
           phase.instrumentation = await instrument(copiedArgs, `phase-${name}`);
           phase.passed = true;
+          if (!cleaning && pendingInterruptionRecovery !== null) {
+            phase.recoversInterruption = pendingInterruptionRecovery;
+            pendingInterruptionRecovery = null;
+          }
           return phase.instrumentation;
         } catch (error) {
           phase.error = error.message;
           throw error;
+        } finally {
+          phaseActive = false;
+        }
+      };
+      context.interruptPhase = async (
+        name,
+        { args = [], markerPath, timeoutMs = 300000 } = {},
+      ) => {
+        assert.ok(!phaseActive, "Another instrumentation phase is active");
+        assert.match(name, /^[A-Za-z][A-Za-z0-9_-]*$/);
+        assert.ok(!phaseNames.has(name), "Duplicate instrumentation phase");
+        assert.equal(classes.length, 1, "Interruption requires one test class");
+        assert.ok(
+          testMethod !== undefined && expectedTests === 1,
+          "Interruption requires explicit single-method selection",
+        );
+        const runId = randomBytes(16).toString("hex");
+        assert.match(
+          markerPath ?? "",
+          /^files\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\.json$/,
+        );
+        assert.ok(
+          Number.isSafeInteger(timeoutMs) &&
+            timeoutMs > 0 &&
+            timeoutMs <= 600000,
+        );
+        validateRunnerArgs(args);
+        assert.ok(
+          !args.some(
+            (value, index) => index % 3 === 1 && value === "interruptionRunId",
+          ),
+          "Interruption nonce is owned by the harness",
+        );
+        const copiedArgs = [...args, "-e", "interruptionRunId", runId];
+        const active = () => {
+          assert.ok(
+            !cleaning &&
+              !campaignFinished &&
+              record === report.variants.at(-1) &&
+              !record.passed &&
+              owned.has(packageName) &&
+              owned.has(testPackage),
+            "Interruption requires the active owned variant outside cleanup",
+          );
+          assert.deepEqual(
+            readDeviceLease(deviceKey, { stateDir }),
+            lease.lease,
+            "Device lease changed",
+          );
+          assert.ok(
+            activeLeaseStatus(lease.lease).active,
+            "Device lease expired",
+          );
+        };
+        active();
+        assert.equal(
+          record.instrumentation?.passed,
+          true,
+          "Interruption requires a successful setup instrumentation phase",
+        );
+        assert.equal(
+          pendingInterruptionRecovery,
+          null,
+          "Recover the previous interruption first",
+        );
+        phaseNames.add(name);
+        phaseActive = true;
+        const phase = { name, kind: "interruption", passed: false };
+        record.phases ??= [];
+        record.phases.push(phase);
+        const controller = new AbortController();
+        const phaseSignal = AbortSignal.any([
+          controller.signal,
+          AbortSignal.timeout(timeoutMs),
+          ...(signal ? [signal] : []),
+        ]);
+        let instrumentation = null,
+          supervision = null,
+          settled = false,
+          effectIssued = false;
+        const execute = async (...args) => {
+          phaseSignal.throwIfAborted();
+          active();
+          if (
+            args[0] === "shell" &&
+            args[1] === "am" &&
+            args[2] === "force-stop"
+          ) {
+            assert.ok(!settled, "Instrumentation exited before interruption");
+            effectIssued = true;
+          }
+          return (
+            await executeFile(adb, ["-s", serial, ...args], {
+              env,
+              encoding: "utf8",
+              signal: phaseSignal,
+              timeout: timeoutMs,
+              maxBuffer: 4 * 1024 ** 2,
+            })
+          ).stdout;
+        };
+        const assertCustody = async () => {
+          active();
+          phaseSignal.throwIfAborted();
+          for (const [name, expected] of owned)
+            assert.equal(
+              await installedHash(name, execute),
+              expected,
+              "Installed APK changed before interruption",
+            );
+          active();
+        };
+        try {
+          await assertCustody();
+          instrumentation = execute(
+            "shell",
+            "am",
+            "instrument",
+            "--user",
+            String(androidUser),
+            "-w",
+            "-r",
+            "-e",
+            "class",
+            `${classes[0]}#${testMethod}`,
+            ...copiedArgs,
+            `${testPackage}/${runner}`,
+          ).then(
+            (output) => {
+              settled = true;
+              fs.writeFileSync(
+                path.join(directory, `${variant.name}-phase-${name}.log`),
+                output,
+              );
+              assert.ok(
+                effectIssued,
+                "Instrumentation exited before interruption",
+              );
+              return output;
+            },
+            (error) => {
+              settled = true;
+              fs.writeFileSync(
+                path.join(directory, `${variant.name}-phase-${name}.log`),
+                `${error.stdout ?? ""}\n${error.stderr ?? ""}`,
+              );
+              throw error;
+            },
+          );
+          supervision = waitAndInterruptAndroidPackage({
+            run: execute,
+            assertCustody,
+            packageName,
+            androidUser,
+            runId,
+            markerPath,
+            timeoutMs,
+            signal: phaseSignal,
+          });
+          const [output, receipt] = await Promise.all([
+            instrumentation,
+            supervision,
+          ]);
+          phase.instrumentation = requireInstrumentationInterruption(
+            output,
+            classes[0],
+            testMethod,
+          );
+          phase.interruption = receipt;
+          pendingInterruptionRecovery = name;
+          phase.passed = true;
+          return {
+            instrumentation: phase.instrumentation,
+            interruption: receipt,
+          };
+        } catch (error) {
+          phase.error = error.message;
+          throw error;
+        } finally {
+          controller.abort();
+          await Promise.allSettled(
+            [instrumentation, supervision].filter(Boolean),
+          );
+          phaseActive = false;
         }
       };
       await prepareVariant?.(context);
@@ -647,6 +843,11 @@ export async function runIsolatedAndroidTest({
         );
       }
       await collectVariant?.(context);
+      assert.equal(
+        pendingInterruptionRecovery,
+        null,
+        "Recovery phase required after interruption",
+      );
       signal?.throwIfAborted();
       await restoreScenario();
       assert.ok(

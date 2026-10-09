@@ -77,11 +77,13 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
     turnSignal.throwIfAborted();
     if (senderRole === "SYSTEM" || senderRole === "SELF") return "";
     const metadata = message.content.metadata;
+    const completedAction =
+      isObjectRecord(metadata) && metadata.viewDelivery === "completed-action";
     const currentView = isObjectRecord(metadata) ? metadata.uiView : undefined;
     const view = listViews(runtime, { viewType: "gui" }).find(
       (entry) =>
         entry.id === currentView &&
-        entry.available !== false &&
+        (entry.available !== false || completedAction) &&
         satisfiesRoleGate([senderRole], entry.roleGate),
     );
     if (!view) return "";
@@ -162,6 +164,12 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
       satisfiesRoleGate(userRoles, view.roleGate),
     );
     const metadata = message.content.metadata;
+    // Completed-action clients render their registered counterpart locally.
+    // The marker selects delivery protocol, never authority: the canonical
+    // action still prepares the exact owner/client/installation handoff, and
+    // the renderer must claim and acknowledge it after reply finalization.
+    const completedAction =
+      isObjectRecord(metadata) && metadata.viewDelivery === "completed-action";
     const currentView = isObjectRecord(metadata) ? metadata.uiView : undefined;
     // Egress-only evidence: no prompt text or new provider/model invocation.
     state.data.providers ??= {};
@@ -170,7 +178,9 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
         views: views.map(({ id, label }) => ({ id, label })),
         currentViewId:
           views.find(
-            (view) => view.available !== false && view.id === currentView,
+            (view) =>
+              (view.available !== false || completedAction) &&
+              view.id === currentView,
           )?.id ?? null,
       },
     };
@@ -207,7 +217,7 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
     const target = value.viewId.trim().toLowerCase();
     const matches = listViews(runtime, { viewType: "gui" }).filter(
       (view) =>
-        view.available !== false &&
+        (view.available !== false || completedAction) &&
         satisfiesRoleGate([caller.role], view.roleGate) &&
         (view.id.toLowerCase() === target ||
           view.label.toLowerCase() === target ||

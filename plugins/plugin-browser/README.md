@@ -21,6 +21,12 @@ is development evidence, not release provisioning.
 outcome after dispatch; it never retries on another profile. Older peers reject
 cancellable requests before dispatch. Callers still reconcile any uncertain effect.
 
+Trusted hosts can call `NativeSocketBrowserTarget.waitForProfile(profileId, { timeoutMs, signal })`
+before binding a task after restart. It waits at most 10 seconds by default
+(30 seconds maximum), rejects a different registered profile immediately, and
+stops on cancellation or transport shutdown. It sends no commands and never
+retries dispatched work. Hosts must recheck task/account authority after waiting.
+
 `NativeTaskActuator` composes the core task journal with this transport. The host
 supplies task lookup, reviewed page policy, durable binding revisions, protected
 value resolution, outcome verification and redacted evidence storage. It checks
@@ -68,7 +74,12 @@ Trusted hosts can use `NativeSocketBrowserTarget.guideTask` after negotiating
 `task-guide` and `task-bind`. Supply the exact task context, increasing per-binding
 guidance revision and a current main-frame snapshot selector. The extension admits
 request IDs once and removes annotations on cancellation/rebind/disconnect.
-This does not wire product pause/close or qualify installed browser UI behavior.
+Peers with `task-guide-label` also accept `detail`, `tone`, offer `answers`,
+`kind: "pause"` and a binding `assistantName`; older peers reject them before
+dispatch. `onTaskGuideAnswer` delivers one tap per current offer as
+`{tabId, stepId, revision, answerId}`. It never carries the value. Answers to a
+replaced offer are dropped. `NativeTaskActuator` passes these fields, returns the
+guide revision and adds `pauseGuidance`. Installed browser UI is not qualified here.
 
 `NativeTaskActuator.showGuidance` requires an active task and a target from its
 current observation. `quiesce` removes that owner's guide and waits for a removal

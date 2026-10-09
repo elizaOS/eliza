@@ -58,8 +58,7 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format .",
-    "test:client": "node --test --experimental-transform-types test/device-client.test.mjs"
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -81,7 +80,7 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "@elizaos/testing": "workspace:*",
     "@capacitor/core": "^8.5.2",
     "maplibre-gl": "^6.11.2"

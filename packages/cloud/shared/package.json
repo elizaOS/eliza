@@ -664,7 +664,15 @@
     "./lib/services/organization-upgrade-payment": "./src/lib/services/organization-upgrade-payment.ts",
     "./lib/services/organization-upgrade-command": "./src/lib/services/organization-upgrade-command.ts",
     "./lib/services/organization-downgrade-command": "./src/lib/services/organization-downgrade-command.ts",
-    "./lib/services/organization-schedule-maintenance": "./src/lib/services/organization-schedule-maintenance.ts"
+    "./lib/services/organization-schedule-maintenance": "./src/lib/services/organization-schedule-maintenance.ts",
+    "./lib/auth/verified-phone-account": "./src/lib/auth/verified-phone-account.ts",
+    "./lib/services/shared-runtime/network-membership-client": "./src/lib/services/shared-runtime/network-membership-client.ts",
+    "./lib/services/shared-runtime/network-shared-turn": "./src/lib/services/shared-runtime/network-shared-turn.ts",
+    "./lib/services/shared-runtime/network-shared-context": "./src/lib/services/shared-runtime/network-shared-context.ts",
+    "./lib/services/shared-runtime/shared-owner-model-capture": "./src/lib/services/shared-runtime/shared-owner-model-capture.ts",
+    "./lib/services/shared-runtime/shared-owner-model-capture-store": "./src/lib/services/shared-runtime/shared-owner-model-capture-store.ts",
+    "./lib/services/shared-runtime/shared-runtime-room-identity": "./src/lib/services/shared-runtime/shared-runtime-room-identity.ts",
+    "./lib/services/shared-runtime/shared-runtime-storage-identity": "./src/lib/services/shared-runtime/shared-runtime-storage-identity.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",
@@ -738,7 +746,7 @@
     "expletives": "^0.1.5",
     "hono": "4.13.8",
     "jose": "^6.0.0",
-    "libphonenumber-js": "^1.12.42",
+    "libphonenumber-js": "^1.13.14",
     "nanoid": "^6.0.0",
     "nodemailer": "^10.0.12",
     "pg": "^8.23.0",
@@ -757,7 +765,7 @@
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.5.15",
     "@cloudflare/workers-types": "^4.20260429.1",
     "@types/node": "^25.6.0",
     "@types/pg": "^8.23.1",
@@ -768,7 +776,7 @@
     "ioredis-mock": "^8.13.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "@types/json-schema": "^7.0.15"
   },
   "elizaos": {

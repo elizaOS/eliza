@@ -127,6 +127,7 @@ export * from "./lifeops-normalize/service-error.js";
 export * from "./lifeops-normalize/service-normalize.js";
 export * from "./lifeops-normalize/time-util.js";
 export * from "./lifeops-normalize/time-zone.js";
+export * from "./native-notes-query.js";
 export * from "./native-transcript.js";
 export * from "./os-intent/assistant-launch.js";
 export * from "./os-intent/contract.js";

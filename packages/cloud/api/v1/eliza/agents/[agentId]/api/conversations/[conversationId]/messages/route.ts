@@ -17,6 +17,8 @@ import {
   applyCorsHeaders,
   handleCorsOptions,
 } from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { networkContextForPersonalSurface } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-context";
+import { prepareNetworkSharedTurn } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-turn";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
@@ -25,7 +27,10 @@ import {
   sharedRestMessageSend,
   sharedRestMessagesGet,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-rest-adapter";
-import { sharedTurnClientMessageId } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
+import {
+  normalizeSharedRuntimeRoom,
+  sharedTurnClientMessageId,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
@@ -91,7 +96,9 @@ app.get("/", async (c) => {
       origin,
     );
   }
-  const conversationId = c.req.param("conversationId") ?? r.agentId;
+  const conversationId = normalizeSharedRuntimeRoom(
+    c.req.param("conversationId") ?? r.agentId,
+  );
   // The personal identity follows its entitlement route (#25146): a withdrawn
   // Dedicated reads the scoped fallback journal, never the canonical room.
   const target = await resolveSharedSurfaceTarget({
@@ -185,7 +192,9 @@ app.post("/", async (c) => {
       origin,
     );
   }
-  const conversationId = c.req.param("conversationId") ?? r.agentId;
+  const conversationId = normalizeSharedRuntimeRoom(
+    c.req.param("conversationId") ?? r.agentId,
+  );
   const raw: unknown = await c.req.json().catch(() => ({}));
   const text =
     raw &&
@@ -203,6 +212,16 @@ app.post("/", async (c) => {
       origin,
     );
   }
+  const requestedNetworkApp =
+    raw && typeof raw === "object" && "networkApp" in raw
+      ? raw.networkApp
+      : undefined;
+  let trustedNetworkContext = await prepareNetworkSharedTurn(
+    c,
+    r.agent,
+    requestedNetworkApp,
+    text,
+  );
   const target = await resolveSharedSurfaceTarget({
     agent: r.agent,
     personal: "agentKind" in r,
@@ -220,6 +239,11 @@ app.post("/", async (c) => {
       origin,
     );
   }
+  trustedNetworkContext = networkContextForPersonalSurface(
+    trustedNetworkContext,
+    r.agent,
+    target.roomId,
+  );
   let result: { text: string; agentName: string };
   try {
     result = await sharedRestMessageSend(
@@ -235,6 +259,9 @@ app.post("/", async (c) => {
       text,
       undefined,
       target.accountState,
+      c.get("traceId"),
+      c.req.raw.signal,
+      trustedNetworkContext,
     );
   } catch (error) {
     // error-policy:J1 route boundary translates bridge/billing failures to HTTP responses.

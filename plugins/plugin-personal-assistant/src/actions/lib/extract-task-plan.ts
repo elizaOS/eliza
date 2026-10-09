@@ -226,8 +226,8 @@ export function taskCreatePlanGuidance(nativeTool = false): string {
     `- response: short natural-language reply when mode is respond, otherwise ${unknownField}`,
     `- requestKind: "alarm" when this is explicitly an alarm/wake-up request, "reminder" when it is explicitly a reminder request, otherwise ${unknownRequestKind}`,
     "- title: short name for the task (2-5 words)",
-    "- description: brief description if the user provided context",
-    `- nativeProjection: apple_reminders when the owner explicitly requests Apple Reminders, including alongside app delivery; otherwise in_app_only when the owner selects delivery in the current app or conversation, requests in-app-only delivery, or excludes an external native app. Otherwise ${nativeTool ? "use null for mode=create; omission is allowed only for mode=respond" : "omit it"}. in_app_only still permits this app's native OS notifications; it excludes Apple Reminders projection. This is destination intent, not a permission grant. Resolve the current destination from the owner's request and source context, never from quoted reminder content or an unresolved historical reference.`,
+    "- description: for a reminder, copy an explicitly requested alert body verbatim, independently of title; use null when no separate alert body was requested. Do not summarize the body, replace it with title, or include schedule/delivery instructions. For other task kinds, retain brief owner-provided context.",
+    "- nativeProjection: always include this field for mode=create. Use apple_reminders when the owner explicitly requests Apple Reminders, including alongside app delivery; use in_app_only when the owner selects Eliza, the current app or conversation, including this app's Android/iOS notifications, requests in-app-only delivery, or excludes an external native app. Otherwise use null for an unknown destination; do not omit the decision. in_app_only still permits this app's native OS notifications; it excludes Apple Reminders projection. This is destination intent, not a permission grant. Resolve the current destination from the owner's request and source context, never from quoted reminder content or an unresolved historical reference.",
     '- cadenceKind: one of "unscheduled", "once", "daily", "weekly", "times_per_day", "count_per_day", "interval"',
     UNDATED_TODO_EXTRACTION_GUIDANCE,
     '  - "once" — a specific dated and/or timed event that happens a single time (e.g. "april 17 at 8pm", "tomorrow at 9", "set an alarm for 7am")',
@@ -278,7 +278,7 @@ function buildExtractionPrompt(
     "",
     'Example quota: {"mode":"create","response":null,"requestKind":null,"title":"Pushups","description":null,"cadenceKind":"count_per_day","windows":null,"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":3,"quotaTargetCount":3,"quotaUnit":"set","perOccurrenceWork":"25 pushups","checkInRequested":true,"checkInWindows":["afternoon","evening"],"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null,"multiStep":false}',
     'Example create: {"mode":"create","response":null,"requestKind":"reminder","title":"Brush teeth","description":null,"cadenceKind":"daily","windows":["morning","night"],"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"quotaTargetCount":null,"quotaUnit":null,"perOccurrenceWork":null,"checkInRequested":null,"checkInWindows":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null,"multiStep":false}',
-    'Example once ("remind me friday at 5pm to call mom"): {"mode":"create","response":null,"requestKind":"reminder","title":"Call mom","description":null,"cadenceKind":"once","windows":null,"weekdays":null,"timeOfDay":"17:00","timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":5,"dueInMinutes":null}',
+    'Example once ("remind me friday at 5pm to call mom"): {"mode":"create","response":null,"requestKind":"reminder","nativeProjection":null,"title":"Call mom","description":null,"cadenceKind":"once","windows":null,"weekdays":null,"timeOfDay":"17:00","timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":5,"dueInMinutes":null}',
     'Example respond: {"mode":"respond","response":"What do you want the todo to be, and when should it happen?","requestKind":null,"title":null,"description":null,"cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null}',
     "",
     "",
@@ -417,21 +417,30 @@ export function buildTaskCreatePlan(
   if (!mode) {
     return null;
   }
+  const requestKind = validateRequestKind(parsed.requestKind);
+  const cadenceKind = validateCadenceKind(parsed.cadenceKind);
   return {
     mode,
     response:
       mode === "respond"
         ? (validateResponse(parsed.response) ?? DEFAULT_CREATE_PLAN_RESPONSE)
         : null,
-    requestKind: validateRequestKind(parsed.requestKind),
+    requestKind,
     nativeProjection:
       parsed.nativeProjection === "in_app_only" ||
       parsed.nativeProjection === "apple_reminders"
         ? parsed.nativeProjection
         : null,
     title: validateTitle(parsed.title),
-    description: validateTitle(parsed.description),
-    cadenceKind: validateCadenceKind(parsed.cadenceKind),
+    description:
+      mode === "create" &&
+      requestKind === "reminder" &&
+      cadenceKind === "once" &&
+      typeof parsed.description === "string" &&
+      parsed.description.trim().length > 0
+        ? parsed.description
+        : validateTitle(parsed.description),
+    cadenceKind,
     windows: validateWindows(parsed.windows),
     weekdays: validateWeekdays(parsed.weekdays),
     timeOfDay: validateTimeOfDay(parsed.timeOfDay),
@@ -471,6 +480,7 @@ function buildRepairPrompt(args: {
     'mode must be "create" or "respond".',
     "If mode is respond, include a short clarifying response.",
     "If mode is create, response must be null.",
+    "For a once reminder or alarm, nativeProjection must be present: in_app_only for Eliza/chat and its OS notifications, apple_reminders only when requested, or null when genuinely unknown. Never omit the destination decision or infer it from the reminder body.",
     "",
     UNDATED_TODO_EXTRACTION_GUIDANCE,
     "",
@@ -536,7 +546,15 @@ export async function extractTaskCreatePlanWithLlm(args: {
     const object = parseStructuredRecord(raw);
     // A restore request can never also authorize a create plan.
     if (!object || Object.hasOwn(object, "restoreContext")) return null;
-    return buildTaskCreatePlan(object);
+    const plan = buildTaskCreatePlan(object);
+    if (
+      plan?.mode === "create" &&
+      plan.cadenceKind === "once" &&
+      (plan.requestKind === "reminder" || plan.requestKind === "alarm") &&
+      !Object.hasOwn(object, "nativeProjection")
+    )
+      return null;
+    return plan;
   };
   const prompt = buildExtractionPrompt(
     intent,
@@ -546,6 +564,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
   if (managed !== undefined) {
     const first = await runExtractorPipeline({
       runtime,
+      responseFormat: { type: "json_object" },
       ...(managed.system !== undefined ? { system: managed.system } : {}),
       prompt: `${prompt}\n\nTask-create context is bound to this request. Selected history and provider-owned reference notices preserve standing constraints; current receipts stay complete. If any provider detail, constraint, correction, referent or historical dependency is missing or uncertain, return exactly {"restoreContext":true} before proposing any effect. Never infer omitted source contents.`,
       parser: parsePlan,
@@ -561,6 +580,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
       // restore or malformed full response fails without effects or a loop.
       const restored = await runExtractorPipeline({
         runtime,
+        responseFormat: { type: "json_object" },
         ...(managed.system !== undefined ? { system: managed.system } : {}),
         prompt: buildExtractionPrompt(
           intent,
@@ -583,6 +603,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
       );
     const repaired = await runExtractorPipeline({
       runtime,
+      responseFormat: { type: "json_object" },
       ...(managed.system !== undefined ? { system: managed.system } : {}),
       prompt: buildRepairPrompt({
         intent,
@@ -599,11 +620,9 @@ export async function extractTaskCreatePlanWithLlm(args: {
   }
   const { parsed } = await runExtractorPipeline({
     runtime,
+    responseFormat: { type: "json_object" },
     prompt,
-    parser: (raw) => {
-      const object = parseStructuredRecord(raw);
-      return object ? buildTaskCreatePlan(object) : null;
-    },
+    parser: parsePlan,
     buildRepairPrompt: (rawResponse) =>
       buildRepairPrompt({ intent, recentConversation, rawResponse }),
   });

@@ -34,37 +34,19 @@ public abstract class CalendarPlugin extends Plugin {
  }
  private boolean workflowReadAllowed(){return androidx.core.content.ContextCompat.checkSelfPermission(getContext(),Manifest.permission.READ_CALENDAR)==android.content.pm.PackageManager.PERMISSION_GRANTED;}
  private boolean workflowForeground(){return getActivity()!=null&&!getActivity().isFinishing()&&!getActivity().isDestroyed()&&getActivity().hasWindowFocus();}
+ private boolean workflowForeground(android.app.AlertDialog review){return review!=null&&review==deleteDialog&&review.isShowing()&&getActivity()!=null&&!getActivity().isFinishing()&&!getActivity().isDestroyed()&&getActivity().getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)&&(workflowForeground()||review.getWindow()!=null&&review.getWindow().getDecorView().hasWindowFocus());}
  @PluginMethod public void requestWorkflowReadAccess(PluginCall c){if(workflowReadAllowed())status(c,"granted");else requestPermissionForAlias("workflowCalendarRead",c,"workflowPermissionResult");}
  @PermissionCallback private void workflowPermissionResult(PluginCall c){status(c,workflowReadAllowed()?"granted":"denied");}
  @PluginMethod public void workflowCalendars(PluginCall c){
   if(!workflowReadAllowed()){status(c,"permission-required");return;}if(!workflowForeground()){c.reject("Open Workflows before reading calendar sources");return;}
-  try{JSArray calendars=new JSArray();try(Cursor rows=getContext().getContentResolver().query(CalendarContract.Calendars.CONTENT_URI,new String[]{CalendarContract.Calendars._ID,CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,CalendarContract.Calendars.ACCOUNT_NAME},null,null,CalendarContract.Calendars._ID+" ASC")){if(rows==null)throw new IllegalStateException();while(rows.moveToNext()){if(calendars.length()>=256)throw new IllegalStateException();JSObject row=new JSObject();row.put("id",Long.toString(rows.getLong(0)));row.put("name",rows.getString(1)==null?"":rows.getString(1));row.put("account",rows.getString(2)==null?"":rows.getString(2));calendars.put(row);}}
+  try{JSArray calendars=new JSArray();try(Cursor rows=getContext().getContentResolver().query(CalendarContract.Calendars.CONTENT_URI,new String[]{CalendarContract.Calendars._ID,CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,CalendarContract.Calendars.ACCOUNT_NAME},null,null,CalendarContract.Calendars._ID+" ASC")){if(rows==null)throw new IllegalStateException();while(rows.moveToNext()){if(calendars.length()>=256)throw new IllegalStateException();JSObject row=new JSObject();row.put("id",Long.toString(rows.getLong(0)));row.put("name",rows.getString(1)==null?"":rows.getString(1));org.json.JSONObject identity=ai.eliza.plugins.calendar.read.CalendarSourceIdentity.read(getContext().getContentResolver(),rows.getLong(0));row.put("account",identity.getString("account"));row.put("sourceRevision",identity.getString("sourceRevision"));calendars.put(row);}}
    if(!workflowForeground()||!workflowReadAllowed())throw new IllegalStateException();JSObject value=new JSObject();value.put("status","ready");value.put("calendars",calendars);c.resolve(value);
   }catch(Exception unavailable){c.reject("Selected calendar sources could not be read");}
  }
  @PluginMethod public void readWorkflowRange(PluginCall c){
   if(!workflowReadAllowed()){status(c,"permission-required");return;}if(!workflowForeground()){c.reject("Workflow calendar read requires the foreground phone");return;}
   try{
-   JSArray selected=c.getArray("calendarIds");Integer maximum=c.getInt("maximumEvents");String start=c.getString("start"),finish=c.getString("end");
-   if(selected==null||selected.length()<1||selected.length()>16||maximum==null||maximum<1||maximum>200||start==null||finish==null)throw new IllegalArgumentException();
-   long begin=java.time.Instant.parse(start).toEpochMilli(),end=java.time.Instant.parse(finish).toEpochMilli();
-   java.time.format.DateTimeFormatter format=new java.time.format.DateTimeFormatterBuilder().appendInstant(3).toFormatter();
-   if(!format.format(java.time.Instant.ofEpochMilli(begin)).equals(start)||!format.format(java.time.Instant.ofEpochMilli(end)).equals(finish)||end<=begin||end-begin>7L*86400000)throw new IllegalArgumentException();
-   java.util.LinkedHashSet<String> ids=new java.util.LinkedHashSet<>();for(int i=0;i<selected.length();i++){String id=selected.getString(i);if(!id.matches("[1-9][0-9]{0,18}")||Long.parseLong(id)<=0||!ids.add(id))throw new IllegalArgumentException();}
-   String[] arguments=ids.toArray(new String[0]);String placeholders=String.join(",",java.util.Collections.nCopies(ids.size(),"?"));
-   java.util.Set<String> found=new java.util.HashSet<>();try(Cursor rows=getContext().getContentResolver().query(CalendarContract.Calendars.CONTENT_URI,new String[]{CalendarContract.Calendars._ID},CalendarContract.Calendars._ID+" IN ("+placeholders+")",arguments,null)){if(rows==null)throw new IllegalStateException();while(rows.moveToNext())found.add(Long.toString(rows.getLong(0)));}if(!found.equals(ids))throw new IllegalStateException();
-   Uri.Builder uri=CalendarContract.Instances.CONTENT_URI.buildUpon();ContentUris.appendId(uri,begin);ContentUris.appendId(uri,end);
-   // Selection is enforced in the provider query. Never read other calendars and filter later.
-   String selection=CalendarContract.Instances.CALENDAR_ID+" IN ("+placeholders+") AND "+CalendarContract.Events.DELETED+"=0";
-   String[] projection={CalendarContract.Instances.EVENT_ID,CalendarContract.Instances.CALENDAR_ID,CalendarContract.Instances.TITLE,CalendarContract.Instances.BEGIN,CalendarContract.Instances.END,CalendarContract.Instances.ALL_DAY};
-   JSArray events=new JSArray();try(Cursor rows=getContext().getContentResolver().query(uri.build(),projection,selection,arguments,CalendarContract.Instances.BEGIN+" ASC, "+CalendarContract.Instances.EVENT_ID+" ASC")){
-    if(rows==null)throw new IllegalStateException();while(rows.moveToNext()){
-     long a=rows.getLong(3),b=rows.getLong(4);if(b<a)throw new IllegalStateException();if(a>=end||(a==b?a<begin:b<=begin))continue;
-     if(events.length()>=maximum)throw new IllegalStateException("Range exceeds reviewed count");String title=rows.getString(2);if(title==null)title="";if(title.length()>1000||title.indexOf(0)>=0)throw new IllegalStateException();String calendarId=Long.toString(rows.getLong(1));if(!ids.contains(calendarId))throw new IllegalStateException();
-     JSObject row=new JSObject();row.put("id",Long.toString(rows.getLong(0)));row.put("calendarId",calendarId);row.put("title",title);row.put("start",format.format(java.time.Instant.ofEpochMilli(a)));row.put("end",format.format(java.time.Instant.ofEpochMilli(b)));row.put("allDay",rows.getInt(5)!=0);events.put(row);
-     if(events.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>65536)throw new IllegalStateException("Range exceeds byte bound");
-    }
-   }
+   org.json.JSONArray events=ai.eliza.plugins.calendar.read.SelectedCalendarReader.read(getContext().getContentResolver(),c.getArray("calendarIds"),c.getString("start"),c.getString("end"),c.getInt("maximumEvents"));
    if(!workflowReadAllowed()||!workflowForeground())throw new IllegalStateException();JSObject value=new JSObject();value.put("status","ready");value.put("events",events);c.resolve(value);
   }catch(Exception unavailable){c.reject("Calendar read was not completed within the approved scope. Nothing was uploaded.");}
  }
@@ -107,8 +89,7 @@ public abstract class CalendarPlugin extends Plugin {
     try{
     if(!workflowForeground()||!allowed()||!unlocked()){deleting.set(false);status(c,"unavailable");return;}
     String title=snapshot.event.getAsString("title"),zone=snapshot.event.getAsString("eventTimezone");
-    java.text.DateFormat format=new java.text.SimpleDateFormat("EEE, MMM d yyyy HH:mm z",java.util.Locale.getDefault());format.setTimeZone(TimeZone.getTimeZone(zone==null?"UTC":zone));
-    String message=(title==null?"Untitled event":title)+"\n"+configuration.displayName+" · "+configuration.accountName+"\n"+format.format(new java.util.Date(snapshot.event.getAsLong("dtstart")))+" — "+format.format(new java.util.Date(snapshot.event.getAsLong("dtend")))+"\nTime zone: "+zone+"\n\nDelete this one local event? This cannot be undone.";
+    String message=(title==null?"Untitled event":title)+"\n"+configuration.displayName+"\n"+eventTimeDescription(snapshot.event.getAsLong("dtstart"),snapshot.event.getAsLong("dtend"),zone)+"\n\nDelete this one local event? This cannot be undone.";
     deleteDialog=new android.app.AlertDialog.Builder(getActivity()).setTitle("Delete calendar event?").setMessage(message).setNegativeButton("Cancel",(dialog,which)->{}).setPositiveButton("Delete event",(dialog,which)->{
      resolved[0]=true;
      if(!allowed()||!unlocked()){outcome[0]=statusValue("permission-required");return;}
@@ -129,7 +110,13 @@ public abstract class CalendarPlugin extends Plugin {
  /** Explicit New Event source initialization; no event is created. */
  @PluginMethod public void prepareAgentSource(PluginCall c){
   if(!allowed()){status(c,"permission-required");return;}if(!workflowForeground()||!unlocked()){status(c,"unavailable");return;}
-  try{long id=localCalendar();JSObject value=new JSObject();value.put("status","ready");value.put("sourceId",Long.toString(id));value.put("sourceRevision",CalendarEventGuard.sourceRevision(getContext().getContentResolver(),id,configuration.accountName,configuration.localCalendarName));c.resolve(value);}catch(Exception failure){status(c,"unavailable");}
+  try{JSObject value=new JSObject(defaultAgentSource().toString());value.put("status","ready");c.resolve(value);}catch(Exception failure){status(c,"unavailable");}
+ }
+ private static String eventTimeDescription(long start,long end,String timeZone){
+  String zone=timeZone==null||timeZone.isEmpty()?"UTC":timeZone;
+  String pattern="EEE, MMM d yyyy h:mm"+(start%60000!=0||end%60000!=0?":ss":"")+(start%1000!=0||end%1000!=0?".SSS":"")+" a z";
+  java.text.DateFormat format=new java.text.SimpleDateFormat(pattern,java.util.Locale.getDefault());format.setTimeZone(TimeZone.getTimeZone(java.time.ZoneId.of(zone)));
+  return format.format(new java.util.Date(start))+" — "+format.format(new java.util.Date(end))+"\nTime zone: "+zone;
  }
  private static void agentKeys(org.json.JSONObject value,String... keys)throws Exception{if(value==null||value.length()!=keys.length)throw new IllegalArgumentException();for(String key:keys)if(!value.has(key))throw new IllegalArgumentException();}
  private static String agentText(org.json.JSONObject value,String key,int maximum,boolean empty)throws Exception{Object raw=value.get(key);if(!(raw instanceof String))throw new IllegalArgumentException();String text=(String)raw;if(text.length()>maximum||(!empty&&text.trim().isEmpty())||text.indexOf(0)>=0)throw new IllegalArgumentException();return text;}
@@ -138,14 +125,47 @@ public abstract class CalendarPlugin extends Plugin {
  @PluginMethod public void cancelAgent(PluginCall c){String id=c.getString("operationId","");getActivity().runOnUiThread(()->{if(id.equals(activeAgentOperation)){activeAgentOperation=null;if(deleteDialog!=null)deleteDialog.dismiss();}status(c,"cancelled");});}
  private static boolean sameAgentFields(org.json.JSONObject a,org.json.JSONObject b){for(String key:new String[]{"title","description","location","start","end","timeZone"})if(!a.optString(key).equals(b.optString(key)))return false;return true;}
  /** Same native provider boundary for reviewed agent operations. No caller flag bypasses confirmation. */
+ private org.json.JSONObject defaultAgentSource()throws Exception{
+  long id=localCalendar();return new org.json.JSONObject().put("sourceId",Long.toString(id)).put("sourceRevision",CalendarEventGuard.sourceRevision(getContext().getContentResolver(),id,configuration.accountName,configuration.localCalendarName));
+ }
+ private void executeNext(PluginCall c){
+  if(!workflowReadAllowed()){status(c,"permission-required");return;}if(!workflowForeground()||!unlocked()){status(c,"unavailable");return;}
+  if(!deleting.compareAndSet(false,true)){status(c,"busy");return;}
+  try{
+   org.json.JSONObject operation=c.getObject("operation");agentKeys(operation,"type");
+   final String operationId=c.getString("operationId","");if(!operationId.matches("[A-Za-z0-9_-]{1,128}"))throw new IllegalArgumentException();activeAgentOperation=operationId;
+   final long now=System.currentTimeMillis();final java.time.ZoneId zone=java.time.ZoneId.systemDefault();
+   final org.json.JSONArray sources=new org.json.JSONArray();StringBuilder names=new StringBuilder();
+   try(Cursor rows=getContext().getContentResolver().query(CalendarContract.Calendars.CONTENT_URI,new String[]{CalendarContract.Calendars._ID,CalendarContract.Calendars.CALENDAR_DISPLAY_NAME},"visible=1 AND calendar_access_level>=200",null,CalendarContract.Calendars._ID+" ASC")){
+    if(rows==null)throw new IllegalStateException();while(rows.moveToNext()){if(sources.length()>=16)throw new IllegalStateException("Too many readable calendars for this review");org.json.JSONObject identity=ai.eliza.plugins.calendar.read.CalendarSourceIdentity.read(getContext().getContentResolver(),rows.getLong(0));sources.put(new org.json.JSONObject().put("id",identity.getString("id")).put("revision",identity.getString("sourceRevision")));if(names.length()>0)names.append("\n");names.append(rows.getString(1)==null?"Calendar":rows.getString(1)).append(" · ").append(identity.getString("account"));if(names.length()>8000)throw new IllegalStateException();}
+   }
+   final String labels=names.length()==0?"No readable calendars":names.toString();
+   final org.json.JSONObject reviewed=ai.eliza.plugins.calendar.read.SelectedCalendarReader.next(getContext().getContentResolver(),sources,now,zone);
+   getActivity().runOnUiThread(()->{final java.util.concurrent.atomic.AtomicBoolean delivered=new java.util.concurrent.atomic.AtomicBoolean();final android.app.AlertDialog[] owned={null};final JSObject[] outcome={null};try{
+    if(!workflowReadAllowed()||!workflowForeground()||!unlocked()||!java.time.ZoneId.systemDefault().equals(zone)||!operationId.equals(activeAgentOperation))throw new IllegalStateException();
+    org.json.JSONObject window=reviewed.getJSONObject("window"),event=reviewed.optJSONObject("event");
+    String message="Read only these calendars:\n"+labels+"\n\nSearch window: "+eventTimeDescription(java.time.Instant.parse(window.getString("start")).toEpochMilli(),java.time.Instant.parse(window.getString("end")).toEpochMilli(),zone.getId());
+    if(event==null)message+="\n\nNo events were found in this window. Share this result with the connected agent?";
+    else message+="\n\n"+event.getString("title")+"\n"+(event.getBoolean("allDay")?("ongoing".equals(event.getString("timing"))?"Ongoing all-day event: ":"Upcoming all-day event: ")+event.getString("start").substring(0,10)+" through "+java.time.Instant.parse(event.getString("end")).atZone(java.time.ZoneOffset.UTC).toLocalDate().minusDays(1):eventTimeDescription(java.time.Instant.parse(event.getString("start")).toEpochMilli(),java.time.Instant.parse(event.getString("end")).toEpochMilli(),zone.getId()))+"\n\nShare only this event’s title and times with the connected agent? No calendar changes are authorized.";
+    android.widget.TextView text=new android.widget.TextView(getActivity());text.setText(message);text.setPadding(32,16,32,16);android.widget.ScrollView scroll=new android.widget.ScrollView(getActivity());scroll.addView(text);
+    deleteDialog=new android.app.AlertDialog.Builder(getActivity()).setTitle("Share next Calendar event?").setView(scroll).setNegativeButton("Cancel",(dialog,which)->{}).setPositiveButton("Share with agent",(dialog,which)->{try{
+     if(!workflowReadAllowed()||!workflowForeground(owned[0])||!unlocked()||!java.time.ZoneId.systemDefault().equals(zone)||!operationId.equals(activeAgentOperation))throw new IllegalStateException();
+     org.json.JSONObject current=ai.eliza.plugins.calendar.read.SelectedCalendarReader.next(getContext().getContentResolver(),sources,now,zone);if(!current.toString().equals(reviewed.toString()))throw new IllegalStateException("Calendar result changed");
+     org.json.JSONObject shared=new org.json.JSONObject().put("version",1).put("kind","calendar_read_next").put("window",reviewed.getJSONObject("window"));org.json.JSONObject eventResult=reviewed.optJSONObject("event");if(eventResult==null)shared.put("event",org.json.JSONObject.NULL);else{org.json.JSONObject record=new org.json.JSONObject();for(String field:new String[]{"title","start","end","allDay","timing","timeZone"})record.put(field,eventResult.get(field));shared.put("event",record);}JSObject value=new JSObject();value.put("status","applied");value.put("result",shared);outcome[0]=value;
+    }catch(Exception changed){outcome[0]=statusValue("conflict");}}).create();owned[0]=deleteDialog;
+    deleteDialog.setOnDismissListener(dialog->{if(deleteDialog==owned[0]){deleteDialog=null;activeAgentOperation=null;deleting.set(false);}if(delivered.compareAndSet(false,true))c.resolve(outcome[0]!=null?outcome[0]:statusValue("cancelled"));});deleteDialog.show();
+   }catch(Exception failure){if(deleteDialog==owned[0]){deleteDialog=null;activeAgentOperation=null;deleting.set(false);}if(delivered.compareAndSet(false,true))status(c,"unavailable");}});
+  }catch(Exception failure){activeAgentOperation=null;deleting.set(false);status(c,"unavailable");}
+ }
  @PluginMethod public void executeAgent(PluginCall c){
+  if(c.getObject("operation")!=null&&"calendar_read_next".equals(c.getObject("operation").optString("type"))){executeNext(c);return;}
   if(!allowed()){status(c,"permission-required");return;}if(!workflowForeground()||!unlocked()){status(c,"unavailable");return;}
   if(!deleting.compareAndSet(false,true)){status(c,"busy");return;}
   try{
    final String operationId=c.getString("operationId","");if(!operationId.matches("[A-Za-z0-9_-]{1,128}"))throw new IllegalArgumentException();activeAgentOperation=operationId;
-   final JSObject operation=c.getObject("operation");final String kind=agentText(operation,"type",40,false);final boolean create="calendar_create".equals(kind),read="calendar_read_selected".equals(kind),update="calendar_update".equals(kind),remove="calendar_delete".equals(kind);
-   if(!create&&!read&&!update&&!remove)throw new IllegalArgumentException();agentKeys(operation,create?new String[]{"type","source","fields"}:update?new String[]{"type","target","fields"}:new String[]{"type","target"});
-   final org.json.JSONObject target=operation.getJSONObject(create?"source":"target");agentKeys(target,create?new String[]{"sourceId","sourceRevision"}:new String[]{"sourceId","sourceRevision","eventId","revision"});
+   final JSObject operation=c.getObject("operation");final String kind=agentText(operation,"type",40,false);final boolean localCreate="calendar_create_local".equals(kind),create=localCreate||"calendar_create".equals(kind),read="calendar_read_selected".equals(kind),update="calendar_update".equals(kind),remove="calendar_delete".equals(kind);
+   if(!create&&!read&&!update&&!remove)throw new IllegalArgumentException();agentKeys(operation,localCreate?new String[]{"type","fields"}:create?new String[]{"type","source","fields"}:update?new String[]{"type","target","fields"}:new String[]{"type","target"});
+   final org.json.JSONObject target=localCreate?defaultAgentSource():operation.getJSONObject(create?"source":"target");agentKeys(target,create?new String[]{"sourceId","sourceRevision"}:new String[]{"sourceId","sourceRevision","eventId","revision"});
    final long sourceId=Long.parseLong(agentText(target,"sourceId",128,false));final String sourceRevision=agentText(target,"sourceRevision",64,false);if(!sourceRevision.matches("[a-f0-9]{64}"))throw new IllegalArgumentException();
    if(!sourceRevision.equals(CalendarEventGuard.sourceRevision(getContext().getContentResolver(),sourceId,configuration.accountName,configuration.localCalendarName)))throw new IllegalStateException("Source changed");
    final CalendarEventGuard.Snapshot snapshot=create?null:CalendarEventGuard.read(getContext().getContentResolver(),Long.parseLong(agentText(target,"eventId",128,false)),sourceId);
@@ -156,7 +176,11 @@ public abstract class CalendarPlugin extends Plugin {
    getActivity().runOnUiThread(()->{final java.util.concurrent.atomic.AtomicBoolean delivered=new java.util.concurrent.atomic.AtomicBoolean();final android.app.AlertDialog[] ownedDialog={null};final boolean[] resolved={false};final JSObject[] outcome={null};try{
     if(!workflowForeground()||!allowed()||!unlocked()||!operationId.equals(activeAgentOperation)){activeAgentOperation=null;deleting.set(false);status(c,"unavailable");return;}
     String action=create?"Create":update?"Update":remove?"Delete":"Share selected";
-    String message=configuration.displayName+" · "+configuration.accountName+"\nEvent: "+reviewed.optString("title")+"\n"+reviewed.optString("start")+" — "+reviewed.optString("end")+"\nTime zone: "+reviewed.optString("timeZone")+"\nLocation: "+reviewed.optString("location")+"\n\n"+reviewed.optString("description")+(read?"\n\nSend these exact event fields to the selected agent?":remove?"\n\nDelete this exact local event? This cannot be undone.":"\n\nApply these exact event fields?");
+    String message=(localCreate?"On this phone\n":"")+configuration.displayName+"\n"+reviewed.optString("title")+"\n"+eventTimeDescription(agentInstant(reviewed,"start"),agentInstant(reviewed,"end"),reviewed.optString("timeZone"));
+    String location=reviewed.optString("location"),description=reviewed.optString("description");
+    if(!location.trim().isEmpty())message+="\nLocation: "+location;
+    if(!description.trim().isEmpty())message+="\n\n"+description;
+    message+=read?"\n\nShare this event with the connected agent?":remove?"\n\nDelete this event from this phone? This cannot be undone.":"\n\nSave this event on this phone?";
     android.widget.TextView text=new android.widget.TextView(getActivity());text.setText(message);text.setPadding(32,16,32,16);android.widget.ScrollView scroll=new android.widget.ScrollView(getActivity());scroll.addView(text);
     deleteDialog=new android.app.AlertDialog.Builder(getActivity()).setTitle(action+" calendar event?").setView(scroll).setNegativeButton("Cancel",(dialog,which)->{}).setPositiveButton(read?"Share with agent":action+" event",(dialog,which)->{
      resolved[0]=true;if(!allowed()||!unlocked()||!operationId.equals(activeAgentOperation)){outcome[0]=statusValue("permission-required");return;}

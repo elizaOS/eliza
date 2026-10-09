@@ -12,6 +12,7 @@
 
 import { userAgentHasElizaOSMarker } from "@elizaos/host/protocol";
 import {
+  AlarmClock,
   Clock3,
   LayoutGrid,
   type LucideIcon,
@@ -289,6 +290,12 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Live streaming controls",
   },
   {
+    label: "Clock",
+    tabs: ["clock"],
+    icon: AlarmClock,
+    description: "Android alarm requests and local time",
+  },
+  {
     // One consolidated surface — workflows, triggers, and scheduled items share
     // the Automations feed.
     label: "Automations",
@@ -472,6 +479,8 @@ export function titleForTab(tab: Tab): string {
       return "Character";
     case "character-select":
       return "Character Select";
+    case "clock":
+      return "Clock";
     case "automations":
       return "Automations";
     case "inventory":

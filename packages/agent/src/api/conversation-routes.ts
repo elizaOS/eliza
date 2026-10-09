@@ -29,6 +29,7 @@ import {
   PostSeedMessagesRequestSchema,
   parseChatFailureKind,
   parseChatTerminalFailure,
+  parseChatUserTextFormat,
 } from "@elizaos/contracts";
 import {
   type ActionResult,
@@ -3656,6 +3657,14 @@ async function listConversationMessages(
           content.accountConnect,
         );
         const role = m.entityId === agentId ? "assistant" : "user";
+        const userTextFormat =
+          role === "user"
+            ? parseChatUserTextFormat(
+                isRecord(content.metadata)
+                  ? content.metadata.userTextFormat
+                  : undefined,
+              )
+            : undefined;
         const interrupted = content.interrupted === true;
         const rawText = formatConversationMessageText(
           (
@@ -3702,6 +3711,7 @@ async function listConversationMessages(
           id: m.id ?? "",
           role,
           text,
+          ...(userTextFormat ? { userTextFormat } : {}),
           ...(role === "assistant" &&
           typeof content.planningAcknowledgment === "string"
             ? { planningAcknowledgment: content.planningAcknowledgment }

@@ -67,7 +67,6 @@ async function createTransport(complete: boolean, deferFinish = false) {
 			return providerText;
 		},
 		async close() {
-			server.closeAllConnections();
 			await providerText?.catch(() => undefined);
 			await new Promise<void>((resolve, reject) => {
 				server.close((error) => (error ? reject(error) : resolve()));

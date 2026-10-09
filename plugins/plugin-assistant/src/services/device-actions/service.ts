@@ -1,7 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  isNativeNotesQuery,
+  NOTES_QUERY_CAPABILITY,
+} from "@elizaos/contracts/native-notes-query";
 import type { IAgentRuntime } from "@elizaos/core";
-import { stableStringify } from "@elizaos/core";
+import { stableStringify, withActionGatePolicy } from "@elizaos/core";
 import {
   executeRawSqlTx,
   sqlText,
@@ -14,18 +18,25 @@ import type {
 } from "../approval/types.ts";
 import {
   CALENDAR_CAPABILITY,
+  CALENDAR_CREATE_CAPABILITY,
+  CALENDAR_NEXT_CAPABILITY,
+  calendarCapabilityAvailable,
   isCalendarOperation,
   validateCalendarResult,
 } from "./calendar-contract.ts";
 import {
   assertClockObservation,
+  CLOCK_ALARMS_CAPABILITY,
   CLOCK_CAPABILITY,
+  CLOCK_REPEAT_CAPABILITY,
+  clockCapabilityAvailable,
   isClockOperation,
   validateClockResult,
 } from "./clock-contract.ts";
 import {
   DeviceActionError,
   type DeviceActionPayload,
+  deviceOperationSupportedByCapabilities,
   exactKeys,
   identifier,
   object,
@@ -44,6 +55,7 @@ import {
   NOTES_CAPABILITY,
   validateNotesResult,
 } from "./notes-contract.ts";
+import { validateNotesQueryResult } from "./notes-query-result.ts";
 import {
   isReminderOperation,
   REMINDER_CAPABILITY,
@@ -79,6 +91,7 @@ interface TransactionDatabase extends TransactionalDb {
   transaction<T>(fn: (tx: TransactionalDb) => Promise<T>): Promise<T>;
 }
 interface DeviceTurn {
+  readonly startedAt: number;
   runtime: IAgentRuntime;
   credential: DeviceCredential;
   active: boolean;
@@ -94,12 +107,38 @@ export async function withDeviceActionTurn<T>(
   credential: DeviceCredential,
   fn: () => Promise<T>,
 ): Promise<T> {
+  const startedAt = Date.now();
   const viewProfile = await new DeviceActionService(runtime).viewProfile(
     credential,
   );
-  const context = { runtime, credential, active: true, viewProfile };
+  const context = { runtime, credential, active: true, viewProfile, startedAt };
   try {
-    return await turn.run(context, fn);
+    return await turn.run(context, () =>
+      withActionGatePolicy((action) => {
+        if (action.name === "PROPOSE_DEVICE_ACTION") return;
+        const capabilities = credential.capabilities ?? [];
+        const tags = action.tags ?? [];
+        const nativeDomain =
+          capabilities.includes(NOTES_CAPABILITY) &&
+          tags.includes("resource:notes")
+            ? "Notes"
+            : [
+                  CALENDAR_CAPABILITY,
+                  CALENDAR_CREATE_CAPABILITY,
+                  CALENDAR_NEXT_CAPABILITY,
+                ].some((capability) => capabilities.includes(capability)) &&
+                tags.includes("resource:calendar-records")
+              ? "Calendar"
+              : (capabilities.includes(REMINDER_CAPABILITY) ||
+                    capabilities.includes(REMINDER_TIMING_CAPABILITY) ||
+                    capabilities.includes(REMINDER_CREATE_CAPABILITY)) &&
+                  tags.includes("resource:reminders-records")
+                ? "reminders"
+                : undefined;
+        if (nativeDomain)
+          return `This authenticated phone owns ${nativeDomain} records. Use PROPOSE_DEVICE_ACTION for its supported operations; native approval and a device receipt are required. Backend-store actions cannot substitute for device records.`;
+      }, fn),
+    );
   } finally {
     context.active = false;
   }
@@ -161,6 +200,7 @@ export class DeviceActionService {
     enrollmentId: string;
     capabilities: string[];
     viewProfileVersion: 1;
+    userTextFormatVersion: 1;
   }> {
     if (
       workflowProtocol !== 0 &&
@@ -183,13 +223,19 @@ export class DeviceActionService {
         installationId: c.installationId,
         enrollmentId: String(row.enrollment_id),
         viewProfileVersion: 1,
+        userTextFormatVersion: 1,
         capabilities: [
           "calendar.local-event.v1",
+          CALENDAR_CREATE_CAPABILITY,
+          CALENDAR_NEXT_CAPABILITY,
           "notes.local-record.v1",
+          NOTES_QUERY_CAPABILITY,
           REMINDER_CAPABILITY,
           REMINDER_TIMING_CAPABILITY,
           REMINDER_CREATE_CAPABILITY,
           CLOCK_CAPABILITY,
+          CLOCK_REPEAT_CAPABILITY,
+          CLOCK_ALARMS_CAPABILITY,
           MAPS_CAPABILITY,
         ],
       };
@@ -202,7 +248,7 @@ export class DeviceActionService {
     const hash = keyHash(c.deviceKey);
     const rows = await executeRawSqlTx(
       tx,
-      `SELECT enrollment_id, key_hash, revoked, workflow_protocol, view_profile FROM client_devices WHERE ${scope(c, this.runtime.agentId)} FOR UPDATE`,
+      `SELECT agent_id, subject_user_id, installation_id, enrollment_id, key_hash, revoked, workflow_protocol, view_profile FROM client_devices WHERE ${scope(c, this.runtime.agentId)} FOR UPDATE`,
     );
     const row = rows[0];
     if (
@@ -232,6 +278,24 @@ export class DeviceActionService {
   }
   async authenticate(c: DeviceCredential): Promise<void> {
     await this.access(c, async () => {});
+  }
+  /** Canonical enrollment identity for a native journal, authenticated by the existing device store. */
+  async context(c: DeviceCredential): Promise<{
+    agentId: string;
+    subjectUserId: string;
+    installationId: string;
+    enrollmentId: string;
+    scope: string;
+  }> {
+    return this.access(c, async (_q, row) => {
+      const identity = {
+        agentId: identifier(row.agent_id),
+        subjectUserId: text(row.subject_user_id, 256),
+        installationId: identifier(row.installation_id),
+        enrollmentId: identifier(row.enrollment_id),
+      };
+      return { ...identity, scope: digest(identity) };
+    });
   }
   async viewProfile(c: DeviceCredential): Promise<DeviceViewProfile | null> {
     return this.access(c, async (_q, row) =>
@@ -321,9 +385,11 @@ export class DeviceActionService {
     observation?: unknown,
   ): Promise<ApprovalEnqueueResult> {
     const validated = validateDeviceOperation(operation);
+    if (!deviceOperationSupportedByCapabilities(validated.type, c.capabilities))
+      throw new DeviceActionError("Device operation capability unavailable");
     if (
       isClockOperation(validated) &&
-      !c.capabilities?.includes(CLOCK_CAPABILITY)
+      !clockCapabilityAvailable(validated, c.capabilities)
     )
       throw new DeviceActionError("Clock capability unavailable");
     if (isMapsOperation(validated)) {
@@ -341,21 +407,29 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Reminder capability unavailable");
     if (
+      isNativeNotesQuery(validated) &&
+      (!c.capabilities?.includes(NOTES_QUERY_CAPABILITY) ||
+        !c.capabilities.includes(NOTES_CAPABILITY))
+    )
+      throw new DeviceActionError("Notes query capability unavailable");
+    if (
       isNotesOperation(validated) &&
       !c.capabilities?.includes(NOTES_CAPABILITY)
     )
       throw new DeviceActionError("Notes capability unavailable");
     if (
       isCalendarOperation(validated) &&
-      !c.capabilities?.includes(CALENDAR_CAPABILITY)
+      !calendarCapabilityAvailable(validated.type, c.capabilities)
     )
       throw new DeviceActionError("Calendar capability unavailable");
     if (
       ![
         "clock_handoff",
+        "clock_alarm",
         "create_note",
         "maps_read_selected",
         "notes_read_selected",
+        "notes_query",
         "notes_update",
         "notes_delete",
         "create_reminder",
@@ -367,6 +441,8 @@ export class DeviceActionService {
         "reminder_cancel",
         "open_view",
         "browser_navigate",
+        "calendar_create_local",
+        "calendar_read_next",
         "calendar_create",
         "calendar_read_selected",
         "calendar_update",
@@ -400,14 +476,32 @@ export class DeviceActionService {
       );
       if (isClockOperation(validated)) {
         const receipt = existing?.execution?.providerReceipt;
+        const priorPayload = existing
+          ? validateDevicePayload(existing.payload)
+          : undefined;
         const historical =
           existing?.state === "done" &&
-          stableStringify(existing.payload) === stableStringify(payload) &&
+          priorPayload?.installationId === payload.installationId &&
+          priorPayload?.enrollmentId === payload.enrollmentId &&
+          stableStringify(priorPayload.operation) ===
+            stableStringify(payload.operation) &&
           receipt?.outcome === "applied";
         try {
-          if (historical)
-            validateClockResult(validated, receipt.result, "applied");
-          else assertClockObservation(validated, observation);
+          if (historical) {
+            validateClockResult(
+              validated,
+              receipt.result,
+              "applied",
+              typeof receipt.operationId === "string"
+                ? receipt.operationId
+                : undefined,
+            );
+            if (validated.type === "clock_alarm")
+              payload.clockContextRevision = priorPayload.clockContextRevision;
+          } else {
+            const context = assertClockObservation(validated, observation);
+            if (context) payload.clockContextRevision = context.alarmsRevision;
+          }
         } catch {
           throw new DeviceActionError(
             "Clock observation unavailable or changed",
@@ -639,12 +733,30 @@ export class DeviceActionService {
           state: null,
           action: "device_action",
         })
-      ).filter(
-        (request) =>
-          request.payload.action === "device_action" &&
-          request.payload.installationId === c.installationId &&
-          request.payload.enrollmentId === row.enrollment_id,
-      ),
+      ).filter((request) => {
+        if (
+          request.payload.action !== "device_action" ||
+          request.payload.installationId !== c.installationId ||
+          request.payload.enrollmentId !== row.enrollment_id
+        )
+          return false;
+        const operation = validateDevicePayload(request.payload).operation;
+        const supported = deviceOperationSupportedByCapabilities(
+          operation.type,
+          c.capabilities,
+        );
+        if (
+          (isNativeNotesQuery(operation) ||
+            operation.type === "calendar_create_local" ||
+            operation.type === "calendar_read_next") &&
+          !supported
+        )
+          return false;
+        return (
+          deviceOperationSupportedByCapabilities("open_view", c.capabilities) ||
+          supported
+        );
+      }),
     );
   }
   private async proposal(
@@ -659,8 +771,15 @@ export class DeviceActionService {
     if (!request) throw new DeviceActionError("Proposal unavailable");
     const payload = validateDevicePayload(request.payload);
     if (
+      !deviceOperationSupportedByCapabilities(
+        payload.operation.type,
+        c.capabilities,
+      )
+    )
+      throw new DeviceActionError("Device operation capability unavailable");
+    if (
       isClockOperation(payload.operation) &&
-      !c.capabilities?.includes(CLOCK_CAPABILITY)
+      !clockCapabilityAvailable(payload.operation, c.capabilities)
     )
       throw new DeviceActionError("Clock capability unavailable");
     if (
@@ -679,13 +798,19 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Reminder capability unavailable");
     if (
+      isNativeNotesQuery(payload.operation) &&
+      (!c.capabilities?.includes(NOTES_QUERY_CAPABILITY) ||
+        !c.capabilities.includes(NOTES_CAPABILITY))
+    )
+      throw new DeviceActionError("Notes query capability unavailable");
+    if (
       isNotesOperation(payload.operation) &&
       !c.capabilities?.includes(NOTES_CAPABILITY)
     )
       throw new DeviceActionError("Notes capability unavailable");
     if (
       isCalendarOperation(payload.operation) &&
-      !c.capabilities?.includes(CALENDAR_CAPABILITY)
+      !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
     )
       throw new DeviceActionError("Calendar capability unavailable");
     if (
@@ -794,8 +919,13 @@ export class DeviceActionService {
       const request = await this.proposal(q, row, c, id, expectedDigest);
       const payload = validateDevicePayload(request.payload);
       if (
+        isCalendarOperation(payload.operation) &&
+        !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
+      )
+        throw new DeviceActionError("Calendar capability unavailable");
+      if (
         isClockOperation(payload.operation) &&
-        !c.capabilities?.includes(CLOCK_CAPABILITY)
+        !clockCapabilityAvailable(payload.operation, c.capabilities)
       )
         throw new DeviceActionError("Clock capability unavailable");
       if (
@@ -814,6 +944,12 @@ export class DeviceActionService {
       )
         throw new DeviceActionError("Reminder capability unavailable");
       if (
+        isNativeNotesQuery(payload.operation) &&
+        (!c.capabilities?.includes(NOTES_QUERY_CAPABILITY) ||
+          !c.capabilities.includes(NOTES_CAPABILITY))
+      )
+        throw new DeviceActionError("Notes query capability unavailable");
+      if (
         isNotesOperation(payload.operation) &&
         !c.capabilities?.includes(NOTES_CAPABILITY)
       )
@@ -830,6 +966,9 @@ export class DeviceActionService {
                 payload.operation,
                 value.result,
                 receipt.outcome,
+                typeof receipt.operationId === "string"
+                  ? receipt.operationId
+                  : undefined,
               ),
             };
         } catch {
@@ -865,6 +1004,18 @@ export class DeviceActionService {
           };
         } catch {
           throw new DeviceActionError("Invalid reminder receipt");
+        }
+      } else if (
+        isNativeNotesQuery(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateNotesQueryResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid Notes query receipt");
         }
       } else if (
         isNotesOperation(payload.operation) &&
@@ -956,8 +1107,13 @@ export class DeviceActionService {
       const request = await this.proposal(q, row, c, id, expectedDigest);
       const payload = validateDevicePayload(request.payload);
       if (
+        isCalendarOperation(payload.operation) &&
+        !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
+      )
+        throw new DeviceActionError("Calendar capability unavailable");
+      if (
         isClockOperation(payload.operation) &&
-        !c.capabilities?.includes(CLOCK_CAPABILITY)
+        !clockCapabilityAvailable(payload.operation, c.capabilities)
       )
         throw new DeviceActionError("Clock capability unavailable");
       if (
@@ -976,6 +1132,12 @@ export class DeviceActionService {
       )
         throw new DeviceActionError("Reminder capability unavailable");
       if (
+        isNativeNotesQuery(payload.operation) &&
+        (!c.capabilities?.includes(NOTES_QUERY_CAPABILITY) ||
+          !c.capabilities.includes(NOTES_CAPABILITY))
+      )
+        throw new DeviceActionError("Notes query capability unavailable");
+      if (
         isNotesOperation(payload.operation) &&
         !c.capabilities?.includes(NOTES_CAPABILITY)
       )
@@ -989,6 +1151,9 @@ export class DeviceActionService {
                 payload.operation,
                 value.result,
                 receipt.outcome,
+                typeof receipt.operationId === "string"
+                  ? receipt.operationId
+                  : undefined,
               ),
             };
         } catch {
@@ -1024,6 +1189,18 @@ export class DeviceActionService {
           };
         } catch {
           throw new DeviceActionError("Invalid reminder receipt");
+        }
+      } else if (
+        isNativeNotesQuery(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateNotesQueryResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid Notes query receipt");
         }
       } else if (
         isNotesOperation(payload.operation) &&

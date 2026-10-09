@@ -37,6 +37,10 @@ Pause/cancel/revoke, hosts must await `runtime.settle()` before reporting cleanu
 complete or replacing the runtime. The HTTP handler does this automatically.
 Unconfirmed cleanup returns `TASK_CLEANUP_UNCONFIRMED`; a later status read retries
 cleanup only, without repeating the task transition or browser action.
+The pause route accepts optional `reason: "close"` when the user closes the task
+surface. This keeps the pause transition but passes `close` to `quiesce`; ordinary
+Pause, cancel, and revoke pass their own reasons. Per-task cleanup runs in control
+order, and a retry retains its reason.
 
 Trusted hosts may call `runtime.reconcile` for an unknown operation through an
 optional actuator `reconcile` readback implementation. It must read evidence only,
@@ -158,6 +162,26 @@ DNS overrides. This startup snapshot does not implement Private DNS, VPN-bound
 resolution or automatic network-change refresh.
 
 ## Native host composition
+
+Hosts with their own native view renderers may set
+`ELIZA_NATIVE_VIEW_DECLARATIONS` before runtime startup. Its value is a JSON
+array of at most 32 navigation-only declarations with `id`, `label`, `path`,
+and optional `fallbackFor` (an exact plugin package name). For example:
+
+```json
+[{"id":"native-gallery","label":"Gallery","path":"/native-gallery"}]
+```
+
+This is trusted host configuration, never renderer metadata or a device view
+profile. Entries use existing runtime installations, have an OWNER role gate,
+declare no capabilities or controls, and retain `available: false` because they
+supply no hosted executable. Registered completed-action clients still require
+the normal owner/client/installation preparation, claim and acknowledgment.
+Ordinary originating-client delivery cannot use an unavailable hosted view.
+An exact preview builtin may have a host-selected released native counterpart;
+system/release builtins cannot be overridden. Already installed plugin entries
+remain authoritative. Later plugin replacement requires an explicit matching
+`fallbackFor`, route and modality. Without this setting, catalogs are unchanged.
 
 `native-host/gateway.mjs` is a dependency-free Node source entrypoint for native
 hosts shipping a separately verified gateway payload. Supply an explicit

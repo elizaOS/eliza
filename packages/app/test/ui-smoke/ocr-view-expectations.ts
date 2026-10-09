@@ -108,6 +108,9 @@ export const VIEW_OCR_POLICIES = {
       "You are",
     ],
   }),
+  "builtin-clock": expected({
+    requireAll: ["Clock", "Alarms"],
+  }),
   "builtin-automations": expected({
     requireAll: ["All"],
     requireAny: [

@@ -24,7 +24,6 @@
     "build": "node ../../packages/scripts/rm-path-recursive.ts dist && tsc6 -p tsconfig.json --noCheck",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build:swift": "swiftc -O native/macos/activity-collector.swift -o native/macos/activity-collector",
-    "test": "vitest run",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -36,7 +35,7 @@
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "publishConfig": {
     "access": "public"

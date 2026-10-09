@@ -22,7 +22,7 @@ distribution tooling lives in [`packages/os`](packages/os/README.md).
 | Use Eliza | [Open the web app](https://cloud.eliza.app), visit [Eliza downloads](https://eliza.app/downloads), or use a published [GitHub release](https://github.com/elizaOS/eliza/releases) |
 | Run this repository | Follow [Run Eliza from source](#run-eliza-from-source) |
 | Build an agent or plugin | Start with [the runtime](#build-an-agent) and the [developer docs](https://docs.elizaos.ai/) |
-| Contribute | Read the repository guide in [AGENTS.md](AGENTS.md) |
+| Contribute | Read the [required contribution rules](#contributing) and [AGENTS.md](AGENTS.md) |
 | Run a whole device as elizaOS | Start with the build requirements and target guides in [`packages/os`](packages/os/README.md) |
 
 ## Run Eliza from source
@@ -49,7 +49,7 @@ Common repository commands:
 bun run start       # run the standalone agent host
 bun run build       # build the workspace with Turbo
 bun run verify      # dependency, type, lint, and audit gates
-bun run test        # repository unit/integration test lane
+bun run test        # repository end-to-end test lane
 bun run test:e2e    # end-to-end lane
 bun run cloud:mock  # local Eliza Cloud stack with mocks
 ```
@@ -149,10 +149,34 @@ patches/         dependency patches applied during installation
 ```
 
 Every maintained package or plugin should explain its public surface, scripts,
-configuration, and local constraints in its own `README.md` and paired
-`AGENTS.md`. Read the nearest package guide before making changes.
+configuration, and local constraints in its own `README.md`. Read that README
+before making changes. The root [AGENTS.md](AGENTS.md) is the only repository
+agent guide; do not add nested `AGENTS.md` files.
 
 ## Contributing
+
+> [!IMPORTANT]
+> **The [contribution rules](CONTRIBUTING.md) are required for all issues and PRs.**
+> Stay within the approved minimum viable product (MVP) and product requirements
+> document (PRD). Maintainers will close unnecessary work and apply contributor
+> penalties.
+
+- Contributors must write and submit issues by hand on GitHub. Agents must not
+  draft or create issues. See [the human-only issue rule](CONTRIBUTING.md#human-only-issue-creation).
+- Report real bugs or missing approved MVP requirements. Link the PRD and MVP
+  plan. New features need human maintainer discussion and approval, then updates
+  to both plans before implementation issues or PRs are opened.
+- Prove a useful improvement with before-and-after behavior or relevant scores.
+  Prefer cleanup, removal, reuse, and combined types and functions. Add new types
+  or code only when necessary. Explain the research, alternatives, and choice.
+- Do not add unnecessary tests, defensive code, validation, or truncation.
+  Provide real end-to-end test results. Use existing tests first. Avoid new unit
+  tests, mock-only proof, and tests that repeat the implementation.
+- Every UI PR needs an uploaded MP4 explainer and walkthrough, video evidence of
+  the changed flow, desktop and mobile screenshots, the app visual audit, and
+  detailed steps to test the change.
+- Write issues and PRs in ASD-STE100 Simplified Technical English. Use short,
+  direct sentences and explain technical terms for a non-technical reader.
 
 elizaOS focuses on its first-party runtime, applications, and maintained integrations.
 We no longer accept third-party plugins or registry items, including new listings,
@@ -160,7 +184,7 @@ listing updates, and registry submission tooling. Related issues and pull reques
 will be closed as out of scope.
 
 Submit changes through a pull request against `develop`; follow
-[AGENTS.md](AGENTS.md) and the owning package's guide. Include verification of
+[AGENTS.md](AGENTS.md) and the owning package's README. Include verification of
 the changed behavior.
 
 Report vulnerabilities privately through

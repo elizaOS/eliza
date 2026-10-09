@@ -119,6 +119,72 @@ describe("durable SQLite agent adapter", () => {
     ]);
   });
 
+  it("keeps quoted phrases, negation and OR in message search, like plugin-sql", async () => {
+    const adapter = await open();
+    const adjacent = "the exact phrase alpha beta lives here";
+    const apart = "alpha appears alone and beta appears far away later";
+    const misspelled = "alpah or zephry are deliberately misspelled";
+    const zephyr = "duplicate marker zephyr";
+    const ticket = "ticket abc-123 is closed";
+    await adapter.createMemories(
+      [adjacent, apart, misspelled, zephyr, ticket].map((text, index) => ({
+        memory: {
+          ...memory(text),
+          createdAt: 1_700_000_000_000 + index,
+          embedding: undefined,
+        },
+        tableName: "messages",
+      })),
+    );
+    const search = async (query: string) =>
+      (
+        await adapter.searchMessages({
+          roomIds: [roomId],
+          query,
+          tableName: "messages",
+          limit: 50,
+        })
+      )
+        .map((hit) => hit.memory.content.text)
+        .sort();
+
+    expect(await search('"alpha beta"')).toEqual([adjacent]);
+    expect(await search("alpha beta")).toEqual([apart, adjacent].sort());
+    expect(await search("alpha -far")).toEqual([adjacent]);
+    expect(await search("alpha OR zephyr")).toEqual(
+      [adjacent, apart, zephyr].sort(),
+    );
+    // An interior hyphen is ordinary text, not negation.
+    expect(await search("abc-123")).toEqual([ticket]);
+
+    const farm = "alpha beta farm";
+    const partialWords = "xalpha betamax";
+    await adapter.createMemories(
+      [farm, partialWords].map((text) => ({
+        memory: { ...memory(text), embedding: undefined },
+        tableName: "messages",
+      })),
+    );
+    expect.soft(await search('"alpha beta"')).toEqual([adjacent, farm].sort());
+    expect.soft(await search("alpha -far")).toEqual([adjacent, farm].sort());
+
+    // Postgres reads a sentence-final `beta.` or `far.` as `beta` or `far`.
+    const sentence = "we ship alpha beta.";
+    const tooFar = "alpha is too far.";
+    await adapter.createMemories(
+      [sentence, tooFar].map((text) => ({
+        memory: { ...memory(text), embedding: undefined },
+        tableName: "messages",
+      })),
+    );
+    expect
+      .soft(await search('"alpha beta"'))
+      .toEqual([adjacent, farm, sentence].sort());
+    expect
+      .soft(await search("alpha -far"))
+      .toEqual([adjacent, farm, sentence].sort());
+  });
+
   it("deletes document fragments when the document is deleted", async () => {
     const adapter = await open();
     const documentId = id();

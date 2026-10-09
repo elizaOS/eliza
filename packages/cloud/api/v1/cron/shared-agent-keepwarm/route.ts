@@ -76,18 +76,20 @@ async function runKeepwarm(c: AppContext) {
     // turn-ingress modules. Sequential for the same flat-pressure reason.
     let personalRoomsWarmed = 0;
     let personalOrganizationsWarmed = 0;
-    if (rowlessPersonal > 0) {
+    // Select eligible personal rooms independently: the global agent hot set
+    // can be filled entirely by newer sandbox agents.
+    const rooms =
+      await sharedRuntimeHistoryRepository.listRecentlyActivePersonalRooms(
+        since,
+        KEEPWARM_MAX_PERSONAL_ROOMS,
+      );
+    if (rooms.length > 0) {
       const namespace = c.env.SHARED_RUNTIME_CONVERSATIONS;
       if (!namespace) {
         throw new Error(
           "SHARED_RUNTIME_CONVERSATIONS binding is required to warm Personal Shared rooms",
         );
       }
-      const rooms =
-        await sharedRuntimeHistoryRepository.listRecentlyActiveRooms(
-          since,
-          KEEPWARM_MAX_PERSONAL_ROOMS,
-        );
       // Each room reports its verified owner; the owning organization's
       // rate-limit gate is warmed once per sweep.
       const warmedOrganizations = new Set<string>();

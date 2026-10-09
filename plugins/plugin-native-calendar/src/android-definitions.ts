@@ -23,6 +23,8 @@ export interface AndroidCalendarExpected {
   end: number;
 }
 export type AndroidCalendarOperation =
+  | { type: "calendar_create_local"; fields: AndroidCalendarFields }
+  | { type: "calendar_read_next" }
   | {
       type: "calendar_create";
       source: AndroidCalendarSource;
@@ -39,7 +41,7 @@ export type AndroidCalendarOperation =
     };
 export interface AndroidCalendarReceipt {
   version: 1;
-  kind: AndroidCalendarOperation["type"];
+  kind: Exclude<AndroidCalendarOperation["type"], "calendar_read_next">;
   sourceId: string;
   eventId: string;
   revision: string;
@@ -50,8 +52,31 @@ export type AndroidCalendarAgentResult =
       result: AndroidCalendarReceipt &
         (
           | { kind: "calendar_read_selected"; fields: AndroidCalendarFields }
-          | { kind: "calendar_create" | "calendar_update" | "calendar_delete" }
+          | {
+              kind:
+                | "calendar_create_local"
+                | "calendar_create"
+                | "calendar_update"
+                | "calendar_delete";
+            }
         );
+    }
+  | {
+      status: "applied";
+      result: {
+        version: 1;
+        kind: "calendar_read_next";
+        window: { start: string; end: string; timeZone: string };
+        event:
+          | null
+          | (Pick<
+              AndroidCalendarFields,
+              "title" | "start" | "end" | "timeZone"
+            > & {
+              allDay: boolean;
+              timing: "ongoing" | "upcoming";
+            });
+      };
     }
   | {
       status:
