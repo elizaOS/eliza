@@ -123,6 +123,18 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 		expect(docs?.type).toBe("directory");
 		const inside = await bridge.list("docs");
 		expect(inside).toEqual([{ name: "readme.md", type: "file" }]);
+		symlinkSync("docs", path.join(tempRoot, "docs-link"), "dir");
+		symlinkSync("missing.txt", path.join(tempRoot, "dangling.txt"), "file");
+		expect(
+			(await bridge.list("")).sort((a, b) => a.name.localeCompare(b.name)),
+		).toEqual([
+			{ name: "dangling.txt", type: "file" },
+			{ name: "docs", type: "directory" },
+			{ name: "docs-link", type: "directory" },
+		]);
+		await expect(bridge.read("dangling.txt")).rejects.toThrow();
+		symlinkSync("loop", path.join(tempRoot, "loop"), "file");
+		await expect(bridge.list("")).rejects.toMatchObject({ code: "ELOOP" });
 	});
 
 	it("round-trips utf8 content", async () => {

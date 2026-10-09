@@ -318,7 +318,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 <div className="text-xs text-muted">
                   {deviceSettings?.brightnessMode === "automatic"
                     ? "Adaptive"
-                    : "Manual"}
+                    : deviceSettings?.brightnessMode === "manual"
+                      ? "Manual"
+                      : "Unknown"}
                 </div>
               </div>
             </div>
