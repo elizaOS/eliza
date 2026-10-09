@@ -533,7 +533,15 @@ export class SteerLiquidityService extends Service {
         0,
       );
       const apyValues = allVaults
-        .map((vault) => vault.apy || vault.apr || 0)
+        .map((vault) =>
+          recordedSteerYield(
+            vault.apy,
+            vault.apr,
+            undefined,
+            undefined,
+            undefined,
+          ),
+        )
         .filter((apy) => apy > 0);
       const apyRange = {
         min: apyValues.length > 0 ? Math.min(...apyValues) : 0,
