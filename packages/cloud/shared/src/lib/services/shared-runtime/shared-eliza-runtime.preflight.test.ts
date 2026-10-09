@@ -91,7 +91,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
   const participantNames: Array<string | undefined> = [];
   const publicHttpHops: string[] = [];
   let modelCalls = 0;
-  const advertisedSdkToolNames: string[][] = [];
+  const advertisedSdkTools: Array<Array<{ name: string; parameters: unknown }>> = [];
   let freeSelectionsBeforeAction = 0;
   let validations = 0;
   let otherActions = 0;
@@ -201,13 +201,13 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
       throw new Error("Unexpected network boundary in offline Core test");
     }
     const request = JSON.parse(body) as {
-      tools?: Array<{ function?: { name?: string } }>;
+      tools?: Array<{ function?: { name?: string; parameters?: unknown } }>; 
       messages?: Array<Record<string, unknown>>;
     };
     modelCalls += 1;
     if (modelCalls > 12) throw new Error("Offline model-dispatch count bound exceeded");
     const names = request.tools?.map((tool) => tool.function?.name) ?? [];
-    advertisedSdkToolNames.push(names.filter((name): name is string => typeof name === "string"));
+    advertisedSdkTools.push((request.tools ?? []).flatMap((tool) => typeof tool.function?.name === "string" ? [{ name: tool.function.name, parameters: tool.function.parameters }] : []));
     const system = (request.messages ?? [])
       .filter((message) => message.role === "system" && typeof message.content === "string")
       .map((message) => message.content as string)
@@ -347,7 +347,7 @@ async function exercise(mode: Mode = {}, reply = MARKED, ownerCapture?: OwnerMod
     publicHttpCalls, publicHttpHops, modelCalls, modelChronology, legacyCacheCountAtStop, coreResultCount: coreActionResults.length,
     failed, failureCategory: failureCategory ?? null,
   });
-  return { advertisedSdkToolNames, participantNames, result, failed, failureCategory, publicHttpCalls, publicHttpHops, modelCalls, modelChronology, freeSelectionsBeforeAction, validations, otherActions, actions, coreActionResults, legacyCacheCountAtStop, registeredShortcut };
+  return { advertisedSdkTools, participantNames, result, failed, failureCategory, publicHttpCalls, publicHttpHops, modelCalls, modelChronology, freeSelectionsBeforeAction, validations, otherActions, actions, coreActionResults, legacyCacheCountAtStop, registeredShortcut };
 }
 
 const CAPTURE_SCOPE = {
@@ -413,12 +413,13 @@ test("genuine preflight enters canonical execution without free-query selection"
   expect(JSON.stringify(requests)).toContain(PROMPT);
   expect(JSON.stringify(requests)).toContain("WEB_SEARCH");
   const sdkInputs = requests.map((event) => (event.payload as { input: { tools?: Array<{ name: string; inputSchema?: unknown }> } }).input);
-  expect(sdkInputs.length).toBe(actual.advertisedSdkToolNames.length);
+  expect(sdkInputs.length).toBe(actual.advertisedSdkTools.length);
   for (const [index, input] of sdkInputs.entries()) {
-    const advertised = actual.advertisedSdkToolNames[index] ?? [];
-    expect(input.tools?.map((tool) => tool.name) ?? []).toEqual(advertised);
-    for (const tool of input.tools ?? []) {
+    const advertised = actual.advertisedSdkTools[index] ?? [];
+    expect(input.tools?.map((tool) => tool.name) ?? []).toEqual(advertised.map((tool) => tool.name));
+    for (const [toolIndex, tool] of (input.tools ?? []).entries()) {
       expect(tool.inputSchema !== null && typeof tool.inputSchema === "object" && !Array.isArray(tool.inputSchema)).toBe(true);
+      expect(tool.inputSchema).toEqual(advertised[toolIndex]?.parameters);
     }
   }
   expect(JSON.stringify(capture.events)).not.toContain("offline-preflight-test-key");
