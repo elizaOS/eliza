@@ -6,9 +6,10 @@
  */
 
 import {
+  getFirstRunProviderOption,
   resolveServiceRoutingInConfig,
   type SubscriptionProviderStatus,
-} from "@elizaos/shared";
+} from "@elizaos/host/protocol";
 import {
   type Dispatch,
   type SetStateAction,
@@ -16,11 +17,9 @@ import {
   useEffect,
   useState,
 } from "react";
-import { client } from "../../api";
-import { getFirstRunProviderOption } from "../../providers";
+import { client } from "../../api/client";
 import type { useCloudModelConfig } from "./useCloudModelConfig";
 import type { useProviderSelection } from "./useProviderSelection";
-
 export interface ProviderBootstrapState {
   /** True after the saved routing config has either loaded or failed. */
   routingConfigResolved: boolean;
@@ -28,11 +27,8 @@ export interface ProviderBootstrapState {
   anthropicConnected: boolean;
   setAnthropicConnected: Dispatch<SetStateAction<boolean>>;
   anthropicCliDetected: boolean;
-  openaiConnected: boolean;
-  setOpenaiConnected: Dispatch<SetStateAction<boolean>>;
   loadSubscriptionStatus: () => Promise<void>;
 }
-
 export function useProviderBootstrap(
   selection: ReturnType<typeof useProviderSelection>,
   cloudModel: ReturnType<typeof useCloudModelConfig>,
@@ -43,9 +39,7 @@ export function useProviderBootstrap(
   >([]);
   const [anthropicConnected, setAnthropicConnected] = useState(false);
   const [anthropicCliDetected, setAnthropicCliDetected] = useState(false);
-  const [openaiConnected, setOpenaiConnected] = useState(false);
   const [routingConfigResolved, setRoutingConfigResolved] = useState(false);
-
   const loadSubscriptionStatus = useCallback(async () => {
     try {
       const res = await client.getSubscriptionStatus();
@@ -54,7 +48,6 @@ export function useProviderBootstrap(
       // subscription status is best-effort; component renders with empty list
     }
   }, []);
-
   // Boot effect. Hooks own their internal state; calling their stable
   // setters in this once-on-mount effect is intentional. Biome wants the
   // setter identities in the dep list but we know they're stable.
@@ -92,14 +85,9 @@ export function useProviderBootstrap(
       }
     })();
   }, [enabled, loadSubscriptionStatus]);
-
   useEffect(() => {
     const anthStatuses = subscriptionStatus.filter(
       (s) => s.provider === "anthropic-subscription",
-    );
-    const oaiStatuses = subscriptionStatus.filter(
-      (s) =>
-        s.provider === "openai-subscription" || s.provider === "openai-codex",
     );
     // Only treat as "connected" when credentials were linked via the in-app
     // OAuth flow (source === "app"). Claude Code CLI credentials detected on
@@ -116,19 +104,13 @@ export function useProviderBootstrap(
           status.source === "claude-code-cli",
       ),
     );
-    setOpenaiConnected(
-      oaiStatuses.some((status) => status.configured && status.valid),
-    );
   }, [subscriptionStatus]);
-
   return {
     routingConfigResolved,
     subscriptionStatus,
     anthropicConnected,
     setAnthropicConnected,
     anthropicCliDetected,
-    openaiConnected,
-    setOpenaiConnected,
     loadSubscriptionStatus,
   };
 }

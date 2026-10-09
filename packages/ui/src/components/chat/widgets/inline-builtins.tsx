@@ -50,16 +50,28 @@ registerInlineWidget<ChoiceMatch>({
   kind: "choice",
   parse: (text) => findChoiceRegions(text).map((m) => ({ ...m, data: m })),
   keyFor: (m) => `choice:${m.id}`,
-  render: (m, ctx, key) => (
-    <ChoiceWidget
-      key={key}
-      id={m.id}
-      scope={m.scope}
-      options={m.options}
-      allowCustom={m.allowCustom}
-      onChoose={ctx.sendAction}
-    />
-  ),
+  render: (m, ctx, key) =>
+    ctx.producerScope === "reminder" &&
+    ["lifeops-reminder", "lifeops-calendar-reminder"].includes(
+      m.scope,
+    ) ? null : (
+      <ChoiceWidget
+        key={key}
+        id={m.id}
+        scope={m.scope}
+        options={m.options}
+        allowCustom={m.allowCustom}
+        onChoose={
+          m.scope === "lifeops-reminder"
+            ? (value) =>
+                ctx.sendAction(value, {
+                  replyToMessageId: ctx.messageId,
+                  reminderChoiceId: m.id,
+                })
+            : ctx.sendAction
+        }
+      />
+    ),
 });
 
 registerInlineWidget<FollowupsMatch>({

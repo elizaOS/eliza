@@ -13,16 +13,16 @@
  */
 import type http from "node:http";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
+  type ElizaConfig,
   isElizaSettingsDebugEnabled,
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
+  type ReadJsonBodyOptions,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
+} from "@elizaos/host/protocol";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,
@@ -30,11 +30,13 @@ import {
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
 import { buildCharacterFromConfig } from "../runtime/build-character-config.ts";
+import { reconcileDirectTextModelSettings } from "../runtime/runtime-settings.ts";
 import {
   hasBlockedObjectKeyDeep,
   MAX_BLOCKED_OBJECT_DEPTH,
   MAX_BLOCKED_OBJECT_NODES,
 } from "./blocked-object-keys.ts";
+import { replaceConfigInPlace } from "./config-state.ts";
 import { applyCanonicalFirstRunConfig } from "./provider-switch-config.ts";
 
 // ---------------------------------------------------------------------------
@@ -196,23 +198,6 @@ function asConfigRecord<T extends object>(
   return value as T & Record<string, unknown>;
 }
 
-/** Replace a live config in place so references held by callers stay valid. */
-function replaceConfigInPlace(state: ElizaConfig, next: ElizaConfig): void {
-  const stateRecord = asConfigRecord(state);
-  const nextRecord = asConfigRecord(next);
-  for (const key of Object.keys(stateRecord)) {
-    if (!(key in nextRecord)) {
-      delete stateRecord[key];
-    }
-  }
-  for (const [key, value] of Object.entries(nextRecord)) {
-    if (key === "__proto__" || key === "constructor" || key === "prototype") {
-      continue;
-    }
-    stateRecord[key] = value;
-  }
-}
-
 /**
  * Compute which top-level keys differ between the current in-memory config
  * and a freshly-loaded copy from disk, and bucket them into hot-reloadable
@@ -261,6 +246,8 @@ async function applyReloadedConfig(params: {
   isBlockedEnvKey: (key: string) => boolean;
 }): Promise<void> {
   const { state, next, runtime, isBlockedEnvKey } = params;
+
+  const previous = structuredClone(state);
 
   // Replace top-level keys in the live state.config with the loaded values.
   replaceConfigInPlace(state, next);
@@ -313,6 +300,7 @@ async function applyReloadedConfig(params: {
         character[field as string] = value;
       }
     }
+    reconcileDirectTextModelSettings(runtime, previous, next);
   }
 }
 
@@ -726,6 +714,7 @@ export async function handleConfigRoutes(
       return true;
     }
 
+    const previousConfig = structuredClone(config);
     replaceConfigInPlace(config, nextConfig);
 
     // Synchronise env only after persistence succeeds so a failed write cannot
@@ -771,6 +760,9 @@ export async function handleConfigRoutes(
         if (v.trim()) process.env[k] = v;
         else delete process.env[k];
       }
+    }
+    if (runtime) {
+      reconcileDirectTextModelSettings(runtime, previousConfig, config);
     }
     json(res, redactConfigSecrets(asConfigRecord(config)));
     return true;

@@ -30,8 +30,8 @@ const AgentsPage = lazy(() => import("./AgentsPage"));
 const AgentDetailPage = lazy(() => import("./AgentDetailPage"));
 const MyAgentsPage = lazy(() => import("./MyAgentsPage"));
 
-export type { AgentListItem } from "./lib/data/eliza-agents";
-export { useAgent, useAgents } from "./lib/data/eliza-agents";
+export type { AgentListItem } from "./lib/eliza-agents";
+export { useAgent, useAgents } from "./lib/eliza-agents";
 export { AgentDetailPage, AgentsPage, MyAgentsPage };
 
 registerCloudRoute({

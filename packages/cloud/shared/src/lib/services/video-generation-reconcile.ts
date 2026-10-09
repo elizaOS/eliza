@@ -33,6 +33,7 @@ import {
   type VideoPendingSettlement,
 } from "../providers/video/types";
 import { logger } from "../utils/logger";
+import { settleSubscriptionFundedReservation } from "./allowance-first-credits";
 import { type CreditReconciliationResult, creditsService } from "./credits";
 
 /**
@@ -83,12 +84,32 @@ export function parseVideoPendingSettlement(
   ) {
     return null;
   }
+  let funding: VideoPendingSettlement["funding"];
+  if (metadata.funding !== undefined) {
+    const raw =
+      typeof metadata.funding === "object" && metadata.funding !== null
+        ? (metadata.funding as Record<string, unknown>)
+        : null;
+    const logicalOperationId = metadataString(raw?.logical_operation_id);
+    const occurredAt = metadataString(raw?.occurred_at);
+    const operation = raw?.operation;
+    if (
+      !logicalOperationId ||
+      !occurredAt ||
+      !Number.isFinite(Date.parse(occurredAt)) ||
+      (operation !== "ai_inference" && operation !== "media_generation")
+    ) {
+      return null;
+    }
+    funding = { logical_operation_id: logicalOperationId, operation, occurred_at: occurredAt };
+  }
   return {
     settlement_marker: VIDEO_PENDING_SETTLEMENT_MARKER,
     reservation_transaction_id: reservationTransactionId,
     reserved_amount: reservedAmount,
     billed_cost: billedCost,
     billing_source: billingSource,
+    ...(funding ? { funding } : {}),
   };
 }
 
@@ -97,6 +118,22 @@ async function settleHold(
   settlement: VideoPendingSettlement,
   actualCost: number,
 ): Promise<CreditReconciliationResult> {
+  if (settlement.funding) {
+    // A subscriber's hold settles through subscription funding: unused
+    // allowance and purchased credit return to their exact sources.
+    return await settleSubscriptionFundedReservation({
+      organizationId: generation.organization_id,
+      logicalOperationId: settlement.funding.logical_operation_id,
+      operation: settlement.funding.operation,
+      actualCost,
+      occurredAt: new Date(settlement.funding.occurred_at),
+      metadata: {
+        ...(generation.user_id ? { user_id: generation.user_id } : {}),
+        model: generation.model,
+        settlement_source: "video_pending_reconcile",
+      },
+    });
+  }
   return await creditsService.reconcile({
     organizationId: generation.organization_id,
     reservedAmount: settlement.reserved_amount,
@@ -134,8 +171,9 @@ async function ensureHoldRefunded(
   settlement: VideoPendingSettlement,
   reconciliation: CreditReconciliationResult,
 ): Promise<void> {
-  if (reconciliation.adjustmentType === "refund") {
-    // settleHold refunded through the reservation lane under the same key.
+  if (reconciliation.adjustmentType === "refund" || settlement.funding) {
+    // settleHold refunded through the reservation lane under the same key, or
+    // subscription funding released the whole hold to its exact sources.
     return;
   }
   await creditsService.refundCredits({

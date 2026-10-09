@@ -59,6 +59,15 @@ function hasPersistedExistingInstallConfig(
 /** Delay between existing-install probes while waiting for a booting agent. */
 const BOOTING_AGENT_RETRY_MS = 1_000;
 
+export class ExistingFirstRunProbeTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(
+      `Existing-install probe timed out after ${timeoutMs}ms for a committed runtime`,
+    );
+    this.name = "ExistingFirstRunProbeTimeoutError";
+  }
+}
+
 /**
  * True when an existing-install probe failure means "the committed on-device
  * agent is still coming up", so the wait-for-boot loop should keep retrying
@@ -92,6 +101,7 @@ export function isBootingAgentProbeError(err: unknown): boolean {
 async function interpretAnsweredFirstRunStatus(
   client: ExistingFirstRunProbeClient,
   status: { complete: boolean },
+  surfaceConfigFailure: boolean,
 ): Promise<ExistingFirstRunProbeResult | null> {
   if (status.complete) {
     return {
@@ -100,9 +110,17 @@ async function interpretAnsweredFirstRunStatus(
     } satisfies ExistingFirstRunProbeResult;
   }
 
-  // error-policy:J4 same probe semantics — no readable config means "no
-  // existing install detected", so onboarding proceeds.
-  const config = await client.getConfig().catch(() => null);
+  let config: Record<string, unknown> | null | undefined;
+  try {
+    config = await client.getConfig();
+  } catch (error) {
+    if (surfaceConfigFailure) throw error;
+    // error-policy:J4 a fresh install has no committed local runtime to
+    // preserve, so an unavailable config probe retains the fast onboarding
+    // fallback. Committed runtimes surface the fault above instead of being
+    // misclassified as a new install.
+    return null;
+  }
   if (!hasPersistedExistingInstallConfig(config)) {
     return null;
   }
@@ -145,10 +163,11 @@ export async function detectExistingFirstRunConnection(args: {
    * cold boot takes ~30s on a low-power phone — far longer than the single-shot
    * probe — so a still-booting agent must be waited out, not read as "no
    * install". When set, an unreachable probe (see {@link isBootingAgentProbeError})
-   * is retried until the agent answers or the outer timeout fires; a genuine
-   * probe fault (auth/5xx/malformed) is rethrown for the caller to surface. A
-   * fresh install leaves this unset and keeps the fast single-shot: any failure
-   * there legitimately means "not installed", and re-onboarding is correct.
+   * is retried until the agent answers or the outer timeout fires. A genuine
+   * probe fault (auth/5xx/malformed) or committed-runtime timeout is rethrown
+   * for the caller to preserve the install and surface recovery. A fresh
+   * install leaves this unset and keeps the fast single-shot: any failure there
+   * legitimately means "not installed", and re-onboarding is correct.
    */
   waitForBootingAgent?: boolean;
 }): Promise<ExistingFirstRunProbeResult | null> {
@@ -207,21 +226,35 @@ export async function detectExistingFirstRunConnection(args: {
         continue;
       }
 
-      return interpretAnsweredFirstRunStatus(args.client, status);
+      return interpretAnsweredFirstRunStatus(
+        args.client,
+        status,
+        args.waitForBootingAgent === true,
+      );
     }
   };
-  const result = await Promise.race([
-    probe(),
-    new Promise<typeof timeoutToken>((resolve) => {
-      timeoutId = setTimeout(() => {
-        timedOut = true;
-        resolve(timeoutToken);
-      }, args.timeoutMs);
-    }),
-  ]);
-  if (timeoutId !== null) {
-    clearTimeout(timeoutId);
+  let result: ExistingFirstRunProbeResult | null | typeof timeoutToken;
+  try {
+    result = await Promise.race([
+      probe(),
+      new Promise<typeof timeoutToken>((resolve) => {
+        timeoutId = setTimeout(() => {
+          timedOut = true;
+          resolve(timeoutToken);
+        }, args.timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
   }
 
-  return result === timeoutToken ? null : result;
+  if (result === timeoutToken) {
+    if (args.waitForBootingAgent) {
+      throw new ExistingFirstRunProbeTimeoutError(args.timeoutMs);
+    }
+    return null;
+  }
+  return result;
 }

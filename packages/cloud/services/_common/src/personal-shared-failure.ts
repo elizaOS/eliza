@@ -15,6 +15,19 @@ export const ELIZA_RETRYABLE_HEADER = "X-Eliza-Retryable";
 export const PERSONAL_SHARED_FAILURE_REPLY =
   "I couldn't complete that request just now. Please try again in a moment.";
 
+/** Completed actions may have landed even when the turn produced no visible reply. */
+export const PERSONAL_SHARED_NO_RESPONSE_REPLY =
+  "I couldn't produce a reply for that turn. If you asked me to change something, check its status before trying again.";
+
+/** Both transports use the same stable wording for each terminal classification. */
+export function personalSharedFailureReply(
+  failure: PersonalSharedFailureMetadata | null,
+): string {
+  return failure?.causeName === "SharedRuntimeNoReplyError"
+    ? PERSONAL_SHARED_NO_RESPONSE_REPLY
+    : PERSONAL_SHARED_FAILURE_REPLY;
+}
+
 const SAFE_FAILURE_STAGES = new Set([
   "account_claim",
   "account_resolution",
@@ -62,6 +75,18 @@ export interface PersonalSharedFailureMetadata {
   causeName: string | null;
   retryable: boolean;
   retryAfterSeconds: number | null;
+}
+
+/** A completed turn without a reply must not replay possibly committed actions. */
+export function personalSharedNoResponseFailure(): PersonalSharedFailureMetadata {
+  return {
+    status: 200,
+    stage: "shared_runtime",
+    name: "SharedRuntimeTurnError",
+    causeName: "SharedRuntimeNoReplyError",
+    retryable: false,
+    retryAfterSeconds: null,
+  };
 }
 
 function safeClassification(

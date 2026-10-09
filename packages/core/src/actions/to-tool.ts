@@ -11,7 +11,8 @@
  * `NATIVE_TOOL_NAME_PATTERN` or conversion throws.
  */
 import { ElizaError } from "../errors";
-import type { Action } from "../types";
+import { COMPLETION_CONTEXT_SCHEMA } from "../runtime/completion-context";
+import type { Action } from "../types/components.js";
 import type { JSONSchema, ToolDefinition } from "../types/model";
 import {
 	type ActionParametersJsonSchema,
@@ -19,6 +20,7 @@ import {
 	type JsonSchema,
 	normalizeActionJsonSchema,
 } from "./action-schema";
+import { promotedSubactionDescription } from "./promote-subactions";
 
 export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
 
@@ -26,9 +28,9 @@ export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
  * Canonical Stage 1 tool name.
  *
  * - HANDLE_RESPONSE: stage 1, called once per inbound message. The model
- *   declares intent (RESPOND / IGNORE / STOP), picks contexts to engage,
- *   may emit a simple-mode reply directly, and may extract durable
- *   facts / relationships for the memory pipeline.
+ * declares intent (RESPOND / IGNORE / STOP), picks contexts to engage,
+ * may emit a simple-mode reply directly, and may extract durable
+ * facts / relationships for the memory pipeline.
  *
  * Stage 2 (planning) does not go through a single wrapper tool. Each
  * Action is exposed to the LLM as its own native tool whose name is the
@@ -36,6 +38,19 @@ export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
  * The model picks the action by name and calls it directly.
  */
 export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const;
+
+/** Reserved planner protocol for loading authorized schemas without domain effects. */
+export const DISCOVER_ACTIONS_NAME = "DISCOVER_ACTIONS" as const;
+/** Declared discovery simile for the canonical action. */
+export const DISCOVER_TOOLS_NAME = "DISCOVER_TOOLS" as const;
+
+/** Recognizes planner discovery calls by their declared names. */
+export function isDiscoveryActionName(name: string): boolean {
+	const normalized = name.trim().toUpperCase();
+	return (
+		normalized === DISCOVER_ACTIONS_NAME || normalized === DISCOVER_TOOLS_NAME
+	);
+}
 
 /** Shared should-respond contract for static and registry-composed schemas. */
 export const SHOULD_RESPOND_SCHEMA_DESCRIPTION =
@@ -62,11 +77,13 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 			description:
 				"Context ids from available_contexts. 'simple'=direct reply, no planner.",
 		},
+		contextRequests: { type: "array", items: { type: "string" } },
 		intents: {
 			type: "array",
 			items: { type: "string" },
 			description: "Verb-led intents. Lowercase. No punctuation. ~6 words max.",
 		},
+		completionContext: COMPLETION_CONTEXT_SCHEMA,
 		replyText: {
 			type: "string",
 			description:
@@ -76,7 +93,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 			type: "string",
 			enum: ["none", "applied", "non_applied", "pending"],
 			description:
-				"Classify work for the current request: pending=promised unfinished work, including lookup/navigation beside an answer; applied=claimed newly completed external change, not execution proof; non_applied=terminal failed/unavailable/cancelled/declined/preview outcome with no work remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied.",
+				"Classify work for the current request: pending=unfinished work, including recording a rejection or cancellation of an existing pending request; applied=claimed completed state change, not execution proof; non_applied=failed/unavailable/preview or withdrawn unstarted work with no persisted decision remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied.",
 		},
 		candidateActionNames: {
 			type: "array",
@@ -133,7 +150,9 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 	required: [
 		"shouldRespond",
 		"contexts",
+		"contextRequests",
 		"intents",
+		"completionContext",
 		"replyText",
 		"replyEffectStatus",
 		"candidateActionNames",
@@ -165,10 +184,10 @@ export function assertNativeToolName(name: string): void {
 }
 
 const HANDLE_RESPONSE_DESCRIPTION =
-	"Stage 1: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, intents, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
+	"Stage 1: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, contextRequests, intents, completionContext, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
 
 const HANDLE_RESPONSE_DIRECT_DESCRIPTION =
-	"Stage 1 direct-message: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, intents, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Usually RESPOND unless explicit stop. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
+	"Stage 1 direct-message: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, contextRequests, intents, completionContext, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Usually RESPOND unless explicit stop. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
 
 /**
  * Build the Stage 1 tool definition. Pass `directMessage: true` for DM /
@@ -198,9 +217,9 @@ export function createHandleResponseTool(options?: {
  * Stage 1 tool. The model uses this once per inbound message to declare
  * how it wants to handle the turn. Output drives the rest of the pipeline:
  *
- *   shouldRespond = "RESPOND" → engage `contexts`, run planner against the per-action tools
- *   shouldRespond = "IGNORE"  → terminate silently
- *   shouldRespond = "STOP"    → terminate with terminal stop signal
+ * shouldRespond = "RESPOND" → engage `contexts`, run planner against the per-action tools
+ * shouldRespond = "IGNORE" → terminate silently
+ * shouldRespond = "STOP" → terminate with terminal stop signal
  *
  * `replyText` is always present (the user-facing reply). For trivially simple
  * replies that don't need action planning the model sets `contexts = ["simple"]`
@@ -317,8 +336,8 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
  * JSONSchema, so the LLM calls each action directly by name.
  *
  * Tool description is composed from (in order):
- *   - the action's `routingHint` (if present, on its own line)
- *   - the complete `description` (legacy compressed text is fallback-only)
+ * - the action's `routingHint` (if present, on its own line)
+ * - the complete `description` (short descriptions are fallback-only)
  *
  * The order of `actions` is preserved in the output (callers control
  * tool ordering by ordering the input). Names are validated against
@@ -331,25 +350,52 @@ export function buildPlannerToolsFromActions(
 	for (const action of actions) {
 		tools.push(actionToPlannerTool(action));
 	}
-	return tools;
+	return statePromotedFamilyDescriptionsOnce(actions, tools);
+}
+
+/**
+ * Emits the umbrella description once per tool family, on its first operation unless the
+ * umbrella tool already carries it.
+ */
+function statePromotedFamilyDescriptionsOnce(
+	actions: ReadonlyArray<PlannerToolActionShape>,
+	tools: ToolDefinition[],
+): ToolDefinition[] {
+	const wireDescriptions = new Map(
+		tools.map((tool) => [tool.name, tool.description ?? ""]),
+	);
+	const statedOn = new Map<string, string>();
+	return tools.map((tool, index) => {
+		const action = actions[index];
+		const promoted = action
+			? promotedSubactionDescription(action as Action)
+			: undefined;
+		const familyDescription = promoted?.parentDescription.trim();
+		if (!promoted || !familyDescription) return tool;
+		if (wireDescriptions.get(promoted.parent)?.includes(familyDescription))
+			return tool;
+		const carrier = statedOn.get(promoted.parent);
+		if (carrier !== undefined) {
+			return {
+				...tool,
+				description: `${tool.description} ${promoted.parent} family description: see ${carrier}.`,
+			};
+		}
+		statedOn.set(promoted.parent, tool.name);
+		return {
+			...tool,
+			description: `${tool.description}\n${promoted.parent} family: ${familyDescription}`,
+		};
+	});
 }
 
 /**
  * Options accepted by {@link buildPlannerToolsFromTieredActions}.
  */
 export interface BuildPlannerToolsFromTieredActionsOptions {
-	/** @deprecated Parent allow-lists are ignored; every parent expands. */
-	tierAParents?: ReadonlySet<string> | readonly string[];
 	/**
-	 * Optional registry of `name → Action` used to resolve string-only
-	 * sub-action references (parents may declare `subActions: ["FOO_BAR"]`).
-	 * When a string reference is not resolvable through this map, it is
-	 * skipped silently — string refs are advisory and the parent's handler
-	 * can still dispatch to them internally if the planner picks the parent.
-	 *
-	 * When provided, inline-Action sub-actions must also resolve through this
-	 * map. Runtime callers pass the already-authorized per-turn action set, so
-	 * expanding an absent inline object would disclose a rejected child.
+	 * Resolves string child references. Unresolved references are omitted; inline children must
+	 * resolve to registered actions when a lookup is supplied.
 	 */
 	actionLookup?:
 		| ReadonlyMap<string, PlannerToolActionShape>
@@ -363,31 +409,19 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 		parentName: string;
 		subActionName: string;
 	}) => void;
-	/** @deprecated Child allow-lists are ignored; every registered child expands. */
-	tierAChildrenByParent?:
-		| ReadonlyMap<string, readonly string[]>
-		| Readonly<Record<string, readonly string[]>>;
 	/**
 	 * Expand registered child actions into first-class native tools. Defaults to
 	 * true. A caller may disable expansion only when it still exposes every
-	 * authorized umbrella parent and keeps explicit turn candidates direct; the
-	 * parent schema remains the lossless dispatch surface for its children.
+	 * authorized umbrella parent and keeps independently implemented children
+	 * direct; the parent schema plus its alias contracts remain the lossless
+	 * dispatch surface for its promoted children.
 	 */
 	expandSubActions?: boolean;
 }
 
 /**
- * Lenient key used only as a compatibility fallback for resolving string child
- * references. Separators and case are deliberately ignored.
- *
- * It must never be used as an action's IDENTITY. Because it strips every
- * non-alphanumeric character, distinct registered actions such as
- * `GMAIL_CREATE_DRAFT` and `GMAILCREATEDRAFT` — both legal under
- * {@link NATIVE_TOOL_NAME_PATTERN}, and treated as distinct everywhere else in
- * the runtime (see `matchActionWildcardParts`) — collapse onto one key. Keying
- * emission or sub-action resolution on it silently drops one of the pair from
- * the planner surface, or resolves a string sub-action reference to the wrong
- * Action. Use {@link toolIdentityKey} for identity.
+ * Case- and separator-insensitive fallback for string child references. Never use this key
+ * as action identity: distinct valid names can normalize to the same value.
  */
 function normalizeParentNameKey(name: string): string {
 	return String(name)
@@ -479,12 +513,12 @@ function resolveActionLookup(
  * alongside the parent, so relevance metadata cannot hide a callable action.
  *
  * Sub-action resolution:
- *   - Inline `Action` sub-actions are resolved through an explicitly supplied
- *     authorized lookup before expansion; standalone callers without a lookup
- *     retain the inline object.
- *   - String-only sub-action references are resolved through `actionLookup`
- *     when provided; references that cannot be resolved are skipped silently
- *     (the parent's handler can still route to them).
+ * - Inline `Action` sub-actions are resolved through an explicitly supplied
+ * authorized lookup before expansion; standalone callers without a lookup
+ * retain the inline object.
+ * - String-only sub-action references are resolved through `actionLookup`
+ * when provided; references that cannot be resolved are skipped silently
+ * (the parent's handler can still route to them).
  *
  * The output is deduplicated by tool `name` — if a child appears both as a
  * top-level entry in `actions` AND as a sub-action under a tier-A parent, it
@@ -508,6 +542,7 @@ export function buildPlannerToolsFromTieredActions(
 	}
 
 	const tools: ToolDefinition[] = [];
+	const emittedActions: PlannerToolActionShape[] = [];
 	const emittedNames = new Set<string>();
 
 	const emit = (action: PlannerToolActionShape): void => {
@@ -520,6 +555,7 @@ export function buildPlannerToolsFromTieredActions(
 		}
 		emittedNames.add(key);
 		tools.push(actionToPlannerTool(action));
+		emittedActions.push(action);
 	};
 
 	const onUnresolved = options.onUnresolvedSubAction ?? ((): void => undefined);
@@ -567,7 +603,7 @@ export function buildPlannerToolsFromTieredActions(
 		}
 	}
 
-	return tools;
+	return statePromotedFamilyDescriptionsOnce(emittedActions, tools);
 }
 
 /**

@@ -1,18 +1,40 @@
 /**
- * Lenient JSON parsing for model output. Strips a leading `<think>…</think>`
- * reasoning preamble and a ```json / ```json5 code fence, then `JSON.parse`s the
+ * Lenient JSON parsing for model output. Strips a leading private-reasoning
+ * preamble and a ```json / ```json5 code fence, then `JSON.parse`s the
  * remainder — returning `null` rather than throwing on any failure.
  * `parseJsonModelRecord` / `parseJsonModelArray` add shape guards for the common
  * object / array cases.
  */
-import { unwrapWholeCodeFence } from "../utils/code-fence.ts";
+
+import { unwrapWholeCodeFence } from "../markdown/code.ts";
+import {
+	findNextCloseTag,
+	findNextOpenTag,
+	REASONING_TAG_NAMES,
+} from "../utils/reasoning-tags.ts";
+
+const REASONING_TAG_ALTERNATION = REASONING_TAG_NAMES.join("|");
+
+/**
+ * Drop a reasoning block only when the candidate OPENS with one (any shared
+ * reasoning tag name, any case). A candidate starting with `<` cannot be a
+ * JSON value, so this never rewrites a payload; reasoning markup elsewhere is
+ * ordinary string data and is left untouched. An unclosed block is kept so
+ * the parse fails closed.
+ */
+function stripReasoningPreamble(candidate: string): string {
+	const open = findNextOpenTag(candidate, 0, REASONING_TAG_ALTERNATION);
+	if (open?.start !== 0) return candidate;
+	const close = findNextCloseTag(
+		candidate,
+		open.end,
+		REASONING_TAG_ALTERNATION,
+	);
+	return close ? candidate.slice(close.end).trim() : candidate;
+}
 
 function stripModelWrappers(raw: string): string {
-	let candidate = raw.trim();
-	const thinkEnd = candidate.indexOf("</think>");
-	if (candidate.startsWith("<think>") && thinkEnd !== -1) {
-		candidate = candidate.slice(thinkEnd + "</think>".length).trim();
-	}
+	let candidate = stripReasoningPreamble(raw.trim());
 	candidate = (
 		unwrapWholeCodeFence(candidate, ["json", "json5"]) ?? candidate
 	).trim();

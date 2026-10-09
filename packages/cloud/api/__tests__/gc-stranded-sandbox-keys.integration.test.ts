@@ -14,13 +14,15 @@ const YOUNG_ORPHAN = "00000000-0000-4000-8000-0000000000c3";
 const CRON_SECRET = "integration-cron-secret";
 const PGLITE_TIMEOUT_MS = 60_000;
 
-let dbWrite: typeof import("@/db/helpers").dbWrite;
-let closeDatabaseConnectionsForTests: typeof import("@/db/client").closeDatabaseConnectionsForTests;
+let dbWrite: typeof import("@elizaos/cloud-shared/db/helpers").dbWrite;
+let closeDatabaseConnectionsForTests: typeof import("@elizaos/cloud-shared/db/client").closeDatabaseConnectionsForTests;
 let route: typeof import("../cron/gc-stranded-sandbox-keys/route").default;
 
 beforeAll(async () => {
-  ({ dbWrite } = await import("@/db/helpers"));
-  ({ closeDatabaseConnectionsForTests } = await import("@/db/client"));
+  ({ dbWrite } = await import("@elizaos/cloud-shared/db/helpers"));
+  ({ closeDatabaseConnectionsForTests } = await import(
+    "@elizaos/cloud-shared/db/client"
+  ));
   route = (await import("../cron/gc-stranded-sandbox-keys/route")).default;
 
   await dbWrite.execute(sql`
@@ -45,7 +47,8 @@ beforeAll(async () => {
       last_used_at timestamp,
       created_at timestamp NOT NULL DEFAULT now(),
       updated_at timestamp NOT NULL DEFAULT now(),
-      deleted_at timestamp
+      deleted_at timestamp,
+      user_created boolean NOT NULL DEFAULT false
     )
   `);
 }, PGLITE_TIMEOUT_MS);

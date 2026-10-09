@@ -3,8 +3,8 @@
  * views, with installation delegated to the authenticated agent API.
  */
 
-import { useAgentElement } from "../../agent-surface";
-import { useAppSelector } from "../../state";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { useAppSelector } from "../../state/app-store";
 import {
   AdminDialogContent,
   AdminDialogHeader,

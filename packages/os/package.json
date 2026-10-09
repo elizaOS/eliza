@@ -1,0 +1,63 @@
+{
+  "name": "@elizaos/os",
+  "version": "0.1.0",
+  "description": "elizaOS operating-system distributions, installers, and release infrastructure.",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.2",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "client"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "bun run --cwd setup build && bun run --cwd usb-installer build && bun run build:browser",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p linux/installer/tsconfig.json && tsc --noEmit -p setup/tsconfig.json && tsc --noEmit -p setup/tsconfig.main.json && tsc --noEmit -p usb-installer/tsconfig.json && bun run typecheck:browser",
+    "lint": "bun run lint:check",
+    "format": "bunx @biomejs/biome format --write trust contracts linux/installer && bun run --cwd setup format && bun run --cwd usb-installer format",
+    "test": "bun run test:trust && bun run --cwd linux/installer test && bun run --cwd setup test && bun run --cwd usb-installer test && bun run test:browser",
+    "test:release": "node --test scripts/__tests__/*.node.test.ts && bun test --timeout 60000 scripts/__tests__/*.bun.test.ts",
+    "verify": "bun run verify:installer-native && bun run verify:portable && bun run test:release && bun run test:ota-publisher",
+    "verify:installer-native": "bun run --cwd linux/installer test:native:compile",
+    "verify:linux": "bash scripts/linux/mkosi-lint.sh && python3 scripts/linux/test_disposable_disk_vm.py && python3 scripts/linux/test_mkosi_qualification.py && python3 scripts/linux/test_verify_desktop_artifact.py && python3 scripts/linux/test_stage_browser_artifact.py && python3 scripts/linux/test_assemble_browser_payload.py && python3 scripts/linux/test_mkosi_reproducibility.py && python3 scripts/linux/test_riscv64_agent_staging.py",
+    "verify:riscv64": "bash scripts/verify-riscv64-buildpaths.sh",
+    "build:riscv64-artifacts": "bash scripts/build-riscv64-artifacts.sh",
+    "check:riscv64-artifacts": "bash scripts/check-riscv64-artifacts.sh",
+    "build:browser": "node --conditions=eliza-source browser/scripts/build.mjs",
+    "test:browser": "node --conditions=eliza-source --test browser/src/*.test.mjs browser/scripts/*.test.mjs && node --test browser/protection/*.test.mjs",
+    "test:browser:page": "node --conditions=eliza-source browser/scripts/test-page-freshness.mjs",
+    "typecheck:browser": "tsc --noEmit -p browser/tsconfig.json",
+    "lint:browser": "bunx @biomejs/biome check browser",
+    "test:browser:guidance": "node --conditions=eliza-source browser/scripts/test-page-guidance.mjs",
+    "test:browser:task-guidance": "node --conditions=eliza-source browser/scripts/test-task-guidance.mjs",
+    "test:ota-trust": "node --test native/ota-trust/scripts/*.test.mjs && cd native/ota-trust && go test -race ./... && go vet ./...",
+    "test:browser:protection": "node --test browser/protection/*.test.mjs",
+    "test:browser:protection:network": "node browser/protection/test-network.mjs",
+    "test:ota-publisher": "node --test native/ota-publisher/test/*.test.mjs",
+    "lint:check": "bunx @biomejs/biome check trust contracts && bun run --cwd linux/installer lint:check && bun run --cwd setup lint:check && bun run --cwd usb-installer lint:check && bun run lint:browser",
+    "verify:portable": "bun run typecheck && bun run lint:check && bun run test",
+    "test:trust": "vitest run --environment node trust/*.test.ts"
+  },
+  "dependencies": {
+    "punycode": "2.3.1",
+    "tldts": "7.4.16",
+    "@elizaos/plugin-browser": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/bun": "1.4.2",
+    "@types/node": "25.6.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "5.0.3"
+  },
+  "exports": {
+    "./contracts": "./contracts/index.ts",
+    "./trust": "./trust/index.ts"
+  }
+}

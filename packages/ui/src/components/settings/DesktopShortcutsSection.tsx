@@ -3,22 +3,22 @@
  * hotkeys with an in-place keystroke recorder and conflict detection.
  *
  * The shortcut definitions mirror the accelerator strings used by the Electrobun
- * application menu (`app-core/platforms/electrobun/src/application-menu.ts`).
+ * application menu (`app/platforms/electrobun/src/application-menu.ts`).
  * Bindings are re-registered through the desktop bridge (`desktop:registerShortcut`
  * / `desktop:unregisterShortcut`) on commit/reset, following the same pattern as
  * `ChatHotkeySettingsGroup.syncChatOverlayShortcut`.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 import { AlertTriangle, Keyboard, RotateCcw } from "lucide-react";
 import * as React from "react";
-import { invokeDesktopBridgeRequest } from "../../bridge";
-import { cn } from "../../lib/utils";
+import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
 import {
   DEFAULT_PUSH_TO_TALK_ACCELERATOR,
   getPushToTalkAccelerator,
   setPushToTalkAccelerator,
 } from "../../state/push-to-talk-hotkey";
+import { cn } from "../../utils/cn";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 

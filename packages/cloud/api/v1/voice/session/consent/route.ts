@@ -1,16 +1,16 @@
 // Issues a voice-session consent nonce (SEC-21 mint precondition).
-import { Hono } from "hono";
 
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   isVoiceRealtimeWsEnabled,
   type VoiceRealtimeEnv,
-} from "@/lib/voice-session/config";
+} from "@elizaos/cloud-shared/lib/voice-session/config";
 import {
   isConsentStoreConfigured,
   issueConsentNonce,
-} from "@/lib/voice-session/consent-nonce";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/voice-session/consent-nonce";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * POST /api/v1/voice/session/consent (SEC-21).

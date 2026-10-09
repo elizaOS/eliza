@@ -2,8 +2,8 @@
  * A HUD-styled container framing its children with corner brackets (cloud brand).
  */
 import type * as React from "react";
-import { cn } from "../../lib/utils";
-import { CornerBrackets } from "./corner-brackets";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
+import { cn } from "../../../utils/cn";
 
 export interface HUDContainerProps
   extends React.HTMLAttributes<HTMLDivElement> {

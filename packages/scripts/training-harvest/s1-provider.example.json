@@ -1,0 +1,5 @@
+{
+  "EVAL_MODEL_PROVIDER": "openai",
+  "OPENAI_SMALL_MODEL": "gpt-5.5",
+  "OPENAI_LARGE_MODEL": "gpt-5.5"
+}

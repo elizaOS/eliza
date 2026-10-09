@@ -66,10 +66,6 @@ export function isUsableMediaRecorder(
   }
 }
 
-export function supportsMediaRecorder(): boolean {
-  return getMediaRecorderConstructor() !== null;
-}
-
 export function supportsGetUserMedia(): boolean {
   try {
     return (

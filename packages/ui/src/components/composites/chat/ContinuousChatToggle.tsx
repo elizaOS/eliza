@@ -12,7 +12,7 @@
 import { Mic, Radio, Volume2 } from "lucide-react";
 import * as React from "react";
 
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
@@ -104,7 +104,7 @@ export function ContinuousChatToggle({
           <TooltipTrigger asChild>
             <Button
               type="button"
-              variant={value === "off" ? "ghostMuted" : "surfaceAccent"}
+              variant={value === "off" ? "ghost" : "surfaceAccent"}
               size="icon-sm"
               aria-pressed={value !== "off"}
               aria-label={`Continuous chat: ${meta.label} (tap to switch)`}
@@ -147,7 +147,7 @@ export function ContinuousChatToggle({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant={active ? "surfaceAccent" : "ghostMuted"}
+                  variant={active ? "surfaceAccent" : "ghost"}
                   size="tiny"
                   role="radio"
                   aria-checked={active}

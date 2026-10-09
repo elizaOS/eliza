@@ -3,8 +3,7 @@
  *
  * A per-agent store of {@link ChatPreHandler}s, registered from
  * `Plugin.chatPreHandlers`. `drain` runs them in descending `priority` order
- * and returns the first non-null result, mirroring the per-agent isolation of
- * the shortcut registry.
+ * and returns the first non-null result. Handler state is isolated per agent.
  */
 
 import type {
@@ -22,6 +21,10 @@ export class ChatPreHandlerRegistry {
 
 	registerMany(handlers: readonly ChatPreHandler[]): void {
 		for (const handler of handlers) this.register(handler);
+	}
+
+	has(id: string): boolean {
+		return this.byId.has(id);
 	}
 
 	unregister(id: string): void {

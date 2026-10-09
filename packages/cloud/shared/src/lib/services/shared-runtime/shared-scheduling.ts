@@ -16,9 +16,9 @@ import {
   registerDefaultEscalationLadders,
   type ScheduledTask,
   type ScheduledTaskDispatcher,
-} from "@elizaos/plugin-scheduling/edge";
+} from "@elizaos/plugin-scheduling";
 
-export { SHARED_CUTOVER_GATEWAY_CHANNEL } from "@elizaos/plugin-scheduling/edge";
+export { SHARED_CUTOVER_GATEWAY_CHANNEL } from "@elizaos/plugin-scheduling";
 
 export class SharedReminderCutoverConflictError extends Error {
   constructor(readonly activeToken: string) {

@@ -1,11 +1,11 @@
-import { registerPlugin } from "@capacitor/core";
+/**
+ * Public package entry for plugin/runtime consumers. `MessagesView` remains the
+ * raw embeddable surface; hosts that own page navigation load the framed
+ * `MessagesPage` through the `/ui`, signed-registration, or view-bundle ABI.
+ */
 
-import type { MessagesPlugin } from "./definitions";
-
-export * from "./definitions";
-
-const loadWeb = () => import("./web").then((m) => new m.MessagesWeb());
-
-export const Messages = registerPlugin<MessagesPlugin>("ElizaMessages", {
-  web: loadWeb,
-});
+export { MessagesPage } from "./components/MessagesPage";
+export { MessagesView } from "./components/MessagesView";
+export { appMessagesPlugin, default } from "./plugin";
+export * from "./register";
+export * from "./ui";

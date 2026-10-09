@@ -1,0 +1,16 @@
+diff --git a/package/src/native/linux/cef_process_helper_linux.cpp b/package/src/native/linux/cef_process_helper_linux.cpp
+index 461d87d..020389a 100644
+--- a/package/src/native/linux/cef_process_helper_linux.cpp
++++ b/package/src/native/linux/cef_process_helper_linux.cpp
+@@ -136,8 +136,9 @@ private:
+     IMPLEMENT_REFCOUNTING(HelperApp);
+ };
+ 
+-// Entry point function for all processes.
+-int main(int argc, char* argv[]) {
++// CEF resets the stack canary after fork. Like Chromium's ChromeMain, this
++// entry frame must not retain a canary that predates CefExecuteProcess.
++__attribute__((no_stack_protector)) int main(int argc, char* argv[]) {
+     // CEF helper process starting
+     
+     // Provide CEF with command-line arguments.

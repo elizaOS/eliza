@@ -2,7 +2,7 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveRepoRoot } from "./lib/repo-root.mjs";
+import { resolveRepoRoot } from "./lib/repo-root.ts";
 
 const rootDir = resolveRepoRoot(import.meta.url, 2);
 const distDir = path.join(rootDir, "dist");

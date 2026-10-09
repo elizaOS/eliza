@@ -2,9 +2,9 @@
  * DexScreener API proxy — GET /api/v1/apis/dexscreener/latest/...
  */
 
+import { handleDexscreenerProxyGet } from "@elizaos/cloud-shared/lib/services/proxy/dexscreener-handler";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { handleDexscreenerProxyGet } from "@/lib/services/proxy/dexscreener-handler";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

@@ -141,6 +141,185 @@ async function snapshot(org: string) {
       ).rows,
     ).toEqual([{ grants: 1 }]);
   }, 30000);
+  test("adjusted captured renewal rejects mismatches and replays only the original immutable grant", async () => {
+    const f = await seedRenewalTestAccount((text, values) => setup.query(text, values));
+    const input = await prepare(f);
+    const discount = { amount: 300, discount: "di_retained" };
+    const tax = { amount: 270, inclusive: false, tax_rate: "txr_retained" };
+    const adjusted = {
+      ...input,
+      invoice: {
+        ...f.invoice,
+        amount_due: 2970,
+        amount_paid: 2970,
+        total: 2970,
+        discounts: [discount.discount],
+        total_discount_amounts: [discount],
+        tax: 270,
+        total_tax_amounts: [tax],
+        lines: {
+          ...f.invoice.lines,
+          data: [
+            {
+              ...f.invoice.lines.data[0]!,
+              discount_amounts: [discount],
+              tax_amounts: [tax],
+            },
+          ],
+        },
+      },
+      paymentIntent: { ...f.paymentIntent, amount: 2970, amount_received: 2970 },
+      charge: { ...f.charge, amount: 2970, amount_captured: 2970 },
+    };
+    const before = await snapshot(f.source.organization_id);
+    await expect(
+      finalize({ ...adjusted, charge: { ...adjusted.charge, amount_captured: 2969 } }),
+    ).rejects.toThrow();
+    expect(await snapshot(f.source.organization_id)).toEqual(before);
+    await expect(
+      finalize({ ...adjusted, invoice: { ...adjusted.invoice, total_discount_amounts: [] } }),
+    ).rejects.toThrow();
+    expect(await snapshot(f.source.organization_id)).toEqual(before);
+    expect((await finalize(adjusted)).replayed).toBeFalse();
+    const replay = {
+      ...adjusted,
+      ...(await prepare(f)),
+      invoice: adjusted.invoice,
+      paymentIntent: adjusted.paymentIntent,
+      charge: adjusted.charge,
+      expectedSubscriptionRevision: 3,
+      expectedProjectionRevision: 3,
+    };
+    const funded = await snapshot(f.source.organization_id);
+    // A later invoice shape cannot replace the retained original grant proof or restore funds.
+    expect(
+      (await finalize({ ...replay, invoice: { ...replay.invoice, discounts: [] } })).replayed,
+    ).toBeTrue();
+    const replayed = await snapshot(f.source.organization_id);
+    for (const key of Object.keys(funded).filter(
+      (key) => key !== "billing_subscription_event_receipts",
+    ))
+      expect(replayed[key]).toEqual(funded[key]);
+    expect((await finalize(replay)).replayed).toBeTrue();
+    expect(
+      (
+        await setup.query(
+          "SELECT granted_amount, available_amount FROM subscription_allowance_periods WHERE organization_id=$1",
+          [f.source.organization_id],
+        )
+      ).rows,
+    ).toEqual([{ granted_amount: "25.000000", available_amount: "25.000000" }]);
+    expect(
+      (
+        await setup.query(
+          "SELECT count(*)::int AS grants FROM subscription_allowance_transactions WHERE organization_id=$1 AND kind='grant'",
+          [f.source.organization_id],
+        )
+      ).rows,
+    ).toEqual([{ grants: 1 }]);
+  });
+  test("recorded invoice replay rejects foreign identity and preserves every funding row", async () => {
+    const f = await seedRenewalTestAccount((text, values) => setup.query(text, values));
+    await finalize(await prepare(f));
+    const input = {
+      ...(await prepare(f)),
+      expectedSubscriptionRevision: 3,
+      expectedProjectionRevision: 3,
+    };
+    const { finalizeRecordedPaidRenewal } = await import("./subscription-renewal-finalization");
+    const before = await snapshot(f.source.organization_id);
+    for (const invoice of [
+      { ...f.invoice, id: "in_foreign" },
+      { ...f.invoice, customer: "cus_foreign" },
+      { ...f.invoice, subscription: "sub_foreign" },
+      { ...f.invoice, livemode: true },
+      { ...f.invoice, billing_reason: "subscription_create" },
+    ]) {
+      await expect(finalizeRecordedPaidRenewal({ ...input, invoice })).rejects.toThrow();
+      expect(await snapshot(f.source.organization_id)).toEqual(before);
+    }
+    await expect(
+      finalizeRecordedPaidRenewal({ ...input, leaseToken: randomUUID() }),
+    ).rejects.toThrow();
+    expect(await snapshot(f.source.organization_id)).toEqual(before);
+    expect((await finalizeRecordedPaidRenewal(input))?.replayed).toBeTrue();
+    const after = await snapshot(f.source.organization_id);
+    for (const key of Object.keys(before).filter(
+      (key) => key !== "billing_subscription_event_receipts",
+    ))
+      expect(after[key]).toEqual(before[key]);
+  });
+  test("recorded-only lookup never publishes an invoice that has not been funded", async () => {
+    const f = await seedRenewalTestAccount((text, values) => setup.query(text, values));
+    const input = await prepare(f);
+    const { finalizeRecordedPaidRenewal } = await import("./subscription-renewal-finalization");
+    const before = await snapshot(f.source.organization_id);
+    expect(await finalizeRecordedPaidRenewal(input)).toBeNull();
+    expect(await snapshot(f.source.organization_id)).toEqual(before);
+    expect((await finalize(input)).replayed).toBeFalse();
+  });
+  test("historical grant atomically expires, cannot be spent, and replays without restoring balance", async () => {
+    const f = await seedRenewalTestAccount((text, values) => setup.query(text, values));
+    const { subscriptionAllowanceRepository: allowance } = await import("./subscription-allowance");
+    const { writeTransaction } = await import("../helpers");
+    const { microsToMoney } = await import("./subscription-funding-reservations");
+    const input = {
+      source: f.source,
+      invoiceId: `in_historical${randomUUID().replaceAll("-", "")}`,
+      requestDigest: "c".repeat(64),
+      databaseNow: new Date(),
+    };
+    const before = await snapshot(f.source.organization_id);
+    await setup.query(`CREATE FUNCTION reject_expiry_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='expire' THEN RAISE EXCEPTION 'expiry fixture failure'; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER reject_expiry_fixture BEFORE INSERT ON subscription_allowance_transactions FOR EACH ROW EXECUTE FUNCTION reject_expiry_fixture()`);
+    try {
+      await expect(
+        writeTransaction((tx) => allowance.grantRenewalInTransaction(tx, input)),
+      ).rejects.toThrow();
+      expect(await snapshot(f.source.organization_id)).toEqual(before);
+    } finally {
+      await setup.query(
+        "DROP TRIGGER reject_expiry_fixture ON subscription_allowance_transactions; DROP FUNCTION reject_expiry_fixture()",
+      );
+    }
+    const granted = await writeTransaction((tx) => allowance.grantRenewalInTransaction(tx, input));
+    expect(granted.period).toMatchObject({
+      state: "expired",
+      granted_amount: "25.000000",
+      available_amount: "0.000000",
+      expired_amount: "25.000000",
+    });
+    expect(
+      (
+        await setup.query(
+          "SELECT kind,amount FROM subscription_allowance_transactions WHERE allowance_period_id=$1 ORDER BY sequence",
+          [granted.period.id],
+        )
+      ).rows,
+    ).toEqual([
+      { kind: "grant", amount: "25.000000" },
+      { kind: "expire", amount: "25.000000" },
+    ]);
+    const after = await snapshot(f.source.organization_id);
+    expect(
+      (await writeTransaction((tx) => allowance.grantRenewalInTransaction(tx, input))).replayed,
+    ).toBeTrue();
+    await expect(
+      writeTransaction((tx) =>
+        allowance.reserve(tx, {
+          organizationId: f.source.organization_id,
+          periodId: granted.period.id,
+          logicalOperationId: `historical:${randomUUID()}`,
+          requestDigest: "d".repeat(64),
+          requestedAmount: microsToMoney(1000000n),
+          allowanceAmount: microsToMoney(1000000n),
+          purchasedCreditAmount: microsToMoney(0n),
+          purchasedCreditReservationTransactionId: null,
+        }),
+      ),
+    ).rejects.toThrow();
+    expect(await snapshot(f.source.organization_id)).toEqual(after);
+  });
   for (const scenario of ["lease", "deletion"] as const)
     test(`${scenario} changes while finalizer waits deny all writes`, async () => {
       const f = await seedRenewalTestAccount((text, values) => setup.query(text, values));

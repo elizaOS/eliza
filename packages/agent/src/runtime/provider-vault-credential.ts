@@ -6,12 +6,13 @@
  * child processes never inherit a Vault-only provider secret.
  */
 
+import type { Vault } from "@elizaos/auth/vault";
 import { ElizaError } from "@elizaos/core";
 import {
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,
-} from "@elizaos/shared";
-import type { Vault } from "@elizaos/vault";
+} from "@elizaos/host/protocol";
+
 import { vaultKeyForProviderApiKey } from "./operations/vault-bridge.ts";
 
 type ProviderCredentialVault = Pick<Vault, "has" | "reveal">;

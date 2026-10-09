@@ -3,6 +3,7 @@
  * through the runtime-service delegates and projects connector status into
  * assistant DTOs. Transport is owned by the Telegram connector plugin.
  */
+
 import {
   LIFEOPS_TELEGRAM_CAPABILITIES,
   type LifeOpsConnectorDegradation,
@@ -11,8 +12,13 @@ import {
   type LifeOpsTelegramConnectorStatus,
   type VerifyLifeOpsTelegramConnectorRequest,
   type VerifyLifeOpsTelegramConnectorResponse,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { SendHandlerReceipt } from "@elizaos/core";
 import type { LifeOpsContext } from "../lifeops-context.js";
+import {
+  ConnectorDeliveryEvidenceError,
+  ConnectorSenderChangedError,
+} from "../messaging/connector-delivery-evidence.js";
 import {
   searchTelegramMessagesWithRuntimeService,
   sendTelegramMessageWithRuntimeService,
@@ -20,6 +26,13 @@ import {
 import type { Constructor, LifeOpsServiceBase } from "../service-mixin-core.js";
 import { fail, requireNonEmptyString } from "../service-normalize.js";
 import { normalizeOptionalConnectorSide } from "../service-normalize-connector.js";
+
+/** Provider evidence retained for approvals and scheduled deliveries. */
+export type TelegramSendMessageResult = {
+  ok: true;
+  messageId: string | null;
+  receipt: SendHandlerReceipt | null;
+};
 
 export type TelegramMessageSearchResult = {
   id: string | null;
@@ -160,7 +173,15 @@ function telegramStatusDegradations(args: {
   return degradations;
 }
 
-function memoryToTelegramMessageSearchResult(
+// Telegram ids arrive as strings or numbers: the bot stores sent replies with
+// the numeric `sentMessage.chat.id`.
+function telegramId(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+export function memoryToTelegramMessageSearchResult(
   memory: unknown,
 ): TelegramMessageSearchResult {
   const record = memory && typeof memory === "object" ? memory : {};
@@ -190,13 +211,12 @@ function memoryToTelegramMessageSearchResult(
   return {
     id,
     dialogId:
-      typeof telegram.chatId === "string"
-        ? telegram.chatId
-        : typeof metadata.chatId === "string"
-          ? metadata.chatId
-          : typeof metadata.channelId === "string"
-            ? metadata.channelId
-            : null,
+      telegramId(telegram.chatId) ??
+      (typeof metadata.chatId === "string"
+        ? metadata.chatId
+        : typeof metadata.channelId === "string"
+          ? metadata.channelId
+          : null),
     threadId:
       typeof telegram.threadId === "string"
         ? telegram.threadId
@@ -221,12 +241,13 @@ function memoryToTelegramMessageSearchResult(
         : typeof metadata.peerId === "string"
           ? metadata.peerId
           : null,
+    // The bot connector stamps the sender as telegram.userId / telegramUserId
+    // (telegramIdentityMetadata); senderId is kept for other writers.
     senderId:
-      typeof telegram.senderId === "string"
-        ? telegram.senderId
-        : typeof metadata.senderId === "string"
-          ? metadata.senderId
-          : null,
+      telegramId(telegram.senderId) ??
+      telegramId(metadata.senderId) ??
+      telegramId(telegram.userId) ??
+      telegramId(metadata.telegramUserId),
     content: typeof content.text === "string" ? content.text : "",
     timestamp,
     outgoing:
@@ -279,9 +300,10 @@ export class TelegramDomain {
 
   async sendTelegramMessage(request: {
     side?: LifeOpsConnectorSide;
+    expectedIdentityId?: string;
     target: string;
     message: string;
-  }): Promise<{ ok: true; messageId: string | null }> {
+  }): Promise<TelegramSendMessageResult> {
     const side =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
     const target = requireNonEmptyString(request.target, "target");
@@ -296,13 +318,23 @@ export class TelegramDomain {
 
     const delegated = await sendTelegramMessageWithRuntimeService({
       runtime: this.ctx.runtime,
+      expectedIdentityId: request.expectedIdentityId,
       grant: status.grant,
       target,
       message,
     });
     if (delegated.status === "handled") {
-      return { ok: true, messageId: null };
+      return {
+        ok: true,
+        messageId: delegated.value.delivery.providerMessageId ?? null,
+        receipt: delegated.value.delivery.receipt ?? null,
+      };
     }
+    if (
+      delegated.error instanceof ConnectorDeliveryEvidenceError ||
+      delegated.error instanceof ConnectorSenderChangedError
+    )
+      throw delegated.error;
     if (delegated.error) {
       this.ctx.logLifeOpsWarn(
         "runtime_service_delegation_failed",

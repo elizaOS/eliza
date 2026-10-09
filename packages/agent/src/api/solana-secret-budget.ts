@@ -1,6 +1,6 @@
 /**
  * Character budgets for Solana secrets and addresses. `base58Decode` in
- * `wallet.ts` / `wallet-env-sync.ts` does one BigInt multiply per input
+ * `wallet-keygen.ts` does one BigInt multiply per input
  * character; an 88-character 64-byte secret is honest, but a megabyte of
  * alphabet text is quadratic and hangs first-time setup / import /
  * `validatePrivateKey` on the request thread.

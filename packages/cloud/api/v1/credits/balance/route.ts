@@ -5,22 +5,22 @@
  * CORS is handled globally (wildcard origin, no credentials).
  */
 
-import { eq } from "drizzle-orm";
-import { Hono } from "hono";
-import { dbRead } from "@/db/helpers";
-import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { dbRead } from "@elizaos/cloud-shared/db/helpers";
+import { agentSandboxes } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
 import {
   failureResponse,
   ValidationError,
-} from "@/lib/api/cloud-worker-errors";
-import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key-hono-worker";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { getCreditBalanceResponse } from "@/lib/services/credit-balance-response";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { getCreditBalanceResponse } from "@elizaos/cloud-shared/lib/services/credit-balance-response";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { eq } from "drizzle-orm";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

@@ -1,17 +1,18 @@
 /** Owns embedding provider pinning, dimension initialization, and complete-memory embedding requests using the canonical runtime. */
-import { ElizaError } from "../errors";
 import {
-	EventType,
-	type IAgentRuntime,
-	type Memory,
-	ModelType,
-	type ModelTypeName,
-	type UUID,
-} from "../types";
+	copyEmbeddingVectorSpace,
+	getEmbeddingVectorSpace,
+} from "../embedding-vector-space";
+import { ElizaError } from "../errors";
+import { EventType } from "../types/events.js";
+import type { Memory } from "../types/memory.js";
+import { ModelType, type ModelTypeName } from "../types/model.js";
+import type { UUID } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import {
 	NoModelProviderConfiguredError,
 	type ResolvedModelRegistration,
-} from "./model-dispatch/policy.js";
+} from "./model-policy.js";
 
 /** One failed TEXT_EMBEDDING dimension-probe attempt, kept for diagnostics. */
 export interface EmbeddingProbeAttempt {
@@ -29,13 +30,7 @@ export const LOCAL_EMBEDDING_PROVIDERS = new Set([
 	"eliza-aosp-llama",
 ]);
 
-/**
- * Per-agent record of which embedder produced the vectors in the store. Same
- * width does not mean same space (gte-small and bge-small are both 384-dim and
- * incompatible), so the runtime refuses to pin a different model at the same
- * width until the operator performs a scoped backup + fresh-index cutover and
- * acknowledges the new model with ELIZA_EMBEDDING_STORE_ACCEPT_MODEL.
- */
+/** Pins the embedder identity for each agent. Equal vector dimensions do not imply compatible spaces; changing models requires an explicitly acknowledged fresh index. */
 export const EMBEDDING_STORE_IDENTITY_CACHE_KEY = "embedding:store-identity";
 export const EMBEDDING_STORE_ACCEPT_MODEL_SETTING =
 	"ELIZA_EMBEDDING_STORE_ACCEPT_MODEL";
@@ -62,46 +57,40 @@ export class EmbeddingDimensionProbeError extends Error {
 }
 
 export class RuntimeEmbeddings {
-	/**
-	 * Best-effort model label for a pinned TEXT_EMBEDDING provider, read from
-	 * the settings that provider documents. Null when the provider exposes no
-	 * model setting; the identity guard then compares provider + width only.
-	 */
-	private embeddingModelLabelForProvider(provider: string): string | null {
+	/** Resolve provider-owned model identity without reading another provider's settings. */
+	private embeddingModelLabelForRegistration(
+		registration: ResolvedModelRegistration,
+	): string | null {
 		const read = (key: string): string | null => {
 			const value = this.runtime.getSetting(key);
 			return typeof value === "string" && value.trim().length > 0
 				? value.trim()
 				: null;
 		};
-		switch (provider) {
-			case "embeddings":
-				return read("EMBEDDING_MODEL");
-			case "openai":
-				return read("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
-			case "elizacloud":
-				return read("ELIZAOS_CLOUD_EMBEDDING_MODEL");
-			default:
-				return LOCAL_EMBEDDING_PROVIDERS.has(provider)
-					? (read("LOCAL_EMBEDDING_MODEL") ?? read("EMBEDDING_MODEL"))
-					: null;
+		const metadata = registration.metadata;
+		if (metadata?.displayModel?.trim()) return metadata.displayModel.trim();
+		for (const key of [
+			...(metadata?.displayModelSettings ?? []),
+			metadata?.displayModelSetting,
+		]) {
+			const value = key ? read(key) : null;
+			if (value) return value;
 		}
+		if (metadata?.displayModelDefault?.trim()) {
+			return metadata.displayModelDefault.trim();
+		}
+		return LOCAL_EMBEDDING_PROVIDERS.has(registration.provider)
+			? (read("LOCAL_EMBEDDING_MODEL") ?? read("EMBEDDING_MODEL"))
+			: null;
 	}
 
-	/**
-	 * Refuse to mix embedding spaces. Records which embedder owns this agent's
-	 * vectors on the first pin (legacy stores adopt the active embedder with a
-	 * warning because their model is unknowable), follows a width change (the
-	 * stale-dimension reconcile owns those vectors), tolerates a provider swap
-	 * that serves the same model, and fails clearly when a different model is
-	 * pinned at the same width without ELIZA_EMBEDDING_STORE_ACCEPT_MODEL naming
-	 * that model. Returns the active model label for the pin log.
-	 */
+	/** Pins model identity, warns when the store has no identity, and rejects same-width model changes without ELIZA_EMBEDDING_STORE_ACCEPT_MODEL. Dimension changes use the stale-vector reconciliation path. */
 	private async guardEmbeddingStoreIdentity(
-		provider: string,
+		registration: ResolvedModelRegistration,
 		dimension: number,
 	): Promise<string | null> {
-		const modelLabel = this.embeddingModelLabelForProvider(provider);
+		const { provider } = registration;
+		const modelLabel = this.embeddingModelLabelForRegistration(registration);
 		const next: EmbeddingStoreIdentity = {
 			provider,
 			modelLabel,
@@ -171,9 +160,98 @@ export class RuntimeEmbeddings {
 				modelType: ModelTypeName | string,
 				provider?: string,
 			): ResolvedModelRegistration[];
-			fetch(...args: Parameters<typeof fetch>): ReturnType<typeof fetch>;
 		},
 	) {}
+
+	private pinnedEmbeddingSpace: string | undefined;
+	private pinnedEmbeddingDimension: number | undefined;
+
+	async validateProviderOutput(
+		modelType: string,
+		params: unknown,
+		embeddingProviderOutput: unknown,
+		result: unknown,
+		provider: string,
+		signal?: AbortSignal,
+	): Promise<void> {
+		const batch = modelType === ModelType.TEXT_EMBEDDING_BATCH;
+		const sources =
+			batch && Array.isArray(embeddingProviderOutput)
+				? embeddingProviderOutput
+				: [embeddingProviderOutput];
+		const targets = batch && Array.isArray(result) ? result : [result];
+		const namedSpace = sources
+			.map(getEmbeddingVectorSpace)
+			.find((space) => space !== undefined);
+		// A named vector cannot escape before its adapter representation commits.
+		// Recall may precede the host's deferred probe, so initialize on first use
+		// as well as sharing an in-flight probe. The null probe must never await
+		// its own initialization promise.
+		if (
+			namedSpace !== undefined &&
+			this.pinnedEmbeddingSpace === undefined &&
+			(params !== null || batch)
+		) {
+			signal?.throwIfAborted();
+			const initialization =
+				this.embeddingInitialization ?? this.ensureEmbeddingDimension();
+			if (!signal) await initialization;
+			else {
+				signal.throwIfAborted();
+				let onAbort!: () => void;
+				const cancelled = new Promise<never>((_resolve, reject) => {
+					onAbort = () =>
+						reject(
+							signal.reason ??
+								new Error("Embedding initialization wait aborted"),
+						);
+					signal.addEventListener("abort", onAbort, { once: true });
+				});
+				try {
+					await Promise.race([initialization, cancelled]);
+				} finally {
+					signal.removeEventListener("abort", onAbort);
+				}
+				signal.throwIfAborted();
+			}
+		}
+		const expected = this.pinnedEmbeddingSpace ?? namedSpace;
+		if (expected !== undefined) {
+			if (
+				this.pinnedEmbeddingSpace === undefined &&
+				(params !== null || batch)
+			) {
+				throw new ElizaError(
+					"Initialize the embedding representation before generating vectors",
+					{
+						code: "EMBEDDING_SPACE_NOT_INITIALIZED",
+					},
+				);
+			}
+			if (
+				sources.length !== targets.length ||
+				sources.some(
+					(vector) =>
+						getEmbeddingVectorSpace(vector) !== expected ||
+						(this.pinnedEmbeddingDimension !== undefined &&
+							(!Array.isArray(vector) ||
+								vector.length !== this.pinnedEmbeddingDimension)),
+				)
+			) {
+				throw new ElizaError(
+					"Embedding provider returned a different or unidentified representation",
+					{
+						code: "EMBEDDING_SPACE_MISMATCH",
+						context: { expected, provider: provider },
+					},
+				);
+			}
+			for (let index = 0; index < sources.length; index++) {
+				copyEmbeddingVectorSpace(sources[index], targets[index]);
+			}
+		}
+	}
+
 	getPinnedProvider(): string | undefined {
 		return this.pinnedEmbeddingProvider;
 	}
@@ -184,7 +262,7 @@ export class RuntimeEmbeddings {
 	 * later embedding calls without an explicit provider are pinned to it —
 	 * letting a different registration serve an embedding call can emit a
 	 * different-width vector that the adapter silently drops on dimension
-	 * mismatch (#8769). Re-set on every successful `ensureEmbeddingDimension`.
+	 * mismatch. Re-set on every successful `ensureEmbeddingDimension`.
 	 */
 	private pinnedEmbeddingProvider: string | undefined;
 
@@ -249,7 +327,21 @@ export class RuntimeEmbeddings {
 		);
 	}
 
-	async ensureEmbeddingDimension() {
+	private embeddingInitialization: Promise<void> | undefined;
+
+	ensureEmbeddingDimension(): Promise<void> {
+		if (this.embeddingInitialization) return this.embeddingInitialization;
+		const initialization = Promise.resolve()
+			.then(() => this.initializeEmbeddingDimension())
+			.finally(() => {
+				if (this.embeddingInitialization === initialization)
+					this.embeddingInitialization = undefined;
+			});
+		this.embeddingInitialization = initialization;
+		return initialization;
+	}
+
+	private async initializeEmbeddingDimension(): Promise<void> {
 		if (!this.runtime.adapter) {
 			throw new Error(
 				"Database adapter not initialized before ensureEmbeddingDimension",
@@ -393,13 +485,45 @@ export class RuntimeEmbeddings {
 				continue;
 			}
 
+			const spaceId = getEmbeddingVectorSpace(embedding);
+			if (
+				spaceId !== undefined &&
+				this.pinnedEmbeddingProvider !== undefined &&
+				this.pinnedEmbeddingSpace !== spaceId
+			) {
+				throw new ElizaError(
+					"Restart the runtime before changing its embedding representation",
+					{
+						code: "EMBEDDING_SPACE_CHANGED",
+					},
+				);
+			}
+			if (spaceId !== undefined && !this.runtime.adapter.ensureEmbeddingSpace) {
+				throw new ElizaError(
+					"This database adapter cannot separate embedding representations; upgrade the adapter before using this model",
+					{
+						code: "EMBEDDING_SPACE_UNSUPPORTED",
+					},
+				);
+			}
 			await this.runtime.adapter.ensureEmbeddingDimension(embedding.length);
-			const modelLabel = await this.guardEmbeddingStoreIdentity(
-				registration.provider,
-				embedding.length,
-			);
+			const representationMemoryIds =
+				spaceId !== undefined && this.runtime.adapter.ensureEmbeddingSpace
+					? await this.runtime.adapter.ensureEmbeddingSpace(spaceId)
+					: [];
+			const modelLabel =
+				spaceId === undefined
+					? await this.guardEmbeddingStoreIdentity(
+							registration,
+							embedding.length,
+						)
+					: spaceId;
+			this.pinnedEmbeddingSpace = spaceId;
+			this.pinnedEmbeddingDimension = embedding.length;
 			this.pinnedEmbeddingProvider = registration.provider;
 			this.enableEmbeddingGeneration();
+			if (representationMemoryIds.length > 0)
+				void this.reembedMemoriesByIds(representationMemoryIds);
 			this.runtime.logger.info(
 				{
 					src: "agent",
@@ -487,7 +611,7 @@ export class RuntimeEmbeddings {
 			// Every TEXT_EMBEDDING provider failed the dimension probe, so the
 			// vector column was never sized for this runtime. Skip generation
 			// explicitly (warn once) instead of producing a vector the SQL
-			// adapter would silently drop on dimension mismatch (#8769).
+			// adapter would silently drop on dimension mismatch.
 			this.warnEmbeddingGenerationSkipped();
 			return memory;
 		}
@@ -540,8 +664,8 @@ export class RuntimeEmbeddings {
 	}
 
 	/**
-	 * Queue a memory for embedding generation. If companionUrl is set, POSTs to companion
-	 * and returns without waiting (fire-and-forget). WHY: Thin runtime doesn't block on embedding.
+	 * Queue embedding work through the registered event handlers without blocking
+	 * the memory write that requested it.
 	 */
 	async queueEmbeddingGeneration(
 		memory: Memory,
@@ -560,31 +684,6 @@ export class RuntimeEmbeddings {
 			// so queueing would only produce per-item generation failures (or
 			// silently dropped vectors). Skip explicitly, warn once.
 			this.warnEmbeddingGenerationSkipped();
-			return;
-		}
-
-		if (this.runtime.companionUrl) {
-			const url = `${this.runtime.companionUrl.replace(/\/$/, "")}/embedding-generation`;
-			void this.host
-				.fetch(url, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						agentId: this.runtime.agentId,
-						memory,
-						priority,
-						runId: this.runtime.getCurrentRunId(),
-					}),
-				})
-				.catch((err) =>
-					// error-policy:J7 diagnostics-must-not-kill-the-loop — offloading
-					// embedding generation to the companion is fire-and-forget, but a
-					// dead companion must surface (embeddings would silently stop).
-					this.runtime.reportError("AgentRuntime.companionEmbedding", err, {
-						url,
-						agentId: this.runtime.agentId,
-					}),
-				);
 			return;
 		}
 

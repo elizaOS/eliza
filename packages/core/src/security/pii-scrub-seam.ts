@@ -1,38 +1,8 @@
 /**
- * The `PII_SCRUB` model-type seam (`[pii] PII_SCRUB model-type seam`, #14809).
- *
- * The corpus scrub pipeline needs LLM judgment (context-aware classification +
- * rewrite) from two interchangeable providers — an on-device privacy-filter
- * GGUF (default, data never leaves the device) and Eliza Cloud (bulk/Cerebras).
- * Call-sites (LLM-pass, audio span labeling, verify) must not know which lane
- * serves them. That indirection is `ModelType.PII_SCRUB` + `runtime.useModel`;
- * the winning lane is chosen by registration priority exactly like
- * `TEXT_EMBEDDING` (`local-inference@0 < BYO@1 < Eliza Cloud@50`).
- *
- * This module owns the two things that make the seam *safe* rather than just
- * *typed*:
- *
- *   1. **Deterministic tier-0 escalation** ({@link scrubWithEscalation}).
- *      The free, dependency-free {@link detectPii} detectors always run first.
- *      Content whose sensitive spans are *fully* covered by tier-0 makes ZERO
- *      model calls — the model is the escalation tier for the residue tier-0
- *      cannot decide, never a replacement for the deterministic floor.
- *
- *   2. **Throw-never-fabricate / fail-closed** ({@link assertValidScrubResult}).
- *      A model handler that cannot decide MUST throw (#9324; the embeddings
- *      doctrine). A model error must NEVER surface as a "clean" verdict.
- *      {@link assertValidScrubResult} rejects a structurally-invalid result
- *      (missing replacement on a `pii` verdict, wrong ruleset version, a verdict
- *      for a span not present in the input) by throwing
- *      {@link PiiScrubFabricationError} — so a handler cannot fabricate a
- *      pass by returning a malformed "all clear". The escalation orchestrator
- *      lets that throw propagate: the caller marks the item failed-for-retry and
- *      the content stays quarantined from every share/export surface.
- *
- * What this module does NOT do: it is not a job runner (that is the async rails,
- * #14808), it does not own scrub prompts/semantics (the LLM-pass issue), and it
- * does not select or train the privacy GGUF. It is purely the escalation gate +
- * failure contract that sits between the deterministic detectors and the model.
+ * Runs deterministic PII detection before escalating unresolved spans through the registered
+ * PII_SCRUB model. Fully covered content needs no model call. Invalid, uninspectable, or
+ * failed model results throw; missing replacements, mismatched rulesets, and invented span
+ * verdicts never certify content as clean.
  */
 
 import type {
@@ -134,21 +104,48 @@ function toTier0(matches: readonly PiiMatch[]): Tier0Span[] {
 }
 
 /**
- * True when `candidate` is already covered by a deterministic tier-0 span —
- * either the same value or a substring contained inside a matched span. Such a
- * candidate is a redundant escalation and is dropped.
+ * True when `candidate` is already covered by a deterministic tier-0 match —
+ * either the same value or a substring contained inside a matched value. Such a
+ * candidate is a redundant escalation and is dropped. Blank candidates carry
+ * nothing to judge and count as covered.
  */
 function coveredByTier0(
 	candidate: string,
-	tier0: readonly Tier0Span[],
+	tier0Values: readonly string[],
 ): boolean {
 	const needle = candidate.trim();
 	if (needle.length === 0) return true;
-	for (const span of tier0) {
-		if (span.span === needle) return true;
-		if (span.span.includes(needle)) return true;
+	for (const value of tier0Values) {
+		if (value === needle || value.includes(needle)) return true;
 	}
 	return false;
+}
+
+/** Candidates split by whether the deterministic tier-0 floor already covers them. */
+export interface ScrubCandidatePartition {
+	/** Candidates equal to, or contained in, a tier-0 match (never escalated). */
+	readonly covered: readonly string[];
+	/** Candidates that still require model judgment. */
+	readonly residue: readonly string[];
+}
+
+/**
+ * Split model-judgment candidates into tier-0-covered and residue using the
+ * seam's containment rule. Every lane (local seam, cloud executor) uses this so
+ * the "no escalation needed" decision cannot drift between them.
+ */
+export function partitionScrubCandidates(
+	candidates: readonly string[],
+	tier0Values: readonly string[],
+): ScrubCandidatePartition {
+	const covered: string[] = [];
+	const residue: string[] = [];
+	for (const candidate of candidates) {
+		(coveredByTier0(candidate, tier0Values) ? covered : residue).push(
+			candidate,
+		);
+	}
+	return { covered, residue };
 }
 
 /**
@@ -156,10 +153,10 @@ function coveredByTier0(
  * candidates to the `PII_SCRUB` model. Fail-closed throughout:
  *
  * - No `PII_SCRUB` handler registered but there IS residue to judge → throws.
- *   (We must never silently pass un-inspected candidates as clean.)
+ * (We must never silently pass un-inspected candidates as clean.)
  * - The model handler throws → the error propagates (item failed-for-retry).
  * - The model returns a structurally-invalid result → {@link assertValidScrubResult}
- *   throws {@link PiiScrubFabricationError}.
+ * throws {@link PiiScrubFabricationError}.
  *
  * The only path that returns without a model verdict is when there is genuinely
  * nothing to escalate (`escalation: null, escalated: false`) — an explicit,
@@ -173,8 +170,9 @@ export async function scrubWithEscalation(
 		detectPii(request.text, { disabledKinds: request.disabledKinds }),
 	);
 
-	const residue = request.candidateSpans.filter(
-		(c) => !coveredByTier0(c, tier0),
+	const { residue } = partitionScrubCandidates(
+		request.candidateSpans,
+		tier0.map((span) => span.span),
 	);
 
 	// Tier-0 short-circuit: nothing the model needs to judge → zero model calls.
@@ -235,15 +233,15 @@ export interface ScrubResultAssertionOptions {
  *
  * - `modelId` is a non-empty string (audit trail).
  * - `rulesetVersion` matches the version the call was made under (a stale-ruleset
- *   verdict must not be trusted as current).
+ * verdict must not be trusted as current).
  * - `verdicts` is an array; each verdict's `span` is a non-empty substring of
- *   the source `text` (a verdict for a span not in the text is a fabrication).
+ * the source `text` (a verdict for a span not in the text is a fabrication).
  * - every `pii` verdict carries a non-empty `replacement` (a `pii` verdict with
- *   no replacement would leave the real value in place — fail-open).
+ * no replacement would leave the real value in place — fail-open).
  * - `safe` verdicts carry NO `replacement` (a `safe` verdict is a positive
- *   "clean" judgment, not a redaction).
+ * "clean" judgment, not a redaction).
  * - when `requiredSpans` is given, every required span receives a verdict (the
- *   handler cannot silently drop a candidate and have it treated as clean).
+ * handler cannot silently drop a candidate and have it treated as clean).
  *
  * This is the tripwire that turns "the model returned something" into "the model
  * returned something we can *prove* is a real inspection result".

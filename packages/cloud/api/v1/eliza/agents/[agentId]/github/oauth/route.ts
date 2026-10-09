@@ -1,18 +1,22 @@
 // Handles v1 cloud API v1 eliza agents agentid github oauth route traffic with route-local auth expectations.
-import { Hono } from "hono";
-import { z } from "zod";
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+
+import { errorToResponse } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 // redirect-validation not needed — GitHub uses generic OAuth callback which
 // restricts to ALLOWED_REDIRECT_PATHS; we always redirect to a cloud path.
 import {
   getProvider,
   isProviderConfigured,
-} from "@/lib/services/oauth/provider-registry";
-import { initiateOAuth2 } from "@/lib/services/oauth/providers";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/oauth/provider-registry";
+import { initiateOAuth2 } from "@elizaos/cloud-shared/lib/services/oauth/providers";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { resolveManagedGitHubReturnUrl } from "../connect-flow";
 
 const CORS_METHODS = "POST, OPTIONS";

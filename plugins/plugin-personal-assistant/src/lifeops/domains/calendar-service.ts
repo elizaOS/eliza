@@ -14,8 +14,6 @@
  * audit rows through the LifeOps repository.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
-import { CalendarService } from "@elizaos/plugin-calendar";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -31,7 +29,9 @@ import type {
   ListLifeOpsCalendarsRequest,
   SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsCalendarIncludedResponse,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
+import { CalendarService } from "@elizaos/plugin-calendar";
 import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { LifeOpsServiceError } from "../service-types.js";

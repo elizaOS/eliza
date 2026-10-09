@@ -6,7 +6,6 @@
 
 import { createHash, createHmac } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_PAYLOAD_DIGEST_DERIVATION,
   AGENT_BACKUP_RECORD_STREAM_V1_FORMAT,
@@ -36,7 +35,8 @@ import {
   parseAgentBackupRestoreV3StagingSession,
   validateAgentBackupRestoreV3CandidateContext,
   validateAgentBackupRestoreV3CandidateSealAuthorization,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import {
   type ExactObjectRead,
   type ExactObjectReadLocator,
@@ -106,6 +106,8 @@ export interface StreamAgentBackupRestoreV3Input {
 export interface StreamAgentBackupRestoreV3Result {
   readonly sealed: true;
   readonly receipt: AgentBackupRestoreV3CandidateReceipt;
+  /** Exact staging session whose sealed candidate the generation commit consumes. */
+  readonly session: Readonly<AgentBackupRestoreV3StagingSession>;
 }
 
 interface ValidatedSource {
@@ -910,7 +912,7 @@ export async function streamAgentBackupRestoreV3(
       nowEpochMs(now),
     );
     await sealCandidateWithExactReplay(control, staging, session, candidate, authorization);
-    return Object.freeze({ sealed: true, receipt: validated.receipt });
+    return Object.freeze({ sealed: true, receipt: validated.receipt, session });
   } catch (cause) {
     // error-policy:J2 every post-acquisition failure is normalized before the
     // fenced rollback, preserving an already-structured inner domain error.

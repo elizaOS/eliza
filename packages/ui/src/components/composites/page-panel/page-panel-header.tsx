@@ -3,7 +3,7 @@
  * actions row), plus the small trim pieces — MetaPill, PageActionRail,
  * PanelNotice, and SummaryCard — composed by pages via the PagePanel compound.
  */
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import { Badge } from "../../ui/badge";
 import type {
   MetaPillProps,

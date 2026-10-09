@@ -98,6 +98,11 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     description:
       "Replace a note's complete user-authored content, change its color, or both. Identify it by id, exact first-line label, or unique existing text; never synthesize a separate title.",
     params: {
+      expectedRevision: {
+        ...EXPECTED_REVISION_PARAM,
+        description:
+          "Revision from the same complete note snapshot used to prepare this replacement. After a conflict, re-read the note and reconcile the edit; never refresh only the token and resend stale replacement content.",
+      },
       id: { ...ID_PARAM.id, description: "Stable note id.", required: false },
       title: {
         ...TITLE_PARAM,

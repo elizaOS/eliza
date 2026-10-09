@@ -1,0 +1,40 @@
+# BGE tokenizer assets
+
+These runtime assets belong to `BAAI/bge-small-en-v1.5`, revision
+`5c38ec7c405ec4b44b94cc5a9bb96e735b38267a`:
+
+- https://huggingface.co/BAAI/bge-small-en-v1.5/blob/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer.json
+- https://huggingface.co/BAAI/bge-small-en-v1.5/blob/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer_config.json
+
+The shared embedding input adapter tokenizes the complete input, then retains
+the latest complete source words that fit this encoder's 512-token context.
+The retained string must tokenize to an exact suffix of the original content
+tokens, with CLS and SEP preserved. Local and Cloudflare transports consume
+that same source suffix; stored documents and prompt context remain complete.
+Unrepresentable suffixes fail explicitly before dispatch.
+The tokenizer does not truncate or pad inputs. Keep the model, revision,
+CLS pooling, 384 dimensions, and L2 normalization together when changing the
+embedding representation. Existing vectors require explicit re-indexing when
+that representation changes.
+
+The model card declares the MIT license and links to the
+[FlagEmbedding license](https://github.com/FlagOpen/FlagEmbedding/blob/master/LICENSE).
+
+The API uses its Workers AI `AI` binding for `bge-small-en-v1.5`. Outside a
+Worker, set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_EMBEDDING_API_TOKEN` for
+the REST transport; the token needs Workers AI permission. Explicit
+`ELIZA_EMBEDDINGS_FORCE_LOCAL` retains local sidecar ownership.
+Requests for other model IDs retain their own configured providers. Workers AI
+errors propagate; the router does not substitute another embedding model.
+
+The tokenizer JSON files retain their upstream bytes and are excluded only
+from automatic formatting. Input-limit tests exercise the loaded tokenizer.
+
+The representation revision `hf-bert-v1:tail-v1` records BERT's per-scalar
+lowercase after NFD nonspacing-mark removal, plus verified source-tail
+selection. JavaScript whole-string lowercase has different Greek final-sigma
+semantics and must not define encoder admission. The shared adapter overrides
+that behavior without modifying the pinned assets or the dispatched source.
+Activating this revision excludes earlier representation IDs through the
+existing embedding-space predicate and queues their source memories for
+re-embedding. Never relabel earlier vectors as this revision.

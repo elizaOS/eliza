@@ -9,7 +9,7 @@ import { foreignKey, pgTable, unique, uuid } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
-import * as currentSchema from "../../schema";
+import { schema as currentSchema } from "../../schema";
 import { sessionSummaries as legacySessionSummaries } from "../../schema/sessionSummaries";
 
 let client: PGlite;

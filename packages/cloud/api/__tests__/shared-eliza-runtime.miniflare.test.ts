@@ -6,17 +6,45 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
+import { z } from "zod";
+import type { OwnerCapturePayload } from "../../shared/src/lib/services/shared-runtime/shared-owner-model-capture";
+import { createPrivateWorkerdFailureCapture } from "../test/workerd-failure-capture";
+
+function modelSystemContent(requests: Array<Record<string, unknown>>): string {
+  return requests
+    .flatMap((request) =>
+      z
+        .array(z.object({ role: z.string(), content: z.unknown() }))
+        .parse(request.messages),
+    )
+    .filter((message) => message.role === "system")
+    .map((message) => z.string().parse(message.content))
+    .join("\n\n");
+}
+
+const PRIVATE_PROVIDER_SENTINEL = "shared-private-provider-sentinel";
 
 describe("Shared Eliza runtime in Workerd", () => {
   let buildDirectory: string;
   let miniflare: Miniflare;
   let modelServer: ReturnType<typeof Bun.serve>;
   const modelRequests: Array<Record<string, unknown>> = [];
+  const modelRequestKinds: Array<"primary-generation" | "core-failure-reply"> =
+    [];
   const outboundRequests: string[] = [];
   let searchPlannerRequests = 0;
+  let boundedGeneralSearch = false;
+  const boundedSearchBodies: Array<Record<string, unknown>> = [];
+  const boundedGeneralTopic =
+    'C# "shared-general-owned-qa" installation documentation';
+  const boundedSourceUrl = "https://learn.microsoft.com/en-us/dotnet/csharp/";
+  const boundedSourceText =
+    "shared-general-owned-qa source: C# installation uses the .NET SDK.";
+  const boundedGeneralDraft = `C# installation uses the .NET SDK. [[SOURCE_URL:${boundedSourceUrl}]]`;
+
   let todoPlannerRequests = 0;
   let reminderPlannerRequests = 0;
   let authenticatedImagePlannerRequests = 0;
@@ -35,6 +63,275 @@ describe("Shared Eliza runtime in Workerd", () => {
       async fetch(request) {
         const body = (await request.json()) as Record<string, unknown>;
         modelRequests.push(body);
+        if (boundedGeneralSearch) {
+          const serialized = JSON.stringify(body.messages);
+          const privateTurn = serialized.includes("my inbox messages");
+          const sourceReceived = serialized.includes(boundedSourceText);
+          // Only external model output is canned: the real Core response evaluator,
+          // canonical WEB_SEARCH action and portable SQLite adapter remain active.
+          const message = sourceReceived
+            ? {
+                role: "assistant",
+                content: JSON.stringify({
+                  success: true,
+                  decision: "FINISH",
+                  thought: "Answer from the exact returned public source.",
+                  messageToUser: boundedGeneralDraft,
+                }),
+              }
+            : {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "bounded-general-handle-response",
+                    type: "function",
+                    function: {
+                      name: "HANDLE_RESPONSE",
+                      arguments: JSON.stringify({
+                        shouldRespond: "RESPOND",
+                        contexts: ["simple"],
+                        intents: [],
+                        requiresTool: false,
+                        candidateActionNames: [],
+                        replyText: privateTurn
+                          ? "I cannot search private inbox messages through public web search."
+                          : "Ungrounded model text must not bypass the explicit public search.",
+                        replyEffectStatus: "none",
+                        facts: [],
+                        relationships: [],
+                        addressedTo: [],
+                      }),
+                    },
+                  },
+                ],
+              };
+          return Response.json({
+            id: "chatcmpl-bounded-general",
+            object: "chat.completion",
+            created: 0,
+            model: "shared-runtime-probe",
+            choices: [
+              {
+                index: 0,
+                message,
+                finish_reason: sourceReceived ? "stop" : "tool_calls",
+              },
+            ],
+            usage: {
+              prompt_tokens: 20,
+              completion_tokens: 10,
+              total_tokens: 30,
+            },
+          });
+        }
+        // A fixed prompt marker distinguishes failure replies without retaining content.
+        modelRequestKinds.push(
+          JSON.stringify(body.messages).includes(
+            "Clearly say you could not complete this request. Do not imply the requested action happened or is still running.",
+          )
+            ? "core-failure-reply"
+            : "primary-generation",
+        );
+        if (JSON.stringify(body).includes("shared empty output fixture")) {
+          const base = {
+            id: "chatcmpl-empty-fixture",
+            created: 0,
+            model: "shared-runtime-probe",
+          };
+          const usage = {
+            prompt_tokens: 7,
+            completion_tokens: 0,
+            total_tokens: 7,
+          };
+          if (body.stream === true) {
+            const chunks = [
+              {
+                ...base,
+                object: "chat.completion.chunk",
+                choices: [
+                  {
+                    index: 0,
+                    delta: { role: "assistant", content: "" },
+                    finish_reason: null,
+                  },
+                ],
+              },
+              {
+                ...base,
+                object: "chat.completion.chunk",
+                choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+                usage,
+              },
+            ];
+            return new Response(
+              chunks
+                .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+                .join("") + "data: [DONE]\n\n",
+              {
+                headers: { "Content-Type": "text/event-stream" },
+              },
+            );
+          }
+          return Response.json({
+            ...base,
+            object: "chat.completion",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "" },
+                finish_reason: "stop",
+              },
+            ],
+            usage,
+          });
+        }
+
+        if (
+          JSON.stringify(body).includes(
+            "shared synthetic terminal failure fixture",
+          )
+        ) {
+          return Response.json(
+            {
+              error: { message: "The fixture provider rejected authorization" },
+              privateProviderDetail: PRIVATE_PROVIDER_SENTINEL,
+            },
+            {
+              status: 401,
+              headers: { "X-Private-Provider": PRIVATE_PROVIDER_SENTINEL },
+            },
+          );
+        }
+        if (JSON.stringify(body).includes("shared synthetic failure fixture")) {
+          return Response.json(
+            {
+              error: { message: "The fixture model is unavailable" },
+              privateProviderDetail: PRIVATE_PROVIDER_SENTINEL,
+            },
+            {
+              status: 503,
+              headers: { "X-Private-Provider": PRIVATE_PROVIDER_SENTINEL },
+            },
+          );
+        }
+
+        const reviewPrompt = z
+          .array(
+            z
+              .object({
+                content: z.unknown(),
+              })
+              .passthrough(),
+          )
+          .parse(body.messages)
+          .flatMap((message) =>
+            typeof message.content === "string" &&
+            message.content.startsWith("Review recovered reply grounding.")
+              ? [message.content]
+              : [],
+          );
+        if (reviewPrompt.length > 0) {
+          expect(reviewPrompt).toHaveLength(1);
+          const lines = reviewPrompt[0].split("\n");
+          const field = (prefix: string): unknown => {
+            const matches = lines.filter((line) => line.startsWith(prefix));
+            expect(matches).toHaveLength(1);
+            return JSON.parse(matches[0].slice(prefix.length));
+          };
+          expect(field("Candidate reply: ")).toBe(
+            "I added Buy milk to your todo list.",
+          );
+          const selected = z
+            .array(z.string())
+            .length(1)
+            .parse(field("Selected effect receipt IDs: "));
+          const evidence = z
+            .object({
+              request: z.object({ text: z.string() }).passthrough(),
+              results: z.string(),
+            })
+            .passthrough()
+            .parse(field("Complete turn evidence: "));
+          expect(evidence.request.text).toBe("add buy milk to my todo list");
+          const results = evidence.results
+            .split("\n")
+            .filter((line) => line.startsWith("{"))
+            .map((line): unknown => JSON.parse(line));
+          expect(results).toHaveLength(1);
+          const result = z
+            .object({
+              success: z.literal(true),
+              data: z
+                .object({
+                  actionName: z.literal("TODO"),
+                  action: z.literal("create"),
+                  todo: z
+                    .object({
+                      id: z.string().min(1),
+                      content: z.literal("Buy milk"),
+                      status: z.literal("pending"),
+                    })
+                    .passthrough(),
+                })
+                .passthrough(),
+              effectReceipts: z
+                .array(
+                  z
+                    .object({
+                      receiptId: z.string(),
+                      operation: z.literal("todos.create"),
+                      outcome: z.literal("applied"),
+                      resource: z
+                        .object({
+                          kind: z.literal("todos.todo"),
+                          id: z.string(),
+                        })
+                        .passthrough(),
+                      commit: z
+                        .object({
+                          kind: z.literal("durable"),
+                          id: z.string().min(1),
+                        })
+                        .passthrough(),
+                    })
+                    .passthrough(),
+                )
+                .length(1),
+            })
+            .passthrough()
+            .parse(results[0]);
+          expect(selected).toEqual([result.effectReceipts[0].receiptId]);
+          expect(result.effectReceipts[0].resource.id).toBe(
+            result.data.todo.id,
+          );
+          return Response.json({
+            id: "chatcmpl-workerd-todo-grounding-review",
+            object: "chat.completion",
+            created: 0,
+            model: "shared-runtime-probe",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: JSON.stringify({
+                    grounded: true,
+                    completedChangeClaim: true,
+                    reason:
+                      "The selected durable todos.create receipt identifies the pending Buy milk item in this turn's real action result.",
+                  }),
+                },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 50,
+              completion_tokens: 14,
+              total_tokens: 64,
+            },
+          });
+        }
         if (JSON.stringify(body).includes("add buy milk to my todo list")) {
           todoPlannerRequests += 1;
           if (todoPlannerRequests === 1) {
@@ -472,15 +769,22 @@ describe("Shared Eliza runtime in Workerd", () => {
                 index: 0,
                 message: {
                   role: "assistant",
-                  content: JSON.stringify({
-                    success: true,
-                    decision: "FINISH",
-                    thought: "The untrusted sender cannot use a USER action.",
-                    messageToUser:
-                      "Image generation requires an authenticated Personal Shared user.",
-                  }),
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: `workerd-image-${probe}-refusal`,
+                      type: "function",
+                      function: {
+                        name: "REPLY",
+                        arguments: JSON.stringify({
+                          text: "Image generation requires an authenticated Personal Shared user.",
+                          eliza_turn_scope: "final",
+                        }),
+                      },
+                    },
+                  ],
                 },
-                finish_reason: "stop",
+                finish_reason: "tool_calls",
               },
             ],
             usage: {
@@ -648,23 +952,27 @@ describe("Shared Eliza runtime in Workerd", () => {
     });
 
     buildDirectory = await mkdtemp(join(tmpdir(), "shared-eliza-workerd-"));
-    const coreDirectory = fileURLToPath(
-      new URL("../../../core/", import.meta.url),
-    );
+    const repository = fileURLToPath(new URL("../../../../", import.meta.url));
+    // Use the canonical dependency build so a valid core artifact is reused.
     const coreBuild = Bun.spawn({
-      cmd: [process.execPath, "build.ts", "--edge-only"],
-      cwd: coreDirectory,
+      cmd: [
+        process.execPath,
+        "packages/scripts/run-turbo.ts",
+        "run",
+        "build",
+        "--filter=@elizaos/core",
+      ],
+      cwd: repository,
       stderr: "pipe",
       stdout: "pipe",
     });
     const [coreBuildExitCode, coreBuildStderr] = await Promise.all([
       coreBuild.exited,
       new Response(coreBuild.stderr).text(),
+      new Response(coreBuild.stdout).text(),
     ]);
     if (coreBuildExitCode !== 0) {
-      throw new Error(
-        `Failed to build @elizaos/core/edge:\n${coreBuildStderr}`,
-      );
+      throw new Error(`Failed to build @elizaos/core:\n${coreBuildStderr}`);
     }
 
     const entrypoint = fileURLToPath(
@@ -673,68 +981,128 @@ describe("Shared Eliza runtime in Workerd", () => {
         import.meta.url,
       ),
     );
-    const outputPath = join(buildDirectory, "worker.mjs");
-    const repositoryDirectory = fileURLToPath(
-      new URL("../../../../", import.meta.url),
+    const apiDirectory = fileURLToPath(new URL("../", import.meta.url));
+    const workerConfig = z
+      .object({
+        compatibility_date: z.string(),
+        compatibility_flags: z.array(z.string()),
+        define: z.record(z.string(), z.string()),
+        alias: z.record(z.string(), z.string()),
+        env: z.object({
+          production: z.object({
+            compatibility_flags: z.array(z.string()).optional(),
+          }),
+        }),
+      })
+      .parse(
+        Bun.TOML.parse(
+          await readFile(join(apiDirectory, "wrangler.toml"), "utf8"),
+        ),
+      );
+    const effectiveCompatibilityFlags =
+      workerConfig.env.production.compatibility_flags ??
+      workerConfig.compatibility_flags;
+    const configPath = join(buildDirectory, "wrangler.json");
+    await Bun.write(
+      configPath,
+      JSON.stringify({
+        name: "shared-eliza-runtime-test",
+        main: entrypoint,
+        tsconfig: relative(buildDirectory, join(apiDirectory, "tsconfig.json")),
+        compatibility_date: workerConfig.compatibility_date,
+        compatibility_flags: effectiveCompatibilityFlags,
+        define: workerConfig.define,
+        alias: Object.fromEntries(
+          Object.entries(workerConfig.alias).map(([name, target]) => [
+            name,
+            target.startsWith(".") ? resolve(apiDirectory, target) : target,
+          ]),
+        ),
+      }),
     );
-    const coreEdgeArtifact = join(coreDirectory, "dist/edge/index.edge.js");
-    const todosEdgeSource = fileURLToPath(
-      new URL("../../../../plugins/plugin-todos/src/edge.ts", import.meta.url),
-    );
+    const outputPath = join(buildDirectory, "shared-eliza-runtime-worker.js");
     const bundle = Bun.spawn({
       cmd: [
         process.execPath,
-        "-e",
-        `const result = await Bun.build({
-          entrypoints: [process.env.SHARED_ELIZA_ENTRY],
-          target: "browser",
-          format: "esm",
-          conditions: ["worker"],
-          external: ["node:*"],
-          plugins: [{
-            name: "eliza-core-edge-boundary",
-            setup(build) {
-              build.onResolve({ filter: /^@elizaos\\/core\\/edge$/ }, () => ({
-                path: process.env.ELIZA_CORE_EDGE_ARTIFACT,
-              }));
-              build.onResolve({ filter: /^@elizaos\\/plugin-todos\\/edge$/ }, () => ({
-                path: process.env.ELIZA_TODOS_EDGE_SOURCE,
-              }));
-            },
-          }],
-        });
-        if (!result.success) {
-          for (const log of result.logs) console.error(log);
-          process.exit(1);
-        }
-        const output = result.outputs[0];
-        if (!output) throw new Error("Shared Eliza runtime bundle was not emitted");
-        await Bun.write(process.env.SHARED_ELIZA_OUTPUT, output);`,
+        "x",
+        "--no-install",
+        "wrangler",
+        "deploy",
+        entrypoint,
+        "--dry-run",
+        "--config",
+        configPath,
+        "--outdir",
+        buildDirectory,
       ],
-      cwd: repositoryDirectory,
-      env: {
-        ...process.env,
-        ELIZA_CORE_EDGE_ARTIFACT: coreEdgeArtifact,
-        ELIZA_TODOS_EDGE_SOURCE: todosEdgeSource,
-        SHARED_ELIZA_ENTRY: entrypoint,
-        SHARED_ELIZA_OUTPUT: outputPath,
-      },
+      cwd: apiDirectory,
       stderr: "pipe",
       stdout: "pipe",
     });
     const [bundleExitCode, bundleStderr] = await Promise.all([
       bundle.exited,
       new Response(bundle.stderr).text(),
+      new Response(bundle.stdout).text(),
     ]);
     if (bundleExitCode !== 0) {
       throw new Error(`Failed to bundle Shared Eliza runtime: ${bundleStderr}`);
     }
 
+    const failureCapture = await createPrivateWorkerdFailureCapture();
     miniflare = new Miniflare({
-      compatibilityDate: "2026-04-01",
-      compatibilityFlags: ["nodejs_compat"],
+      compatibilityDate: workerConfig.compatibility_date,
+      compatibilityFlags: effectiveCompatibilityFlags,
+      serviceBindings: { FAILURE_DIAGNOSTICS: failureCapture.fetch },
       outboundService: async (request: Request) => {
         outboundRequests.push(request.url);
+        if (
+          boundedGeneralSearch &&
+          request.url === "https://search.parallel.ai/mcp"
+        ) {
+          const body = z
+            .object({
+              jsonrpc: z.literal("2.0"),
+              id: z.union([z.string(), z.number()]),
+              method: z.literal("tools/call"),
+              params: z.object({
+                name: z.literal("web_search"),
+                arguments: z.object({
+                  objective: z.string(),
+                  search_queries: z.array(z.string()),
+                }),
+              }),
+            })
+            .parse(await request.json());
+          boundedSearchBodies.push(body);
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    results: [
+                      {
+                        url: boundedSourceUrl,
+                        title: "C# installation documentation",
+                        excerpts: [boundedSourceText],
+                      },
+                    ],
+                  }),
+                },
+              ],
+            },
+          });
+        }
+        if (
+          boundedGeneralSearch &&
+          !request.url.startsWith(`http://127.0.0.1:${modelServer.port}/v1/`)
+        ) {
+          throw new Error(
+            "Bounded general-search regression denied unexpected outbound request",
+          );
+        }
         return await fetch(request.url, {
           method: request.method,
           headers: Object.fromEntries(request.headers),
@@ -763,6 +1131,30 @@ describe("Shared Eliza runtime in Workerd", () => {
     modelServer?.stop(true);
     if (buildDirectory) await rm(buildDirectory, { recursive: true });
   });
+
+  test.each([
+    { path: "/cancel-before-model", expectedDispatches: 0 },
+    { path: "/cancel-at-dispatch", expectedDispatches: 1 },
+  ])(
+    "$path rejects genuine runtime work before SDK provider calls",
+    async ({ path, expectedDispatches }) => {
+      const before = modelRequests.length;
+      const response = await miniflare.dispatchFetch(
+        `https://runtime.test${path}`,
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        rejected: true,
+        thrownReasonUnchanged: true,
+        modelFailurePresent: false,
+        dispatches: expectedDispatches,
+        signalAborted: true,
+        abortReasonUnchanged: true,
+        outcomes: ["aborted"],
+      });
+      expect(modelRequests).toHaveLength(before);
+    },
+  );
 
   test("runs the production Shared adapter through the genuine runtime", async () => {
     const response = await miniflare.dispatchFetch("https://runtime.test/");
@@ -822,14 +1214,15 @@ describe("Shared Eliza runtime in Workerd", () => {
         actionResults?: Array<Record<string, unknown>>;
       };
       storedTodos: Array<Record<string, unknown>>;
+      captured: OwnerCapturePayload;
     };
     expect(payload.result).toMatchObject({
       reply: "I added Buy milk to your todo list.",
       degraded: false,
       usage: {
-        promptTokens: 170,
-        completionTokens: 50,
-        totalTokens: 220,
+        promptTokens: 220,
+        completionTokens: 64,
+        totalTokens: 284,
       },
     });
     expect(payload.result.actionResults).toHaveLength(1);
@@ -855,11 +1248,42 @@ describe("Shared Eliza runtime in Workerd", () => {
       }),
     ]);
     const todoRequests = modelRequests.slice(requestsBefore);
-    expect(todoRequests).toHaveLength(4);
+    expect(todoRequests).toHaveLength(5);
+    expect(payload.captured.coverage).toMatchObject({
+      callsObserved: todoRequests.length,
+      callsCaptured: todoRequests.length,
+      pendingCalls: 0,
+      pendingTimings: 0,
+      actionArguments: "canonical-observer",
+      toolExecutionsStarted: 1,
+      toolExecutionsSettled: 1,
+      pendingToolExecutions: 0,
+    });
+    expect(payload.captured.events.map((event) => event.kind)).toContain(
+      "action-started",
+    );
+    expect(payload.captured.events.map((event) => event.kind)).toContain(
+      "action-completed",
+    );
+    expect(
+      JSON.stringify(
+        payload.captured.events.filter(
+          (event) => event.kind === "action-started",
+        ),
+      ),
+    ).toContain("Buy milk");
+    expect(
+      JSON.stringify(
+        payload.captured.events.filter(
+          (event) => event.kind === "action-completed",
+        ),
+      ),
+    ).toContain("todos.create");
     const receipts = payload.result.actionResults?.[0]?.effectReceipts;
     if (!Array.isArray(receipts) || typeof receipts[0]?.receiptId !== "string")
       throw new Error("Applied Todo receipt is missing");
     expect(JSON.stringify(todoRequests[3])).toContain(receipts[0].receiptId);
+    expect(JSON.stringify(todoRequests[4])).toContain(receipts[0].receiptId);
     const todoPlanTools = todoRequests[1]?.tools as
       | Array<{ function?: { name?: string } }>
       | undefined;
@@ -869,6 +1293,170 @@ describe("Shared Eliza runtime in Workerd", () => {
       true,
     );
   }, 120_000);
+
+  test("retains canonical failure brands across runtime and protocol exports", async () => {
+    const response = await miniflare.dispatchFetch(
+      "https://runtime.test/error-brand-consistency",
+    );
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      runtimeIsProtocol: true,
+      wrapperIsProtocol: true,
+      runtime: {
+        failureName: "SharedRuntimeProviderUnavailableError",
+        retryable: true,
+      },
+      protocol: {
+        failureName: "SharedRuntimeProviderUnavailableError",
+        retryable: true,
+      },
+      wrapped: {
+        failureName: "SharedRuntimeProviderUnavailableError",
+        retryable: true,
+      },
+      transported: {
+        failureName: "SharedRuntimeProviderUnavailableError",
+        retryable: true,
+      },
+    });
+  });
+
+  test.each([
+    [
+      "buffered transient",
+      "/synthetic-failure-turn",
+      "SHARED_RUNTIME_TURN_FAILED",
+      "transient_failure",
+      true,
+    ],
+    [
+      "streamed transient",
+      "/synthetic-failure-stream",
+      "SHARED_RUNTIME_MESSAGE_FAILED",
+      "transient_failure",
+      true,
+    ],
+    [
+      "buffered terminal",
+      "/synthetic-terminal-failure-turn",
+      "SHARED_RUNTIME_TURN_FAILED",
+      "provider_issue",
+      false,
+    ],
+    [
+      "streamed terminal",
+      "/synthetic-terminal-failure-stream",
+      "SHARED_RUNTIME_MESSAGE_FAILED",
+      "provider_issue",
+      false,
+    ],
+  ])(
+    "rejects a %s synthetic failure without committing it as Shared history or durable memory",
+    async (_mode, path, code, failureKind, retryable) => {
+      const requestsBefore = modelRequests.length;
+      const response = await miniflare.dispatchFetch(
+        `https://runtime.test${path}`,
+      );
+      const body = await response.text();
+      expect(response.status, body).toBe(retryable ? 503 : 500);
+      expect(body).not.toContain(PRIVATE_PROVIDER_SENTINEL);
+      const payload = JSON.parse(body) as {
+        success: boolean;
+        name?: string;
+        code?: string;
+        failureKind?: string;
+        failureName?: string;
+        retryable?: boolean;
+        history: Array<{ role: string; content: string }>;
+        persistedPairs: unknown[];
+        parts: Array<{ type: string; text: string }>;
+      };
+      expect(payload).toMatchObject({
+        success: false,
+        modelFailurePresent: true,
+        code,
+        failureKind,
+        failureName: retryable
+          ? "SharedRuntimeProviderUnavailableError"
+          : "SharedRuntimeProviderRejectedError",
+        retryable,
+        history: [
+          { role: "assistant", content: "A retained successful reply" },
+        ],
+        persistedPairs: [],
+      });
+      expect(payload.parts.some((part) => part.type === "finish")).toBe(false);
+      expect(payload.parts.map((part) => part.text).join("")).not.toContain(
+        "Something went wrong on my end. Please try again.",
+      );
+      if (retryable) {
+        expect(modelRequests.length - requestsBefore).toBeGreaterThan(1);
+      } else {
+        // The message service short-circuits terminal provider rejection.
+        // It must not ask the same unauthorized provider to write an apology.
+        expect(modelRequestKinds.slice(requestsBefore)).toEqual([
+          "primary-generation",
+        ]);
+      }
+    },
+    120_000,
+  );
+
+  test.each([
+    [
+      "buffered",
+      "/synthetic-empty-turn",
+      "SHARED_RUNTIME_TURN_FAILED",
+      "SHARED_RUNTIME_MESSAGE_FAILED",
+    ],
+    [
+      "streamed",
+      "/synthetic-empty-stream",
+      "REPLY_GROUNDING_FAILED",
+      "REPLY_GROUNDING_FAILED",
+    ],
+  ])(
+    "rejects %s HTTP200 empty output as a failure without successful history or finish",
+    async (_mode, path, code, rootFailureCode) => {
+      const requestsBefore = modelRequests.length;
+      const response = await miniflare.dispatchFetch(
+        `https://runtime.test${path}`,
+      );
+      const body = await response.text();
+      expect(response.status, body).toBeGreaterThanOrEqual(500);
+      expect(body).not.toContain(PRIVATE_PROVIDER_SENTINEL);
+      const payload = JSON.parse(body) as {
+        success: boolean;
+        code: string;
+        rootFailureCode: string;
+        history: unknown[];
+        persistedPairs: unknown[];
+        parts: Array<{ type: string; text?: string }>;
+      };
+      expect(payload).toMatchObject({
+        success: false,
+        code,
+        history: [
+          { role: "assistant", content: "A retained successful reply" },
+        ],
+        persistedPairs: [],
+        // Buffered generateText rejects the missing required tool before core
+        // reply grounding. Streamed output reaches grounding and fails there.
+        // Both failures must retain accepted history and reject a success commit.
+        rootFailureCode,
+      });
+      expect(payload.parts.some((part) => part.type === "finish")).toBe(false);
+      expect(
+        payload.parts.map((part) => part.text ?? "").join(""),
+      ).not.toContain("Something went wrong on my end. Please try again.");
+      expect(modelRequests.length - requestsBefore).toBeGreaterThan(0);
+      expect(modelRequests[requestsBefore]).toMatchObject({
+        tool_choice: "required",
+      });
+    },
+    120_000,
+  );
 
   test("runs the genuine REMINDERS action with a trusted Discord DM inside Workerd", async () => {
     const requestsBefore = modelRequests.length;
@@ -953,7 +1541,7 @@ describe("Shared Eliza runtime in Workerd", () => {
 
     const imageRequests = modelRequests.slice(requestsBefore);
     expect(imageRequests).toHaveLength(2);
-    expect(JSON.stringify(imageRequests)).toContain("user_role: USER");
+    expect(modelSystemContent(imageRequests)).toContain("# User Role\nUSER:");
     const toolNames = imageRequests.flatMap((modelRequest) =>
       (
         (modelRequest.tools as
@@ -1028,11 +1616,9 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(done.text).toBe(
       "Image generation requires an authenticated Personal Shared user.",
     );
-    expect(done.actionResults?.[0]).toMatchObject({
-      success: false,
-      error: "Action GENERATE_MEDIA is not allowed for the current role",
-      data: { actionName: "GENERATE_MEDIA" },
-    });
+    // Admission rejects the unavailable tool before dispatch; the refusal
+    // must not acquire an execution receipt for an action that never ran.
+    expect(done.actionResults ?? []).toEqual([]);
     expect(payload.coordinatorRequests).toEqual([
       {
         name: "70000000-0000-5000-8000-000000000075:70000000-0000-5000-8000-000000000075",
@@ -1054,8 +1640,10 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(payload.mediaRequests).toEqual([]);
 
     const imageRequests = modelRequests.slice(requestsBefore);
-    expect(JSON.stringify(imageRequests)).toContain("user_role: GUEST");
-    expect(JSON.stringify(imageRequests)).not.toContain("user_role: USER");
+    expect(modelSystemContent(imageRequests)).toContain("# User Role\nGUEST:");
+    expect(modelSystemContent(imageRequests)).not.toContain(
+      "# User Role\nUSER:",
+    );
     const toolNames = imageRequests.flatMap((modelRequest) =>
       (
         (modelRequest.tools as
@@ -1110,8 +1698,12 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(toolNames).not.toContain("WEB_SEARCH");
     expect(toolNames).not.toContain("REMINDERS");
     expect(toolNames).not.toContain("TODO");
-    expect(JSON.stringify(lifecycleRequests)).toContain("user_role: GUEST");
-    expect(JSON.stringify(lifecycleRequests)).not.toContain("user_role: USER");
+    expect(modelSystemContent(lifecycleRequests)).toContain(
+      "# User Role\nGUEST:",
+    );
+    expect(modelSystemContent(lifecycleRequests)).not.toContain(
+      "# User Role\nUSER:",
+    );
     expect(systemLifecyclePlannerRequests).toBeGreaterThanOrEqual(2);
   }, 120_000);
 
@@ -1133,15 +1725,153 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(result.actionResults).toBeUndefined();
     const lifecycleRequests = modelRequests.slice(requestsBefore);
     expect(lifecycleRequests).toHaveLength(1);
-    expect(JSON.stringify(lifecycleRequests)).toContain("user_role: GUEST");
-    expect(JSON.stringify(lifecycleRequests)).not.toContain("user_role: USER");
+    expect(modelSystemContent(lifecycleRequests)).toContain(
+      "# User Role\nGUEST:",
+    );
+    expect(modelSystemContent(lifecycleRequests)).not.toContain(
+      "# User Role\nUSER:",
+    );
     const toolNames = (
       (lifecycleRequests[0]?.tools as
         | Array<{ function?: { name?: string } }>
         | undefined) ?? []
     ).flatMap((tool) => (tool.function?.name ? [tool.function.name] : []));
+    // This first lifecycle turn has no authorized context references to read.
     expect(toolNames).toEqual(["HANDLE_RESPONSE"]);
   }, 120_000);
+
+  test.skipIf(
+    Boolean(liveModelUrl || liveModelId) ||
+      process.env.SHARED_ELIZA_LIVE_WEB_SEARCH === "1",
+  )(
+    "canonical general search uses real Core and portable SQLite while private scope never dispatches publicly",
+    async () => {
+      expect(liveModelUrl).toBeUndefined();
+      expect(liveModelId).toBeUndefined();
+      expect(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH).not.toBe("1");
+      const modelBefore = modelRequests.length;
+      const outboundBefore = outboundRequests.length;
+      boundedSearchBodies.length = 0;
+      boundedGeneralSearch = true;
+      try {
+        const publicResponse = await miniflare.dispatchFetch(
+          "https://runtime.test/bounded-general-search",
+        );
+        const publicBody = await publicResponse.text();
+        expect(publicResponse.status, publicBody).toBe(200);
+        const result = z
+          .object({
+            reply: z.string(),
+            degraded: z.boolean(),
+            actionResults: z.array(
+              z
+                .object({
+                  success: z.boolean(),
+                  data: z
+                    .object({
+                      actionName: z.string(),
+                      query: z.string(),
+                      groundingStatus: z.string(),
+                      deliveredReply: z.string(),
+                    })
+                    .passthrough(),
+                })
+                .passthrough(),
+            ),
+          })
+          .parse(JSON.parse(publicBody));
+        expect(result.reply).toContain("C# installation uses the .NET SDK.");
+        expect(result.reply).toContain(
+          `Source: learn.microsoft.com — ${boundedSourceUrl} (parallel, checked `,
+        );
+        expect(result.reply).not.toContain("[[SOURCE_URL:");
+        expect(result.reply).not.toContain("could not verify");
+        expect(result.degraded).toBe(false);
+        expect(result.actionResults).toHaveLength(1);
+        expect(result.actionResults[0]).toMatchObject({
+          success: true,
+          data: {
+            actionName: "WEB_SEARCH",
+            query: boundedGeneralTopic,
+            groundingStatus: "verified",
+            deliveredReply: result.reply,
+          },
+        });
+        expect(boundedSearchBodies).toHaveLength(1);
+        expect(boundedSearchBodies[0]).toMatchObject({
+          params: {
+            arguments: {
+              objective: boundedGeneralTopic,
+              search_queries: [boundedGeneralTopic],
+            },
+          },
+        });
+        const publicModels = modelRequests.slice(modelBefore);
+        expect(publicModels.length).toBeGreaterThanOrEqual(2);
+        expect(publicModels.length).toBeLessThanOrEqual(4);
+        // The reply is model-authored only after the production action returned
+        // the source; the initial canned reply is intentionally ungrounded.
+        expect(
+          JSON.stringify(publicModels[publicModels.length - 1].messages),
+        ).toContain(boundedSourceText);
+        expect(JSON.stringify(publicModels[0].messages)).not.toContain(
+          boundedSourceText,
+        );
+        const pendingSystem = modelSystemContent(publicModels);
+        expect(pendingSystem).toContain(
+          "WEB_SEARCH is available for this turn; do not claim a search has run until its action result confirms success.",
+        );
+        expect(pendingSystem).toContain(
+          "[[SOURCE_URL:https://exact-supporting-url]]",
+        );
+        expect(pendingSystem).not.toContain(
+          "A complete live public read already ran for this turn.",
+        );
+        expect(
+          modelSystemContent([publicModels[publicModels.length - 1]]),
+        ).toContain("[[SOURCE_URL:https://exact-supporting-url]]");
+
+        const privateModelBefore = modelRequests.length;
+        const privateResponse = await miniflare.dispatchFetch(
+          "https://runtime.test/bounded-private-search",
+        );
+        const privateBody = await privateResponse.text();
+        expect(privateResponse.status, privateBody).toBe(200);
+        expect(boundedSearchBodies).toHaveLength(1);
+        const privateModels = modelRequests.slice(privateModelBefore);
+        expect(modelSystemContent(privateModels)).not.toContain(
+          "Public-search grounding policy:",
+        );
+        expect(privateModels.length).toBeGreaterThan(0);
+        expect(privateModels.length).toBeLessThanOrEqual(2);
+        for (const request of privateModels) {
+          const tools = z
+            .array(
+              z
+                .object({
+                  function: z.object({ name: z.string() }).passthrough(),
+                })
+                .passthrough(),
+            )
+            .parse(request.tools);
+          expect(tools.map((tool) => tool.function.name)).not.toContain(
+            "WEB_SEARCH",
+          );
+        }
+        expect(JSON.parse(privateBody).reply).toContain(
+          "cannot search private inbox",
+        );
+        expect(
+          outboundRequests
+            .slice(outboundBefore)
+            .filter((url) => url === "https://search.parallel.ai/mcp"),
+        ).toHaveLength(1);
+      } finally {
+        boundedGeneralSearch = false;
+      }
+    },
+    120_000,
+  );
 
   test.skipIf(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH !== "1")(
     "plans and runs the genuine edge search plugin inside Workerd",

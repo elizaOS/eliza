@@ -5,7 +5,8 @@
  */
 
 import { ElizaError } from "../errors";
-import type { ConnectorAccountJsonObject, JsonValue } from "../types";
+import type { ConnectorAccountJsonObject } from "../types/database.js";
+import type { JsonValue } from "../types/primitives.js";
 
 export const CONNECTOR_JSON_UNBOUNDED = "CONNECTOR_JSON_UNBOUNDED";
 export const CONNECTOR_JSON_BOUNDED = "[BOUNDED]";
@@ -87,16 +88,16 @@ function chargeText(
 	// UTF-8 never encodes a JS string to fewer bytes than its UTF-16 code-unit
 	// length (every unit costs at least one byte, and an unpaired surrogate
 	// becomes a 3-byte U+FFFD), so a string longer than the byte ceiling is
-	// already over budget. Rejecting on .length first avoids forcing a
+	// already over budget. Rejecting on.length first avoids forcing a
 	// proportional UTF-8 allocation and full scan for a value whose rejection is
-	// certain (#24778). Strings that might still fit fall through to the precise
+	// certain. Strings that might still fit fall through to the precise
 	// byte check below, so multibyte values on the boundary stay accepted.
 	//
 	// That early rejection never measured bytes, so its context must not claim
 	// a byte count: `value.length` can understate multibyte input ("é" is 1
 	// unit / 2 bytes, "🦊" is 2 units / 4 bytes). It reports the code-unit
 	// count it measured plus the lower bound that count proves, and flags that
-	// no exact byte count exists (#24888). Only the encoded path reports
+	// no exact byte count exists. Only the encoded path reports
 	// `keyBytes` / `stringBytes`.
 	if (value.length > MAX_CONNECTOR_JSON_STRING_BYTES) {
 		return overflow(options, "leaf", {
@@ -349,6 +350,8 @@ function walk(
 				defineOwn(output, key, CONNECTOR_JSON_BOUNDED);
 				continue;
 			}
+			// An optional field left undefined is omitted, as JSON.stringify does.
+			if (descriptor.value === undefined) continue;
 			const cloned = walk(descriptor.value, depth + 1, false, state, options);
 			if (cloned === BOUNDED_BRANCH || cloned === BOUNDED_EXHAUSTED) {
 				defineOwn(output, key, CONNECTOR_JSON_BOUNDED);

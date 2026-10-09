@@ -11,11 +11,8 @@
 import { createRoot } from "react-dom/client";
 
 import { Button } from "../../components/ui/button";
-import {
-  certifyWidget,
-  liveGeometryProvider,
-  type WidgetCertReport,
-} from "../widget-cert";
+import { certifyWidget, liveGeometryProvider } from "../widget-cert";
+import type { WidgetCertReport } from "../scroll-cert";
 
 declare global {
   interface Window {

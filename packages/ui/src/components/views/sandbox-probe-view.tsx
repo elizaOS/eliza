@@ -10,7 +10,7 @@
  *
  * Registered gated behind Developer Mode (`registerSandboxProbeView`) so it never
  * appears in the normal launcher; named as the level's consumer in
- * `surface-isolation.ts`. Consumes `SandboxedViewFrame` (the mechanism) directly.
+ * `surface manifest`. Consumes `SandboxedViewFrame` (the mechanism) directly.
  */
 
 import type { SurfaceManifest } from "@elizaos/core";
@@ -18,7 +18,7 @@ import { registerAppShellPage } from "../../app-shell-registry";
 import { SandboxedViewFrame } from "./SandboxedViewFrame";
 import { SANDBOXED_VIEW_CHANNEL } from "./sandboxed-view-broker";
 
-/** Stable id; the value `surface-isolation.ts` names as the level's consumer. */
+/** Stable id; the value `surface manifest` names as the level's consumer. */
 export const SANDBOX_PROBE_VIEW_ID = "sandbox-probe" as const;
 
 /**
@@ -115,11 +115,11 @@ export function SandboxProbeView() {
 export function registerSandboxProbeView(): void {
   registerAppShellPage({
     id: SANDBOX_PROBE_VIEW_ID,
-    pluginId: "app-core",
+    pluginId: "app",
     label: "Sandbox Probe",
     icon: "shield",
     path: `/apps/${SANDBOX_PROBE_VIEW_ID}`,
-    developerOnly: true,
+    viewKind: "developer",
     surface: SANDBOX_PROBE_MANIFEST,
     Component: SandboxProbeView,
   });

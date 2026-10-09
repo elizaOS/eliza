@@ -6,19 +6,22 @@
  * as an unhealthy source rather than a healthy-empty inbox. `aggregate.ts` uses
  * the fetchers on pull paths and the status probes on cache paths.
  */
+
+import type {
+  GetLifeOpsGmailTriageRequest,
+  LifeOpsConnectorDegradation,
+  LifeOpsGmailTriageFeed,
+  LifeOpsGoogleConnectorStatus,
+  LifeOpsInboxSourceStatus,
+  LifeOpsXConnectorStatus,
+  LifeOpsXDm,
+} from "@elizaos/contracts";
 import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   expandConnectorSourceFilter,
-  type GetLifeOpsGmailTriageRequest,
-  type LifeOpsConnectorDegradation,
-  type LifeOpsGmailTriageFeed,
-  type LifeOpsGoogleConnectorStatus,
-  type LifeOpsInboxSourceStatus,
-  type LifeOpsXConnectorStatus,
-  type LifeOpsXDm,
+  logger,
   normalizeConnectorSource,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 import { buildDeepLink, resolveChannelName } from "./channel-deep-links.js";
 import type { InboundMessage } from "./types.js";
 
@@ -52,7 +55,7 @@ export interface GmailInboxSource {
 export interface XDmInboxSource {
   getXConnectorStatus(): Promise<LifeOpsXConnectorStatus>;
   syncXDms(opts?: { limit?: number }): Promise<{ synced: number }>;
-  getXDms(opts?: { limit?: number }): Promise<LifeOpsXDm[]>;
+  getXDms(opts?: { limit?: number; inbound?: boolean }): Promise<LifeOpsXDm[]>;
 }
 
 /** Messages from one connector-backed source plus that source's health. */
@@ -287,6 +290,69 @@ function sourceNotWiredStatus(
   };
 }
 
+/**
+ * Newest-first pages of `limit * 3` raw memories. The caller's limit counts
+ * inbox candidates, so the agent's own replies and blank texts must not fill
+ * the window: a single capped read can come back empty while older user
+ * messages exist. Pages continue until that many candidates are in hand or
+ * history ends. A repeated page (a store that ignores offset) stops the scan,
+ * as does reaching rows older than the caller's `sinceMs` window: the store
+ * returns rows newest-first, so no later page can produce a candidate. No page
+ * count caps the scan: every non-final page advances the offset until history
+ * ends, so silently returning fewer candidates than requested cannot happen.
+ */
+async function loadInboxCandidateMemories(
+  runtime: IAgentRuntime,
+  sourceRoomIds: UUID[],
+  limit: number,
+  accept: (memory: Memory) => boolean,
+  sinceMs: number,
+): Promise<Memory[]> {
+  const pageSize = limit * 3;
+  const filtered: Memory[] = [];
+  const seenMemoryIds = new Set<string>();
+  let previousPageFingerprint: string | null = null;
+  let offset = 0;
+  while (filtered.length < limit) {
+    const page = await runtime.getMemoriesByRoomIds({
+      roomIds: sourceRoomIds,
+      tableName: "messages",
+      limit: pageSize,
+      offset,
+    });
+    if (page.length === 0) break;
+    // A store that ignores offset returns the same rows for every page,
+    // including rows without an id that the seen-id guard cannot deduplicate.
+    const fingerprint = page.map(pageRowFingerprint).join("\n");
+    if (fingerprint === previousPageFingerprint) break;
+    previousPageFingerprint = fingerprint;
+    let fresh = 0;
+    let oldest = Number.POSITIVE_INFINITY;
+    for (const memory of page) {
+      const createdAt = Number(memory.createdAt);
+      if (Number.isFinite(createdAt) && createdAt < oldest) {
+        oldest = createdAt;
+      }
+      const memoryId = typeof memory.id === "string" ? memory.id : "";
+      if (memoryId.length > 0 && seenMemoryIds.has(memoryId)) continue;
+      if (memoryId.length > 0) seenMemoryIds.add(memoryId);
+      fresh += 1;
+      if (accept(memory)) filtered.push(memory);
+    }
+    if (fresh === 0 || page.length < pageSize) break;
+    if (sinceMs > 0 && oldest < sinceMs) break;
+    offset += page.length;
+  }
+  return filtered;
+}
+
+function pageRowFingerprint(memory: Memory): string {
+  if (typeof memory.id === "string" && memory.id.length > 0) {
+    return `id:${memory.id}`;
+  }
+  return `row:${String(memory.createdAt)}|${String(memory.roomId)}|${extractText(memory)}`;
+}
+
 export async function fetchChatMessages(
   runtime: IAgentRuntime,
   opts: {
@@ -305,10 +371,17 @@ export async function fetchChatMessages(
   const allRoomIds = await runtime.getRoomsForParticipant(runtime.agentId);
   if (allRoomIds.length === 0) return [];
 
-  const roomIds = allRoomIds as UUID[];
-  const rooms = await Promise.all(roomIds.map((id) => runtime.getRoom(id)));
+  // One batched read: the agent's room list is unbounded, so a per-room
+  // `getRoom` fan-out would admit one database read per room at once.
+  const roomsById = new Map(
+    (await runtime.getRoomsByIds(allRoomIds as UUID[])).map((room) => [
+      room.id,
+      room,
+    ]),
+  );
   const sourceRooms: Room[] = [];
-  for (const room of rooms) {
+  for (const roomId of allRoomIds) {
+    const room = roomsById.get(roomId as UUID);
     if (!room) continue;
     const roomSource = extractRoomSource(room);
     if (sourceMatchesFilter(roomSource, sourceTags)) {
@@ -319,23 +392,24 @@ export async function fetchChatMessages(
   if (sourceRooms.length === 0) return [];
 
   const sourceRoomIds = sourceRooms.map((r) => r.id) as UUID[];
-  const memories = await runtime.getMemoriesByRoomIds({
-    roomIds: sourceRoomIds,
-    tableName: "messages",
-    limit: limit * 3, // over-fetch for filtering
-  });
-
-  const filtered = memories.filter((m) => {
-    if (m.entityId === runtime.agentId) return false;
-    const src = extractMemorySource(m);
-    if (!sourceMatchesFilter(src, sourceTags)) return false;
-    const createdAt = parseRequiredTimestamp(
-      m.createdAt,
-      "chat memory createdAt",
-    );
-    if (sinceMs > 0 && createdAt < sinceMs) return false;
-    return true;
-  });
+  const filtered = await loadInboxCandidateMemories(
+    runtime,
+    sourceRoomIds,
+    limit,
+    (memory) => {
+      if (memory.entityId === runtime.agentId) return false;
+      const src = extractMemorySource(memory);
+      if (!sourceMatchesFilter(src, sourceTags)) return false;
+      const createdAt = parseRequiredTimestamp(
+        memory.createdAt,
+        "chat memory createdAt",
+      );
+      if (sinceMs > 0 && createdAt < sinceMs) return false;
+      // Blank texts are not inbox rows and must not consume a result slot.
+      return extractText(memory).length > 0;
+    },
+    sinceMs,
+  );
 
   filtered.sort(
     (a, b) =>
@@ -355,7 +429,8 @@ export async function fetchChatMessages(
         .filter((worldId): worldId is UUID => Boolean(worldId)),
     ),
   ];
-  const worlds = await Promise.all(worldIds.map((id) => runtime.getWorld(id)));
+  const worlds =
+    worldIds.length > 0 ? await runtime.getWorldsByIds(worldIds) : [];
   const worldMap = new Map<string, World>();
   for (const world of worlds) {
     if (world) {
@@ -374,12 +449,10 @@ export async function fetchChatMessages(
   // Fetch participant counts per room exactly once. Used to classify DMs,
   // group DMs, and public channels without letting unknown rooms default to DM.
   const participantCountByRoom = new Map<string, number>();
-  await Promise.all(
-    sourceRooms.map(async (room) => {
-      const ids = await runtime.getParticipantsForRoom(room.id);
-      participantCountByRoom.set(room.id, ids.length);
-    }),
-  );
+  const participants = await runtime.getParticipantsForRooms(sourceRoomIds);
+  for (const { roomId, entityIds } of participants) {
+    participantCountByRoom.set(roomId, entityIds.length);
+  }
 
   const results: InboundMessage[] = [];
   for (const memory of filtered.slice(0, limit)) {
@@ -402,8 +475,14 @@ export async function fetchChatMessages(
     const channelType = chatType === "dm" ? "dm" : "group";
     const channelName = resolveChannelName(source, room?.name, senderName);
     const world = room?.worldId ? worldMap.get(room.worldId) : undefined;
+    // memory.id is a runtime UUID; connectors stamp the platform message id
+    // (Discord snowflake, Slack ts, Telegram message id) as messageIdFull.
+    const platformMessageId = metadataRecord(memory.metadata).messageIdFull;
     const deepLink = buildDeepLink(source, {
-      messageId: memoryId,
+      messageId:
+        typeof platformMessageId === "string" && platformMessageId.length > 0
+          ? platformMessageId
+          : undefined,
       roomMeta: metadataForRoom(room),
       worldMeta: metadataForWorld(world),
     });
@@ -546,6 +625,7 @@ export async function fetchGmailMessages(
   }
 
   const limit = opts.limit;
+  const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
 
   // When no grantId is supplied, the service-side getGmailTriage already
   // aggregates across every Google grant and tags each summary with grantId
@@ -555,7 +635,10 @@ export async function fetchGmailMessages(
   try {
     triageFeed = await source.getGmailTriage(INTERNAL_URL, {
       ...(opts.grantId ? { grantId: opts.grantId } : {}),
-      ...(limit === undefined ? {} : { maxResults: limit }),
+      // Triage orders by score, not recency, so a capped read can drop valid
+      // in-window rows before sinceIso is applied. Fetch uncapped when
+      // filtering by time, then filter first and slice to limit.
+      ...(limit === undefined || sinceMs > 0 ? {} : { maxResults: limit }),
     });
   } catch (error) {
     logger.warn(
@@ -564,14 +647,8 @@ export async function fetchGmailMessages(
     return { messages: [], status: fetchFailedStatus("gmail", error) };
   }
 
-  const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
-
   const results: InboundMessage[] = [];
-  const messages =
-    limit === undefined
-      ? triageFeed.messages
-      : triageFeed.messages.slice(0, limit);
-  for (const msg of messages) {
+  for (const msg of triageFeed.messages) {
     const messageId = requireNonEmptyString(msg.id, "Gmail message id");
     const externalId = requireNonEmptyString(
       msg.externalId,
@@ -610,7 +687,10 @@ export async function fetchGmailMessages(
     });
   }
 
-  return { messages: results, status: sourceStatus };
+  return {
+    messages: limit === undefined ? results : results.slice(0, limit),
+    status: sourceStatus,
+  };
 }
 
 export async function fetchXDmMessages(
@@ -637,9 +717,13 @@ export async function fetchXDmMessages(
   const limit = opts.limit;
   let dms: LifeOpsXDm[];
   try {
-    const page = limit === undefined ? undefined : { limit };
-    await source.syncXDms(page);
-    dms = await source.getXDms(page);
+    // Sync the complete available mixed-direction history before applying the
+    // inbound-only result limit; owner replies must not hide candidates.
+    await source.syncXDms();
+    dms = await source.getXDms({
+      ...(limit === undefined ? {} : { limit }),
+      inbound: true,
+    });
   } catch (error) {
     logger.warn(
       `[InboxMessageFetcher] x_dm sync/read failed: ${errorMessage(error)}`,
@@ -689,7 +773,11 @@ export async function fetchXDmMessages(
     });
   }
 
-  return { messages: results, status: sourceStatus };
+  return {
+    messages:
+      limit === undefined ? results : results.slice(0, Math.max(0, limit)),
+    status: sourceStatus,
+  };
 }
 
 /** The merged cross-source pull plus per-source health for that pull. */
@@ -789,7 +877,10 @@ export async function fetchAllMessages(
     return bTime - aTime;
   });
   return {
-    messages: opts.limit ? combined.slice(0, opts.limit) : combined,
+    messages:
+      opts.limit === undefined
+        ? combined
+        : combined.slice(0, Math.max(0, opts.limit)),
     sources: results.map((result) => result.status),
   };
 }
@@ -882,11 +973,19 @@ function metadataRecord(value: unknown): Record<string, unknown> {
 
 function metadataForRoom(room: Room | undefined): Record<string, unknown> {
   if (!room) return {};
+  const metadata = metadataRecord(room.metadata);
   return {
-    ...metadataRecord(room.metadata),
+    ...metadata,
+    // Connectors store the platform channel on Room.channelId, which wins over
+    // any metadata copy; metadata.channelId only fills in when it is absent.
+    channelId: room.channelId ?? metadata.channelId,
     roomId: room.id,
     roomName: room.name,
-    serverId: room.serverId,
+    // Same precedence for the server id: Slack stamps it only as room metadata
+    // (`serverId: teamId` in ensureRoomExists) while Discord persists the
+    // Room.serverId column — an unset column must not clobber the metadata
+    // copy, or the inbox Slack deep link loses its workspace id.
+    serverId: room.serverId ?? metadata.serverId,
   };
 }
 

@@ -1,6 +1,8 @@
-import { isElizaOS } from "@elizaos/ui/platform/init";
+import { isElizaOS } from "@elizaos/ui";
 import { registerDeviceSettingsApp } from "./components/device-settings-app";
 
-if (isElizaOS()) {
-  registerDeviceSettingsApp();
+export function registerApp(): void {
+  if (isElizaOS()) {
+    registerDeviceSettingsApp();
+  }
 }

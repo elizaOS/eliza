@@ -8,16 +8,16 @@ import {
   logger,
   type Plugin,
   type RunEventPayload,
-  recentMessagesProvider,
   Service,
 } from "@elizaos/core";
-import { oauthAction } from "../plugin-oauth/actions/oauth";
-import { userAuthStatusProvider } from "../plugin-oauth/providers/user-auth-status";
-import { appConfigProvider } from "../shared/providers/app-config";
+import { recentMessagesProvider } from "@elizaos/plugin-assistant";
+import { oauthAction } from "../plugin-oauth/oauth-action";
+import { userAuthStatusProvider } from "../plugin-oauth/user-auth-status";
 import { finishAction } from "./actions/finish";
 import { generateMediaAction } from "./actions/media-generation";
 import { actionStateProvider } from "./providers/action-state";
 import { actionsProvider } from "./providers/actions";
+import { appConfigProvider } from "./providers/app-config";
 import { characterProvider } from "./providers/character";
 import { CloudBootstrapMessageService } from "./services/cloud-bootstrap-message-service";
 import { CloudMediaGenerationService } from "./services/cloud-media-generation-service";
@@ -26,7 +26,7 @@ import { CloudMediaGenerationService } from "./services/cloud-media-generation-s
 export { CloudBootstrapMessageService } from "./services/cloud-bootstrap-message-service";
 export * from "./templates";
 export * from "./types";
-export * from "./utils";
+export { getActionResultsFromCache, refreshStateAfterAction } from "./utils/state";
 
 /**
  * Installs CloudBootstrapMessageService after runtime.initialize() completes.

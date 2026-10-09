@@ -9,7 +9,7 @@
  */
 
 import { ChevronDown, ChevronUp, KeyRound, Trash2 } from "lucide-react";
-import type { AccountWithCredentialFlag } from "../../api/client-agent";
+import type { AccountWithCredentialFlag } from "../../api/client-agent-accounts";
 import { useModalState } from "../../hooks/useModalState";
 import { useAppSelector } from "../../state/app-store";
 import { Badge } from "../ui/badge";

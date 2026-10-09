@@ -1,55 +1,26 @@
 // Persists PII scrub done-marker records for cloud services through the shared DB boundary.
-import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type NewPiiScrubMarker,
+  type PiiScrubInspectionScope,
   type PiiScrubMarker,
   piiScrubMarkers,
 } from "../schemas/pii-scrub-markers";
 
-export type { NewPiiScrubMarker, PiiScrubMarker };
+export type { NewPiiScrubMarker, PiiScrubInspectionScope, PiiScrubMarker };
 
 /**
- * Prefix of every PII scrub done-marker key. MUST stay identical to
- * `PII_SCRUB_MARKER_PREFIX` in `packages/core/src/security/pii-scrub-markers.ts`
- * — the LOCAL and CLOUD lanes share one content-addressed key space shape
- * (`pii:<sha256(content)>:v<rulesetVersion>`) so scrub work never duplicates
- * across lanes. A lockstep test asserts the two builders agree
- * (`pii-scrub-jobs.test.ts`).
+ * Marker scopes that satisfy a job requesting `scope`: a server-discovery job
+ * is satisfied only by a server-discovery marker; a declared-candidates job by
+ * either (server discovery is strictly stronger).
  */
-export const PII_SCRUB_MARKER_PREFIX = "pii";
-
-/**
- * Hex sha256 of the content being scrubbed — the content-address half of the
- * marker key. A pure function of the bytes: identical content always hashes
- * identically, so it is the stable cross-lane idempotency handle.
- */
-export function hashPiiScrubContent(content: string): string {
-  return createHash("sha256").update(content).digest("hex");
-}
-
-/**
- * Build the done-marker key `pii:<sha256(content)>:v<rulesetVersion>` from an
- * already-computed content hash. Same contract as the core builder: an empty
- * ruleset version would collapse the marker namespace across ruleset upgrades
- * and let a stale-ruleset scrub pass as current (a fail-open we refuse).
- */
-export function piiScrubMarkerKey(contentHash: string, rulesetVersion: string): string {
-  if (typeof rulesetVersion !== "string" || rulesetVersion.length === 0) {
-    throw new Error(
-      "[pii-scrub-markers] rulesetVersion must be a non-empty string; refusing to build a version-collapsed marker key",
-    );
-  }
-  if (typeof contentHash !== "string" || contentHash.length === 0) {
-    throw new Error("[pii-scrub-markers] contentHash must be a non-empty string");
-  }
-  return `${PII_SCRUB_MARKER_PREFIX}:${contentHash}:v${rulesetVersion}`;
-}
-
-/** Build the done-marker key directly from raw content. */
-export function piiScrubMarkerKeyForContent(content: string, rulesetVersion: string): string {
-  return piiScrubMarkerKey(hashPiiScrubContent(content), rulesetVersion);
+export function satisfyingInspectionScopes(
+  scope: PiiScrubInspectionScope,
+): readonly PiiScrubInspectionScope[] {
+  return scope === "server_discovery"
+    ? ["server_discovery"]
+    : ["declared_candidates", "server_discovery"];
 }
 
 /**
@@ -66,8 +37,12 @@ export class PiiScrubMarkersRepository {
   // READ OPERATIONS (use read-intent connection)
   // ============================================================================
 
-  /** Find a marker by its org-scoped key. */
-  async findByKey(organizationId: string, markerKey: string): Promise<PiiScrubMarker | undefined> {
+  /** Find a marker by its org-scoped key that satisfies `scope`. */
+  async findByKey(
+    organizationId: string,
+    markerKey: string,
+    scope: PiiScrubInspectionScope,
+  ): Promise<PiiScrubMarker | undefined> {
     const [row] = await dbRead
       .select()
       .from(piiScrubMarkers)
@@ -75,6 +50,7 @@ export class PiiScrubMarkersRepository {
         and(
           eq(piiScrubMarkers.organization_id, organizationId),
           eq(piiScrubMarkers.marker_key, markerKey),
+          inArray(piiScrubMarkers.inspection_scope, [...satisfyingInspectionScopes(scope)]),
         ),
       )
       .limit(1);
@@ -83,11 +59,15 @@ export class PiiScrubMarkersRepository {
 
   /**
    * True when this exact content has already been scrubbed under this exact
-   * ruleset version FOR THIS ORG — the idempotency check the drain runs before
-   * any executor call.
+   * ruleset version FOR THIS ORG at an inspection scope at least as strong as
+   * `scope` — the idempotency check the drain runs before any executor call.
    */
-  async isDone(organizationId: string, markerKey: string): Promise<boolean> {
-    return (await this.findByKey(organizationId, markerKey)) !== undefined;
+  async isDone(
+    organizationId: string,
+    markerKey: string,
+    scope: PiiScrubInspectionScope,
+  ): Promise<boolean> {
+    return (await this.findByKey(organizationId, markerKey, scope)) !== undefined;
   }
 
   /** All markers written by a given job (audit/evidence; test helper). */
@@ -107,7 +87,7 @@ export class PiiScrubMarkersRepository {
 
   /**
    * Atomically record a completed scrub item. Returns `{ created: false }`
-   * when the (org, key) marker already exists — a concurrent worker or a
+   * when the (org, key, scope) marker already exists — a concurrent worker or a
    * previous attempt finished this item first; the caller treats that as a
    * benign skip, never a failure. Call ONLY after the item's scrub fully
    * succeeded: an item that failed must stay unmarked (quarantined for retry).
@@ -119,7 +99,11 @@ export class PiiScrubMarkersRepository {
       .insert(piiScrubMarkers)
       .values(data)
       .onConflictDoNothing({
-        target: [piiScrubMarkers.organization_id, piiScrubMarkers.marker_key],
+        target: [
+          piiScrubMarkers.organization_id,
+          piiScrubMarkers.marker_key,
+          piiScrubMarkers.inspection_scope,
+        ],
       })
       .returning();
     if (!marker) {

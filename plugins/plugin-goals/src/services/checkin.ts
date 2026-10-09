@@ -29,6 +29,10 @@
  */
 
 import crypto from "node:crypto";
+import type {
+  LifeOpsGoalDefinition,
+  LifeOpsGoalReviewState,
+} from "@elizaos/contracts";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   getScheduledTaskRunner,
@@ -41,10 +45,6 @@ import {
   type ScheduledTaskTrigger,
   type TerminalState,
 } from "@elizaos/plugin-scheduling";
-import type {
-  LifeOpsGoalDefinition,
-  LifeOpsGoalReviewState,
-} from "@elizaos/shared";
 import { GoalsRepository } from "../db/goals-repository.ts";
 import { fail, requireAgentId } from "../goal-normalize.ts";
 import type { GoalsCheckinSync } from "../goals-service.ts";
@@ -55,6 +55,8 @@ export const GOAL_CHECKIN_CREATED_BY = "@elizaos/plugin-goals";
 
 /** Dismissal reason recorded when a cadence change retires a slot. */
 export const GOAL_CHECKIN_SYNC_DISMISS_REASON = "goal_checkin_sync";
+/** Reason recorded when sync reopens a once check-in it had dismissed. */
+export const GOAL_CHECKIN_SYNC_REOPEN_REASON = "goal_checkin_sync_reopen";
 
 /** Bounded length of the per-goal `metadata.checkinLog` history. */
 export const GOAL_CHECKIN_LOG_LIMIT = 50;
@@ -96,6 +98,32 @@ export interface GoalCheckinPlan {
 
 export function checkinIdempotencyKey(goalId: string, slotKey: string): string {
   return `goals:checkin:${goalId}:${slotKey}`;
+}
+
+// A recurring slot the sync retired (goal paused, cadence moved away) keeps its
+// dismissed row and that row's idempotency key, so reviving the slot schedules
+// a successor under `<slot key>:resumed:<n>`; the highest generation is the
+// slot's current task.
+const RESUMED_KEY_SEPARATOR = ":resumed:";
+
+/** Every check-in input carries its slot key (see buildCheckinTaskInput). */
+function requireSlotKey(input: ScheduledTaskInput): string {
+  if (!input.idempotencyKey) {
+    throw new Error("Goal check-in task input has no idempotency key");
+  }
+  return input.idempotencyKey;
+}
+
+function slotKeyGeneration(
+  taskKey: string | undefined,
+  slotKey: string,
+): number | null {
+  if (taskKey === slotKey) return 0;
+  if (!taskKey?.startsWith(`${slotKey}${RESUMED_KEY_SEPARATOR}`)) return null;
+  const generation = Number(
+    taskKey.slice(slotKey.length + RESUMED_KEY_SEPARATOR.length),
+  );
+  return Number.isSafeInteger(generation) && generation > 0 ? generation : null;
 }
 
 function warnCadence(goalId: string, detail: string): void {
@@ -168,7 +196,10 @@ export function checkinTriggersForGoal(
         warnCadence(goal.id, "once cadence has no parseable dueAt");
         return [];
       }
-      return [{ slotKey: "once", trigger: { kind: "once", atIso: dueAt } }];
+      // Keyed by instant: moving the date needs a new task, because a once
+      // task that has already fired can't be re-armed by an edit.
+      const atIso = new Date(dueAt).toISOString();
+      return [{ slotKey: `once:${atIso}`, trigger: { kind: "once", atIso } }];
     }
     case "daily": {
       const hours = windowHoursOf(cadence.windows, goal.id);
@@ -328,6 +359,12 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
 
   private repositoryInstance: GoalsRepository | null = null;
   private warnedSpineMissing = false;
+  private stopping = false;
+  private releaseStop!: () => void;
+  private readonly stopRequested = new Promise<void>((resolve) => {
+    this.releaseStop = resolve;
+  });
+  private reconciliation?: Promise<void>;
   private readonly now: () => Date;
 
   constructor(runtime?: IAgentRuntime, now: () => Date = () => new Date()) {
@@ -340,12 +377,15 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
   ): Promise<GoalsCheckinService> {
     logger.info(`${GOALS_LOG_PREFIX} starting GoalsCheckinService`);
     const service = new GoalsCheckinService(runtime);
-    void service.reconcileWhenReady();
+    service.reconciliation = service.reconcileWhenReady();
     return service;
   }
 
   override async stop(): Promise<void> {
     logger.info(`${GOALS_LOG_PREFIX} stopping GoalsCheckinService`);
+    this.stopping = true;
+    this.releaseStop();
+    await this.reconciliation;
   }
 
   private rt(): IAgentRuntime {
@@ -420,13 +460,39 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
       buildCheckinTaskInput(goal, plan, nowIso),
     );
     const existing = await this.listGoalTasks(runner, goal.id);
-    const desiredKeys = new Set(desired.map((input) => input.idempotencyKey));
+    // A task already holding a desired once instant covers it under any key
+    // (including the older unkeyed `once` slot): live, it is kept; finished,
+    // that check-in already ran; dismissed, the owner turned it off.
+    const desiredOnceTriggers = new Set(
+      desired
+        .filter((input) => input.trigger.kind === "once")
+        .map((input) =>
+          input.trigger.kind === "once" ? Date.parse(input.trigger.atIso) : NaN,
+        ),
+    );
+    const holdsDesiredOnce = (task: ScheduledTask): boolean =>
+      task.trigger.kind === "once" &&
+      desiredOnceTriggers.has(Date.parse(task.trigger.atIso));
+    // Only a never-fired task retired by sync may be revived. Sync also
+    // dismisses fired tasks when their date moves; those still cover the
+    // delivered instant, including legacy keys, and must not dispatch again.
+    const syncDismissedPending = (task: ScheduledTask): boolean =>
+      task.state.status === "dismissed" &&
+      task.state.lastDecisionLog === GOAL_CHECKIN_SYNC_DISMISS_REASON &&
+      task.state.firedAt == null &&
+      task.state.completedAt == null;
+
+    const belongsToDesiredSlot = (task: ScheduledTask): boolean =>
+      desired.some(
+        (input) =>
+          slotKeyGeneration(task.idempotencyKey, requireSlotKey(input)) !==
+          null,
+      );
 
     const dismissedTaskIds: string[] = [];
     for (const task of existing) {
-      if (task.idempotencyKey && desiredKeys.has(task.idempotencyKey)) {
-        continue;
-      }
+      if (belongsToDesiredSlot(task)) continue;
+      if (holdsDesiredOnce(task)) continue;
       if (TERMINAL_TASK_STATUSES.has(task.state.status)) continue;
       await runner.apply(task.taskId, "dismiss", {
         reason: GOAL_CHECKIN_SYNC_DISMISS_REASON,
@@ -437,18 +503,64 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
     const scheduled: ScheduledTask[] = [];
     const edited: ScheduledTask[] = [];
     for (const input of desired) {
-      const current = existing.find(
-        (task) => task.idempotencyKey === input.idempotencyKey,
-      );
+      let current: ScheduledTask | undefined;
+      let currentGeneration = -1;
+      for (const task of existing) {
+        const generation = slotKeyGeneration(
+          task.idempotencyKey,
+          requireSlotKey(input),
+        );
+        if (generation !== null && generation > currentGeneration) {
+          current = task;
+          currentGeneration = generation;
+        }
+      }
       if (!current) {
-        scheduled.push(await runner.schedule(input));
+        const covered =
+          input.trigger.kind === "once" &&
+          existing.some(
+            (task) =>
+              task.trigger.kind === "once" &&
+              input.trigger.kind === "once" &&
+              Date.parse(task.trigger.atIso) ===
+                Date.parse(input.trigger.atIso) &&
+              !syncDismissedPending(task),
+          );
+        if (!covered) scheduled.push(await runner.schedule(input));
         continue;
       }
-      // A dismissed slot is a deliberate off-switch (owner or sync); never
-      // resurrect it for the same trigger shape.
-      if (current.state.status === "dismissed") continue;
+      if (current.state.status === "dismissed") {
+        // An owner dismissal is a deliberate off-switch and is never undone.
+        // A once task the sync dismissed while pending (the date moved away)
+        // never fired, so moving the date back reopens it: its key stays
+        // reserved and no replacement task could be scheduled under it.
+        if (input.trigger.kind === "once" && syncDismissedPending(current)) {
+          scheduled.push(
+            await runner.apply(current.taskId, "reopen", {
+              reason: GOAL_CHECKIN_SYNC_REOPEN_REASON,
+            }),
+          );
+        } else if (
+          input.trigger.kind !== "once" &&
+          current.state.lastDecisionLog === GOAL_CHECKIN_SYNC_DISMISS_REASON
+        ) {
+          // A recurring slot can't be reopened (it may have fired days ago,
+          // and a reopen would fire that stale occurrence at once): schedule
+          // its successor from now instead.
+          scheduled.push(
+            await runner.schedule({
+              ...input,
+              idempotencyKey: `${input.idempotencyKey}${RESUMED_KEY_SEPARATOR}${currentGeneration + 1}`,
+            }),
+          );
+        }
+        continue;
+      }
       const triggerChanged =
-        JSON.stringify(current.trigger) !== JSON.stringify(input.trigger);
+        current.trigger.kind === "once" && input.trigger.kind === "once"
+          ? Date.parse(current.trigger.atIso) !==
+            Date.parse(input.trigger.atIso)
+          : JSON.stringify(current.trigger) !== JSON.stringify(input.trigger);
       const titleChanged = current.metadata?.goalTitle !== goal.title;
       if (triggerChanged || titleChanged) {
         edited.push(
@@ -556,16 +668,27 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
       note: args.note ?? null,
       progress: args.progress ?? null,
     };
-    const checkinLog = [...readCheckinLog(goal.metadata), entry].slice(
+    // Completing the task above is async; build on the goal as stored now and
+    // write only the check-in's own fields, so an edit or review made in the
+    // meantime is not reverted by the earlier read.
+    const current = await this.repository().getGoal(agentId, goal.id);
+    if (!current) {
+      fail(404, "life-ops goal not found");
+    }
+    const checkinLog = [...readCheckinLog(current.metadata), entry].slice(
       -GOAL_CHECKIN_LOG_LIMIT,
     );
     const updated: LifeOpsGoalDefinition = {
-      ...goal,
-      reviewState: args.progress ?? goal.reviewState,
-      metadata: { ...goal.metadata, checkinLog },
+      ...current,
+      reviewState: args.progress ?? current.reviewState,
+      metadata: { ...current.metadata, checkinLog },
       updatedAt: atIso,
     };
-    await this.repository().updateGoal(updated);
+    await this.repository().updateGoalCheckin(agentId, goal.id, {
+      reviewState: updated.reviewState,
+      checkinLog,
+      updatedAt: atIso,
+    });
     await this.repository().createAuditEvent({
       id: crypto.randomUUID(),
       agentId,
@@ -600,18 +723,22 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
   private async reconcileWhenReady(): Promise<void> {
     const runtime = this.rt();
     try {
-      await runtime.initPromise;
+      await Promise.race([runtime.initPromise, this.stopRequested]);
+      if (this.stopping) return;
       if (!runtime.hasService(ScheduledTaskRunnerService.serviceType)) {
         logger.info(
           `${GOALS_LOG_PREFIX} [GoalsCheckinService] scheduling spine not registered on this runtime; skipping goal check-in reconcile`,
         );
         return;
       }
-      await runtime.getServiceLoadPromise(
-        ScheduledTaskRunnerService.serviceType,
-      );
+      await Promise.race([
+        runtime.getServiceLoadPromise(ScheduledTaskRunnerService.serviceType),
+        this.stopRequested,
+      ]);
+      if (this.stopping) return;
       const goals = await this.repository().listGoals(requireAgentId(runtime));
       for (const goal of goals) {
+        if (this.stopping) return;
         await this.syncGoalCheckins(goal);
       }
       logger.info(

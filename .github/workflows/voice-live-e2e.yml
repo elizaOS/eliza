@@ -1,66 +1,10 @@
 name: Voice Live E2E
 
-# Provisioned REAL voice lane. The keyless PR lanes stub voice entirely
-# (silent-WAV TTS, shimmed STT transcript), so live service coverage and native
-# component compatibility evidence live in this model-heavy
-# workflow_dispatch lane. Product-runtime ASR proof additionally requires the
-# Gemma release-authority job below to pass.
-#
-# What it proves (no mocks at any stage):
-#   - Live Railway voice contract: the free-cloud Kokoro TTS + Whisper STT
-#     services (packages/cloud/services/voice-*) satisfy the exact request shapes
-#     the cloud-api voice routes send, so a dead/drifted service is a red run.
-#   - Pre-Gemma fused ASR compatibility: the provisioned libelizainference +
-#     retired compatibility bundle transcribes real speech at the FFI boundary.
-#     This is explicitly not product-runtime ASR evidence.
-#   - Real fused Kokoro TTS: the provisioned libelizainference loads the
-#     published Kokoro GGUF + voice .bin and synthesizes audible PCM.
-#   - Optional mixed round-trip: when cloud voice/LLM keys are present, real
-#     generated speech flows through fused local ASR, a live cloud LLM, and
-#     live cloud TTS.
-#
-# The acoustic attribution matrix runs with pinned GGUFs and a fused
-# libelizainference build. Its scripts run in require-real mode so a missing
-# model/ABI/credential is a hard failure rather than green skip evidence.
-#
-# SELF-PROVISIONING (closes the #9454 ops gap, #16945): no runner needs
-# hand-staged voice assets anymore. The `voice-fused-build` job compiles the
-# fused libelizainference (CPU variant, GGML_CPU always on) from the in-repo
-# llama.cpp fork on a GitHub-hosted runner — cached by fork commit, so it is a
-# cache restore on most nights — and hands it to the self-hosted jobs as an
-# artifact, guaranteeing the lib ABI matches the checked-out bindings. Each
-# self-hosted job then stages the pinned eliza-1-2b voice bundle regions from
-# Hugging Face (sha256-verified, cached in the host's
-# ~/.eliza/local-inference/models/eliza-1-2b.bundle across nights) via
-# .github/actions/stage-voice-real-assets. Any [self-hosted, Linux, X64,
-# eliza] runner can take these jobs; VOICE_LIVE_RUNNER_LABELS (JSON array of
-# labels) remains the single point of runner override, e.g. to move to a GPU
-# box — the fused lib is CPU-built either way, so GPU is a speedup, never a
-# requirement. nvcc/nvidia-smi/ffmpeg are NOT required by any step.
-#
-# Keyless by design (#9577): the owner/impostor/agent turns are synthesized
-# with distinct fused Kokoro voice packs, so ELEVENLABS_API_KEY is optional —
-# it only upgrades the human-turn rows to real ElevenLabs voices (CEREBRAS +
-# ELEVENLABS together also unlock the mixed cloud round-trip step).
-#
-# Kokoro TTFA budget: the smoke's 700 ms default is the MOBILE product budget.
-# These CPU-only CI hosts prove loadability + intelligibility (envelope-cv +
-# round-trip WER), not mobile latency, so the workflow sets
-# KOKORO_SMOKE_TTFA_BUDGET_MS=30000 — a desktop-CPU ceiling that still catches
-# loader hangs (measured TTFA ≈4.5–8 s on a 24-core host).
-#
-# History note (#16945): the 2026-07-17..19 scheduled runs were CANCELLED, not
-# failed — no online runner carried the `eliza` label during the fleet
-# migration, so both self-hosted jobs sat queued until either the next night's
-# run replaced them through this workflow's cancel-in-progress concurrency
-# group (07-17 run, killed at 07-18 09:06:30 = the 07-18 start) or GitHub's
-# 24 h queue limit expired them (07-19 run, killed exactly 24 h after queue).
-# A cancelled scheduled run therefore means "no eliza-labelled runner online"
-# — that is a fleet-capacity page, not a workflow bug. The 07-20..22 reds were
-# the provisioning preflight hard-failing on unprovisioned robots; the
-# self-provisioning above removes that failure class entirely.
-#
-# Runs on demand; never on pull_request.
+# On-demand real voice service and acoustic-matrix qualification.
+# Fused libraries and model assets are provisioned by the workflow. The
+# compatibility round-trip does not establish product-runtime ASR support;
+# the independent Gemma release-authority job verifies that boundary.
+# No per-component smoke probes or pull-request trigger.
 
 on:
   workflow_dispatch:
@@ -106,12 +50,10 @@ permissions:
 env:
   CI: "true"
   NODE_VERSION: "24.15.0"
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "1.4.2"
   NODE_OPTIONS: "--experimental-sqlite"
 jobs:
-  # Product truth boundary (#17477): the native component smokes below still
-  # exercise retired pre-Gemma assets directly through bun:ffi. They remain
-  # useful ABI compatibility evidence, but the workflow must be red until the
+  # Compatibility assets do not prove product support. Fail until the
   # active release publishes an immutable Gemma model/projector pair that the
   # product runtime can accept. This job never falls back to an older release.
   voice-product-asr-release:
@@ -130,7 +72,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Require immutable Gemma ASR model and projector
-        run: bun packages/scripts/verify-voice-product-asr-release.mjs --github-annotations
+        run: bun packages/scripts/verify-voice-product-asr-release.ts --github-annotations
 
   voice-platform-matrix-index:
     name: Canonical voice matrix index
@@ -150,7 +92,7 @@ jobs:
       - name: Emit matrix probe report
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --out "$RUNNER_TEMP/voice-platform-matrix"
+          node packages/app/scripts/voice/voice-matrix.ts --out "$RUNNER_TEMP/voice-platform-matrix"
 
       - name: Upload matrix probe report
         if: always()
@@ -254,6 +196,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
@@ -263,7 +206,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
 
       - name: Install browser system-audio loopback
         run: |
@@ -274,13 +217,10 @@ jobs:
           pactl load-module module-null-sink sink_name=eliza_voice_evidence sink_properties=device.description=eliza_voice_evidence
           pactl set-default-sink eliza_voice_evidence
 
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
-
       - name: Build browser bundles
         run: |
           set -euo pipefail
-          bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+          bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
           bun run --cwd packages/app build:web
 
       - name: Prove the live cell is explicit when ungated
@@ -288,7 +228,7 @@ jobs:
           ELIZA_VOICE_LIVE_RAILWAY: ""
         run: |
           set -euo pipefail
-          bun run voice:matrix -- \
+          node packages/app/scripts/voice/voice-matrix.ts \
             --platform web.live.railway-roundtrip \
             --out "$RUNNER_TEMP/voice-web-live-ungated"
 
@@ -297,7 +237,7 @@ jobs:
           ELIZA_VOICE_LIVE_RAILWAY: ""
         run: |
           set -euo pipefail
-          bun run voice:matrix -- \
+          node packages/app/scripts/voice/voice-matrix.ts \
             --run \
             --require-green \
             --platform web.failure-paths \
@@ -326,7 +266,7 @@ jobs:
           ELIZA_UI_SMOKE_BACKEND_LOG_PATH: ${{ runner.temp }}/voice-web-live/private-backend.log
         run: |
           set -euo pipefail
-          bun run voice:matrix -- \
+          node packages/app/scripts/voice/voice-matrix.ts \
             --run \
             --require-green \
             --platform web.live.railway-roundtrip \
@@ -407,7 +347,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: fused-lib
-          key: voice-fused-cpu-v2-${{ steps.fork.outputs.commit }}-${{ hashFiles('packages/app-core/scripts/stage-desktop-fused-lib.mjs') }}
+          key: voice-fused-cpu-v2-${{ steps.fork.outputs.commit }}-${{ hashFiles('packages/app/scripts/stage-desktop-fused-lib.ts') }}
 
       - name: Setup Node.js
         if: steps.fused-cache.outputs.cache-hit != 'true'
@@ -435,7 +375,7 @@ jobs:
         if: steps.fused-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          node packages/app-core/scripts/stage-desktop-fused-lib.mjs \
+          node packages/app/scripts/stage-desktop-fused-lib.ts \
             --variant cpu --portable-cpu --out "$GITHUB_WORKSPACE/fused-lib"
 
       - name: Verify the fused ABI surface
@@ -459,7 +399,7 @@ jobs:
           if-no-files-found: error
 
   voice-roundtrip:
-    name: Pre-Gemma ASR compatibility FFI + optional mixed round-trip (self-hosted)
+    name: Optional mixed voice round-trip (self-hosted)
     # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
     runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
     needs: voice-fused-build
@@ -467,9 +407,6 @@ jobs:
     env:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-    # Hard component lane: the fused ASR smoke always runs against the pinned
-    # pre-Gemma compatibility assets. The independent product-release job keeps
-    # the workflow red until the supported Gemma pair exists.
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -488,6 +425,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -495,8 +433,8 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Prepare core generated sources
-        run: bun run --cwd packages/core prebuild
+      - name: Build runtime dependencies
+        run: bun run build:core
 
       - name: Download fused libelizainference artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -509,21 +447,6 @@ jobs:
         with:
           fused-lib-dir: ${{ runner.temp }}/fused-lib
 
-      - name: Pre-Gemma ASR compatibility FFI smoke (bun:ffi)
-        run: |
-          set -euo pipefail
-          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-asr-smoke.XXXXXX")
-          trap 'rm -f "$PRIVATE_LOG"' EXIT
-          if bun run --cwd plugins/plugin-local-inference test:asr:real > "$PRIVATE_LOG" 2>&1; then
-            echo "phase=asr-compatibility status=passed code=ASR_COMPATIBILITY_PASSED"
-          else
-            echo "phase=asr-compatibility status=failed code=ASR_COMPATIBILITY_FAILED" >&2
-            exit 1
-          fi
-
-      # Designed key-gated step: the mixed round-trip crosses two external
-      # paid services. Absence of the keys is surfaced loudly below instead of
-      # a silent skip.
       - name: Optional mixed real round-trip test
         if: env.ELEVENLABS_API_KEY != '' && env.CEREBRAS_API_KEY != ''
         run: |
@@ -540,7 +463,7 @@ jobs:
       - name: Note skipped mixed round-trip (keys absent)
         if: env.ELEVENLABS_API_KEY == '' || env.CEREBRAS_API_KEY == ''
         run: |
-          echo "::warning title=Mixed cloud round-trip skipped::ELEVENLABS_API_KEY and/or CEREBRAS_API_KEY are not configured, so the cloud-TTS → compatibility-ASR → cloud-LLM round-trip step did not run. The pre-Gemma FFI component smoke above is not product-runtime ASR proof."
+          echo "::warning title=Mixed cloud round-trip skipped::ELEVENLABS_API_KEY and/or CEREBRAS_API_KEY are not configured, so the cloud-TTS → compatibility-ASR → cloud-LLM round-trip step did not run."
 
   voice-acoustic-matrix:
     name: Real acoustic components + pre-Gemma ASR compatibility matrix (self-hosted)
@@ -592,6 +515,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -599,10 +523,8 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      # --ignore-scripts skips core's generated sources; the voice scripts
-      # import @elizaos/core straight from src, so generate them explicitly.
-      - name: Prepare core generated sources
-        run: bun run --cwd packages/core prebuild
+      - name: Build runtime dependencies
+        run: bun run build:core
 
       - name: Download fused libelizainference artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -632,33 +554,6 @@ jobs:
             '{phase:"provisioning",status:"passed",code:"VOICE_ASSETS_READY",bundleFileCount:$bundleFileCount,libraryReady:$libraryReady}' \
             > "$VOICE_REAL_MATRIX_PROOF/provisioning.json"
           echo "phase=provisioning status=passed code=VOICE_ASSETS_READY bundleFileCount=$bundle_file_count"
-
-      - name: Real Kokoro GGUF synth smoke
-        run: |
-          set -euo pipefail
-          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-kokoro.XXXXXX")
-          trap 'rm -f "$PRIVATE_LOG"' EXIT
-          if bun run --cwd plugins/plugin-local-inference test:kokoro:real > "$PRIVATE_LOG" 2>&1; then
-            jq -n '{phase:"kokoro",status:"passed",code:"KOKORO_SMOKE_PASSED"}' > "$VOICE_REAL_MATRIX_PROOF/kokoro.json"
-            echo "phase=kokoro status=passed code=KOKORO_SMOKE_PASSED"
-          else
-            echo "phase=kokoro status=failed code=KOKORO_SMOKE_FAILED" >&2
-            exit 1
-          fi
-
-      - name: Real fused attribution smoke
-        run: |
-          set -euo pipefail
-          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/voice-attribution.XXXXXX")
-          trap 'rm -f "$PRIVATE_LOG"' EXIT
-          if bun packages/app-core/scripts/voice-attribution-smoke.ts \
-            --models "$ELIZA_VOICE_REAL_MODEL_DIR" --require-real > "$PRIVATE_LOG" 2>&1; then
-            jq -n '{phase:"attribution",status:"passed",code:"ATTRIBUTION_SMOKE_PASSED"}' > "$VOICE_REAL_MATRIX_PROOF/attribution.json"
-            echo "phase=attribution status=passed code=ATTRIBUTION_SMOKE_PASSED"
-          else
-            echo "phase=attribution status=failed code=ATTRIBUTION_SMOKE_FAILED" >&2
-            exit 1
-          fi
 
       - name: Real plugin voice stack matrix
         run: |
@@ -772,6 +667,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -787,7 +683,7 @@ jobs:
           if bun run --cwd packages/app voice:evidence:desktop:capture -- \
             --platform darwin \
             --out "$RUNNER_TEMP/voice-macos-hardware-capture" \
-            -- bun run voice:matrix -- --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix" \
+            -- node packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix" \
             > "$PRIVATE_LOG" 2>&1; then
             echo "phase=macos-capture status=passed code=DESKTOP_CAPTURE_PASSED"
           else
@@ -853,6 +749,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -869,7 +766,7 @@ jobs:
           if bun run --cwd packages/app voice:evidence:desktop:capture -- \
             --platform win32 \
             --out "$RUNNER_TEMP/voice-windows-hardware-capture" \
-            -- bun run voice:matrix -- --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix" \
+            -- node packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix" \
             > "$PRIVATE_LOG" 2>&1; then
             echo "phase=windows-capture status=passed code=DESKTOP_CAPTURE_PASSED"
           else
@@ -929,6 +826,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -939,7 +837,7 @@ jobs:
       - name: Run iOS matrix
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --run --require-green --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
+          node packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
 
       - name: Upload iOS matrix
         if: always()
@@ -977,6 +875,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
@@ -990,7 +889,7 @@ jobs:
       - name: Run Android matrix
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --run --require-green --platform android --out "$RUNNER_TEMP/voice-android-matrix"
+          node packages/app/scripts/voice/voice-matrix.ts --run --require-green --platform android --out "$RUNNER_TEMP/voice-android-matrix"
 
       - name: Upload Android matrix
         if: always()

@@ -9,7 +9,7 @@ import { Check, Copy, Pencil, Reply, Square, Volume2 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type * as React from "react";
 
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import { LIQUID_GLASS_SHEEN } from "../../shell/liquid-glass";
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";

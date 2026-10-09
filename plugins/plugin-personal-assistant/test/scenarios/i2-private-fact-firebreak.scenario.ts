@@ -2,7 +2,7 @@
  * I2 privacy firebreak. One disputant's confidential note is captured as
  * private context and the outward draft to the other party stays neutral.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

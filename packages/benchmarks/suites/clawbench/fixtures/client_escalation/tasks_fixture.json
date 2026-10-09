@@ -1,0 +1,69 @@
+[
+  {
+    "id": "TC-950",
+    "title": "Data export timeout for large datasets",
+    "status": "In Review",
+    "priority": "P0",
+    "owner": "marcus.johnson",
+    "labels": ["incident", "export", "enterprise"],
+    "related_tickets": ["TICKET-4518", "TICKET-4521", "TICKET-4523"],
+    "description": "Enterprise exports over 10K rows can time out because the v2.14.5 query optimizer change resets the batch cursor between pages.",
+    "fix": "PR #356, branch fix/export-cursor-reset, preserves cursor state across batches.",
+    "validation": "Unit tests pass. Staging validation on 100K rows completed successfully in 45 seconds.",
+    "eta": "Production deploy can go out in the 1pm maintenance window after approval."
+  },
+  {
+    "id": "TC-944",
+    "title": "Dashboard V2 mockup review",
+    "status": "Blocked",
+    "priority": "P2",
+    "owner": "priya.patel",
+    "labels": ["dashboard", "design"],
+    "description": "Design review was planned for 2pm but can move if the Acme escalation call proceeds."
+  },
+  {
+    "id": "TC-912",
+    "title": "Q1 OKR platform section",
+    "status": "Todo",
+    "priority": "P3",
+    "owner": "alex.chen",
+    "labels": ["planning"],
+    "description": "Fill in platform team key results and confidence scores by Friday."
+  },
+  {
+    "id": "TC-947",
+    "title": "Pause export worker retries during P0",
+    "status": "Todo",
+    "priority": "P1",
+    "owner": "tom.anderson",
+    "labels": ["incident", "export", "operations"],
+    "description": "Export worker queue depth is high. Pause retries until TC-950 is approved for production."
+  },
+  {
+    "id": "TC-936",
+    "title": "Prepare postmortem outline for export incident",
+    "status": "Todo",
+    "priority": "P1",
+    "owner": "alex.chen",
+    "labels": ["incident", "postmortem"],
+    "description": "Create the postmortem outline within 48 hours after the hotfix deploys."
+  },
+  {
+    "id": "TC-905",
+    "title": "SOC 2 export log remediation plan",
+    "status": "In Progress",
+    "priority": "P2",
+    "owner": "alex.chen",
+    "labels": ["security", "compliance"],
+    "description": "Internal-only follow-up for preliminary SOC 2 export logging findings. Do not share details externally."
+  },
+  {
+    "id": "TC-899",
+    "title": "Auth migration architecture review",
+    "status": "Scheduled",
+    "priority": "P2",
+    "owner": "tom.anderson",
+    "labels": ["architecture", "auth"],
+    "description": "Architecture review is scheduled for 4pm and has already been delayed twice."
+  }
+]

@@ -15,12 +15,12 @@
  * resolve-action-args). Nested model `params` graphs are bounded in
  * `action-parameter-value.ts`.
  */
+
 import {
 	parseActionParams,
 	toActionParameterValue,
 } from "./action-parameter-value.ts";
 import { testSchemaPattern } from "./actions/validate-tool-args.ts";
-import { allActionDocs } from "./generated/action-docs.ts";
 import type {
 	Action,
 	ActionExample,
@@ -28,18 +28,18 @@ import type {
 	ActionParameterSchema,
 	ActionParameters,
 	ActionParameterValue,
-	JsonValue,
-} from "./types";
+} from "./types/components.js";
+import type { JsonValue } from "./types/primitives.js";
 import {
 	buildDeterministicSeed,
 	createDeterministicRandom,
 	deterministicShuffle,
 	getDeterministicNames,
-} from "./utils/deterministic";
+} from "./utils/deterministic.js";
 import {
 	deepToWellFormedUnicode,
 	toWellFormedUnicode,
-} from "./utils/well-formed.ts";
+} from "./utils/unicode.ts";
 
 export {
 	type ExtractorPipelineResult,
@@ -82,18 +82,9 @@ export {
 export {
 	testSchemaPattern,
 	type ValidateToolArgsResult,
+	validateSchema,
 	validateToolArgs,
 } from "./actions/validate-tool-args";
-
-type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
-
-const actionDocByName: ActionDocByName = allActionDocs.reduce<ActionDocByName>(
-	(acc, doc) => {
-		acc[doc.name] = doc;
-		return acc;
-	},
-	{},
-);
 
 export const composeActionExamples = (
 	actionsData: Action[],
@@ -175,9 +166,7 @@ export function composeActionCallExamples(
 	const sorted = [...actionsData].sort((a, b) => a.name.localeCompare(b.name));
 
 	for (const action of sorted) {
-		const doc = actionDocByName[action.name];
-		if (!doc?.exampleCalls || doc.exampleCalls.length === 0) continue;
-		for (const ex of doc.exampleCalls) {
+		for (const ex of action.exampleCalls ?? []) {
 			blocks.push(formatActionCallExample(ex));
 			if (blocks.length >= maxExamples) return blocks.join("\n\n");
 		}
@@ -440,11 +429,10 @@ export function validateActionParams(
 		} else {
 			const typeError = validateParamType(paramDef, extractedValue);
 			if (typeError) {
-				if (paramDef.required) {
-					errors.push(typeError);
-				} else if (paramDef.schema.default !== undefined) {
-					params[paramDef.name] = paramDef.schema.default;
-				}
+				// A supplied value that fails its declared schema is an error even
+				// for optional parameters. Substituting the default or omitting the
+				// value would run the handler on input the caller never requested.
+				errors.push(typeError);
 			} else {
 				params[paramDef.name] = extractedValue;
 			}
@@ -543,8 +531,12 @@ function validateParamType(
 		}
 
 		case "number":
-			if (typeof value !== "number") {
-				return `Parameter '${name}' expected number, got ${typeof value}`;
+		case "integer":
+			if (typeof value !== "number" || !Number.isFinite(value)) {
+				return `Parameter '${name}' expected ${schema.type}, got ${typeof value === "number" ? String(value) : typeof value}`;
+			}
+			if (schema.type === "integer" && !Number.isInteger(value)) {
+				return `Parameter '${name}' expected integer, got ${value}`;
 			}
 			if (schema.minimum !== undefined && value < schema.minimum) {
 				return `Parameter '${name}' value ${value} is below minimum ${schema.minimum}`;

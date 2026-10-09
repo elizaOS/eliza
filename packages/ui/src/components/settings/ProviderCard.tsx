@@ -10,8 +10,8 @@
 
 import { CheckCircle2 } from "lucide-react";
 import type { ComponentType } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { cn } from "../../lib/utils";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 
 export type ProviderStatusTone = "ok" | "warn" | "muted";

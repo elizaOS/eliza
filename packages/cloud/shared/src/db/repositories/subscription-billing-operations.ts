@@ -4,6 +4,12 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  type CheckoutContract,
+  checkoutContractDigest,
+  readCheckoutContract,
+  requireCheckoutContract,
+} from "../../lib/services/subscription-checkout-contract";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
 import {
@@ -92,6 +98,7 @@ export interface EnqueueSubscriptionCommandInput {
   idempotencyKey: string;
   providerIdempotencyKey: string;
   requestDigest: string;
+  checkoutContract?: CheckoutContract;
   now: Date;
 }
 
@@ -102,8 +109,22 @@ export type ApplySubscriptionEventInput = {
   subscriptionRevision: number;
   disposition: string;
 };
+export interface SubscriptionEventScope {
+  scopeId: string;
+  merchantKey: string;
+}
+
+function eventScope(scope?: SubscriptionEventScope) {
+  return and(
+    scope
+      ? eq(billingSubscriptionEventReceipts.billing_scope_id, scope.scopeId)
+      : isNull(billingSubscriptionEventReceipts.billing_scope_id),
+    eq(billingSubscriptionEventReceipts.merchant_key, scope?.merchantKey ?? "platform"),
+  );
+}
 
 export interface RecordSubscriptionEventInput {
+  billingScope?: SubscriptionEventScope;
   id?: string;
   organizationId: string;
   subscriptionId: string;
@@ -183,8 +204,10 @@ function exactCommandReplay(
   row: BillingSubscriptionCommand,
   input: EnqueueSubscriptionCommandInput,
 ) {
-  return (
-    (input.id === undefined || row.id === input.id) &&
+  const adoptCheckoutWinner =
+    input.kind === "checkout" && input.checkoutContract !== undefined && row.id !== input.id;
+  const sameIntent =
+    (adoptCheckoutWinner || input.id === undefined || row.id === input.id) &&
     row.organization_id === input.organizationId &&
     row.subscription_id === input.subscriptionId &&
     row.requested_by_user_id === input.requestedByUserId &&
@@ -193,7 +216,19 @@ function exactCommandReplay(
     row.expected_subscription_revision === input.expectedSubscriptionRevision &&
     row.idempotency_key === input.idempotencyKey &&
     row.provider_idempotency_key === input.providerIdempotencyKey &&
-    row.request_digest === input.requestDigest
+    row.request_digest === input.requestDigest;
+  if (!sameIntent) return false;
+  if (adoptCheckoutWinner) {
+    readCheckoutContract(row);
+    return true;
+  }
+  return (
+    input.checkoutContract === undefined ||
+    canonicalJson(row.checkout_contract) ===
+      canonicalJson({
+        payload: input.checkoutContract,
+        digest: checkoutContractDigest(input.checkoutContract),
+      })
   );
 }
 
@@ -205,6 +240,8 @@ function exactEventReplay(
     (input.id === undefined || row.id === input.id) &&
     row.organization_id === input.organizationId &&
     row.subscription_id === input.subscriptionId &&
+    row.billing_scope_id === (input.billingScope?.scopeId ?? null) &&
+    row.merchant_key === (input.billingScope?.merchantKey ?? "platform") &&
     row.provider_event_id === input.providerEventId &&
     row.event_type === input.eventType &&
     row.provider_object_type === input.providerObjectType &&
@@ -231,6 +268,46 @@ function exactFence(row: SubscriptionBillingFence, input: AdvanceSubscriptionFen
 }
 
 export class SubscriptionBillingOperationsRepository {
+  /** Looks up a tenant-scoped request without changing its original command. */
+  async findCommandByIdempotencyKey(
+    organizationId: string,
+    idempotencyKey: string,
+  ): Promise<BillingSubscriptionCommand | undefined> {
+    const [row] = await dbWrite
+      .select()
+      .from(billingSubscriptionCommands)
+      .where(
+        and(
+          eq(billingSubscriptionCommands.organization_id, organizationId),
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
+          eq(billingSubscriptionCommands.idempotency_key, idempotencyKey),
+        ),
+      )
+      .limit(1);
+    return row;
+  }
+
+  /** Lets a current billing manager resume the single pending checkout across devices. */
+  async findPendingCheckout(
+    organizationId: string,
+  ): Promise<BillingSubscriptionCommand | undefined> {
+    const [command] = await dbWrite
+      .select()
+      .from(billingSubscriptionCommands)
+      .where(
+        and(
+          eq(billingSubscriptionCommands.organization_id, organizationId),
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
+          eq(billingSubscriptionCommands.kind, "checkout"),
+          inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN", "SUCCEEDED"]),
+        ),
+      )
+      .limit(1);
+    return command;
+  }
+
   async findCommand(
     organizationId: string,
     commandId: string,
@@ -241,6 +318,8 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionCommands.organization_id, organizationId),
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.id, commandId),
         ),
       )
@@ -252,6 +331,19 @@ export class SubscriptionBillingOperationsRepository {
     input: EnqueueSubscriptionCommandInput,
   ): Promise<RepositoryMutation<BillingSubscriptionCommand>> {
     requireDate(input.now, "now");
+    const contract =
+      input.checkoutContract === undefined ? null : requireCheckoutContract(input.checkoutContract);
+    if (
+      contract &&
+      (input.kind !== "checkout" ||
+        contract.params.client_reference_id !== input.id ||
+        contract.params.metadata.organization_id !== input.organizationId ||
+        contract.planKey !== input.targetPlanKey)
+    )
+      invalid("Checkout contract differs from command authority", "checkoutContract");
+    const storedContract = contract
+      ? { payload: contract, digest: checkoutContractDigest(contract) }
+      : null;
     return writeTransaction(async (tx) => {
       const organization = await this.lockLifecycleOrganization(tx, input.organizationId);
       if (!organization)
@@ -270,6 +362,8 @@ export class SubscriptionBillingOperationsRepository {
           .where(
             and(
               eq(billingSubscriptionCommands.organization_id, input.organizationId),
+              isNull(billingSubscriptionCommands.billing_scope_id),
+              isNull(billingSubscriptionCommands.app_id),
               eq(billingSubscriptionCommands.idempotency_key, input.idempotencyKey),
             ),
           )
@@ -290,6 +384,8 @@ export class SubscriptionBillingOperationsRepository {
         .where(
           and(
             eq(billingSubscriptionCommands.organization_id, input.organizationId),
+            isNull(billingSubscriptionCommands.billing_scope_id),
+            isNull(billingSubscriptionCommands.app_id),
             inArray(billingSubscriptionCommands.status, [
               "PREPARED",
               "OUTCOME_UNKNOWN",
@@ -312,6 +408,7 @@ export class SubscriptionBillingOperationsRepository {
           .where(
             and(
               eq(billingSubscriptions.organization_id, input.organizationId),
+              isNull(billingSubscriptions.billing_scope_id),
               inArray(billingSubscriptions.status, [
                 "pending",
                 "incomplete",
@@ -343,6 +440,7 @@ export class SubscriptionBillingOperationsRepository {
           idempotency_key: input.idempotencyKey,
           provider_idempotency_key: input.providerIdempotencyKey,
           request_digest: input.requestDigest,
+          checkout_contract: storedContract,
           created_at: input.now,
           updated_at: input.now,
         })
@@ -355,6 +453,8 @@ export class SubscriptionBillingOperationsRepository {
         .where(
           and(
             eq(billingSubscriptionCommands.organization_id, input.organizationId),
+            isNull(billingSubscriptionCommands.billing_scope_id),
+            isNull(billingSubscriptionCommands.app_id),
             eq(billingSubscriptionCommands.idempotency_key, input.idempotencyKey),
           ),
         )
@@ -410,6 +510,8 @@ export class SubscriptionBillingOperationsRepository {
           and(
             eq(billingSubscriptionCommands.id, existing.id),
             eq(billingSubscriptionCommands.organization_id, existing.organization_id),
+            isNull(billingSubscriptionCommands.billing_scope_id),
+            isNull(billingSubscriptionCommands.app_id),
             eq(billingSubscriptionCommands.state_revision, existing.state_revision),
             eq(billingSubscriptionCommands.execution_generation, existing.execution_generation),
             eq(billingSubscriptionCommands.status, "PREPARED"),
@@ -465,6 +567,8 @@ export class SubscriptionBillingOperationsRepository {
           and(
             eq(billingSubscriptionCommands.id, existing.id),
             eq(billingSubscriptionCommands.organization_id, existing.organization_id),
+            isNull(billingSubscriptionCommands.billing_scope_id),
+            isNull(billingSubscriptionCommands.app_id),
             eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
             eq(billingSubscriptionCommands.state_revision, existing.state_revision),
             eq(billingSubscriptionCommands.execution_generation, existing.execution_generation),
@@ -516,6 +620,7 @@ export class SubscriptionBillingOperationsRepository {
         .where(
           and(
             eq(billingSubscriptions.organization_id, input.organizationId),
+            isNull(billingSubscriptions.billing_scope_id),
             eq(billingSubscriptions.id, input.resultSubscriptionId),
           ),
         )
@@ -553,6 +658,8 @@ export class SubscriptionBillingOperationsRepository {
           and(
             eq(billingSubscriptionCommands.id, existing.id),
             eq(billingSubscriptionCommands.organization_id, existing.organization_id),
+            isNull(billingSubscriptionCommands.billing_scope_id),
+            isNull(billingSubscriptionCommands.app_id),
             eq(billingSubscriptionCommands.status, "SUCCEEDED"),
             eq(billingSubscriptionCommands.state_revision, existing.state_revision),
           ),
@@ -593,6 +700,8 @@ export class SubscriptionBillingOperationsRepository {
           and(
             eq(billingSubscriptionCommands.id, existing.id),
             eq(billingSubscriptionCommands.organization_id, existing.organization_id),
+            isNull(billingSubscriptionCommands.billing_scope_id),
+            isNull(billingSubscriptionCommands.app_id),
             eq(billingSubscriptionCommands.status, "PREPARED"),
             eq(billingSubscriptionCommands.state_revision, existing.state_revision),
           ),
@@ -619,6 +728,8 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionCommands.organization_id, organizationId),
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.id, commandId),
         ),
       )
@@ -631,7 +742,13 @@ export class SubscriptionBillingOperationsRepository {
     return dbWrite
       .select()
       .from(billingSubscriptionCommands)
-      .where(eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"))
+      .where(
+        and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
+          eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
+        ),
+      )
       .orderBy(asc(billingSubscriptionCommands.updated_at))
       .limit(limit);
   }
@@ -646,6 +763,7 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionEventReceipts.organization_id, organizationId),
+          isNull(billingSubscriptionEventReceipts.billing_scope_id),
           eq(billingSubscriptionEventReceipts.id, receiptId),
         ),
       )
@@ -655,13 +773,16 @@ export class SubscriptionBillingOperationsRepository {
 
   async recordEvent(
     input: RecordSubscriptionEventInput,
+    executor: typeof dbWrite | DbTransaction = dbWrite,
   ): Promise<RepositoryMutation<BillingSubscriptionEventReceipt>> {
     requireDate(input.now, "now");
-    const [created] = await dbWrite
+    const [created] = await executor
       .insert(billingSubscriptionEventReceipts)
       .values({
         id: input.id,
         organization_id: input.organizationId,
+        billing_scope_id: input.billingScope?.scopeId ?? null,
+        merchant_key: input.billingScope?.merchantKey ?? "platform",
         subscription_id: input.subscriptionId,
         provider_event_id: input.providerEventId,
         event_type: input.eventType,
@@ -673,13 +794,25 @@ export class SubscriptionBillingOperationsRepository {
         received_at: input.now,
         updated_at: input.now,
       })
-      .onConflictDoNothing({ target: billingSubscriptionEventReceipts.provider_event_id })
+      .onConflictDoNothing({
+        target: [
+          billingSubscriptionEventReceipts.merchant_key,
+          billingSubscriptionEventReceipts.livemode,
+          billingSubscriptionEventReceipts.provider_event_id,
+        ],
+      })
       .returning();
     if (created) return { value: created, replayed: false };
-    const [existing] = await dbWrite
+    const [existing] = await executor
       .select()
       .from(billingSubscriptionEventReceipts)
-      .where(eq(billingSubscriptionEventReceipts.provider_event_id, input.providerEventId))
+      .where(
+        and(
+          eventScope(input.billingScope),
+          eq(billingSubscriptionEventReceipts.livemode, input.livemode),
+          eq(billingSubscriptionEventReceipts.provider_event_id, input.providerEventId),
+        ),
+      )
       .limit(1);
     if (!existing || !exactEventReplay(existing, input)) {
       conflict("Provider event replay differs from the stored receipt", {
@@ -689,21 +822,27 @@ export class SubscriptionBillingOperationsRepository {
     return { value: existing, replayed: true };
   }
 
-  async claimEvent(input: {
-    organizationId: string;
-    receiptId: string;
-    leaseToken: string;
-    leaseDurationMs: number;
-  }): Promise<BillingSubscriptionEventReceipt | null> {
+  async claimEvent(
+    input: {
+      billingScope?: SubscriptionEventScope;
+      organizationId: string;
+      receiptId: string;
+      leaseToken: string;
+      leaseDurationMs: number;
+    },
+    executor: typeof dbWrite | DbTransaction = dbWrite,
+  ): Promise<BillingSubscriptionEventReceipt | null> {
     if (!Number.isSafeInteger(input.leaseDurationMs) || input.leaseDurationMs <= 0) {
       invalid("leaseDurationMs must be a positive safe integer", "leaseDurationMs");
     }
     const databaseNow = sql`clock_timestamp()`;
     const leaseExpiresAt = sql`clock_timestamp() + (${input.leaseDurationMs} * interval '1 millisecond')`;
-    const [claimed] = await dbWrite
+    const [claimed] = await executor
       .update(billingSubscriptionEventReceipts)
       .set({
         status: "processing",
+        error_code: null,
+        processed_at: null,
         lease_token: input.leaseToken,
         lease_expires_at: leaseExpiresAt,
         attempt_count: sql`${billingSubscriptionEventReceipts.attempt_count} + 1`,
@@ -712,9 +851,12 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionEventReceipts.organization_id, input.organizationId),
+          eventScope(input.billingScope),
           eq(billingSubscriptionEventReceipts.id, input.receiptId),
           or(
-            eq(billingSubscriptionEventReceipts.status, "received"),
+            input.billingScope
+              ? inArray(billingSubscriptionEventReceipts.status, ["received", "failed"])
+              : eq(billingSubscriptionEventReceipts.status, "received"),
             and(
               eq(billingSubscriptionEventReceipts.status, "processing"),
               lte(billingSubscriptionEventReceipts.lease_expires_at, databaseNow),
@@ -724,12 +866,13 @@ export class SubscriptionBillingOperationsRepository {
       )
       .returning();
     if (claimed) return claimed;
-    const [replayed] = await dbWrite
+    const [replayed] = await executor
       .select()
       .from(billingSubscriptionEventReceipts)
       .where(
         and(
           eq(billingSubscriptionEventReceipts.organization_id, input.organizationId),
+          eventScope(input.billingScope),
           eq(billingSubscriptionEventReceipts.id, input.receiptId),
           eq(billingSubscriptionEventReceipts.status, "processing"),
           eq(billingSubscriptionEventReceipts.lease_token, input.leaseToken),
@@ -1010,6 +1153,7 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionEventReceipts.organization_id, input.organizationId),
+          isNull(billingSubscriptionEventReceipts.billing_scope_id),
           eq(billingSubscriptionEventReceipts.id, input.receiptId),
           eq(billingSubscriptionEventReceipts.status, "processing"),
           eq(billingSubscriptionEventReceipts.lease_token, input.leaseToken),
@@ -1040,8 +1184,8 @@ export class SubscriptionBillingOperationsRepository {
     organizationId: string;
     receiptId: string;
     leaseToken: string;
-  }): Promise<void> {
-    await dbWrite
+  }): Promise<boolean> {
+    const [released] = await dbWrite
       .update(billingSubscriptionEventReceipts)
       .set({
         status: "received",
@@ -1057,10 +1201,13 @@ export class SubscriptionBillingOperationsRepository {
           eq(billingSubscriptionEventReceipts.lease_token, input.leaseToken),
           gt(billingSubscriptionEventReceipts.lease_expires_at, sql`clock_timestamp()`),
         ),
-      );
+      )
+      .returning({ id: billingSubscriptionEventReceipts.id });
+    return released !== undefined;
   }
 
   async failEvent(input: {
+    billingScope?: SubscriptionEventScope;
     organizationId: string;
     receiptId: string;
     leaseToken: string;
@@ -1081,6 +1228,7 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionEventReceipts.organization_id, input.organizationId),
+          eventScope(input.billingScope),
           eq(billingSubscriptionEventReceipts.id, input.receiptId),
           eq(billingSubscriptionEventReceipts.status, "processing"),
           eq(billingSubscriptionEventReceipts.lease_token, input.leaseToken),
@@ -1111,6 +1259,7 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionEventReceipts.organization_id, input.organizationId),
+          isNull(billingSubscriptionEventReceipts.billing_scope_id),
           eq(billingSubscriptionEventReceipts.id, input.receiptId),
           eq(billingSubscriptionEventReceipts.status, "processing"),
           eq(billingSubscriptionEventReceipts.lease_token, input.leaseToken),
@@ -1149,6 +1298,7 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionEventReceipts.organization_id, input.organizationId),
+          isNull(billingSubscriptionEventReceipts.billing_scope_id),
           eq(billingSubscriptionEventReceipts.id, input.receiptId),
           inArray(billingSubscriptionEventReceipts.status, ["failed", "quarantined"]),
         ),
@@ -1221,6 +1371,7 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionIncidents.organization_id, input.organizationId),
+          isNull(billingSubscriptionIncidents.billing_scope_id),
           eq(billingSubscriptionIncidents.subscription_id, input.subscriptionId),
           eq(billingSubscriptionIncidents.fingerprint, input.fingerprint),
           eq(billingSubscriptionIncidents.status, "open"),
@@ -1253,6 +1404,7 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionIncidents.organization_id, input.organizationId),
+          isNull(billingSubscriptionIncidents.billing_scope_id),
           eq(billingSubscriptionIncidents.id, existing.id),
           eq(billingSubscriptionIncidents.status, "open"),
         ),
@@ -1288,6 +1440,7 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionIncidents.organization_id, input.organizationId),
+          isNull(billingSubscriptionIncidents.billing_scope_id),
           eq(billingSubscriptionIncidents.id, input.incidentId),
           eq(billingSubscriptionIncidents.status, "open"),
         ),
@@ -1300,6 +1453,7 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(billingSubscriptionIncidents.organization_id, input.organizationId),
+          isNull(billingSubscriptionIncidents.billing_scope_id),
           eq(billingSubscriptionIncidents.id, input.incidentId),
           eq(billingSubscriptionIncidents.status, "resolved"),
           input.resolvedByUserId === null
@@ -1337,6 +1491,7 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(subscriptionBillingFences.organization_id, organizationId),
+          isNull(subscriptionBillingFences.billing_scope_id),
           eq(subscriptionBillingFences.subscription_id, subscriptionId),
         ),
       )
@@ -1405,6 +1560,7 @@ export class SubscriptionBillingOperationsRepository {
       .where(
         and(
           eq(subscriptionBillingFences.organization_id, input.organizationId),
+          isNull(subscriptionBillingFences.billing_scope_id),
           eq(subscriptionBillingFences.subscription_id, input.subscriptionId),
           eq(subscriptionBillingFences.fence_revision, input.expectedFenceRevision),
         ),

@@ -8,28 +8,30 @@
  * the planner can weigh topic relevance.
  *
  * Semantics:
- *   - Bounded LRU per room. {@link CHANNEL_TOPICS_LRU_CAPACITY} slots
- *     (≈ the last ~100 messages worth of distinct topics). FIFO eviction:
- *     when the list is full, the oldest entry is dropped to make room.
- *   - Dedupe on insert: re-recording an existing topic refreshes its recency
- *     (moves it to the most-recent end) rather than adding a duplicate.
- *   - Ordering: index 0 is the OLDEST, the last index is the MOST RECENT.
+ * - Bounded LRU per room. {@link CHANNEL_TOPICS_LRU_CAPACITY} slots
+ * (≈ the last ~100 messages worth of distinct topics). FIFO eviction:
+ * when the list is full, the oldest entry is dropped to make room.
+ * - Dedupe on insert: re-recording an existing topic refreshes its recency
+ * (moves it to the most-recent end) rather than adding a duplicate.
+ * - Ordering: index 0 is the OLDEST, the last index is the MOST RECENT.
  *
  * Persistence:
- *   - Each room's list is mirrored to `room.metadata.currentTopics` via
- *     `runtime.updateRoom` so it survives a restart.
- *   - The in-memory cache is hydrated from `room.metadata.currentTopics` the
- *     first time a room is touched.
- *   - Missing rooms are expected during deletion races and skip persistence;
- *     database failures propagate to the message-loop boundary for reporting.
+ * - Each room's list is mirrored to `room.metadata.currentTopics` via
+ * `runtime.updateRoom` so it survives a restart.
+ * - The in-memory cache is hydrated from `room.metadata.currentTopics` the
+ * first time a room is touched.
+ * - Missing rooms are expected during deletion races and skip persistence;
+ * database failures propagate to the message-loop boundary for reporting.
  *
  * This service is PURE LOGIC (no fs / process / native deps) so it is safe for
  * the Node, browser, and edge build targets.
  */
 
+import { compareMemoryIds } from "../database";
 import { ElizaError } from "../errors";
 import { logger } from "../logger";
-import type { Room, UUID } from "../types/index";
+import type { Room } from "../types/environment.js";
+import type { UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 
@@ -44,12 +46,7 @@ export const CHANNEL_TOPICS_LRU_CAPACITY = 20;
 
 const LOG_PREFIX = "[ChannelTopicsService]";
 
-/**
- * Coerce an unknown value (e.g. read back from room metadata) into a clean
- * topic list: strings only, trimmed, non-empty, deduped, capped at capacity.
- * Mirrors the normalization the Stage-1 evaluator applies on the way in, so a
- * hand-edited or legacy metadata blob can never poison the cache.
- */
+/** Normalizes stored channel topics: trimmed, nonempty, unique strings within capacity. */
 function coerceTopicList(value: unknown): string[] {
 	if (!Array.isArray(value)) return [];
 	const seen = new Set<string>();
@@ -290,7 +287,7 @@ export class ChannelTopicsService extends Service {
 	}
 
 	/**
-	 * Cross-channel topic search (#8927): rank rooms whose recent topics match
+	 * Cross-channel topic search: rank rooms whose recent topics match
 	 * the query, most-matching first. Scans the in-memory per-channel LRUs.
 	 */
 	searchTopics(query: string, limit?: number): TopicSearchHit[] {
@@ -336,7 +333,9 @@ export function matchTopicRooms(
 			});
 		}
 	}
-	scored.sort((a, b) => b.score - a.score || a.roomId.localeCompare(b.roomId));
+	scored.sort(
+		(a, b) => b.score - a.score || compareMemoryIds(a.roomId, b.roomId),
+	);
 	const selected =
 		limit === undefined ? scored : scored.slice(0, Math.max(0, limit));
 	return selected.map(({ score, ...hit }) => hit);

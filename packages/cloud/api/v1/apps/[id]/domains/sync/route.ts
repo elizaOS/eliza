@@ -6,13 +6,13 @@
  * Also bumps lastHealthCheck on every row touched.
  */
 
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { cloudflareRegistrarService } from "@elizaos/cloud-shared/lib/services/cloudflare-registrar";
+import { managedDomainsService } from "@elizaos/cloud-shared/lib/services/managed-domains";
+import { extractErrorMessage } from "@elizaos/cloud-shared/lib/utils/error-handling";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { cloudflareRegistrarService } from "@/lib/services/cloudflare-registrar";
-import { managedDomainsService } from "@/lib/services/managed-domains";
-import { extractErrorMessage } from "@/lib/utils/error-handling";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { loadOwnedApp } from "../guards";
 
 const app = new Hono<AppEnv>();

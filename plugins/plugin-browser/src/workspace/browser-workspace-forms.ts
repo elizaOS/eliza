@@ -149,13 +149,16 @@ export async function activateWebBrowserWorkspaceElement(
   element: Element,
   subaction: "click" | "dblclick",
 ): Promise<BrowserWorkspaceCommandResult> {
+  if (element.matches(":disabled")) {
+    throw new Error("Target element is disabled.");
+  }
   const tag = element.tagName.toLowerCase();
   if (tag === "a") {
     const href = element.getAttribute("href")?.trim();
     if (!href) {
       throw new Error("Target link does not have an href.");
     }
-    const nextUrl = new URL(href, tab.url).toString();
+    const nextUrl = new URL(href, element.baseURI).toString();
     // Navigation interception (issue #19882): the dispatcher sees a click as
     // effect `interact` with no URL, so an allowlisted page linking to a denied
     // domain would otherwise navigate freely. The resolved href is only known
@@ -196,14 +199,14 @@ export async function activateWebBrowserWorkspaceElement(
   }
 
   const submitForm = findClosestBrowserWorkspaceForm(element);
-  if (
-    submitForm &&
-    (tag === "form" ||
-      tag === "button" ||
-      (tag === "input" &&
-        ["button", "image", "submit"].includes(inputType || "submit")))
-  ) {
-    await submitWebBrowserWorkspaceForm(tab, submitForm);
+  const submitter =
+    tag === "button" && (element as HTMLButtonElement).type === "submit"
+      ? (element as HTMLButtonElement)
+      : inputElement && ["image", "submit"].includes(inputType)
+        ? inputElement
+        : undefined;
+  if (submitForm && (tag === "form" || submitter)) {
+    await submitWebBrowserWorkspaceForm(tab, submitForm, submitter);
     return {
       mode: "web",
       subaction,
@@ -277,17 +280,18 @@ export function scrollWebBrowserWorkspaceTarget(
 export async function submitWebBrowserWorkspaceForm(
   tab: WebBrowserWorkspaceTabState,
   form: HTMLFormElement,
+  submitter?: HTMLButtonElement | HTMLInputElement,
 ): Promise<void> {
   const state = getBrowserWorkspaceRuntimeState("web", tab.id);
   const dom = ensureBrowserWorkspaceDom(tab);
   const action = form.getAttribute("action")?.trim() || tab.url;
   const method = (form.getAttribute("method")?.trim() || "get").toLowerCase();
-  const submitUrl = new URL(action, tab.url).toString();
+  const submitUrl = new URL(action, form.baseURI).toString();
   // Submit interception (issue #19882): the resolved submit URL is only known
   // here, after the form's action/base resolution — so per-domain policies get
   // their authoritative check at this exact point, before any bytes leave.
   assertBrowserWorkspaceUrlAllowed(submitUrl, "submit", "click");
-  const formData = new dom.window.FormData(form);
+  const formData = new dom.window.FormData(form, submitter);
   const searchParams = new URLSearchParams();
 
   for (const [key, value] of formData.entries()) {

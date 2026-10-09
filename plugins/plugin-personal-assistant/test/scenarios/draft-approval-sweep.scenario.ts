@@ -5,7 +5,7 @@
  * live RESOLVE_REQUEST action and asserts both queue outcomes — one row approved,
  * one rejected with no gated side effect.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import {
   expectApprovalRejectedNoSideEffect,
   expectApprovalResolvedApproved,
@@ -21,7 +21,7 @@ export default scenario({
   tags: ["lifeops", "executive-assistant", "approvals", "messaging", "outcome"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

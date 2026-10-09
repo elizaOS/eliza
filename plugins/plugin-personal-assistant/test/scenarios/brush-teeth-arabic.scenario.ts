@@ -1,7 +1,7 @@
 /**
  * Live-model scenario: the assistant turns polite right-to-left Arabic phrasing into a daily tooth-brushing habit (8am / 9pm reminders), confirming across a preview then a save turn.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -11,7 +11,7 @@ export default scenario({
   tags: ["lifeops", "tasks", "smoke"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

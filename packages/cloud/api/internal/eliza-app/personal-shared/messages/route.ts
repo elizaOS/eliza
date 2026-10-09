@@ -5,55 +5,68 @@ import {
   ELIZA_FAILURE_NAME_HEADER,
   ELIZA_FAILURE_STAGE_HEADER,
   ELIZA_RETRYABLE_HEADER,
-} from "@elizaos/cloud-services-common/personal-shared-failure";
-import { ChannelType } from "@elizaos/core/edge";
-import type { SharedGroupReminderDelivery } from "@elizaos/plugin-scheduling/edge";
+} from "@elizaos/cloud-services-common/transport";
+import {
+  type PersonalSharedGroupConsentStatus,
+  personalSharedGroupConsentRepository,
+} from "@elizaos/cloud-shared/db/repositories/personal-shared-group-consent";
+import {
+  type GroupParticipantIdentity,
+  personalSharedGroupParticipantsRepository,
+} from "@elizaos/cloud-shared/db/repositories/personal-shared-group-participants";
+import { personalSharedGroupsRepository } from "@elizaos/cloud-shared/db/repositories/personal-shared-groups";
+import type { AgentSandbox } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { resolveElizaTraceId } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { sha256Hex } from "@elizaos/cloud-shared/lib/oidc/crypto";
+import { findActivePersonalDedicatedTarget } from "@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target";
+import { elizaAppUserService } from "@elizaos/cloud-shared/lib/services/eliza-app";
+import { isAllowedBlooioMediaUrl } from "@elizaos/cloud-shared/lib/services/eliza-app/blooio-media-allowlist";
+import { MAX_INBOUND_MEDIA_IMAGES } from "@elizaos/cloud-shared/lib/services/eliza-app/describe-inbound-media";
+import { enrichInboundImageMedia } from "@elizaos/cloud-shared/lib/services/eliza-app/inbound-media-enrichment";
+import { runOnboardingChat } from "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-chat";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { repairPersonalConversation } from "@elizaos/cloud-shared/lib/services/personal-conversation-repair";
+import { preparePersonalDedicatedDelivery } from "@elizaos/cloud-shared/lib/services/personal-dedicated-delivery";
+import {
+  type PersonalDedicatedFallback,
+  type PersonalSharedFallbackDelivery,
+  resolvePersonalDedicatedRoute,
+} from "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback";
+import { reconcilePersonalFallbackIntoDedicated } from "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback-reconcile";
+import { coordinateSharedHistory } from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
+import {
+  GROUP_OWNER_FALLBACK_LABEL,
+  groupParticipantLabel,
+  redactGroupParticipantHandles,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/group-participant-labels";
+import { networkContextForPersonalSurface } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-context";
+import { prepareNetworkSharedTurnForAccount } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-turn";
+import { personalSharedAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import { prewarmPersonalSharedAgentTurnCaches } from "@elizaos/cloud-shared/lib/services/shared-runtime/prewarm-shared-agent";
+import { resolveSharedRuntimeWorkerRequestContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
+import {
+  sharedRestMessageSend,
+  sharedTurnServerTiming,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-rest-adapter";
+import {
+  PersonalCutoverHoldError,
+  SharedRuntimeCacheWarmingError,
+  SharedRuntimeTurnError,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-errors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { ChannelType } from "@elizaos/core";
+import type { SharedGroupReminderDelivery } from "@elizaos/plugin-scheduling";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
   PersonalDeliveryAccountResolutionError,
   resolvePersonalDeliveryProjection,
 } from "@/api-app/personal-delivery-projection";
-import {
-  type PersonalSharedGroupConsentStatus,
-  personalSharedGroupConsentRepository,
-} from "@/db/repositories/personal-shared-group-consent";
-import {
-  type GroupParticipantIdentity,
-  personalSharedGroupParticipantsRepository,
-} from "@/db/repositories/personal-shared-group-participants";
-import { personalSharedGroupsRepository } from "@/db/repositories/personal-shared-groups";
-import type { AgentSandbox } from "@/db/schemas/agent-sandboxes";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
-import { sha256Hex } from "@/lib/oidc/crypto";
-import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
-import { elizaAppUserService } from "@/lib/services/eliza-app";
-import { isAllowedBlooioMediaUrl } from "@/lib/services/eliza-app/blooio-media-allowlist";
-import { MAX_INBOUND_MEDIA_IMAGES } from "@/lib/services/eliza-app/describe-inbound-media";
-import { enrichInboundImageMedia } from "@/lib/services/eliza-app/inbound-media-enrichment";
-import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
-import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
-import {
-  GROUP_OWNER_FALLBACK_LABEL,
-  groupParticipantLabel,
-  redactGroupParticipantHandles,
-} from "@/lib/services/shared-runtime/group-participant-labels";
-import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
-import { prewarmPersonalSharedAgentTurnCaches } from "@/lib/services/shared-runtime/prewarm-shared-agent";
-import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
-import {
-  sharedRestMessageSend,
-  sharedTurnServerTiming,
-} from "@/lib/services/shared-runtime/shared-rest-adapter";
-import {
-  SharedRuntimeCacheWarmingError,
-  SharedRuntimeTurnError,
-} from "@/lib/services/shared-runtime/shared-runtime-errors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
 import { consumePreverifiedPersonalSharedRequest } from "../preverified-auth";
 
@@ -92,6 +105,7 @@ const SAFE_ERROR_NAMES = new Set([
   "Error",
   "HTTPException",
   "InsufficientCreditsError",
+  "PersonalCutoverHoldError",
   "PersonalDeliveryAccountResolutionError",
   "RangeError",
   "RateLimitError",
@@ -112,6 +126,7 @@ function retryableDeliveryError(error: unknown): boolean {
   const name = error instanceof Error ? error.name : "";
   return (
     error instanceof PersonalDeliveryAccountResolutionError ||
+    error instanceof PersonalCutoverHoldError ||
     error instanceof SharedRuntimeCacheWarmingError ||
     name === "AbortError" ||
     name === "RateLimitError" ||
@@ -751,7 +766,7 @@ app.post("/", async (c) => {
 
     stage = "account_resolution";
     const accountStartedAt = performance.now();
-    let account: { userId: string; organizationId: string };
+    let account: { userId: string; organizationId: string; ownerName?: string };
     let accountResolution = "phone-query";
     let groupConversationId: string | undefined;
     let groupActorLabel: string | undefined;
@@ -1314,6 +1329,7 @@ app.post("/", async (c) => {
       account = {
         userId: delivery.userId,
         organizationId: delivery.organizationId,
+        ...(delivery.ownerName ? { ownerName: delivery.ownerName } : {}),
       };
       accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
@@ -1333,6 +1349,7 @@ app.post("/", async (c) => {
       account = {
         userId: delivery.userId,
         organizationId: delivery.organizationId,
+        ...(delivery.ownerName ? { ownerName: delivery.ownerName } : {}),
       };
       accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
@@ -1349,6 +1366,7 @@ app.post("/", async (c) => {
       account = {
         userId: delivery.userId,
         organizationId: delivery.organizationId,
+        ...(delivery.ownerName ? { ownerName: delivery.ownerName } : {}),
       };
       accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
@@ -1357,6 +1375,9 @@ app.post("/", async (c) => {
     const agent = personalSharedAgent({
       userId: account.userId,
       organizationId: account.organizationId,
+      ...(!groupConversationId && account.ownerName
+        ? { ownerName: account.ownerName }
+        : {}),
     });
     if (groupConversationId && !groupConversationId.startsWith("group:")) {
       throw new Error("Invalid Personal Shared group conversation authority");
@@ -1548,6 +1569,53 @@ app.post("/", async (c) => {
         agent.id,
       );
     }
+    // One entitlement/route authority for both personal consumers (#25146): a
+    // direct turn whose Dedicated access was withdrawn (lapsed paid plan or a
+    // confirmed, unfunded billing stop) is answered by Shared in a separately
+    // scoped fallback journal; a recovered interval is reconciled into
+    // Dedicated before its first send. Groups keep their owner-bound
+    // Dedicated contract: the fallback journal is the owner's direct
+    // conversation only, so a group turn is refused while access is withdrawn
+    // and never reaches Dedicated memory.
+    let sharedFallback: PersonalSharedFallbackDelivery | null = null;
+    let fallbackToReconcile: PersonalDedicatedFallback | null = null;
+    if (dedicated) {
+      const route = await resolvePersonalDedicatedRoute({
+        dedicated,
+        organizationId: account.organizationId,
+        userId: account.userId,
+        sourceAgentId: agent.id,
+      });
+      if (route.route === "unavailable") {
+        return c.json(
+          {
+            success: false,
+            code: route.code,
+            error: route.error,
+            retryable: route.retryable,
+          },
+          route.status,
+          { "Retry-After": String(route.retryAfterSeconds) },
+        );
+      }
+      if (route.route === "shared_fallback" && isGroupMessage(parsed.data)) {
+        // The owner's billing state is never disclosed to group members.
+        return c.json({
+          success: true,
+          data: {
+            code: "group_dedicated_access_paused",
+            reply: "Eliza is unavailable in this group right now.",
+            groupDelivery: GROUP_CONTROL_DELIVERY,
+          },
+        });
+      }
+      if (route.route === "shared_fallback") {
+        sharedFallback = route.delivery;
+        dedicated = null;
+      } else {
+        fallbackToReconcile = route.reconcile;
+      }
+    }
     const accountMs = performance.now() - accountStartedAt;
     const accountTiming = `account;dur=${accountMs.toFixed(1)};desc="${accountResolution}"`;
     c.header("Server-Timing", accountTiming);
@@ -1560,10 +1628,14 @@ app.post("/", async (c) => {
             worker.namespace,
             {
               warmConversation:
-                isNewPersonalAccount || Boolean(groupConversationId),
+                isNewPersonalAccount ||
+                Boolean(groupConversationId) ||
+                Boolean(sharedFallback),
               ...(groupConversationId
                 ? { conversationId: groupConversationId }
-                : {}),
+                : sharedFallback
+                  ? { conversationId: sharedFallback.journalRoomId }
+                  : {}),
             },
           ).then(() => performance.now() - startedAt);
           worker.executionCtx.waitUntil(timing);
@@ -1697,45 +1769,7 @@ app.post("/", async (c) => {
     if (dedicated) {
       stage = "dedicated_runtime";
       const dedicatedStartedAt = performance.now();
-      const preparation = await preparePersonalDedicatedDelivery(
-        dedicated,
-        {
-          organizationId: account.organizationId,
-          userId: account.userId,
-        },
-        c.env,
-        worker.executionCtx,
-      );
-      if (preparation.state === "blocked") {
-        return c.json(
-          {
-            success: false,
-            code: preparation.code,
-            error: preparation.error,
-            retryable: false,
-            currentBalance: preparation.currentBalance,
-          },
-          402,
-        );
-      }
-      if (preparation.state === "starting") {
-        return c.json(
-          {
-            success: false,
-            code: "dedicated_starting",
-            error: "Dedicated Eliza is waking up. Retry this turn shortly.",
-            retryable: true,
-            data: {
-              action: preparation.action,
-              activeAgentId: dedicated.id,
-              alreadyInProgress: !preparation.created,
-              jobId: preparation.jobId,
-            },
-          },
-          503,
-          { "Retry-After": String(preparation.retryAfterSeconds) },
-        );
-      }
+      const preparation = await preparePersonalDedicatedDelivery(dedicated);
       if (preparation.state === "unavailable") {
         return c.json(
           {
@@ -1749,6 +1783,27 @@ app.post("/", async (c) => {
             ? { "Retry-After": String(preparation.retryAfterSeconds) }
             : undefined,
         );
+      }
+      if (fallbackToReconcile) {
+        // The recovered Shared interval reaches Dedicated before routing
+        // returns, so both runtimes never own the same conversation.
+        const reconciled = await reconcilePersonalFallbackIntoDedicated({
+          fallback: fallbackToReconcile,
+          namespace: worker.namespace,
+        });
+        if (!reconciled.reconciled) {
+          return c.json(
+            {
+              success: false,
+              code: "dedicated_reconciling",
+              error:
+                "Dedicated Eliza is restoring your recent conversation. Try again shortly.",
+              retryable: true,
+            },
+            503,
+            { "Retry-After": "5" },
+          );
+        }
       }
       const bridgeRequest = {
         jsonrpc: "2.0" as const,
@@ -1791,45 +1846,15 @@ app.post("/", async (c) => {
             namespace: worker.namespace,
           },
         );
-        const importableHistory = history.filter(
-          (
-            message,
-          ): message is typeof message & {
-            role: "user" | "assistant";
-          } => message.role === "user" || message.role === "assistant",
-        );
-        const importMessages = importableHistory.flatMap((message) =>
-          message.id
-            ? [
-                {
-                  sourceId: message.id,
-                  role: message.role,
-                  text: message.content,
-                  ...(typeof message.createdAt === "number"
-                    ? { timestamp: message.createdAt }
-                    : {}),
-                },
-              ]
-            : [],
-        );
-        let receipt =
-          importMessages.length === importableHistory.length
-            ? await elizaSandboxService.importCanonicalConversation(
-                dedicated.id,
-                account.organizationId,
-                conversationId,
-                importMessages,
-              )
-            : null;
-        if (!receipt && importMessages.length > 0) {
-          receipt = await elizaSandboxService.importCanonicalConversation(
+        const repaired = await repairPersonalConversation(history, (messages) =>
+          elizaSandboxService.importCanonicalConversation(
             dedicated.id,
             account.organizationId,
             conversationId,
-            [],
-          );
-        }
-        if (receipt) {
+            messages,
+          ),
+        );
+        if (repaired) {
           response = await elizaSandboxService.bridge(
             dedicated.id,
             account.organizationId,
@@ -1911,6 +1936,32 @@ app.post("/", async (c) => {
                 discordUserId: parsed.data.discordUserId,
               }
             : undefined;
+    // InternalAuth and the existing Personal delivery projection already own
+    // this phone/account binding. Network reads reuse their exact primary
+    // verified projection without authenticating the internal token as a user.
+    const networkObservation =
+      !isGroupMessage(parsed.data) &&
+      (parsed.data.platform === "twilio" ||
+        parsed.data.platform === "blooio") &&
+      capabilityText
+        ? await prepareNetworkSharedTurnForAccount(
+            c.env,
+            agent,
+            {
+              userId: account.userId,
+              organizationId: account.organizationId,
+              phoneNumber: parsed.data.phoneNumber,
+            },
+            undefined,
+            capabilityText,
+            c.req.raw.signal,
+          )
+        : undefined;
+    const trustedNetworkContext = networkContextForPersonalSurface(
+      networkObservation,
+      agent,
+      sharedFallback?.journalRoomId ?? agent.id,
+    );
     const result = groupConversationId
       ? await sharedRestMessageSend(
           agent,
@@ -1924,10 +1975,15 @@ app.post("/", async (c) => {
           groupTrustedDelivery,
           capabilityText,
           { type: ChannelType.GROUP, source: parsed.data.platform },
+          undefined,
+          c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers),
+          c.req.raw.signal,
         )
       : await sharedRestMessageSend(
           agent,
-          agent.id,
+          // A withdrawn Dedicated turn uses its scoped fallback journal, never
+          // the canonical Dedicated/pre-upgrade conversation.
+          sharedFallback?.journalRoomId ?? agent.id,
           deliveryMessage,
           agent.agent_name ?? "Eliza",
           worker.executionCtx,
@@ -1936,6 +1992,11 @@ app.post("/", async (c) => {
           "platform",
           trustedDelivery,
           capabilityText,
+          undefined,
+          sharedFallback?.accountState,
+          c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers),
+          c.req.raw.signal,
+          trustedNetworkContext,
         );
     // The same values ship on `Server-Timing` below; a second uncorrelated
     // per-turn log on the hot path would only duplicate them.
@@ -1961,7 +2022,13 @@ app.post("/", async (c) => {
           organizationId: account.organizationId,
         },
         reply: guardGroupReply(result.text, groupParticipantRoster),
+        ...(result.responded === false
+          ? { responded: false, responseReason: result.responseReason }
+          : {}),
         ...(result.mediaUrls ? { mediaUrls: result.mediaUrls } : {}),
+        ...(sharedFallback
+          ? { accountState: sharedFallback.accountState }
+          : {}),
         ...(groupDeliveryAuthority
           ? {
               groupDelivery: {
@@ -1984,6 +2051,9 @@ app.post("/", async (c) => {
       stage,
       errorName,
       ...(failureCauseName ? { failureCauseName } : {}),
+      ...(error instanceof SharedRuntimeTurnError && error.failureDiagnostic
+        ? { failureDiagnostic: error.failureDiagnostic }
+        : {}),
       retryable,
       ...(error instanceof PersonalDeliveryAccountResolutionError
         ? { projectionFailure: error.projectionFailure }
@@ -2043,6 +2113,20 @@ app.post("/", async (c) => {
         },
         503,
         { "Retry-After": "1" },
+      );
+    }
+    if (error instanceof PersonalCutoverHoldError) {
+      // The turn did not execute in Shared. Connector ingress holds it and
+      // retries; the retry resolves the attested Dedicated route (#22934).
+      return c.json(
+        {
+          success: false,
+          error: error.message,
+          code: "personal_cutover_in_progress",
+          retryable: true,
+        },
+        503,
+        { "Retry-After": String(error.retryAfterSeconds) },
       );
     }
     if (isGroupDeliveryPendingError(error)) {

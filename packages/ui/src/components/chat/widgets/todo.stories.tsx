@@ -2,12 +2,11 @@
  * Storybook states for the Todo chat widget across populated, empty, and
  * interaction-focused render states.
  */
+
+import type { WorkbenchTodo } from "@elizaos/contracts";
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
-import { client } from "../../../api";
-import type {
-  WorkbenchOverview,
-  WorkbenchTodo,
-} from "../../../api/client-types-config";
+import { client } from "../../../api/client";
+import type { WorkbenchOverview } from "../../../api/client-types-config";
 import { mockApp } from "../../../storybook/mock-providers.helpers";
 import { TODO_PLUGIN_WIDGETS } from "./todo";
 
@@ -36,7 +35,7 @@ function todo(
 }
 
 function workbench(todos: WorkbenchTodo[]): WorkbenchOverview {
-  return { tasks: [], triggers: [], todos };
+  return { triggers: [], todos };
 }
 
 /** Seed the app store with a workbench AND stub the refresh fetch to match. */

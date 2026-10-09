@@ -1,0 +1,24 @@
+{
+  "name": "@elizaos/lifeops-bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LifeOps simulated backend and HTTP task contract for the shared Eliza benchmark host.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "benchmark:server": "bun run --cwd ../../../harnesses/eliza/runner benchmark:server",
+    "trusted-runtime:server": "bun run --cwd ../../../harnesses/eliza/runner trusted-runtime:server",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.2",
+    "tsx": "^4.21.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "@elizaos/core": "workspace:*"
+  }
+}

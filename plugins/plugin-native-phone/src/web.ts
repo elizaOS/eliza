@@ -1,3 +1,4 @@
+/** Reports phone capabilities unavailable outside Android while validating caller inputs before unsupported operations. */
 import { WebPlugin } from "@capacitor/core";
 
 import type {
@@ -78,35 +79,33 @@ export class PhoneWeb extends WebPlugin implements PhonePlugin {
 
   async placeCall(options: PlaceCallOptions): Promise<void> {
     validateCallTarget(options, { requireNumber: true });
-    throw new Error("Phone calls are only available on Android.");
+    throw this.unavailable("Phone calls are only available on Android.");
   }
 
   async openDialer(options?: Partial<PlaceCallOptions>): Promise<void> {
     validateCallTarget(options, { requireNumber: false });
-    throw new Error("Phone dialer is only available on Android.");
+    throw this.unavailable("Phone dialer is only available on Android.");
   }
 
   async listRecentCalls(
     options?: ListRecentCallsOptions,
   ): Promise<{ calls: CallLogEntry[] }> {
     validateRecentCallsOptions(options);
-    return { calls: [] };
+    throw this.unavailable("Call history is only available on Android.");
   }
 
   async saveCallTranscript(
     options: SaveCallTranscriptOptions,
   ): Promise<{ updatedAt: number }> {
     validateTranscriptOptions(options);
-    throw new Error("Call transcripts are only available on Android.");
+    throw this.unavailable("Call transcripts are only available on Android.");
   }
 
-  // Web has no phone permission model; report granted so the shared view flow
-  // proceeds (call placement / call-log throw or return empty on web anyway).
   async checkPermissions(): Promise<PhonePermissionStatus> {
-    return { phone: "granted" };
+    throw this.unavailable("Phone permissions are only available on Android.");
   }
 
   async requestPermissions(): Promise<PhonePermissionStatus> {
-    return { phone: "granted" };
+    throw this.unavailable("Phone permissions are only available on Android.");
   }
 }

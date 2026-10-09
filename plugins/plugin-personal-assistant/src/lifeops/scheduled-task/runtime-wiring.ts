@@ -1,3 +1,4 @@
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 /**
  * Runtime wiring for the ScheduledTask spine.
  *
@@ -15,17 +16,26 @@ import {
   loadOwnerContactRoutingHints,
   loadOwnerContactsConfig,
   resolveOwnerContactWithFallback,
-  resolveOwnerEntityId,
 } from "@elizaos/agent";
-import { getHostExecutionCapabilities } from "@elizaos/app-core/services/task-host-capabilities";
 import {
+  ElizaError,
   type IAgentRuntime,
   inspectSendHandlerResult,
+  isElizaError,
+  isMessageMetadata,
   logger,
+  MESSAGE_SOURCE_OWNER_CHAT,
+  requireConfirmedSendHandlerDelivery,
+  resolveOwnerEntityId,
+  SEND_HANDLER_NOT_FOUND,
   ServiceType,
+  type UUID,
+  validateUuid,
 } from "@elizaos/core";
+import { resolveGlobalPauseStore } from "@elizaos/plugin-assistant";
 import type {
   ActivitySignalBusView,
+  AnchorRegistry,
   CompletionCheckContribution,
   GlobalPauseView,
   OwnerFactsView,
@@ -43,8 +53,6 @@ import {
   createConsolidationRegistry,
   createEscalationLadderRegistry,
   createScheduledTaskRunner,
-  createSchedulingSqlScheduledTaskLogStore,
-  createSchedulingSqlScheduledTaskStore,
   createTaskGateRegistry,
   getAnchorRegistry,
   getScheduledTaskRunner,
@@ -64,16 +72,27 @@ import {
   type ScheduledTaskRunnerHandle,
 } from "@elizaos/plugin-scheduling";
 import { assembleMorningBrief } from "../../default-packs/morning-brief.js";
+import {
+  QUIET_USER_WATCHER_PACK_KEY,
+  runQuietUserWatcher,
+} from "../../default-packs/quiet-user-watcher.js";
+import { createRecentTaskStatesProvider } from "../../providers/recent-task-states.js";
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
 import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
 import { getConnectorRegistry } from "../connectors/registry.js";
-import { resolveDefaultTimeZone } from "../defaults.js";
+import {
+  resolveConfiguredTimeZone,
+  resolveDefaultTimeZone,
+} from "../defaults.js";
+import { FAMILY_BACKUP_CLEANUP_OPERATION } from "../family-workflows/backup-cleanup-schedule.js";
 import {
   FAMILY_MONTHLY_SYSTEM_OPERATION,
   getFamilyWorkflowRuntimeService,
 } from "../family-workflows/index.js";
-import { resolveGlobalPauseStore } from "../global-pause/store.js";
+import { withFamilyScheduledExecution } from "../family-workflows/scheduled-execution.js";
+import { createFamilySchedulingStores } from "../family-workflows/scheduled-store.js";
+import { purgeFamilyBackupCleanup } from "../family-workflows/workspace-deletion.js";
 import { registerHouseholdGrantExpiryWarningGate } from "../household/grant-expiry-warning.js";
 import { HouseholdCoordinationRepository } from "../household/repository.js";
 import {
@@ -100,6 +119,18 @@ import {
   revalidateScheduledTaskChatDeliveryBinding,
 } from "./delivery-binding.js";
 import { resolveScheduledTaskDispatchContext } from "./dispatch-context.js";
+import { reconcileOwnerDossierActivity } from "./dossier-activity-migration.js";
+import {
+  DOSSIER_ACTIVITY_ANCHOR_KEY,
+  isManagedDossierTask,
+} from "./dossier-activity-policy.js";
+import {
+  admitDossierAutomaticExecution,
+  createDossierActivityMutationPolicy,
+  prepareDossierAutomaticFire,
+  resolveOwnerDossierActivityAnchor,
+} from "./dossier-activity-runtime.js";
+import { getHostExecutionCapabilities } from "./host-capabilities.js";
 import { registerModelMomentCheckGate } from "./moment-judge.js";
 import { createLifeOpsSubjectStoreView } from "./subject-store.js";
 
@@ -317,10 +348,7 @@ function makeRepositoryBackedStores(
   runtime: IAgentRuntime,
   agentId: string,
 ): RepositoryBackedStores {
-  return {
-    store: createSchedulingSqlScheduledTaskStore({ runtime, agentId }),
-    logStore: createSchedulingSqlScheduledTaskLogStore({ runtime, agentId }),
-  };
+  return createFamilySchedulingStores(runtime, agentId);
 }
 
 function defaultOwnerFactsProvider(
@@ -437,6 +465,90 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
   return svc && typeof svc.notify === "function" ? svc : null;
 }
 
+type OwnerChatDelivery =
+  | {
+      ok: true;
+      roomId: UUID | null;
+      messageId: UUID | null;
+      conversationId: UUID | null;
+    }
+  | { ok: false; failure: DispatchResult };
+
+/**
+ * Persist an in_app scheduled delivery into the owner's chat history through
+ * the host's `owner_chat` handler, which resolves or creates the owner's
+ * canonical conversation. The occurrence key derives the stored message id,
+ * so a redelivery returns the existing row. A host without the handler
+ * (headless runtime, no app server) reports no history surface; a registered
+ * handler that fails is a typed, retryable dispatch failure.
+ */
+async function deliverScheduledTaskToOwnerChat(
+  runtime: IAgentRuntime,
+  record: ScheduledTaskDispatchRecord,
+  message: string,
+): Promise<OwnerChatDelivery> {
+  const deliveryIdempotencyKey =
+    metadataString(record.metadata, "dispatchIdempotencyKey") ??
+    `${record.taskId}:${record.firedAtIso}`;
+  if (typeof runtime.sendMessageToTarget !== "function") {
+    return { ok: true, roomId: null, messageId: null, conversationId: null };
+  }
+  try {
+    const result = await runtime.sendMessageToTarget(
+      { source: MESSAGE_SOURCE_OWNER_CHAT },
+      {
+        text: message,
+        // Composition already produced owner-facing copy, as on connector sends.
+        // A second cosmetic rewrite can change its source-grounded facts.
+        agentVoiced: true,
+        source: "lifeops-scheduled-task",
+        deliveryIdempotencyKey,
+        scheduledTaskId: record.taskId,
+        firedAtIso: record.firedAtIso,
+        channelKey: record.channelKey,
+      },
+    );
+    const disposition = requireConfirmedSendHandlerDelivery(result);
+    const memory = disposition.memories?.[0];
+    if (!memory?.roomId) {
+      throw new ElizaError("owner_chat returned no persisted message", {
+        code: "OWNER_CHAT_NOT_PERSISTED",
+        context: { taskId: record.taskId },
+      });
+    }
+    return {
+      ok: true,
+      roomId: memory.roomId,
+      messageId: validateUuid(memory.id),
+      conversationId:
+        memory.metadata && isMessageMetadata(memory.metadata)
+          ? validateUuid(memory.metadata.conversationId)
+          : null,
+    };
+  } catch (error) {
+    if (isElizaError(error) && error.code === SEND_HANDLER_NOT_FOUND) {
+      return { ok: true, roomId: null, messageId: null, conversationId: null };
+    }
+    // error-policy:J1 boundary translation — the history write failed; the
+    // runner retries (the idempotency key keeps redelivery to one row) and
+    // the failure reaches RECENT_ERRORS.
+    runtime.reportError("lifeops:scheduled-task:owner-chat-dispatch", error, {
+      taskId: record.taskId,
+      channelKey: record.channelKey,
+    });
+    return {
+      ok: false,
+      failure: {
+        ok: false,
+        reason: "transport_error",
+        acceptance: "not_accepted",
+        userActionable: false,
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
 function metadataString(
   metadata: ScheduledTaskDispatchRecord["metadata"],
   key: string,
@@ -489,31 +601,25 @@ export async function composeOwnerFacingScheduledTaskText(
   );
 
   if (delegatesAssemblyTo === "lifeops:checkin:morning") {
-    try {
-      const assembled = await assembleMorningBrief(runtime, {
-        timezone: resolveDefaultTimeZone(),
-        now: new Date(record.firedAtIso),
-      });
-      const summaryText = assembled.report.summaryText.trim();
-      if (record.metadata) {
-        record.metadata.checkinReportId = assembled.report.reportId;
-        record.metadata.checkinKind = assembled.report.kind;
-      }
-      if (summaryText.length > 0) return summaryText;
+    const now = new Date(record.firedAtIso);
+    const facts = ownerFactsToView(
+      await resolveOwnerFactStore(runtime).read(),
+      now,
+    );
+    const { LifeOpsService } = await import("../service.js");
+    const assembled = await assembleMorningBrief(runtime, {
+      timezone: facts.timezone ?? resolveConfiguredTimeZone(runtime),
+      now,
+      sources: new LifeOpsService(runtime),
+    });
+    const summaryText = assembled.report.summaryText.trim();
+    if (!summaryText)
       throw new Error("Morning check-in assembler returned empty summaryText");
-    } catch (error) {
-      // error-policy:J4 designed degrade — the scheduled check-in still
-      // reaches the owner with an honest "couldn't assemble" message instead
-      // of silently dropping the fire; the assembly failure is surfaced via
-      // reportError for RECENT_ERRORS/escalation.
-      runtime.reportError("lifeops:scheduled-task:owner-facing-copy", error, {
-        agentId: runtime.agentId,
-        taskId: record.taskId,
-        firedAtIso: record.firedAtIso,
-        delegatesAssemblyTo,
-      });
-      return "Your morning check-in is ready, but I couldn't assemble the full brief right now.";
+    if (record.metadata) {
+      record.metadata.checkinReportId = assembled.report.reportId;
+      record.metadata.checkinKind = assembled.report.kind;
     }
+    return summaryText;
   }
 
   const resolvedContext = hasScheduledDispatchModel(runtime)
@@ -542,6 +648,13 @@ function isLocalAgentBackupDispatch(
 function isFamilyMonthlyDispatch(record: ScheduledTaskDispatchRecord): boolean {
   return record.metadata?.systemOperation === FAMILY_MONTHLY_SYSTEM_OPERATION;
 }
+
+/**
+ * Retry backoff for a dispatch whose owner/contact target resolution failed on
+ * a transient storage error. Matches the render-failure backoff so both
+ * pre-send preparation failures retry on the same schedule.
+ */
+const TARGET_RESOLUTION_RETRY_MINUTES = 5;
 
 function targetNeedsOwnerResolution(
   channelKey: string,
@@ -668,7 +781,7 @@ function applyDispatchPolicy(result: DispatchResult): DispatchResult {
 
 export function createProductionScheduledTaskDispatcher(opts: {
   runtime: IAgentRuntime;
-  /** Test seam; production persists through LifeOpsRepository. */
+  /** Test seam; production persists through the runner-owned guarded callback. */
   persistDispatchAttempt?: (
     record: ScheduledTaskDispatchRecord,
     message: string,
@@ -692,6 +805,32 @@ export function createProductionScheduledTaskDispatcher(opts: {
           userActionable: true,
           message: deliveryBindingDecision.reason,
         });
+      }
+
+      if (
+        record.metadata?.systemOperation === FAMILY_BACKUP_CLEANUP_OPERATION
+      ) {
+        const jobId = record.metadata.deletionJobId;
+        const sha256 = record.metadata.backupReviewSha256;
+        if (typeof jobId !== "string" || typeof sha256 !== "string")
+          throw new ElizaError(
+            "[FamilyDeletion] Scheduled cleanup identity is missing",
+            {
+              code: "FAMILY_DELETION_BACKUP_REVIEW_REQUIRED",
+            },
+          );
+        const job = await purgeFamilyBackupCleanup(
+          opts.runtime,
+          SELF_ENTITY_ID,
+          {
+            jobId,
+            sha256,
+          },
+        );
+        return {
+          ok: true,
+          messageId: `family-backup-cleanup:${job.id}:${sha256}`,
+        };
       }
 
       if (isLocalAgentBackupDispatch(record)) {
@@ -731,6 +870,51 @@ export function createProductionScheduledTaskDispatcher(opts: {
           ok: true,
           messageId: `family-monthly:${result.periodKey}:${result.runId}`,
         };
+      }
+
+      if (
+        record.kind === "watcher" &&
+        record.ownerVisible === false &&
+        record.metadata?.packKey === QUIET_USER_WATCHER_PACK_KEY &&
+        record.metadata?.recordKey === "quiet-user-watcher"
+      ) {
+        const thresholdDays = record.metadata.quietThresholdDays;
+        if (
+          thresholdDays !== undefined &&
+          (typeof thresholdDays !== "number" ||
+            !Number.isInteger(thresholdDays) ||
+            thresholdDays <= 0)
+        ) {
+          return {
+            ok: false,
+            reason: "transport_error",
+            userActionable: false,
+            message:
+              "Quiet watcher threshold must be a positive whole number of days.",
+          };
+        }
+        try {
+          const observations = await runQuietUserWatcher(
+            createRecentTaskStatesProvider(opts.runtime),
+            {
+              asOf: new Date(record.firedAtIso),
+              ...(typeof thresholdDays === "number" ? { thresholdDays } : {}),
+            },
+          );
+          return { ok: true, metadata: { internalOnly: true, observations } };
+        } catch (error) {
+          opts.runtime.reportError(
+            "lifeops:scheduled-task:quiet-watcher",
+            error,
+            { taskId: record.taskId },
+          );
+          return {
+            ok: false,
+            reason: "transport_error",
+            userActionable: false,
+            message: "Quiet watcher observation failed.",
+          };
+        }
       }
 
       const registry = getChannelRegistry(opts.runtime);
@@ -787,67 +971,74 @@ export function createProductionScheduledTaskDispatcher(opts: {
           existingDispatchKey.trim().length > 0
             ? existingDispatchKey.trim()
             : `${record.taskId}:${record.firedAtIso}`;
-        if (opts.persistDispatchAttempt) {
+        if (record.persistPreparedDelivery) {
+          await record.persistPreparedDelivery(message, dispatchIdempotencyKey);
+        } else if (opts.persistDispatchAttempt) {
           await opts.persistDispatchAttempt(
             record,
             message,
             dispatchIdempotencyKey,
           );
         } else {
-          const repository = new LifeOpsRepository(opts.runtime);
-          const current = await repository.getScheduledTask(
-            opts.runtime.agentId,
-            record.taskId,
-          );
-          if (!current) {
-            return applyDispatchPolicy({
-              ok: false,
-              reason: "transport_error",
-              acceptance: "not_accepted",
-              userActionable: false,
-              message:
-                "Scheduled task disappeared before dispatch preparation.",
-            });
-          }
-          const attemptMetadata = {
-            dispatchPreparedMessage: message,
-            dispatchIdempotencyKey,
-            dispatchAttempt: {
-              status: "prepared",
-              preparedAtIso: new Date().toISOString(),
-              firedAtIso: record.firedAtIso,
-            },
-          };
-          current.metadata = {
-            ...(current.metadata ?? {}),
-            ...attemptMetadata,
-          };
-          await repository.upsertScheduledTask(opts.runtime.agentId, current);
-          if (record.metadata) Object.assign(record.metadata, attemptMetadata);
+          return applyDispatchPolicy({
+            ok: false,
+            reason: "transport_error",
+            acceptance: "not_accepted",
+            userActionable: false,
+            message:
+              "Scheduled delivery preparation requires the guarded task runner.",
+          });
         }
       }
 
       if (!channel?.send) {
         // Honest delivery accounting: an in_app dispatch "succeeded" only
-        // if at least one real surface accepted the payload — the live
-        // assistant event bus (transient stream) or the notification
-        // service (durable inbox). Previously this branch returned
-        // ok:true unconditionally, fabricating delivery on hosts where
-        // both surfaces were absent, so nothing ever retried/escalated.
+        // if a durable surface accepted the payload — the owner's chat
+        // history (the host's owner_chat handler, which creates the owner
+        // conversation when none exists) or the notification service
+        // (durable inbox). The assistant event bus is a transient live
+        // stream: it reaches nobody while no client is connected, so it
+        // never counts as delivery.
         let surfacesAccepted = 0;
+        const history = await deliverScheduledTaskToOwnerChat(
+          opts.runtime,
+          record,
+          message,
+        );
+        if (!history.ok) return history.failure;
+        const morningBrief =
+          record.metadata?.delegatesAssemblyTo === "lifeops:checkin:morning";
+        if (
+          morningBrief &&
+          (!history.roomId || !history.messageId || !history.conversationId)
+        )
+          return {
+            ok: false,
+            reason: "disconnected",
+            acceptance: "not_accepted",
+            userActionable: true,
+            message:
+              "Morning brief has no confirmed owner-chat source to open.",
+          };
+        if (history.roomId) surfacesAccepted += 1;
         const eventService = getAgentEventService(opts.runtime) as {
           emit?: (event: {
             runId: string;
             stream: string;
             data: Record<string, unknown>;
             agentId?: string;
+            roomId?: UUID;
           }) => void;
         } | null;
         if (typeof eventService?.emit === "function") {
+          // With a persisted row the event carries its room, so the host's
+          // autonomy router recognizes the open conversation and does not
+          // persist a second copy.
           eventService.emit({
             runId: crypto.randomUUID(),
             stream: "assistant",
             agentId: opts.runtime.agentId,
+            ...(history.roomId ? { roomId: history.roomId } : {}),
             data: {
               text: message,
               source: "lifeops-scheduled-task",
@@ -864,20 +1055,23 @@ export function createProductionScheduledTaskDispatcher(opts: {
                 : {}),
             },
           });
-          surfacesAccepted += 1;
         }
         const notifier = getNotifier(opts.runtime);
         if (notifier) {
           try {
-            const title = await renderScheduledDispatchTitle(
-              opts.runtime,
-              record,
-              message,
-            );
+            const title = morningBrief
+              ? "Morning brief"
+              : await renderScheduledDispatchTitle(
+                  opts.runtime,
+                  record,
+                  message,
+                );
             const isUrgent = record.intensity === "urgent";
             await notifier.notify({
               title,
-              body: message,
+              body: morningBrief
+                ? "Your morning brief is ready. Open it to see the details."
+                : message,
               category: isUrgent ? "approval" : "reminder",
               priority: isUrgent ? "urgent" : "normal",
               source: "lifeops",
@@ -887,6 +1081,12 @@ export function createProductionScheduledTaskDispatcher(opts: {
                 taskId: record.taskId,
                 firedAtIso: record.firedAtIso,
                 channelKey: record.channelKey,
+                ...(history.conversationId && history.messageId
+                  ? {
+                      conversationId: history.conversationId,
+                      messageId: history.messageId,
+                    }
+                  : {}),
               },
             });
             surfacesAccepted += 1;
@@ -910,7 +1110,7 @@ export function createProductionScheduledTaskDispatcher(opts: {
             reason: "disconnected",
             userActionable: false,
             message:
-              "No in-app surface (assistant event bus or notification service) accepted the payload.",
+              "No durable in-app surface (owner chat history or notification service) accepted the payload.",
           };
         }
         return {
@@ -920,13 +1120,47 @@ export function createProductionScheduledTaskDispatcher(opts: {
           target:
             normalizeChannelTarget(record.channelKey, record.output?.target) ??
             "in_app",
+          ...(history.roomId
+            ? {
+                metadata: {
+                  ownerChatRoomId: history.roomId,
+                  ...(history.conversationId
+                    ? { ownerChatConversationId: history.conversationId }
+                    : {}),
+                  ...(history.messageId
+                    ? { ownerChatMessageId: history.messageId }
+                    : {}),
+                },
+              }
+            : {}),
         };
       }
 
-      const target = await resolveScheduledTaskChannelTarget(
-        opts.runtime,
-        record,
-      );
+      let target: string | null;
+      try {
+        target = await resolveScheduledTaskChannelTarget(opts.runtime, record);
+      } catch (error) {
+        // error-policy:J1 boundary translation — owner/contact target
+        // resolution runs outside the guarded render step, and its storage
+        // failures (e.g. OWNER_ENTITY_LOOKUP_FAILED) must surface as a typed
+        // retryable DispatchResult. A thrown error reaches the runner as a
+        // dispatch error with no metadata.lastDispatchResult, so the stored
+        // outcome leaves the typed DispatchResult contract.
+        opts.runtime.reportError(
+          "lifeops:scheduled-task:dispatch-target-resolve",
+          error,
+          { taskId: record.taskId, channelKey: record.channelKey },
+        );
+        return applyDispatchPolicy({
+          ok: false,
+          reason: "transport_error",
+          userActionable: false,
+          retryAfterMinutes: TARGET_RESOLUTION_RETRY_MINUTES,
+          message: `Scheduled dispatch target resolution failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+      }
       if (!target) {
         return applyDispatchPolicy({
           ok: false,
@@ -1118,15 +1352,36 @@ export function createProductionScheduledTaskDispatcher(opts: {
   };
 }
 
+/** Bind activity resolution to the same durable rows used by the runner. */
+export function registerDossierActivityAnchor(
+  runtime: IAgentRuntime,
+  registry: AnchorRegistry,
+): void {
+  if (registry.get(DOSSIER_ACTIVITY_ANCHOR_KEY)) return;
+  const { store } = makeRepositoryBackedStores(runtime, runtime.agentId);
+  registry.register({
+    anchorKey: DOSSIER_ACTIVITY_ANCHOR_KEY,
+    consumption: "host_claim",
+    describe: {
+      label: "First authenticated owner activity of the dossier day",
+      provider: "@elizaos/plugin-personal-assistant",
+    },
+    resolve: (context) =>
+      resolveOwnerDossierActivityAnchor(store, context.nowIso),
+  });
+}
+
 function resolveRuntimeAnchorRegistry(runtime: IAgentRuntime) {
   const existing = getAnchorRegistry(runtime);
   if (existing) {
     registerFallbackAnchors(existing);
+    registerDossierActivityAnchor(runtime, existing);
     return existing;
   }
   const registry = createAnchorRegistry();
   registerAppLifeOpsAnchors(registry);
   registerFallbackAnchors(registry);
+  registerDossierActivityAnchor(runtime, registry);
   registerAnchorRegistry(runtime, registry);
   return registry;
 }
@@ -1141,7 +1396,7 @@ export interface CreateRuntimeRunnerOptions {
   subjectStore?: SubjectStoreView;
   /**
    * Override the host-capability probe. The default reads
-   * `getHostExecutionCapabilities(runtime)` from `@elizaos/app-core`,
+   * `getHostExecutionCapabilities(runtime)` from this scheduler module,
    * which detects iOS BackgroundRunner / Android FGS / Node desktop. Tests
    * inject a fixed set to exercise substitution behavior.
    */
@@ -1212,15 +1467,34 @@ function buildLifeOpsRunnerDeps(
     opts.subjectStore ??
     makeRuntimeSubjectStoreView(opts.runtime, opts.agentId);
 
+  const ownerFacts = opts.ownerFacts ?? defaultOwnerFactsProvider(opts.runtime);
+
   return {
     store: stores.store,
+    prepareMutation: createDossierActivityMutationPolicy({ ownerFacts }),
+    prepareAutomaticFire: prepareDossierAutomaticFire,
+    automaticAdmission: admitDossierAutomaticExecution,
+    prepareExecution: async ({ task, nowIso }) => {
+      if (!isManagedDossierTask(task)) return;
+      const facts = await ownerFacts();
+      await reconcileOwnerDossierActivity(stores.store, {
+        nowIso,
+        day: {
+          timezone: facts.timezone ?? resolveDefaultTimeZone(),
+          boundaryMinutes: 240,
+        },
+      });
+    },
+
+    executionBoundary: (task, execute) =>
+      withFamilyScheduledExecution(opts.runtime, task, execute, opts.agentId),
     logStore: stores.logStore,
     gates,
     completionChecks,
     ladders,
     anchors,
     consolidation,
-    ownerFacts: opts.ownerFacts ?? defaultOwnerFactsProvider(opts.runtime),
+    ownerFacts,
     globalPause,
     activity,
     subjectStore,
@@ -1277,6 +1551,19 @@ export function createRuntimeScheduledTaskRunner(
       ? { hostCapabilities: deps.hostCapabilities }
       : {}),
     dispatcher: deps.dispatcher,
+    ...(deps.executionBoundary
+      ? { executionBoundary: deps.executionBoundary }
+      : {}),
+    ...(deps.prepareMutation ? { prepareMutation: deps.prepareMutation } : {}),
+    ...(deps.prepareExecution
+      ? { prepareExecution: deps.prepareExecution }
+      : {}),
+    ...(deps.automaticAdmission
+      ? { automaticAdmission: deps.automaticAdmission }
+      : {}),
+    ...(deps.prepareAutomaticFire
+      ? { prepareAutomaticFire: deps.prepareAutomaticFire }
+      : {}),
   });
 }
 

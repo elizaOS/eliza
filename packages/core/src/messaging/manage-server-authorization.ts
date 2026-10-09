@@ -15,12 +15,12 @@ import {
 	type RolesWorldMetadata,
 	resolveEntityRole,
 } from "../roles.ts";
+import type { UUID } from "../types/primitives.js";
 import type {
 	IAgentRuntime,
 	MessageConnectorManageServerAuthorization,
 	MessageConnectorManageServerDestination,
-	UUID,
-} from "../types/index.ts";
+} from "../types/runtime.js";
 
 function deny(
 	code: string,

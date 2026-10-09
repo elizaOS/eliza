@@ -1,67 +1,22 @@
 # @elizaos/cloud-api
 
-The Eliza Cloud HTTP API. It runs as a Cloudflare Worker with [Hono](https://hono.dev) routing and backs the managed services behind Eliza Cloud: authentication, app and agent registration, inference routing, billing, MCP and A2A endpoints, custom domains, and container deploys.
+The Eliza Cloud HTTP API: a Cloudflare Workers app (Hono router) that backs auth,
+app/agent registration, inference routing, billing, MCP, A2A, domains, and container
+deploys.
 
-It is deployed standalone (`wrangler deploy`) rather than imported by other packages. Most shared logic — the database client, auth, AI-provider routing, billing, and cron — lives in `@elizaos/cloud-shared`; this package owns the Worker entrypoint, the route tree, and the codegen that mounts it.
+Runs on Cloudflare Workers with Hono. Start with `bun run --cwd packages/cloud/api dev`;
+local bindings are derived from root .env/.env.local. Add routes in the file-based route
+tree and run the package codegen script. The build script checks types; typecheck also
+validates router and Worker bundling contracts.
 
-## How routing works
+## Development
 
-Endpoints are file-based, mirroring the Next.js App Router, but each leaf is a small Hono app. A `route.ts` at `v1/models/route.ts` is served at `/api/v1/models`. Dynamic segments use `[id]` directories and grouping uses `(group)` directories.
-
-A codegen step (`src/_generate-router.mjs`) walks the package, finds every `route.ts` / `route.tsx`, and writes `src/_router.generated.ts`, which exports `mountRoutes(app)`. Every Hono-shaped leaf is mounted when it imports from `hono`, or imports the shared `createMcpsTransportApp` factory (the `mcps/*/[transport]` routes). Any other leaf fails generation before the generated files are written. Run `bun run codegen` after adding or removing a route.
-
-The Worker entrypoint (`src/index.ts`) answers `/api/health` directly and lazy-loads the full Hono stack (`src/bootstrap-app.ts`) on the first request, keeping cold-start work under Cloudflare's startup CPU budget.
-
-## Layout
-
-```
-src/index.ts          Worker entrypoint ({ fetch, scheduled })
-src/bootstrap-app.ts  Builds the full Hono app + global middleware
-src/_router.generated.ts  Generated route mount table (do not hand-edit)
-src/middleware/       Auth gate, API-key permissions, org membership
-src/services/         Audit-event dispatcher
-src/queue/            Cloudflare Queue consumers (Stripe events)
-src/steward/          Embedded Steward auth handler
-src/stubs/            workerd stand-ins for node-only deps
-<resource>/route.ts   Handlers: v1/, auth/, agents/, billing/, stripe/,
-                      mcp/, mcps/, a2a/, analytics/, admin/, training/, …
-wrangler.toml         Worker config (bindings, routes, queues, cron)
-```
-
-## Local development
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-cd packages/cloud/api
-bun install
-bun run dev          # wrangler dev (writes .dev.vars from repo .env/.env.local)
+bun run --cwd packages/cloud/api build  # build
+bun run --cwd packages/cloud/api test   # tests
 ```
-
-`.dev.vars.example` is a reference template; `.dev.vars` and `.dev.vars.example` are both gitignored. Real secrets belong in the repo `.env.local`. Talking to live services (Railway Postgres, R2, Stripe, providers) requires the corresponding bindings/secrets.
-
-## Verify deployment routing
-
-From the repository root, verify that the development API answers with its own environment:
-
-```bash
-node packages/cloud/scripts/verify-environment-routing-cli.mjs --environment development --require-beacon
-```
-
-The expected endpoint is `api-development.eliza.app`, matching the development infrastructure API origin. The check fails until that endpoint is deployed and reachable. Use `--environment staging`, `--environment production`, or `--environment all` for the other declared routes. A response from another tier always fails, including when unreachable origins are temporarily permitted during a rollout.
-
-## Scripts
-
-- `bun run dev` — local Worker via wrangler
-- `bun run codegen` — regenerate `src/_router.generated.ts`
-- `bun run check:router-contract` — verify generated mount parity and required live routes
-- `bun run build` — type-only compilation
-- `bun run typecheck` — types, router contract, and Worker bundle dry-run
-- `bun run lint` / `bun run lint:fix` — Biome
-- `bun run test` / `bun run test:e2e` — unit and e2e suites
-- `bun run deploy` — `wrangler deploy --env production`
-
-## Agent docs
-
-`CLAUDE.md` / `AGENTS.md` in this directory describe the package for AI coding agents (where code lives, how to extend it).
 
 ## Independent native App Auth clients
 
@@ -80,3 +35,113 @@ before shipping. The app UUID and server secrets must not be included in the
 native configuration. Retain the existing S256 grant, inactive exchange, durable
 receipt acknowledgment, self-revocation and account recovery contracts. `cloud:user`
 is the existing broad user/organization capability, not a narrower permission claim.
+
+## Pending plan-change discovery
+
+`GET /api/v1/subscriptions/plan-change/commands?limit=...` rediscovers the current
+billing manager's own pending upgrade/downgrade commands. Use its opaque cursor
+for the next bounded page; it is bound to organization, actor and command family.
+Each page is a fresh primary read, not a frozen multi-request snapshot. Discovery
+does not claim a lease, contact the payment provider or resume an operation.
+The response includes original target, lease state and current-source relationship;
+read the corresponding command status or refresh the subscription before acting.
+Cancellation/resumption retain the separate `/subscriptions/commands` contract.
+
+## Organization renewal review
+
+`GET /api/v1/subscriptions/cancel/undo/review` accepts `subscriptionId` and a
+positive decimal `expectedSubscriptionRevision`. It requires the current billing
+manager session and returns a no-store, 60-second renewal estimate for an eligible
+scheduled cancellation. The pinned provider invoice preview includes tax, discounts
+and customer balance; unsupported or incomplete previews fail closed. It creates
+no command, invoice or payment. `termsDigest` compares reviewed terms; it is not an
+authorization token or price lock. Use the confirmation route below to persist and revalidate reviewed terms
+before a reversal dispatch.
+
+`POST /api/v1/subscriptions/cancel/undo/confirm` requires the subscription ID,
+expected lifecycle revision, idempotency key and `expectedRenewalTermsDigest`
+from the review. It persists fresh matching terms with the durable command and
+revalidates them before dispatch. Reusing the same intent reads its recorded
+outcome; it never dispatches again. Changed terms before admission return 409;
+a rejection with a still-ready lease becomes FAILED, while a started dispatch
+retains OUTCOME_UNKNOWN until observation resolves it. Recovery fails expired
+prepared reviews without reconstructing a mutation. The existing undo/status
+APIs remain compatible; consumers needing reviewed confirmation use this route.
+Apply migration `0510_subscription_renewal_review_receipts` before deploying.
+
+
+## Organization upgrade review
+
+`POST /api/v1/subscriptions/upgrade/review` accepts `subscriptionId`, a positive
+safe-integer `expectedSubscriptionRevision`, and a catalog `targetPlanKey`.
+The current billing manager session is required and revalidated after provider
+reads. The no-store response contains `quoteId` and `review`, separating due-now
+proration/tax/discount/customer-balance terms from a long-term recurring estimate.
+The exact reviewed timestamp and prorated additional allowance are retained.
+Apply organization-upgrade migrations 0511 through 0520 before deployment.
+Saving a quote creates no charge, command or allowance grant. Confirmation and
+payment continuation use the separate endpoints below; scheduled downgrade remains
+separate lifecycle work.
+
+`POST /api/v1/subscriptions/upgrade/confirm` accepts only `quoteId` and
+`idempotencyKey`. It revalidates the current manager and original review before
+one dispatch; retries retain the original command. `GET /api/v1/subscriptions/upgrade/:commandId`
+reads durable status without provider work. Both return no-store responses and
+require a current billing-manager session. `OUTCOME_UNKNOWN` can include pending
+payment and must not trigger a new intent. `failure: review_required` means an
+unstarted review ended; `invoice_void` requires definitive original void evidence.
+Product UI/native adoption and real provider acceptance remain separate work.
+
+`POST /api/v1/subscriptions/upgrade/:commandId/payment` reconciles the original
+command and returns either durable status or an ephemeral private hosted-invoice
+continuation. It checks the original invoice, reviewed amount, pending target and
+unpaid payment intent, then revalidates manager/source/session authority. It never
+creates or pays an invoice. The no-store URL must stay out of logs, model context
+and history. Call again after browser return; return alone does not prove payment.
+
+`POST /api/v1/subscriptions/downgrade/review` uses the same authenticated catalog
+intent and returns an immutable lower-plan quote. `effectiveAt` is the current
+period end and `amountDueNowCents` is zero. `recurringEstimate` is a long-term
+estimate, not a guaranteed next invoice. This endpoint creates no provider
+schedule, command, charge or allowance change; downgrade confirmation is not
+yet exposed. Upgrade confirmation rejects a downgrade quote.
+
+
+Organization downgrade confirmation uses `POST /api/v1/subscriptions/downgrade/confirm`
+with only `quoteId` and `idempotencyKey` from an explicitly reviewed original quote.
+`GET /api/v1/subscriptions/downgrade/{commandId}` reads durable status without
+provider work. Both require the current billing-manager session, recheck identity
+before returning, and return no-store responses. Confirmation resumes the original
+journal; it never repeats a started provider effect. APPLIED records a pending
+lower plan, not payment or immediate lower-plan allowance. Missing/changed original
+command authority is a conflict, not proof that a replacement intent is safe.
+Apply scheduling migrations through 0527 before deployment. Unattended recovery,
+configured-schedule undo/cancel/resume, retained-adjustment payment authority and
+live qualification remain required before product rollout.
+
+## Speech rendering controls
+
+`POST /api/v1/voice/tts` accepts optional `speed` (0.7–1.2), `previousText` and
+`nextText` (at most 5,000 characters each), and `applyTextNormalization`
+(`auto`, `on`, `off`) for ElevenLabs synthesis. Explicitly pin an ElevenLabs
+voice when the deployment defaults to another provider; unsupported providers
+reject these options instead of silently dropping them. Context passes through
+content screening, but only the synthesized text is priced. Requests with any
+rendering control bypass the legacy audio cache. Explicit normalization takes
+precedence over the service's legacy latency optimization. Successful responses
+with explicit speed include `X-Eliza-TTS-Speed`, allowing clients to avoid applying
+pace twice and detect older deployments. Response audio and
+existing authorization, admission and billing boundaries are unchanged.
+
+Set `withTimestamps: true` with an ElevenLabs voice to receive
+`application/x-ndjson` and `X-Eliza-TTS-Timing: character-v1`. Timed output is MP3
+only and bypasses audio caching. Each `audio` record has a zero-based sequence,
+base64 audio, MIME type, original alignment and normalized alignment (nullable).
+Alignment arrays retain provider character coordinates; no timing is estimated.
+A final `done` record reports frame/audio-byte totals; missing completion means
+the stream is incomplete. Consumers must validate timing and bind it to their
+playback clock. The adapter bounds audio to 8 MiB, combined alignment to 50,000
+characters and records to 2,048; exceeding a limit fails rather than truncates.
+Cancellation aborts the provider transport. Provider errors after response headers
+error the stream without a completion record; existing synthesis billing semantics
+remain unchanged. This endpoint alone does not provide client streaming playback.

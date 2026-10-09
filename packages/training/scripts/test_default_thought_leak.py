@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.lib.eliza_record import DEFAULT_THOUGHT_LEAKS, is_default_thought_leak
-from scripts.transform_purge_default_thoughts import (
+from eliza_training.lib.eliza_record import DEFAULT_THOUGHT_LEAKS, is_default_thought_leak
+from eliza_training.transform_purge_default_thoughts import (
     process_file,
     rewrite_expected_response,
 )

@@ -17,10 +17,19 @@ import type {
 	IStreamExtractor,
 	StructuredFieldEventCallbacks,
 } from "../types/streaming";
+import { REASONING_TAG_NAMES } from "./reasoning-tags";
+import { toWellFormedUnicode } from "./unicode";
 
-// ============================================================================
+/**
+ * True when `code` is a UTF-16 high (lead) surrogate. A chunk ending on one is
+ * the first half of a non-BMP code point (e.g. an emoji); emitting it alone
+ * produces a lone surrogate that corrupts UTF-8/JSON serialization downstream.
+ */
+function isHighSurrogate(code: number): boolean {
+	return code >= 0xd800 && code <= 0xdbff;
+}
+
 // StreamError - Standardized error handling for streaming
-// ============================================================================
 
 /** Error codes for streaming operations */
 export type StreamErrorCode =
@@ -55,9 +64,7 @@ export class StreamError extends Error {
 	}
 }
 
-// ============================================================================
 // Shared constants and utilities
-// ============================================================================
 
 /** Maximum chunk size to prevent DoS (1MB) */
 const MAX_CHUNK_SIZE = 1024 * 1024;
@@ -82,9 +89,7 @@ function validateChunkSize(chunk: string): void {
 	}
 }
 
-// ============================================================================
 // PassthroughExtractor - Simplest implementation
-// ============================================================================
 
 /**
  * Streams all content as-is without any filtering.
@@ -109,35 +114,9 @@ export class PassthroughExtractor implements IStreamExtractor {
 	}
 }
 
-// ============================================================================
 // MarkableExtractor - Passthrough with external completion control
-// ============================================================================
 
-/**
- * Passthrough extractor that can be marked complete externally.
- *
- * WHY: When using StructuredFieldStreamExtractor inside dynamicPromptExecFromState,
- * extraction/completion is handled internally. But the outer streaming context
- * still needs to know when streaming is complete for retry/fallback logic.
- *
- * This extractor passes through all content and provides a markComplete() method
- * that the caller can invoke when the underlying operation completes successfully.
- *
- * @example
- * ```ts
- * const extractor = new MarkableExtractor();
- * const ctx = createStreamingContext(extractor, callback);
- *
- * const result = await dynamicPromptExecFromState({ ... });
- * if (result) {
- *   extractor.markComplete(); // Signal success
- * }
- *
- * if (ctx.isComplete()) {
- *   // Now returns true after markComplete()
- * }
- * ```
- */
+/** Passes through streaming text while allowing the owning structured extractor to mark completion for retry and fallback handling. */
 export class MarkableExtractor implements IStreamExtractor {
 	private _done = false;
 
@@ -241,9 +220,7 @@ export interface ValidationDiagnosis {
 	incompleteFields: string[];
 }
 
-// ============================================================================
 // StructuredFieldStreamExtractor - top-level field extraction
-// ============================================================================
 
 const STRUCTURED_TOP_LEVEL_FIELD_RE =
 	/^([A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?):(?:\s?(.*))?$/;
@@ -591,9 +568,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 	}
 }
 
-// ============================================================================
 // ResponseSkeletonStreamExtractor - JSON skeleton field extraction
-// ============================================================================
 
 /**
  * Extracts selected free-string fields from a streamed JSON response skeleton.
@@ -613,7 +588,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	private emittedContent: Map<string, string> = new Map();
 	private reasoningFilters: Map<
 		string,
-		{ mode: "outside" | "inside"; pending: string }
+		{ mode: "outside" | "inside"; pending: string; closeTag: string }
 	> = new Map();
 	private state: ExtractorState = "streaming";
 	private formatDecided = false;
@@ -663,7 +638,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			this.decideFormat();
 		}
 		if (this.passthrough) {
-			this.drainPassthrough();
+			this.drainPassthrough(false);
 			return "";
 		}
 		this.config.unordered ? this.drainUnordered(false) : this.drain(false);
@@ -678,7 +653,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			this.decideFormat();
 		}
 		if (this.passthrough) {
-			this.drainPassthrough();
+			this.drainPassthrough(true);
 			this.buffer = "";
 			this.state = "complete";
 			this.emitEvent({ eventType: "complete", timestamp: Date.now() });
@@ -690,6 +665,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			if (flushed) {
 				this.appendVisibleAndEmit(field, flushed);
 			}
+			this.flushPendingSurrogate(field);
 		}
 		this.activeStringField = null;
 		this.pendingEscape = "";
@@ -736,13 +712,21 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		this.passthrough = !looksStructured;
 	}
 
-	/** Stream buffered prose straight through as reply text (passthrough mode). */
-	private drainPassthrough(): void {
-		if (this.buffer.length === 0) {
+	/**
+	 * Stream buffered prose straight through as reply text (passthrough mode).
+	 * Until end-of-stream, a trailing high surrogate stays buffered so it can
+	 * rejoin its low half from the next push; emitted text is well-formed.
+	 */
+	private drainPassthrough(final: boolean): void {
+		let end = this.buffer.length;
+		if (!final && isHighSurrogate(this.buffer.charCodeAt(end - 1))) {
+			end -= 1;
+		}
+		if (end === 0) {
 			return;
 		}
-		const chunk = this.buffer;
-		this.buffer = "";
+		const chunk = toWellFormedUnicode(this.buffer.slice(0, end));
+		this.buffer = this.buffer.slice(end);
 		this.passthroughEmitted += chunk;
 		this.config.onChunk(
 			chunk,
@@ -1068,19 +1052,67 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	}
 
 	private appendVisibleAndEmit(field: string, value: string): void {
-		const next = `${this.fieldContents.get(field) ?? ""}${value}`;
-		this.fieldContents.set(field, next);
 		const previous = this.emittedContent.get(field) ?? "";
-		const chunk = next.slice(previous.length);
+		// `fieldContents` is the well-formed emitted prefix plus at most one raw
+		// high surrogate held back from the previous emission.
+		const raw = `${this.fieldContents.get(field) ?? ""}${value}`;
+		let chunk = raw.slice(previous.length);
 		if (!chunk) {
+			this.fieldContents.set(field, raw);
 			return;
 		}
-		this.emittedContent.set(field, next);
-		this.config.onChunk(chunk, field, next, this.streamRevision);
+		// Never split a surrogate pair across chunks: hold back a trailing high
+		// surrogate (from an escape pair decoded one escape at a time, or literal
+		// units split across pushes) until its low half arrives or the stream ends.
+		let pending = "";
+		if (isHighSurrogate(chunk.charCodeAt(chunk.length - 1))) {
+			pending = chunk.slice(-1);
+			chunk = chunk.slice(0, -1);
+		}
+		// Interior unpaired surrogates become U+FFFD. The replacement is 1:1 by
+		// code unit, so the length-based emission cursor stays valid.
+		chunk = toWellFormedUnicode(chunk);
+		if (!chunk) {
+			this.fieldContents.set(field, previous + pending);
+			return;
+		}
+		const emitted = previous + chunk;
+		this.emittedContent.set(field, emitted);
+		this.fieldContents.set(field, emitted + pending);
+		this.config.onChunk(chunk, field, emitted, this.streamRevision);
 		this.emitEvent({
 			eventType: "chunk",
 			field,
 			chunk,
+			timestamp: Date.now(),
+		});
+	}
+
+	/**
+	 * At end-of-stream, emit a high surrogate `appendVisibleAndEmit` held back
+	 * whose low half never arrived, as U+FFFD.
+	 */
+	private flushPendingSurrogate(field: string): void {
+		const content = this.fieldContents.get(field);
+		if (content === undefined) {
+			return;
+		}
+		const emitted = this.emittedContent.get(field) ?? "";
+		if (content.length <= emitted.length) {
+			return;
+		}
+		const remainder = toWellFormedUnicode(content.slice(emitted.length));
+		if (!remainder) {
+			return;
+		}
+		const finalContent = emitted + remainder;
+		this.fieldContents.set(field, finalContent);
+		this.emittedContent.set(field, finalContent);
+		this.config.onChunk(remainder, field, finalContent, this.streamRevision);
+		this.emitEvent({
+			eventType: "chunk",
+			field,
+			chunk: remainder,
 			timestamp: Date.now(),
 		});
 	}
@@ -1090,12 +1122,11 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		value: string,
 		final: boolean,
 	): string {
-		const filter =
-			this.reasoningFilters.get(field) ??
-			({ mode: "outside", pending: "" } as {
-				mode: "outside" | "inside";
-				pending: string;
-			});
+		const filter = this.reasoningFilters.get(field) ?? {
+			mode: "outside" as "outside" | "inside",
+			pending: "",
+			closeTag: "",
+		};
 		const source = `${filter.pending}${value}`;
 		filter.pending = "";
 		const parts: string[] = [];
@@ -1111,13 +1142,14 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				if (candidate > index) {
 					parts.push(source.slice(index, candidate));
 				}
-				const open = matchTagAt(source, candidate, "<think>");
-				if (open === "full") {
+				const open = matchReasoningOpenTagAt(source, candidate);
+				if (open.kind === "full") {
 					filter.mode = "inside";
-					index = candidate + "<think>".length;
+					filter.closeTag = `</${open.name}>`;
+					index = candidate + open.name.length + 2;
 					continue;
 				}
-				if (open === "partial") {
+				if (open.kind === "partial") {
 					filter.pending = source.slice(candidate);
 					break;
 				}
@@ -1130,10 +1162,11 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			if (candidate === -1) {
 				break;
 			}
-			const close = matchTagAt(source, candidate, "</think>");
+			const close = matchTagAt(source, candidate, filter.closeTag);
 			if (close === "full") {
 				filter.mode = "outside";
-				index = candidate + "</think>".length;
+				index = candidate + filter.closeTag.length;
+				filter.closeTag = "";
 				continue;
 			}
 			if (close === "partial") {
@@ -1170,10 +1203,32 @@ function decodeJsonEscape(raw: string): string {
 	}
 }
 
+/**
+ * Match any canonical reasoning open tag (`<think>`, `<thinking>`,...) at
+ * `index`. `partial` means the source ends inside a prefix of at least one
+ * tag, so the caller must hold the remainder until more input arrives.
+ */
+function matchReasoningOpenTagAt(
+	source: string,
+	index: number,
+): { kind: "full"; name: string } | { kind: "partial" } | { kind: "none" } {
+	let partial = false;
+	for (const name of REASONING_TAG_NAMES) {
+		const match = matchTagAt(source, index, `<${name}>`);
+		if (match === "full") {
+			return { kind: "full", name };
+		}
+		if (match === "partial") {
+			partial = true;
+		}
+	}
+	return partial ? { kind: "partial" } : { kind: "none" };
+}
+
 function matchTagAt(
 	source: string,
 	index: number,
-	tag: "<think>" | "</think>",
+	tag: string,
 ): "full" | "partial" | "none" {
 	const remainingLen = source.length - index;
 	if (remainingLen <= 0) {
@@ -1300,9 +1355,7 @@ function findBalancedJsonEnd(value: string): number | null {
 	return null;
 }
 
-// ============================================================================
 // Streaming Context Helpers
-// ============================================================================
 
 import type { StreamingContext } from "../streaming-context";
 

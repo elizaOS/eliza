@@ -9,12 +9,8 @@
  *
  *  1. the managed Cloud app routing contract — this leg proves (a) each
  *     `/cloud/<surface>` page delegates through the normal app-shell boundary,
- *     (b) only the genuinely-removed spellings
- *     (earnings/affiliates, `/cloud/settings?tab=<x>`) redirect — to their
- *     canonical `/cloud/*` page — and (c) the in-app `/settings#<section>`
- *     hash surface resolves every registered cloud section via
- *     `readSettingsHashSection`, including the legacy `#billing` / `#api-keys`
- *     aliases;
+ *     and the in-app `/settings#<section>` hash surface resolves registered
+ *     cloud sections through `readSettingsHashSection`;
  *  2. each canonical Settings section (billing incl. the relocated
  *     `?canceled=true` banner, monetization tabs, security incl. the
  *     hash-anchor links, api-keys, account) rendering real data from the mock
@@ -36,7 +32,7 @@ import { chromium } from "playwright";
 import postcss from "postcss";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
-import { waitForAdvertisedPort } from "../../../../scripts/e2e-ports.mjs";
+import { waitForAdvertisedPort } from "../../../../scripts/e2e-ports.ts";
 import { optionalWalletPeerStubPlugin } from "./optional-wallet-peer-stub.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -407,10 +403,6 @@ const ORIGIN = `http://127.0.0.1:${pageServer.port}`;
 // render a separate ConsoleShell. It delegates every management route into the
 // tab/view app boundary; packages/app's Playwright suite proves the real shell
 // marker + route-specific header while this isolated fixture proves delegation.
-// Only genuinely-removed spellings (earnings/affiliates, the legacy
-// `/cloud/settings?tab=<x>` OAuth/Stripe return shape) still redirect — to
-// their canonical `/cloud/*` page, never to `/settings`. This leg verifies
-// delegation, compatibility redirects, and the retained Settings aliases.
 
 async function assertManagedAppRoute(from, expectedPath) {
   await page.goto(`${ORIGIN}${from}`, { waitUntil: "load" });
@@ -449,46 +441,28 @@ for (const [from, expectedPath] of managementPages) {
   await assertManagedAppRoute(from, expectedPath);
 }
 
-// 1b. The genuinely-removed legacy spellings redirect to their canonical
-//     managed Cloud page (the query string is carried through).
-console.log("== leg 1b: legacy → canonical Cloud redirects ==");
-const redirectCases = [
-  ["/cloud/security", "/cloud/account"],
-  ["/cloud/earnings", "/cloud/monetization"],
-  ["/cloud/affiliates", "/cloud/monetization"],
-  [
-    "/cloud/settings?tab=connections",
-    "/cloud/connectors?tab=connections",
-  ],
-  ["/cloud/settings?tab=billing", "/cloud/billing?tab=billing"],
-];
-for (const [from, expectedPath] of redirectCases) {
-  await assertManagedAppRoute(from, expectedPath);
-}
-
-// 1c. The in-app /settings#<section> hash surface — the app-side half of the
-//     dual-mount. `/settings` falls through to the agent-app catch-all (it is an
-//     in-app view, not a registered cloud route), so the fixture's CatchAllProbe
-//     mounts and `readSettingsHashSection` resolves every registered cloud
-//     section, including the legacy `#billing` / `#api-keys` aliases.
-console.log("== leg 1c: in-app settings hash sections ==");
+// Cloud-owned hash sections redirect to their canonical route. App-only
+// sections remain on the in-app settings surface.
+console.log("== leg 1c: settings hash routing ==");
 const hashCases = [
-  ["/settings#cloud-billing", "cloud-billing"],
-  ["/settings#billing", "cloud-billing"],
-  ["/settings#cloud-api-keys", "cloud-api-keys"],
-  ["/settings#api-keys", "cloud-api-keys"],
-  ["/settings#cloud-monetization", "cloud-monetization"],
-  ["/settings#cloud-account", "cloud-account"],
-  ["/settings#cloud-security", "cloud-security"],
-  ["/settings#cloud-plugin-grants", "cloud-plugin-grants"],
-  ["/settings#cloud-organization", "cloud-organization"],
+  ["/settings#cloud-billing", "/cloud/billing", "(none)"],
+  ["/settings#cloud-api-keys", "/cloud/api-keys", "(none)"],
+  ["/settings#cloud-monetization", "/cloud/monetization", "(none)"],
+  ["/settings#cloud-account", "/cloud/account", "(none)"],
+  ["/settings#cloud-security", "/settings#cloud-security", "cloud-security"],
+  ["/settings#cloud-plugin-grants", "/cloud/security/permissions", "(none)"],
+  ["/settings#cloud-organization", "/cloud/organization", "(none)"],
 ];
-for (const [from, expectedSection] of hashCases) {
+for (const [from, expectedLocation, expectedSection] of hashCases) {
   await page.goto(`${ORIGIN}${from}`, { waitUntil: "load" });
   await page.getByTestId("probe-location").waitFor({ timeout: 30_000 });
+  await page.waitForFunction(
+    (expected) => document.querySelector('[data-testid="probe-location"]')?.textContent === expected,
+    expectedLocation,
+  );
   const loc = await page.getByTestId("probe-location").innerText();
   const section = await page.getByTestId("probe-section").innerText();
-  assert(loc === from, `${from} stays on the in-app settings surface (got ${loc})`);
+  assert(loc === expectedLocation, `${from} resolves to ${expectedLocation} (got ${loc})`);
   assert(
     section === expectedSection,
     `${from} resolves settings section ${expectedSection} (got ${section})`,
@@ -614,9 +588,9 @@ await writeFile(
       failures,
       screenshots: shot,
       managementPages: managementPages.map(([from, to]) => ({ from, to })),
-      redirectCases: redirectCases.map(([from, to]) => ({ from, to })),
-      settingsHashSections: hashCases.map(([from, section]) => ({
+      settingsHashSections: hashCases.map(([from, to, section]) => ({
         from,
+        to,
         section,
       })),
       ranAt: new Date().toISOString(),

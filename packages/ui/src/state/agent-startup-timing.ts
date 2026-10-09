@@ -3,7 +3,7 @@
  * extension applied while the agent stays in `starting`. Electrobun gets a
  * longer floor. Consumed by the startup coordinator's poll loop.
  */
-import { isElectrobunRuntime } from "../bridge";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { AGENT_READY_TIMEOUT_MS } from "./types";
 
 /** Hard cap from first agent-wait loop iteration (first successful getStatus). */

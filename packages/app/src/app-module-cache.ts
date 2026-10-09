@@ -22,7 +22,10 @@ export function cachedDynamicImport<T>(
 ): Promise<T> {
   const existing = appModuleCache.get(key) as Promise<T> | undefined;
   if (existing) return existing;
-  const promise = loader();
+  const promise = Promise.resolve().then(loader);
   appModuleCache.set(key, promise);
+  void promise.catch(() => {
+    if (appModuleCache.get(key) === promise) appModuleCache.delete(key);
+  });
   return promise;
 }

@@ -1,6 +1,5 @@
 /** Delegates Telegram protocol behavior to the shared Web-standard connector. */
 
-import { normalizeIdentityLinkCodeBody } from "@elizaos/cloud-services-common/identity-link-code";
 import {
   parseTelegramWebhook,
   resolveTelegramBotUsername,
@@ -13,8 +12,10 @@ import {
   TELEGRAM_VOICE_MAX_DURATION_SECONDS,
   TelegramApiResponseError,
   type TelegramConnectorEvent,
+  telegramReplyWithMedia,
   verifyTelegramWebhook,
-} from "@elizaos/cloud-services-common/telegram-connector";
+} from "@elizaos/cloud-services-common/telegram";
+import { normalizeIdentityLinkCodeBody } from "@elizaos/cloud-services-common/transport";
 import { resolveConnectorAccountId } from "../connector-account";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
@@ -165,11 +166,13 @@ export const telegramAdapter: PlatformAdapter = {
     );
   },
 
-  async sendReplyWithReceipt(config, event, text, deliveryHooks) {
+  async sendReplyWithReceipt(config, event, text, deliveryHooks, mediaUrls) {
     return sendTelegramReply(
       config,
       asTelegramEvent(event),
-      text,
+      event.chatType === "private" && !event.membershipChange
+        ? telegramReplyWithMedia(text, mediaUrls)
+        : text,
       logger,
       deliveryHooks,
     );

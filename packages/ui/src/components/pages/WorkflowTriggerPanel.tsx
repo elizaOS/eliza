@@ -1,4 +1,6 @@
 /** Presents native elizaOS workflow triggers as a compact visual start surface. */
+
+import type { TriggerType } from "@elizaos/core";
 import {
   CalendarClock,
   Clock3,
@@ -9,12 +11,11 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import type { WorkflowDefinition } from "../../api/client-types-chat";
 import type {
   CreateTriggerRequest,
   TriggerSummary,
-  TriggerType,
 } from "../../api/client-types-core";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -293,12 +294,12 @@ export function WorkflowTriggerPanel({
           {type === "event" ? (
             <>
               <NativeSelect
+                presentation="compact"
                 aria-label="Event source"
                 value={eventMode}
                 onChange={(event) =>
                   setEventMode(event.target.value as EventMode)
                 }
-                presentation="compact"
                 className="min-w-28"
               >
                 {EVENT_OPTIONS.map((option) => (
@@ -309,10 +310,10 @@ export function WorkflowTriggerPanel({
               </NativeSelect>
               {eventMode !== "message" ? (
                 <NativeSelect
+                  presentation="compact"
                   aria-label="Source workflow"
                   value={sourceWorkflowId}
                   onChange={(event) => setSourceWorkflowId(event.target.value)}
-                  presentation="compact"
                   className="min-w-32 flex-1"
                 >
                   {sources.length === 0 ? (
@@ -327,10 +328,10 @@ export function WorkflowTriggerPanel({
               ) : null}
               {eventMode === "step" ? (
                 <NativeSelect
+                  presentation="compact"
                   aria-label="Source step"
                   value={sourceStepId}
                   onChange={(event) => setSourceStepId(event.target.value)}
-                  presentation="compact"
                   className="min-w-28 flex-1"
                 >
                   {(sourceWorkflow?.steps ?? []).length === 0 ? (

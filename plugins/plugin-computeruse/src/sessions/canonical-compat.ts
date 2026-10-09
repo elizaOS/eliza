@@ -14,7 +14,7 @@ import {
   type InteractionSession,
   type InteractionSurfaceKind,
   normalizeInteractionSession,
-} from "@elizaos/core";
+} from "@elizaos/contracts/node";
 import type {
   ComputerUseSessionAction,
   ComputerUseSessionSnapshot,

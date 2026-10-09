@@ -1,10 +1,11 @@
 // Handles v1 cloud API v1 eliza agents agentid api identity uri route traffic with route-local auth expectations.
+
+import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import { agentIdentities } from "@elizaos/cloud-shared/db/schemas/agent-identities";
+import { nextStyleParams } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
-import { dbWrite } from "@/db/helpers";
-import { agentIdentities } from "@/db/schemas/agent-identities";
-import { nextStyleParams } from "@/lib/api/hono-next-style-params";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { proxyLocalDedicatedOrNext } from "../../_local-dedicated-proxy";
 import {
   getCurrentIdentity,

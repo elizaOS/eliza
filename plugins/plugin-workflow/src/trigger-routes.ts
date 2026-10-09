@@ -8,8 +8,6 @@ import crypto from 'node:crypto';
 import {
   type TriggerRunRecord as CoreTriggerRunRecord,
   type IAgentRuntime,
-  type RouteHelpers,
-  type RouteRequestContext,
   stringToUuid,
   type Task,
   type TriggerConfig,
@@ -19,9 +17,29 @@ import {
   type TriggerWakeMode,
   type UUID,
 } from '@elizaos/core';
+import type { RouteHelpers, RouteRequestContext } from '@elizaos/host/protocol';
+import { isAgentOwnedHeartbeat, isTriggerTaskOwnedBy } from './lib/trigger-ownership';
 
+const PAST_ONCE_SCHEDULE_ERROR = 'Once trigger requires a future scheduledAtIso';
+
+/**
+ * A past one-time schedule clamps to an update interval of 0, which the task
+ * service treats as an invalid repeat task: it never fires and never expires.
+ * The chat action already rejects it; the HTTP routes must not report success.
+ */
+function isPastOnceSchedule(
+  draft: {
+    triggerType?: string;
+    scheduledAtIso?: string;
+    enabled?: boolean;
+  },
+  nowMs: number
+): boolean {
+  if (draft.triggerType !== 'once' || draft.enabled === false) return false;
+  const scheduledAt = draft.scheduledAtIso ? Date.parse(draft.scheduledAtIso) : Number.NaN;
+  return Number.isFinite(scheduledAt) && scheduledAt <= nowMs;
+}
 export type TriggerRouteHelpers = RouteHelpers;
-
 export interface TriggerTaskMetadata {
   updatedAt?: number;
   updateInterval?: number;
@@ -39,7 +57,6 @@ export interface TriggerTaskMetadata {
     | TriggerConfig
     | CoreTriggerRunRecord[];
 }
-
 export interface TriggerSummary {
   id: UUID;
   taskId: UUID;
@@ -67,7 +84,6 @@ export interface TriggerSummary {
   workflowId?: string;
   workflowName?: string;
 }
-
 export interface TriggerHealthSnapshot {
   triggersEnabled: boolean;
   activeTriggers: number;
@@ -77,7 +93,6 @@ export interface TriggerHealthSnapshot {
   totalSkipped: number;
   lastExecutionAt?: number;
 }
-
 export interface NormalizedTriggerDraft {
   displayName: string;
   instructions: string;
@@ -97,7 +112,6 @@ export interface NormalizedTriggerDraft {
   workflowId?: string;
   workflowName?: string;
 }
-
 export interface TriggerExecutionOptions {
   source: 'scheduler' | 'manual' | 'event';
   force?: boolean;
@@ -106,7 +120,6 @@ export interface TriggerExecutionOptions {
     payload?: Record<string, unknown>;
   };
 }
-
 export interface TriggerExecutionResult {
   status: 'success' | 'error' | 'skipped';
   error?: string;
@@ -115,7 +128,6 @@ export interface TriggerExecutionResult {
   trigger?: TriggerSummary | null;
   executionId?: string;
 }
-
 interface TriggerDraftInput {
   displayName?: string;
   instructions?: string;
@@ -135,7 +147,6 @@ interface TriggerDraftInput {
   workflowId?: string;
   workflowName?: string;
 }
-
 interface NormalizeTriggerDraftFallback {
   displayName: string;
   instructions: string;
@@ -145,9 +156,14 @@ interface NormalizeTriggerDraftFallback {
   createdBy: string;
   notifyOnOutcome?: boolean;
 }
-
 export interface TriggerRouteContext extends RouteRequestContext {
   runtime: IAgentRuntime | null;
+  /** Resolved at the authenticated server boundary, never from request data. */
+  ownerEntityId?: string;
+  /** Canonical local owner for ownerless legacy trigger compatibility. */
+  localOwnerEntityId?: string;
+  /** Host-owned app conversation; never accept a delivery room from request data. */
+  resolvePromptDeliveryRoom: (runtime: IAgentRuntime) => Promise<UUID>;
   executeTriggerTask: (
     runtime: IAgentRuntime,
     task: Task,
@@ -173,45 +189,48 @@ export interface TriggerRouteContext extends RouteRequestContext {
   normalizeTriggerDraft: (params: {
     input: TriggerDraftInput;
     fallback: NormalizeTriggerDraftFallback;
-  }) => { draft?: NormalizedTriggerDraft; error?: string };
+  }) => {
+    draft?: NormalizedTriggerDraft;
+    error?: string;
+  };
   DISABLED_TRIGGER_INTERVAL_MS: number;
   TRIGGER_TASK_NAME: string;
   TRIGGER_TASK_TAGS: string[];
 }
-
 function trim(value: string): string {
   return value.trim().replace(/\s+/g, ' ');
 }
-
 function parseTriggerKind(value: unknown): TriggerKind | undefined {
   if (value === 'workflow' || value === 'prompt') return value;
   return undefined;
 }
-
-type ParsedTriggerKind = { ok: true; kind: TriggerKind } | { ok: false; error: string };
-
+type ParsedTriggerKind =
+  | {
+      ok: true;
+      kind: TriggerKind;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
 function parseTriggerKindStrict(value: unknown): ParsedTriggerKind | undefined {
   if (value === undefined) return undefined;
   if (value === 'workflow' || value === 'prompt') return { ok: true, kind: value };
   return { ok: false, error: "kind must be 'workflow' or 'prompt'" };
 }
-
 function parseNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
-
 function parseEventPayload(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
 }
-
 function decodePathComponent(raw: string): string | null {
   try {
     return decodeURIComponent(raw);
@@ -221,7 +240,6 @@ function decodePathComponent(raw: string): string | null {
     return null;
   }
 }
-
 async function findTask(
   runtime: IAgentRuntime,
   id: string,
@@ -236,7 +254,6 @@ async function findTask(
     }) ?? null
   );
 }
-
 export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boolean> {
   const {
     method,
@@ -262,14 +279,12 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     TRIGGER_TASK_NAME,
     TRIGGER_TASK_TAGS,
   } = ctx;
-
   const listResponse = (triggers: TriggerSummary[], status = 200): void => {
     json(res, { triggers }, status);
   };
   const itemResponse = (summary: TriggerSummary, status = 200): void => {
     json(res, { trigger: summary }, status);
   };
-
   if (!pathname.startsWith('/api/triggers')) return false;
   if (!runtime) {
     error(res, 'Agent is not running', 503);
@@ -279,14 +294,22 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     error(res, 'Triggers are disabled by configuration', 503);
     return true;
   }
-
+  const ownerEntityId = ctx.ownerEntityId;
+  const localOwnerEntityId = ctx.localOwnerEntityId;
+  if (!ownerEntityId || !localOwnerEntityId) {
+    error(res, 'Owner role required', 403);
+    return true;
+  }
+  const listOwnedTriggerTasks = async (currentRuntime: IAgentRuntime): Promise<Task[]> =>
+    (await listTriggerTasks(currentRuntime)).filter((task) =>
+      isTriggerTaskOwnedBy(task, ownerEntityId, localOwnerEntityId, currentRuntime.agentId)
+    );
   if (method === 'GET' && pathname === '/api/triggers/health') {
     json(res, await getTriggerHealthSnapshot(runtime));
     return true;
   }
-
   if (method === 'GET' && pathname === '/api/triggers') {
-    const tasks = await listTriggerTasks(runtime);
+    const tasks = await listOwnedTriggerTasks(runtime);
     const triggers = tasks
       .map(taskToTriggerSummary)
       .filter((summary): summary is TriggerSummary => summary !== null)
@@ -294,11 +317,13 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     listResponse(triggers);
     return true;
   }
-
   if (method === 'POST' && pathname === '/api/triggers') {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
-
+    if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+      error(res, 'enabled must be a boolean', 400);
+      return true;
+    }
     const creator = typeof body.createdBy === 'string' ? trim(body.createdBy) || 'api' : 'api';
     const kindParsed = parseTriggerKindStrict(body.kind);
     if (kindParsed !== undefined && kindParsed.ok === false) {
@@ -322,14 +347,13 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'eventFilter must be a JSON object', 400);
       return true;
     }
-
     const inputDraft: TriggerDraftInput = {
       displayName: typeof body.displayName === 'string' ? body.displayName : undefined,
       instructions: typeof body.instructions === 'string' ? body.instructions : undefined,
       triggerType:
         typeof body.triggerType === 'string' ? (body.triggerType as TriggerType) : undefined,
       wakeMode: typeof body.wakeMode === 'string' ? (body.wakeMode as TriggerWakeMode) : undefined,
-      enabled: !!(body.enabled ?? true),
+      enabled: body.enabled ?? true,
       createdBy: creator,
       notifyOnOutcome: true,
       timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
@@ -364,22 +388,20 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, normalized.error ?? 'Invalid trigger request', 400);
       return true;
     }
-
-    const existingTasks = await listTriggerTasks(runtime);
+    const existingTasks = await listOwnedTriggerTasks(runtime);
     const activeCount = existingTasks.filter((task) => {
       const trigger = readTriggerConfig(task);
-      return trigger?.enabled && trigger.createdBy === creator;
+      return trigger?.enabled && !isAgentOwnedHeartbeat(task, runtime.agentId);
     }).length;
     const limit = getTriggerLimit(runtime);
     if (activeCount >= limit) {
       error(res, `Active trigger limit reached (${limit})`, 429);
       return true;
     }
-
     const triggerId = stringToUuid(crypto.randomUUID());
     const trigger = buildTriggerConfig({ draft: normalized.draft, triggerId });
-
     const duplicate = existingTasks.find((task) => {
+      if (isAgentOwnedHeartbeat(task, runtime.agentId)) return false;
       const existingTrigger = readTriggerConfig(task);
       return (
         existingTrigger?.enabled &&
@@ -391,8 +413,11 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Equivalent trigger already exists', 409);
       return true;
     }
-
     const nowMs = Date.now();
+    if (isPastOnceSchedule(normalized.draft, nowMs)) {
+      error(res, PAST_ONCE_SCHEDULE_ERROR, 400);
+      return true;
+    }
     const metadata = trigger.enabled
       ? buildTriggerMetadata({ trigger, nowMs })
       : ({
@@ -407,16 +432,31 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Unable to compute trigger schedule', 400);
       return true;
     }
-
-    const roomId = (
-      runtime.getService('AUTONOMY') as { getAutonomousRoomId?(): UUID } | null
-    )?.getAutonomousRoomId?.();
+    const roomId =
+      trigger.kind === 'prompt'
+        ? await ctx.resolvePromptDeliveryRoom(runtime)
+        : (
+            runtime.getService('AUTONOMY') as {
+              getAutonomousRoomId?(): UUID;
+            } | null
+          )?.getAutonomousRoomId?.();
+    if (
+      trigger.kind === 'prompt' &&
+      (!roomId || !(await runtime.getRoom(roomId))?.source?.trim())
+    ) {
+      error(res, 'Prompt automation delivery conversation is unavailable', 503);
+      return true;
+    }
     const taskId = await runtime.createTask({
       name: TRIGGER_TASK_NAME,
       description: trigger.displayName,
       roomId,
+      entityId: ownerEntityId as UUID,
       tags: [...TRIGGER_TASK_TAGS],
-      metadata: metadata as Task['metadata'],
+      metadata: {
+        ...metadata,
+        ownership: { ownerId: ownerEntityId },
+      } as Task['metadata'],
     });
     const created = await runtime.getTask(taskId);
     const summary = created ? taskToTriggerSummary(created) : null;
@@ -427,7 +467,6 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     itemResponse(summary, 201);
     return true;
   }
-
   const runsMatch = /^\/api\/triggers\/([^/]+)\/runs$/.exec(pathname);
   if (method === 'GET' && runsMatch) {
     const triggerId = decodePathComponent(runsMatch[1]);
@@ -435,7 +474,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Invalid trigger ID: malformed URL encoding', 400);
       return true;
     }
-    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
+    const task = await findTask(runtime, triggerId, listOwnedTriggerTasks, readTriggerConfig);
     if (!task) {
       error(res, 'Trigger not found', 404);
       return true;
@@ -443,7 +482,6 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     json(res, { runs: readTriggerRuns(task) });
     return true;
   }
-
   const execMatch = /^\/api\/triggers\/([^/]+)\/execute$/.exec(pathname);
   if (method === 'POST' && execMatch) {
     const triggerId = decodePathComponent(execMatch[1]);
@@ -451,9 +489,13 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Invalid trigger ID: malformed URL encoding', 400);
       return true;
     }
-    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
+    const task = await findTask(runtime, triggerId, listOwnedTriggerTasks, readTriggerConfig);
     if (!task) {
       error(res, 'Trigger not found', 404);
+      return true;
+    }
+    if (isAgentOwnedHeartbeat(task, runtime.agentId)) {
+      error(res, 'System trigger is read-only', 403);
       return true;
     }
     const result: TriggerExecutionResult = await executeTriggerTask(runtime, task, {
@@ -465,7 +507,6 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     json(res, { ok: true, result, trigger: summary });
     return true;
   }
-
   const eventMatch = /^\/api\/triggers\/events\/([^/]+)$/.exec(pathname);
   if (method === 'POST' && eventMatch) {
     const decodedEventKind = decodePathComponent(eventMatch[1] ?? '');
@@ -478,12 +519,12 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'event kind is required', 400);
       return true;
     }
-
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
     const payload = parseEventPayload(body.payload ?? body);
-    const tasks = await listTriggerTasks(runtime);
+    const tasks = await listOwnedTriggerTasks(runtime);
     const matchingTasks = tasks.filter((task) => {
+      if (isAgentOwnedHeartbeat(task, runtime.agentId)) return false;
       const trigger = readTriggerConfig(task);
       return (
         trigger?.enabled === true &&
@@ -516,7 +557,6 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     });
     return true;
   }
-
   const itemMatch = /^\/api\/triggers\/([^/]+)$/.exec(pathname);
   if (!itemMatch) return false;
   const triggerId = decodePathComponent(itemMatch[1]);
@@ -524,9 +564,8 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     error(res, 'Invalid trigger ID: malformed URL encoding', 400);
     return true;
   }
-
   if (method === 'GET') {
-    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
+    const task = await findTask(runtime, triggerId, listOwnedTriggerTasks, readTriggerConfig);
     if (!task) {
       error(res, 'Trigger not found', 404);
       return true;
@@ -539,22 +578,28 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     itemResponse(summary);
     return true;
   }
-
   if (method === 'DELETE') {
-    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
+    const task = await findTask(runtime, triggerId, listOwnedTriggerTasks, readTriggerConfig);
     if (!task?.id) {
       error(res, 'Trigger not found', 404);
+      return true;
+    }
+    if (isAgentOwnedHeartbeat(task, runtime.agentId)) {
+      error(res, 'System trigger is read-only', 403);
       return true;
     }
     await runtime.deleteTask(task.id);
     json(res, { ok: true });
     return true;
   }
-
   if (method === 'PUT') {
-    const task = await findTask(runtime, triggerId, listTriggerTasks, readTriggerConfig);
+    const task = await findTask(runtime, triggerId, listOwnedTriggerTasks, readTriggerConfig);
     if (!task?.id) {
       error(res, 'Trigger not found', 404);
+      return true;
+    }
+    if (isAgentOwnedHeartbeat(task, runtime.agentId)) {
+      error(res, 'System trigger is read-only', 403);
       return true;
     }
     const current = readTriggerConfig(task);
@@ -562,14 +607,16 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Trigger metadata is invalid', 500);
       return true;
     }
-
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
+    if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+      error(res, 'enabled must be a boolean', 400);
+      return true;
+    }
     if (body.eventFilter != null && !isRecord(body.eventFilter)) {
       error(res, 'eventFilter must be a JSON object', 400);
       return true;
     }
-
     const kindParsed = parseTriggerKindStrict(body.kind);
     if (kindParsed !== undefined && kindParsed.ok === false) {
       error(res, kindParsed.error, 400);
@@ -603,7 +650,6 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, "instructions is required when kind is 'prompt'", 400);
       return true;
     }
-
     const mergedInput: TriggerDraftInput = {
       displayName: typeof body.displayName === 'string' ? body.displayName : undefined,
       instructions: typeof body.instructions === 'string' ? body.instructions : undefined,
@@ -613,7 +659,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       enabled: body.enabled === undefined ? current.enabled : body.enabled === true,
       createdBy: current.createdBy,
       notifyOnOutcome: current.notifyOnOutcome === true,
-      timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
+      timezone: typeof body.timezone === 'string' ? body.timezone : current.timezone,
       intervalMs: typeof body.intervalMs === 'number' ? body.intervalMs : current.intervalMs,
       scheduledAtIso:
         typeof body.scheduledAtIso === 'string' ? body.scheduledAtIso : current.scheduledAtIso,
@@ -646,7 +692,15 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, normalized.error ?? 'Invalid update', 400);
       return true;
     }
-
+    const nowMs = Date.now();
+    const changesSchedule =
+      typeof body.scheduledAtIso === 'string' ||
+      normalized.draft.triggerType !== current.triggerType ||
+      (!current.enabled && normalized.draft.enabled);
+    if (changesSchedule && isPastOnceSchedule(normalized.draft, nowMs)) {
+      error(res, PAST_ONCE_SCHEDULE_ERROR, 400);
+      return true;
+    }
     const nextTrigger = buildTriggerConfig({
       draft: normalized.draft,
       triggerId: current.triggerId,
@@ -654,16 +708,15 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     });
     const existingMeta = (task.metadata ?? {}) as TriggerTaskMetadata;
     const existingRuns = readTriggerRuns(task);
-
     let nextMeta: TriggerTaskMetadata;
     if (!nextTrigger.enabled) {
       nextMeta = {
         ...existingMeta,
-        updatedAt: Date.now(),
+        updatedAt: nowMs,
         updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
         trigger: {
           ...nextTrigger,
-          nextRunAtMs: Date.now() + DISABLED_TRIGGER_INTERVAL_MS,
+          nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS,
         },
         triggerRuns: existingRuns,
       };
@@ -671,7 +724,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       const built = buildTriggerMetadata({
         existingMetadata: existingMeta,
         trigger: nextTrigger,
-        nowMs: Date.now(),
+        nowMs,
       });
       if (!built) {
         error(res, 'Unable to compute trigger schedule', 400);
@@ -679,7 +732,6 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       }
       nextMeta = built;
     }
-
     await runtime.updateTask(task.id, {
       description: nextTrigger.displayName,
       metadata: nextMeta as Task['metadata'],
@@ -697,6 +749,5 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     itemResponse(summary);
     return true;
   }
-
   return false;
 }

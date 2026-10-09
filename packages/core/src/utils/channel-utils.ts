@@ -1,8 +1,6 @@
 /** Cross-platform messaging helpers shared by channel plugins. */
 
-// ============================================================================
 // Chat Type Normalization
-// ============================================================================
 
 /**
  * Normalized chat type - the canonical representation of chat types across platforms.
@@ -33,9 +31,7 @@ export function normalizeChatType(raw?: string): NormalizedChatType {
 	return "direct";
 }
 
-// ============================================================================
 // Mention Gating
-// ============================================================================
 
 /**
  * Parameters for resolving mention gating.
@@ -132,9 +128,7 @@ export function resolveMentionGatingWithBypass(
 	};
 }
 
-// ============================================================================
 // Typing Indicators
-// ============================================================================
 
 /**
  * Callbacks for managing typing indicators.
@@ -191,9 +185,7 @@ export function createTypingCallbacks(
 	return { onReplyStart, onIdle };
 }
 
-// ============================================================================
 // Acknowledgment Reactions
-// ============================================================================
 
 /**
  * Scope for acknowledgment reactions (e.g., "👀" seen indicators).
@@ -337,9 +329,7 @@ export function removeAckReactionAfterReply(
 	});
 }
 
-// ============================================================================
 // Sender Labels
-// ============================================================================
 
 /**
  * Parameters for resolving a sender's display label.
@@ -436,9 +426,7 @@ export function listSenderLabelCandidates(params: SenderLabelParams): string[] {
 	return Array.from(candidates);
 }
 
-// ============================================================================
 // Location Utilities
-// ============================================================================
 
 /**
  * Source type for location data.
@@ -556,9 +544,7 @@ export function toLocationContext(
 	};
 }
 
-// ============================================================================
 // Channel Logging Utilities
-// ============================================================================
 
 /**
  * Log function signature.

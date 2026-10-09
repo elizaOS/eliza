@@ -2,10 +2,6 @@
 
 import crypto from "node:crypto";
 import type {
-  LifeOpsScheduleMergedState,
-  LifeOpsScheduleObservation,
-} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
-import type {
   LifeOpsAwakeProbability,
   LifeOpsAwakeProbabilityContributor,
   LifeOpsCircadianRuleFiring,
@@ -18,7 +14,11 @@ import type {
   LifeOpsScheduleRegularity,
   LifeOpsTaskDefinition,
   LifeOpsUnclearReason,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import type {
+  LifeOpsScheduleMergedState,
+  LifeOpsScheduleObservation,
+} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
 import { refreshLifeOpsRelativeTime } from "../relative-time.js";
 import {
   parseJsonArray,

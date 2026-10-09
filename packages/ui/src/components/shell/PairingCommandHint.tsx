@@ -9,7 +9,7 @@
 
 import { Copy, Server } from "lucide-react";
 import { useMemo } from "react";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { buildPairingCodeCommandInfo } from "./pairing-command";

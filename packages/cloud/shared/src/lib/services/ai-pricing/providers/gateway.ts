@@ -4,8 +4,10 @@ import type { PreparedPricingEntry, PriceLookupSource } from "../types";
 import { fetchAtlasCloudCatalogEntries } from "./atlascloud";
 import { fetchBitRouterCatalogEntries } from "./bitrouter";
 import { fetchCerebrasPublicCatalogEntries } from "./cerebras";
+import { fetchCloudflareEmbeddingEntries } from "./cloudflare";
 import { fetchElevenLabsEntries } from "./elevenlabs";
 import { fetchFalCatalogEntries } from "./fal";
+import { fetchSelfHostedEmbeddingEntries } from "./selfhosted";
 import { fetchSunoEntries } from "./suno";
 import { fetchVastSnapshotEntries } from "./vast";
 
@@ -22,10 +24,10 @@ async function dispatchEntriesForSource(
     case "anthropic":
     case "groq":
       return await fetchBitRouterCatalogEntries();
-    // Self-hosted sidecar rows (e.g. bge-small-en-v1.5) ride the forced list
-    // assembled with the BitRouter catalog fetch.
+    case "cloudflare":
+      return fetchCloudflareEmbeddingEntries();
     case "selfhosted":
-      return await fetchBitRouterCatalogEntries();
+      return fetchSelfHostedEmbeddingEntries();
     case "cerebras":
       return await fetchCerebrasPublicCatalogEntries();
     case "fal":

@@ -1,6 +1,6 @@
 /** Parses the revocable bearer credential presented by remote runtime hosts. */
 
-import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
+import { isRemotePairingUuid } from "@elizaos/cloud-shared/db/crypto/remote-pairing-code";
 
 export interface RemoteHostCredential {
   hostId: string;

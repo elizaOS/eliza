@@ -2,7 +2,7 @@
  * Resolves the Jupiter Swap API endpoint and translates transport/protocol
  * failures into typed wallet errors shared by both Solana execution paths.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, type FetchLike } from "@elizaos/core";
 
 export const DEFAULT_JUPITER_API_BASE_URL = "https://lite-api.jup.ag/swap/v1";
 export const JUPITER_API_BASE_URL_SETTING = "JUPITER_API_BASE_URL";
@@ -58,7 +58,7 @@ export function resolveJupiterApiBaseUrl(runtime: RuntimeSettings): string {
 }
 
 export async function fetchJupiterJson(
-  fetchFn: typeof globalThis.fetch,
+  fetchFn: FetchLike,
   url: string,
   stage: JupiterStage,
   init?: RequestInit

@@ -1,17 +1,4 @@
-/**
- * Local search option/result types for the web-search plugin, extending
- * `@elizaos/core`'s shared search types (`SearchOptions`/`SearchResponse`) and
- * re-exporting the image/news/video option types the service accepts. Keeps the
- * plugin's Tavily-facing shapes aligned with core's search contract.
- */
-
-import type {
-    SearchOptions as CoreSearchOptions,
-    SearchResponse as CoreSearchResponse,
-    ImageSearchOptions,
-    NewsSearchOptions,
-    VideoSearchOptions,
-} from "@elizaos/core";
+/** Browser search options and complete profile-bound observation receipts. */
 
 export type SearchResult = {
     title: string;
@@ -28,15 +15,18 @@ export type SearchImage = {
     description?: string;
 };
 
-export type SearchResponse = Omit<CoreSearchResponse, "results"> & {
+export type SearchResponse = {
     answer?: string;
     query: string;
     responseTime?: number;
     images: SearchImage[];
     results: SearchResult[];
+    /** Exact user-authorized browser search session; absent for API providers. */
+    browser?: { targetId: string; profileId: string; tabId: string; url: string };
 };
 
-export interface SearchOptions extends CoreSearchOptions {
+export interface SearchOptions {
+    offset?: number;
     limit?: number;
     type?: "news" | "general";
     topic?: "news" | "general";
@@ -45,5 +35,3 @@ export interface SearchOptions extends CoreSearchOptions {
     includeImages?: boolean;
     days?: number;
 }
-
-export type { ImageSearchOptions, NewsSearchOptions, VideoSearchOptions };

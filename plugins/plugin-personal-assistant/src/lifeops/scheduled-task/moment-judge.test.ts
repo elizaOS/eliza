@@ -11,6 +11,7 @@ import type {
   ScheduledTask,
 } from "@elizaos/plugin-scheduling";
 import { describe, expect, it } from "vitest";
+import { createFirstRunStateStore } from "../first-run/state.js";
 import {
   buildMomentJudgePrompt,
   composeMomentJudgeContext,
@@ -388,5 +389,43 @@ describe("makeModelMomentCheckGate", () => {
     const task = makeTask();
     const decision = await gate.evaluate(task, makeGateContext(task));
     expect(decision).toEqual({ kind: "allow" });
+  });
+});
+
+describe("first-use dossier admission", () => {
+  it("denies an unconfigured default occurrence without changing its durable task", async () => {
+    const fake = makeFakeRuntime({
+      modelOutput: '{"decision":"send","reason":"ready"}',
+    });
+    const gate = makeModelMomentCheckGate(fake.runtime);
+    const task = makeTask({
+      source: "first_run",
+      idempotencyKey: "lifeops:first-run:default:morning-brief",
+      metadata: { slot: "morningBrief" },
+    });
+    const original = structuredClone(task);
+    expect(await gate.evaluate(task, makeGateContext(task))).toMatchObject({
+      kind: "deny",
+      reason: "LifeOps owner setup is incomplete",
+    });
+    expect(fake.prompts).toHaveLength(0);
+    expect(task).toEqual(original);
+    await createFirstRunStateStore(fake.runtime).complete();
+    expect(await gate.evaluate(task, makeGateContext(task))).toEqual({
+      kind: "allow",
+    });
+    expect(fake.prompts).toHaveLength(1);
+  });
+  it("does not suppress an explicit reminder before LifeOps setup", async () => {
+    const fake = makeFakeRuntime({
+      modelOutput: '{"decision":"send","reason":"owner requested"}',
+    });
+    const task = makeTask({ source: "user_chat" });
+    expect(
+      await makeModelMomentCheckGate(fake.runtime).evaluate(
+        task,
+        makeGateContext(task),
+      ),
+    ).toEqual({ kind: "allow" });
   });
 });

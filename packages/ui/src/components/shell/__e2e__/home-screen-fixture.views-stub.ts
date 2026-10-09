@@ -126,8 +126,6 @@ export function useRoutableViews() {
       // Duplicate wallet registration — must collapse to the single Wallet tile.
       builtinView("inventory", "Wallet", "/wallet", "Wallet"),
       builtinView("automations", "Automations", "/automations", "Clock3", true, heroDataUri(64, "automations")),
-      // Duplicate automations registration — folds into the one Automations tile.
-      builtinView("triggers", "Automations", "/automations", "Clock3"),
       builtinView("browser", "Browser", "/browser", "Globe", true, heroDataUri(150, "browser")),
       // Hues 348/96 (raspberry/green): the old 200/240 heroes rendered BLUE
       // Character/Knowledge tiles, violating the no-blue brand rule.

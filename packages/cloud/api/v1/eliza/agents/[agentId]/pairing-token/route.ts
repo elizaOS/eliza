@@ -3,37 +3,50 @@
  * Token-capable remote agents always use the Worker-bound canonical hostname;
  * only the explicit local Docker provider may return a loopback relay URL.
  */
-import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import {
+  ApiError,
+  errorToResponse,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import {
   getConfiguredElizaAgentPublicWebUiUrl,
   getElizaAgentDirectWebUiUrl,
-} from "@/lib/eliza-agent-web-ui";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
-import { warmInferenceRateLimitGate } from "@/lib/services/inference-admission-gate";
-import { getPairingTokenService } from "@/lib/services/pairing-token";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+} from "@elizaos/cloud-shared/lib/eliza-agent-web-ui";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
+import { warmInferenceRateLimitGate } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
+import { getPairingTokenService } from "@elizaos/cloud-shared/lib/services/pairing-token";
 import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
-} from "@/lib/services/provisioning-worker-health";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const CORS_METHODS = "POST, OPTIONS";
 
 // Statuses we'll auto-resume on. `error` is excluded — surfacing the error
 // here lets the client show a real diagnostic instead of looping forever.
-const RESUMABLE_STATUSES = new Set(["pending", "stopped", "disconnected"]);
+const RESUMABLE_STATUSES = new Set([
+  "pending",
+  "stopped",
+  "disconnected",
+  "sleeping",
+]);
 const STARTING_STATUSES = new Set([
   "pending",
   "provisioning",
   "stopped",
   "disconnected",
+  "sleeping",
 ]);
 const RETRY_AFTER_SECONDS = 5;
 
@@ -270,7 +283,7 @@ async function __hono_POST(
 
     if (sandbox.status !== "running") {
       if (
-        sandbox.status === "stopped" &&
+        (sandbox.status === "stopped" || sandbox.status === "sleeping") &&
         (await agentSandboxesRepository.wasStoppedByUser(
           agentId,
           user.organization_id,
@@ -283,7 +296,7 @@ async function __hono_POST(
               code: "agent_stopped",
               error:
                 "This agent is shut down. Start it from Cloud settings when you are ready.",
-              data: { status: "stopped" },
+              data: { status: sandbox.status },
             },
             { status: 409 },
           ),
@@ -335,12 +348,26 @@ async function __hono_POST(
 
         try {
           const { job, created } =
-            await provisioningJobService.enqueueAgentProvisionOnce({
-              agentId,
-              organizationId: user.organization_id,
-              userId: user.id,
-              agentName: sandbox.agent_name ?? agentId,
-              expectedLifecycleRevision: sandbox.lifecycle_revision,
+            sandbox.status === "sleeping"
+              ? await provisioningJobService.enqueueAgentWakeOnce({
+                  agentId,
+                  organizationId: user.organization_id,
+                  userId: user.id,
+                  expectedLifecycleRevision: sandbox.lifecycle_revision,
+                })
+              : await provisioningJobService.enqueueAgentProvisionOnce({
+                  agentId,
+                  organizationId: user.organization_id,
+                  userId: user.id,
+                  agentName: sandbox.agent_name ?? agentId,
+                  expectedLifecycleRevision: sandbox.lifecycle_revision,
+                });
+          if (!job.id)
+            throw new ApiError({
+              code: "service_unavailable",
+              status: 503,
+              message: "Resume admission returned no durable job id",
+              details: { agentId },
             });
           jobId = job.id;
           alreadyInProgress = !created;

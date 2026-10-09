@@ -16,7 +16,7 @@ import { Ban, Loader2, Shield } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import { useAdminGate } from "./data/use-admin-gate";
+import { useAdminGate } from "./use-admin-gate";
 
 /** Admin sub-navigation entries (in-app, role-gated business ops only). */
 const ADMIN_NAV: ReadonlyArray<{

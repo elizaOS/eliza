@@ -3,19 +3,22 @@
  * as generative inference before any provider-specific work can run.
  */
 
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { isInferenceAuthCacheEnabled } from "@/lib/services/inference-hot-path-caches";
-import type { EndpointType } from "@/lib/services/org-rate-limits";
-import type { ProxyCombinedAdmission } from "@/lib/services/proxy/engine";
-import { createHandler, executeWithBody } from "@/lib/services/proxy/engine";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { isInferenceAuthCacheEnabled } from "@elizaos/cloud-shared/lib/services/inference-hot-path-caches";
+import type { EndpointType } from "@elizaos/cloud-shared/lib/services/org-rate-limits";
+import type { ProxyCombinedAdmission } from "@elizaos/cloud-shared/lib/services/proxy/engine";
+import {
+  createHandler,
+  executeWithBody,
+} from "@elizaos/cloud-shared/lib/services/proxy/engine";
 import type {
   ProxyRequestBody,
   ServiceConfig,
   ServiceHandler,
-} from "@/lib/services/proxy/types";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/proxy/types";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
   asGenerativeCacheApiError,
   getGenerativeExecutionContext,

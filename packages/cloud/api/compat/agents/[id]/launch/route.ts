@@ -1,8 +1,8 @@
 // Handles compatibility cloud API compat agents id launch route traffic through route-local auth checks.
-import { Hono } from "hono";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * POST /api/compat/agents/[id]/launch
@@ -12,13 +12,16 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * Agent web app together with direct connection details.
  */
 
-import { envelope, errorEnvelope } from "@/lib/api/compat-envelope";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
+import {
+  envelope,
+  errorEnvelope,
+} from "@elizaos/cloud-shared/lib/api/compat-envelope";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
 import {
   launchManagedElizaAgent,
   ManagedElizaLaunchError,
-} from "@/lib/services/eliza-managed-launch";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/eliza-managed-launch";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { requireCompatAuth } from "../../../_lib/auth";
 import { handleCompatCorsOptions, withCompatCors } from "../../../_lib/cors";
 import { handleCompatError } from "../../../_lib/error-handler";

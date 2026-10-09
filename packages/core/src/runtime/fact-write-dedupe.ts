@@ -1,3 +1,4 @@
+import { isActiveMemoryEvidence } from "../utils/extraction-evidence.ts";
 /**
  * Structural write-time dedupe for the `facts` table: before a fact insert,
  * find an existing row with the same normalized text in the same
@@ -22,21 +23,19 @@
  * error) on rooms with very deep fact history.
  */
 
-import type { FactMetadata, Memory, MemoryMetadata } from "../types/memory";
+import type {
+	CustomMetadata,
+	FactMetadata,
+	Memory,
+	MemoryMetadata,
+} from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 
 const DEDUPE_CANDIDATE_POOL = 120;
 
-/**
- * Canonical form for fact-text equality: case-, punctuation-, and
- * whitespace-insensitive, unicode-aware. An empty key never matches (so
- * punctuation-only or empty texts are never deduped against each other).
- */
+/** Exact fact text after trimming outer whitespace; signs, case and spacing carry meaning. */
 export function normalizeFactTextKey(value: string): string {
-	return value
-		.toLowerCase()
-		.replace(/[^\p{L}\p{N}]+/gu, " ")
-		.trim();
+	return value.trim();
 }
 
 /**
@@ -61,6 +60,7 @@ export async function findEquivalentFact(
 		unique: false,
 	});
 	for (const candidate of existing) {
+		if (!isActiveMemoryEvidence(candidate)) continue;
 		if (!candidate.id || candidate.id === memory.id) continue;
 		if ((candidate.entityId ?? null) !== (memory.entityId ?? null)) continue;
 		const candidateText =
@@ -84,12 +84,12 @@ function readFactMetadata(memory: Memory): FactMetadata {
  *
  * - `confidence` — strictly higher (or present where the kept row has none).
  * - `kind` — present where the kept row has none. The FACTS reader defaults a
- *   missing kind to `durable`, so an explicit stamp is always more precise;
- *   an already-set kind is never flipped here (durable/current transitions
- *   belong to the reflection pass).
+ * missing kind to `durable`, so an explicit stamp is always more precise;
+ * an already-set kind is never flipped here (durable/current transitions
+ * belong to the reflection pass).
  * - `validAt` / `lastConfirmedAt` — strictly more recent (or newly present):
- *   a re-asserted `current` fact should not keep decaying from its first
- *   observation's timestamp.
+ * a re-asserted `current` fact should not keep decaying from its first
+ * observation's timestamp.
  */
 export function mergeStrongerFactMetadata(
 	existing: Memory,
@@ -97,7 +97,52 @@ export function mergeStrongerFactMetadata(
 ): MemoryMetadata | null {
 	const kept = readFactMetadata(existing);
 	const next = readFactMetadata(incoming);
-	const upgrades: FactMetadata = {};
+	const upgrades: FactMetadata & CustomMetadata = {};
+	const incomingEvidence = (incoming.metadata as CustomMetadata | undefined)
+		?.extractionEvidenceIds;
+	if (Array.isArray(incomingEvidence)) {
+		const keptMetadata = existing.metadata as CustomMetadata | undefined;
+		const keptEvidence = Array.isArray(keptMetadata?.extractionEvidenceIds)
+			? keptMetadata.extractionEvidenceIds
+			: [];
+		const evidenceIds = [
+			...new Set(
+				[...keptEvidence, ...incomingEvidence].filter(
+					(id): id is string => typeof id === "string",
+				),
+			),
+		];
+		if (evidenceIds.length !== keptEvidence.length)
+			upgrades.extractionEvidenceIds = evidenceIds;
+		const incomingRevisions = (incoming.metadata as CustomMetadata)
+			.extractionSourceRevisions;
+		const keptRevisions = keptMetadata?.extractionSourceRevisions;
+		if (
+			incomingRevisions &&
+			typeof incomingRevisions === "object" &&
+			!Array.isArray(incomingRevisions)
+		) {
+			upgrades.extractionSourceRevisions = {
+				...(keptRevisions &&
+				typeof keptRevisions === "object" &&
+				!Array.isArray(keptRevisions)
+					? keptRevisions
+					: {}),
+				...incomingRevisions,
+			};
+		}
+	}
+
+	// Historical backfill can rediscover rows processed before revision receipts
+	// existed. Attach provenance, but do not treat old evidence as reconfirmation.
+	if (
+		(incoming.metadata as CustomMetadata | undefined)?.extractionBackfill ===
+		true
+	) {
+		return Object.keys(upgrades).length === 0
+			? null
+			: ({ ...existing.metadata, ...upgrades } as MemoryMetadata);
+	}
 
 	if (
 		typeof next.confidence === "number" &&

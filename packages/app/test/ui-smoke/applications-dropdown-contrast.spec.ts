@@ -25,17 +25,19 @@
  * resolves to `background: var(--popover)` == transparent `rgba(0,0,0,0)`. The
  * fix retokenizes to `bg-card` (defined `= brand-black` under theme-cloud),
  * matching the SelectTrigger and every sibling working cloud dropdown
- * (EarningsPageClient, create-eliza-agent-dialog, eliza-agents-table...).
+ * (create-eliza-agent-dialog, eliza-agents-table...).
  *
  * It reuses the SAME auth seeding + API stub surface as the cloud audit
  * (helpers/cloud-audit-fixtures) so ApplicationDetailPage reaches its real
- * analytics/earnings tab instead of the session-not-ready loading spinner.
+ * analytics tab instead of the session-not-ready loading spinner.
  *
- * Output: aesthetic-audit-output-cloud/applications-dropdown/<mode>/<slug>.png
+ * Output: test-results/aesthetic-audit-cloud/applications-dropdown/<mode>/<slug>.png
  */
+
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { installDefaultAppRoutes, openAppPath } from "./helpers";
 import {
   installCloudApiStubs,
@@ -46,19 +48,18 @@ import {
 // The app resolves light/dark from `eliza:ui-theme-mode` (values light | dark |
 // system) and applies it as CSS variables on documentElement.style via
 // applyThemeToDocument (NOT a `light`/`dark` class). See
-// packages/ui/src/state/persistence.ts + themes/apply-theme.ts.
+// packages/ui/src/state/persistence.ts + config/theme.ts.
 const THEME_MODE_STORAGE_KEY = "eliza:ui-theme-mode";
 
 const OUTPUT_ROOT = path.join(
-  process.env.ELIZA_AUDIT_CLOUD_DIR ??
-    path.join(process.cwd(), "aesthetic-audit-output-cloud"),
+  process.env.ELIZA_AUDIT_CLOUD_DIR ?? testOutputPath("aesthetic-audit-cloud"),
   "applications-dropdown",
 );
 
 type Theme = "light" | "dark";
 const THEMES: Theme[] = ["light", "dark"];
 
-// The two touched Applications surfaces, keyed by deep-link tab param. Each
+// The touched Applications surface, keyed by deep-link tab param. It
 // renders a shadcn Select whose SelectContent popover was the flagged hard-dark
 // `bg-neutral-800` surface (now semantic `bg-popover`).
 const SELECT_SURFACES = [
@@ -67,18 +68,14 @@ const SELECT_SURFACES = [
     tab: "analytics",
     label: "analytics time-range select",
   },
-  {
-    slug: "app-earnings-range-select",
-    tab: "earnings",
-    label: "earnings range select",
-  },
 ] as const;
 
-// App-detail analytics/earnings endpoints are app-specific and not part of the
-// shared cloud-audit stub set (the audit only visits the app-detail OVERVIEW
-// tab). Register them BEFORE the shared catch-all so the analytics/earnings tabs
-// leave their loading/error state and render the range Select. Shapes traced
-// from app-analytics.tsx / app-earnings-dashboard.tsx response types.
+// The app-detail analytics endpoint is app-specific and not part of the shared
+// cloud-audit stub set (the audit only visits the app-detail OVERVIEW tab).
+// Register it BEFORE the shared catch-all so the analytics tab leaves its
+// loading/error state and renders the range Select. Shape traced from the
+// app-analytics.tsx response type. (The earnings tab was removed with creator
+// monetization, #23022.)
 async function installAppDetailTabStubs(page: Page): Promise<void> {
   const json = (body: unknown) => ({
     status: 200,
@@ -97,43 +94,6 @@ async function installAppDetailTabStubs(page: Page): Promise<void> {
           visitors: [],
           sessions: [],
           logs: [],
-        },
-      }),
-    ),
-  );
-  const breakdownPeriod = (period: string) => ({
-    period,
-    inferenceEarnings: 0,
-    purchaseEarnings: 0,
-    total: 0,
-  });
-  await page.route(`**/api/v1/apps/${SMOKE_APP_UUID}/earnings**`, (route) =>
-    route.fulfill(
-      // Shape traced from EarningsResponse in app-earnings-dashboard.tsx: a
-      // wrong shape sends the component into its early-return error state and
-      // the range Select never renders.
-      json({
-        success: true,
-        testData: false,
-        monetization: { enabled: true },
-        earnings: {
-          summary: {
-            totalLifetimeEarnings: 0,
-            totalInferenceEarnings: 0,
-            totalPurchaseEarnings: 0,
-            pendingBalance: 0,
-            withdrawableBalance: 0,
-            totalWithdrawn: 0,
-            payoutThreshold: 50,
-          },
-          breakdown: {
-            today: breakdownPeriod("today"),
-            thisWeek: breakdownPeriod("thisWeek"),
-            thisMonth: breakdownPeriod("thisMonth"),
-            allTime: breakdownPeriod("allTime"),
-          },
-          chartData: [],
-          recentTransactions: [],
         },
       }),
     ),

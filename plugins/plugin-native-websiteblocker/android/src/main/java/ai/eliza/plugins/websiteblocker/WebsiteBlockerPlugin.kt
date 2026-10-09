@@ -56,9 +56,13 @@ class WebsiteBlockerPlugin : Plugin() {
     @PluginMethod
     fun stopBlock(call: PluginCall) {
         WebsiteBlockerStateStore.clear(context)
-        context.stopService(Intent(context, WebsiteBlockerVpnService::class.java).apply {
-            action = WebsiteBlockerVpnService.ACTION_STOP
-        })
+        if (WebsiteBlockerVpnService.isRunning()) {
+            // stopService does not deliver the action and the VPN framework may
+            // still bind the service. Close its tunnel before waiting for destroy.
+            context.startService(Intent(context, WebsiteBlockerVpnService::class.java).apply {
+                action = WebsiteBlockerVpnService.ACTION_STOP
+            })
+        }
 
         call.resolve(JSObject().apply {
             put("success", true)

@@ -1,7 +1,7 @@
 /** Keeps Cloud authentication failures inside the full-screen sign-in flow. */
 
 import { Cloud } from "lucide-react";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";

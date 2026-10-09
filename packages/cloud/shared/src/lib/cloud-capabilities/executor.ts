@@ -130,7 +130,7 @@ function buildUrl(c: AppContext, path: string, query: CapabilityArgs): URL {
 }
 
 async function authorizeCapability(c: AppContext, capability: CloudCapability) {
-  if (capability.auth.adminOnly || capability.auth.modes.includes("admin")) {
+  if (capability.auth.adminOnly === true) {
     await requireAdmin(c);
     return;
   }

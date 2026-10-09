@@ -1,99 +1,49 @@
 # @elizaos/plugin-mcp
 
-elizaOS plugin that connects an Eliza agent to external [Model Context Protocol](https://modelcontextprotocol.io) (MCP) servers and exposes their tools and resources as agent capabilities.
+elizaOS plugin that connects Eliza agents to external MCP (Model Context Protocol)
+servers, exposing their tools and resources as agent capabilities.
 
-The plugin starts `McpService`, which connects to one or more MCP servers (stdio, SSE, or streamable-HTTP), discovers their tools and resources, and surfaces them through a single `MCP` action and an `MCP` provider. It is consumed by an elizaOS agent: add it to the character `plugins` array and configure servers under `settings.mcp.servers`.
+Tool argument validation defaults to JSON Schema 2020-12. An explicit
+`http://json-schema.org/draft-07/schema#` selects draft-07 instead. Unsupported
+dialects are rejected within the existing isolated validation worker.
+If an undeclared schema cannot compile as 2020-12, the same bounded worker
+tries draft-07 to support legacy tuple schemas. A failed argument validation
+never triggers this fallback. Declared schemas always use their stated dialect.
 
-Node-only. `index.browser.ts` is a browser-unavailable entry because the MCP SDK's stdio/SSE transports require Node APIs (`eliza.platforms` is `["node"]`).
+Discovery requests only the tools and resources that the server declares. Servers
+that provide resources without tools can connect and serve agent context. Stdio
+health checks use protocol `ping` with the configured timeout, not `tools/list`.
 
-## Install
+Tool results retain both `content` and `structuredContent`. The JSON result is
+included in the response model's input, action output, and stored tool memory.
+Text, image and audio attachments, and the tool's error status remain available.
+Tool-generated audio is shared in the reply and saved with that reply.
+If a text block parses as the same JSON data, it is used without adding a
+second copy. Its whitespace, formatting, and key order are retained.
+JSON embedded in prose remains ordinary text.
 
-```bash
-bun add @elizaos/plugin-mcp   # or: npm install / yarn add
-```
+Tool resource links retain their URI and complete metadata in the result text.
+Eliza does not read the linked resource until the agent requests a resource read.
 
-## Usage
+Successful resource reads return the complete processed content in
+`ActionResult.data.output`, so later planner steps can use the resource data.
+The existing analysis response and resource memory remain available.
 
-Add the plugin and declare servers in your character file:
+Configure servers under `settings.mcp.servers` using `McpSettings` from `@elizaos/plugin-mcp`. Validate every server before connecting; remote requests use the core SSRF guard and stdio processes inherit only permitted environment values.
 
-```json
-{
-  "name": "Your Character",
-  "plugins": ["@elizaos/plugin-mcp"],
-  "settings": {
-    "mcp": {
-      "servers": {
-        "github": {
-          "type": "stdio",
-          "command": "npx",
-          "args": ["-y", "@modelcontextprotocol/server-github"],
-          "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "<YOUR_TOKEN>" }
-        },
-        "my-http-server": {
-          "type": "streamable-http",
-          "url": "https://example.com/mcp"
-        }
-      },
-      "maxRetries": 2
-    }
-  }
-}
-```
+Discovery follows every tool, resource, and resource-template page before exposing
+the connected server's capabilities. Empty intermediate pages are allowed;
+repeated cursors or later-page failures surface as connection errors rather than
+silently publishing a partial catalog.
+Each list rejects more than 1,000 pages with `MCP_PAGINATION_LIMIT_EXCEEDED`;
+this bounds endless discovery without publishing a truncated catalog. An empty
+string cursor is opaque, so repeatedly returning it is a connection error.
 
-Config lives entirely in `settings.mcp`, not in environment variables. The host `PATH` is forwarded to stdio child processes automatically. Malformed settings and rejected server configs fail service initialization instead of silently disabling or partially starting MCP. Every server config is validated by `@elizaos/core/security/mcp-server-config` (`validateMcpServerConfig`) before connect/spawn. Remote transports route every request through core's DNS-pinned SSRF guard, including redirects.
+## Development
 
-## Configuration
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `mcp.servers` | `Record<string, McpServerConfig>` | — | Map of server name → transport config |
-| `mcp.maxRetries` | `number` | `2` | Max reconnect attempts per server |
-
-Transport config (see `src/types.ts`):
-
-- **stdio** — `{ type: "stdio", command, args?, env?, cwd?, timeoutInMillis? }`
-- **HTTP/SSE** — `{ type: "streamable-http" | "http" | "sse", url, timeout? }`
-
-## Plugin surface
-
-- **Action `MCP`** — single entry point for all MCP operations. `action=call_tool` invokes a server tool, `action=read_resource` reads a server resource (`search_actions` / `list_connections` are cloud-runtime-only). Similes include `CALL_MCP_TOOL`, `READ_MCP_RESOURCE`, `USE_TOOL`.
-- **Provider `MCP`** — injects a summary of connected servers, their status, tools, and resources into agent context.
-- **`handleMcpRoutes`** (exported) — HTTP handler for `/api/mcp/*` (config CRUD, marketplace search, runtime status), wired up by the host server, not by the plugin object. The `McpRouteContext` type is also exported.
-- **Marketplace client** (exported) — `searchMcpMarketplace` and `getMcpServerDetails` query the public MCP Registry with caller cancellation, a 10-second default deadline, a 2 MiB response limit, and stable `McpMarketplaceError` codes. Override those limits with `McpMarketplaceRequestOptions` when needed.
-
-## src layout
-
-```
-src/
-  index.ts              Plugin object — registers McpService, MCP action, MCP provider
-  types.ts              Shared types + config guards (McpSettings, McpServerConfig, …)
-  service.ts            McpService — connection lifecycle, tool calls, resource reads, ping/reconnect
-  provider.ts           MCP provider — connected-server summary for agent state
-  routes-mcp.ts         handleMcpRoutes — /api/mcp/config, /api/mcp/status, marketplace
-  mcp-marketplace.ts    Client for registry.modelcontextprotocol.io (search + details)
-  prompts.ts            Handlebars-style prompt templates
-  actions/mcp.ts        mcpAction handler — op routing
-  templates/            Thin re-export shims over prompts.ts
-  utils/                Selection, validation, processing, error, and JSON helpers
-  tool-compatibility/   Per-provider tool-schema fixup (Anthropic/OpenAI/Google)
-```
-
-## Commands
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-bun run build         # bun run build.ts → dist/ (ESM + CJS + .d.ts)
-bun run dev           # hot-rebuild with bun --hot
-bun run test          # vitest run
-bun run typecheck     # tsgo --noEmit
-bun run lint          # biome check --write --unsafe
-bun run format        # biome format --write
-bun run clean         # rm -rf dist .turbo
+bun run --cwd plugins/plugin-mcp build  # build
+bun run --cwd plugins/plugin-mcp test   # tests
 ```
-
-## Security
-
-MCP servers can execute arbitrary code, so only connect to servers you trust. Spawn/connect of every configured server is gated on `validateMcpServerConfig` from `@elizaos/core/security/mcp-server-config`; remote requests additionally use core's DNS-pinned SSRF transport.
-
-## License
-
-MIT.

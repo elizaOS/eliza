@@ -4,21 +4,21 @@
  * runtime state; this surface keeps the provider panels presentational.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
-import { Mic } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 import {
   FIRST_RUN_PROVIDER_CATALOG,
   getDirectAccountProviderForFirstRunProvider,
   isSubscriptionProviderSelectionId,
-} from "../../providers";
-import { useAppSelectorShallow } from "../../state";
+  VOICE_PROVIDERS,
+} from "@elizaos/host/protocol";
+import { Mic } from "lucide-react";
+import { useCallback, useMemo } from "react";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import {
   isRealtimeVoiceForceEnabled,
   isRealtimeVoiceSelfHostedEnabled,
 } from "../../voice/realtime-voice-build-flags";
-import { VOICE_PROVIDERS } from "../../voice/types";
 import { useVoiceConfig } from "../../voice/useVoiceConfig";
 import { resolveEffectiveVoiceConfig } from "../../voice/voice-chat-types";
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
@@ -65,7 +65,6 @@ interface ProviderSwitcherProps {
   /** Test override for build capability only; this does not verify a voice connection. */
   realtimeVoiceConfigured?: boolean;
 }
-
 export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const app = useAppSelectorShallow((s) => ({
     t: s.t,
@@ -113,7 +112,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     props.handlePluginConfigSave ?? app.handlePluginConfigSave;
   const setActionNotice = app.setActionNotice;
   const handleInteractiveCloudLogin = app.handleInteractiveCloudLogin;
-
   const notifySelectionFailure = useCallback(
     (prefix: string, err: unknown) => {
       const message =
@@ -124,13 +122,11 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     },
     [setActionNotice],
   );
-
   const allAiProviders = useMemo(() => sortAiProviders(plugins), [plugins]);
   const availableProviderIds = useMemo(
     () => computeAvailableProviderIds(allAiProviders),
     [allAiProviders],
   );
-
   const selection = useProviderSelection(
     availableProviderIds,
     notifySelectionFailure,
@@ -142,7 +138,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     cloudModel,
     !selection.cloudRuntimeLocked,
   );
-
   const { apiProviderChoices, providerEntries, servingLocalFallback } =
     useProviderEntries({
       allAiProviders,
@@ -155,11 +150,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       anthropicCliDetected: bootstrap.anthropicCliDetected,
       t,
     });
-
   const { visibleProviderPanelId, resolvedSelectedId } = selection;
   const settingsContentReady =
     bootstrap.routingConfigResolved || selection.cloudRuntimeLocked;
-
   // The tiles below only answer "who computes chat replies?". Runtime is the
   // other, independent axis — without it a hosted Cloud agent and a local
   // agent on Cloud models are indistinguishable here.
@@ -168,22 +161,18 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     isCloudSelected: selection.isCloudSelected,
     cloudCallsDisabled: selection.cloudCallsDisabled,
   });
-
   const displayedProviderEntries = useMemo(
     () => reconcileProviderEntriesWithServingAxes(providerEntries, servingAxes),
     [providerEntries, servingAxes],
   );
-
   const activeEntry = useMemo(
     () => displayedProviderEntries.find((entry) => entry.current) ?? null,
     [displayedProviderEntries],
   );
-
   const activeChatCatalogProvider = resolveActiveChatCatalogProvider(
     resolvedSelectedId,
     elizaCloudConnected,
   );
-
   const selectedPanelProvider = useMemo(() => {
     if (
       visibleProviderPanelId === "__cloud__" ||
@@ -197,13 +186,11 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         ?.provider ?? null
     );
   }, [apiProviderChoices, visibleProviderPanelId]);
-
   const apiKeyPanelLabel =
     apiProviderChoices.find((choice) => choice.id === visibleProviderPanelId)
       ?.label ??
     selectedPanelProvider?.name ??
     "";
-
   const handleCloudSignIn = useCallback(() => {
     // Keep the popup user-activation alive across the async login start.
     claimCloudLoginWindow();
@@ -218,7 +205,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       );
     });
   }, [handleInteractiveCloudLogin, setActionNotice]);
-
   const onSwitchProvider = useCallback(
     (id: string) => {
       void selection.handleSwitchProvider(
@@ -228,7 +214,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     },
     [allAiProviders, selection],
   );
-
   const activeChatProviderId =
     getDirectAccountProviderForFirstRunProvider(resolvedSelectedId);
   const onSelectChatProvider = useCallback(
@@ -253,7 +238,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     },
     [allAiProviders, selection, setActionNotice],
   );
-
   // Split the providers by purpose so the page reads as two simple "just works"
   // decisions — the agent's brain (Local/Cloud) up top, the coding/workflow
   // subscriptions (Claude/Codex/z.ai) in their own group — with custom keys and
@@ -266,7 +250,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const keyEntries = displayedProviderEntries.filter(
     (entry) => entry.category === "key",
   );
-
   const renderChip = (entry: ProviderListEntry) => (
     <ProviderCard
       key={entry.id}
@@ -280,7 +263,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       onSelect={selection.handleProviderPanelSelect}
     />
   );
-
   // The two top-level choices earn a one-line explanation each so first-run
   // setup is "pick one of two cards", not "decode a chip cloud".
   const intelligenceDescription = (entry: ProviderListEntry) =>
@@ -298,9 +280,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           })
         : t("providerswitcher.localTileDescription", {
             defaultValue:
-              "Runs entirely on this device with the bundled local model. Private and works offline.",
+              "Use an installed model to process chat on this device.",
           });
-
   return (
     <SettingsStack>
       <SettingsGroup
@@ -308,8 +289,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           defaultValue: "Intelligence",
         })}
         description={t("providerswitcher.intelligenceGroupDescription", {
-          defaultValue:
-            "Agent runtime and chat inference are separate. The tiles below pick inference — the Active source is answering chat. Open a tile to inspect or switch.",
+          defaultValue: "Choose where chat replies are processed.",
         })}
         bare
       >
@@ -379,7 +359,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       </SettingsGroup>
 
       {/* Per-role model configuration (small/large chat brains + coding
-          sub-agent), driven by the validated /api/models catalog. */}
+            sub-agent), driven by the validated /api/models catalog. */}
       {settingsContentReady && !selection.cloudRuntimeLocked ? (
         <ModelConfigurationPanel
           activeChatProvider={activeChatCatalogProvider}
@@ -514,7 +494,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     </SettingsStack>
   );
 }
-
 /**
  * Selection state says what is configured; the serving axes say what actually
  * answered chat. When serving is unconfirmed or external, do not leave the
@@ -532,11 +511,9 @@ export function reconcileProviderEntriesWithServingAxes(
   }
   const providerId = axes.activeChatProvider?.trim().toLowerCase() ?? "";
   return entries.map((entry) => {
-    // Coding-only subscriptions are independent of the chat serving source.
-    if (
-      entry.category === "subscription" &&
-      entry.id !== "openai-subscription"
-    ) {
+    // Subscriptions are coding-agent credentials, independent of the chat
+    // serving source.
+    if (entry.category === "subscription") {
       return entry;
     }
     const current =
@@ -560,7 +537,6 @@ export function reconcileProviderEntriesWithServingAxes(
     };
   });
 }
-
 /**
  * Catalog chat provider implied by the current intelligence selection.
  * Cloud only pins when the account is actually connected — a cloud-proxy
@@ -580,21 +556,19 @@ export function resolveActiveChatCatalogProvider(
   if (resolvedSelectedId === "anthropic") return "claude-chat";
   return undefined;
 }
-
 /**
  * The provider currently routing this agent's intelligence, surfaced as a single
  * anchored row above the chip cloud so "what's powering me right now" is answered
  * without scanning every chip for the filled/active state.
  *
- * Honesty note: most coding-plan subscriptions (Claude Subscription, Gemini/
- * z.ai/Kimi/DeepSeek coding plans) can be the "current" selection WITHOUT
- * routing the main chat inference — `applySubscriptionProviderConfig`
+ * Honesty note: coding-plan subscriptions (Claude Subscription, Kimi/DeepSeek
+ * coding plans) can be the "current" selection WITHOUT routing the main chat
+ * inference — `applySubscriptionProviderConfig`
  * (packages/agent/src/api/provider-switch-config.ts) records them for the
- * task-agent orchestrator and only sets a runtime `model.primary` for the
- * Codex plan (`openai-codex`). A bare "Active" here therefore read as "this
- * now powers chat", which is false for Claude. Those entries get a qualified
- * label + note so the summary states what the selection actually does; the
- * Codex plan (which really can power the runtime) keeps the plain label.
+ * task-agent orchestrator and never sets a runtime `model.primary`. A bare
+ * "Active" here would read as "this now powers chat", which is false. Those
+ * entries get a qualified label + note so the summary states what the
+ * selection actually does.
  *
  * @internal Exported for testing only.
  */
@@ -606,10 +580,9 @@ export function ActiveProviderSummary({
   t: (key: string, vars?: Record<string, unknown>) => string;
 }) {
   const Icon = entry.icon;
-  // Mirrors the `runtimeApplicable` rule in provider-switch-config.ts: of the
-  // subscription selections only openai-codex may drive runtime inference.
-  const codingAgentsOnly =
-    entry.category === "subscription" && entry.id !== "openai-subscription";
+  // Mirrors provider-switch-config.ts: no subscription selection drives
+  // runtime chat inference.
+  const codingAgentsOnly = entry.category === "subscription";
   return (
     <SettingsRow
       label={

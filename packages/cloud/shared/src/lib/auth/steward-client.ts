@@ -667,11 +667,15 @@ export async function verifyStewardTokenCached(
     });
     if (!claims) return null;
 
-    // 3. Cache the result
+    // 3. Cache the result in the distributed memo unless the caller opts out.
+    // In skip mode no distributed operation may be initiated (the read above
+    // was already suppressed), so the delete/write memo I/O stays local to the
+    // in-isolate cache below — matching the inference hot path's intent of one
+    // remote cache decision per request.
     const tokenRemainingSeconds = claims.expiration - now;
     const effectiveTtl = Math.min(CacheTTL.session.steward, tokenRemainingSeconds);
 
-    if (effectiveTtl > 0) {
+    if (!options.skipDistributedCache && effectiveTtl > 0) {
       const cachedClaims: CachedStewardClaims = {
         ...claims,
         claimsSchemaVersion: 2,

@@ -2,7 +2,7 @@
  * Child fixture for the #18080 durable connector-credential e2e: boots the
  * REAL standalone agent entrypoint (`startElizaProcess`, the same boot the
  * Cloud image's `bin.js start` runs — real plugin resolution, real
- * PGlite-backed plugin-sql adapter, no app-core host bridge installed)
+ * PGlite-backed plugin-sql adapter, no app host bridge installed)
  * against the `ELIZA_STATE_DIR` the parent points at.
  *
  * `DURABLE_MODE=write` proves a durable writer exists on a hostless boot: it
@@ -21,10 +21,23 @@ import {
 } from "../../../../plugins/plugin-google-workspace/src/connector-credential-refs.ts";
 import { startElizaProcess } from "../../src/runtime/eliza.ts";
 
+import { defaultAgentHostBridge } from "../../src/runtime/host-bridge.ts";
+
 const mode = process.env.DURABLE_MODE ?? "write";
 const result: Record<string, unknown> = { mode };
 
 try {
+  let rejected = false;
+  try {
+    await defaultAgentHostBridge
+      .sharedVault()
+      .set("fixture", "must-not-disappear");
+  } catch (error) {
+    rejected =
+      (error as { code?: string }).code === "AGENT_HOST_VAULT_UNAVAILABLE";
+  }
+  if (!rejected)
+    throw new Error("Hostless vault write did not reject explicitly");
   const runtime = await startElizaProcess({ serverOnly: true });
   if (!runtime) throw new Error("startElizaProcess returned no runtime");
 

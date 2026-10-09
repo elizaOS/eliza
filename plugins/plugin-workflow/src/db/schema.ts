@@ -8,6 +8,8 @@
  * legacy rows are quarantined under a sentinel tenant.
  */
 import {
+  bigint,
+  bigserial,
   boolean,
   index,
   jsonb,
@@ -144,4 +146,139 @@ export const embeddedTags = workflowSchema.table(
     }),
     nameIdx: uniqueIndex('idx_embedded_tags_agent_name').on(table.agentId, table.name),
   })
+);
+
+/** New manual submissions only. Legacy scheduled keys are not rewritten. */
+export const manualSubmissions = workflowSchema.table(
+  'manual_submissions',
+  {
+    agentId: text('agent_id').notNull(),
+    workflowId: text('workflow_id').notNull(),
+    submissionId: text('submission_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    versionId: text('version_id').notNull(),
+    input: jsonb('input').$type<Record<string, unknown>>().notNull(),
+    runId: text('run_id').notNull(),
+  },
+  (table) => ({
+    submissionPk: primaryKey({ columns: [table.agentId, table.workflowId, table.submissionId] }),
+  })
+);
+
+/** Owner-scoped metadata-only edits; immutable receipt survives lost responses. */
+export const metadataMutations = workflowSchema.table(
+  'metadata_mutations',
+  {
+    agentId: text('agent_id').notNull(),
+    workflowId: text('workflow_id').notNull(),
+    mutationId: text('mutation_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    expectedVersionId: text('expected_version_id').notNull(),
+    name: text('name').notNull(),
+    description: text('description').notNull(),
+    receipt: jsonb('receipt')
+      .$type<{
+        mutationId: string;
+        workflowId: string;
+        previousVersionId: string;
+        versionId: string;
+        name: string;
+        description: string;
+        active: boolean;
+        appliedAt: string;
+      }>()
+      .notNull(),
+  },
+  (table) => ({
+    mutationPk: primaryKey({ columns: [table.agentId, table.workflowId, table.mutationId] }),
+  })
+);
+
+/** Receipt-preserving remove/restore, separate from workflow execution. */
+export const lifecycleMutations = workflowSchema.table(
+  'lifecycle_mutations',
+  {
+    agentId: text('agent_id').notNull(),
+    workflowId: text('workflow_id').notNull(),
+    mutationId: text('mutation_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    expectedVersionId: text('expected_version_id').notNull(),
+    operation: text('operation').notNull(),
+    receipt: jsonb('receipt')
+      .$type<{
+        mutationId: string;
+        workflowId: string;
+        previousVersionId: string;
+        versionId: string;
+        operation: 'remove' | 'restore';
+        appliedAt: string;
+      }>()
+      .notNull(),
+  },
+  (table) => ({
+    lifecyclePk: primaryKey({ columns: [table.agentId, table.workflowId, table.mutationId] }),
+  })
+);
+
+/** One immutable owner-scoped receipt for typed creation or full-spec editing. */
+export const typedMutations = workflowSchema.table(
+  'typed_mutations',
+  {
+    agentId: text('agent_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    mutationId: text('mutation_id').notNull(),
+    requestDigest: text('request_digest').notNull(),
+    workflowId: text('workflow_id').notNull(),
+    receipt: jsonb('receipt')
+      .$type<{
+        mutationId: string;
+        workflowId: string;
+        operation: 'create' | 'edit';
+        previousVersionId: string | null;
+        versionId: string;
+        specDigest: string;
+        compilerRevision: string;
+        appliedAt: string;
+      }>()
+      .notNull(),
+  },
+  (table) => ({ pk: primaryKey({ columns: [table.agentId, table.ownerId, table.mutationId] }) })
+);
+
+/** Delivery state only. Existing embedded_executions remains execution authority. */
+export const hostedSources = workflowSchema.table(
+  'hosted_sources',
+  {
+    agentId: text('agent_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    id: text('id').notNull(),
+    source: jsonb('source').$type<import('../services/hosted-digest').DigestSource>().notNull(),
+    revoked: boolean('revoked').notNull().default(false),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.agentId, t.ownerId, t.id] }) })
+);
+export const hostedResults = workflowSchema.table(
+  'hosted_results',
+  {
+    agentId: text('agent_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    runId: text('run_id').notNull(),
+    workflowId: text('workflow_id').notNull(),
+    sequence: bigserial('sequence', { mode: 'number' }).notNull(),
+    result: jsonb('result').$type<Record<string, unknown>>().notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.agentId, t.runId] }),
+    cursor: index('hosted_results_cursor').on(t.agentId, t.ownerId, t.sequence),
+  })
+);
+export const hostedCursors = workflowSchema.table(
+  'hosted_cursors',
+  {
+    agentId: text('agent_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    clientId: text('client_id').notNull(),
+    cursor: bigint('cursor', { mode: 'number' }).notNull().default(0),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.agentId, t.ownerId, t.clientId] }) })
 );

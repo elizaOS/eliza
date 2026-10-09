@@ -4,11 +4,7 @@
  * `@elizaos/plugin-goals`. Ties goals to their reminder plans and occurrences so
  * the scheduler can drive goal check-ins.
  */
-import {
-  GoalsService,
-  scoreGoalSimilarity,
-} from "@elizaos/plugin-goals/goals-service";
-import { getGoalsCheckinService } from "@elizaos/plugin-goals/services/checkin";
+
 import type {
   CreateLifeOpsGoalRequest,
   LifeOpsActivitySignal,
@@ -33,8 +29,13 @@ import type {
   LifeOpsTaskDefinition,
   LifeOpsWeeklyGoalReview,
   UpdateLifeOpsGoalRequest,
-} from "../../contracts/index.js";
-import { LIFEOPS_GOAL_SUGGESTION_KINDS } from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import { LIFEOPS_GOAL_SUGGESTION_KINDS } from "@elizaos/contracts";
+import {
+  GoalsService,
+  scoreGoalSimilarity,
+} from "@elizaos/plugin-goals/goals-service";
+import { getGoalsCheckinService } from "@elizaos/plugin-goals/services/checkin";
 import { resolveDefaultTimeZone } from "../defaults.js";
 import {
   type buildGoalSemanticReviewMetadata,
@@ -639,7 +640,19 @@ export class GoalsDomain {
         : mergedMetadata,
       updatedAt: now.toISOString(),
     };
-    await this.ctx.repository.updateGoal(nextGoal);
+    // Only the review's own metadata keys are written back: the rest of
+    // `goal` may be stale by now (this can follow an LLM evaluation).
+    const metadataPatch = Object.fromEntries(
+      Object.entries(nextGoal.metadata ?? {}).filter(
+        ([key, value]) =>
+          JSON.stringify(goal.metadata?.[key]) !== JSON.stringify(value),
+      ),
+    );
+    await this.ctx.repository.updateGoalReview(this.ctx.agentId(), goal.id, {
+      reviewState,
+      metadataPatch,
+      updatedAt: nextGoal.updatedAt,
+    });
     await this.ctx.repository.createAuditEvent(
       createLifeOpsAuditEvent({
         agentId: this.ctx.agentId(),

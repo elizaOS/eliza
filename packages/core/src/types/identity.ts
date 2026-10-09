@@ -105,25 +105,11 @@ export interface IdentityCluster {
 	readAt: string;
 }
 
-/**
- * Rollout switch for claim-authoritative named-recipient delivery. While the
- * claim-ingestion slice deferred from issue #23099 is not shipped, nothing in
- * the runtime writes `identity_claims` rows, so treating claims as the sole
- * delivery authority would refuse every contact send. The flag therefore
- * defaults OFF: MESSAGE op=send and connector recipient resolution keep the
- * legacy entity-component path until an operator opts in. Turning it ON makes
- * active verified identity claims mandatory for principal-UUID recipients and
- * removes legacy entity components from delivery authority.
- */
+/** Opt-in claim-authoritative recipient resolution. When enabled, delivery requires verified identity claims; otherwise entity-component resolution applies. */
 export const IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE_SETTING =
 	"IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE" as const;
 
-/**
- * Parse the {@link IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE_SETTING} runtime
- * setting fail-closed: only an explicit boolean `true` or an affirmative
- * string opts into claim-mandatory delivery; everything else keeps legacy
- * resolution so an absent or malformed setting can never disable delivery.
- */
+/** Only explicit true or an affirmative string enables claim-authoritative delivery. */
 export function identityDeliveryClaimsAuthoritative(value: unknown): boolean {
 	if (value === true) return true;
 	if (typeof value !== "string") return false;
@@ -175,11 +161,7 @@ export function orderIdentityDeliveryClaims(
 	return [...claims].sort((left, right) => key(left).localeCompare(key(right)));
 }
 
-/**
- * Canonical delivery lookup never guesses between verified claims. Consumers
- * may present `ambiguous` claims as choices, while `no_claim` is a hard stop
- * before provider I/O rather than permission to inspect legacy entity fields.
- */
+/** Delivery never guesses between verified claims. Ambiguous claims may be offered as choices; no_claim stops before provider I/O. */
 export type IdentityDeliveryClaimResolution =
 	| {
 			decision: "resolved";

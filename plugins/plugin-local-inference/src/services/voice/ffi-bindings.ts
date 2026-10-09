@@ -2,7 +2,7 @@
  * Node/Bun FFI binding to `libelizainference.{dylib,so,dll}`.
  *
  * The fused omnivoice + llama.cpp build (see
- * `packages/app-core/scripts/omnivoice-fuse/`) produces ONE shared
+ * `packages/app/scripts/omnivoice-fuse/`) produces ONE shared
  * library that exports both `llama_*` and `omnivoice_*` symbols plus
  * the C ABI declared in `scripts/omnivoice-fuse/ffi.h`. This module is
  * the JS-side proxy for that ABI — it loads the library, binds every
@@ -37,7 +37,7 @@ import { VoiceLifecycleError } from "./lifecycle";
  * dependencies — it searches the host EXE's dir, the system dirs, and PATH. So
  * `dlopen` fails with "error code 126" (a dependent DLL could not be found)
  * even though the siblings are right there. Linux/macOS don't need this:
- * `stage-desktop-fused-lib.mjs` bakes a relative rpath (`$ORIGIN` /
+ * `stage-desktop-fused-lib.ts` bakes a relative rpath (`$ORIGIN` /
  * `@loader_path`) at link time so the loader resolves siblings from the lib's
  * own dir. Idempotent; a no-op off win32 and when `dir` is already on PATH.
  */
@@ -122,13 +122,15 @@ function ensureWin32DllSearchDir(dir: string): void {
  *     lineage advances 12 -> 14 for the Kokoro IPA surface (fork-sync #11386)
  *     so the two independent bumps stay collision-free.
  *
+ * v16: canonical embedding callers opt into added-token parsing through a
+ *     separate strict-context entrypoint. Legacy embedding calls remain available.
  * v15: Kokoro adds exact-size, library-owned PCM allocation entrypoints. The
  *     change is additive: every v14 symbol and function shape used by this
  *     binding is unchanged. Until the JS Kokoro path adopts the allocation
  *     entries it intentionally keeps using the v14 caller-buffer functions;
  *     v14 libraries therefore remain valid at that degraded capability.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 15 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 16 as const;
 
 /** One transcribed word with playback-synced timing (ms from utterance start). */
 export interface AsrWordTiming {
@@ -384,7 +386,10 @@ export interface ElizaInferenceFfi {
 	/** ABI version reported by the loaded library. */
 	readonly libraryAbiVersion: string;
 	/** Create a fresh context anchored at `bundleDir`. */
-	create(bundleDir: string): ElizaInferenceContextHandle;
+	create(
+		bundleDir: string,
+		options?: { gpuLayers: number },
+	): ElizaInferenceContextHandle;
 	/** Destroy a previously-created context. Idempotent on already-freed handles. */
 	destroy(ctx: ElizaInferenceContextHandle): void;
 	/** Map / re-page weights for a region. */
@@ -718,6 +723,8 @@ export interface ElizaInferenceFfi {
 		ctx: ElizaInferenceContextHandle;
 		text: string;
 		pooling?: number;
+		/** Canonical BGE added-token parsing; requires the explicit embedding ABI. */
+		parseSpecial?: boolean;
 	}): Float32Array;
 
 	/* ---- mmproj vision describe (ABI v9) ------------------------- */
@@ -926,6 +933,11 @@ export function loadElizaInferenceFfi(dylibPath: string): ElizaInferenceFfi {
 interface BunFfiSymbols {
 	eliza_inference_abi_version: () => unknown;
 	eliza_inference_create: (bundleDir: unknown, outErr: unknown) => unknown;
+	eliza_inference_create_with_options?: (
+		bundleDir: unknown,
+		gpuLayers: number,
+		outErr: unknown,
+	) => unknown;
 	eliza_inference_destroy: (ctx: bigint) => void;
 	eliza_inference_mmap_acquire: (
 		ctx: bigint,
@@ -1136,6 +1148,17 @@ interface BunFfiSymbols {
 		outDim: unknown,
 		outErr: unknown,
 	) => number;
+	eliza_inference_embed_with_options?: (
+		ctx: bigint,
+		text: unknown,
+		textLen: bigint | number,
+		pooling: number,
+		parseSpecial: number,
+		outEmbedding: unknown,
+		outCapacity: bigint | number,
+		outDim: unknown,
+		outErr: unknown,
+	) => number;
 	// mmproj vision describe (ABI v9). Optional — absent on v8 / vision-off builds.
 	eliza_inference_vision_supported?: () => number;
 	eliza_inference_describe_image?: (
@@ -1290,6 +1313,11 @@ function loadBunFfiModule(): BunFfiModule {
 	return r("bun:ffi") as BunFfiModule;
 }
 
+// GGML installs a process-wide C++ terminate callback. Windows must retain its
+// DLL across optional-symbol retries and binding close/reopen, or that callback
+// outlives the unloaded image. Model contexts and normal FFI handles still close.
+const residentWindowsLibraries = new Map<string, BunFfiLib>();
+
 function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	let ffi: BunFfiModule;
 	try {
@@ -1306,6 +1334,25 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// .dll) resolvable before dlopen, which otherwise fails with error 126. See
 	// ensureWin32DllSearchDir for the full rationale.
 	ensureWin32DllSearchDir(path.dirname(dylibPath));
+	if (process.platform === "win32") {
+		const libraryPath = path.resolve(dylibPath);
+		if (!residentWindowsLibraries.has(libraryPath)) {
+			try {
+				residentWindowsLibraries.set(
+					libraryPath,
+					ffi.dlopen(libraryPath, {
+						eliza_inference_abi_version: { args: [], returns: T.cstring },
+					}),
+				);
+			} catch (error) {
+				// error-policy:J1 The native loader boundary reports an unavailable kernel.
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					`[ffi-bindings] Cannot retain Windows library ${libraryPath}: ${formatFfiError(error)}`,
+				);
+			}
+		}
+	}
 
 	// All `char *` arguments are typed as T.ptr — Bun's `T.cstring` is a
 	// RETURN-only type for "library hands back a NUL-terminated string".
@@ -1473,6 +1520,13 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// re-listed here (a v9 build that lacks reference-encode still needs it for
 	// `tokenize`'s buffer); identical defs merge harmlessly.
 	let textModalitiesSymbolsAvailable = true;
+	let embeddingOptionsSymbolsAvailable = false;
+	const embeddingOptionsDefs = {
+		eliza_inference_embed_with_options: {
+			args: [T.ptr, T.ptr, T.usize, T.i32, T.i32, T.ptr, T.usize, T.ptr, T.ptr],
+			returns: T.i32,
+		},
+	};
 	const textModalitiesDefs = {
 		eliza_inference_embed_supported: { args: [], returns: T.i32 },
 		eliza_inference_embed: {
@@ -1973,9 +2027,38 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 	];
 	let lastOpenError: unknown = null;
-	for (const attempt of attempts) {
+	// Probe the additive embedding option on each supported native lineage,
+	// including builds without the optional streaming-vision family.
+	const embeddingAttempts = attempts.flatMap((attempt) => {
+		const legacy = { ...attempt, embeddingOptions: false };
+		return "textModalities" in attempt && attempt.textModalities
+			? [
+					{
+						...attempt,
+						defs: { ...attempt.defs, ...embeddingOptionsDefs },
+						embeddingOptions: true,
+					},
+					legacy,
+				]
+			: [legacy];
+	});
+	const contextAttempts = embeddingAttempts.flatMap((attempt) => [
+		{
+			...attempt,
+			defs: {
+				...attempt.defs,
+				eliza_inference_create_with_options: {
+					args: [T.ptr, T.i32, T.ptr],
+					returns: T.ptr,
+				},
+			},
+		},
+		attempt,
+	]);
+	for (const attempt of contextAttempts) {
 		try {
 			lib = ffi.dlopen(dylibPath, attempt.defs);
+			embeddingOptionsSymbolsAvailable = attempt.embeddingOptions;
 			referenceEncodeSymbolsAvailable = attempt.referenceEncode;
 			nativeVadSymbolsAvailable = attempt.nativeVad;
 			wakewordSymbolsAvailable = attempt.wakeword;
@@ -2037,6 +2120,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// tokenizer), accepted only when those are absent too.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
+		(reported === "15" && !embeddingOptionsSymbolsAvailable) ||
 		// ABI v15 only adds optional exact-size Kokoro PCM allocation symbols.
 		// The binding still uses the unchanged v14 caller-owned-buffer surface,
 		// so a v14 library is explicitly compatible at degraded capability.
@@ -2135,13 +2219,35 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		libraryPath: dylibPath,
 		libraryAbiVersion: reported,
 
-		create(bundleDir: string): ElizaInferenceContextHandle {
+		create(
+			bundleDir: string,
+			options?: { gpuLayers: number },
+		): ElizaInferenceContextHandle {
+			const createWithOptions =
+				loadedLib.symbols.eliza_inference_create_with_options;
+			if (
+				options &&
+				(!Number.isInteger(options.gpuLayers) ||
+					options.gpuLayers < 0 ||
+					options.gpuLayers > 2147483647)
+			) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"Context GPU layers must be a nonnegative int32",
+				);
+			}
+			if (options && typeof createWithOptions !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"Explicit context GPU selection requires eliza_inference_create_with_options; rebuild the native library",
+				);
+			}
 			const err = makeOutErr();
 			const bundleArg = cstr(bundleDir);
-			const handle = loadedLib.symbols.eliza_inference_create(
-				bundleArg.ptr,
-				err.ptr,
-			);
+			const handle =
+				options && createWithOptions
+					? createWithOptions(bundleArg.ptr, options.gpuLayers, err.ptr)
+					: loadedLib.symbols.eliza_inference_create(bundleArg.ptr, err.ptr);
 			if (isNullPointer(handle)) {
 				const message =
 					takeError(err.buf) ??
@@ -3075,12 +3181,24 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			);
 		},
 
-		embed({ ctx, text, pooling }) {
+		embed({ ctx, text, pooling, parseSpecial }) {
 			const embed = loadedLib.symbols.eliza_inference_embed;
 			if (!textModalitiesSymbolsAvailable || typeof embed !== "function") {
 				throw new VoiceLifecycleError(
 					"kernel-missing",
 					"[ffi-bindings] eliza_inference_embed is not exported by this build",
+				);
+			}
+			const embedWithOptions =
+				loadedLib.symbols.eliza_inference_embed_with_options;
+			if (
+				parseSpecial === true &&
+				(!embeddingOptionsSymbolsAvailable ||
+					typeof embedWithOptions !== "function")
+			) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] Canonical BGE embeddings require eliza_inference_embed_with_options; rebuild the native library",
 				);
 			}
 			const err = makeOutErr();
@@ -3092,16 +3210,29 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			const cap = 4096;
 			const outEmbedding = new Float32Array(cap);
 			const outDim = new Int32Array(1);
-			const rc = embed(
-				ctx,
-				textArg.ptr,
-				BigInt(textArg.bytes),
-				pooling ?? ELIZA_POOLING_MEAN,
-				ffi.ptr(outEmbedding),
-				BigInt(cap),
-				ffi.ptr(outDim),
-				err.ptr,
-			);
+			const rc =
+				parseSpecial === true && typeof embedWithOptions === "function"
+					? embedWithOptions(
+							ctx,
+							textArg.ptr,
+							BigInt(textArg.bytes),
+							pooling ?? ELIZA_POOLING_MEAN,
+							1,
+							ffi.ptr(outEmbedding),
+							BigInt(cap),
+							ffi.ptr(outDim),
+							err.ptr,
+						)
+					: embed(
+							ctx,
+							textArg.ptr,
+							BigInt(textArg.bytes),
+							pooling ?? ELIZA_POOLING_MEAN,
+							ffi.ptr(outEmbedding),
+							BigInt(cap),
+							ffi.ptr(outDim),
+							err.ptr,
+						);
 			if (rc !== ELIZA_OK) {
 				const message =
 					takeError(err.buf) ?? `[ffi-bindings] eliza_inference_embed rc=${rc}`;

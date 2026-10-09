@@ -41,28 +41,13 @@ function hasBinary(_bin: string): boolean {
  * Get the current platform name
  */
 function getCurrentPlatform(): string {
-	return typeof process !== "undefined" && process.platform
-		? process.platform
-		: "unknown";
+	return process.platform;
 }
 
 /**
  * HookService implementation
  */
-/**
- * Hook priority as a usable number. `HookPriority` is a bare `number`, so a
- * caller can supply a non-finite one — `register` previously guarded only
- * absence via `?? DEFAULT_HOOK_PRIORITY`, and `setPriority` applied the value
- * with no validation at all.
- *
- * `dispatchToHooks` runs hooks sequentially so each can modify the payload
- * before the next sees it, which makes the order load-bearing. A non-finite
- * priority makes the ordering subtraction return NaN, and `Array.prototype.sort`
- * treats NaN as "leave as is", so the hook keeps its arrival position and
- * preempts hooks that properly outrank it. Normalizing at both write points
- * keeps every later reader — ordering, reporting, snapshots — on a finite
- * value.
- */
+/** Normalizes hook priorities to finite values so sequential dispatch has a deterministic order. */
 function normalizeHookPriority(
 	priority: HookPriority | undefined,
 ): HookPriority {
@@ -182,9 +167,7 @@ export class HookService extends Service implements IHookService {
 		return this.checkRequirements(requirements, this.hookConfig);
 	}
 
-	// ========================================================================
 	// Registration
-	// ========================================================================
 
 	register(
 		events: EventType | EventType[],
@@ -285,9 +268,7 @@ export class HookService extends Service implements IHookService {
 		);
 	}
 
-	// ========================================================================
 	// Introspection
-	// ========================================================================
 
 	getSnapshot(): HookSnapshot {
 		const hooks: HookSummary[] = Array.from(this.registry.values()).map(
@@ -327,9 +308,7 @@ export class HookService extends Service implements IHookService {
 		return Array.from(this.registry.values());
 	}
 
-	// ========================================================================
 	// Configuration
-	// ========================================================================
 
 	setEnabled(hookId: string, enabled: boolean): void {
 		const registration = this.registry.get(hookId);
@@ -354,9 +333,7 @@ export class HookService extends Service implements IHookService {
 		this.hookConfig = config;
 	}
 
-	// ========================================================================
 	// Eligibility
-	// ========================================================================
 
 	checkEligibility(hookId: string): HookEligibilityResult {
 		const registration = this.registry.get(hookId);

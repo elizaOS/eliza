@@ -378,9 +378,6 @@ export function installStandaloneBottomReclaim(): () => void {
   return dispose;
 }
 
-/** The CSS custom-property name the layer styles read. */
-export const STANDALONE_BOTTOM_RECLAIM_VAR = RECLAIM_VAR;
-
 /**
  * The reclaim expression the fixed layers apply to their `bottom`. Measured
  * (JS) gap, not the useless `max(0px, 100lvh - 100dvh)` CSS-unit calc. On any

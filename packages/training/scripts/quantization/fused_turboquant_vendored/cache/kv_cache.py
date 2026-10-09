@@ -16,7 +16,7 @@ from typing import Optional
 
 import torch
 
-from quantization.fused_turboquant_vendored.core.quantizer import CompressedTensor, TurboQuantMSE
+from eliza_training.quantization.fused_turboquant_vendored.core.quantizer import CompressedTensor, TurboQuantMSE
 
 
 class TurboQuantKVCache:

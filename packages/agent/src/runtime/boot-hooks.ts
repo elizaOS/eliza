@@ -6,7 +6,7 @@
  * Two absences are designed rather than exceptional, and both are load-bearing
  * for voice. A packaged bundle that does not stage `generated.json` makes
  * `loadRegistry()` return an empty set on purpose
- * (`packages/registry/src/first-party/index.ts` marks that `error-policy:J4`), so
+ * (`packages/core/src/catalog/registry.ts` marks that `error-policy:J4`), so
  * the registry alone cannot be the only source of the local-inference hook —
  * nothing else installs the local TEXT/EMBEDDING/TRANSCRIPTION/TTS handlers, and
  * without them voice reports not-ready with no failure at the boot site. And a
@@ -14,12 +14,15 @@
  * rather than abort startup.
  */
 
-import { type AgentRuntime, logger } from "@elizaos/core";
 import {
+  type AgentRuntime,
   getApps,
   getPlugins,
   loadRegistry,
-} from "@elizaos/registry/first-party";
+  logger,
+} from "@elizaos/core";
+
+import { isModuleNotFoundError } from "../utils/module-resolution-error.ts";
 
 export interface BootHookDeclaration {
   id: string;
@@ -64,21 +67,6 @@ const FALLBACK_BOOT_HOOK_DECLARATIONS: readonly BootHookDeclaration[] = [
   },
 ];
 
-/**
- * True only when `specifier` itself could not be resolved — not when the hook
- * module loaded and one of *its* imports was missing. Skipping on the latter
- * would turn a genuinely broken plugin into a silent no-op.
- */
-function isMissingModule(error: unknown, specifier: string): boolean {
-  if (!error || typeof error !== "object") return false;
-  const code = (error as { code?: unknown }).code;
-  if (code !== "ERR_MODULE_NOT_FOUND" && code !== "MODULE_NOT_FOUND") {
-    return false;
-  }
-  const message = (error as { message?: unknown }).message;
-  return typeof message === "string" && message.includes(specifier);
-}
-
 async function loadAndInvokeBootHook(
   declaration: BootHookDeclaration,
   runtime: AgentRuntime,
@@ -95,7 +83,7 @@ async function loadAndInvokeBootHook(
     // error-policy:J4 a host that ships without an optional hook module is a
     // supported deployment, so its absence degrades to "no hook". Anything else,
     // including a broken import inside the hook module, still fails the boot.
-    if (isMissingModule(error, declaration.specifier)) {
+    if (isModuleNotFoundError(error, declaration.specifier)) {
       logger.debug(
         `[eliza] boot hook ${declaration.id} not installed (${declaration.specifier}); skipping`,
       );

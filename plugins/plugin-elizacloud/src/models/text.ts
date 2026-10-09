@@ -4,17 +4,22 @@
  * validates structured inputs, and exposes streaming results to the runtime.
  */
 
+import { nativeApplicationOperationHeaders, getNativeApplicationSlot } from "../utils/config";
+import { nativeFundingFailure, withNativeFundingAuthority } from "../utils/native-funding";
 import type {
   GenerateTextParams,
   IAgentRuntime,
   ModelTypeName,
   TextStreamResult,
   TokenUsage,
+  ToolCall,
+  JsonValue,
 } from "@elizaos/core";
 import {
 	assertModelOutputComplete,
   buildCanonicalSystemPrompt,
-  ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+  MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
+  createPreparedModelRequestGuard,
   ElizaError,
   logger,
   ModelType,
@@ -49,6 +54,20 @@ const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as ModelTypeNa
 const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
   "RESPONSE_HANDLER") as ModelTypeName;
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
+
+function createCloudPreparedRequestGuard(
+  model: string,
+  body: Record<string, unknown>
+) {
+  const outputReserve = body.max_output_tokens ?? body.max_tokens;
+  return createPreparedModelRequestGuard({
+    provider: "eliza-cloud",
+    model,
+    serializeRequest: () => JSON.stringify(body),
+    outputReserveTokens:
+      typeof outputReserve === "number" ? outputReserve : undefined,
+  });
+}
 
 /**
  * Per-process cap on CONCURRENT native cloud text calls.
@@ -126,8 +145,7 @@ export function resolveStreamingEnabled(): boolean {
 /**
  * Combine the runtime's abort signal with the client-side timeout into one
  * signal for `requestRaw`. A stream is long-lived, so it should abort on EITHER
- * a caller cancel OR the timeout — `requestRaw` honors only a single signal, so
- * merge them here.
+ * a caller cancel OR the timeout.
  */
 export function buildStreamAbortSignal(
   abortSignal: AbortSignal | undefined,
@@ -260,20 +278,13 @@ type NativeTokenUsage = {
 
 type NativeGenerateTextResult = {
   text: string;
-  toolCalls: unknown[];
+  toolCalls: ToolCall[];
   finishReason?: string;
   usage?: NativeTokenUsage;
   providerMetadata?: unknown;
 };
 
 type NativeGenerateTextModelResult = NativeGenerateTextResult & string;
-
-type NativeToolCall = {
-  type: "tool-call";
-  toolCallId: string;
-  toolName: string;
-  input: unknown;
-};
 
 type ChatCompletionsResponse = Record<string, unknown> & {
   error?: {
@@ -477,7 +488,8 @@ function firstNumber(...values: unknown[]): number | undefined {
  * Bounded retry for the cold-gateway "warming" 503 (first turn after idle).
  *
  * A cold Cloudflare Worker answers with 503 and a machine-readable transient
- * code (`*_cache_warming`, `rate_limit_unavailable`, or the generative ApiError
+ * code (`*_cache_warming`, `inference_admission_unavailable`,
+ * `rate_limit_unavailable`, or the generative ApiError
  * retryable envelope) while it hydrates auth/billing/admission state under
  * waitUntil or starts the inference-admission Durable Object — recovery is ~3s.
  * That 503 is a retry-shortly signal, NOT a dead provider, but the runtime's
@@ -504,7 +516,7 @@ export class ElizaCloudGatewayWarmingExhaustedError extends ElizaError {
 
   constructor(label: string, attempts: number) {
     super("elizaOS Cloud gateway remained unavailable after cache warming retries", {
-      code: ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+      code: MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
       context: { attempts, provider: "elizaOSCloud", route: label, status: 503 },
       severity: "ephemeral",
     });
@@ -524,7 +536,8 @@ function parseJsonRecord(text: string): Record<string, unknown> | undefined {
 
 /**
  * True only for the gateway's explicit transient 503 shapes:
- * `{ error: { code: "*_cache_warming" } }` (chat/completions, embeddings) or
+ * `{ error: { code: "*_cache_warming" | "inference_admission_unavailable" } }`
+ * (chat/completions, embeddings) or
  * the generative ApiError envelope `{ code: "service_unavailable",
  * details: { retryable: true } }`, plus the inference-admission boundary's
  * `{ success: false, code: "rate_limit_unavailable" }`. Everything else —
@@ -536,7 +549,10 @@ export function isWarmingUnavailableResponse(status: number, bodyText: string): 
   const body = parseJsonRecord(bodyText);
   if (!body) return false;
   const errorCode = asRecord(body.error).code;
-  if (typeof errorCode === "string" && errorCode.endsWith("_cache_warming")) {
+  if (
+    errorCode === "inference_admission_unavailable" ||
+    (typeof errorCode === "string" && errorCode.endsWith("_cache_warming"))
+  ) {
     return true;
   }
   if (body.success === false && body.code === "rate_limit_unavailable") {
@@ -605,7 +621,9 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
  */
 export async function requestNativeWithWarmingRetry(
   doRequest: () => Promise<Response>,
-  label: string
+  label: string,
+  /** The caller's cancellation signal; it also ends a warming backoff sleep. */
+  signal?: AbortSignal
 ): Promise<{ response: Response; bodyText: string }> {
   const state: WarmingRetryState = { attempt: 0 };
   for (;;) {
@@ -626,7 +644,7 @@ export async function requestNativeWithWarmingRetry(
     logger.warn(
       `[ELIZAOS_CLOUD] cloud gateway is warming (503) on ${label}; retrying in ${delayMs}ms (attempt ${state.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
     );
-    await sleepMs(delayMs);
+    await sleepMs(delayMs, signal);
   }
 }
 
@@ -651,7 +669,7 @@ function invalidNativeStream(reason: string, cause?: unknown): ElizaError {
   });
 }
 
-function parseNativeToolCallInput(value: unknown): Record<string, unknown> {
+function parseNativeToolCallInput(value: unknown): Record<string, JsonValue> {
   let parsed = value;
   if (typeof value === "string") {
     if (value.trim() === "") {
@@ -670,7 +688,7 @@ function parseNativeToolCallInput(value: unknown): Record<string, unknown> {
   if (!isRecord(parsed)) {
     throw invalidNativeToolCall("tool-call arguments must be a JSON object");
   }
-  return parsed;
+  return parsed as Record<string, JsonValue>;
 }
 
 function stringifyMessageContent(content: unknown): string {
@@ -728,7 +746,58 @@ function toolCallIds(toolCalls: unknown): string[] {
 function sanitizeNativeMessages(
   messages: Array<Record<string, unknown>>
 ): Array<Record<string, unknown>> {
-  const result = messages.map((message) => ({ ...message }));
+  // Core history uses canonical content parts; the gateway accepts OpenAI
+  // linkage fields. Normalize before orphan checks, without changing callers.
+  const result = messages.flatMap<Record<string, unknown>>((message) => {
+    if (!Array.isArray(message.content)) return [{ ...message }];
+    if (message.role === "assistant") {
+      const calls = message.content.filter((part) => isRecord(part) && part.type === "tool-call");
+      if (calls.length === 0) return [{ ...message }];
+      const content = message.content.filter((part) => !isRecord(part) || part.type !== "tool-call");
+      return [
+        {
+          ...message,
+          content: content.length ? content : null,
+          tool_calls: [
+            ...(Array.isArray(message.tool_calls) ? message.tool_calls : []),
+            ...calls.map((part) => {
+              const id = firstString(part.toolCallId),
+                name = firstString(part.toolName);
+              if (!id || !name)
+                throw invalidNativeToolCall("canonical history call is missing its id or name");
+              return {
+                id,
+                type: "function",
+                function: {
+                  name,
+                  arguments: JSON.stringify(part.input === undefined ? {} : part.input),
+                },
+              };
+            }),
+          ],
+        },
+      ];
+    }
+    if (message.role === "tool") {
+      return message.content.map((part) => {
+        if (!isRecord(part) || part.type !== "tool-result") return { ...message, content: [part] };
+        const id = firstString(part.toolCallId);
+        if (!id) throw invalidNativeToolCall("canonical history result is missing its call id");
+        const output = asRecord(part.output);
+        // Match the OpenAI SDK's canonical result semantics, including JSON
+        // scalar/null values and denied execution. Unknown output stays data.
+        const content = ["json", "error-json", "content"].includes(String(output.type))
+          ? JSON.stringify(output.value)
+          : output.type === "execution-denied"
+            ? (output.reason ?? "Tool execution denied.")
+            : stringifyMessageContent(
+                ["text", "error-text"].includes(String(output.type)) ? output.value : part.output
+              );
+        return { ...message, tool_call_id: id, content };
+      });
+    }
+    return [{ ...message }];
+  });
   let openAssistant: Record<string, unknown> | null = null;
   let matchedToolMessages: Array<Record<string, unknown>> = [];
   let pending = new Set<string>();
@@ -781,27 +850,39 @@ function sanitizeNativeMessages(
 function buildNativeMessages(
   params: GenerateTextParamsWithNativeOptions,
   promptText: string,
-  systemPrompt?: string
+  systemPrompt?: string,
+  responseFormat?: unknown
 ): Array<Record<string, unknown>> {
+  let messages: Array<Record<string, unknown>>;
   if (Array.isArray(params.messages) && params.messages.length > 0) {
-    const messages = params.messages.map((message) =>
+    messages = params.messages.map((message) =>
       isRecord(message)
         ? { ...message }
         : { role: "user", content: stringifyMessageContent(message) }
     );
-    const first = asRecord(messages[0]);
-    const withSystem =
-      systemPrompt && first.role !== "system"
-        ? [{ role: "system", content: systemPrompt }, ...messages]
-        : messages;
-    return sanitizeNativeMessages(withSystem);
+    if (systemPrompt && messages[0].role !== "system") {
+      messages.unshift({ role: "system", content: systemPrompt });
+    }
+    messages = sanitizeNativeMessages(messages);
+  } else {
+    messages = [];
+    if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
+    messages.push({ role: "user", content: promptText });
   }
 
-  const messages: Array<Record<string, unknown>> = [];
-  if (systemPrompt) {
-    messages.push({ role: "system", content: systemPrompt });
+  // The native gateway omits schema response formats unless explicitly supplied.
+  // Keep the caller's complete output contract in model-visible instructions.
+  if (params.responseSchema && asRecord(responseFormat).type !== "json_schema") {
+    const instruction = `Return only JSON matching this schema; do not add prohibited fields.\nResponse JSON schema:\n${JSON.stringify(unwrapJsonSchema(params.responseSchema))}`;
+    const first = messages[0];
+    if (first.role === "system" && typeof first.content === "string") {
+      first.content += `\n\n${instruction}`;
+    } else if (first.role === "system" && Array.isArray(first.content)) {
+      first.content = [...first.content, { type: "text", text: instruction }];
+    } else {
+      messages.unshift({ role: "system", content: instruction });
+    }
   }
-  messages.push({ role: "user", content: promptText });
   return messages;
 }
 
@@ -919,8 +1000,8 @@ function buildNativeResponseFormat(responseSchema: unknown, _modelName: string):
   // The Cloud's native `/chat/completions` gateway 400s on `response_format`
   // for its served models — BOTH `json_schema` AND `json_object`, verified
   // live against zai-glm-4.7 AND gemma-4-31b (each: with either format → 400,
-  // without → 200). The structured schema is already embedded in the prompt
-  // body and the caller repairs/validates the returned JSON, so omit
+  // without → 200). buildNativeMessages supplies the complete schema in the
+  // system instructions and the caller validates returned JSON, so omit
   // `response_format` entirely; otherwise every structured-output call (the
   // trajectory evaluator, the planner) fails with `Bad Request` and breaks
   // every tool-using turn (web search, price lookups, sub-agent spawns).
@@ -1020,7 +1101,7 @@ function buildNativeRequestBody(
   const responseFormat = buildNativeResponseFormat(params.responseSchema, modelName);
   const requestBody: Record<string, unknown> = {
     model: modelName,
-    messages: buildNativeMessages(params, promptText, systemPrompt),
+    messages: buildNativeMessages(params, promptText, systemPrompt, responseFormat),
   };
   // An omitted output budget remains omitted. The selected provider owns its
   // real model boundary; core defaults would silently turn a complete request
@@ -1097,7 +1178,7 @@ function extractChatCompletionText(data: ChatCompletionsResponse): string {
   return firstString(firstChoice.text, extractTextFromContent(firstChoice.message?.content)) ?? "";
 }
 
-function extractNativeToolCalls(data: ChatCompletionsResponse): NativeToolCall[] {
+function extractNativeToolCalls(data: ChatCompletionsResponse): ToolCall[] {
   const rawCalls = data.choices?.[0]?.message?.tool_calls;
   if (rawCalls === undefined) {
     return [];
@@ -1142,10 +1223,9 @@ function extractNativeToolCalls(data: ChatCompletionsResponse): NativeToolCall[]
     }
 
     return {
-      type: "tool-call",
-      toolCallId,
-      toolName,
-      input: parseNativeToolCallInput(input),
+      id: toolCallId,
+      name: toolName,
+      arguments: parseNativeToolCallInput(input),
     };
   });
 }
@@ -1160,14 +1240,19 @@ function convertNativeUsage(usage: unknown): NativeTokenUsage | undefined {
   const promptTokenDetails = recordAt(root, "prompt_tokens_details");
   const inputTokenDetailsSnake = recordAt(root, "input_tokens_details");
   const promptTokens =
-    firstNumber(root.inputTokens, root.input_tokens, root.promptTokens, root.prompt_tokens) ?? 0;
+    firstNumber(root.inputTokens, root.input_tokens, root.promptTokens, root.prompt_tokens);
   const completionTokens =
     firstNumber(
       root.outputTokens,
       root.output_tokens,
       root.completionTokens,
       root.completion_tokens
-    ) ?? 0;
+    );
+  // Incomplete gateway usage cannot support a token-based cost estimate.
+  // Preserve the same unavailable state as an entirely missing usage object.
+  if (promptTokens === undefined || completionTokens === undefined) {
+    return undefined;
+  }
   const cacheReadInputTokens = firstNumber(
     root.cacheReadInputTokens,
     root.cache_read_input_tokens,
@@ -1201,6 +1286,19 @@ function convertNativeUsage(usage: unknown): NativeTokenUsage | undefined {
     cachedPromptTokens: cacheReadInputTokens,
     cacheReadInputTokens,
     cacheCreationInputTokens,
+  };
+}
+
+/** Map complete normalized gateway counts onto the shared usage-event contract. */
+function toUsageEventTokens(usage: NativeTokenUsage): {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+} {
+  return {
+    inputTokens: usage.promptTokens,
+    outputTokens: usage.completionTokens,
+    totalTokens: usage.totalTokens,
   };
 }
 
@@ -1347,8 +1445,10 @@ async function generateTextWithModel(
   if (!reasoning && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
   }
+  const preparedRequest = createCloudPreparedRequestGuard(modelName, requestBody);
 
   const responsesHeaders: Record<string, string> = withInferenceTraceHeader({
+    ...nativeApplicationOperationHeaders(runtime),
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
   });
@@ -1363,13 +1463,17 @@ async function generateTextWithModel(
   // A cold gateway's warming 503 is retried in place instead of throwing into
   // the runtime failover ladder (see requestNativeWithWarmingRetry).
   const { response, bodyText: responseText } = await requestNativeWithWarmingRetry(
-    () =>
-      createCloudApiClient(runtime).requestRaw("POST", "/responses", {
+    () => {
+      preparedRequest.assertBeforeAttempt();
+      return createCloudApiClient(runtime).requestRaw("POST", "/responses", {
         headers: responsesHeaders,
         json: requestBody,
         timeoutMs: resolveTextTimeoutMs(),
-      }),
-    "responses"
+        ...(params.signal ? { signal: params.signal } : {}),
+      });
+    },
+    "responses",
+    params.signal
   );
   let data: ResponsesApiResponse = {};
   if (responseText) {
@@ -1415,16 +1519,13 @@ async function generateTextWithModel(
 		);
 	}
 
-  if (data.usage) {
+  const usage = convertNativeUsage(data.usage);
+  if (usage) {
     emitModelUsageEvent(
       runtime,
       modelType,
       prompt,
-      {
-        inputTokens: data.usage.input_tokens ?? 0,
-        outputTokens: data.usage.output_tokens ?? 0,
-        totalTokens: data.usage.total_tokens ?? 0,
-      },
+      toUsageEventTokens(usage),
       {
         modelName: getModelNameForType(runtime, modelType),
         ...(() => {
@@ -1462,7 +1563,9 @@ export async function generateNativeChatCompletion(
     context.systemPrompt,
     runtime
   );
+  const preparedRequest = createCloudPreparedRequestGuard(context.modelName, requestBody);
   const headers: Record<string, string> = withInferenceTraceHeader({
+    ...nativeApplicationOperationHeaders(runtime),
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
   });
@@ -1485,13 +1588,17 @@ export async function generateNativeChatCompletion(
   // warming 503 is retried in place instead of throwing into the runtime
   // failover ladder (see requestNativeWithWarmingRetry).
   const { response, bodyText: responseText } = await requestNativeWithWarmingRetry(
-    () =>
-      createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
+    () => {
+      preparedRequest.assertBeforeAttempt();
+      return createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
         headers,
         json: requestBody,
         timeoutMs: resolveTextTimeoutMs(),
-      }),
-    "chat/completions"
+        ...(params.signal ? { signal: params.signal } : {}),
+      });
+    },
+    "chat/completions",
+    params.signal
   );
   let data: ChatCompletionsResponse = {};
   if (responseText) {
@@ -1525,7 +1632,7 @@ export async function generateNativeChatCompletion(
 
   const usage = convertNativeUsage(data.usage);
   if (usage) {
-    emitModelUsageEvent(runtime, modelType, context.prompt, usage, {
+    emitModelUsageEvent(runtime, modelType, context.prompt, toUsageEventTokens(usage), {
       modelName: context.modelName,
       ...(() => {
         const costUsd = extractCostUsd(data.usage, response);
@@ -1540,6 +1647,11 @@ export async function generateNativeChatCompletion(
 		finishReason: data.choices?.[0]?.finish_reason,
 		provider: "elizacloud",
 		model: context.modelName,
+		maxTokens: typeof requestBody.max_tokens === "number" ? requestBody.max_tokens : null,
+		finishReasonSource: "cloud-chat-completions",
+		emptyVisibleOutput: !text.trim() && toolCalls.length === 0,
+		usage,
+		costUsd: extractCostUsd(data.usage, response),
 	});
   if (!text.trim() && toolCalls.length === 0) {
     throw new Error("elizaOS Cloud returned no text or tool calls");
@@ -1836,8 +1948,8 @@ export function lowestIndexToolCallArgs(acc: Map<number, StreamingToolCallAcc>):
 /** Materialize accumulated tool-call deltas into the buffered-path shape. */
 export function finalizeStreamedToolCalls(
   acc: Map<number, StreamingToolCallAcc>
-): NativeToolCall[] {
-  const out: NativeToolCall[] = [];
+): ToolCall[] {
+  const out: ToolCall[] = [];
   const ids = new Set<string>();
   for (const [index, c] of [...acc.entries()].sort((a, b) => a[0] - b[0])) {
     if (!Number.isInteger(index) || index < 0) {
@@ -1854,10 +1966,9 @@ export function finalizeStreamedToolCalls(
       throw invalidNativeToolCall(`tool-call index ${index} is missing a function name`);
     }
     out.push({
-      type: "tool-call",
-      toolCallId: c.id,
-      toolName: c.name,
-      input: parseNativeToolCallInput(c.args),
+      id: c.id,
+      name: c.name,
+      arguments: parseNativeToolCallInput(c.args),
     });
   }
   return out;
@@ -1888,9 +1999,12 @@ export async function streamNativeChatCompletion(
   requestBody.stream = true;
   // OpenAI-compatible: ask the server to include a final usage-only frame so we
   // can meter the streamed call accurately.
+  const selectedFundingSlot = getNativeApplicationSlot(runtime);
   requestBody.stream_options = { include_usage: true };
+  const preparedRequest = createCloudPreparedRequestGuard(context.modelName, requestBody);
 
   const headers: Record<string, string> = withInferenceTraceHeader({
+    ...nativeApplicationOperationHeaders(runtime),
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
   });
@@ -1928,6 +2042,7 @@ export async function streamNativeChatCompletion(
       route: "chat/completions:stream",
     });
     try {
+      preparedRequest.assertBeforeAttempt();
       response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
         headers,
         json: requestBody,
@@ -2033,7 +2148,7 @@ export async function streamNativeChatCompletion(
 			model: context.modelName,
 		});
     if (usage) {
-      emitModelUsageEvent(runtime, modelType, context.prompt, usage, {
+      emitModelUsageEvent(runtime, modelType, context.prompt, toUsageEventTokens(usage), {
         modelName: context.modelName,
         ...(() => {
           const costUsd = extractCostUsd(data.usage, response);
@@ -2067,7 +2182,7 @@ export async function streamNativeChatCompletion(
   const textD = deferred<string>();
   const usageD = deferred<TokenUsage | undefined>();
   const finishD = deferred<string | undefined>();
-  const toolCallsD = deferred<NativeToolCall[]>();
+  const toolCallsD = deferred<ToolCall[]>();
   const rejectDeferreds = (reason: unknown): void => {
     textD.reject(reason);
     usageD.reject(reason);
@@ -2219,15 +2334,16 @@ export async function streamNativeChatCompletion(
       // its deferred result fields, so one transport failure must reject all of
       // them before the original error propagates to the stream consumer.
       failed = true;
-      rejectDeferreds(error);
-      throw error;
+      const failure = nativeFundingFailure(selectedFundingSlot, error);
+      rejectDeferreds(failure);
+      throw failure;
     } finally {
       releasePermit();
       if (!completed && !failed) {
         rejectDeferreds(streamCancellationError(signal));
       }
       if (nativeUsage) {
-        emitModelUsageEvent(runtime, modelType, context.prompt, nativeUsage, {
+        emitModelUsageEvent(runtime, modelType, context.prompt, toUsageEventTokens(nativeUsage), {
           modelName: context.modelName,
           ...(() => {
             const costUsd = extractCostUsd(rawUsage, response);
@@ -2252,47 +2368,47 @@ export async function handleTextSmall(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_SMALL_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_SMALL_MODEL_TYPE, params));
 }
 
 export async function handleTextNano(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_NANO_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_NANO_MODEL_TYPE, params));
 }
 
 export async function handleTextMedium(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_MEDIUM_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_MEDIUM_MODEL_TYPE, params));
 }
 
 export async function handleTextLarge(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_LARGE_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_LARGE_MODEL_TYPE, params));
 }
 
 export async function handleTextMega(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_MEGA_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_MEGA_MODEL_TYPE, params));
 }
 
 export async function handleResponseHandler(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, RESPONSE_HANDLER_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, RESPONSE_HANDLER_MODEL_TYPE, params));
 }
 
 export async function handleActionPlanner(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, ACTION_PLANNER_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, ACTION_PLANNER_MODEL_TYPE, params));
 }

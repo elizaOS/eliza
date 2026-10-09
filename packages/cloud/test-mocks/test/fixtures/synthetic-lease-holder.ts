@@ -2,7 +2,7 @@
 
 import { writeFileSync } from "node:fs";
 import { hostname } from "node:os";
-import { SqliteSyntheticEnvironmentLeaseStore } from "../../src/synthetic-environment/sqlite-lease-store";
+import { SqliteSyntheticEnvironmentLeaseStore } from "@elizaos/testing/synthetic-world/sqlite";
 
 const [databasePath, namespace, acquiredPath, durationText] =
   process.argv.slice(2);

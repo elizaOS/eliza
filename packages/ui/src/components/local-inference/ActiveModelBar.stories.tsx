@@ -1,10 +1,7 @@
 /** Storybook stories for ActiveModelBar — ready, loading, error, busy, and unknown-model states. */
 
+import type { ActiveModelState, InstalledModel } from "@elizaos/contracts";
 import type { Meta, StoryObj } from "@storybook/react";
-import type {
-  ActiveModelState,
-  InstalledModel,
-} from "../../api/client-local-inference";
 import { TranslationProvider } from "../../state/TranslationProvider";
 import { ActiveModelBar } from "./ActiveModelBar";
 

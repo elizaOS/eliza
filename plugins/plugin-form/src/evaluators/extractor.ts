@@ -17,7 +17,8 @@ import type {
   JsonValue,
   UUID,
 } from "@elizaos/core";
-import { EvaluatorPriority, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { EvaluatorPriority } from "@elizaos/plugin-assistant";
 import {
   buildFormExtractorPromptSection,
   buildFormExtractorSchema,
@@ -195,6 +196,7 @@ const formExtractionsProcessor: EvaluatorProcessor<
       output.formExtractions,
       form.controls,
       prepared.templateValues,
+      (typeId) => formService.getControlType(typeId),
     );
 
     for (const extraction of coerced) {
@@ -331,6 +333,8 @@ export const formEvaluator: Evaluator<
       form: prepared.form,
       controls: prepared.form.controls,
       templateValues: prepared.templateValues,
+      resolveControlType: (typeId) =>
+        prepared.formService.getControlType(typeId),
     });
   },
 

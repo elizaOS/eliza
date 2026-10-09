@@ -6,81 +6,15 @@
  * @module hooks/loader
  */
 
-import { lstat, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { logger, resolveStateDir } from "@elizaos/core";
-import type { InternalHooksConfig } from "../config/types.hooks.ts";
+import type { InternalHooksConfig } from "@elizaos/host/protocol";
 import { type DiscoveryOptions, discoverHooks } from "./discovery.ts";
 import { checkEligibility, resolveHookConfig } from "./eligibility.ts";
 import { clearHooks, registerHook } from "./registry.ts";
 import type { HookHandler } from "./types.ts";
-
-// ---------- Path Safety ----------
-
-/** Directories from which hook modules may be loaded. */
-function getSafeHookRoots(
-  workspacePath?: string,
-  bundledDir?: string,
-): string[] {
-  const roots: string[] = [resolve(resolveStateDir(), "hooks")];
-  if (bundledDir) roots.push(resolve(bundledDir));
-  if (workspacePath) {
-    roots.push(resolve(workspacePath.replace(/^~/, homedir()), "hooks"));
-  }
-  return roots;
-}
-
-/**
- * Ensure a module path resolves to a file under one of the allowed hook
- * roots.  Blocks absolute paths to arbitrary locations and path-traversal
- * attacks (e.g. "../../etc/malicious").
- */
-async function normalizeRootPath(root: string): Promise<string> {
-  const resolvedRoot = resolve(root);
-  try {
-    return await realpath(resolvedRoot);
-  } catch {
-    return resolvedRoot;
-  }
-}
-
-async function normalizeModulePath(modulePath: string): Promise<string | null> {
-  const resolvedModulePath = resolve(modulePath);
-  try {
-    const stats = await lstat(resolvedModulePath);
-    if (stats.isSymbolicLink()) {
-      return await realpath(resolvedModulePath).catch(() => null);
-    }
-    return await realpath(resolvedModulePath).catch(() => resolvedModulePath);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return resolvedModulePath;
-    }
-    return null;
-  }
-}
-
-async function isPathUnderRoots(
-  modulePath: string,
-  roots: string[],
-): Promise<boolean> {
-  const normalizedModulePath = await normalizeModulePath(modulePath);
-  if (!normalizedModulePath) {
-    return false;
-  }
-
-  return roots.some((root) => {
-    const normalizedRoot = root.endsWith(sep) ? root : root + sep;
-    return (
-      normalizedModulePath.startsWith(normalizedRoot) ||
-      normalizedModulePath === root
-    );
-  });
-}
-
-// ---------- Dynamic Handler Loading ----------
 
 /**
  * Dynamically import a hook handler module.
@@ -241,47 +175,6 @@ export async function loadHooks(
       `[hooks] ${emoji} Registered: ${entry.hook.name} -> ${events.join(", ")}`,
     );
     result.registered++;
-  }
-
-  // Load legacy config handlers (backwards compatibility)
-  if (internalConfig?.handlers) {
-    const safeRoots = await Promise.all(
-      getSafeHookRoots(options.workspacePath, options.bundledDir).map(
-        normalizeRootPath,
-      ),
-    );
-
-    for (const legacyHandler of internalConfig.handlers) {
-      // Validate module path is under a known hook directory to prevent
-      // arbitrary code execution via config-injected module paths.
-      if (!(await isPathUnderRoots(legacyHandler.module, safeRoots))) {
-        logger.warn(
-          `[hooks] Rejected legacy handler: module path "${legacyHandler.module}" is outside allowed hook directories`,
-        );
-        result.failed.push(legacyHandler.module);
-        continue;
-      }
-
-      try {
-        const handler = await loadHandlerModule(
-          legacyHandler.module,
-          legacyHandler.export ?? "default",
-        );
-        if (handler) {
-          registerHook(legacyHandler.event, handler);
-          logger.info(
-            `[hooks] Registered legacy handler: ${legacyHandler.event} -> ${legacyHandler.module}`,
-          );
-          result.registered++;
-        } else {
-          result.failed.push(legacyHandler.module);
-        }
-      } catch (err) {
-        const msg = String(err);
-        logger.warn(`[hooks] Failed to load legacy handler: ${msg}`);
-        result.failed.push(legacyHandler.module);
-      }
-    }
   }
 
   logger.info(

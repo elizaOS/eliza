@@ -3,9 +3,8 @@
  * Metadata endpoint for Crypto Prices MCP server.
  */
 
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

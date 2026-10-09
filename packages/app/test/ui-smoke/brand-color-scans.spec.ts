@@ -50,3 +50,27 @@ test("reports a named icon-only control when hover remains blocked", async ({
   expect(finding.hoverFailures).toHaveLength(1);
   expect(finding.hoverFailures[0]).toContain('"Blocked orange action"');
 });
+
+test("audits an inactive control once it becomes enabled", async ({ page }) => {
+  await page.setContent(`
+    <style>
+      button { width: 80px; height: 44px; background: rgb(255, 88, 0); }
+      button:disabled { pointer-events: none; }
+      button:hover { background: rgb(0, 0, 0); }
+    </style>
+    <button disabled>Generate packet</button>
+  `);
+
+  expect(await collectHoverViolations(page)).toEqual({
+    violations: [],
+    hoverFailures: [],
+  });
+
+  await page.getByRole("button").evaluate((button: HTMLButtonElement) => {
+    button.disabled = false;
+  });
+  const finding = await collectHoverViolations(page);
+  expect(finding.hoverFailures).toEqual([]);
+  expect(finding.violations).toHaveLength(1);
+  expect(finding.violations[0]).toContain('"Generate packet" orange→black');
+});

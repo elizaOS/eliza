@@ -1,7 +1,7 @@
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 const LEGACY_ELIZA_CLOUD_ORIGINS = [
   "https://api.eliza.app",

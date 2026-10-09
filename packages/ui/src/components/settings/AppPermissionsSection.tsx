@@ -12,11 +12,12 @@ import {
   parseAppPermissions,
   RECOGNISED_PERMISSION_NAMESPACES,
   type RecognisedPermissionNamespace,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
-import { useAppSelector } from "../../state";
+import { isApiError } from "../../api/client-types-core";
+import { useAppSelector } from "../../state/app-store";
 import { ContentState } from "../composites/page-panel/content-state";
 import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsStack } from "./settings-layout";
@@ -25,22 +26,29 @@ const NAMESPACE_LABELS: Record<RecognisedPermissionNamespace, string> = {
   fs: "Filesystem",
   net: "Network",
 };
-
 type AsyncStatus =
-  | { state: "idle" }
-  | { state: "loading"; message?: string }
-  | { state: "error"; message: string };
-
+  | {
+      state: "idle";
+    }
+  | {
+      state: "loading";
+      message?: string;
+    }
+  | {
+      state: "error";
+      message: string;
+    }
+  | {
+      state: "unsupported";
+    };
 interface RowState {
   view: AppPermissionsView;
   pending: boolean;
   error: string | null;
 }
-
 function buildRowState(view: AppPermissionsView): RowState {
   return { view, pending: false, error: null };
 }
-
 function summariseRequested(
   view: AppPermissionsView,
   ns: RecognisedPermissionNamespace,
@@ -67,7 +75,6 @@ function summariseRequested(
   }
   return null;
 }
-
 export function AppPermissionsSection() {
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [rows, setRows] = useState<RowState[]>([]);
@@ -75,43 +82,51 @@ export function AppPermissionsSection() {
     state: "loading",
   });
   const mountedRef = useRef(true);
+  const refreshVersionRef = useRef(0);
   const rowsRef = useRef<RowState[]>([]);
-
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
-
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
   }, []);
-
   const refresh = useCallback(async () => {
+    const version = ++refreshVersionRef.current;
     setListStatus({ state: "loading" });
     try {
       const views = await client.listAppPermissions();
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || version !== refreshVersionRef.current) return;
       setRows(views.map(buildRowState));
       setListStatus({ state: "idle" });
     } catch (err) {
-      // error-policy:J4 Inventory failures render an exclusive retryable error state.
+      if (!mountedRef.current || version !== refreshVersionRef.current) return;
+      if (
+        isApiError(err) &&
+        err.kind === "http" &&
+        err.status === 404 &&
+        err.path === "/api/apps/permissions"
+      ) {
+        setListStatus({ state: "unsupported" });
+        return;
+      }
+      // error-policy:J4 Other inventory failures remain visibly retryable.
       const message = err instanceof Error ? err.message : String(err);
-      if (!mountedRef.current) return;
       setListStatus({
         state: "error",
         message: `Failed to load app permissions: ${message}`,
       });
     }
   }, []);
-
   useEffect(() => {
     void refresh();
+    return client.onBaseUrlChange(() => void refresh());
   }, [refresh]);
-
   const onToggle = useCallback(
     async (slug: string, ns: RecognisedPermissionNamespace, next: boolean) => {
+      const version = refreshVersionRef.current;
       const targetRow = rowsRef.current.find((row) => row.view.slug === slug);
       if (!targetRow) return;
       const previousGranted = targetRow.view.grantedNamespaces;
@@ -122,7 +137,6 @@ export function AppPermissionsSection() {
         : previousGranted.filter(
             (existing: RecognisedPermissionNamespace) => existing !== ns,
           );
-
       // Optimistic flip; reverted on error below.
       setRows((prev) =>
         prev.map((row) =>
@@ -137,7 +151,8 @@ export function AppPermissionsSection() {
       );
       try {
         const updated = await client.setAppPermissions(slug, nextSet);
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || version !== refreshVersionRef.current)
+          return;
         setRows((prev) =>
           prev.map((row) =>
             row.view.slug === slug
@@ -148,7 +163,8 @@ export function AppPermissionsSection() {
       } catch (err) {
         // error-policy:J4 Restore the previous grant and expose the rejected update.
         const message = err instanceof Error ? err.message : String(err);
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || version !== refreshVersionRef.current)
+          return;
         setRows((prev) =>
           prev.map((row) =>
             row.view.slug === slug
@@ -168,17 +184,14 @@ export function AppPermissionsSection() {
     },
     [setActionNotice],
   );
-
   const grantableRows = useMemo(
     () => rows.filter((row) => row.view.recognisedNamespaces.length > 0),
     [rows],
   );
-
   const noManifestRows = useMemo(
     () => rows.filter((row) => row.view.recognisedNamespaces.length === 0),
     [rows],
   );
-
   const refreshButton = (
     <SettingsActionButton
       agentId="appperm-refresh"
@@ -200,7 +213,6 @@ export function AppPermissionsSection() {
       Refresh
     </SettingsActionButton>
   );
-
   const noManifestDetails =
     noManifestRows.length > 0 ? (
       <details className="mt-4 text-left text-xs text-muted">
@@ -218,99 +230,97 @@ export function AppPermissionsSection() {
         </ul>
       </details>
     ) : null;
-
+  if (listStatus.state === "unsupported") return null;
+  let content: React.JSX.Element;
   if (listStatus.state === "loading") {
-    return (
-      <SettingsStack>
-        <ContentState
-          state="loading"
-          heading="Loading app permissions"
-          role="status"
-          aria-live="polite"
-          aria-busy="true"
-        />
-      </SettingsStack>
+    content = (
+      <ContentState
+        state="loading"
+        heading="Loading app permissions"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+      />
+    );
+  } else if (listStatus.state === "error") {
+    content = (
+      <ContentState
+        state="error"
+        title="Unable to load app permissions"
+        description={listStatus.message}
+        action={refreshButton}
+      />
+    );
+  } else if (grantableRows.length === 0) {
+    content = (
+      <ContentState
+        state="empty"
+        title="No apps declare permissions yet."
+        action={refreshButton}
+      >
+        {noManifestDetails}
+      </ContentState>
+    );
+  } else {
+    content = (
+      <>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {refreshButton}
+        </div>
+
+        {grantableRows.map((row) => (
+          <SettingsGroup
+            key={row.view.slug}
+            title={row.view.slug}
+            description={
+              row.view.trust === "first-party"
+                ? "First-party · auto-granted"
+                : "External · explicit consent"
+            }
+            action={
+              row.view.grantedAt ? (
+                <span className="text-2xs text-muted">
+                  granted{" "}
+                  {new Date(row.view.grantedAt).toLocaleDateString("en-US")}
+                </span>
+              ) : undefined
+            }
+            footer={
+              row.error ? (
+                <span className="text-danger">{row.error}</span>
+              ) : undefined
+            }
+          >
+            {RECOGNISED_PERMISSION_NAMESPACES.map((ns) => {
+              if (!row.view.recognisedNamespaces.includes(ns)) return null;
+              return (
+                <AppPermissionToggle
+                  key={ns}
+                  slug={row.view.slug}
+                  ns={ns}
+                  granted={row.view.grantedNamespaces.includes(ns)}
+                  summary={summariseRequested(row.view, ns)}
+                  disabled={row.pending}
+                  onToggle={onToggle}
+                />
+              );
+            })}
+          </SettingsGroup>
+        ))}
+
+        {noManifestDetails}
+      </>
     );
   }
-
-  if (listStatus.state === "error") {
-    return (
-      <SettingsStack>
-        <ContentState
-          state="error"
-          title="Unable to load app permissions"
-          description={listStatus.message}
-          action={refreshButton}
-        />
-      </SettingsStack>
-    );
-  }
-
-  if (grantableRows.length === 0) {
-    return (
-      <SettingsStack>
-        <ContentState
-          state="empty"
-          title="No apps declare permissions yet."
-          action={refreshButton}
-        >
-          {noManifestDetails}
-        </ContentState>
-      </SettingsStack>
-    );
-  }
-
   return (
-    <SettingsStack>
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        {refreshButton}
-      </div>
-
-      {grantableRows.map((row) => (
-        <SettingsGroup
-          key={row.view.slug}
-          title={row.view.slug}
-          description={
-            row.view.trust === "first-party"
-              ? "First-party · auto-granted"
-              : "External · explicit consent"
-          }
-          action={
-            row.view.grantedAt ? (
-              <span className="text-2xs text-muted">
-                granted{" "}
-                {new Date(row.view.grantedAt).toLocaleDateString("en-US")}
-              </span>
-            ) : undefined
-          }
-          footer={
-            row.error ? (
-              <span className="text-danger">{row.error}</span>
-            ) : undefined
-          }
-        >
-          {RECOGNISED_PERMISSION_NAMESPACES.map((ns) => {
-            if (!row.view.recognisedNamespaces.includes(ns)) return null;
-            return (
-              <AppPermissionToggle
-                key={ns}
-                slug={row.view.slug}
-                ns={ns}
-                granted={row.view.grantedNamespaces.includes(ns)}
-                summary={summariseRequested(row.view, ns)}
-                disabled={row.pending}
-                onToggle={onToggle}
-              />
-            );
-          })}
-        </SettingsGroup>
-      ))}
-
-      {noManifestDetails}
-    </SettingsStack>
+    <section aria-label="App permissions">
+      <h2 className="mb-3 text-sm font-semibold text-txt-strong">
+        App permissions
+      </h2>
+      <SettingsStack>{content}</SettingsStack>
+    </section>
   );
 }
-
 function AppPermissionToggle({
   slug,
   ns,

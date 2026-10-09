@@ -1,36 +1,43 @@
-/**
- * Shared content-addressed cache for image descriptions.
- *
- * The runtime describes an image (IMAGE_DESCRIPTION vision model) from several
- * places — inbound attachment processing, on-demand `ATTACHMENT action=read`,
- * and the standalone basic-capabilities helper. Without a shared cache the same
- * image is re-described on every path and every turn, which is slow and costs
- * tokens. Keying on the resolved image URL (a `data:` URL for inline bytes, or
- * the served/remote URL) means identical bytes resolve to one cached
- * description reused everywhere.
- */
-import type { IAgentRuntime } from "../types/index.ts";
-import { ModelType } from "../types/index.ts";
-import { createHash } from "../utils/crypto-compat";
-import { parseJSONObjectFromText } from "../utils.ts";
+/** Image analysis cache for immutable media and the complete analysis prompt. */
+
+import { ModelType } from "../types/model.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import { createHash } from "../utils/crypto-compat.js";
+import { resolveSetting } from "../utils/environment.js";
+import { parseJSONObjectFromText } from "../utils/json5-model-output.js";
+import { trustedLocalMediaUrl } from "./local-store.js";
 
 export interface CachedImageDescription {
 	title: string;
 	description: string;
 	text: string;
 }
-
-const CACHE_VERSION = "v2";
-
-export function imageDescriptionCacheKey(imageUrl: string): string {
-	// SHA-256, not a truncated non-crypto hash: this key is a persistent
-	// content address across agents' cache namespaces, so a collision would
-	// permanently serve one image's description for a different image.
+const CACHE_VERSION = "v4";
+function imageDescriptionCacheKey(
+	runtime: IAgentRuntime,
+	imageUrl: string,
+	prompt: string,
+): string {
+	const models = runtime
+		.getModelRegistrations()
+		.filter(
+			(registration) => registration.modelType === ModelType.IMAGE_DESCRIPTION,
+		)
+		.map(({ provider, priority, metadata }) => ({
+			provider,
+			priority,
+			metadata,
+			settings: [
+				...(metadata?.displayModelSettings ?? []),
+				metadata?.displayModelSetting,
+			]
+				.filter((key): key is string => typeof key === "string")
+				.map((key) => [key, resolveSetting(runtime, key)]),
+		}));
 	return `img-desc:${CACHE_VERSION}:${createHash("sha256")
-		.update(imageUrl)
+		.update(JSON.stringify([imageUrl, prompt, models]))
 		.digest("hex")}`;
 }
-
 /** Coerce any IMAGE_DESCRIPTION model response into a uniform description shape. */
 export function normalizeImageDescription(
 	response: unknown,
@@ -79,13 +86,13 @@ export function normalizeImageDescription(
 	}
 	return null;
 }
-
-export async function getCachedImageDescription(
+async function getCachedImageDescription(
 	runtime: IAgentRuntime,
 	imageUrl: string,
+	cacheKey: string,
 ): Promise<CachedImageDescription | undefined> {
 	const cached = await runtime
-		.getCache<CachedImageDescription>(imageDescriptionCacheKey(imageUrl))
+		.getCache<CachedImageDescription>(cacheKey)
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — a read failure
 		// degrades to a cache miss (re-describe), but a dead cache melts model
 		// spend silently, so surface it. `undefined` = treat as miss.
@@ -95,15 +102,15 @@ export async function getCachedImageDescription(
 		});
 	return cached ? (normalizeImageDescription(cached) ?? undefined) : undefined;
 }
-
-export async function setCachedImageDescription(
+async function setCachedImageDescription(
 	runtime: IAgentRuntime,
 	imageUrl: string,
 	value: CachedImageDescription,
+	cacheKey: string,
 ): Promise<void> {
 	if (!value.description && !value.text) return;
 	await runtime
-		.setCache(imageDescriptionCacheKey(imageUrl), value)
+		.setCache(cacheKey, value)
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — a failed cache
 		// write must not abort the describe call, but a dead cache melts model
 		// spend silently, so surface it.
@@ -111,7 +118,6 @@ export async function setCachedImageDescription(
 			runtime.reportError("ImageDescriptionCache.set", err, { imageUrl }),
 		);
 }
-
 /**
  * Describe an image, reusing and populating the shared cache. Returns the
  * cached result on a hit; otherwise calls the vision model once, caches, and
@@ -125,12 +131,17 @@ export async function describeImageCached(
 ): Promise<CachedImageDescription | null> {
 	const url = imageUrl.trim();
 	if (!url) return null;
-
-	const cached = await getCachedImageDescription(runtime, url);
-	if (cached) return cached;
-
 	let response: unknown;
+	let cacheKey: string | undefined;
 	try {
+		// Mutable remote URLs must be analyzed again; a URL alone is not a content identity.
+		const cacheable =
+			url.startsWith("data:") || trustedLocalMediaUrl(url) !== null;
+		if (cacheable) {
+			cacheKey = imageDescriptionCacheKey(runtime, url, prompt);
+			const cached = await getCachedImageDescription(runtime, url, cacheKey);
+			if (cached) return cached;
+		}
 		response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
 			prompt,
 			imageUrl: url,
@@ -144,9 +155,9 @@ export async function describeImageCached(
 		});
 		return null;
 	}
-
 	const normalized = normalizeImageDescription(response);
 	if (!normalized) return null;
-	await setCachedImageDescription(runtime, url, normalized);
+	if (cacheKey)
+		await setCachedImageDescription(runtime, url, normalized, cacheKey);
 	return normalized;
 }

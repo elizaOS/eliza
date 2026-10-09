@@ -460,15 +460,39 @@
                 ? String(parseInt(chainId, 16))
                 : chainId,
             );
-          case "wallet_switchEthereumChain":
-            try {
-              var nextHex = params[0]?.chainId;
-              if (typeof nextHex === "string") {
-                chainId = nextHex;
-                emitter.emit("chainChanged", chainId);
-              }
-            } catch (_) {}
+          case "wallet_switchEthereumChain": {
+            // parseInt("0x1g", 16) is 1. A junk id must not switch the
+            // provider onto Ethereum mainnet for the next send.
+            var nextHex = params[0]?.chainId;
+            if (typeof nextHex !== "string") {
+              return Promise.reject(
+                new Error(
+                  "wallet_switchEthereumChain requires a valid chainId.",
+                ),
+              );
+            }
+            var trimmedChain = nextHex.trim();
+            if (!/^0[xX][0-9a-fA-F]+$/.test(trimmedChain)) {
+              return Promise.reject(
+                new Error(
+                  "wallet_switchEthereumChain requires a valid chainId.",
+                ),
+              );
+            }
+            var parsedChain = parseInt(trimmedChain.slice(2), 16);
+            if (!Number.isSafeInteger(parsedChain) || parsedChain <= 0) {
+              return Promise.reject(
+                new Error(
+                  "wallet_switchEthereumChain requires a valid chainId.",
+                ),
+              );
+            }
+            // EIP-1193 chain ids are the shortest 0x hex form. Echoing
+            // "0X00000089" makes a dApp that compares against "0x89" miss the switch.
+            chainId = "0x" + parsedChain.toString(16);
+            emitter.emit("chainChanged", chainId);
             return Promise.resolve(null);
+          }
           case "wallet_addEthereumChain":
             return Promise.resolve(null);
           case "personal_sign": {

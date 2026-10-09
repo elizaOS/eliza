@@ -21,10 +21,7 @@ export function VaultPageView(): React.JSX.Element {
         data-testid="vault-page"
         data-chat-clearance-aware="true"
       >
-        <FramedPageHeader
-          title="Vault"
-          description="Encrypted credentials and references available to this agent. Organization credential pools remain managed in Eliza Cloud."
-        />
+        <FramedPageHeader description="Encrypted credentials and references available to this agent. Organization credential pools remain managed in Eliza Cloud." />
         <FramedPageBody scroll="view">
           <RoleGate
             minRole="OWNER"

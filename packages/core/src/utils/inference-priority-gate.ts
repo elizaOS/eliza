@@ -1,61 +1,19 @@
 /**
- * Interactive-over-background scheduling for single-lane local inference
- * (elizaOS/eliza#11914).
- *
- * On-device text generation runs one decode at a time: the Android bionic GPU
- * host serializes every request on its resident-model lock, and the in-process
- * AOSP FFI path shares one fused context. Before this gate, requests reached
- * that lane in arrival order — a long autonomous background job (an ~11k-char
- * prompt at phone prefill speed holds the lock for many minutes) starved
- * interactive chat turns indefinitely, and a background job whose next firing
- * arrived while the previous one still held the lane piled abandoned work onto
- * the host-side queue.
- *
- * The gate is the TS-side owner of that lane:
- *
- *   - **Two lanes, interactive first.** Requests acquire the gate before
- *     touching the native lane. When the lane frees, waiting interactive
- *     requests always dispatch before waiting background requests; within a
- *     lane order is FIFO.
- *   - **Background never queues in front of interactive.** A background
- *     acquisition only starts when the lane is idle AND no interactive request
- *     is waiting.
- *   - **Bounded background wait.** A background acquisition that cannot start
- *     within its wait budget fails with {@link InferenceBackgroundWaitTimeoutError}
- *     BEFORE any native/host work is enqueued. The scheduled-task layer's
- *     existing failure handling (backoff + blocking re-fire suppression in
- *     `TaskService`) then coalesces the job instead of stacking host-side work
- *     — the same structural rule the LifeOps scheduler follows.
- *   - **No preemption.** An in-flight decode is never cancelled; interactive
- *     priority means jumping the queue, not yanking the lock.
- *
- * Consumers: the AOSP fused text handler (`plugin-native-inference`), the
- * bionic-host loader branch (`plugin-local-inference`), and the mobile
- * device-bridge text handlers (`plugin-capacitor-bridge`). All three run in the
- * same agent process and share the {@link getInferencePriorityGate} singleton.
- *
- * The device-class background wait policy (#11760 probe seam) lives here too:
- * {@link resolveBackgroundInferenceBudget} limits only how long queued
- * background work may wait. It never changes prompt or output capacity.
+ * Serializes local inference with interactive work ahead of background work and FIFO order
+ * within each lane. Background admission has an explicit wait deadline; expiry occurs before
+ * native work is enqueued. Active decoding is never preempted, and scheduling budgets never
+ * cap model input or output.
  */
 import type { LocalInferencePriority } from "../types/model";
 
 /**
- * Device RAM class for on-device inference policy. Canonical probe
- * (env `ELIZA_INFERENCE_RAM_CLASS` exported by `ElizaAgentService`, with a
- * `/proc/meminfo` fallback) lives in
- * `/plugin-native-inference/inference-memory-policy.ts`
- * (elizaOS/eliza#11760); this type is shared so policy helpers here and the
- * plugin-side probe agree.
+ * Device RAM class used by inference admission policy; hosts supply the probe result.
  */
 export type InferenceRamClass = "constrained" | "standard";
 
 /**
- * Read the #11760 RAM-class env contract (`ELIZA_INFERENCE_RAM_CLASS`,
- * exported into the agent process by `ElizaAgentService` on Android). Returns
- * null when unset/invalid — callers with a richer probe (the AOSP plugin's
- * `classifyInferenceRamClass`, which adds the `/proc/meminfo` fallback) layer
- * it on top; callers without one should treat null as "standard".
+ * Parses ELIZA_INFERENCE_RAM_CLASS. Unset or invalid values return null so callers can apply
+ * their probe or standard policy.
  */
 export function inferenceRamClassFromEnv(
 	env: NodeJS.ProcessEnv = process.env,
@@ -91,11 +49,7 @@ export function resolveBackgroundInferenceBudget(
 		: STANDARD_BACKGROUND_BUDGET;
 }
 
-/**
- * Preserve a background generation request while retaining the legacy helper
- * name and `clamped` result field for source compatibility. Device scheduling
- * policy belongs to the queue wait; it must not impose a model-output cap.
- */
+/** Preserves the full background generation request. Device scheduling governs queue admission and never caps model output. */
 export function applyBackgroundInferenceBudget(
 	args: { prompt: string; maxTokens: number | undefined },
 	_budget: BackgroundInferenceBudget,

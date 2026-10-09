@@ -8,11 +8,8 @@
  * planner learns about pending rows from the `pendingApprovals` provider
  * (../providers/pending-approvals.ts), which routes decisions here (#14630).
  */
-import {
-  hasOwnerAccess,
-  ApprovalNotFoundError as RuntimeApprovalNotFoundError,
-  ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
-} from "@elizaos/agent";
+
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -26,6 +23,7 @@ import {
   appendInteractionBlock,
   type ChoiceInteraction,
   ElizaError,
+  hasRoleAccess,
   logger,
   ModelType,
   resolveActionArgs,
@@ -36,10 +34,13 @@ import {
   truncateWellFormed,
 } from "@elizaos/core";
 import {
+  ApprovalNotFoundError as RuntimeApprovalNotFoundError,
+  ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
+} from "@elizaos/plugin-assistant";
+import {
   readTwilioCredentialsFromEnv,
   sendTwilioVoiceCall,
-} from "@elizaos/plugin-phone/twilio";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
+} from "@elizaos/plugin-native-phone/twilio";
 import { INTERNAL_URL } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,
@@ -72,6 +73,7 @@ import {
   getFoodDomainService,
 } from "../lifeops/food/index.js";
 import { HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID } from "../lifeops/household/types.js";
+import { resolveOwnerTimeZone } from "../lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   getResourceCapacityService,
@@ -772,12 +774,16 @@ async function persistSentMailCommitments(args: {
     return;
   }
 
+  // Relative deadlines ("tomorrow", "Friday") are the owner's civil days,
+  // as on the transcript path; without a zone they resolve on the UTC day.
+  const timeZone = await resolveOwnerTimeZone(args.runtime, args.sentAt);
   const records = extractCommitmentLedgerRecords({
     agentId: args.runtime.agentId,
     source: "sent_mail",
     sourceKey: `approval:${args.request.id}`,
     text: payload.body,
     observedAt: args.sentAt.toISOString(),
+    timeZone,
     counterparty: payload.to.join(", ") || null,
     metadata: {
       approvalRequestId: args.request.id,
@@ -947,7 +953,12 @@ async function revalidateSchedulingApproval(args: {
       detail: "counterparty delivery target is no longer available",
     };
   }
-  const currentPayload = schedulingApprovalPayloadForDraft(draft);
+  const currentPayload = schedulingApprovalPayloadForDraft(
+    draft,
+    args.request.payload.action === "send_email"
+      ? args.request.payload.grantId
+      : undefined,
+  );
   const current = verifySchedulingApprovalContent(currentPayload);
   if (
     !current ||
@@ -1129,14 +1140,21 @@ export async function executeApprovedRequest(args: {
   }
   if (calendarCard) {
     if (
-      args.request.channel !== "imessage" ||
-      args.request.subjectUserId !== calendarCard.correlation.recipientEntityId
+      args.request.channel !==
+        (calendarCard.correlation.version !== 1
+          ? calendarCard.correlation.channel
+          : "imessage") ||
+      args.request.subjectUserId !==
+        (calendarCard.correlation.version === 3 ||
+        calendarCard.correlation.version === 4
+          ? calendarCard.correlation.ownerEntityId
+          : calendarCard.correlation.recipientEntityId)
     ) {
       return preflightFailureResult(
         args.request,
         new ApprovalConnectorPreflightError(
           "CALENDAR_CARD_IDENTITY_MISMATCH",
-          "Calendar card approval is not bound to this iMessage recipient identity",
+          "Calendar card approval is not bound to this channel and recipient identity",
         ),
       );
     }
@@ -1284,6 +1302,22 @@ export async function executeApprovedRequest(args: {
         },
       };
     }
+    if (claim.kind === "blocked" && claim.reason === "paused") {
+      const text =
+        "Scheduling delivery is paused for an account switch. Finish the handoff before sending this approved draft.";
+      await args.callback?.({ text });
+      return {
+        text,
+        success: false,
+        data: {
+          error: "APPROVAL_DISPATCH_PAUSED",
+          requestId: args.request.id,
+          state: args.request.state,
+          sent: false,
+          attempt: claim.attempt,
+        },
+      };
+    }
     if (claim.kind === "blocked") {
       const error =
         claim.reason === "ambiguous"
@@ -1359,6 +1393,9 @@ export async function executeApprovedRequest(args: {
       payload.action === "send_email"
         ? {
             subject: payload.subject,
+            ...(payload.grantId === undefined
+              ? {}
+              : { grantId: payload.grantId }),
             cc: [...payload.cc],
             bcc: [...payload.bcc],
           }
@@ -1482,6 +1519,7 @@ export async function executeApprovedRequest(args: {
     const familyWorkflow = getFamilyWorkflowRuntimeService(args.runtime);
     const familyPackets = familyWorkflow?.packets;
     let familyPacketDraft = null;
+    let senderGrantId: string;
     try {
       if (payload.familyPacketId && !familyWorkflow)
         throw new ApprovalConnectorPreflightError(
@@ -1506,15 +1544,16 @@ export async function executeApprovedRequest(args: {
           "A new email requires at least one recipient",
         );
       }
-      await service.requireGoogleGmailSendGrant(
+      const senderGrant = await service.requireGoogleGmailSendGrant(
         INTERNAL_URL,
         "local",
         "owner",
         payload.grantId,
       );
+      senderGrantId = senderGrant.id;
       if (payload.replyToMessageId) {
         await service.readGmailMessage(INTERNAL_URL, {
-          grantId: payload.grantId,
+          grantId: senderGrantId,
           mode: "local",
           side: "owner",
           messageId: payload.replyToMessageId,
@@ -1538,7 +1577,7 @@ export async function executeApprovedRequest(args: {
           }
           if (payload.replyToMessageId) {
             await service.sendGmailReply(INTERNAL_URL, {
-              grantId: payload.grantId,
+              grantId: senderGrantId,
               messageId: payload.replyToMessageId,
               bodyText: payload.body,
               subject: payload.subject || undefined,
@@ -1548,7 +1587,7 @@ export async function executeApprovedRequest(args: {
             });
           } else {
             sentEmail = await service.sendGmailMessage(INTERNAL_URL, {
-              grantId: payload.grantId,
+              grantId: senderGrantId,
               to: [...payload.to],
               cc: [...payload.cc],
               bcc: [...payload.bcc],
@@ -1643,6 +1682,9 @@ export async function executeApprovedRequest(args: {
         channel,
         target: payload.recipient,
         body: payload.body,
+        ...(calendarCard?.correlation.version === 4
+          ? { sender: calendarCard.correlation.sender }
+          : {}),
       });
     } catch (error) {
       return preflightFailureResult(args.request, error);
@@ -2008,10 +2050,7 @@ export async function executeApprovedRequest(args: {
   }
 
   // No executor exists for this action (spend_money, modify_event,
-  // cancel_event). spend_money has no spend rail to wire:
-  // @elizaos/plugin-finances is read-only — payment-source tracking, CSV
-  // import, and spending summaries — and initiates no purchases or
-  // transfers. Approving must never report success while executing
+  // cancel_event). Approving must never report success while executing
   // nothing — surface the gap instead (issue #10723).
   logger.error(
     `[OwnerResolveRequest] request ${args.request.id} approved but no executor exists for action ${args.request.action}; nothing was executed`,
@@ -2198,7 +2237,7 @@ async function resolveApprovalRequest(
   params: ResolveRequestParameters,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
-  if (!(await hasOwnerAccess(runtime, message))) {
+  if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
     return denied("PERMISSION_DENIED");
   }
   const subjectUserId =
@@ -2296,6 +2335,58 @@ async function resolveApprovalRequest(
       },
     };
   }
+  return settleApprovalRequest(
+    runtime,
+    queue,
+    subjectUserId,
+    intent,
+    params,
+    {
+      requestId: extracted.requestId,
+      reason: extracted.reason,
+    },
+    callback,
+  );
+}
+
+/**
+ * Resolve an explicit decision from an authenticated owner transport without
+ * model inference. The caller supplies its verified owner identity, never an
+ * identity from the request body; canonical subject and dispatch checks remain
+ * in the same settlement path used by the owner action.
+ */
+export async function resolveExplicitOwnerApproval(
+  runtime: IAgentRuntime,
+  input: {
+    subjectUserId: string;
+    requestId: string;
+    decision: "approve" | "reject";
+    reason: string;
+  },
+): Promise<ActionResult> {
+  if (!input.subjectUserId.trim() || !input.requestId.trim())
+    return denied("MISSING_APPROVAL_IDENTITY");
+  const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+  return settleApprovalRequest(
+    runtime,
+    queue,
+    input.subjectUserId,
+    input.decision,
+    { requestId: input.requestId, reason: input.reason },
+    { requestId: input.requestId, reason: input.reason },
+    undefined,
+  );
+}
+
+async function settleApprovalRequest(
+  runtime: IAgentRuntime,
+  queue: ApprovalQueue,
+  subjectUserId: string,
+  intent: ResolveSubaction,
+  params: ResolveRequestParameters,
+  extracted: { requestId: string; reason: string | null },
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
   const resolution = {
     resolvedBy: subjectUserId,
     resolutionReason: extracted.reason ?? `user ${intent}d`,
@@ -2628,7 +2719,8 @@ export const resolveRequestAction: Action & {
     "Approve/reject pending owner-confirmation action: send_email, send_message, book_travel, voice_call, etc. " +
     "Subactions approve|reject. Reject also covers holds ('don't send it', 'not yet', 'wait until I confirm') — " +
     "it terminally cancels the queued dispatch and a fresh request can be queued later. " +
-    "requestId optional; handler inspects pending queue, infers owner intent, or asks follow-up.",
+    "requestId optional for approve/reject; handler inspects pending queue, infers owner intent, or asks follow-up. " +
+    "Reconciliation requires an explicit requestId for the ambiguous delivery attempt.",
   descriptionCompressed:
     "approve|reject pending approval queue; reject=hold/don't-send-now (nothing dispatches); requestId optional",
   contexts: [
@@ -2663,7 +2755,7 @@ export const resolveRequestAction: Action & {
     {
       name: "requestId",
       description:
-        "Approval request id. Optional when user references pending request.",
+        "Approval request id. Optional for approve/reject of a pending request; required for reconcile_delivered or reconcile_not_delivered.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2675,17 +2767,31 @@ export const resolveRequestAction: Action & {
     },
   ],
   handler: async (runtime, message, state, options, callback) => {
-    const resolved = await resolveActionArgs<
-      ResolveSubaction,
-      ResolveRequestParameters
-    >({
-      runtime,
-      message,
-      state,
-      options,
-      actionName: ACTION_NAME,
-      subactions: SUBACTIONS,
-    });
+    const supplied = asRecord(options?.parameters);
+    const operation = supplied?.action ?? supplied?.subaction;
+    // Recovery names a particular ambiguous dispatch. Missing its ID is an
+    // invalid tool call, not an invitation to infer a different approval from
+    // conversation history. Ordinary approve/reject retain target selection.
+    const missingReconciliationTarget =
+      (operation === "reconcile_delivered" ||
+        operation === "reconcile_not_delivered") &&
+      (typeof supplied?.requestId !== "string" ||
+        supplied.requestId.trim().length === 0);
+    const resolved = missingReconciliationTarget
+      ? {
+          ok: false as const,
+          missing: ["requestId"],
+          clarification:
+            "Provide the approval request ID to reconcile its delivery. No approval was changed.",
+        }
+      : await resolveActionArgs<ResolveSubaction, ResolveRequestParameters>({
+          runtime,
+          message,
+          state,
+          options,
+          actionName: ACTION_NAME,
+          subactions: SUBACTIONS,
+        });
     if (!resolved.ok) {
       return completeResolveRequestResult({
         runtime,

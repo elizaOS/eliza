@@ -5,25 +5,24 @@
  * second calendar store or write boundary.
  */
 
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import {
   Button,
   Grid,
+  PagePanel,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  useAgentElement,
+  useViewEvent,
+  VIEW_EVENTS,
 } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@elizaos/ui/components";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { ViewHeader } from "@elizaos/ui/components/shared/ViewHeader";
-import { useViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
+
 import {
   AlertTriangle,
   ChevronDown,
@@ -567,14 +566,7 @@ function CalendarStatusRow({
   );
 }
 
-export interface SimpleCalendarViewProps {
-  /** Render the shared route header. Embedded projections turn this off. */
-  standalone?: boolean;
-}
-
-export function SimpleCalendarView({
-  standalone = false,
-}: SimpleCalendarViewProps = {}) {
+export function SimpleCalendarView() {
   const calendar = useCalendarWeek({ viewMode: "month" });
   useViewEvent(VIEW_EVENTS.VIEW_REFRESH, () => {
     void calendar.refresh();
@@ -857,7 +849,6 @@ export function SimpleCalendarView({
           .eliza-calendar-day { transition: none !important; }
         }
       `}</style>
-      {standalone ? <ViewHeader title="Calendar" /> : null}
       <PagePanel.ContentArea data-testid="simple-calendar-scroll-region">
         <PagePanel.ContentRail
           width="wide"

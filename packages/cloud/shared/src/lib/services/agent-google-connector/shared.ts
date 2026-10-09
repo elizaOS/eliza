@@ -1,7 +1,9 @@
+import type { GoogleGmailAttachment } from "@elizaos/plugin-google-workspace/types";
 // Coordinates cloud service shared behavior behind route handlers.
 import { and, eq } from "drizzle-orm";
 import { dbRead } from "../../../db/client";
 import { platformCredentials } from "../../../db/schemas/platform-credentials";
+import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
 import { googleFetchWithToken } from "../../utils/google-mcp-shared";
 import { oauthService } from "../oauth";
 import { getPreferredActiveConnection } from "../oauth/oauth-service";
@@ -21,7 +23,9 @@ export type AgentGoogleCapability =
   | "google.calendar.write"
   | "google.gmail.triage"
   | "google.gmail.send"
-  | "google.gmail.manage";
+  | "google.gmail.manage"
+  | "google.gmail.drafts"
+  | "google.gmail.mailbox";
 
 export interface ManagedGoogleConnectorStatus {
   provider: "google";
@@ -99,11 +103,13 @@ export interface ManagedGoogleGmailMessage {
 }
 
 export interface ManagedGoogleGmailReadResult {
+  attachments?: GoogleGmailAttachment[];
   message: ManagedGoogleGmailMessage;
   bodyText: string;
 }
 
 export interface ManagedGoogleGmailSearchResult {
+  nextPageToken?: string | null;
   messages: ManagedGoogleGmailMessage[];
   syncedAt: string;
 }
@@ -190,6 +196,10 @@ export function capabilitiesToScopes(capabilities: readonly AgentGoogleCapabilit
     if (capability === "google.gmail.send") {
       scopes.add("https://www.googleapis.com/auth/gmail.send");
     }
+    if (capability === "google.gmail.drafts")
+      scopes.add("https://www.googleapis.com/auth/gmail.compose");
+    if (capability === "google.gmail.mailbox")
+      scopes.add("https://www.googleapis.com/auth/gmail.modify");
     if (capability === "google.gmail.manage") {
       scopes.add("https://www.googleapis.com/auth/gmail.modify");
       scopes.add("https://www.googleapis.com/auth/gmail.settings.basic");
@@ -232,6 +242,13 @@ function scopesToCapabilities(scopes: readonly string[]): AgentGoogleCapability[
   ) {
     capabilities.push("google.gmail.triage");
   }
+  if (
+    granted.has("https://www.googleapis.com/auth/gmail.compose") ||
+    granted.has("https://www.googleapis.com/auth/gmail.modify")
+  )
+    capabilities.push("google.gmail.drafts");
+  if (granted.has("https://www.googleapis.com/auth/gmail.modify"))
+    capabilities.push("google.gmail.mailbox");
   if (granted.has("https://www.googleapis.com/auth/gmail.send")) {
     capabilities.push("google.gmail.send");
   }
@@ -358,9 +375,23 @@ export async function googleFetch(args: {
   grantId?: string;
   url: string;
   options?: RequestInit;
+  maxResponseBytes?: number;
 }): Promise<Response> {
   const { accessToken } = await getGoogleAccessToken(args);
   try {
+    if (args.maxResponseBytes !== undefined) {
+      const response = await boundedProviderFetch(
+        args.url,
+        {
+          ...args.options,
+          redirect: "error",
+          headers: { ...args.options?.headers, Authorization: `Bearer ${accessToken}` },
+        },
+        { provider: "google", timeoutMs: 30000, maxResponseBytes: args.maxResponseBytes },
+      );
+      if (!response.ok) fail(502, "Google request failed.");
+      return response;
+    }
     return await googleFetchWithToken(accessToken, args.url, args.options);
   } catch (error) {
     // error-policy:J1 translate a Google API transport/timeout failure into a 502 boundary error
@@ -520,14 +551,22 @@ export async function disconnectManagedGoogleConnection(args: {
   connectionId?: string | null;
 }): Promise<void> {
   const connections = await getScopedGoogleConnections(args);
-  const activeConnection =
-    (args.connectionId
-      ? connections.find((connection) => connection.id === args.connectionId)
-      : getPreferredActiveConnection(connections, args.userId, args.side)) ??
-    connections[0] ??
+  let activeConnection: Awaited<ReturnType<typeof getScopedGoogleConnections>>[number] | null =
     null;
-  if (!activeConnection) {
-    return;
+  if (args.connectionId) {
+    activeConnection =
+      connections.find((connection) => connection.id === args.connectionId) ?? null;
+    if (!activeConnection) {
+      // An explicit id names one connection; revoking whatever happens to be
+      // listed first instead would disconnect an unrelated account.
+      fail(404, "Google connection not found.");
+    }
+  } else {
+    activeConnection =
+      getPreferredActiveConnection(connections, args.userId, args.side) ?? connections[0] ?? null;
+    if (!activeConnection) {
+      return;
+    }
   }
   await managedGoogleConnectorDeps.oauthService.revokeConnection({
     organizationId: args.organizationId,

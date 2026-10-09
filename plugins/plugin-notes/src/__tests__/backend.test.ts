@@ -1,3 +1,5 @@
+// @vitest-environment node
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 /**
  * Real-filesystem coverage for the Notes backend. Tests restart the
  * durable store, exercise concurrent serialized writes, drive every domain
@@ -11,13 +13,15 @@ import {
   AgentRuntime,
   createCharacter,
   type IAgentRuntime,
-  type Route,
-  type RouteHandlerContext,
-  type RouteHandlerResult,
   Service,
   stringToUuid,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import type {
+  Route,
+  RouteHandlerContext,
+  RouteHandlerResult,
+} from "@elizaos/host/protocol";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   interact,
   type NotesInteractResult,
@@ -25,7 +29,11 @@ import {
 } from "../interact.js";
 import { notesRoutes } from "../routes.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "../service.js";
-import { NotesStore, notesStateFilePath } from "../store.js";
+import {
+  NotesStore,
+  notesPublicationDirectory,
+  notesStateFilePath,
+} from "../store.js";
 import type { StickyNote } from "../types.js";
 
 const temporaryDirectories: string[] = [];
@@ -119,12 +127,11 @@ async function createTestRuntime(agentId: string): Promise<AgentRuntime> {
   const runtime = new AgentRuntime({
     agentId: testAgentId(agentId),
     character: createCharacter({ name: `Notes ${agentId}` }),
-    disableBasicCapabilities: true,
     enableAutonomy: false,
     logLevel: "fatal",
   });
   testRuntimes.push(runtime);
-  await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  await initializeTestRuntime(runtime, { skipMigrations: true });
   return runtime;
 }
 
@@ -187,6 +194,7 @@ async function invokeRoute(
     method: routeValue.type,
     path: routeValue.path,
     runtime,
+    signal: new AbortController().signal,
     inProcess: false,
     isTrustedLocal: true,
   } satisfies RouteHandlerContext;
@@ -194,6 +202,212 @@ async function invokeRoute(
 }
 
 describe("NotesStore", () => {
+  it.each([
+    "Title\n\nBody\n",
+    "x".repeat(241),
+    `${"a".repeat(239)}😀tail`,
+    "Reminder:  keep both spaces: and this colon.",
+  ])(
+    "lossless content survives persistence and restart: %s",
+    async (content) => {
+      const filePath = await temporaryStateFile();
+      const first = await serviceFor(filePath);
+      const note = await first.createNote({ content });
+      await first.stop();
+      const second = await serviceFor(filePath);
+      const restored = second.getNote(note.id);
+      expect(restored).toEqual(note);
+      expect(`${restored.title}${restored.body}`).toBe(content);
+      await second.stop();
+    },
+  );
+
+  it("migrates a maximum schema1 body once across mutations and restarts", async () => {
+    const filePath = await temporaryStateFile();
+    const timestamp = "2026-07-16T12:00:00.000Z";
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        schemaVersion: 1,
+        revision: 3,
+        persistedAt: timestamp,
+        notes: [
+          {
+            id: "note-legacy",
+            title: "Legacy",
+            body: "x".repeat(20000),
+            color: "yellow",
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        ],
+      }),
+    );
+    const first = await serviceFor(filePath);
+    expect(first.getNote("note-legacy").body).toBe(`\n${"x".repeat(20000)}`);
+    await first.createNote({ title: "Another" });
+    const expected = first.snapshot();
+    await first.stop();
+    const second = await serviceFor(filePath);
+    expect(second.snapshot()).toEqual(expected);
+    expect(JSON.parse(await fs.readFile(filePath, "utf8")).schemaVersion).toBe(
+      2,
+    );
+    await second.stop();
+  });
+
+  it("keeps structured create separate from exact content create", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    const structured = await service.createNote({
+      title: "Title",
+      body: "Body",
+    });
+    expect(structured.title + structured.body).toBe("Title\nBody");
+    for (const mixed of [
+      { content: "Whole", title: "Other" },
+      { content: "Whole", body: "Other" },
+    ]) {
+      const before = service.snapshot();
+      await expect(service.createNote(mixed)).rejects.toThrow("not both");
+      await expect(
+        service.updateNote(structured.id, mixed, before.revision),
+      ).rejects.toThrow("not both");
+      expect(service.snapshot()).toEqual(before);
+    }
+    const complete = await service.createNote({ content: "Whole\n\nBody\n" });
+    expect(complete.title + complete.body).toBe("Whole\n\nBody\n");
+    await service.stop();
+  });
+
+  it("preserves a long whitespace prefix through complete-content create and restart", async () => {
+    const path = await temporaryStateFile();
+    const first = await serviceFor(path);
+    const content = " ".repeat(300) + "\nValid text\nTail";
+    const note = await first.createNote({ content });
+    await first.stop();
+    const second = await serviceFor(path);
+    const saved = second.getNote(note.id);
+    expect(saved.title + saved.body).toBe(content);
+    await second.stop();
+  });
+
+  it.each([
+    [{ title: "Renamed" }, "Renamed\nBody"],
+    [{ body: "New" }, "Title\nNew"],
+    [{ title: "Renamed", body: "New" }, "Renamed\nNew"],
+    [{ body: "" }, "Title"],
+    [{ body: "\nNew" }, "Title\n\nNew"],
+  ])(
+    "preserves structured update layout and restart for %j",
+    async (patch, expected) => {
+      const filePath = await temporaryStateFile();
+      const first = await serviceFor(filePath);
+      const note = await first.createNote({ title: "Title", body: "Body" });
+      const saved = await first.updateNote(
+        note.id,
+        patch,
+        first.snapshot().revision,
+      );
+      expect(saved.title + saved.body).toBe(expected);
+      await first.stop();
+      const second = await serviceFor(filePath);
+      const restored = second.getNote(note.id);
+      expect(restored.title + restored.body).toBe(expected);
+      await second.stop();
+    },
+  );
+
+  it("atomically edits canonical whitespace prefixes and rejects blank results across restart", async () => {
+    const filePath = await temporaryStateFile();
+    const first = await serviceFor(filePath);
+    const note = await first.createNote({
+      content: " ".repeat(300) + "\nValid text",
+    });
+    const before = first.snapshot();
+    await first.updateNote(
+      note.id,
+      {
+        textEdit: {
+          field: "title",
+          oldText: " ".repeat(240),
+          newText: " ".repeat(239),
+        },
+      },
+      before.revision,
+    );
+    expect(first.getNote(note.id).title).toBe(" ".repeat(239));
+    expect(first.getNote(note.id).body).toBe(note.body);
+    const edited = first.snapshot();
+    expect(edited.revision).toBe(before.revision + 1);
+    const bytes = await fs.readFile(filePath, "utf8");
+    await expect(
+      first.updateNote(
+        note.id,
+        {
+          textEdit: { field: "body", oldText: "Valid text", newText: "" },
+        },
+        edited.revision,
+      ),
+    ).rejects.toThrow("must not be empty");
+    expect(first.snapshot()).toEqual(edited);
+    expect(await fs.readFile(filePath, "utf8")).toBe(bytes);
+    await first.stop();
+    const second = await serviceFor(filePath);
+    const saved = second.getNote(note.id);
+    expect(saved.title + saved.body).toBe(" ".repeat(299) + "\nValid text");
+    expect(second.snapshot().revision).toBe(edited.revision);
+    await second.stop();
+  });
+
+  it("edits and replaces migrated maximum content without losing its separator", async () => {
+    const filePath = await temporaryStateFile();
+    const timestamp = "2026-07-16T12:00:00.000Z";
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        schemaVersion: 1,
+        revision: 3,
+        persistedAt: timestamp,
+        notes: [
+          {
+            id: "note-legacy",
+            title: "L".repeat(240),
+            body: "y" + "x".repeat(19999),
+            color: "yellow",
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        ],
+      }),
+    );
+    const first = await serviceFor(filePath);
+    await first.updateNote("note-legacy", {
+      textEdit: { field: "body", oldText: "y", newText: "z" },
+    });
+    const edited = first.getNote("note-legacy");
+    const beforeStale = await fs.readFile(filePath, "utf8");
+    await expect(
+      first.updateNote(
+        "note-legacy",
+        { content: edited.title + edited.body },
+        3,
+      ),
+    ).rejects.toMatchObject({ code: "NOTES_EDIT_CONFLICT" });
+    expect(await fs.readFile(filePath, "utf8")).toBe(beforeStale);
+    expect(edited.body).toBe("\nz" + "x".repeat(19999));
+    await first.updateNote(
+      "note-legacy",
+      { content: edited.title + edited.body },
+      first.snapshot().revision,
+    );
+    await first.stop();
+    const second = await serviceFor(filePath);
+    expect(second.getNote("note-legacy").body).toBe(edited.body);
+    await second.stop();
+  });
+
   it("persists one document and restores notes after restart", async () => {
     const filePath = await temporaryStateFile();
     const first = await serviceFor(filePath);
@@ -217,7 +431,7 @@ describe("NotesStore", () => {
 
     const persisted = JSON.parse(await fs.readFile(filePath, "utf8"));
     expect(persisted).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       revision: 2,
     });
     expect(Object.keys(persisted).sort()).toEqual(
@@ -376,6 +590,157 @@ describe("NotesStore", () => {
   });
 });
 
+describe("NotesStore on filesystems that deny hard links (#30725)", () => {
+  // Android app storage rejects link(2) with EACCES. Every other filesystem
+  // operation in these tests is real.
+  function denyHardLinks() {
+    return vi.spyOn(fs, "link").mockImplementation(async () => {
+      throw Object.assign(new Error("EACCES: permission denied, link"), {
+        code: "EACCES",
+        syscall: "link",
+      });
+    });
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("initializes a fresh store and keeps CRUD across restarts", async () => {
+    denyHardLinks();
+    const filePath = await temporaryStateFile();
+    const first = await serviceFor(filePath);
+    expect(first.snapshot()).toMatchObject({ revision: 0, notes: [] });
+    const published = JSON.parse(
+      await fs.readFile(
+        path.join(notesPublicationDirectory(filePath), "state.json"),
+        "utf8",
+      ),
+    );
+    expect(published).toMatchObject({ revision: 0, notes: [] });
+    await first.stop();
+
+    const second = await serviceFor(filePath);
+    expect(second.snapshot()).toMatchObject({ revision: 0, notes: [] });
+    const note = await second.createNote({ content: "Survives restart" });
+    await second.stop();
+
+    const third = await serviceFor(filePath);
+    expect(third.getNote(note.id).title).toBe("Survives restart");
+    await third.deleteNote(note.id);
+    await third.stop();
+
+    const fourth = await serviceFor(filePath);
+    expect(fourth.snapshot().notes).toEqual([]);
+    expect(fourth.snapshot().revision).toBe(2);
+    await fourth.stop();
+  });
+
+  it("never replaces a competing initializer's publication", async () => {
+    denyHardLinks();
+    const filePath = await temporaryStateFile();
+    const rival = {
+      schemaVersion: 2,
+      revision: 7,
+      persistedAt: "2026-07-16T12:00:00.000Z",
+      notes: [],
+    };
+    const publication = notesPublicationDirectory(filePath);
+    await fs.mkdir(publication, { recursive: true });
+    await fs.writeFile(
+      path.join(publication, "state.json"),
+      JSON.stringify(rival),
+      "utf8",
+    );
+    // A second store for the same file loses the publication race and must
+    // adopt the rival's document instead of overwriting it.
+    const store = new NotesStore({ filePath });
+    await expect(store.initialize()).resolves.toBeUndefined();
+    expect(store.snapshot().revision).toBe(7);
+    expect(
+      JSON.parse(
+        await fs.readFile(path.join(publication, "state.json"), "utf8"),
+      ),
+    ).toEqual(rival);
+    await store.stop();
+  });
+
+  it("concurrent fresh initializers share one publication", async () => {
+    denyHardLinks();
+    const filePath = await temporaryStateFile();
+    const notesDir = path.dirname(filePath);
+    await fs.mkdir(notesDir, { recursive: true });
+    // A symlinked alias gives each store its own in-process state, so the
+    // initializers race on the real filesystem like separate processes do.
+    const aliasDir = `${notesDir}-alias`;
+    await fs.symlink(notesDir, aliasDir);
+    const stores = [
+      new NotesStore({ filePath, now: clock() }),
+      new NotesStore({
+        filePath: path.join(aliasDir, "state.json"),
+        now: clock("2026-07-17T12:00:00.000Z"),
+      }),
+    ];
+    await Promise.all(stores.map((store) => store.initialize()));
+    const persisted = JSON.parse(
+      await fs.readFile(
+        path.join(notesPublicationDirectory(filePath), "state.json"),
+        "utf8",
+      ),
+    );
+    // Exactly one candidate won; both stores adopted the same bytes.
+    for (const store of stores) {
+      expect(store.snapshot()).toEqual({ revision: 0, notes: [] });
+      expect((await store.persistedSnapshot()).revision).toBe(0);
+    }
+    expect(persisted.revision).toBe(0);
+    const entries = await fs.readdir(notesDir);
+    // No staging directory or temporary file survives publication.
+    expect(entries.filter((entry) => entry.endsWith(".tmp"))).toEqual([]);
+    for (const store of stores) await store.stop();
+  });
+
+  it("ignores an interrupted publication and fails loudly on a malformed one", async () => {
+    denyHardLinks();
+    const filePath = await temporaryStateFile();
+    const publication = notesPublicationDirectory(filePath);
+    // An interrupted staging directory is never read as state.
+    const staging = `${publication}.999.interrupted.tmp`;
+    await fs.mkdir(staging, { recursive: true });
+    await fs.writeFile(path.join(staging, "state.json"), "{", "utf8");
+    const fresh = new NotesStore({ filePath });
+    await fresh.initialize();
+    expect(fresh.snapshot()).toMatchObject({ revision: 0, notes: [] });
+    await fresh.stop();
+
+    await fs.writeFile(path.join(publication, "state.json"), "{ nope", "utf8");
+    const corrupt = new NotesStore({ filePath });
+    await expect(corrupt.initialize()).rejects.toMatchObject({
+      code: "NOTES_STORE_INVALID_JSON",
+    });
+  });
+
+  it("keeps an existing flat document authoritative", async () => {
+    denyHardLinks();
+    const filePath = await temporaryStateFile();
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const legacy = {
+      schemaVersion: 2,
+      revision: 3,
+      persistedAt: "2026-07-16T12:00:00.000Z",
+      notes: [],
+    };
+    await fs.writeFile(filePath, JSON.stringify(legacy), "utf8");
+    const store = new NotesStore({ filePath });
+    await store.initialize();
+    expect(store.snapshot().revision).toBe(3);
+    await expect(
+      fs.access(notesPublicationDirectory(filePath)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await store.stop();
+  });
+});
+
 describe("Notes capabilities", () => {
   it("dispatches server capabilities to the owning runtime service", async () => {
     const first = await serviceFor(await temporaryStateFile());
@@ -410,10 +775,8 @@ describe("Notes capabilities", () => {
     });
   });
 
-  it("splits a colon-labelled one-line create-note into title and body", async () => {
+  it("preserves colon punctuation through the create-note capability", async () => {
     const service = await serviceFor(await temporaryStateFile());
-    // Live planner output for "create a note titled Demo Checklist saying
-    // mic, charger, water" arrives as one colon-joined content line.
     const created = await interact(
       "create-note",
       { content: "Demo Checklist: mic, charger, water" },
@@ -421,10 +784,10 @@ describe("Notes capabilities", () => {
     );
     expect(created).toMatchObject({
       success: true,
-      text: "Created note “Demo Checklist”.",
+      text: "Created note “Demo Checklist: mic, charger, water”.",
     });
     expect(service.listNotes()).toMatchObject([
-      { title: "Demo Checklist", body: "mic, charger, water" },
+      { title: "Demo Checklist: mic, charger, water", body: "" },
     ]);
   });
 
@@ -451,9 +814,11 @@ describe("Notes capabilities", () => {
       data: { notes: [{ id: noteId, title: "Workbench" }] },
     });
 
+    const originalSnapshot = service.snapshot();
     const updatedNote = await interact(
       "update-note",
       {
+        expectedRevision: originalSnapshot.revision,
         query: "Workbench",
         content: "Workbench\nPolished draft",
         color: "green",
@@ -466,13 +831,18 @@ describe("Notes capabilities", () => {
       id: noteId,
     });
     expect(service.getNote(noteId)).toMatchObject({
-      body: "Polished draft",
+      body: "\nPolished draft",
       color: "green",
     });
+    const polishedSnapshot = service.snapshot();
     await expect(
       interact(
         "update-note",
-        { query: "Workbench", content: "Workbench ready\nPolished draft" },
+        {
+          expectedRevision: polishedSnapshot.revision,
+          query: "Workbench",
+          content: "Workbench ready\nPolished draft",
+        },
         service,
       ),
     ).resolves.toMatchObject({ success: true });
@@ -523,6 +893,11 @@ describe("Notes capabilities", () => {
       service,
     );
     const note = (first.data as { note: StickyNote }).note;
+    const beforeReplay = service.snapshot();
+    const persistedBeforeReplay = await fs.readFile(
+      service.store.filePath,
+      "utf8",
+    );
 
     const replay = await interact(
       "create-note",
@@ -540,6 +915,10 @@ describe("Notes capabilities", () => {
       ],
     });
     expect(service.listNotes()).toHaveLength(1);
+    expect(service.snapshot()).toEqual(beforeReplay);
+    expect(await fs.readFile(service.store.filePath, "utf8")).toBe(
+      persistedBeforeReplay,
+    );
 
     await service.store.transact((draft) => {
       draft.notes.push(
@@ -549,9 +928,14 @@ describe("Notes capabilities", () => {
     });
     expect(service.snapshot().notes).toHaveLength(1);
 
+    const originalSnapshot = service.snapshot();
     const updated = await interact(
       "update-note",
-      { query: "Milk", content: "Milk\nAlready bought" },
+      {
+        expectedRevision: originalSnapshot.revision,
+        query: "Milk",
+        content: "Milk\nAlready bought",
+      },
       service,
     );
     expect(updated).toMatchObject({
@@ -742,10 +1126,14 @@ describe("Notes capabilities", () => {
     const seed = await service.createNote({ title: "Keep", body: "original" });
     const confirmedRevision = service.snapshot().revision;
 
-    const updateSeed = service.updateNote(seed.id, {
-      title: "Keep",
-      body: "edited in the race window",
-    });
+    const updateSeed = service.updateNote(
+      seed.id,
+      {
+        title: "Keep",
+        body: "edited in the race window",
+      },
+      confirmedRevision,
+    );
     const clear = interact(
       "clear-notes",
       { confirm: true, expectedRevision: confirmedRevision },
@@ -761,7 +1149,7 @@ describe("Notes capabilities", () => {
     expect(remaining).toHaveLength(1);
     expect(remaining[0]).toMatchObject({
       title: "Keep",
-      body: "edited in the race window",
+      body: "\nedited in the race window",
     });
   });
 
@@ -800,10 +1188,15 @@ describe("Notes capabilities", () => {
       service,
     );
 
+    const originalSnapshot = service.snapshot();
     await expect(
       interact(
         "update-note",
-        { query: "Daily plan", content: "Daily plan\nChanged" },
+        {
+          expectedRevision: originalSnapshot.revision,
+          query: "Daily plan",
+          content: "Daily plan\nChanged",
+        },
         service,
       ),
     ).resolves.toMatchObject({
@@ -813,7 +1206,11 @@ describe("Notes capabilities", () => {
     await expect(
       interact(
         "update-note",
-        { query: "does not exist", content: "Changed" },
+        {
+          expectedRevision: originalSnapshot.revision,
+          query: "does not exist",
+          content: "Changed",
+        },
         service,
       ),
     ).resolves.toMatchObject({
@@ -821,8 +1218,8 @@ describe("Notes capabilities", () => {
       error: { code: "NOTES_NOT_FOUND" },
     });
     expect(service.listNotes().map((note) => note.body)).toEqual([
-      "Evening",
-      "Morning",
+      "\nEvening",
+      "\nMorning",
     ]);
   });
 
@@ -1024,23 +1421,28 @@ describe("Notes capabilities", () => {
       service,
     );
 
+    const originalSnapshot = service.snapshot();
     // Exact title match updates the right note.
     const updated = await interact(
       "update-note",
-      { title: "Shopping list", content: "Shopping list\nDone shopping" },
+      {
+        expectedRevision: originalSnapshot.revision,
+        title: "Shopping list",
+        content: "Shopping list\nDone shopping",
+      },
       service,
     );
     expect(updated).toMatchObject({
       success: true,
-      data: { note: { title: "Shopping list", body: "Done shopping" } },
+      data: { note: { title: "Shopping list", body: "\nDone shopping" } },
     });
     // "Todo" remains unchanged; order may shift after update.
     expect(
       service.listNotes().map((n) => ({ title: n.title, body: n.body })),
     ).toEqual(
       expect.arrayContaining([
-        { title: "Shopping list", body: "Done shopping" },
-        { title: "Todo", body: "Fix the bug" },
+        { title: "Shopping list", body: "\nDone shopping" },
+        { title: "Todo", body: "\nFix the bug" },
       ]),
     );
   });
@@ -1058,11 +1460,16 @@ describe("Notes capabilities", () => {
       service,
     );
 
+    const originalSnapshot = service.snapshot();
     // Two notes share the same first-line label -> ambiguous.
     await expect(
       interact(
         "update-note",
-        { title: "Meeting notes", content: "Changed" },
+        {
+          expectedRevision: originalSnapshot.revision,
+          title: "Meeting notes",
+          content: "Changed",
+        },
         service,
       ),
     ).resolves.toMatchObject({
@@ -1074,7 +1481,11 @@ describe("Notes capabilities", () => {
     await expect(
       interact(
         "update-note",
-        { title: "Nonexistent", content: "Changed" },
+        {
+          expectedRevision: originalSnapshot.revision,
+          title: "Nonexistent",
+          content: "Changed",
+        },
         service,
       ),
     ).resolves.toMatchObject({
@@ -1084,7 +1495,7 @@ describe("Notes capabilities", () => {
 
     // Nothing was mutated.
     expect(service.listNotes().map((n) => n.body)).toEqual(
-      expect.arrayContaining(["Morning sync", "Afternoon review"]),
+      expect.arrayContaining(["\nMorning sync", "\nAfternoon review"]),
     );
   });
 
@@ -1096,11 +1507,17 @@ describe("Notes capabilities", () => {
       service,
     );
 
+    const originalSnapshot = service.snapshot();
     // Providing both title and query must fail validation.
     await expect(
       interact(
         "update-note",
-        { title: "Test", query: "Body", content: "Changed" },
+        {
+          expectedRevision: originalSnapshot.revision,
+          title: "Test",
+          query: "Body",
+          content: "Changed",
+        },
         service,
       ),
     ).resolves.toMatchObject({
@@ -1110,7 +1527,11 @@ describe("Notes capabilities", () => {
 
     // No selector with content must fail validation.
     await expect(
-      interact("update-note", { content: "Changed" }, service),
+      interact(
+        "update-note",
+        { expectedRevision: originalSnapshot.revision, content: "Changed" },
+        service,
+      ),
     ).resolves.toMatchObject({
       success: false,
       error: { code: "NOTES_VALIDATION_FAILED" },

@@ -13,7 +13,7 @@ import argparse
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping
+from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-from gguf_k_quant import (  # noqa: E402,F401
+from eliza_training.quantization.gguf_k_quant import (  # noqa: E402,F401
     DEFAULT_LLAMA_CPP_DIR,
     LLAMA_CPP_RELATIVE_DIR,
     find_llama_convert_script,
@@ -108,7 +108,7 @@ def save_model(
 # Re-export from the zero-dep _kernel_manifest module so existing recipe
 # imports (`from _common import kernel_manifest_fragment`) keep working
 # while unit tests can import the helper without pulling in transformers.
-from _kernel_manifest import (  # noqa: E402,F401
+from eliza_training.quantization._kernel_manifest import (  # noqa: E402,F401
     KERNEL_BLOCK_LAYOUT_VERSIONS,
     KERNEL_CODEBOOK_HASH_SOURCES,
     KERNEL_CODEBOOK_HASHES,

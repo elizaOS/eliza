@@ -35,7 +35,7 @@ test.describe("scheduled backups", () => {
       onTick: processJobs,
     });
 
-    const sweep = await runScheduledBackups(api, { intervalMs: 0 });
+    const sweep = await runScheduledBackups(api, { intervalMs: 1 });
     expect(
       sweep.enqueued,
       "scheduled sweep should enqueue at least the new agent",
@@ -80,7 +80,7 @@ test.describe("scheduled backups", () => {
       onTick: processJobs,
     });
 
-    await runScheduledBackups(api, { intervalMs: 0 });
+    await runScheduledBackups(api, { intervalMs: 1 });
     await expect
       .poll(
         async () => {

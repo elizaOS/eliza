@@ -1,5 +1,5 @@
 /**
- * PII / sensitive-token detectors for the secret-swap layer (#10469).
+ * PII / sensitive-token detectors for the secret-swap layer.
  *
  * The secret-swap layer needs to find "easy-to-match" PII and well-known secret
  * token shapes in free text so it can substitute deterministic placeholders
@@ -11,14 +11,14 @@
  *
  * Design constraints:
  * - **Low false positives.** Every numeric/structured class is checksum- or
- *   range-validated (Luhn for cards, mod-97 for IBAN, octet range for IPv4,
- *   SSA allocation rules for SSN). A detector that would over-match is gated by
- *   its validator, not loosened.
+ * range-validated (Luhn for cards, mod-97 for IBAN, octet range for IPv4,
+ * SSA allocation rules for SSN). A detector that would over-match is gated by
+ * its validator, not loosened.
  * - **Pure + side-effect-free.** Detectors never mutate; `detectPii()` returns
- *   the matched spans so the caller (the swap session) owns substitution.
+ * the matched spans so the caller (the swap session) owns substitution.
  * - **Overlap resolution.** When two detectors match overlapping spans, the
- *   longer (more specific) span wins, so a credit card inside a longer digit run
- *   is not also half-matched as a phone number.
+ * longer (more specific) span wins, so a credit card inside a longer digit run
+ * is not also half-matched as a phone number.
  *
  * The exported helpers (`luhnValid`, `ibanValid`, `ssnValid`, `ipv4Valid`,
  * `wifValid`) are the validation primitives, exposed so the fuzz / red-team /
@@ -70,9 +70,7 @@ export interface PiiMatch {
 	readonly end: number;
 }
 
-// ---------------------------------------------------------------------------
 // Validation primitives (exported for direct testing)
-// ---------------------------------------------------------------------------
 
 /** Luhn (mod-10) checksum over a pure-digit string. */
 export function luhnValid(digits: string): boolean {
@@ -216,9 +214,7 @@ function basicAuthValid(b64: string): boolean {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Detector registry
-// ---------------------------------------------------------------------------
 
 /**
  * Ordered detector registry. Order matters only for tie-breaking when two

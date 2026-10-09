@@ -8,6 +8,8 @@
  *
  * Routes:
  *
+ *   GET    /api/notifications?nativeTransport=true&afterSequence=&throughSequence=&nativeEpoch=&limit=
+ *     Native keyset pages, oldest-first, with fixed sequence fence and explicit completion.
  *   GET    /api/notifications?unreadOnly=&category=&limit=
  *     List notifications newest-first. Returns `{ notifications, unreadCount }`.
  *
@@ -33,23 +35,24 @@
  *   DELETE /api/notifications
  *     Clear the inbox. Returns `{ ok }`.
  */
-
 import type http from "node:http";
-import type {
-  NotificationCategory,
-  NotificationInput,
-  NotificationPriority,
-  NotificationServiceLifecycleRuntime,
-  RouteHelpers,
+import {
+  NATIVE_NOTIFICATION_PAGE_LIMIT,
+  type NativeNotificationQuery,
+  type NotificationCategory,
+  type NotificationInput,
+  NotificationNativeError,
+  type NotificationPriority,
+  NotificationService,
+  type NotificationServiceLifecycleRuntime,
+  ServiceType,
 } from "@elizaos/core";
-import { NotificationService, ServiceType } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/host/protocol";
 
 export interface NotificationRouteState {
   runtime: NotificationServiceLifecycleRuntime | null;
 }
-
 const NOTIFICATION_RETRY_AFTER_SECONDS = 1;
-
 const CATEGORIES: NotificationCategory[] = [
   "reminder",
   "task",
@@ -62,7 +65,6 @@ const CATEGORIES: NotificationCategory[] = [
   "general",
 ];
 const PRIORITIES: NotificationPriority[] = ["low", "normal", "high", "urgent"];
-
 /**
  * The dev/test seed spread: every priority tier, a breadth of categories, a
  * long body (exercises the widget's two-line clamp), safe deep links, and a
@@ -131,12 +133,10 @@ export const DEV_SEED_NOTIFICATIONS: readonly NotificationInput[] = [
     groupKey: "dev-seed:deploy",
   },
 ];
-
 function getService(state: NotificationRouteState): NotificationService | null {
   const svc = state.runtime?.getService(ServiceType.NOTIFICATION);
   return svc instanceof NotificationService ? svc : null;
 }
-
 function respondServiceUnavailable(
   res: http.ServerResponse,
   state: NotificationRouteState,
@@ -158,7 +158,6 @@ function respondServiceUnavailable(
     );
     return true;
   }
-
   const availability = NotificationService.getAvailability(runtime);
   if (availability === "disabled") {
     if (method === "GET" && pathname === "/api/notifications") {
@@ -179,7 +178,6 @@ function respondServiceUnavailable(
     );
     return true;
   }
-
   if (availability === "failed") {
     const recovery = NotificationService.requestRecovery(runtime);
     res.setHeader("Retry-After", String(recovery.retryAfterSeconds));
@@ -194,7 +192,6 @@ function respondServiceUnavailable(
     );
     return true;
   }
-
   res.setHeader("Retry-After", String(NOTIFICATION_RETRY_AFTER_SECONDS));
   helpers.json(
     res,
@@ -207,7 +204,6 @@ function respondServiceUnavailable(
   );
   return true;
 }
-
 function parseLimit(raw: string | null): number | null | undefined {
   if (raw === null || raw === "") return undefined;
   // Strict decimal digits only. Number.parseInt("1e2", 10) === 1 would
@@ -217,18 +213,99 @@ function parseLimit(raw: string | null): number | null | undefined {
   if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
   return Math.min(parsed, 500);
 }
-
 function parseCategory(raw: string | null): NotificationCategory | undefined {
   if (raw && CATEGORIES.includes(raw as NotificationCategory)) {
     return raw as NotificationCategory;
   }
   return undefined;
 }
+/** Native completion closes sequence gaps, so filtered and ambiguous queries are invalid. */
+function parseNativeQuery(url: URL): NativeNotificationQuery | undefined {
+  const params = url.searchParams;
+  for (const key of [
+    "nativeTransport",
+    "nativeEpoch",
+    "afterSequence",
+    "throughSequence",
+  ]) {
+    if (params.getAll(key).length > 1)
+      throw new NotificationNativeError(
+        "INVALID_NATIVE_NOTIFICATION_CURSOR",
+        "Repeated native query parameter",
+      );
+  }
+  const requested = params.get("nativeTransport");
+  if (requested != null && requested !== "true" && requested !== "false")
+    throw new NotificationNativeError(
+      "INVALID_NATIVE_NOTIFICATION_CURSOR",
+      "Invalid nativeTransport",
+    );
+  if (requested !== "true") {
+    if (
+      ["nativeEpoch", "afterSequence", "throughSequence"].some((key) =>
+        params.has(key),
+      )
+    )
+      throw new NotificationNativeError(
+        "INVALID_NATIVE_NOTIFICATION_CURSOR",
+        "Native cursor requires nativeTransport=true",
+      );
+    return undefined;
+  }
+  if (
+    params.has("unreadOnly") ||
+    params.has("category") ||
+    params.getAll("limit").length > 1
+  )
+    throw new NotificationNativeError(
+      "INVALID_NATIVE_NOTIFICATION_CURSOR",
+      "Native pages cannot use filters or repeated limit",
+    );
+  const query: NativeNotificationQuery = {};
+  for (const key of ["afterSequence", "throughSequence", "limit"] as const) {
+    const raw = params.get(key);
+    if (raw == null) continue;
+    if (!/^(0|[1-9]\d*)$/.test(raw) || !Number.isSafeInteger(Number(raw)))
+      throw new NotificationNativeError(
+        "INVALID_NATIVE_NOTIFICATION_CURSOR",
+        "Native cursors must be safe decimal integers",
+      );
+    query[key] = Number(raw);
+  }
+  if (
+    query.limit != null &&
+    (query.limit < 1 || query.limit > NATIVE_NOTIFICATION_PAGE_LIMIT)
+  )
+    throw new NotificationNativeError(
+      "INVALID_NATIVE_NOTIFICATION_CURSOR",
+      "Native limit must be between 1 and 128",
+    );
+  const epoch = params.get("nativeEpoch");
+  if (epoch != null) {
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        epoch,
+      )
+    )
+      throw new NotificationNativeError(
+        "INVALID_NATIVE_NOTIFICATION_CURSOR",
+        "Invalid nativeEpoch",
+      );
+    query.nativeEpoch = epoch;
+  }
+  return query;
+}
 
 /** Coerce an untrusted request body into a NotificationInput. */
-function parseNotificationInput(
-  body: Record<string, unknown>,
-): { ok: true; input: NotificationInput } | { ok: false; message: string } {
+function parseNotificationInput(body: Record<string, unknown>):
+  | {
+      ok: true;
+      input: NotificationInput;
+    }
+  | {
+      ok: false;
+      message: string;
+    } {
   const title = typeof body.title === "string" ? body.title.trim() : "";
   if (!title) {
     return { ok: false, message: "title is required" };
@@ -270,7 +347,6 @@ function parseNotificationInput(
   };
   return { ok: true, input };
 }
-
 export async function handleNotificationRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -280,9 +356,13 @@ export async function handleNotificationRoute(
   helpers: RouteHelpers,
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/notifications")) return false;
-
   let listRequest:
-    | { url: URL; limit: number | undefined; unreadOnly: boolean }
+    | {
+        url: URL;
+        limit: number | undefined;
+        unreadOnly: boolean;
+        nativeQuery?: NativeNotificationQuery;
+      }
     | undefined;
   if (method === "GET" && pathname === "/api/notifications") {
     const url = new URL(req.url ?? pathname, "http://localhost");
@@ -303,17 +383,43 @@ export async function handleNotificationRoute(
       helpers.error(res, "limit must be a positive integer", 400);
       return true;
     }
-    listRequest = { url, limit, unreadOnly: requestedUnread === "true" };
+    try {
+      listRequest = {
+        url,
+        limit,
+        unreadOnly: requestedUnread === "true",
+        nativeQuery: parseNativeQuery(url),
+      };
+    } catch (error) {
+      if (!(error instanceof NotificationNativeError)) throw error;
+      helpers.json(
+        res,
+        { error: error.message, code: error.code },
+        error.status,
+      );
+      return true;
+    }
   }
-
   const service = getService(state);
   if (!service) {
     return respondServiceUnavailable(res, state, method, pathname, helpers);
   }
-
   // ── GET /api/notifications ────────────────────────────────────────
   if (listRequest) {
-    const { url, limit, unreadOnly } = listRequest;
+    const { url, limit, unreadOnly, nativeQuery } = listRequest;
+    if (nativeQuery) {
+      try {
+        helpers.json(res, await service.listNativePage(nativeQuery));
+      } catch (error) {
+        if (!(error instanceof NotificationNativeError)) throw error;
+        helpers.json(
+          res,
+          { error: error.message, code: error.code },
+          error.status,
+        );
+      }
+      return true;
+    }
     const notifications = service.list({
       unreadOnly,
       category: parseCategory(url.searchParams.get("category")),
@@ -326,7 +432,6 @@ export async function handleNotificationRoute(
     });
     return true;
   }
-
   // ── POST /api/notifications ───────────────────────────────────────
   if (method === "POST" && pathname === "/api/notifications") {
     const body = await helpers.readJsonBody<Record<string, unknown>>(req, res, {
@@ -342,14 +447,12 @@ export async function handleNotificationRoute(
     helpers.json(res, { notification }, 201);
     return true;
   }
-
   // ── POST /api/notifications/read-all ──────────────────────────────
   if (method === "POST" && pathname === "/api/notifications/read-all") {
     const changed = await service.markAllRead();
     helpers.json(res, { changed });
     return true;
   }
-
   // ── POST /api/notifications/dev/seed ──────────────────────────────
   if (method === "POST" && pathname === "/api/notifications/dev/seed") {
     // 404 (not 403) in production so the route's existence isn't advertised.
@@ -364,7 +467,6 @@ export async function handleNotificationRoute(
     helpers.json(res, { count: notifications.length, notifications }, 201);
     return true;
   }
-
   // ── POST /api/notifications/:id/read ──────────────────────────────
   const readMatch = pathname.match(/^\/api\/notifications\/([^/]+)\/read$/);
   if (method === "POST" && readMatch) {
@@ -380,14 +482,12 @@ export async function handleNotificationRoute(
     helpers.json(res, { ok });
     return true;
   }
-
   // ── DELETE /api/notifications ─────────────────────────────────────
   if (method === "DELETE" && pathname === "/api/notifications") {
     await service.clear();
     helpers.json(res, { ok: true });
     return true;
   }
-
   // ── DELETE /api/notifications/:id ─────────────────────────────────
   const idMatch = pathname.match(/^\/api\/notifications\/([^/]+)$/);
   if (method === "DELETE" && idMatch) {
@@ -403,7 +503,6 @@ export async function handleNotificationRoute(
     helpers.json(res, { ok });
     return true;
   }
-
   helpers.error(res, "notification route not found", 404);
   return true;
 }

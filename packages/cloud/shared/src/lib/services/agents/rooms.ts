@@ -4,6 +4,7 @@
  */
 
 import type { Memory } from "@elizaos/core";
+import { entityTable, participantTable, roomTable } from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 import { dbWrite } from "../../../db/client";
 import {
@@ -12,9 +13,10 @@ import {
   memoriesRepository,
   participantsRepository,
   type Room,
+  roomPreviewActivityMs,
+  roomSummaryMessageTime,
   roomsRepository,
 } from "../../../db/repositories";
-import { entityTable, participantTable, roomTable } from "../../../db/schemas/eliza";
 import { isVisibleDialogueMessage, parseMessageContent } from "../../types/message-content";
 
 /**
@@ -135,7 +137,7 @@ export class RoomsService {
           characterId: room.characterId || undefined,
           characterName: room.characterName || undefined,
           characterAvatarUrl: room.characterAvatarUrl || undefined,
-          lastTime: room.lastMessageTime?.getTime() || room.createdAt?.getTime(),
+          lastTime: roomPreviewActivityMs(room.lastMessageTime, room.createdAt),
           lastText: room.lastMessageText?.substring(0, 100) || undefined,
           isLocked,
           isBuildRoom,
@@ -288,7 +290,7 @@ export class RoomsService {
       participantCount,
       lastMessage: lastMessage
         ? {
-            time: lastMessage.createdAt || Date.now(),
+            time: roomSummaryMessageTime(lastMessage.createdAt, Date.now()),
             text: ((lastMessage.content?.text as string) || "").substring(0, 100),
           }
         : undefined,

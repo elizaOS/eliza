@@ -23,6 +23,11 @@ export interface EVMWalletData {
     readonly symbol: string;
     readonly chainId: number;
   }>;
+  /** Chains whose RPC did not answer on this refresh; never folded into `chains`. */
+  readonly unavailableChains: ReadonlyArray<{
+    readonly chainName: string;
+    readonly error: string;
+  }>;
   readonly timestamp: number;
 }
 
@@ -97,7 +102,16 @@ export class EVMService extends Service {
     }
 
     const address = this.walletProvider.getAddress();
-    const balances = await this.walletProvider.getWalletBalances(true);
+    const balanceStates = await this.walletProvider.getChainBalanceStates(true);
+    const balances: Record<string, string> = {};
+    const unavailableChains: Array<{ chainName: string; error: string }> = [];
+    for (const [chainName, state] of Object.entries(balanceStates)) {
+      if (state.status === "ok") {
+        balances[chainName] = state.balance;
+      } else {
+        unavailableChains.push({ chainName, error: state.error });
+      }
+    }
 
     const chainDetails: Array<{
       chainName: string;
@@ -128,6 +142,7 @@ export class EVMService extends Service {
     const walletData: EVMWalletData = {
       address,
       chains: chainDetails,
+      unavailableChains,
       timestamp: Date.now(),
     };
 

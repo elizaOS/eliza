@@ -164,6 +164,33 @@ function isJsonMediaType(contentType: string | null): boolean {
   return subtype === "json" || subtype?.endsWith("+json") === true;
 }
 
+const MINIFLARE_PROXY_CONNECTION_LOST =
+  /^Error: Network connection lost\.\r?\n\s+at async Object\.fetch \(file:\/\/[^\r\n]+\/node_modules\/miniflare\/dist\/src\/workers\/core\/entry\.worker\.js:\d+:\d+\)$/;
+
+/**
+ * Wrangler dev's ProxyWorker can reuse a pooled UserWorker connection at the
+ * instant KJ's 5s idle timeout closes it (cloudflare/workers-sdk#14641). The
+ * server closes that idle socket before reading the new request, so the request
+ * never reaches the Worker. Match only Miniflare's exact proxy stack on a local
+ * target, never an application failure with similar text.
+ */
+async function isLocalMiniflareProxyDrop(response: Response): Promise<boolean> {
+  if (
+    !isLocalTarget() ||
+    response.status !== 500 ||
+    !response.headers
+      .get("content-type")
+      ?.toLowerCase()
+      .startsWith("text/plain") ||
+    isJsonMediaType(response.headers.get("content-type"))
+  ) {
+    return false;
+  }
+  return MINIFLARE_PROXY_CONNECTION_LOST.test(
+    (await response.clone().text()).trim(),
+  );
+}
+
 async function isLocalWranglerRecycleResponse(
   method: string,
   response: Response,
@@ -172,7 +199,6 @@ async function isLocalWranglerRecycleResponse(
     (method !== "GET" && method !== "HEAD") ||
     !isLocalTarget() ||
     (response.status !== 500 && response.status !== 503) ||
-    response.headers.get("server")?.trim().toLowerCase() !== "workerd" ||
     !response.headers
       .get("content-type")
       ?.toLowerCase()
@@ -182,10 +208,15 @@ async function isLocalWranglerRecycleResponse(
     return false;
   }
 
-  if (method === "HEAD") return true;
+  const fromWorkerd =
+    response.headers.get("server")?.trim().toLowerCase() === "workerd";
+  if (method === "HEAD") return fromWorkerd;
+  // Miniflare can lose its upstream Worker connection without setting Server.
+  if (await isLocalMiniflareProxyDrop(response)) return true;
+  const body = (await response.clone().text()).trim();
   const expectedBody =
     response.status === 500 ? "Internal Server Error" : "Service Unavailable";
-  return (await response.clone().text()).trim() === expectedBody;
+  return fromWorkerd && body === expectedBody;
 }
 
 async function request(
@@ -194,20 +225,44 @@ async function request(
   opts: FetchOptions = {},
 ): Promise<Response> {
   const makeInit = (): RequestInit => {
+    const headers = new Headers(opts.headers);
+    // Wrangler's local proxy can reuse a connection the Worker just closed,
+    // returning "Network connection lost" before the route responds. Close
+    // each local connection instead of replaying potentially applied mutations.
+    // https://github.com/cloudflare/workers-sdk/issues/14641
+    if (isLocalTarget()) headers.set("Connection", "close");
     const init: RequestInit = {
       method,
       signal: timeoutSignal(),
-      headers: { ...(opts.headers ?? {}) },
+      headers,
     };
     if (opts.body !== undefined) {
-      (init.headers as Record<string, string>)["Content-Type"] ??=
-        "application/json";
+      if (!headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+      }
       init.body =
         typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
     }
     return init;
   };
   let res = await fetch(url(path), makeInit());
+  // A mutation dropped by the ProxyWorker keep-alive race never reached the
+  // Worker, so replay it once. Any other mutation failure stays fail-closed, and
+  // a replay of an applied mutation would surface as a conflict, not a pass.
+  if (
+    method !== "GET" &&
+    method !== "HEAD" &&
+    (await isLocalMiniflareProxyDrop(res))
+  ) {
+    console.warn(
+      "[Worker e2e] Replaying a request dropped by the local ProxyWorker (workers-sdk#14641)",
+      { method, path },
+    );
+    await new Promise((resolve) =>
+      setTimeout(resolve, LOCAL_WRANGLER_RECYCLE_RETRY_DELAY_MS),
+    );
+    res = await fetch(url(path), makeInit());
+  }
   // Local wrangler dev can answer with workerd's own plain-text 500/503 while
   // recycling the isolate. Retry only the exact local workerd signature and
   // only for idempotent reads. Mutation methods, deployed targets, structured
@@ -222,6 +277,16 @@ async function request(
       setTimeout(resolve, LOCAL_WRANGLER_RECYCLE_RETRY_DELAY_MS),
     );
     res = await fetch(url(path), makeInit());
+  }
+  if (res.status === 500 && !isJsonMediaType(res.headers.get("content-type"))) {
+    console.error("[Worker e2e] Non-JSON server failure", {
+      method,
+      path,
+      status: res.status,
+      server: res.headers.get("server"),
+      contentType: res.headers.get("content-type"),
+      body: await res.clone().text(),
+    });
   }
   recordStatus(method, path, res.status);
   return res;

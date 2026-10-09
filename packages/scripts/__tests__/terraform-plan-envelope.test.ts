@@ -15,7 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const scriptPath = new URL("../terraform-plan-envelope.mjs", import.meta.url)
+const scriptPath = new URL("../terraform-plan-envelope.ts", import.meta.url)
   .pathname;
 
 function generateRsaKeys() {

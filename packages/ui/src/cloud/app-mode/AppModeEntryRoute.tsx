@@ -13,10 +13,9 @@
  * rowless personal Eliza is resolved and bound in place (`./use-personal-entry`),
  * falling back to `/join` only when that identity cannot be resolved.
  * Unauthenticated visitors first get one shot at the
- * cross-host SSO bridge (`../sso-bridge/sso-bridge` — only when the
- * domain-wide session marker says the eliza.app auth origin holds a live session and
- * the user did not explicitly sign out here), then the normal login flow, and
- * return here. None of this mounts on apex control-plane hosts — the shell's
+ * cross-host SSO bridge (`../sso-bridge/sso-bridge` — it only shares an
+ * existing eliza.app session, unless the user explicitly signed out here),
+ * then this host's own login flow, and return here. None of this mounts on apex control-plane hosts — the shell's
  * apex branch runs first — so the apex console never issues app-mode network
  * calls.
  */
@@ -24,7 +23,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { loadPersistedActiveServer } from "../../state/persistence";
-import { useAgents } from "../instances/lib/data/eliza-agents";
+import { useAgents } from "../instances/lib/eliza-agents";
 import { useSessionAuth } from "../lib/use-session-auth";
 import {
   redirectToSsoBridge,
@@ -73,9 +72,9 @@ export function AppModeEntryRoute({
   const personalEntry = usePersonalEntry(rowlessEntry);
 
   // Unauthenticated visits may ride the cross-host SSO bridge instead of the
-  // local login: when the domain-wide session marker says the auth origin
-  // holds a live session (and the user did not explicitly sign out here), the
-  // effect performs the full-page bounce to the eliza.app mint leg. The
+  // local login: unless the user explicitly signed out here, the effect
+  // performs the full-page bounce to the eliza.app mint leg, which shares an
+  // existing session or returns straight to this host's own login. The
   // decision runs in an effect — never during render — because it reads
   // cookies/storage/clock, and it is single-shot per mount.
   const ssoDecisionRef = useRef(false);

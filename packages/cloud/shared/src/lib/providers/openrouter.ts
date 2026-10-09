@@ -4,8 +4,8 @@
  * Direct, BYOK access to OpenRouter's OpenAI-compatible gateway
  * (`https://openrouter.ai/api/v1`). This is the **fallback** the cloud uses
  * when the primary router (BitRouter today, native routing tomorrow) returns a
- * retryable upstream error — see `getProviderForModelWithFallback` and the
- * AI-SDK `withOpenRouterFallback` wrapper in `language-model.ts`.
+ * retryable upstream error — see the AI-SDK `withRetryableFallback` middleware
+ * in `language-model.ts`.
  *
  * OpenRouter and BitRouter share the same catalog id format (`x-ai/…`,
  * `anthropic/…`, `openai/…`) and the same `:nitro` / `:floor` routing-suffix

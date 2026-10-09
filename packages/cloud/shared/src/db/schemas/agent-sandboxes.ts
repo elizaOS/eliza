@@ -28,6 +28,7 @@
  * that polymorphism is higher than the cost of two clearly-scoped tables.
  */
 
+import type { AgentBackupManifest } from "@elizaos/contracts";
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   bigint,
@@ -168,6 +169,14 @@ export interface AgentActivationReceipt {
   appliedAt: string;
   restored: true;
   requiresRestart: boolean;
+}
+
+/** Exact runtime and private ingress retained by an unpaid stop in place (#30746). */
+export interface AgentRetainedRuntime {
+  runtime: import("../../lib/services/sandbox-runtime-observation").SandboxRuntimeIdentity;
+  bridgeUrl: string;
+  healthUrl: string;
+  retainedAt: string;
 }
 
 export const agentSandboxes = pgTable(
@@ -442,6 +451,14 @@ export const agentSandboxes = pgTable(
     replacement_cleanup_created_at: timestamp("replacement_cleanup_created_at", {
       withTimezone: true,
     }),
+    /**
+     * Exact immutable runtime an unpaid stop retained in place because a
+     * current backup could not be captured (#30746). While set, the stopped
+     * container, its mounts and its node are protected from orphan reaping and
+     * node retirement, and only an exact in-place resume or an authorized
+     * deletion may retire it.
+     */
+    retained_runtime: jsonb("retained_runtime").$type<AgentRetainedRuntime>(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
@@ -690,6 +707,10 @@ export const agentSandboxes = pgTable(
         AND ${table.deletion_started_at} IS NOT NULL
       )`,
     ),
+    retained_runtime_object_check: check(
+      "agent_sandboxes_retained_runtime_object",
+      sql`${table.retained_runtime} IS NULL OR jsonb_typeof(${table.retained_runtime}) = 'object'`,
+    ),
     pre_delete_capture_waiver_shape_check: check(
       "agent_sandboxes_pre_delete_capture_waiver_shape_check",
       sql`(
@@ -858,62 +879,6 @@ export const AGENT_BACKUP_RETENTION_REASONS = [
 ] as const;
 
 export type AgentBackupRetentionReason = (typeof AGENT_BACKUP_RETENTION_REASONS)[number];
-
-export interface AgentBackupFileEntry {
-  path: string;
-  sha256: string;
-  size: number;
-  mode?: number;
-  mtimeMs?: number;
-  bytesBase64: string;
-}
-
-export interface AgentBackupFileSet {
-  kind: "file-set";
-  rootLabel: "state-dir" | "pglite-dir";
-  rootPath?: string;
-  files: AgentBackupFileEntry[];
-  sha256: string;
-}
-
-export interface AgentBackupPostgresTable {
-  name: string;
-  columns: string[];
-  rows: Record<string, unknown>[];
-}
-
-export interface AgentBackupPostgresDump {
-  kind: "postgres-rows";
-  tables: AgentBackupPostgresTable[];
-  sha256: string;
-}
-
-export interface AgentBackupManifest {
-  schemaVersion: 1;
-  format: "elizaos.agent-backup";
-  createdAt: string;
-  agentId: string;
-  components: {
-    database: {
-      kind: "pglite-files" | "postgres-rows" | "none";
-      pglite?: AgentBackupFileSet;
-      postgres?: AgentBackupPostgresDump;
-      reason?: string;
-      sha256: string;
-    };
-    media: AgentBackupFileSet;
-    vault: AgentBackupFileSet;
-    character: {
-      runtimeCharacter: unknown;
-      configFile?: AgentBackupFileEntry;
-      sha256: string;
-    };
-    stateFiles: AgentBackupFileSet;
-  };
-  integrity: {
-    componentHashes: Record<string, string>;
-  };
-}
 
 export interface AgentBackupStateData {
   memories: Array<{ role: string; text: string; timestamp: number }>;

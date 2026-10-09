@@ -17,6 +17,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { billingFundingReservations } from "./billing-funding-reservations";
 import { creditTransactions } from "./credit-transactions";
 import { organizations } from "./organizations";
 
@@ -28,9 +29,9 @@ export const orgStorageObjects = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
     logical_key: text("logical_key").notNull(),
-    generation: bigint("generation", { mode: "bigint" }).notNull().default(0n),
+    generation: bigint("generation", { mode: "bigint" }).notNull().default(sql`0`),
     provider_key: text("provider_key"),
-    size_bytes: bigint("size_bytes", { mode: "bigint" }).notNull().default(0n),
+    size_bytes: bigint("size_bytes", { mode: "bigint" }).notNull().default(sql`0`),
     content_type: text("content_type"),
     content_sha256: text("content_sha256"),
     etag: text("etag"),
@@ -104,6 +105,8 @@ export const orgStoragePutOperations = pgTable(
     quota_reserved_bytes: bigint("quota_reserved_bytes", { mode: "bigint" }).notNull(),
     price_usd: numeric("price_usd", { precision: 12, scale: 6 }).notNull(),
     credit_transaction_id: uuid("credit_transaction_id"),
+    /** Allowance-first subscription funding hold; exclusive with credit_transaction_id. */
+    funding_reservation_id: uuid("funding_reservation_id"),
     lease_token: uuid("lease_token"),
     lease_expires_at: timestamp("lease_expires_at", { withTimezone: true }),
     provider_absence_observed_at: timestamp("provider_absence_observed_at", {
@@ -127,6 +130,14 @@ export const orgStoragePutOperations = pgTable(
       columns: [table.credit_transaction_id],
       foreignColumns: [creditTransactions.id],
     }).onDelete("restrict"),
+    funding_reservation: foreignKey({
+      name: "org_storage_put_operations_funding_reservation_fkey",
+      columns: [table.funding_reservation_id, table.organization_id],
+      foreignColumns: [billingFundingReservations.id, billingFundingReservations.organization_id],
+    }).onDelete("restrict"),
+    funding_reservation_unique: uniqueIndex("org_storage_put_operations_funding_reservation_uidx")
+      .on(table.funding_reservation_id)
+      .where(sql`${table.funding_reservation_id} IS NOT NULL`),
     credit_tenant: check(
       "org_storage_put_operations_credit_tenant_check",
       sql`org_storage_credit_matches_tenant(${table.credit_transaction_id}, ${table.organization_id})`,
@@ -154,8 +165,11 @@ export const orgStoragePutOperations = pgTable(
           ${table.target_size_bytes} - ${table.source_size_bytes}, 0
         )
         AND ${table.price_usd} >= 0
-        AND (${table.state} IN ('prepared', 'reconciling', 'refunded')
-          OR ${table.credit_transaction_id} IS NOT NULL OR ${table.price_usd} = 0)
+        AND (${table.credit_transaction_id} IS NULL OR ${table.funding_reservation_id} IS NULL)
+        AND (${table.funding_reservation_id} IS NULL OR ${table.price_usd} > 0)
+        AND (${table.state} IN ('prepared', 'reconciling', 'refunded') OR ${table.price_usd} = 0
+          OR ${table.credit_transaction_id} IS NOT NULL
+          OR ${table.funding_reservation_id} IS NOT NULL)
         AND ((${table.lease_token} IS NULL) = (${table.lease_expires_at} IS NULL))
         AND (${table.state} <> 'reconciling' OR ${table.lease_token} IS NOT NULL)
         AND (${table.provider_absence_observed_at} IS NULL OR ${table.state} = 'reconciling')

@@ -21,11 +21,7 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/scenario-runner/schema";
+import { judgeRubric, type ScenarioContext, scenario } from "@elizaos/testing";
 import { recordBrowserSessionRegistration } from "../../../../src/lifeops/browser-extension-store.ts";
 import { seedBrowserExtensionTelemetry } from "../../../scenario-support/lifeops-seeds.ts";
 
@@ -81,7 +77,7 @@ export default scenario({
   ],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

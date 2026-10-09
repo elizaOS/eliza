@@ -176,11 +176,6 @@ export type SpatialNode =
   | SpatialSpacerNode
   | SpatialImageNode;
 
-/** A node that participates in flex layout as a container. */
-export function isContainer(node: SpatialNode): node is SpatialBoxNode {
-  return node.type === "box";
-}
-
 /** Normalise {@link SpatialPadding} to explicit per-side cells. */
 export function resolvePadding(padding: SpatialPadding | undefined): {
   top: number;

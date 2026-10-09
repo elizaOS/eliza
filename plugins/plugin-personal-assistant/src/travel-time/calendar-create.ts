@@ -3,8 +3,9 @@
  * the travel buffer via the TravelTimeService and creates the calendar event
  * with the buffer applied, so the owner's schedule accounts for commute time.
  */
+
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
   type CalendarEventLookupLike,
   type TravelBufferResult,

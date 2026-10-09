@@ -1,25 +1,41 @@
-/**
- * Unit tests for the API server-helpers conversation-greeting persona
- * selection and avatar-to-preset mirroring. Deterministic — a mocked
- * `Math.random` sweep drives the real helpers with a cast-fake runtime,
- * no live model. Blocked-object-key sanitization is covered in
- * `blocked-object-keys.test.ts`.
- */
-import { describe, expect, it } from "vitest";
+import { Buffer } from "node:buffer";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildChatAttachments } from "./server-helpers.ts";
 
-import { resolveMirroredAvatarPresetId } from "./server-helpers";
+const previousStateDir = process.env.ELIZA_STATE_DIR;
+let stateDir: string;
 
-describe("resolveMirroredAvatarPresetId", () => {
-  it("keeps a persisted presetId that is consistent with the selected avatar", () => {
-    expect(resolveMirroredAvatarPresetId("chen", 1)).toBe("chen");
-    expect(resolveMirroredAvatarPresetId("eliza", 1)).toBe("eliza");
-  });
+beforeAll(() => {
+  stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "chat-attachment-ids-"));
+  process.env.ELIZA_STATE_DIR = stateDir;
+});
 
-  it("derives the default persona for an unnamed or inconsistent config", () => {
-    expect(resolveMirroredAvatarPresetId(undefined, 1)).toBe("eliza");
-    // jin renders asset 2 — selecting avatar 1 means the persisted id no
-    // longer matches, so the id is re-derived from the index (default-first).
-    expect(resolveMirroredAvatarPresetId("jin", 1)).toBe("eliza");
-    expect(resolveMirroredAvatarPresetId("chen", 2)).toBe("jin");
+afterAll(() => {
+  fs.rmSync(stateDir, { recursive: true, force: true });
+  if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+  else process.env.ELIZA_STATE_DIR = previousStateDir;
+});
+
+describe("buildChatAttachments", () => {
+  it("gives uploads from separate messages distinct content-addressed ids", async () => {
+    const upload = (text: string, name: string) =>
+      buildChatAttachments([
+        {
+          data: Buffer.from(text).toString("base64"),
+          mimeType: "image/png",
+          name,
+        },
+      ]);
+    const first = (await upload("first image bytes", "first.png"))
+      .compactAttachments?.[0];
+    const second = (await upload("second image bytes", "second.png"))
+      .compactAttachments?.[0];
+
+    expect(first?.id).toBe(first?.checksum);
+    expect(second?.id).toBe(second?.checksum);
+    expect(first?.id).not.toBe(second?.id);
   });
 });

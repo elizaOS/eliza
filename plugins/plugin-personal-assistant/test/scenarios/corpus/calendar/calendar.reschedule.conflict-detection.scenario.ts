@@ -1,7 +1,6 @@
 /** Scenario fixture for calendar reschedule conflict detection; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { expectCalendarPayload } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectCalendarPayload, scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -11,7 +10,7 @@ export default scenario({
   tags: ["lifeops", "calendar", "ambiguous-parameter"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

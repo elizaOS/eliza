@@ -1,4 +1,4 @@
-"""Unit tests for scripts.lib.vast_budget.
+"""Unit tests for eliza_training.lib.vast_budget.
 
 Mocks the vastai instance-show call and the wall clock so the budget
 math can be verified deterministically. CPU-only and entirely offline —
@@ -16,7 +16,7 @@ from unittest import mock
 
 import pytest
 
-from scripts.lib import vast_budget
+from eliza_training.lib import vast_budget
 
 
 # ---------------------------------------------------------------------------

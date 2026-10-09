@@ -6,21 +6,26 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createElizaPlugin, resolveOAuthDir } from "@elizaos/agent";
-import { type AgentRuntime, getConnectorAccountManager } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
+import { createElizaPlugin } from "@elizaos/agent";
+import {
+  type AgentRuntime,
+  getConnectorAccountManager,
+  resolveOAuthDir,
+} from "@elizaos/core";
+
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../packages/app-core/test/helpers/http";
+} from "@elizaos/testing/runtime";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describeIf } from "../../../packages/app/test/helpers/conditional-tests.ts";
 import {
   isLiveTestEnabled,
   selectLiveProvider,
-} from "../../../packages/app-core/test/helpers/live-provider";
-import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
-import { saveEnv } from "../../../packages/app-core/test/helpers/test-utils";
+} from "../../../packages/app/test/helpers/live-provider";
+import { stochasticTest } from "../../../packages/app/test/helpers/stochastic-test";
+import { saveEnv } from "../../../packages/app/test/helpers/test-utils";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,

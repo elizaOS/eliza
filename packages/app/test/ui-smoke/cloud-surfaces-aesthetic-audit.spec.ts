@@ -2,9 +2,11 @@
  * Playwright UI-smoke spec for the Cloud Surfaces Aesthetic Audit app flow
  * using the real renderer fixture.
  */
+
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   type AestheticVerdictDebt,
   evaluateStrictGate,
@@ -26,6 +28,7 @@ import {
   type ScreenshotQuality,
   screenshotQualityIssues,
 } from "./helpers/screenshot-quality";
+import { seedStewardSession } from "./helpers/test-auth";
 
 /**
  * Cloud-surface aesthetic audit (#10725 / #11342) — the audit:app equivalent
@@ -59,7 +62,7 @@ import {
  * floating chat overlay, so overlay checks don't apply): `broken` on console
  * error / blank render, `needs-work` on a blue-color or hover violation,
  * otherwise `needs-eyeball` until the committed manual review upgrades it.
- * Output dir: `aesthetic-audit-output-cloud/` (override: ELIZA_AUDIT_CLOUD_DIR).
+ * Output dir: `test-results/aesthetic-audit-cloud/` (override: ELIZA_AUDIT_CLOUD_DIR).
  */
 
 const TEST_AUTH_ENABLED =
@@ -129,6 +132,12 @@ const PUBLIC = false;
  * bottom fails when this table drifts from the live registry.
  */
 const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
+  {
+    slug: "pricing",
+    path: "/pricing",
+    route: "pricing",
+    auth: PUBLIC,
+  },
   // home/
   {
     slug: "cloud",
@@ -164,6 +173,20 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   },
   // billing/
   {
+    slug: "cloud-app-subscription",
+    path: "/cloud/billing/apps/6f9619ff-8b86-4d01-b42d-00c04fc964ff/workspace",
+    route: "cloud/billing/apps/:appId/:productFamilyKey",
+    auth: AUTH,
+    fullPageEvidence: true,
+  },
+  {
+    slug: "cloud-product-subscription",
+    path: "/cloud/billing/products/audit-product",
+    route: "cloud/billing/products/:slotKey",
+    auth: AUTH,
+    fullPageEvidence: true,
+  },
+  {
     slug: "cloud-billing",
     path: "/cloud/billing",
     route: "cloud/billing",
@@ -194,6 +217,7 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     path: "/cloud/account",
     route: "cloud/account",
     auth: AUTH,
+    fullPageEvidence: true,
   },
   {
     slug: "cloud-security",
@@ -249,12 +273,6 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     // then skip aesthetic collection.
     auth: AUTH,
     expectedFinalPath: /^\/cloud\/billing$/,
-  },
-  {
-    slug: "payment-app-charge",
-    path: "/payment/app-charge/app-smoke-1/charge-smoke-1",
-    route: "payment/app-charge/:appId/:chargeId",
-    auth: PUBLIC,
   },
   {
     slug: "approve-approval",
@@ -414,18 +432,6 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     route: "cloud/apps/:id",
     auth: AUTH,
   },
-  {
-    slug: "cloud-applications-legacy",
-    path: "/cloud/applications",
-    route: "cloud/applications",
-    auth: AUTH,
-  },
-  {
-    slug: "cloud-applications-detail-legacy",
-    path: "/cloud/applications/6f9619ff-8b86-4d01-b42d-00c04fc964ff",
-    route: "cloud/applications/:id",
-    auth: AUTH,
-  },
   // approvals/
   {
     slug: "cloud-approvals",
@@ -471,6 +477,7 @@ interface CloudPageFinding {
   path: string;
   route: string;
   consoleErrors: string[];
+  renderStateIssues: string[];
   blueColors: string[];
   hoverViolations: string[];
   hoverFailures: string[];
@@ -485,6 +492,7 @@ function computeCloudVerdict(
 ): CloudVerdict {
   if (
     finding.consoleErrors.length > 0 ||
+    finding.renderStateIssues.length > 0 ||
     finding.qualityIssues.length > 0 ||
     finding.readableChars < 10
   ) {
@@ -494,6 +502,20 @@ function computeCloudVerdict(
     return "needs-work";
   }
   return "needs-eyeball";
+}
+
+async function collectCloudRenderStateIssues(page: Page): Promise<string[]> {
+  const errorHeading = page.getByRole("heading", {
+    name: "Something went wrong",
+    exact: true,
+  });
+  const failedAlert = page.getByRole("alert").filter({
+    hasText: /could not load|failed to (?:load|fetch)|unable to load/i,
+  });
+  return (await errorHeading.isVisible()) ||
+    (await failedAlert.first().isVisible())
+    ? ["Dashboard rendered its error state"]
+    : [];
 }
 
 function renderManualReviewStub(findings: CloudPageFinding[]): string {
@@ -511,6 +533,7 @@ function renderManualReviewStub(findings: CloudPageFinding[]): string {
       "",
       `- **verdict:** ${f.verdict}`,
       `- **console errors:** ${f.consoleErrors.length ? f.consoleErrors.join("; ") : "none"}`,
+      `- **rendered errors:** ${f.renderStateIssues.length ? f.renderStateIssues.join("; ") : "none"}`,
       `- **blue colors (banned):** ${f.blueColors.length ? f.blueColors.join(", ") : "none"}`,
       `- **orange hover violations:** ${f.hoverViolations.length ? f.hoverViolations.join("; ") : "none"}`,
       `- **hover probe failures:** ${f.hoverFailures.length ? f.hoverFailures.join("; ") : "none"}`,
@@ -599,6 +622,7 @@ async function captureTransitionState(options: {
       ...options.pageErrors.map((message) => `pageerror: ${message}`),
       ...options.consoleErrors,
     ],
+    renderStateIssues: await collectCloudRenderStateIssues(options.page),
     blueColors,
     hoverViolations,
     hoverFailures,
@@ -656,7 +680,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
 
   const outputDir =
     process.env.ELIZA_AUDIT_CLOUD_DIR ??
-    path.join(process.cwd(), "aesthetic-audit-output-cloud");
+    testOutputPath("aesthetic-audit-cloud");
 
   test.beforeAll(() => {
     expect(
@@ -705,14 +729,16 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           registeredPaths = await readRegistryPaths();
           // Private domains register in two asynchronous waves. One eager
           // route does not prove that the complete route table is ready.
-          return [...audited].every((route) => registeredPaths.includes(route));
+          return [...audited].filter(
+            (route) => !registeredPaths.includes(route),
+          );
         },
         {
           message: "all audited routes registered by the running shell",
           timeout: 30_000,
         },
       )
-      .toBe(true);
+      .toEqual([]);
     const registered = new Set(registeredPaths);
     const unaudited = [...registered].filter((p) => !audited.has(p));
     expect(
@@ -725,6 +751,71 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
       `audit table routes that are no longer registered: ${phantom.join(", ")}`,
     ).toEqual([]);
   });
+
+  for (const failure of [
+    {
+      name: "API keys",
+      api: "/api/v1/api-keys",
+      page: "/cloud/api-keys",
+      message: "Something went wrong",
+    },
+    {
+      name: "earnings",
+      api: "/api/v1/earnings/statement",
+      page: "/cloud/monetization",
+      message: "Could not load your earnings statement. Try again.",
+    },
+  ]) {
+    test(`${failure.name} rendered API failure is a broken audit finding`, async ({
+      page,
+    }) => {
+      await seedStewardToken(page);
+      await installCloudApiStubs(page);
+      await page.route(`**${failure.api}`, (route) =>
+        route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Controlled API key failure" }),
+        }),
+      );
+      await page.goto(failure.page, { waitUntil: "domcontentloaded" });
+      await expect(
+        page.getByText(failure.message, { exact: true }),
+      ).toBeVisible();
+      if (failure.name === "earnings") {
+        const errorDir = path.join(outputDir, "errors");
+        await mkdir(errorDir, { recursive: true });
+        for (const viewport of VIEWPORTS) {
+          await page.setViewportSize({
+            width: viewport.width,
+            height: viewport.height,
+          });
+          await page.screenshot({
+            path: path.join(errorDir, `earnings-${viewport.name}.png`),
+            fullPage: true,
+          });
+        }
+      }
+      const readableChars = await page.locator("body").innerText();
+      expect(readableChars.length).toBeGreaterThan(10);
+      expect(
+        computeCloudVerdict({
+          slug: "controlled-api-failure",
+          viewport: "desktop",
+          path: failure.page,
+          route: failure.page,
+          consoleErrors: [],
+          renderStateIssues: await collectCloudRenderStateIssues(page),
+          blueColors: [],
+          hoverViolations: [],
+          hoverFailures: [],
+          readableChars: readableChars.length,
+          quality: null,
+          qualityIssues: [],
+        }),
+      ).toBe("broken");
+    });
+  }
 
   for (const auditCase of CLOUD_AUDIT_CASES) {
     for (const vp of VIEWPORTS) {
@@ -816,6 +907,87 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         // Reuse the shared bounded startup contract so a cold "Booting up..."
         // splash cannot satisfy the readable-character gate and pass green.
         await openAppPath(page, auditCase.path);
+        if (auditCase.slug === "cloud-monetization") {
+          await expect(
+            page.getByTestId("creator-earnings-statement"),
+          ).toBeVisible();
+          await expect(
+            page.getByText("Frozen balance", { exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByText("$12.50", { exact: true }).first(),
+          ).toBeVisible();
+        }
+        if (
+          auditCase.slug === "cloud-app-subscription" ||
+          auditCase.slug === "cloud-product-subscription"
+        ) {
+          await expect(
+            page.getByRole("heading", {
+              name: "Field Notes subscription",
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole("button", {
+              name: "Start seven-day trial",
+              exact: true,
+            }),
+          ).toBeEnabled();
+          await expect(
+            page.getByRole("button", {
+              name: "Review subscription",
+              exact: true,
+            }),
+          ).toBeEnabled();
+        }
+
+        if (auditCase.slug === "pricing") {
+          // Require the actual catalog consumer and its plan navigation, not
+          // readable loading or unavailable copy from a failed API request.
+          for (const plan of ["Plus", "Pro"]) {
+            await expect(
+              page.getByRole("heading", { name: plan, exact: true }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole("link", { name: `Choose ${plan}`, exact: true }),
+            ).toHaveAttribute("href", "/cloud/billing");
+          }
+          for (const plan of ["Plus", "Pro"])
+            await expect(
+              page.getByRole("link", { name: `Choose ${plan}`, exact: true }),
+            ).toBeVisible();
+          await expect(
+            page.getByText(
+              "Subscription plans are temporarily unavailable. Please try again.",
+            ),
+          ).toHaveCount(0);
+
+          // #31531: the renewal disclosure and Open billing link must be
+          // reachable with real wheel input. Programmatic scrollIntoView would
+          // also scroll an overflow-hidden root, so it cannot prove this.
+          const openBilling = page.getByRole("link", {
+            name: "Open billing",
+            exact: true,
+          });
+          await page.mouse.move(vp.width / 2, vp.height / 2);
+          await expect
+            .poll(
+              async () => {
+                const inView = await openBilling.evaluate((el) => {
+                  const r = el.getBoundingClientRect();
+                  return r.top >= 0 && r.bottom <= window.innerHeight;
+                });
+                if (!inView) await page.mouse.wheel(0, 400);
+                return inView;
+              },
+              { timeout: 10_000 },
+            )
+            .toBe(true);
+          await page
+            .getByTestId("pricing-page-scroll")
+            .evaluate((el) => el.scrollTo({ top: 0 }));
+        }
 
         const billingEvidenceTarget =
           auditCase.slug === "cloud-billing"
@@ -826,12 +998,57 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
                 )
             : null;
 
+        if (auditCase.slug === "cloud-api-keys") {
+          await expect(
+            page
+              .getByText("Smoke API key", { exact: true })
+              .filter({ visible: true }),
+          ).toBeVisible();
+          await expect(page).toHaveTitle(/API Keys/);
+          // The canonical header renders actions without repeating the title.
+          // Its back control must stay separate from the key creation action.
+          const back = page.getByRole("button", {
+            name: "Back to Cloud overview",
+            exact: true,
+          });
+          await expect(back).toBeVisible();
+          const backBox = await back.boundingBox();
+          if (!backBox)
+            throw new Error("Cloud overview back control has no layout box");
+          const action = await page
+            .getByRole("button", { name: "Generate key", exact: true })
+            .boundingBox();
+          if (!action)
+            throw new Error("Generate key has no visible layout box");
+          expect(backBox.x + backBox.width).toBeLessThanOrEqual(action.x);
+          if (vp.name === "mobile") {
+            expect(action.width).toBeGreaterThanOrEqual(44);
+            expect(action.height).toBeGreaterThanOrEqual(44);
+          }
+        }
+
         if (auditCase.slug === "cloud-agents") {
           // The loading skeleton has readable column labels, so the generic
           // paint gate cannot prove the canonical list DTO was accepted.
           await expect(
             page.getByText("Eliza", { exact: true }).filter({ visible: true }),
           ).toBeVisible({ timeout: 10_000 });
+        }
+
+        if (auditCase.slug === "cloud-account") {
+          // The retired security URL redirects here. Privacy must be reachable
+          // in the actual authenticated renderer, not only in an isolated panel.
+          const privacy = page.getByTestId("cloud-privacy-panel");
+          await expect(privacy).toBeVisible();
+          await expect(
+            privacy.getByTestId("model-call-recording-status"),
+          ).toHaveText("Model-call recording is off on this deployment.");
+          await expect(
+            privacy.getByText("Vision and screen capture", { exact: true }),
+          ).toBeVisible();
+          await expect(
+            privacy.getByText("Download my data", { exact: true }),
+          ).toBeVisible();
         }
 
         if (auditCase.slug === "cloud-billing") {
@@ -926,7 +1143,9 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         const fullPage = auditCase.fullPageEvidence ?? false;
         if (fullPage) {
           const scrollRegion = page
-            .locator("[data-scroll-cert-scroller]")
+            .locator(
+              '[data-scroll-cert-scroller], [data-shell-scroll-region="true"]',
+            )
             .first();
           await expect(scrollRegion).toHaveCount(1);
           const scrollMetrics = await scrollRegion.evaluate((element) => ({
@@ -947,7 +1166,11 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           }
           await page.setViewportSize({
             width: vp.width,
-            height: Math.ceil(scrollMetrics.scrollHeight),
+            height: Math.ceil(
+              vp.height +
+                scrollMetrics.scrollHeight -
+                scrollMetrics.clientHeight,
+            ),
           });
           await page.waitForTimeout(100);
         }
@@ -1005,7 +1228,9 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         // it is explicitly a stability artifact, not an interaction claim.
         const hoverTarget = billingEvidenceTarget
           ? billingEvidenceTarget.locator("li").first()
-          : page.locator("button:visible, a[role='button']:visible").first();
+          : auditCase.slug === "cloud-api-keys"
+            ? page.getByRole("button", { name: "Generate key", exact: true })
+            : page.locator("button:visible, a[role='button']:visible").first();
         if (await hoverTarget.isVisible().catch(() => false)) {
           const hovered = await hoverTarget
             .hover({ timeout: 2000 })
@@ -1029,6 +1254,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
             ...pageErrors.map((message) => `pageerror: ${message}`),
             ...consoleErrors,
           ],
+          renderStateIssues: await collectCloudRenderStateIssues(page),
           blueColors,
           hoverViolations,
           hoverFailures,
@@ -1057,6 +1283,107 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         ).toEqual([]);
       });
     }
+  }
+
+  for (const viewport of VIEWPORTS) {
+    test(`disable auto top-up after quote failure ${viewport.name}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await seedStewardToken(page);
+      await installCloudApiStubs(page);
+      const saved: unknown[] = [];
+      await page.route("**/api/v1/billing/settings**", async (route) => {
+        if (route.request().method() === "PUT") {
+          const body = route.request().postDataJSON();
+          saved.push(body);
+          await route.fulfill({
+            json: {
+              settings: {
+                autoTopUp: {
+                  ...body.autoTopUp,
+                  hasPaymentMethod: true,
+                },
+              },
+            },
+          });
+          return;
+        }
+        if (new URL(route.request().url()).search) {
+          await route.fulfill({
+            status: 503,
+            json: { error: "Quote unavailable" },
+          });
+          return;
+        }
+        await route.fulfill({
+          json: {
+            settings: {
+              autoTopUp: {
+                enabled: true,
+                amount: 25,
+                threshold: 10,
+                hasPaymentMethod: true,
+                chargePreview: {
+                  attribution: "none",
+                  breakdown: {
+                    creditedBaseUsd: "25.00",
+                    affiliateMarkupUsd: "0.00",
+                    platformFeeUsd: "0.00",
+                    totalChargeUsd: "25.00",
+                    surchargeApplies: false,
+                  },
+                },
+              },
+              limits: {
+                minAmount: 5,
+                maxAmount: 500,
+                minThreshold: 1,
+                maxThreshold: 200,
+              },
+            },
+          },
+        });
+      });
+      await openAppPath(page, "/cloud/billing");
+      await expect(
+        page.getByTestId("cloud-billing-auto-top-up-breakdown"),
+      ).toBeVisible();
+      const quoteFailure = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === "/api/v1/billing/settings" &&
+          response.status() === 503,
+      );
+      await page.getByTestId("cloud-billing-auto-top-up-amount").fill("50");
+      await quoteFailure;
+      const save = page.getByRole("button", {
+        name: "Save auto top-up",
+        exact: true,
+      });
+      await expect(save).toBeDisabled();
+      const toggle = page.getByTestId("cloud-billing-auto-top-up");
+      await expect(toggle).toBeEnabled();
+      await toggle.scrollIntoViewIfNeeded();
+      await mkdir(path.join(outputDir, viewport.name), { recursive: true });
+      await page.screenshot({
+        path: path.join(
+          outputDir,
+          viewport.name,
+          "auto-top-up-quote-failed.png",
+        ),
+      });
+      await toggle.click();
+      await expect(save).toBeEnabled();
+      await save.click();
+      await expect
+        .poll(() => saved)
+        .toEqual([
+          { autoTopUp: { enabled: false, amount: 50, threshold: 10 } },
+        ]);
+      await page.screenshot({
+        path: path.join(outputDir, viewport.name, "auto-top-up-disabled.png"),
+      });
+    });
   }
 
   for (const viewport of TRANSITION_VIEWPORTS) {
@@ -1111,10 +1438,21 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
       ).toBeVisible();
       await expect(
         page.getByText(
-          "Current balance: $42.00 · Required before activation: $9.00 (3 days)",
+          "Current balance: $42.00 · Required before activation: $0.72 (3 days)",
+        ),
+      ).toBeVisible();
+      await expect(
+        page.getByText(
+          "Minimum charge per successful start: $0.02. Applies again after stopping and restarting.",
         ),
       ).toBeVisible();
       const activateButton = page.getByTestId("agent-upgrade-tier-confirm");
+      await expect(
+        page.getByText(
+          "Minimum charge per successful start: $0.02. Applies again after stopping and restarting.",
+          { exact: true },
+        ),
+      ).toBeVisible();
       await captureTransitionState({
         page,
         outputDir,
@@ -1196,6 +1534,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         action: "activate_dedicated",
         quoteId:
           "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        minimumActivationChargeUsd: 0.02,
       });
       const cutoverRequests = fixture.requests.filter(
         (receipt) => receipt.pathname === `${upgradePath}/cutover`,
@@ -1283,6 +1622,90 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
       await writeFile(
         path.join(requestDir, `zero-credit-${viewport.name}.json`),
         JSON.stringify(fixture.requests, null, 2),
+        "utf8",
+      );
+    });
+  }
+
+  for (const viewport of VIEWPORTS) {
+    test(`agentless management full entry and account navigation ${viewport.name}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await seedStewardSession(page, {
+        jwt: true,
+        subject: "cloud-audit-smoke-user",
+        email: "cloud-audit-smoke@agent.local",
+      });
+      const fixture = await installCloudApiStubs(page, {
+        initialAgentState: "shared",
+        creditBalance: 0,
+        quoteCanActivate: false,
+      });
+      const pageErrors: string[] = [];
+      page.on("pageerror", (error) => pageErrors.push(error.message));
+      const agentRequests: string[] = [];
+      page.on("request", (request) => {
+        const pathname = new URL(request.url()).pathname;
+        if (pathname.startsWith("/api/v1/eliza/")) {
+          agentRequests.push(`${request.method()} ${pathname}`);
+        }
+      });
+      // This URL boots full main, whereas /cloud/apps uses the public entry.
+      await page.goto("/settings?from=account-test#cloud-applications", {
+        waitUntil: "domcontentloaded",
+      });
+      await expect(page).toHaveURL(/\/cloud\/apps\?from=account-test$/);
+      await expect(page.getByText("Smoke App", { exact: true })).toBeVisible();
+      expect(
+        await page.evaluate(() =>
+          localStorage.getItem("elizaos:active-server"),
+        ),
+      ).toBeNull();
+      const screenshotDir = path.join(outputDir, viewport.name);
+      await mkdir(screenshotDir, { recursive: true });
+      await page.screenshot({
+        path: path.join(screenshotDir, "agentless-apps.png"),
+        fullPage: true,
+      });
+      const accountMenu = page.getByRole("button", { name: /^Account menu/ });
+      await accountMenu.hover();
+      await page.screenshot({
+        path: path.join(screenshotDir, "agentless-apps--hover.png"),
+        fullPage: true,
+      });
+      await accountMenu.click();
+      await page
+        .getByRole("menuitem", { name: "Account", exact: true })
+        .click();
+      await expect(page).toHaveURL(/\/cloud\/account$/);
+      await expect(
+        page.getByRole("heading", { name: "Profile information", exact: true }),
+      ).toBeVisible();
+      await expect(page.getByTestId("profile-email-input")).toHaveValue(
+        "cloud-audit-smoke@agent.local",
+      );
+      await page.screenshot({
+        path: path.join(screenshotDir, "agentless-account.png"),
+        fullPage: true,
+      });
+      await page.getByRole("button", { name: /^Account menu/ }).hover();
+      await page.screenshot({
+        path: path.join(screenshotDir, "agentless-account--hover.png"),
+        fullPage: true,
+      });
+      expect(agentRequests).toEqual([]);
+      expect(fixture.agentState).toBe("shared");
+      expect(pageErrors).toEqual([]);
+      const requestDir = path.join(outputDir, "requests");
+      await mkdir(requestDir, { recursive: true });
+      await writeFile(
+        path.join(requestDir, `agentless-management-${viewport.name}.json`),
+        JSON.stringify(
+          { agentRequests, pageErrors, requests: fixture.requests },
+          null,
+          2,
+        ),
         "utf8",
       );
     });

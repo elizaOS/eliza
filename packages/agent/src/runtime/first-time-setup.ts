@@ -17,24 +17,25 @@
  * @module first-time-setup
  */
 
-import type { StylePreset } from "@elizaos/shared";
+import { formatError } from "@elizaos/core";
 import {
+  type AgentConfig,
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
-  formatError,
+  type ElizaConfig,
   getStylePresets,
   migrateLegacyRuntimeConfig,
-} from "@elizaos/shared";
-import { persistConfigEnv } from "../api/config-env.ts";
+  type StylePreset,
+} from "@elizaos/host/protocol";
+import { persistConfigEnv } from "@elizaos/plugin-elizacloud/lib/config-env";
 import {
   CLOUD_EVM_ADDRESS_ENV_KEY,
   CLOUD_SOLANA_ADDRESS_ENV_KEY,
   WALLET_SOURCE_EVM_ENV_KEY,
   WALLET_SOURCE_SOLANA_ENV_KEY,
 } from "../api/wallet.ts";
-import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { saveElizaConfig } from "../config/config.ts";
 import { isCloudWalletEnabled } from "../config/feature-flags.ts";
-import type { AgentConfig } from "../config/types.agents.ts";
 import { pickRandomNames } from "./first-run-names.ts";
 
 // ---------------------------------------------------------------------------

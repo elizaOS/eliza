@@ -1,8 +1,11 @@
 {
 	"root": false,
-	"$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
 	"files": {
 		"includes": [
+			"src/lib/config-env.ts",
+			"src/lib/config-env.test.ts",
+			"vitest.config.ts",
 			"__tests__/**",
 			"actions/**",
 			"cloud-providers/**",
@@ -15,7 +18,6 @@
 			"build.ts",
 			"index.ts",
 			"index.node.ts",
-			"index.browser.ts",
 			"init.ts",
 			"package.json",
 			"tsconfig.json",

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "profiles": {
+    "cuttlefish": {
+      "kind": "virtual",
+      "manifest": {
+        "url": "https://android.googlesource.com/platform/manifest",
+        "tag": "android-17.0.0_r1",
+        "tagObject": "7a9e46ba6ed424f922a3457f4964e67e0b966201",
+        "commit": "5bc9a7ce1cd78dd53613bbfd0ebf506e1e4adb0f"
+      },
+      "projects": [
+        {
+          "path": "device/google/cuttlefish",
+          "name": "device/google/cuttlefish",
+          "tagObject": "fc81d4d790cf71b00c17dbcb476c9cf05279f3ff",
+          "commit": "283645aacf6cdb56cc31a9362f54d412dbc132a1"
+        }
+      ],
+      "requiredSourceFiles": [
+        "device/google/cuttlefish/vsoc_arm64/phone/aosp_cf.mk",
+        "device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk",
+        "device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk"
+      ],
+      "supportedProducts": [
+        "eliza_cf_arm64_phone",
+        "eliza_cf_x86_64_phone",
+        "eliza_cf_riscv64_phone"
+      ]
+    },
+    "gsi-android17": {
+      "kind": "virtual",
+      "manifest": {
+        "url": "https://android.googlesource.com/platform/manifest",
+        "tag": "android-17.0.0_r1",
+        "tagObject": "7a9e46ba6ed424f922a3457f4964e67e0b966201",
+        "commit": "5bc9a7ce1cd78dd53613bbfd0ebf506e1e4adb0f"
+      },
+      "projects": [
+        {
+          "path": "build/make",
+          "name": "platform/build",
+          "tagObject": "2868938810740549bb85d727e0a5084e0210fcfa",
+          "commit": "5ce6f787337d0223710bf7d4a16dbe6d2a35f777"
+        }
+      ],
+      "requiredSourceFiles": [
+        "build/make/target/product/aosp_arm64.mk",
+        "build/make/target/product/aosp_x86_64.mk",
+        "build/make/target/product/gsi_release.mk"
+      ],
+      "supportedProducts": ["eliza_gsi_arm64", "eliza_gsi_x86_64"]
+    },
+    "pixel11pro": {
+      "kind": "physical",
+      "device": {
+        "codename": "grizzly",
+        "marketingName": "Pixel 11 Pro",
+        "skuPolicy": "fastboot product must equal grizzly",
+        "buildId": "CD1A.260905.001.B1"
+      },
+      "manifest": {
+        "url": "https://android.googlesource.com/platform/manifest",
+        "tag": "android-17.0.0_r1",
+        "tagObject": "7a9e46ba6ed424f922a3457f4964e67e0b966201",
+        "commit": "5bc9a7ce1cd78dd53613bbfd0ebf506e1e4adb0f"
+      },
+      "projects": [
+        {
+          "path": "vendor/adevtool",
+          "name": "GrapheneOS/adevtool",
+          "commit": "144f004cc484d7e7234cdd167cee48e5f240288f"
+        },
+        {
+          "path": "vendor/state",
+          "name": "GrapheneOS/vendor_state",
+          "commit": "afd6a0c9f6ca13d395f00e98227a0866cc14de07"
+        },
+        {
+          "path": "tools/arsclib",
+          "name": "GrapheneOS/platform_tools_arsclib",
+          "commit": "a67388430c8319f4c7066626e340b5c4d7f27882"
+        }
+      ],
+      "requiredSourceFiles": [
+        "vendor/adevtool/config/device/grizzly.yml",
+        "vendor/adevtool/config/device/common/gen11pixel.yml",
+        "vendor/adevtool/config/mk/google_devices/device/grizzly/BoardConfig-base.mk",
+        "vendor/adevtool/config/mk/google_devices/device/grizzly/device.mk",
+        "vendor/adevtool/vendor-specs/google_devices/grizzly.yml",
+        "vendor/state/grizzly.json"
+      ]
+    }
+  }
+}

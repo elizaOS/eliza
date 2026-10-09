@@ -2,8 +2,7 @@
  * Registry of the agent's context taxonomy. Stores normalized `ContextDefinition`
  * records, validates on every mutation that parent and subcontext edges reference
  * known contexts and form no cycles, and supports idempotent registration plus
- * role-gated listing for prompt rendering. Exports a default registry seeded with
- * the first-party context definitions.
+ * role-gated listing for prompt rendering. Exports an empty default registry; hosts and plugins register their taxonomy.
  */
 import type {
 	AgentContext,
@@ -15,7 +14,6 @@ import {
 	normalizeContextId,
 	normalizeContextList,
 } from "./context-normalization";
-import { DEFAULT_CONTEXT_DEFINITIONS } from "./default-contexts";
 
 export {
 	CONTEXT_ALIASES,
@@ -37,9 +35,7 @@ export class ContextRegistryError extends Error {
 export class ContextRegistry {
 	readonly #definitions = new Map<AgentContext, ContextDefinition>();
 
-	constructor(
-		definitions: readonly ContextDefinition[] = DEFAULT_CONTEXT_DEFINITIONS,
-	) {
+	constructor(definitions: readonly ContextDefinition[] = []) {
 		this.registerMany(definitions);
 	}
 

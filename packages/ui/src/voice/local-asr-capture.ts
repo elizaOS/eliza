@@ -2,11 +2,18 @@
  * Mic-capture recorder for local ASR: records mono PCM16, exposes a live analyser
  * for amplitude visualization, and stops/cancels the audio context cleanly.
  */
+import { encodeMonoPcm16Wav } from "./pcm-wave";
+
+export { encodeMonoPcm16Wav } from "./pcm-wave";
+
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
+import { logger } from "../logger.ts";
 import { voiceCaptureDebug } from "../utils/voice-capture-debug";
 import {
   DEFAULT_POST_TTS_COOLDOWN_MS,
   isTtsEchoGateActive as sharedTtsEchoGateActive,
 } from "./tts-playback-activity";
+import { concatPcm } from "./voice-session-pcm";
 
 export interface LocalAsrRecorder {
   stop(): Promise<Uint8Array>;
@@ -91,6 +98,73 @@ export type MicrophonePermissionState =
   | "prompt"
   | "unknown";
 
+interface NativeMicrophonePermissionState {
+  status?: unknown;
+  platform?: unknown;
+}
+
+/**
+ * Maps the macOS app-process (TCC) microphone state reported by the Electrobun
+ * permission bridge. Returns `null` when there is no desktop bridge, the host
+ * is not macOS, or the reply is not a recognizable permission state, so the
+ * caller falls back to the renderer Permissions API.
+ */
+function mapNativeMicrophonePermission(
+  state: NativeMicrophonePermissionState | null,
+): MicrophonePermissionState | null {
+  if (state?.platform !== "darwin") return null;
+  switch (state.status) {
+    case "granted":
+    case "limited":
+      return "granted";
+    case "denied":
+    case "restricted":
+      return "denied";
+    case "not-determined":
+      return "prompt";
+    default:
+      return null;
+  }
+}
+
+async function invokeNativeMicrophonePermission(
+  action: "check" | "request",
+): Promise<MicrophonePermissionState | null> {
+  try {
+    const state =
+      action === "check"
+        ? await invokeDesktopBridgeRequest<NativeMicrophonePermissionState>({
+            rpcMethod: "permissionsCheck",
+            ipcChannel: "permissions:check",
+            params: { id: "microphone", forceRefresh: true },
+          })
+        : await invokeDesktopBridgeRequest<NativeMicrophonePermissionState>({
+            rpcMethod: "permissionsRequest",
+            ipcChannel: "permissions:request",
+            params: { id: "microphone" },
+          });
+    return mapNativeMicrophonePermission(state);
+  } catch (err) {
+    // The renderer Permissions API remains the fallback probe; keep the bridge
+    // failure observable instead of reporting it as a permission state.
+    logger.warn(
+      { err, action },
+      "[voice] desktop microphone permission bridge request failed",
+    );
+    return null;
+  }
+}
+
+/**
+ * Asks the macOS desktop host to request microphone access for the app process
+ * (the same native request Settings → Permissions uses), so a first-use Talk in
+ * chat presents the system prompt from the capture path itself. Returns `null`
+ * outside a macOS Electrobun shell, where getUserMedia owns the prompt.
+ */
+export async function requestDesktopMicrophoneAccess(): Promise<MicrophonePermissionState | null> {
+  return invokeNativeMicrophonePermission("request");
+}
+
 /**
  * Proactively read the microphone permission via
  * `navigator.permissions.query({ name: "microphone" })` without opening the
@@ -100,8 +174,15 @@ export type MicrophonePermissionState =
  * Returns `"unknown"` (never throws) when the Permissions API is missing or
  * the `"microphone"` descriptor is unsupported (Safari/older iOS) — callers
  * treat unknown as "proceed normally", identical to `"prompt"`/`"granted"`.
+ * On the macOS Electrobun shell the native (TCC) app grant is read first.
  */
 export async function queryMicrophonePermission(): Promise<MicrophonePermissionState> {
+  // In the macOS desktop shell the app-process grant is authoritative: the
+  // WKWebView Permissions API describes the embedded page, can report
+  // "denied" before any capture request reached the native media-permission
+  // handler, and does not observe a grant made from the Settings window.
+  const nativeState = await invokeNativeMicrophonePermission("check");
+  if (nativeState) return nativeState;
   if (
     typeof navigator === "undefined" ||
     typeof navigator.permissions?.query !== "function"
@@ -125,17 +206,6 @@ export async function queryMicrophonePermission(): Promise<MicrophonePermissionS
     // permissions probe's null-on-throw contract).
     return "unknown";
   }
-}
-
-function concatPcm(chunks: Float32Array[]): Float32Array {
-  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const out = new Float32Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return out;
 }
 
 function appendBoundedPcmFrame(
@@ -165,17 +235,6 @@ function appendBoundedPcmFrame(
     }
     return;
   }
-}
-
-function writeAscii(view: DataView, offset: number, value: string): void {
-  for (let index = 0; index < value.length; index += 1) {
-    view.setUint8(offset + index, value.charCodeAt(index));
-  }
-}
-
-function clampPcm16(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(-1, Math.min(1, value));
 }
 
 function nowMs(): number {
@@ -302,41 +361,6 @@ export function createLocalAsrAutoStopDetector(
 
     return { shouldBuffer: true, shouldStop: false };
   };
-}
-
-export function encodeMonoPcm16Wav(
-  pcm: Float32Array,
-  sampleRateHz: number,
-): Uint8Array {
-  const sampleRate = Math.max(1, Math.round(sampleRateHz));
-  const bytesPerSample = 2;
-  const dataBytes = pcm.length * bytesPerSample;
-  const buffer = new ArrayBuffer(44 + dataBytes);
-  const view = new DataView(buffer);
-
-  writeAscii(view, 0, "RIFF");
-  view.setUint32(4, 36 + dataBytes, true);
-  writeAscii(view, 8, "WAVE");
-  writeAscii(view, 12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * bytesPerSample, true);
-  view.setUint16(32, bytesPerSample, true);
-  view.setUint16(34, 8 * bytesPerSample, true);
-  writeAscii(view, 36, "data");
-  view.setUint32(40, dataBytes, true);
-
-  let offset = 44;
-  for (const sample of pcm) {
-    const clamped = clampPcm16(sample);
-    const int16 = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
-    view.setInt16(offset, Math.round(int16), true);
-    offset += bytesPerSample;
-  }
-
-  return new Uint8Array(buffer);
 }
 
 /**

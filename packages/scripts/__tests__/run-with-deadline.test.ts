@@ -11,10 +11,10 @@ import {
   MAX_TIMER_DELAY_MS,
   parseArgs,
   parseDeadlineMs,
-} from "../run-with-deadline.mjs";
+} from "../run-with-deadline.ts";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const WRAPPER = path.resolve(SCRIPT_DIR, "..", "run-with-deadline.mjs");
+const WRAPPER = path.resolve(SCRIPT_DIR, "..", "run-with-deadline.ts");
 const NODE_BIN = process.execPath;
 
 function runWrapper(args: string[], timeoutMs = 30_000) {

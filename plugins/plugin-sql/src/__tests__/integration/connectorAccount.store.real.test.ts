@@ -15,7 +15,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { authIdentityTable, authOwnerBindingTable } from "../../schema/index";
+import { authIdentityTable } from "../../schema/authIdentity";
+import { authOwnerBindingTable } from "../../schema/authOwnerBinding";
 import type { DrizzleDatabase } from "../../types";
 import { mockCharacter } from "../schema-data";
 import { createIsolatedTestDatabase } from "../test-helpers";

@@ -10,28 +10,33 @@
  * to the declarative UiRenderer for uiSpec widgets.
  */
 
-import { isViewVisible } from "@elizaos/core";
+import { isViewVisible } from "@elizaos/core/protocol";
 import type * as React from "react";
 import {
   Component,
   type ErrorInfo,
   type ReactNode,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
-import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
 import { UiRenderer } from "../components/config-ui/ui-renderer";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 import { useNow } from "../hooks/useNow";
-import { useAppSelectorShallow } from "../state";
+import { useAppSelectorShallow } from "../state/app-store";
 import { useNotifications } from "../state/notifications/notification-store";
 import { useEnabledViewKinds } from "../state/useViewKinds";
 import { useHomeAttentionSignals } from "./home-attention-store";
-import { isHomeWidgetSunset, useHomeDismissals } from "./home-dismissal-store";
+import {
+  isHomeWidgetSunset,
+  recordHomeWidgetSeen,
+  useHomeDismissals,
+} from "./home-dismissal-store";
 import {
   type HomeWidgetSignal,
   homeSignalsFromEvents,
@@ -45,7 +50,7 @@ import {
   subscribeWidgetRegistry,
 } from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
-import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
+import { WIDGET_UI_ACTION_EVENT } from "./types";
 
 export interface WidgetUiActionEventDetail {
   pluginId: string;
@@ -133,7 +138,6 @@ const WIDGET_SLOTS: ReadonlySet<string> = new Set<WidgetSlot>([
 const FULL_APP_SHELL_WIDGET_PLUGIN_IDS: ReadonlySet<string> = new Set([
   "agent-orchestrator",
   "calendar",
-  "finances",
   "goals",
   "health",
   "inbox",
@@ -358,6 +362,15 @@ export function WidgetHost({
     displayedRef.current = { key: orderKey, resolved, entries: ranked };
   }
   const displayed = displayedRef.current.entries;
+
+  useEffect(() => {
+    if (slot !== "home") return;
+    for (const { declaration } of displayed) {
+      if (typeof declaration.sunset?.afterSeen === "number") {
+        recordHomeWidgetSeen(homeWidgetKey(declaration));
+      }
+    }
+  }, [displayed, slot]);
 
   const pluginById = useMemo(() => {
     const map = new Map<string, (typeof plugins)[number]>();

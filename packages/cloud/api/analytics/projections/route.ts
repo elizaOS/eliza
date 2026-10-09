@@ -4,23 +4,23 @@
  * legacy `getProjectionsData` server action consumed by `AnalyticsPageClient`.
  */
 
-import { Hono } from "hono";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   generateProjectionAlerts,
   generateProjections,
-} from "@/lib/analytics/projections";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/analytics/projections";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { analyticsService } from "@/lib/services/analytics";
-import { analyticsAlertsService } from "@/lib/services/analytics-alerts";
-import { toSuccessRatePercent } from "@/lib/services/analytics-derived";
-import { organizationsService } from "@/lib/services/organizations";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { analyticsService } from "@elizaos/cloud-shared/lib/services/analytics";
+import { analyticsAlertsService } from "@elizaos/cloud-shared/lib/services/analytics-alerts";
+import { toSuccessRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
+import { organizationsService } from "@elizaos/cloud-shared/lib/services/organizations";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

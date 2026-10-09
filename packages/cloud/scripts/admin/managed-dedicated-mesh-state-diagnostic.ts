@@ -324,7 +324,7 @@ async function run(suffix: string): Promise<void> {
           fi
         done
         [ "\${TS_FORCE_NOISE_443:-}" = "1" ] && force_noise_443=enabled || force_noise_443=disabled
-        if grep -q ts_daemon_running_with_ip ./packages/app-core/scripts/docker-entrypoint.sh 2>/dev/null; then
+        if grep -q ts_daemon_running_with_ip ./packages/app/scripts/docker-entrypoint.sh 2>/dev/null; then
           stuck_cli_escape=present
         else
           stuck_cli_escape=absent

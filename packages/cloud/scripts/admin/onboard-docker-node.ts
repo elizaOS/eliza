@@ -47,7 +47,7 @@ import { fileURLToPath } from "node:url";
 import {
   parseCanonicalInt,
   parseTcpPort,
-} from "../../../scripts/lib/cli-numbers.mjs";
+} from "../../../scripts/lib/cli-numbers.ts";
 
 // The cloud-shared modules are imported lazily inside main() (see loadDeps) so
 // importing this file for its pure helpers — e.g. from the unit test — does not

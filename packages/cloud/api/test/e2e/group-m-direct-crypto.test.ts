@@ -165,7 +165,7 @@ describeE2E("/api/crypto/direct-payments", () => {
       const payerAddress = await getCurrentUserWallet();
       const createRes = await api.post(
         "/api/crypto/direct-payments",
-        { amount: 1, network: "base", payerAddress },
+        { amount: 5, network: "base", payerAddress },
         {
           headers: sameOriginBrowserHeaders({
             Cookie: sessionCookie,
@@ -199,9 +199,9 @@ describeE2E("/api/crypto/direct-payments", () => {
       expect(created.instructions).toMatchObject({
         network: "base",
         tokenSymbol: "USDC",
-        amountToken: "1.000000",
-        amountUnits: "1000000",
-        creditsToAdd: "1.00",
+        amountToken: "5.000000",
+        amountUnits: "5000000",
+        creditsToAdd: "5.00",
         bonusCredits: 0,
       });
       expect(created.instructions?.receiveAddress).toMatch(
@@ -215,7 +215,7 @@ describeE2E("/api/crypto/direct-payments", () => {
       const proofMessage = created.instructions?.payerProofTypedData?.message;
       expect(proofMessage).toMatchObject({
         paymentId: created.paymentId,
-        amountUnits: "1000000",
+        amountUnits: "5000000",
       });
       expect(String(proofMessage?.payerAddress).toLowerCase()).toBe(
         payerAddress.toLowerCase(),

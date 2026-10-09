@@ -8,7 +8,7 @@
  */
 
 import { EyeOff } from "lucide-react";
-import { cn } from "../lib/utils";
+import { cn } from "../utils/cn";
 import { Badge } from "./ui/badge";
 
 export function RedactedBadge({

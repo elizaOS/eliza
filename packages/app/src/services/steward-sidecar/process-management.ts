@@ -1,0 +1,79 @@
+/**
+ * Process-management helpers for the Steward sidecar. `findStewardEntryPoint`
+ * locates the first-party login entry on disk (env override, then `@elizaos/auth`
+ * module resolution), and `pipeOutput` streams a spawned process's stdout/stderr
+ * line-by-line into the structured logger (warn for stderr, info for stdout),
+ * invoking an optional per-line callback.
+ */
+import * as fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import { logger } from "@elizaos/core";
+
+function resolveOptionalModuleEntry(specifier: string): string | null {
+  try {
+    const resolved = import.meta.resolve(specifier);
+    return resolved.startsWith("file:") ? fileURLToPath(resolved) : resolved;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Find the Steward API entry point on disk.
+ */
+export async function findStewardEntryPoint(): Promise<string | null> {
+  const candidates = [
+    process.env.STEWARD_ENTRY_POINT,
+    resolveOptionalModuleEntry("@elizaos/auth/embedded"),
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      logger.info(`[StewardSidecar] Found entry point: ${candidate}`);
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Pipe a ReadableStream to the structured logger, calling onLog for each line.
+ */
+export async function pipeOutput(
+  stream: ReadableStream<Uint8Array> | null,
+  name: "stdout" | "stderr",
+  onLog?: (line: string, stream: "stdout" | "stderr") => void,
+): Promise<void> {
+  if (!stream) return;
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+
+  let pending = "";
+  const emit = (line: string): void => {
+    if (!line) return;
+    if (name === "stderr") logger.warn(`[Steward:err] ${line}`);
+    else logger.info(`[Steward] ${line}`);
+    onLog?.(line, name);
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      pending += decoder.decode(value, { stream: !done });
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) emit(line.replace(/\r$/, ""));
+      if (done) {
+        emit(pending);
+        break;
+      }
+    }
+  } catch (error) {
+    logger.error(
+      { error, stream: name },
+      "[StewardSidecar] Output forwarding failed",
+    );
+  } finally {
+    reader.releaseLock();
+  }
+}

@@ -2,8 +2,8 @@
  * The non-negotiable production floor for confidential-AI TEE trust: the claim
  * set, simulated-evidence rejection, and freshness ceiling a deployment cannot
  * accidentally relax. `mergeTeeProductionProfile` intersects it into the
- * resolved boot policy, only ever tightening. Does not by itself assert hardware
- * trust — quote-signature verification is still blocked on hardware.
+ * resolved boot policy, only ever tightening. The evidence provider owns quote
+ * verification; this profile alone cannot establish hardware trust.
  */
 import type { TeeClaims } from "./tee-evidence.ts";
 import type { TeeEvidencePolicy } from "./tee-policy.ts";
@@ -17,11 +17,9 @@ import type { TeeEvidencePolicy } from "./tee-policy.ts";
  * {@link mergeTeeProductionProfile}); the intersection only ever tightens the
  * policy — it never relaxes a stricter caller setting.
  *
- * It does NOT and cannot assert hardware trust on its own: real TDX/CoVE quote
- * signature verification is BLOCKED on hardware (plan Phase B/C). Until that
- * lands the profile rejects self-declared non-production markers
- * (`rejectSimulatedEvidence`) but the system must not claim hardware-verified
- * trust.
+ * It cannot assert hardware trust on its own: the evidence provider must verify
+ * quote signatures and platform appraisal. Rejecting self-declared development
+ * markers is an additional check, never a substitute for that verification.
  */
 export const TEE_PRODUCTION_MAX_AGE_MS = 300_000;
 
@@ -53,6 +51,31 @@ export type TeeProductionProfileOptions = {
    * `local` (the device's default deployment shape).
    */
   inference?: "local" | "cloud";
+  /**
+   * `dstack-tdx`: a dstack Intel TDX CVM with NVIDIA CC GPUs (cloud only).
+   * See {@link DSTACK_TDX_CLOUD_CLAIMS} for how its floor differs.
+   */
+  platform?: "generic" | "dstack-tdx";
+};
+
+/**
+ * Cloud-inference floor for a dstack TDX CVM with NVIDIA CC GPUs: exactly the
+ * claims its verified evidence establishes. secureBoot is replaced by the
+ * pinned measured-boot OS image (`os` measurement, required by the merge).
+ * ioProtected is omitted: NRAS claims 3.0 carries no claim stating GPU CC mode
+ * or protected PCIe, so no verified source establishes it; CPU-GPU traffic
+ * protection rests on the verified GPU attestation (`gpuProtected`).
+ */
+export const DSTACK_TDX_CLOUD_CLAIMS: Required<
+  Pick<
+    TeeClaims,
+    "debugDisabled" | "memoryEncrypted" | "productionLifecycle" | "gpuProtected"
+  >
+> = {
+  debugDisabled: true,
+  memoryEncrypted: true,
+  productionLifecycle: true,
+  gpuProtected: true,
 };
 
 export type TeeProductionProfile = Required<
@@ -67,6 +90,18 @@ export function teeProductionProfile(
   options: TeeProductionProfileOptions = {},
 ): TeeProductionProfile {
   const inference = options.inference ?? "local";
+  if (options.platform === "dstack-tdx") {
+    if (inference !== "cloud")
+      throw new Error(
+        "dstack TDX production profile supports cloud inference only.",
+      );
+    return {
+      required: true,
+      rejectSimulatedEvidence: true,
+      requiredClaims: { ...DSTACK_TDX_CLOUD_CLAIMS },
+      maxAgeMs: TEE_PRODUCTION_MAX_AGE_MS,
+    };
+  }
   return {
     required: true,
     rejectSimulatedEvidence: true,
@@ -92,6 +127,15 @@ export function mergeTeeProductionProfile(
 ): TeeEvidencePolicy {
   const profile = teeProductionProfile(options);
   const base = policy ?? {};
+  if (
+    options.platform === "dstack-tdx" &&
+    !base.requiredMeasurements?.os?.trim()
+  ) {
+    // Measured boot stands in for secureBoot only when the OS image is pinned.
+    throw new Error(
+      "dstack TDX cloud profile requires a pinned `os` (measured-boot image) measurement.",
+    );
+  }
   const callerMaxAge = base.maxAgeMs;
   return {
     ...base,

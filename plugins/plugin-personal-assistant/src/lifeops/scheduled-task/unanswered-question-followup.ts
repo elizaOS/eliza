@@ -28,8 +28,8 @@
  * one dismisses its predecessor (the newest agent question supersedes).
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import {
+  hasRoleAccess,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -210,7 +210,8 @@ export async function registerQuestionFollowupForAgentMessage(
   const inReplyTo = message.content?.inReplyTo;
   if (typeof inReplyTo !== "string" || inReplyTo.length === 0) return null;
   const inbound = await runtime.getMemoryById(inReplyTo as UUID);
-  if (!inbound || !(await hasOwnerAccess(runtime, inbound))) return null;
+  if (!inbound || !(await hasRoleAccess(runtime, inbound, "OWNER")))
+    return null;
 
   const now = options.now ?? new Date();
   const runner = getScheduledTaskRunner(runtime, {
@@ -261,7 +262,7 @@ export async function cancelQuestionFollowupsOnOwnerReply(
   if (message.entityId === runtime.agentId) return [];
   const roomId = typeof message.roomId === "string" ? message.roomId : null;
   if (!roomId) return [];
-  if (!(await hasOwnerAccess(runtime, message))) return [];
+  if (!(await hasRoleAccess(runtime, message, "OWNER"))) return [];
   const runner = getScheduledTaskRunner(runtime, {
     agentId: String(runtime.agentId),
   });

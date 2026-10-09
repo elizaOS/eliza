@@ -13,6 +13,7 @@ import { DIRECT_ROUTE_CASES } from "./apps-session-route-cases";
 import {
   assertReadyChecks,
   expectNoPageDiagnostics,
+  expectOnlyAllowedPageDiagnostics,
   hideChatOverlay,
   installDefaultAppRoutes,
   installPageDiagnosticsGuard,
@@ -151,7 +152,10 @@ function trajectoryLlmCall(
   };
 }
 
-async function installTrajectoryViewerInteractionRoutes(page: Page) {
+async function installTrajectoryViewerInteractionRoutes(
+  page: Page,
+  options?: { transientConfigFailures?: number },
+) {
   const records = [
     trajectoryRecord(
       "traj-alpha",
@@ -174,6 +178,7 @@ async function installTrajectoryViewerInteractionRoutes(page: Page) {
     limit: number;
   }> = [];
   const detailRequests: string[] = [];
+  let configRequests = 0;
 
   function detailFor(id: string) {
     const record = records.find((item) => item.id === id) ?? records[0];
@@ -315,6 +320,11 @@ async function installTrajectoryViewerInteractionRoutes(page: Page) {
       request.method() === "GET" &&
       url.pathname === "/api/trajectories/config"
     ) {
+      configRequests += 1;
+      if (configRequests <= (options?.transientConfigFailures ?? 0)) {
+        await fulfillJson(route, { error: "Runtime is still starting" }, 503);
+        return;
+      }
       await fulfillJson(route, { enabled: true });
       return;
     }
@@ -384,6 +394,7 @@ async function installTrajectoryViewerInteractionRoutes(page: Page) {
     listRequestCount: () => listRequests.length,
     listRequests: () => listRequests.slice(),
     detailRequests: () => detailRequests.slice(),
+    configRequestCount: () => configRequests,
   };
 }
 
@@ -427,7 +438,31 @@ test("trajectory viewer route refreshes, filters, and changes selected detail", 
     page.getByRole("button", { name: /Plan/i }),
     "plan pipeline stage",
   );
-  await expect(page.getByText(/Showing 1 plan calls/i)).toBeVisible();
+  await expect(page.getByText(/^Showing 1 plan call$/i)).toBeVisible();
+  const callOutputs = page.getByRole("region", {
+    name: "Output (Response)",
+    exact: true,
+  });
+  await expect(callOutputs).toHaveCount(1);
+  await expect(callOutputs).toHaveText(
+    "Alpha response from Playwright trajectory fixture.",
+  );
+  await page
+    .getByRole("button", { name: /Clear (pipeline )?stage filter/i })
+    .click();
+  await expect(callOutputs).toHaveCount(2);
+  await expect(callOutputs).toHaveText([
+    '{"decision":"RESPOND","reasoning":"alpha should respond"}',
+    "Alpha response from Playwright trajectory fixture.",
+  ]);
+  await clickRequired(
+    page.getByRole("button", { name: /Plan/i }),
+    "plan pipeline stage",
+  );
+  await expect(callOutputs).toHaveCount(1);
+  await expect(callOutputs).toHaveText(
+    "Alpha response from Playwright trajectory fixture.",
+  );
 
   await clickRequired(
     page.getByText("orchestrator / scenario-beta / batch-ui-smoke"),
@@ -437,7 +472,9 @@ test("trajectory viewer route refreshes, filters, and changes selected detail", 
     .poll(() => recorder.detailRequests().includes("traj-beta"))
     .toBe(true);
   await expect(page.getByText("deterministic-model-b").first()).toBeVisible();
-  const sparseInput = page.getByRole("region", { name: "Input (User)" });
+  const sparseInput = page.getByRole("region", {
+    name: "Recorded flattened prompt",
+  });
   const sparseOutput = page.getByRole("region", {
     name: "Output (Response)",
   });
@@ -453,4 +490,31 @@ test("trajectory viewer route refreshes, filters, and changes selected detail", 
   // ("trajectories view loads and search re-queries"), not here.
 
   await expectNoPageDiagnostics(page, "trajectory viewer interactions");
+});
+
+test("trajectory viewer recovers management controls after a transient probe failure", async ({
+  page,
+}) => {
+  const recorder = await installTrajectoryViewerInteractionRoutes(page, {
+    transientConfigFailures: 1,
+  });
+  await openRouteCase(page, routeCaseByName("trajectories app window"));
+
+  await expect(
+    page.getByText("Management controls are unavailable"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Retry management controls" }).click();
+  await expect.poll(() => recorder.configRequestCount()).toBe(2);
+  await expect(
+    page.getByRole("button", { name: "Open trajectory export menu" }),
+  ).toBeVisible();
+
+  await expectOnlyAllowedPageDiagnostics(
+    page,
+    "trajectory management probe recovery",
+    [
+      /^http\.503: GET .*\/api\/trajectories\/config$/,
+      /^console\.error: Failed to load resource: the server responded with a status of 503 \(Service Unavailable\)$/,
+    ],
+  );
 });

@@ -1,0 +1,183 @@
+#!/usr/bin/env node
+
+// Render the elizaOS boot splash for the AOSP fork: the white elizaOS logo
+// on the elizaOS blue field, as the PNG frame sequence AOSP's bootanimation
+// daemon plays during boot (kernel logo -> this splash -> Eliza launcher).
+//
+// Frames land under vendor/eliza/bootanimation/{part0,part1}/ and are packed
+// into bootanimation.zip by build-bootanimation.ts (`make bootanimation`).
+// The rendered frames + zip are gitignored — this regenerates them from the
+// canonical brand SVG on demand, the same way linux renders
+// its branding.
+//
+// Uses sharp (the repo's image toolchain) to rasterize + composite the SVG;
+// no external ImageMagick dependency.
+//
+// White-label: ELIZA_WHITELABEL_DIR points at a private brand directory outside
+// the repository (see packages/app/scripts/mobile/whitelabel.ts). Its
+// brand.json `bootanimation.logo` and `bootanimation.background` replace the
+// elizaOS logo and field; geometry and desc.txt stay unchanged. `--out-dir`
+// renders elsewhere (for validation) instead of the vendor tree.
+
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseArgs } from "node:util";
+
+import { resolveElizaSourceRoot } from "../eliza-source.ts";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolveElizaSourceRoot();
+const reqFromApp = createRequire(
+  path.join(repoRoot, "packages/app/package.json"),
+);
+
+const { values: args } = parseArgs({
+  options: { "out-dir": { type: "string" } },
+  strict: true,
+});
+const { loadWhitelabelBrand } = await import(
+  pathToFileURL(
+    path.join(repoRoot, "packages/app/scripts/mobile/whitelabel.ts"),
+  ).href
+);
+const whitelabel = loadWhitelabelBrand(process.env, repoRoot);
+if (whitelabel && !whitelabel.bootanimation) {
+  console.error(
+    "White-label brand.json must define bootanimation.logo and bootanimation.background",
+  );
+  process.exit(1);
+}
+
+const LOGO_SVG =
+  whitelabel?.bootanimation.logo ??
+  path.join(repoRoot, "packages/app/public/brand/logos/logo_white_nobg.svg");
+const BOOTANIM_DIR = args["out-dir"]
+  ? path.resolve(args["out-dir"])
+  : path.resolve(here, "../../android/vendor/eliza/bootanimation");
+const PART0 = path.join(BOOTANIM_DIR, "part0"); // one-shot intro: logo fades in
+const PART1 = path.join(BOOTANIM_DIR, "part1"); // idle loop until boot completes
+const rmRecursiveScript = path.resolve(
+  repoRoot,
+  "packages/scripts/rm-path-recursive.ts",
+);
+
+// Device framebuffer geometry (matches desc.txt); the eliza_cf_*_phone
+// products use the Cuttlefish 1080x2400 panel.
+const WIDTH = 1080;
+const HEIGHT = 2400;
+const FPS = 30;
+const LOGO_W = 480;
+const INTRO_FRAMES = 16;
+// elizaOS blue, identical to the Linux greeter field (#0B35F1), unless a
+// white-label brand supplies its own field color.
+const FIELD_HEX = whitelabel?.bootanimation.background ?? "#0B35F1";
+const BLUE = {
+  r: Number.parseInt(FIELD_HEX.slice(1, 3), 16),
+  g: Number.parseInt(FIELD_HEX.slice(3, 5), 16),
+  b: Number.parseInt(FIELD_HEX.slice(5, 7), 16),
+  alpha: 1,
+};
+
+let sharp;
+try {
+  sharp = (await import(reqFromApp.resolve("sharp"))).default;
+} catch {
+  console.error(
+    "sharp is required to render the boot splash (it ships with the app toolchain; run `bun install`)",
+  );
+  process.exit(1);
+}
+
+if (!fs.existsSync(LOGO_SVG)) {
+  console.error(`Missing brand logo: ${LOGO_SVG}`);
+  process.exit(1);
+}
+
+function rmRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `failed to remove generated bootanimation frames ${targetPath} (exit ${result.status})`,
+    );
+  }
+}
+
+rmRecursive(PART0);
+rmRecursive(PART1);
+fs.mkdirSync(PART0, { recursive: true });
+fs.mkdirSync(PART1, { recursive: true });
+
+const blueCanvas = () =>
+  sharp({
+    create: { width: WIDTH, height: HEIGHT, channels: 4, background: BLUE },
+  });
+
+// White logo centered on a full-size transparent canvas, as raw RGBA so we
+// can scale its alpha per frame for the fade-in.
+const logoPng = await sharp(fs.readFileSync(LOGO_SVG))
+  .resize({ width: LOGO_W })
+  .png()
+  .toBuffer();
+const logoLayer = await sharp({
+  create: {
+    width: WIDTH,
+    height: HEIGHT,
+    channels: 4,
+    background: { r: 0, g: 0, b: 0, alpha: 0 },
+  },
+})
+  .composite([{ input: logoPng, gravity: "center" }])
+  .raw()
+  .toBuffer();
+
+// Composite the logo layer (alpha scaled by `opacity`) over the blue field.
+async function renderFrame(opacity) {
+  const layer = Buffer.from(logoLayer);
+  if (opacity < 1) {
+    for (let j = 3; j < layer.length; j += 4) {
+      layer[j] = Math.round(layer[j] * opacity);
+    }
+  }
+  const faded = await sharp(layer, {
+    raw: { width: WIDTH, height: HEIGHT, channels: 4 },
+  })
+    .png()
+    .toBuffer();
+  return blueCanvas()
+    .composite([{ input: faded }])
+    .flatten({ background: BLUE })
+    .png()
+    .toBuffer();
+}
+
+// Intro: fade the logo in. Frame 0 is the bare blue field; the last frame is
+// the full logo.
+for (let i = 0; i < INTRO_FRAMES; i += 1) {
+  const frame = await renderFrame(i / (INTRO_FRAMES - 1));
+  fs.writeFileSync(
+    path.join(PART0, `${String(i).padStart(4, "0")}.png`),
+    frame,
+  );
+}
+
+// Idle loop: the fully-opaque logo, held until the framework starts.
+fs.writeFileSync(path.join(PART1, "0000.png"), await renderFrame(1));
+
+// desc.txt: play the intro once, then loop the idle frame until boot.
+fs.writeFileSync(
+  path.join(BOOTANIM_DIR, "desc.txt"),
+  `${WIDTH} ${HEIGHT} ${FPS}\np 1 0 part0\np 0 0 part1\n`,
+);
+
+console.log(
+  `Rendered ${whitelabel ? "white-label" : "elizaOS"} boot splash into ${BOOTANIM_DIR} (${INTRO_FRAMES} intro frames + idle loop)`,
+);
+console.log(
+  `Pack it with: node scripts/android/build-bootanimation.ts --frames ${BOOTANIM_DIR} --out ${BOOTANIM_DIR}/bootanimation.zip`,
+);

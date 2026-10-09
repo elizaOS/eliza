@@ -8,7 +8,7 @@
 import type { ComponentType, ReactNode } from "react";
 import { Button, type ButtonProps } from "../components/ui/button";
 import { Input, type InputProps } from "../components/ui/input";
-import { cn } from "../lib/utils";
+import { cn } from "../utils/cn";
 import type { AgentElementRole } from "./types";
 import { useAgentElement } from "./useAgentElement";
 

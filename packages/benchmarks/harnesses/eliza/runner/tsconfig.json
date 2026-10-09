@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "types": ["node", "vite/client"],
+    "customConditions": ["eliza-source", "development"],
+    "jsx": "react-jsx",
+    "paths": {
+      "@elizaos/plugin-pdf": ["../../../../../plugins/plugin-pdf/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

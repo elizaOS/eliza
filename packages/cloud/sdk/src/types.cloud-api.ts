@@ -1,12 +1,7 @@
-/**
- * DTOs mirrored from the Cloud API schema (`CurrentUserDto`, `AgentDetailDto`,
- * the `ApiSuccessEnvelope`/`ApiErrorEnvelope` wrappers, etc.). These must stay in
- * exact sync with the actual API responses — do not add computed or client-only
- * fields here.
- */
+/** Canonical public Cloud transport contracts. Backend-only records stay in cloud-shared. */
 
 export type IsoDateString = string;
-type DateLike = Date | IsoDateString;
+export type DateLike = Date | IsoDateString;
 
 export interface ApiSuccessEnvelope<TData> {
   success: true;
@@ -30,6 +25,159 @@ export interface OrganizationSubscriptionCancellationRequest {
 
 export type OrganizationSubscriptionCancellationResponse =
   ApiSuccessEnvelope<OrganizationSubscriptionCancellationDto>;
+
+/** A next-invoice estimate, not a price lock or authorization token. */
+export interface OrganizationSubscriptionRenewalReviewDto {
+  kind: "renewal_estimate";
+  subscriptionId: string;
+  expectedSubscriptionRevision: string;
+  planKey: "plus_monthly" | "pro_monthly";
+  catalogVersion: string;
+  currency: "usd";
+  interval: "month";
+  intervalCount: 1;
+  baseAmountCents: number;
+  renewalAt: string;
+  nextPeriodEnd: string;
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  totalCents: number;
+  startingBalanceCents: number;
+  amountDueCents: number;
+  observedAt: string;
+  expiresAt: string;
+  termsDigest: string;
+}
+export type OrganizationSubscriptionRenewalReviewResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionRenewalReviewDto>;
+export interface OrganizationSubscriptionReviewedUndoRequest
+  extends OrganizationSubscriptionCancellationRequest {
+  expectedRenewalTermsDigest: string;
+}
+
+/** Server-observed estimate; saving it creates no charge or subscription command. */
+export interface OrganizationSubscriptionUpgradeReviewDto {
+  kind: "upgrade_estimate";
+  subscriptionId: string;
+  expectedSubscriptionRevision: string;
+  sourcePlanKey: "plus_monthly" | "pro_monthly";
+  targetPlanKey: "plus_monthly" | "pro_monthly";
+  catalogVersion: string;
+  currency: "usd";
+  prorationDate: number;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  targetBaseAmountCents: number;
+  targetAllowanceUsd: string;
+  additionalAllowanceUsd: string;
+  dueNow: OrganizationSubscriptionUpgradeInvoiceDto;
+  recurringEstimate: OrganizationSubscriptionUpgradeInvoiceDto;
+  observedAt: string;
+  expiresAt: string;
+}
+export interface OrganizationSubscriptionUpgradeInvoiceDto {
+  amountDueCents: number;
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  totalCents: number;
+  startingBalanceCents: number;
+}
+export interface OrganizationSubscriptionUpgradeQuoteRequest {
+  subscriptionId: string;
+  expectedSubscriptionRevision: number;
+  targetPlanKey: "plus_monthly" | "pro_monthly";
+}
+export interface OrganizationSubscriptionUpgradeQuoteDto {
+  quoteId: string;
+  review: OrganizationSubscriptionUpgradeReviewDto;
+}
+export type OrganizationSubscriptionUpgradeQuoteResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionUpgradeQuoteDto>;
+
+/** Lower-plan review: no immediate charge; recurringEstimate is not a guaranteed next invoice. */
+export interface OrganizationSubscriptionDowngradeReviewDto {
+  kind: "downgrade_estimate";
+  subscriptionId: string;
+  expectedSubscriptionRevision: string;
+  sourcePlanKey: "plus_monthly" | "pro_monthly";
+  targetPlanKey: "plus_monthly" | "pro_monthly";
+  catalogVersion: string;
+  currency: "usd";
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  effectiveAt: string;
+  amountDueNowCents: 0;
+  targetBaseAmountCents: number;
+  targetAllowanceUsd: string;
+  recurringEstimate: OrganizationSubscriptionUpgradeInvoiceDto;
+  observedAt: string;
+  expiresAt: string;
+}
+
+export type OrganizationSubscriptionDowngradeQuoteRequest =
+  OrganizationSubscriptionUpgradeQuoteRequest;
+export interface OrganizationSubscriptionDowngradeQuoteDto {
+  quoteId: string;
+  review: OrganizationSubscriptionDowngradeReviewDto;
+}
+export type OrganizationSubscriptionDowngradeQuoteResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionDowngradeQuoteDto>;
+
+/** Pending schedule configuration is not a paid target-plan entitlement. */
+export interface OrganizationSubscriptionDowngradeCommandDto {
+  commandId: string;
+  subscriptionId: string;
+  targetPlanKey: "plus_monthly" | "pro_monthly";
+  status: "PREPARED" | "OUTCOME_UNKNOWN" | "APPLIED" | "FAILED" | "SUPERSEDED";
+  expectedSubscriptionRevision: string;
+  resultSubscriptionRevision: string | null;
+  effect: {
+    kind: "schedule_create" | "schedule_configure" | "schedule_release";
+    state: "ready" | "started" | "observed";
+  } | null;
+  failure: "review_required" | "create_compensated" | null;
+}
+export interface OrganizationSubscriptionDowngradeConfirmRequest {
+  quoteId: string;
+  idempotencyKey: string;
+}
+export type OrganizationSubscriptionDowngradeCommandResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionDowngradeCommandDto>;
+
+/** Durable server-owned outcome; OUTCOME_UNKNOWN never authorizes a new payment or intent. */
+export interface OrganizationSubscriptionUpgradeCommandDto {
+  commandId: string;
+  subscriptionId: string;
+  targetPlanKey: "plus_monthly" | "pro_monthly";
+  status: "PREPARED" | "OUTCOME_UNKNOWN" | "APPLIED" | "FAILED" | "SUPERSEDED";
+  dispatchState: "ready" | "started";
+  expectedSubscriptionRevision: string;
+  resultSubscriptionRevision: string | null;
+  failure: "review_required" | "invoice_void" | null;
+}
+export interface OrganizationSubscriptionUpgradeConfirmRequest {
+  quoteId: string;
+  idempotencyKey: string;
+}
+export type OrganizationSubscriptionUpgradeCommandResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionUpgradeCommandDto>;
+
+/** Ephemeral private payment UI result. Never persist, log, or add its URL to model context. */
+export interface OrganizationSubscriptionUpgradePaymentDto {
+  command: OrganizationSubscriptionUpgradeCommandDto;
+  continuation: {
+    kind: "hosted_invoice";
+    hostedInvoiceUrl: string;
+    amountDueCents: number;
+    currency: "usd";
+    paymentState: "requires_action" | "requires_payment_method";
+    expiresAt: string;
+  } | null;
+}
+export type OrganizationSubscriptionUpgradePaymentResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionUpgradePaymentDto>;
 
 export interface CurrentUserOrganizationDto {
   id: string;
@@ -112,6 +260,8 @@ export interface SubscriptionResourceCeilingsDto {
   containers: number;
   storageGiB: number;
   apps: number;
+  /** Active user-created API keys; keys themselves are free. */
+  apiKeys: number;
 }
 
 export interface SubscriptionAllowanceDto {
@@ -133,7 +283,8 @@ export interface SubscriptionPlanDto {
   allowance: SubscriptionAllowanceDto;
   fundingClasses: readonly SubscriptionFundingClass[];
   rateLimits: SubscriptionRateEnvelopeDto;
-  resourceCeilings: null;
+  /** Enforced resource ceilings; paid plans are never below the Free ceilings. */
+  resourceCeilings: SubscriptionResourceCeilingsDto;
 }
 
 export interface SubscriptionPlansDto {
@@ -144,28 +295,65 @@ export interface SubscriptionPlansDto {
 export type SubscriptionPlansResponse =
   ApiSuccessEnvelope<SubscriptionPlansDto>;
 
-export type SubscriptionPublicState =
-  | "active"
-  | "grace"
-  | "past_due"
-  | "unpaid"
-  | "canceled";
-
-export interface SubscriptionDto {
-  catalogVersion: SubscriptionCatalogVersion;
+export interface SubscriptionCheckoutRequest {
   planKey: SubscriptionPlanKey;
-  state: SubscriptionPublicState;
-  currentPeriodStartsAt: IsoDateString;
-  currentPeriodEndsAt: IsoDateString;
-  cancelAtPeriodEnd: boolean;
-  pendingPlanKey: SubscriptionPlanKey | null;
-  allowanceGrantedUsd: string;
-  allowanceRemainingUsd: string;
-  allowanceExpiresAt: IsoDateString;
-  rateLimits: SubscriptionRateEnvelopeDto;
-  /** Unavailable (`null`) until the resource-enforcement policy is ratified. */
-  resourceCeilings: SubscriptionResourceCeilingsDto | null;
+  /** Client-minted UUID; reuse it only to retry the same purchase intent. */
+  idempotencyKey: string;
+  /**
+   * `hosted` (default): redirect this browser to Stripe Checkout.
+   * `embedded`: mount Stripe Embedded Checkout in the app (card only, never redirects).
+   * `shared`: a hosted link for someone else to pay without signing in.
+   * Switching plan or presentation closes the organization's previous unpaid checkout.
+   */
+  presentation?: "hosted" | "embedded" | "shared";
 }
+
+/**
+ * `open`: redirect to `checkoutUrl` (https://checkout.stripe.com only), or for
+ * `presentation: "embedded"` mount `clientSecret` with `publishableKey`.
+ * `completed`: the payment is captured and its subscription is still live.
+ * `expired`: the checkout expired or was replaced; mint a new idempotency key.
+ * `stale_intent`: the key already bought a subscription that has ended; mint a new key.
+ * Retrying the same key reports `completed` once the server has verified payment.
+ */
+export type SubscriptionCheckoutResult =
+  | { status: "open"; commandId: string; checkoutUrl: string }
+  | {
+      status: "open";
+      presentation: "embedded";
+      commandId: string;
+      checkoutUrl: null;
+      /** Pass to `confirmSubscriptionCheckout` after the form completes. */
+      sessionId: string;
+      /** Stripe.js initializer: `embedded` = `createEmbeddedCheckoutPage`/`initEmbeddedCheckout`. */
+      uiMode: "embedded";
+      clientSecret: string;
+      publishableKey: string;
+      amountDueCents: number;
+      currency: "usd";
+      interval: "month";
+      expiresAt: string;
+    }
+  | {
+      status: "open";
+      presentation: "shared";
+      commandId: string;
+      checkoutUrl: string;
+      expiresAt: string;
+    }
+  | {
+      status: "completed" | "expired" | "stale_intent";
+      commandId: string;
+      checkoutUrl: null;
+    };
+export type SubscriptionCheckoutResponse =
+  ApiSuccessEnvelope<SubscriptionCheckoutResult>;
+/** A single-use Stripe Customer Portal URL (https://billing.stripe.com only). */
+export type SubscriptionPortalResponse = ApiSuccessEnvelope<{ url: string }>;
+export type SubscriptionCheckoutConfirmationResponse = ApiSuccessEnvelope<{
+  subscriptionId: string | null;
+  replayed: boolean;
+}>;
 
 export type AgentSandboxStatus =
   | "pending"
@@ -234,7 +422,7 @@ export interface NormalizedAgentListItemDto
   activeJob: AgentActiveJobDto | null;
 }
 
-interface AgentAdminDetailsDto {
+export interface AgentAdminDetailsDto {
   nodeId: string | null;
   containerName: string | null;
   internalBridgeUrl: string | null;
@@ -639,3 +827,16 @@ export interface PendingSubscriptionCommandsDto {
 }
 export type PendingSubscriptionCommandsResponse =
   ApiSuccessEnvelope<PendingSubscriptionCommandsDto>;
+/** Original-actor plan-change discovery, separate from cancellation/resumption. */
+export interface PendingOrganizationPlanChangeCommandsDto {
+  observedAt: string;
+  items: Array<
+    Omit<PendingSubscriptionCommandsDto["items"][number], "kind"> & {
+      kind: "upgrade" | "downgrade";
+      targetPlanKey: string;
+    }
+  >;
+  nextCursor: string | null;
+}
+export type PendingOrganizationPlanChangeCommandsResponse =
+  ApiSuccessEnvelope<PendingOrganizationPlanChangeCommandsDto>;

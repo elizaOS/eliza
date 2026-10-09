@@ -20,7 +20,7 @@
  *
  * Matched by suffix rather than exact name on purpose. `readAliasedEnv`
  * resolves a brand partner for every `ELIZA_*` key
- * (packages/shared/src/config/brand-env-aliases.ts carries
+ * (packages/core/src/config/brand-env-aliases.ts carries
  * `TERMINAL_RUN_TOKEN`), and the brand prefix is deployment-configurable, so
  * `ELIZA_TERMINAL_RUN_TOKEN` and `<PREFIX>_TERMINAL_RUN_TOKEN` are the same
  * switch to the runtime. Pinning one spelling would leave the partner open.

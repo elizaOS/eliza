@@ -1,155 +1,110 @@
 # @elizaos/plugin-browser
 
-Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` action and `MANAGE_BROWSER_BRIDGE` action to any Eliza agent, owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, JSDOM fallback on web/mobile), and manages the Chrome, Firefox, and Safari Agent Browser Bridge companion extension.
+Adds browser automation through registered native Chromium profiles, the desktop
+workspace, and configured hosted endpoints. Enable `features.browser` in host
+configuration. The MV3 companion in `packages/os/browser` controls
+the same visible profile through an authenticated native messaging host on Linux
+and the supported Chromium Desktop Android build. It supports background tabs and
+complete DOM snapshots; selectors expire after effects and require fresh readback.
+Android Custom Tabs are addressable by their exact tab IDs while open, including
+when backgrounded. Creating a new background tab requires a regular Chromium
+window: open Chromium from the launcher once. Without one, the command returns
+`UNAVAILABLE` before the effect and does not launch a window or retry elsewhere.
+The Android app holds a certificate-verified Custom Tabs service binding while
+its agent foreground service runs. Chunk acknowledgements bound Binder traffic
+without shortening page context. Deployment still requires a verified extension
+and a Chromium build provisioned for its native host; unpacked debug installation
+is development evidence, not release provisioning.
 
-## What this plugin provides
+`NativeSocketBrowserTarget.execute(command, { signal })` requires the peer's
+`cancel` capability. An abort sends a request-ID fence and rejects with an unknown
+outcome after dispatch; it never retries on another profile. Older peers reject
+cancellable requests before dispatch. Callers still reconcile any uncertain effect.
 
-### Actions
+Trusted hosts can call `NativeSocketBrowserTarget.waitForProfile(profileId, { timeoutMs, signal })`
+before binding a task after restart. It waits at most 10 seconds by default
+(30 seconds maximum), rejects a different registered profile immediately, and
+stops on cancellation or transport shutdown. It sends no commands and never
+retries dispatched work. Hosts must recheck task/account authority after waiting.
 
-**BROWSER** — Controls a registered browser target. The agent picks the best available backend automatically, or you can pin a specific target with the `target` parameter. Supported operations:
+`NativeTaskActuator` composes the core task journal with this transport. The host
+supplies task lookup, reviewed page policy, durable binding revisions, protected
+value resolution, outcome verification and redacted evidence storage. It checks
+ownership and dispatched-operation identity, binds a main-frame observation,
+consumes each target once, and requires a fresh readback before reporting a
+verified outcome. It does not interpret bill policy or manufacture a success
+from a click receipt. Ordinary fills cannot be used as a protected OTP path.
 
-| `action` value | What it does |
-|---|---|
-| `open` | Open a URL in a new tab |
-| `navigate` | Navigate an existing tab to a URL |
-| `click` | Click a DOM element by CSS selector |
-| `type` | Type text into a selector |
-| `fill` / `clear` | Replace a form control's value or clear it |
-| `press` | Press a keyboard key |
-| `scroll` / `scroll_into` | Scroll by direction and pixels, or reveal a selector |
-| `hover` | Hover a DOM element by CSS selector |
-| `drag` | Drag a source selector to `targetSelector` |
-| `get` | Get a DOM value |
-| `state` | Return current tab state (URL, title) |
-| `snapshot` | Capture a DOM snapshot |
-| `screenshot` | Capture a screenshot |
-| `reload` | Reload the current tab |
-| `back` / `forward` | Browser history navigation |
-| `close` | Close a tab |
-| `show` / `hide` | Show or hide the browser window |
-| `wait` | Wait for a selector to appear |
-| `tab` | Tab management (list/new/close/switch) |
-| `realistic_click` | Animated cursor click (visible to user) |
-| `realistic_fill` | Animated fill with per-character delay |
-| `realistic_type` | Animated typing |
-| `realistic_press` | Animated key press |
-| `cursor_move` | Animate cursor to a position |
-| `cursor_hide` | Hide the cursor overlay |
-| `autofill_login` | Fill saved credentials into a browser tab (vault-gated; requires `domain`) |
+For unknown operations, an optional trusted `reconcile` callback interprets a
+fresh snapshot against durable host provenance. The actuator creates a new native
+binding with an empty action-target allowlist, checks task identity and revision
+at every await boundary, and never caches the readback as an action observation.
+Only an explicit later Resume can establish a fresh ordinary binding. A snapshot
+is evidence to interpret, not proof that an effect succeeded.
 
-**MANAGE_BROWSER_BRIDGE** — Manages the Chrome, Firefox, and Safari companion extension. Subactions: `install` (build + reveal + open manager), `reveal_folder` (open the build folder in Finder/Explorer), `open_manager` (the selected browser's extension manager), `refresh` (report the complete paired-companion inventory, exact count, and settings). Owner-only.
+Native profiles are preferred before hosted browsers. Signed remote device grants
+bind browser commands to one exact profile; older agent grants do not grant browser
+access. A dispatched command is never replayed against a different session.
+Android accessibility is a foreground-only fallback when the native profile is
+unavailable before dispatch. Desktop workspace autofill requires prior per-domain
+vault authorization and does not silently fill remote device profiles.
 
-### Browser targets
+## Development
 
-The plugin uses a pluggable target registry in `BrowserService`. Targets are selected automatically by availability and score:
+Install dependencies with `bun install` at the repository root. Run from that root:
 
-| Target ID | Backend | When available |
-|---|---|---|
-| `workspace` | Electrobun `BrowserView` (desktop) or JSDOM (web) | Always |
-| `bridge` | Paired Chrome, Firefox, or Safari via companion extension | At least one companion paired |
-| `stagehand` | Playwright/Stagehand via HTTP endpoint | `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` or `STAGEHAND_SERVER_URL` set |
-
-External plugins can register additional targets by calling `BrowserService.registerTarget(target)`.
-
-### Confirmed uploads
-
-Generic `eval`, `upload`, and `realistic-upload` commands fail closed. Uploads
-must use `BrowserService.executeConfirmedUpload` with the core v2 interaction
-contract: an explicitly granted account profile, a pinned adapter advertising
-the upload action, the exact semantic action digest, and an atomically
-consume-once confirmation. A target must separately opt in through
-`executeAuthorizedUpload` and return an applied effect receipt for the exact
-surface, generation, operation, and action idempotency key. The receipt records
-only opaque session, account-grant, and resource identities; raw owner/profile
-handles and file handles are excluded.
-
-The built-in `workspace`, `bridge`, and `stagehand` targets do not yet expose a
-proof-producing upload hook, so they reject uploads before consuming a
-confirmation. A custom target must not opt in until its underlying browser or
-provider can return authoritative acceptance evidence.
-
-### Provider
-
-`browser_workspace` — Injects the current dispatch mode (`desktop` / `web`) and the complete list of open tabs into agent context. Active when the `browser` or `web` context is selected.
-
-### Routes
-
-`/api/browser-bridge/*` — HTTP surface for the companion extension: pairing, settings, tab sync, page-context ingest, session progress, and extension package build/download.
-
-## Requirements
-
-### Auto-enable
-
-The plugin is opt-in. It activates when `config.features.browser` is truthy in the elizaOS agent config:
-
-```json
-{
-  "features": {
-    "browser": true
-  }
-}
+```bash
+bun run --cwd plugins/plugin-browser build
+bun run --cwd plugins/plugin-browser test
 ```
 
-### Environment variables
+## Remote controllers
 
-| Variable | Purpose |
-|---|---|
-| `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` | Full URL for the Stagehand command endpoint |
-| `STAGEHAND_SERVER_URL` | Stagehand base URL (commands go to `<url>/api/browser-command`) |
-| `ELIZA_BROWSER_STAGEHAND_URL` | Alias for `STAGEHAND_SERVER_URL` |
-| `ELIZA_BROWSER_STAGEHAND_AUTO_SETUP` | Set `false` to disable automatic stagehand-server install/build |
-| `ELIZA_BROWSER_ALLOW_STAGEHAND_ON_MOBILE` | Set `true` to allow stagehand target on mobile |
-| `ELIZA_MOBILE_PLATFORM` / `ELIZA_PLATFORM` / `CAPACITOR_PLATFORM` | Platform hint for target scoring (`ios`/`android`/`mobile`) |
-| `ELIZA_BROWSER_BRIDGE_CHROME_STORE_URL` | Chrome Web Store listing override |
-| `ELIZA_BROWSER_BRIDGE_FIREFOX_ADDONS_URL` | Firefox Add-ons listing override |
-| `ELIZA_BROWSER_BRIDGE_SAFARI_STORE_URL` | Safari App Store listing override |
+App, CLI and cloud hosts import `@elizaos/plugin-browser/remote-controller` to
+compose owner-authorized remote profiles and encrypted runtime storage. That
+entrypoint is server-only and is deliberately absent from the default/mobile
+barrels. Renderers use only `remote-control/cloud-client` and
+`remote-control/cloud-endpoints`; those leaves do not import controller crypto.
+The shared wire contracts remain in core. Run `bun run --cwd
+plugins/plugin-browser test:remote-control` for authority and real encrypted SQL
+storage regressions.
 
-### Vault keys (set by the user, not env vars)
 
-`autofill_login` only fires when the user has pre-authorized it per domain:
+Trusted hosts can use `NativeSocketBrowserTarget.guideTask` after negotiating
+`task-guide` and `task-bind`. Supply the exact task context, increasing per-binding
+guidance revision and a current main-frame snapshot selector. The extension admits
+request IDs once and removes annotations on cancellation/rebind/disconnect.
+Peers with `task-guide-label` also accept `detail`, `tone`, offer `answers`,
+`kind: "pause"` and a binding `assistantName`; older peers reject them before
+dispatch. `onTaskGuideAnswer` delivers one tap per current offer as
+`{tabId, stepId, revision, answerId}`. It never carries the value. Answers to a
+replaced offer are dropped. `NativeTaskActuator` passes these fields, returns the
+guide revision and adds `pauseGuidance`. Installed browser UI is not qualified here.
 
-- `creds.<domain>.:autoallow = "1"` — set via Settings → Vault → Logins.
+`NativeTaskActuator.showGuidance` requires an active task and a target from its
+current observation. `quiesce` removes that owner's guide and waits for a removal
+receipt, including after task revocation. Hosts using the interactive-task runtime
+must await `settle` after control/account changes before acknowledging cleanup.
+Failed removal stays tracked for retry; it never repeats a website action.
+The actuator requires acknowledged feedback cleanup before and after effects.
+It passes the proposal expiry through `execute`'s `taskExpiresAt` option so the
+native preview cannot outlive action authority. Missing feedback capability stops
+dispatch; a pointer/tap receipt never substitutes for outcome verification.
+Scoped effects also require the peer's `task-action-feedback` capability; older
+task-binding browsers fail before dispatch rather than skipping the preview.
 
-Without this flag, the action returns an error rather than prompting interactively.
+A trusted value resolver can return `{ kind: "verification-code", text }` for a
+protected OTP fill. The task transport requires the `task-protected-fill` peer
+capability and introduces the marker through trusted execute options; raw command
+markers are stripped. Native policy additionally requires an exact `fill-code`
+target and an input with `autocomplete="one-time-code"`. Ordinary text fills,
+password fields and Verify/submit clicks remain denied. The value still travels
+only on the authenticated native channel and is excluded from DOM snapshots;
+host evidence/screenshot pipelines must also preserve secret redaction. This
+primitive does not resolve codes, grant account access, or qualify a live provider.
 
-## Companion extension authentication
-
-Companion-scoped endpoints require two headers:
-
-```
-X-Browser-Bridge-Companion-Id: <companion uuid>
-Authorization: Bearer <pairing token>
-```
-
-Legacy header aliases (`X-LifeOps-Browser-Companion-Id`, `x-eliza-browser-companion-id`) are not accepted.
-
-## Database
-
-Drizzle tables in the `browser` PostgreSQL schema (applied by elizaOS `plugin-sql` migrator):
-
-- `browser_bridge_companions`
-- `browser_bridge_settings`
-- `browser_bridge_tabs`
-- `browser_bridge_page_contexts`
-
-## Registering a custom browser target
-
-Any plugin can extend the browser dispatch surface at runtime:
-
-```ts
-import { BrowserService, BROWSER_SERVICE_TYPE } from "@elizaos/plugin-browser";
-import type { BrowserTarget } from "@elizaos/plugin-browser";
-
-const myTarget: BrowserTarget = {
-  id: "my-target",
-  name: "My Browser",
-  description: "Custom browser backend.",
-  kind: "external",
-  priority: 50,
-  available: async () => true,
-  execute: async (command) => { /* ... */ },
-};
-
-const browserService = runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);
-browserService?.registerTarget(myTarget);
-```
+Android hosts set `ELIZA_BROWSER_ANDROID_APPLICATION` to their application ID
+when starting the native target. It connects and reconnects only to that app's
+`<applicationId>.browser.native` abstract socket. The default remains
+`ai.elizaos.app`; malformed or oversized IDs fail before connecting. This selects
+the host relay and does not replace its same-UID or Chromium certificate checks.

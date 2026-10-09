@@ -4,7 +4,7 @@
  * stdio env channels (npm/uv config injection) are rejected before spawn.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { validateMcpServerConfig } from "@elizaos/core/security/mcp-server-config";
+import { validateMcpServerConfig } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { guardedMcpFetch, McpService } from "../src/service";
 

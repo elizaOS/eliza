@@ -1,4 +1,5 @@
 // Wires hosted Eliza agent finish behavior for cloud runtime services.
+
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { type ActionWithParams, defineActionParameters } from "../types";
 import { normalizeCloudActionArgs } from "../utils/native-planner-guards";
@@ -75,7 +76,7 @@ function hasFinishSignal(message: Memory, state?: State): boolean {
  * directly. The handler exists for registry completeness and non-native-planner
  * contexts.
  *
- * @see cloud-bootstrap-message-service.ts runNativePlannerCore() FINISH intercept
+ * @see ../services/cloud-bootstrap-message-service/index.ts runNativePlannerCore() FINISH intercept
  */
 export const finishAction: ActionWithParams = {
   name: "FINISH",

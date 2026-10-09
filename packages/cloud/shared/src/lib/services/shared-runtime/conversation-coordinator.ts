@@ -14,12 +14,15 @@ import type {
   MobilePushTokenRecord,
 } from "../../mobile-push/types";
 import { logger } from "../../utils/logger";
-import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox";
 import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fetch";
+import type { NetworkSharedTurnObservation } from "./network-shared-context";
+import type { PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
 import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import {
+  PersonalCutoverHoldError,
   SharedRuntimeCacheWarmingError,
   SharedRuntimeTurnError,
   SharedTurnConflictError,
@@ -44,6 +47,10 @@ export interface SharedConversationCoordinatorOptions {
   trustedUserUtterance?: string;
   /** Authenticated transport semantics; never accepted from bridge RPC params. */
   channel?: SharedRuntimeChannel;
+  /** Server-resolved Dedicated fallback account state (#25146); never from RPC params. */
+  trustedAccountState?: PersonalSharedFallbackAccountState;
+  /** Server-resolved per-turn Network context; never populated from RPC params. */
+  trustedNetworkContext?: NetworkSharedTurnObservation;
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -125,6 +132,8 @@ export async function coordinateSharedPushDispatch(
 }
 
 export interface SharedCutoverSeal {
+  /** Exact fallback interval whose database revision fences recovery. */
+  fallback?: { id: string; generation: number; revision: number; roomId: string };
   token: string;
   leaseMs: number;
   organizationId: string;
@@ -154,7 +163,7 @@ export async function coordinateSharedConversationPrewarm(
   agentId: string,
   roomId: string,
   options: SharedConversationHistoryCoordinatorOptions,
-): Promise<void> {
+): Promise<SharedConversationPrewarmResult> {
   const namespace = requireHistoryCoordinator(options);
   const response = await coordinatorStub(namespace, agentId, roomId).fetch(
     "https://shared-runtime.internal/prewarm",
@@ -172,7 +181,20 @@ export async function coordinateSharedConversationPrewarm(
   await requireCoordinatorResponse(response, "conversation prewarm");
   // The Durable Object releases its per-room queue when the response body is
   // consumed. Drain this tiny acknowledgement before the first real turn.
-  await response.arrayBuffer();
+  const body: unknown = await response.json();
+  const organizationId =
+    typeof body === "object" && body !== null && "organizationId" in body
+      ? body.organizationId
+      : undefined;
+  if (organizationId !== undefined && (typeof organizationId !== "string" || !organizationId)) {
+    throw new Error("[shared-runtime] conversation prewarm returned an invalid owner");
+  }
+  return organizationId ? { organizationId } : {};
+}
+
+/** Prewarm acknowledgement; personal rooms report their verified owning organization. */
+export interface SharedConversationPrewarmResult {
+  organizationId?: string;
 }
 
 /** Persist one idempotent lifecycle marker without dispatching or billing a model turn. */
@@ -263,6 +285,7 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
     error?: unknown;
     failureName?: unknown;
     retryable?: unknown;
+    failureDiagnostic?: unknown;
   } | null = null;
   try {
     const parsed: unknown = await response.clone().json();
@@ -278,13 +301,30 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
     body?.code === "shared_runtime_turn_failed" &&
     (response.status === 500 || response.status === 503)
   ) {
-    const turnError = SharedRuntimeTurnError.fromClassification(body.failureName, body.retryable);
+    const turnError = SharedRuntimeTurnError.fromClassification(
+      body.failureName,
+      body.retryable,
+      body.failureDiagnostic,
+    );
     const statusMatchesDisposition =
       (response.status === 503 && turnError.retryable) ||
       (response.status === 500 && !turnError.retryable);
     throw statusMatchesDisposition
       ? turnError
       : SharedRuntimeTurnError.fromClassification(undefined, undefined);
+  }
+  // A Shared→Dedicated cutover refuses the turn before the Shared claim: 423
+  // while sealed, 409 once committed. Both are holds, never terminal
+  // conflicts, so ingress retries into the attested Dedicated route (#22934).
+  if (response.status === 423 && body?.code === "personal_cutover_in_progress") {
+    const retryAfter = Number.parseInt(response.headers.get("Retry-After") ?? "", 10);
+    throw new PersonalCutoverHoldError(
+      false,
+      Number.isSafeInteger(retryAfter) && retryAfter > 0 ? retryAfter : 1,
+    );
+  }
+  if (response.status === 409 && body?.code === "personal_eliza_dedicated") {
+    throw new PersonalCutoverHoldError(true);
   }
   if (response.status === 503) {
     throw new SharedRuntimeCacheWarmingError(
@@ -340,6 +380,12 @@ export async function coordinateSharedBridge(
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
         ...(options.channel ? { channel: options.channel } : {}),
+        ...(options.trustedAccountState
+          ? { trustedAccountState: options.trustedAccountState }
+          : {}),
+        ...(options.trustedNetworkContext
+          ? { trustedNetworkContext: options.trustedNetworkContext }
+          : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     },
@@ -374,6 +420,12 @@ export async function coordinateSharedStream(
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
         ...(options.channel ? { channel: options.channel } : {}),
+        ...(options.trustedAccountState
+          ? { trustedAccountState: options.trustedAccountState }
+          : {}),
+        ...(options.trustedNetworkContext
+          ? { trustedNetworkContext: options.trustedNetworkContext }
+          : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     },
@@ -481,6 +533,7 @@ export async function coordinateSharedCutoverSeal(
         organizationId: seal.organizationId,
         userId: seal.userId,
         dedicatedAgentId: seal.dedicatedAgentId,
+        ...(seal.fallback ? { fallback: seal.fallback } : {}),
       }),
     },
   );

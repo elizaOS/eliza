@@ -17,15 +17,13 @@
 
 import { copyFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { VoiceModelVersion } from "@elizaos/shared/local-inference";
+import type { VoiceModelVersion } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 import { localInferenceRoot } from "../paths";
 import { OPENWAKEWORD_DIR_REL_PATH } from "./wake-word";
-
 /** The loader's wake directory: `<state-dir>/local-inference/wake`. */
 export function wakeStagingDir(): string {
 	return path.join(localInferenceRoot(), OPENWAKEWORD_DIR_REL_PATH);
 }
-
 /** The downloader's final name for an asset: `<id>-<version>-<basename>`. */
 export function downloadedAssetName(
 	version: Pick<VoiceModelVersion, "id" | "version">,
@@ -33,14 +31,12 @@ export function downloadedAssetName(
 ): string {
 	return `${version.id}-${version.version}-${path.basename(assetFilename)}`;
 }
-
 export interface WakeStageCopy {
 	/** Absolute source path in the bundle voice dir. */
 	from: string;
 	/** Absolute destination path in the wake dir (`<head>.<kind>.gguf`). */
 	to: string;
 }
-
 /**
  * Plan the copies that put a downloaded `wakeword` version where the runtime
  * loader resolves it. Returns `[]` for any non-wakeword id (nothing to stage).
@@ -61,7 +57,6 @@ export function planWakeWordStaging(
 		};
 	});
 }
-
 /**
  * Execute the staging plan: copy each downloaded wake GGUF into the loader's
  * wake dir under its canonical name. No-op for non-wakeword versions. Returns

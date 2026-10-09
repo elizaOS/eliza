@@ -1,12 +1,17 @@
 /** Authenticates provider webhooks and proxies them to the matching connector gateway. */
-import { timingSafeEqualSecret } from "@/lib/auth/cron";
+import {
+  blooioRecipientIsolationViolation,
+  blooioSenderIsolationViolation,
+  classifyBlooioEnvironment,
+} from "@elizaos/cloud-services-common/blooio-environment";
+import { timingSafeEqualSecret } from "@elizaos/cloud-shared/lib/auth/cron";
 import {
   appendServerTiming,
   ELIZA_TRACE_ID_HEADER,
   resolveElizaTraceId,
-} from "@/lib/observability/http-telemetry";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 type GatewayPlatform = "telegram" | "blooio" | "twilio" | "whatsapp";
 
@@ -444,6 +449,70 @@ async function proxyRequest(
   }
 }
 
+/**
+ * Blooio environment isolation at the edge (#22787). A non-production Worker
+ * refuses to forward for a production sender line and acknowledges, without
+ * forwarding, any message addressed to one.
+ */
+function blooioIsolationResponse(
+  c: AppContext,
+  signedBody: string | undefined,
+): Response | null {
+  const environment = classifyBlooioEnvironment(
+    readStringEnv(c, ["ENVIRONMENT"]),
+  );
+  const senderViolation = blooioSenderIsolationViolation({
+    environment,
+    senderNumber: readStringEnv(c, ["ELIZA_APP_BLOOIO_PHONE_NUMBER"]),
+  });
+  if (senderViolation) {
+    logger.error(
+      "[ElizaAppWebhook] Blooio connector is not environment-isolated",
+      {
+        violation: senderViolation,
+      },
+    );
+    return c.json(
+      {
+        success: false,
+        code: "BLOOIO_ENVIRONMENT_NOT_ISOLATED",
+        error: "Blooio is not configured for this environment",
+      },
+      503,
+    );
+  }
+  if (environment !== "non-production" || !signedBody) return null;
+  let recipient: string | null = null;
+  try {
+    const payload = JSON.parse(signedBody) as {
+      internal_id?: unknown;
+      data?: { recipient?: unknown; channel_address?: unknown };
+    };
+    const candidate =
+      payload.internal_id ??
+      payload.data?.recipient ??
+      payload.data?.channel_address;
+    recipient = typeof candidate === "string" ? candidate : null;
+  } catch {
+    // error-policy:J3 an unparseable body is left to the gateway's schema
+    // validation; isolation only acts on a readable production recipient.
+    return null;
+  }
+  const recipientViolation = blooioRecipientIsolationViolation({
+    environment,
+    recipientNumber: recipient,
+  });
+  if (!recipientViolation) return null;
+  logger.error(
+    "[ElizaAppWebhook] Blooio event addressed to another environment",
+    {
+      violation: recipientViolation,
+    },
+  );
+  // Acknowledge so the provider does not retry into the wrong environment.
+  return c.json({ success: true, ignored: "foreign_environment" }, 200);
+}
+
 export async function forwardToWebhookGateway(
   c: AppContext,
   platform: GatewayPlatform,
@@ -481,6 +550,11 @@ export async function forwardToWebhookGateway(
     const validation = await validateLocalWebhookSignature(c, platform);
     if (validation.response) return validation.response;
     signedBody = validation.body;
+  }
+
+  if (platform === "blooio") {
+    const isolation = blooioIsolationResponse(c, signedBody);
+    if (isolation) return isolation;
   }
 
   const project =

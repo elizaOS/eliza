@@ -1,7 +1,8 @@
 /**
- * Integration tests for log create/get/delete against a real isolated
+ * Integration tests for log create/get/update/delete against a real isolated
  * PGlite/Postgres adapter, covering the `limit`/legacy-`count` param
- * contract, JSON-body escaping and output bounds, and filtering by type.
+ * contract, JSON-body escaping and output bounds, and filtering by type and
+ * entity.
  */
 import {
   type AgentRuntime,
@@ -11,6 +12,7 @@ import {
   type Room,
   type UUID,
 } from "@elizaos/core";
+import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
@@ -20,7 +22,8 @@ import {
   MAX_SQL_JSON_SANITIZE_STRING_BYTES,
   SQL_JSON_SANITIZE_UNBOUNDED,
 } from "../../sanitize-json";
-import { logTable } from "../../schema";
+import { logTable } from "../../schema/log";
+import { roomTable } from "../../schema/room";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
@@ -208,6 +211,39 @@ describe("Log Integration Tests", () => {
       expect(logs).toHaveLength(0);
     });
 
+    it("filters logs by entityId so another entity's rows never leak through", async () => {
+      const otherEntityId = uuidv4() as UUID;
+      await adapter.createEntities([
+        { id: otherEntityId, agentId: testAgentId, names: ["Other Entity"] } as Entity,
+      ]);
+      await adapter.log({
+        body: { message: "mine" },
+        entityId: testEntityId,
+        roomId: testRoomId,
+        type: "shared_type",
+      });
+      await adapter.log({
+        body: { message: "theirs" },
+        entityId: otherEntityId,
+        roomId: testRoomId,
+        type: "shared_type",
+      });
+
+      const mine = await adapter.getLogs({ entityId: testEntityId, type: "shared_type" });
+      expect(mine).toHaveLength(1);
+      expect(mine[0].entityId).toBe(testEntityId);
+      expect(mine[0].body).toEqual({ message: "mine" });
+
+      const theirs = await adapter.getLogs({ entityId: otherEntityId, roomId: testRoomId });
+      expect(theirs).toHaveLength(1);
+      expect(theirs[0].entityId).toBe(otherEntityId);
+
+      const everyone = await adapter.getLogs({ type: "shared_type" });
+      expect(everyone.map((log) => log.entityId).sort()).toEqual(
+        [testEntityId, otherEntityId].sort()
+      );
+    });
+
     it("should filter logs by type", async () => {
       await adapter.log({
         body: { message: "message 1" },
@@ -230,5 +266,143 @@ describe("Log Integration Tests", () => {
       expect(logs).toHaveLength(1);
       expect(logs[0].type).toBe("typeA");
     });
+  });
+
+  describe("agent scoping", () => {
+    const otherAgentId = uuidv4() as UUID;
+    const otherEntityId = uuidv4() as UUID;
+    const otherRoomId = uuidv4() as UUID;
+
+    beforeAll(async () => {
+      await adapter.createAgent({
+        id: otherAgentId,
+        name: `log-scope-agent-${otherAgentId.slice(0, 8)}`,
+        bio: "second agent sharing the database",
+      } as Parameters<typeof adapter.createAgent>[0]);
+      await adapter.createEntities([
+        { id: otherEntityId, agentId: otherAgentId, names: ["Other Entity"] } as Entity,
+      ]);
+      // createRooms stamps the calling adapter's agentId, so the other agent's
+      // room is written directly, as that agent's own adapter would.
+      await (adapter.getDatabase() as DrizzleDatabase).insert(roomTable).values({
+        id: otherRoomId,
+        agentId: otherAgentId,
+        name: "Other Room",
+        source: "test",
+        type: ChannelType.GROUP,
+      });
+    });
+
+    beforeEach(async () => {
+      await (adapter.getDatabase() as DrizzleDatabase).delete(logTable);
+      await adapter.log({
+        body: { who: "this agent" },
+        entityId: testEntityId,
+        roomId: testRoomId,
+        type: "inference_timing",
+      });
+      await adapter.log({
+        body: { who: "other agent" },
+        entityId: otherEntityId,
+        roomId: otherRoomId,
+        type: "inference_timing",
+      });
+    });
+
+    it("returns only this agent's logs when no room filter is given", async () => {
+      const byType = await adapter.getLogs({ type: "inference_timing" });
+      const all = await adapter.getLogs({ limit: Number.MAX_SAFE_INTEGER });
+
+      expect(byType.map((log) => log.body)).toEqual([{ who: "this agent" }]);
+      expect(all.map((log) => log.body)).toEqual([{ who: "this agent" }]);
+    });
+
+    it("does not delete or update another agent's log by id", async () => {
+      const [foreign] = await (adapter.getDatabase() as DrizzleDatabase)
+        .select()
+        .from(logTable)
+        .where(eq(logTable.roomId, otherRoomId));
+
+      await adapter.updateLogs([{ id: foreign.id as UUID, updates: { type: "rewritten" } }]);
+      await adapter.deleteLogs([foreign.id as UUID]);
+
+      const [still] = await (adapter.getDatabase() as DrizzleDatabase)
+        .select()
+        .from(logTable)
+        .where(eq(logTable.id, foreign.id));
+      expect(still?.type).toBe("inference_timing");
+    });
+
+    it("does not read or single-delete another agent's log by id", async () => {
+      const rows = await (adapter.getDatabase() as DrizzleDatabase).select().from(logTable);
+      const own = rows.find((row) => row.roomId === testRoomId);
+      const foreign = rows.find((row) => row.roomId === otherRoomId);
+      if (!own || !foreign) throw new Error("seeded logs missing");
+
+      const read = await adapter.getLogsByIds([own.id as UUID, foreign.id as UUID]);
+      await adapter.deleteLog(foreign.id as UUID);
+
+      expect(read.map((log) => log.body)).toEqual([{ who: "this agent" }]);
+      const [still] = await (adapter.getDatabase() as DrizzleDatabase)
+        .select()
+        .from(logTable)
+        .where(eq(logTable.id, foreign.id));
+      expect(still?.id).toBe(foreign.id);
+    });
+  });
+
+  it("stores a log body holding a truncated emoji with U+FFFD", async () => {
+    await (adapter.getDatabase() as DrizzleDatabase).delete(logTable);
+    await adapter.log({
+      body: { reply: "done \ud83d" },
+      entityId: testEntityId,
+      roomId: testRoomId,
+      type: "lone-surrogate",
+    });
+
+    const [log] = await adapter.getLogs({ roomId: testRoomId, type: "lone-surrogate" });
+    expect(log.body).toEqual({ reply: "done \ufffd" });
+  });
+
+  it("updates a log body with the same NUL and lone-surrogate handling as log()", async () => {
+    await (adapter.getDatabase() as DrizzleDatabase).delete(logTable);
+    await adapter.log({
+      body: { status: "first" },
+      entityId: testEntityId,
+      roomId: testRoomId,
+      type: "lenient-update",
+    });
+    const [log] = await adapter.getLogs({ roomId: testRoomId, type: "lenient-update" });
+    const nul = String.fromCharCode(0);
+
+    await adapter.updateLogs([
+      {
+        id: log.id as UUID,
+        updates: {
+          body: {
+            status: `done${nul} \ud83d`,
+            source: "kept \ud83d\ude42",
+            metadata: { text: `a${nul}b`, reply: "cut \udc00" },
+          },
+        },
+      },
+    ]);
+    const expected = {
+      status: "done \ufffd",
+      source: "kept \ud83d\ude42",
+      metadata: { text: "ab", reply: "cut \ufffd" },
+    };
+    const [updated] = await adapter.getLogs({ roomId: testRoomId, type: "lenient-update" });
+    expect(updated.body).toEqual(expected);
+
+    let deep: Record<string, unknown> = { leaf: true };
+    for (let depth = 0; depth <= MAX_SQL_JSON_SANITIZE_DEPTH; depth += 1) {
+      deep = { child: deep };
+    }
+    await expect(
+      adapter.updateLogs([{ id: log.id as UUID, updates: { body: deep } }])
+    ).rejects.toMatchObject({ code: SQL_JSON_SANITIZE_UNBOUNDED });
+    const [unchanged] = await adapter.getLogs({ roomId: testRoomId, type: "lenient-update" });
+    expect(unchanged.body).toEqual(expected);
   });
 });

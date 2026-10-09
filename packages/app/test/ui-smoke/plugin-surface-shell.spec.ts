@@ -10,6 +10,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { assertHeaderlessViewChrome } from "./helpers/view-header";
 
 for (const viewport of [
   { width: 1440, height: 1000 },
@@ -19,7 +20,7 @@ for (const viewport of [
     { name: "Calendar", path: "/calendar", root: "lifeops-calendar-section" },
     { name: "Eliza Cloud", path: "/cloud", root: "cloud-signed-out" },
   ]) {
-    test(`${view.name} owns its header and back navigation at ${viewport.width}px`, async ({
+    test(`${view.name} keeps its primary action reachable at ${viewport.width}px`, async ({
       page,
     }) => {
       await page.setViewportSize(viewport);
@@ -62,18 +63,42 @@ for (const viewport of [
           }),
         );
       }
+      await openAppPath(page, "/views");
       await openAppPath(page, routePath);
       await expect(page.getByTestId(view.root)).toBeVisible({
         timeout: 60_000,
       });
-      await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-      const back = page.getByRole("button", {
-        name: "Back to launcher",
-        exact: true,
-      });
-      await expect(back).toHaveCount(1);
-      await expect(back).toBeInViewport();
-      await back.click();
+      if (view.path === "/calendar") {
+        const create = page.getByRole("button", {
+          name: "New event",
+          exact: true,
+        });
+        await expect(create).toBeInViewport();
+        await create.click();
+        await expect(page.getByRole("dialog")).toBeVisible();
+        const cancel = page.getByRole("button", {
+          name: "Cancel event editor",
+          exact: true,
+        });
+        await cancel.scrollIntoViewIfNeeded();
+        await cancel.click();
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await expect(page.getByTestId(view.root)).toBeVisible();
+      } else {
+        const connect = page.getByRole("button", {
+          name: "Connect in Settings",
+          exact: true,
+        });
+        await expect(connect).toBeInViewport();
+        await connect.click();
+        await expect(page).toHaveURL(/\/settings(?:[?#]|$)/);
+        await expect(page.getByTestId("settings-shell")).toBeVisible();
+        await expect(page.getByTestId(view.root)).toHaveCount(0);
+      }
+      await openAppPath(page, "/views");
+      await openAppPath(page, routePath);
+      await assertHeaderlessViewChrome(page);
+      await page.goBack();
       await expect(page).toHaveURL(/\/views(?:[?#]|$)/);
       await expect(page.getByTestId(view.root)).toHaveCount(0);
     });
@@ -90,17 +115,26 @@ test("Calendar landscape scrolling exposes an event for opening", async ({
   await expect(page.getByTestId("lifeops-calendar-section")).toBeVisible();
   const event = page.getByRole("button", { name: /Design sync/ }).first();
   await expect(event).toBeAttached();
+  const beforeScroll = await event.boundingBox();
+  if (!beforeScroll)
+    throw new Error("Calendar event must have laid-out geometry");
   await page.mouse.move(400, 260);
-  await page.mouse.wheel(0, 500);
-  await expect(event).toBeInViewport();
+  // Bring the 9 AM event toward the middle of this short screen. A fixed
+  // 500px wheel delta overshoots it into the afternoon after header removal.
+  await page.mouse.wheel(0, Math.max(40, beforeScroll.y - 170));
+  await expect
+    .poll(
+      async () => (await event.boundingBox())?.y ?? Number.POSITIVE_INFINITY,
+    )
+    .toBeLessThan(beforeScroll.y);
+  await expect(event).toBeInViewport({ ratio: 1 });
   await event.click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  await page.mouse.move(600, 180);
-  await page.mouse.wheel(0, 2000);
   const cancel = page.getByRole("button", {
     name: "Cancel event editor",
     exact: true,
   });
+  await cancel.scrollIntoViewIfNeeded();
   await expect(cancel).toBeInViewport();
   await cancel.click({ timeout: 15_000 });
   await expect(page.getByRole("dialog")).toHaveCount(0);

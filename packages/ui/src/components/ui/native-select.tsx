@@ -5,7 +5,7 @@
 
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 
 const nativeSelectVariants = cva(
   "min-h-10 border border-input bg-bg px-3 text-sm text-txt transition-colors disabled:cursor-not-allowed disabled:opacity-50",
@@ -13,6 +13,7 @@ const nativeSelectVariants = cva(
     variants: {
       presentation: {
         default: "w-full rounded-sm",
+        touch: "min-h-touch w-full rounded-sm text-base",
         compact:
           "h-8 w-full rounded-md bg-background px-2 text-base sm:text-xs",
         overlay:

@@ -1,10 +1,11 @@
 // Handles v1 cloud API v1 twitter disconnect route traffic with route-local auth expectations.
+
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { invalidateOAuthState } from "@elizaos/cloud-shared/lib/services/oauth/invalidation";
+import { twitterAutomationService } from "@elizaos/cloud-shared/lib/services/twitter-automation";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { invalidateOAuthState } from "@/lib/services/oauth/invalidation";
-import { twitterAutomationService } from "@/lib/services/twitter-automation";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

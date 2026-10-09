@@ -14,7 +14,7 @@ import {
 import type {
   ApiKeyDisplay,
   ApiKeyStatus,
-} from "../../cloud-ui/components/data-list";
+} from "../../cloud-ui/components/data-list/api-keys-table";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
@@ -50,7 +50,7 @@ export function ApiKeysSurface() {
   // instead of ever resolving.
   const { ready, authenticated } = useSessionAuth();
 
-  const { data: keys, isLoading, isError, error } = useApiKeys();
+  const { data, isLoading, isError, error } = useApiKeys();
 
   useDocumentTitle(t("cloud.apiKeys.metaTitle", { defaultValue: "API Keys" }));
 
@@ -91,5 +91,10 @@ export function ApiKeysSurface() {
     );
   }
 
-  return <ApiKeysView keys={(keys ?? []).map(toDisplayKey)} />;
+  return (
+    <ApiKeysView
+      keys={(data?.keys ?? []).map(toDisplayKey)}
+      usage={data?.usage}
+    />
+  );
 }

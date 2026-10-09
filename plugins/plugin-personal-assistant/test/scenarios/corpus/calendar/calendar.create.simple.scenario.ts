@@ -1,10 +1,10 @@
 /** Scenario fixture for calendar create simple; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
 import {
+  expectTurnToCallAction,
   type ScenarioContext,
   scenario,
-} from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
 
 function assertSimpleMeetingCreated(ctx: ScenarioContext): string | undefined {
   const calls = ctx.actionsCalled.filter(
@@ -49,7 +49,7 @@ export default scenario({
   tags: ["lifeops", "calendar", "smoke", "happy-path"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

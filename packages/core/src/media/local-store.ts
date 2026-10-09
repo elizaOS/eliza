@@ -6,11 +6,12 @@
  * origin) qualify — credentials, query strings, fragments, and every other
  * path are rejected so a persisted attachment row can never induce an
  * authenticated internal request. Mirrors the boundary predicate used at the
- * local-inference vision input (#18760); keep the two in sync by importing
+ * local-inference vision input; keep the two in sync by importing
  * this module rather than re-deriving the pattern.
  */
-import { getLocalServerUrl } from "../utils/node.ts";
-import { MediaFetchError } from "./fetch.ts";
+
+import { getEnv } from "../utils/environment";
+import { MediaFetchError } from "./fetch.js";
 
 /** Shared byte cap for vision image inputs across caller and handler paths. */
 export const VISION_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
@@ -67,4 +68,17 @@ export function trustedLocalMediaUrl(rawUrl: string): URL | null {
 		);
 	}
 	return parsed;
+}
+
+/** Resolve the local agent listener used by the content-addressed media store. */
+
+export function getLocalServerUrl(path: string): string {
+	// ELIZA_API_PORT and ELIZA_PORT identify the app listener; SERVER_PORT is the standalone
+	// fallback.
+	const port =
+		getEnv("ELIZA_API_PORT") ??
+		getEnv("ELIZA_PORT") ??
+		getEnv("SERVER_PORT", "3000");
+	const normalizedPath = path && !path.startsWith("/") ? `/${path}` : path;
+	return `http://localhost:${port}${normalizedPath}`;
 }

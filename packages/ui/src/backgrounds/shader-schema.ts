@@ -22,13 +22,6 @@ export interface ShaderUniformValues {
   u_seed: number;
 }
 
-export const SHADER_UNIFORM_KEYS: ReadonlyArray<keyof ShaderUniformValues> = [
-  "u_speed",
-  "u_scale",
-  "u_intensity",
-  "u_seed",
-];
-
 interface UniformSpec {
   min: number;
   max: number;

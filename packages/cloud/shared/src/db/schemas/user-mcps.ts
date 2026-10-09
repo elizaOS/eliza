@@ -91,15 +91,16 @@ export const userMcps = pgTable(
     color: text("color").default("#6366F1"),
 
     // Pricing configuration
-    pricing_type: mcpPricingTypeEnum("pricing_type").notNull().default("credits"),
+    // Paid listings are retired (#22961, migration 0502): listings are free.
+    pricing_type: mcpPricingTypeEnum("pricing_type").notNull().default("free"),
     credits_per_request: numeric("credits_per_request", {
       precision: 10,
       scale: 4,
-    }).default("1.0000"),
+    }).default("0"),
     x402_price_usd: numeric("x402_price_usd", {
       precision: 10,
       scale: 6,
-    }).default("0.000100"), // $0.0001 default
+    }).default("0"),
     x402_enabled: boolean("x402_enabled").default(false).notNull(),
 
     // Revenue share configuration

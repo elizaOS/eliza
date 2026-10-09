@@ -4,7 +4,7 @@
  * path, or package.json `module`/`main`/`exports["."]` falling back to
  * `dist/index.js`), guards that entry against escaping the plugin directory
  * (including through a symlink), dynamically imports and registers it, and
- * tracks the loaded set so it can later be unloaded. Built JS only — never a
+ * delegates ownership and unloading to the runtime. Built JS only — never a
  * build step. Disk-directory sibling of `load-plugin-from-vfs.ts`, whose
  * `extractPlugin` module→Plugin resolver it reuses.
  */
@@ -18,6 +18,7 @@ import {
   getViewModalities,
   type Plugin,
 } from "@elizaos/core";
+
 import { bindPluginPackageDirectory, getView } from "../api/views-registry.ts";
 import { extractPlugin } from "./load-plugin-from-vfs.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
@@ -49,14 +50,6 @@ export interface LoadPluginFromDirectoryOptions {
   entry?: string;
 }
 
-export interface LoadedDirectoryPlugin {
-  pluginName: string;
-  directory: string;
-  diskPath: string;
-  loadedAt: number;
-}
-
-const loadedPlugins = new Map<string, LoadedDirectoryPlugin>();
 let moduleImportNonce = 0;
 const requireFromAgent = createRequire(import.meta.url);
 
@@ -373,7 +366,7 @@ export async function loadPluginFromDirectory(
     if (!plugin.views) return [];
     return plugin.views.flatMap((view) =>
       getViewModalities(view).flatMap((viewType) => {
-        const entry = getView(view.id, { viewType });
+        const entry = getView(runtime, view.id, { viewType });
         return entry?.pluginName === plugin.name && entry.available
           ? []
           : [`${viewType}:${view.id}`];
@@ -410,13 +403,6 @@ export async function loadPluginFromDirectory(
     }
   }
 
-  loadedPlugins.set(plugin.name, {
-    pluginName: plugin.name,
-    directory: realDirectory,
-    diskPath,
-    loadedAt: Date.now(),
-  });
-
   return { pluginName: plugin.name, loaded: true };
 }
 
@@ -445,16 +431,5 @@ export async function unloadPluginFromDirectory(
     );
   }
   const result = await runtimeWithLifecycle.unloadPlugin(pluginName);
-  loadedPlugins.delete(pluginName);
   return { pluginName, unloaded: result != null };
-}
-
-/** Read-only view of plugins currently tracked as loaded from a directory. */
-export function getLoadedDirectoryPlugins(): readonly LoadedDirectoryPlugin[] {
-  return [...loadedPlugins.values()];
-}
-
-/** Test helper — clears the in-memory tracking map. */
-export function _resetLoadedDirectoryPluginsForTests(): void {
-  loadedPlugins.clear();
 }

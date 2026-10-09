@@ -1,0 +1,225 @@
+#!/usr/bin/env node
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+/**
+ * gpt-5.5 trajectory-training pipeline — Stage 2 corpus manifest builder.
+ *
+ * Enumerates the ENTIRE elizaOS test/eval corpus and emits a machine-readable
+ * manifest describing, per family, every item, the exact trajectory-emitting
+ * run command, and where the trajectory lands. Consumed by harvest-runner.ts.
+ *
+ * This does NOT run any scenario/benchmark/e2e. It only discovers + counts.
+ *
+ * Families:
+ *   scenario   — @elizaos/testing/scenario-runner drives a real AgentRuntime + PGLite.
+ *                Emits eliza_native_v1 trajectories natively via --export-native.
+ *   benchmark  — moved to https://github.com/elizaOS/benchmarks; the stub
+ *                family entry records the move.
+ *   e2e        — *.live.e2e.test.ts / *.real.e2e.test.ts vitest lanes that drive
+ *                a real runtime. Trajectory capture requires ELIZA_SAVE_TRAJECTORIES
+ *                + ELIZA_TRAJECTORY_DIR then native-export conversion (see notes).
+ *
+ * Usage:
+ *   node packages/scripts/training-harvest/build-manifest.ts [--out <path>]
+ */
+import {
+  discoverScenarios,
+  listScenarioMetadata,
+} from "@elizaos/testing/scenarios";
+import { listPackages } from "../lib/workspaces.ts";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
+
+function arg(name, fallback) {
+  const i = process.argv.indexOf(name);
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+}
+
+const DEFAULT_SCENARIO_ROOT = "packages/testing/scenarios";
+
+// Every workspace package's `test/scenarios` dir that exists on disk, discovered
+// through the shared workspace seam (#12332) rather than a hardcoded plugin list.
+// `scenarioFamily` skips any dir with no discoverable scenarios, so a package
+// without scenarios contributes nothing — adding or removing a plugin with
+// scenarios updates the corpus with no edit to this file.
+const SCENARIO_DIRS = [
+  DEFAULT_SCENARIO_ROOT,
+  "packages/benchmarks/suites/personality-bench/scenarios",
+  ...listPackages({ repoRoot: REPO_ROOT }).map((pkg) =>
+    path.posix.join(pkg.dir, "test", "scenarios"),
+  ),
+]
+  .filter((rel) => existsSync(path.join(REPO_ROOT, rel)))
+  .filter((rel, index, all) => all.indexOf(rel) === index)
+  .sort((a, b) => a.localeCompare(b));
+
+const SCENARIO_CLI = "packages/testing/scenario-runner/src/cli.ts";
+
+async function scenarioFamily() {
+  const items = [];
+  for (const rel of SCENARIO_DIRS) {
+    const dir = path.join(REPO_ROOT, rel);
+    const files = await discoverScenarios(dir);
+    if (files.length === 0) continue;
+    const expansion = {
+      existing: (await listScenarioMetadata(dir, undefined, undefined, false))
+        .length,
+      total: (await listScenarioMetadata(dir, undefined, undefined, true))
+        .length,
+    };
+    items.push({
+      id: rel.replace(/[/]/g, "__"),
+      dir: rel,
+      scenarioFiles: files.length,
+      baseScenarios: expansion.existing,
+      expandedScenarios: expansion.total,
+      // The driver enumerates concrete scenario ids at run time via `list`.
+      discover: {
+        cmd: "bun",
+        args: [
+          "--conditions",
+          "eliza-source",
+          "--tsconfig-override",
+          "<TSCONFIG>",
+          SCENARIO_CLI,
+          "list",
+          rel,
+        ],
+        parse: "json-lines-scenario-ids",
+      },
+    });
+  }
+  return {
+    kind: "scenario",
+    emitsTrajectory: "native",
+    trajectoryFormat: "eliza_native_v1",
+    runnerCli: SCENARIO_CLI,
+    tsconfig: "tsconfig.json",
+    // <ID>, <REPORT>, <RUNDIR>, <NATIVE> are substituted per item by the driver.
+    runInvocationTemplate: [
+      "bun",
+      "--conditions",
+      "eliza-source",
+      "--tsconfig-override",
+      "<TSCONFIG>",
+      SCENARIO_CLI,
+      "run",
+      "<DIR>",
+      "--scenario",
+      "<ID>",
+      "--report",
+      "<REPORT>",
+      "--run-dir",
+      "<RUNDIR>",
+      "--export-native",
+      "<NATIVE>",
+    ],
+    trajectoryLands: {
+      report:
+        "<RUNDIR>/report.json (or --report path): aggregate + per-scenario status",
+      perTurn:
+        "<RUNDIR>/trajectories/<agentId>/<trajId>.json (RecordedTrajectory)",
+      native:
+        "<NATIVE>: eliza_native_v1 JSONL (rows carry scenarioStatus + judgeScore)",
+      manifest: "<NATIVE>.manifest.json",
+    },
+    verdictSource:
+      "report .scenarios[].status === 'passed' | native row.scenarioStatus",
+    providerSeam:
+      "API-backed provider selected by packages/testing/src/live-provider.ts; credentials and model settings come from the operator environment",
+    items,
+  };
+}
+
+function benchmarkFamily() {
+  // The benchmark orchestrator and all benchmark suites moved to the
+  // standalone https://github.com/elizaOS/benchmarks repo; harvest them there.
+  return {
+    kind: "benchmark",
+    movedTo: "https://github.com/elizaOS/benchmarks",
+    adapterCount: 0,
+    adapters: [],
+  };
+}
+
+function e2eFamily() {
+  const roots = ["packages", "plugins"];
+  const live = [];
+  const walk = (d) => {
+    if (!existsSync(d)) return;
+    for (const entry of readdirSync(d, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name === "dist") continue;
+      const full = path.join(d, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (
+        entry.name.endsWith(".live.e2e.test.ts") ||
+        entry.name.endsWith(".real.e2e.test.ts")
+      )
+        live.push(path.relative(REPO_ROOT, full));
+    }
+  };
+  for (const r of roots) walk(path.join(REPO_ROOT, r));
+  return {
+    kind: "e2e",
+    emitsTrajectory: "wiring-needed",
+    trajectoryFormat: "eliza_native_v1 (after wiring)",
+    runInvocationTemplate:
+      "ELIZA_SAVE_TRAJECTORIES=1 ELIZA_TRAJECTORY_DIR=<dir> bun --conditions eliza-source vitest run <testFile>",
+    trajectoryWiring:
+      "These vitest lanes drive a real AgentRuntime via createScenarioRuntime/real-runtime helpers. The runtime's JsonFileTrajectoryRecorder writes RecordedTrajectory JSON when ELIZA_SAVE_TRAJECTORIES=1 + ELIZA_TRAJECTORY_DIR are set. Convert with scenario-runner native-export. Verdict = vitest pass/fail per file (coarser than per-scenario).",
+    providerSeam:
+      "API-backed provider selected by packages/app/test/helpers/live-provider.ts.",
+    liveLaneCount: live.length,
+    lanes: live.sort(),
+    scriptedRealServices: [
+      "packages/scripts/provider-smokes/real-llm-attachment-smoke.ts",
+      "packages/scripts/provider-smokes/real-service-audio-roundtrip.ts",
+      "packages/scripts/provider-smokes/real-service-voice-e2e.ts",
+    ],
+  };
+}
+
+const manifest = {
+  schema: "gpt55_harvest_manifest",
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  repoRoot: REPO_ROOT,
+  goal: "Run every elizaOS scenario+benchmark+e2e through the configured API model, harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
+  provider: {
+    mechanism: "API provider selected by packages/testing/src/live-provider.ts",
+    configuration:
+      "Supply provider credentials and model settings through --provider-env or inherited environment variables.",
+    note: "Validate a real scenario with the chosen provider before starting a full harvest.",
+  },
+  trajectoryFormat: {
+    name: "eliza_native_v1",
+    definedIn:
+      "packages/core/src/services/trajectory-types.ts (ElizaNativeTrajectoryRow)",
+    contract: "packages/training/docs/dataset/CANONICAL_RECORD.md",
+    converter:
+      "packages/testing/scenario-runner/src/native-export.ts (exportScenarioNativeJsonl)",
+    trainingPrep:
+      "packages/training/scripts/prepare_eliza1_trajectory_dataset.py",
+  },
+  families: {
+    scenario: await scenarioFamily(),
+    benchmark: benchmarkFamily(),
+    e2e: e2eFamily(),
+  },
+};
+
+const outPath = arg("--out", path.join(__dirname, "manifest.json"));
+writeFileSync(outPath, JSON.stringify(manifest, null, 2));
+
+const s = manifest.families.scenario;
+const sBase = s.items.reduce((a, i) => a + i.baseScenarios, 0);
+const sExp = s.items.reduce((a, i) => a + i.expandedScenarios, 0);
+const sFiles = s.items.reduce((a, i) => a + i.scenarioFiles, 0);
+process.stdout.write(
+  `manifest → ${outPath}\n` +
+    `scenario family: ${s.items.length} dirs, ${sFiles} files, ${sBase} base scenarios, ${sExp} expanded\n` +
+    `benchmark family: ${manifest.families.benchmark.adapterCount} adapters\n` +
+    `e2e family: ${manifest.families.e2e.liveLaneCount} live lanes\n`,
+);

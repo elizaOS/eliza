@@ -3,13 +3,15 @@
  * profile, gated by `DISCORD_SYNC_PROFILE`. Hashes the avatar bytes to skip
  * uploads when nothing changed.
  */
+
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { FetchMediaOptions, IAgentRuntime } from "@elizaos/core";
+import type { FetchMediaOptions } from "@elizaos/core";
 import {
 	ElizaError,
 	fetchRemoteMedia,
+	type IAgentRuntime,
 	resolveStateDir,
 	resolveUserPath,
 } from "@elizaos/core";
@@ -17,27 +19,23 @@ import type { ClientUser } from "discord.js";
 import type { DiscordSettings } from "./types";
 
 const MAX_PROFILE_AVATAR_BYTES = 8 * 1024 * 1024;
-const PROFILE_AVATAR_FETCH_TIMEOUT_MS = 15_000;
+const PROFILE_AVATAR_FETCH_TIMEOUT_MS = 15000;
 const PROFILE_SYNC_STATE_FILE = "discord-profile-sync.v1.json";
 const DEFAULT_DISCORD_PROFILE_AVATAR = "/avatars/eliza.png";
-
 type PersistedDiscordProfileSyncState = {
 	avatarHash?: string;
 	username?: string;
 };
-
 /** Deterministic transport seam for profile-sync tests. Production callers omit it. */
 export type DiscordProfileSyncOptions = Pick<
 	FetchMediaOptions,
 	"fetchImpl" | "lookupFn" | "pinnedFetchImpl"
 >;
-
 function resolveProfileSyncStatePath(
 	env: NodeJS.ProcessEnv = process.env,
 ): string {
 	return path.join(resolveStateDir(env), "cache", PROFILE_SYNC_STATE_FILE);
 }
-
 async function readPersistedProfileSyncState(
 	env: NodeJS.ProcessEnv = process.env,
 ): Promise<PersistedDiscordProfileSyncState> {
@@ -56,7 +54,6 @@ async function readPersistedProfileSyncState(
 		return {};
 	}
 }
-
 async function writePersistedProfileSyncState(
 	state: PersistedDiscordProfileSyncState,
 	env: NodeJS.ProcessEnv = process.env,
@@ -68,7 +65,6 @@ async function writePersistedProfileSyncState(
 		mode: 0o600,
 	});
 }
-
 function normalizeDesiredDiscordName(
 	runtime: IAgentRuntime,
 	settings: DiscordSettings,
@@ -77,16 +73,13 @@ function normalizeDesiredDiscordName(
 	if (configured) {
 		return configured;
 	}
-
 	const characterName = runtime.character.name?.trim();
 	if (characterName) {
 		return characterName;
 	}
-
 	const characterUserName = runtime.character.username?.trim();
 	return characterUserName || undefined;
 }
-
 function readNestedOptionalString(
 	value: unknown,
 	pathSegments: string[],
@@ -98,19 +91,19 @@ function readNestedOptionalString(
 		}
 		cursor = (cursor as Record<string, unknown>)[segment];
 	}
-
 	return typeof cursor === "string" && cursor.trim().length > 0
 		? cursor.trim()
 		: undefined;
 }
-
 /**
  * The desired avatar and whether an operator asked for it. The built-in
  * default is optional: a checkout without the bundled file has nothing to
  * sync, whereas a configured source that cannot be loaded is a real failure.
  */
-type DesiredDiscordAvatar = { source: string; explicit: boolean };
-
+type DesiredDiscordAvatar = {
+	source: string;
+	explicit: boolean;
+};
 function normalizeDesiredDiscordAvatarSource(
 	runtime: IAgentRuntime,
 	settings: DiscordSettings,
@@ -119,7 +112,6 @@ function normalizeDesiredDiscordAvatarSource(
 	if (configured) {
 		return { source: configured, explicit: true };
 	}
-
 	const character = runtime.character as Record<string, unknown> | undefined;
 	const fromIdentity =
 		readNestedOptionalString(character, ["identity", "avatar"]) ??
@@ -127,17 +119,14 @@ function normalizeDesiredDiscordAvatarSource(
 	if (fromIdentity) {
 		return { source: fromIdentity, explicit: true };
 	}
-
 	const fromCharacter =
 		readNestedOptionalString(character, ["avatar"]) ??
 		readNestedOptionalString(character, ["settings", "avatar"]);
 	if (fromCharacter) {
 		return { source: fromCharacter, explicit: true };
 	}
-
 	return { source: DEFAULT_DISCORD_PROFILE_AVATAR, explicit: false };
 }
-
 function extractDataUriPayload(source: string): Buffer | null {
 	const match = source.match(/^data:image\/[^;]+;base64,([a-z0-9+/=]+)$/i);
 	if (!match) {
@@ -145,39 +134,32 @@ function extractDataUriPayload(source: string): Buffer | null {
 	}
 	return Buffer.from(match[1], "base64");
 }
-
 function buildLocalAvatarPathCandidates(source: string): string[] {
 	const candidates = new Set<string>();
 	const trimmed = source.trim();
 	if (!trimmed) {
 		return [];
 	}
-
 	candidates.add(resolveUserPath(trimmed));
-
 	const normalized = trimmed.replace(/\\/g, "/");
 	const withoutLeadingSlash = normalized.replace(/^\/+/, "");
 	if (!withoutLeadingSlash) {
 		return [...candidates];
 	}
-
 	const repoRoot = process.cwd();
 	const publicRoots = [
 		path.join(repoRoot, "cloud", "public"),
 		path.join(repoRoot, "apps", "web", "public"),
 		path.join(repoRoot, "public"),
 	];
-
 	for (const publicRoot of publicRoots) {
 		candidates.add(path.join(publicRoot, withoutLeadingSlash));
 		if (!withoutLeadingSlash.startsWith("avatars/")) {
 			candidates.add(path.join(publicRoot, "avatars", withoutLeadingSlash));
 		}
 	}
-
 	return [...candidates];
 }
-
 async function readAvatarBytesFromLocalCandidates(
 	source: string,
 ): Promise<Buffer> {
@@ -197,7 +179,6 @@ async function readAvatarBytesFromLocalCandidates(
 				// the next declared root is the intended resolution algorithm.
 				continue;
 			}
-
 			// error-policy:J2 a present-but-unreadable candidate is not a miss.
 			// Preserve its machine-readable cause without copying the OS message,
 			// which can contain a user path or other sensitive local details.
@@ -224,7 +205,6 @@ async function readAvatarBytesFromLocalCandidates(
 			);
 		}
 	}
-
 	throw new ElizaError(
 		`Discord profile avatar was not found in ${candidates.length} local candidate path(s).`,
 		{
@@ -234,16 +214,17 @@ async function readAvatarBytesFromLocalCandidates(
 		},
 	);
 }
-
 async function loadDiscordProfileAvatarBytes(
 	source: string,
 	fetchOptions: DiscordProfileSyncOptions,
-): Promise<{ bytes: Buffer; hash: string } | null> {
+): Promise<{
+	bytes: Buffer;
+	hash: string;
+} | null> {
 	const trimmed = source.trim();
 	if (!trimmed) {
 		return null;
 	}
-
 	let bytes: Buffer | null = extractDataUriPayload(trimmed);
 	if (!bytes) {
 		let remoteUrl: URL | null = null;
@@ -257,7 +238,6 @@ async function loadDiscordProfileAvatarBytes(
 			// URL, or local path; a URL parse failure just means "not a remote URL" and
 			// falls through to the local-candidate reader below — not an error.
 		}
-
 		if (remoteUrl) {
 			const fetched = await fetchRemoteMedia({
 				url: trimmed,
@@ -272,7 +252,6 @@ async function loadDiscordProfileAvatarBytes(
 			bytes = await readAvatarBytesFromLocalCandidates(trimmed);
 		}
 	}
-
 	if (!bytes || bytes.length === 0) {
 		return null;
 	}
@@ -281,13 +260,11 @@ async function loadDiscordProfileAvatarBytes(
 			`Discord profile avatar exceeds ${MAX_PROFILE_AVATAR_BYTES} bytes`,
 		);
 	}
-
 	return {
 		bytes,
 		hash: createHash("sha256").update(bytes).digest("hex"),
 	};
 }
-
 export async function syncDiscordClientProfile(
 	runtime: IAgentRuntime,
 	clientUser: Pick<ClientUser, "username"> & {
@@ -300,17 +277,14 @@ export async function syncDiscordClientProfile(
 	if (settings.syncProfile === false) {
 		return;
 	}
-
 	const desiredName = normalizeDesiredDiscordName(runtime, settings);
 	const desiredAvatar = normalizeDesiredDiscordAvatarSource(runtime, settings);
 	if (!desiredName && !desiredAvatar.source) {
 		return;
 	}
-
 	const persisted = await readPersistedProfileSyncState();
 	const nextState: PersistedDiscordProfileSyncState = { ...persisted };
 	let stateChanged = false;
-
 	if (desiredName) {
 		if (persisted.username !== desiredName) {
 			if (clientUser.username !== desiredName) {
@@ -330,7 +304,6 @@ export async function syncDiscordClientProfile(
 			stateChanged = true;
 		}
 	}
-
 	if (desiredAvatar.source) {
 		let avatar: Awaited<ReturnType<typeof loadDiscordProfileAvatarBytes>> =
 			null;
@@ -371,7 +344,6 @@ export async function syncDiscordClientProfile(
 			stateChanged = true;
 		}
 	}
-
 	if (stateChanged) {
 		await writePersistedProfileSyncState(nextState);
 	}

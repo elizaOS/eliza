@@ -1,0 +1,48 @@
+description: "The config of all tools"
+
+tools:
+  click:
+    enabled: true
+
+  type:
+    enabled: true
+
+  scroll:
+    enabled: true
+
+  drag_and_drop:
+    enabled: true
+
+  highlight_text_span:
+    enabled: true
+
+  locate_cursor:
+    enabled: true
+
+  call_code_agent:
+    enabled: true
+  
+  call_search_agent:
+    enabled: true
+    
+  scroll:
+    enabled: true
+
+  hotkey:
+    enabled: true
+
+  hold_and_press:
+    enabled: true
+  
+  wait:
+    enabled: true
+  
+  done:
+    enabled: true
+  
+  fail:
+    enabled: true
+
+  open:
+    enabled: true
+  

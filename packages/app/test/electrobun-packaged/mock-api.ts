@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
+import { fixtureAgentStatus } from "../fixtures/agent-status";
 
 export interface MockApiServerOptions {
   port?: number;
@@ -179,12 +180,12 @@ const firstRunOptions = {
   ],
   providers: [
     {
-      id: "ollama",
-      name: "Ollama",
+      id: "local-inference",
+      name: "Local Inference",
       envKey: null,
-      pluginName: "@elizaos/plugin-zerollama",
+      pluginName: "@elizaos/plugin-local-inference",
       keyPrefix: null,
-      description: "Use local Ollama",
+      description: "Use local inference",
     },
     {
       id: "openai",
@@ -406,8 +407,8 @@ export async function startMockApiServer(
       validationWarnings: [],
     },
     {
-      id: "ollama",
-      name: "Ollama",
+      id: "local-inference",
+      name: "Local Inference",
       description: "Local provider",
       enabled: true,
       configured: true,
@@ -533,13 +534,14 @@ export async function startMockApiServer(
     },
   };
 
-  const statusPayload = () => ({
-    state: agentState,
-    agentName,
-    model: "mock-model",
-    startedAt: Date.now() - 60_000,
-    uptime: 60_000,
-  });
+  const statusPayload = () =>
+    fixtureAgentStatus({
+      state: agentState,
+      agentName,
+      model: "mock-model",
+      startedAt: Date.now() - 60_000,
+      uptime: 60_000,
+    });
 
   const server = http.createServer(async (req, res) => {
     const method = req.method ?? "GET";
@@ -813,13 +815,13 @@ export async function startMockApiServer(
             },
           },
         };
-      } else if (provider === "ollama") {
+      } else if (provider === "local-inference") {
         config = {
           ...config,
           serviceRouting: {
             llmText: {
               transport: "direct",
-              backend: "ollama",
+              backend: "local-inference",
               primaryModel: primaryModel || "eliza-1-9b",
             },
           },
@@ -1013,6 +1015,11 @@ export async function startMockApiServer(
       return;
     }
 
+    if (method === "GET" && pathname === "/api/approvals") {
+      json(res, 200, { pending: [] });
+      return;
+    }
+
     if (method === "GET" && pathname === "/api/notifications") {
       json(res, 200, { notifications: [], unreadCount: 0 });
       return;
@@ -1026,6 +1033,10 @@ export async function startMockApiServer(
       return;
     }
 
+    if (method === "GET" && pathname === "/api/approvals") {
+      json(res, 200, { approvals: [], pending: [], pendingUserActions: [] });
+      return;
+    }
     if (method === "GET" && pathname === "/api/computer-use/approvals") {
       json(res, 200, emptyComputerUseApprovalSnapshot);
       return;
@@ -1084,11 +1095,9 @@ export async function startMockApiServer(
 
     if (method === "GET" && pathname === "/api/workbench/overview") {
       json(res, 200, {
-        tasks: [],
         triggers: [],
         todos: [],
         autonomy: { enabled: true, thinking: false, lastEventAt: null },
-        tasksAvailable: true,
         triggersAvailable: true,
         todosAvailable: true,
       });
@@ -1756,14 +1765,6 @@ export async function startMockApiServer(
         distTags: { stable: "latest", beta: "beta", nightly: "nightly" },
         lastCheckAt: nowIso(),
         error: null,
-      });
-      return;
-    }
-    if (method === "GET" && pathname === "/api/extension/status") {
-      json(res, 200, {
-        relayReachable: false,
-        relayPort: 18792,
-        extensionPath: null,
       });
       return;
     }

@@ -16,9 +16,13 @@ import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ElizaError, type ElizaErrorOptions, logger } from "@elizaos/core";
-import { writeJsonAtomic } from "@elizaos/core/atomic-json";
-import { resolveStateDir } from "../config/paths.ts";
+import {
+  ElizaError,
+  type ElizaErrorOptions,
+  logger,
+  resolveStateDir,
+  writeJsonAtomic,
+} from "@elizaos/core";
 
 const DEFAULT_QUOTA_BYTES = 50 * 1024 * 1024;
 const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -917,9 +921,12 @@ function normalizeSnapshotId(id: string): string {
 
 function isWithin(root: string, candidate: string): boolean {
   const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  // A child named "..notes" is inside the root. Only the segment ".." escapes.
   return (
     relative === "" ||
-    (!relative.startsWith("..") && !path.isAbsolute(relative))
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
   );
 }
 

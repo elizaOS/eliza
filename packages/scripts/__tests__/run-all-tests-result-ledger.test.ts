@@ -1,5 +1,5 @@
 /**
- * Pins the run-all-tests.mjs exactly-once result-ledger contract (#16994).
+ * Pins the run-all-tests.ts exactly-once result-ledger contract (#16994).
  *
  * The suite spawns the real runner against temporary workspace fixture
  * packages (real harness, no mocks) and asserts each false-green class fails
@@ -19,9 +19,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
-const runner = fileURLToPath(new URL("../run-all-tests.mjs", import.meta.url));
+const runner = fileURLToPath(new URL("../run-all-tests.ts", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 // Each case spawns the real runner (workspace discovery over the whole repo),
@@ -144,6 +144,16 @@ describe("run-all-tests result ledger (#16994)", () => {
         expect(record.exitCode).toBe(0);
         expect(record.counts.executed).toBeGreaterThanOrEqual(1);
         expect(record.counts.failures).toBe(0);
+        expect(record.files).toEqual([
+          {
+            file: "sample.test.ts",
+            tests: 1,
+            executedTests: 1,
+            failures: 0,
+            errors: 0,
+            skipped: 0,
+          },
+        ]);
         // --no-cloud must land in the artifact as an explicit exclusion, not
         // silence: a consumer can tell the cloud stage was designed out.
         expect(payload.cloud.status).toBe("excluded");
@@ -180,9 +190,13 @@ describe("run-all-tests result ledger (#16994)", () => {
   test(
     "a hung child is killed and recorded as a timeout failure",
     () => {
-      writeFixture({
-        test: 'node -e "setTimeout(() => {}, 60000)"',
-      });
+      writeFixture(
+        { test: "bun test" },
+        {
+          "sample.test.ts":
+            'import { test } from "bun:test"; test("hung", async () => { await new Promise(() => {}); }, 60000);',
+        },
+      );
       const resultsDir = mkdtempSync(join(tmpdir(), "eliza-results-"));
       const resultsFile = join(resultsDir, "results.json");
       try {
@@ -198,6 +212,10 @@ describe("run-all-tests result ledger (#16994)", () => {
         expect(payload.results).toHaveLength(1);
         expect(payload.results[0].status).toBe("fail");
         expect(payload.results[0].timedOut).toBe(true);
+        expect(payload.results[0].observed).toBe(false);
+        expect(payload.results[0].counts).toBeNull();
+        expect(payload.results[0].files).toBeNull();
+        expect(payload.results[0].evidenceError).toContain("ENOENT");
         expect(payload.failedTaskLabels).toHaveLength(1);
       } finally {
         rmSync(resultsDir, { recursive: true, force: true });
@@ -321,12 +339,26 @@ describe("run-all-tests result ledger (#16994)", () => {
             record,
           ]),
         );
-        const failed = byName.get(FIXTURE_NAME) as { status: string };
+        const failed = byName.get(FIXTURE_NAME) as {
+          status: string;
+          observed: boolean;
+          counts: { failures: number; executed: number };
+          files: Array<{ file: string; failures: number }>;
+        };
         const unreached = byName.get(FIXTURE_B_NAME) as {
           status: string;
           skipReason?: string;
         };
         expect(failed.status).toBe("fail");
+        expect(failed.observed).toBe(true);
+        expect(failed.counts.failures).toBe(1);
+        expect(failed.counts.executed).toBe(1);
+        expect(failed.files).toEqual([
+          expect.objectContaining({
+            file: "sample.test.ts",
+            failures: 1,
+          }),
+        ]);
         expect(unreached.status).toBe("not-run");
         expect(unreached.skipReason).toContain("fail-fast");
         expect(payload.failedTaskLabels).toHaveLength(1);

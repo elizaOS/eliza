@@ -1,33 +1,53 @@
+import { findCheckoutSessionForOrder } from "@/api-app/checkout-reconciliation";
 /**
  * POST /api/stripe/create-checkout-session
  *
- * Creates a Stripe Checkout session for a credit pack or custom-amount top-up.
+ * Creates a Stripe Checkout session for a pay-as-you-go top-up (any whole-cent
+ * amount inside ORGANIZATION_CREDIT_CHECKOUT_LIMITS) or a hardware preorder.
+ * Fixed credit packs are retired (#22963); UI quick picks are plain amounts.
  * Lazily creates a Stripe customer for the org if one doesn't exist.
  */
 
-import { findBySku, HARDWARE_SKUS } from "@elizaos/shared/hardware-catalog";
-import { Hono } from "hono";
-import type Stripe from "stripe";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  requireCurrentBillingManagerSession,
+  requireUserWithOrg,
+} from "@elizaos/cloud-shared/auth";
+import {
+  checkoutAmountUsdToCents,
+  ORGANIZATION_CREDIT_CHECKOUT_LIMITS,
+} from "@elizaos/cloud-shared/billing";
+import {
+  findBySku,
+  HARDWARE_SKUS,
+} from "@elizaos/cloud-shared/hardware-catalog";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { creditsService } from "@/lib/services/credits";
-import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
-import { stripeCustomerAuthorityService } from "@/lib/services/stripe-customer-authority";
-import { isStripeConfigured, requireStripe } from "@/lib/stripe";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { stripeCheckoutOrdersService } from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
+import { stripeCustomerAuthorityService } from "@elizaos/cloud-shared/lib/services/stripe-customer-authority";
+import {
+  isStripeConfigured,
+  requireStripe,
+} from "@elizaos/cloud-shared/lib/stripe";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import type Stripe from "stripe";
+import { z } from "zod";
 
-const CUSTOM_AMOUNT_LIMITS = { MIN_AMOUNT: 1, MAX_AMOUNT: 1000 } as const;
-const CHECKOUT_RECONCILIATION_TIMEOUT_MS = 10_000;
+// Canonical checkout bounds come from the shared organization-credit contract;
+// this route must not restate the range locally (#22963).
+const CUSTOM_AMOUNT_LIMITS = {
+  MIN_AMOUNT: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd,
+  MAX_AMOUNT: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd,
+} as const;
 
 const checkoutRequestSchema = z
   .object({
-    creditPackId: z.string().uuid().optional(),
+    /** Retired (#22963): rejected with a typed error instead of ignored. */
+    creditPackId: z.unknown().optional(),
     amount: z
       .number()
       .min(
@@ -47,6 +67,14 @@ const checkoutRequestSchema = z
     returnUrl: z.enum(["settings", "billing"]).optional().default("settings"),
   })
   .superRefine((data, context) => {
+    if (data.creditPackId !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["creditPackId"],
+        message:
+          "Credit packs are retired; send the top-up amount in USD instead",
+      });
+    }
     const hasExpectedUser = data.expectedUserId !== undefined;
     const hasExpectedOrganization = data.expectedOrganizationId !== undefined;
     if (hasExpectedUser !== hasExpectedOrganization) {
@@ -57,15 +85,15 @@ const checkoutRequestSchema = z
       });
     }
   })
-  .refine((data) => data.creditPackId || data.amount || data.hardwareSku, {
-    message: "Either creditPackId, amount, or hardwareSku must be provided",
+  .refine((data) => data.amount || data.hardwareSku, {
+    message: "Either amount or hardwareSku must be provided",
   });
 
 const app = new Hono<AppEnv>();
 
 app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
-    const user = await requireUserWithOrg(c);
+    let user = await requireUserWithOrg(c);
     const body = await c.req.json();
     const validationResult = checkoutRequestSchema.safeParse(body);
     if (!validationResult.success) {
@@ -77,7 +105,6 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     }
 
     const {
-      creditPackId,
       amount,
       expectedOrganizationId,
       expectedUserId,
@@ -85,6 +112,8 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       hardwareSku,
       returnUrl,
     } = validationResult.data;
+
+    if (!hardwareSku) user = await requireCurrentBillingManagerSession(c);
 
     // Credit checkout callers may pin the principal they rendered. Compare
     // that precondition to the live authenticated principal before catalog,
@@ -150,8 +179,8 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     let lineItems: LineItem[];
     let sessionMetadata: Record<string, string>;
     let creditQuote: {
-      purchaseType: "credit_pack" | "custom_amount";
-      creditPackId: string | null;
+      purchaseType: "custom_amount";
+      creditPackId: null;
       creditsToGrant: string;
       chargeAmountCents: number;
     } | null = null;
@@ -184,49 +213,12 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
         preorder_amount: hardware.priceUsd.toFixed(2),
         type: "hardware_preorder",
       };
-    } else if (creditPackId) {
-      if (stripeCurrency !== "usd") {
-        return c.json({ error: "Credit purchases require USD billing" }, 503);
-      }
-      const creditPack = await creditsService.getCreditPackById(creditPackId);
-      if (!creditPack?.is_active) {
-        return c.json({ error: "Invalid or inactive credit pack" }, 404);
-      }
-
-      const stripePrice = await requireStripe().prices.retrieve(
-        creditPack.stripe_price_id,
-      );
-      if (
-        !stripePrice.active ||
-        stripePrice.currency.toLowerCase() !== "usd" ||
-        stripePrice.unit_amount !== creditPack.price_cents ||
-        stripePrice.recurring
-      ) {
-        return c.json(
-          { error: "Credit pack price is unavailable or out of sync" },
-          503,
-        );
-      }
-      lineItems = [{ price: stripePrice.id, quantity: 1 }];
-      sessionMetadata = {
-        organization_id: organizationId,
-        user_id: user.id,
-        credit_pack_id: creditPackId,
-        credits: creditPack.credits.toString(),
-        type: "credit_pack",
-      };
-      creditQuote = {
-        purchaseType: "credit_pack",
-        creditPackId,
-        creditsToGrant: canonicalCredits(creditPack.credits),
-        chargeAmountCents: creditPack.price_cents,
-      };
     } else if (amount) {
       if (stripeCurrency !== "usd") {
         return c.json({ error: "Credit purchases require USD billing" }, 503);
       }
-      const amountCents = amount * 100;
-      if (!Number.isSafeInteger(amountCents)) {
+      const amountCents = checkoutAmountUsdToCents(amount);
+      if (amountCents === null) {
         return c.json({ error: "Amount must use exact whole cents" }, 400);
       }
       lineItems = [
@@ -257,7 +249,7 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     } else {
       return c.json(
         {
-          error: "Either creditPackId, amount, or hardwareSku must be provided",
+          error: "Either amount or hardwareSku must be provided",
         },
         400,
       );
@@ -303,7 +295,7 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     const cancelUrl = hardwareSku
       ? `${baseUrl}/checkout/cancel?sku=${hardwareSku}`
       : returnUrl === "settings"
-        ? `${baseUrl}/cloud/settings?tab=billing`
+        ? `${baseUrl}/cloud/billing`
         : `${baseUrl}/cloud/billing?canceled=true`;
 
     const requestDigest = creditQuote
@@ -320,6 +312,23 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
           }),
         )
       : null;
+    // Catalog reads and digest computation await work. Recheck immediately
+    // before creating durable order/customer authority or calling Stripe.
+    if (creditQuote) {
+      const current = await requireCurrentBillingManagerSession(c);
+      if (
+        current.id !== user.id ||
+        current.organization_id !== organizationId
+      ) {
+        return c.json(
+          {
+            error: "Checkout identity changed; refresh before retrying",
+            code: "CHECKOUT_PRINCIPAL_CHANGED",
+          },
+          409,
+        );
+      }
+    }
     let checkoutOrder = creditQuote
       ? await stripeCheckoutOrdersService.create({
           organizationId,
@@ -454,69 +463,4 @@ async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
-}
-
-function canonicalCredits(value: string | number): string {
-  const match = /^(\d+)(?:\.(\d{1,6}))?$/.exec(String(value));
-  if (!match?.[1]) throw new Error("Credit pack grant is invalid");
-  return `${match[1]}.${(match[2] ?? "").padEnd(6, "0")}`;
-}
-
-export async function findCheckoutSessionForOrder(
-  stripe: Stripe,
-  order: {
-    id: string;
-    stripe_customer_id: string | null;
-    updated_at: Date;
-  },
-  now: () => number = Date.now,
-): Promise<Stripe.Checkout.Session | null> {
-  if (!order.stripe_customer_id) {
-    throw new Error("Checkout order has no pinned Stripe customer");
-  }
-  const providerAttemptSeconds = Math.floor(order.updated_at.getTime() / 1000);
-  const deadlineAt = now() + CHECKOUT_RECONCILIATION_TIMEOUT_MS;
-  let startingAfter: string | undefined;
-  const seenCursors = new Set<string>();
-  while (true) {
-    if (now() >= deadlineAt) {
-      throw new Error(
-        "Stripe Checkout reconciliation exceeded its operation deadline",
-      );
-    }
-    const sessions = await stripe.checkout.sessions.list({
-      customer: order.stripe_customer_id,
-      created: {
-        gte: Math.max(0, providerAttemptSeconds - 3600),
-        lte: providerAttemptSeconds + 3600,
-      },
-      limit: 100,
-      ...(startingAfter ? { starting_after: startingAfter } : {}),
-    });
-    if (now() >= deadlineAt) {
-      throw new Error(
-        "Stripe Checkout reconciliation exceeded its operation deadline",
-      );
-    }
-    const match = sessions.data.find(
-      (session) =>
-        session.client_reference_id === order.id &&
-        session.metadata?.checkout_order_id === order.id,
-    );
-    if (match) return match;
-    if (!sessions.has_more) return null;
-    if (sessions.data.length === 0) {
-      throw new Error(
-        "Stripe Checkout reconciliation returned an empty continuation page",
-      );
-    }
-    const nextCursor = sessions.data.at(-1)?.id;
-    if (!nextCursor || seenCursors.has(nextCursor)) {
-      throw new Error(
-        "Stripe Checkout reconciliation returned invalid pagination",
-      );
-    }
-    seenCursors.add(nextCursor);
-    startingAfter = nextCursor;
-  }
 }

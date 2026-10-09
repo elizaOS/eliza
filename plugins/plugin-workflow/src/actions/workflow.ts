@@ -13,6 +13,13 @@ import {
   type State,
 } from '@elizaos/core';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
+import { WorkflowApiError } from '../types/index';
+import {
+  workflowCancellationEffect,
+  workflowDefinitionEffect,
+  workflowPendingEffect,
+  workflowSubmissionEffect,
+} from './workflow-effects';
 
 const WORKFLOW_OPS = [
   'list',
@@ -24,6 +31,7 @@ const WORKFLOW_OPS = [
   'deactivate',
   'delete',
   'run',
+  'dossier',
   'cancel_run',
   'executions',
   'revisions',
@@ -36,6 +44,7 @@ interface WorkflowActionParameters {
   action?: unknown;
   workflowId?: unknown;
   executionId?: unknown;
+  sourceId?: unknown;
   seedPrompt?: unknown;
   instruction?: unknown;
   query?: unknown;
@@ -68,8 +77,21 @@ async function respond(
   result: ActionResult,
   metadata?: Record<string, string | number | boolean>
 ): Promise<ActionResult> {
-  if (callback) await callback({ text: result.text ?? '', action: 'WORKFLOW', metadata });
-  return result;
+  // Preview confirmations remain bound to non-applied receipts: the core
+  // delivers their exact pending text/widget but cannot treat them as application proof.
+  // Read-only observations have no effect contract. Empty receipt IDs would
+  // suppress their callbacks at the settlement boundary, not prove a mutation.
+  const settled: ActionResult = result.effectReceipts?.length
+    ? {
+        ...result,
+        userFacingText: result.text ?? '',
+        verifiedUserFacing: true,
+        userFacingEffectReceiptIds: result.effectReceipts.map((receipt) => receipt.receiptId),
+      }
+    : { ...result };
+  if (!result.effectReceipts?.length) delete settled.effectReceipts;
+  if (callback) await callback({ text: settled.text ?? '', action: 'WORKFLOW', metadata });
+  return settled;
 }
 
 export const workflowAction: Action = {
@@ -99,7 +121,7 @@ export const workflowAction: Action = {
     'WORKFLOW_EXECUTIONS',
   ],
   description:
-    'Create, edit, inspect, activate, run, cancel, and delete native Smithers workflows. ' +
+    'Create, edit, inspect, activate, run, cancel, and delete native Smithers workflows. For an explicit on-demand current-day dossier or briefing from the owner’s reviewed phone Calendar and due/overdue reminders, use dossier. This reads only already reviewed native sources, creates no schedule and uses one existing summary pass. If no source has been reviewed, ask the owner to select it in digest settings; do not invent other sources. ' +
     `Provide action=${WORKFLOW_OPS.join('|')}.`,
   parameters: [
     {
@@ -112,6 +134,13 @@ export const workflowAction: Action = {
       name: 'workflowId',
       required: false,
       description: 'Workflow id.',
+      schema: { type: 'string' },
+    },
+    {
+      name: 'sourceId',
+      required: false,
+      description:
+        'Reviewed native source id for an explicit dossier; omit only when exactly one current source is configured.',
       schema: { type: 'string' },
     },
     { name: 'executionId', required: false, description: 'Run id.', schema: { type: 'string' } },
@@ -189,16 +218,54 @@ export const workflowAction: Action = {
           text(params.seedPrompt) ?? text(params.instruction) ?? message.content.text;
         if (!instruction) return { success: false, text: 'A workflow description is required.' };
         const draft = await service.generateWorkflowDraft(instruction, { userId: ownerId });
-        const deployed = await service.deployWorkflow(draft, ownerId, { activate: false });
-        const workflow = await service.getWorkflow(deployed.id, ownerId);
+        if (draft.id !== undefined)
+          throw new Error('Create requires a new definition without an existing workflow id');
+        const workflow = await service.deployWorkflowDefinition(draft, ownerId, {
+          activate: false,
+        });
+        if (workflow.active) throw new Error('Inactive workflow creation was not verified');
         return respond(
           callback,
           {
             success: true,
-            text: `Created “${workflow.name}” as an inactive Smithers workflow.`,
+            text: `Created “${workflow.name}” as an inactive Smithers workflow (${workflow.id}, version ${workflow.versionId}).`,
+            effectReceipts: [workflowDefinitionEffect('create', workflow)],
             data: { workflow, widget: { type: 'workflow', workflowId: workflow.id } },
           },
           { workflowId: workflow.id }
+        );
+      }
+      if (op === 'dossier') {
+        const execution = await service.prepareDossier(
+          ownerId,
+          String(message.id || ''),
+          text(params.sourceId)
+        );
+        if (execution.status !== 'finished')
+          return {
+            success: false,
+            text:
+              execution.error?.message ||
+              'The selected phone sources could not be read. No dossier was completed.',
+          };
+        const output = execution.output;
+        if (
+          !Array.isArray(output) ||
+          output.length !== 1 ||
+          output[0]?.nodeId !== 'typed-steps' ||
+          output[0]?.runId !== execution.id ||
+          typeof output[0]?.text !== 'string'
+        )
+          throw new Error('Completed dossier summary is unavailable');
+        return respond(
+          callback,
+          {
+            success: true,
+            text: output[0].text,
+            effectReceipts: [workflowSubmissionEffect(execution)],
+            data: { summary: output[0].text, manualOnly: true },
+          },
+          { workflowId: execution.workflowId, runId: execution.id }
         );
       }
       if (!workflowId && op !== 'cancel_run')
@@ -224,6 +291,7 @@ export const workflowAction: Action = {
         return respond(callback, {
           success: true,
           text: `Updated “${workflow.name}”.`,
+          effectReceipts: [workflowDefinitionEffect('modify', workflow)],
           data: { workflow },
         });
       }
@@ -235,16 +303,24 @@ export const workflowAction: Action = {
         return respond(callback, {
           success: true,
           text: `${workflow.name} is now ${workflow.active ? 'active' : 'inactive'}.`,
+          effectReceipts: [workflowDefinitionEffect(op, workflow)],
           data: { workflow },
         });
       }
       if (op === 'delete') {
-        await service.deleteWorkflow(workflowId as string, ownerId);
-        return respond(callback, {
-          success: true,
-          text: 'Workflow deleted.',
-          data: { workflowId },
-        });
+        // Legacy deletion is deliberately denied by the service: removal requires
+        // a reviewed version and receipt-preserving lifecycle mutation.
+        return {
+          success: false,
+          text: 'Use reviewed receipt-preserving removal.',
+          effectReceipts: [],
+          failureProvenance: {
+            kind: 'handler_error',
+            boundary: 'handler',
+            code: 'WORKFLOW_REVIEWED_REMOVAL_REQUIRED',
+            retryable: false,
+          },
+        };
       }
       if (op === 'run') {
         const workflow = await service.getWorkflow(workflowId as string, ownerId);
@@ -272,8 +348,13 @@ export const workflowAction: Action = {
           callback,
           {
             success: true,
-            text: `Started workflow run ${execution.id}.\n\n[WORKFLOW]\n${marker}\n[/WORKFLOW]`,
-            data: { execution, widget: { type: 'workflow-run', workflowId, runId: execution.id } },
+            text: `Submitted workflow run ${execution.id}.\n\n[WORKFLOW]\n${marker}\n[/WORKFLOW]`,
+            effectReceipts: [workflowPendingEffect('execute', execution)],
+            data: {
+              execution,
+              submissionReceipt: workflowSubmissionEffect(execution),
+              widget: { type: 'workflow-run', workflowId, runId: execution.id },
+            },
           },
           { workflowId: workflowId as string, runId: execution.id }
         );
@@ -281,11 +362,16 @@ export const workflowAction: Action = {
       if (op === 'cancel_run') {
         const executionId = text(params.executionId);
         if (!executionId) return { success: false, text: 'executionId is required.' };
-        const execution = await service.cancelExecution(executionId, ownerId);
+        const cancellation = await service.cancelExecutionWithReceipt(executionId, ownerId);
+        const execution = cancellation.execution;
+        const receipt = workflowCancellationEffect(cancellation);
         return respond(callback, {
           success: true,
-          text: `Cancellation requested for ${executionId}.`,
-          data: { execution },
+          text: receipt
+            ? `Cancellation request recorded for ${executionId}; current status: ${execution.status}.`
+            : `Run ${executionId} is ${execution.status}; no cancellation request was recorded.`,
+          effectReceipts: receipt ? [workflowPendingEffect('cancel', execution)] : [],
+          data: { execution, ...(receipt ? { cancellationRequestReceipt: receipt } : {}) },
         });
       }
       if (op === 'executions') {
@@ -319,6 +405,7 @@ export const workflowAction: Action = {
         return respond(callback, {
           success: true,
           text: `Restored “${workflow.name}”.`,
+          effectReceipts: [workflowDefinitionEffect('restore', workflow)],
           data: { workflow },
         });
       }
@@ -329,8 +416,48 @@ export const workflowAction: Action = {
         data: { suite },
       });
     } catch (error) {
+      if (
+        error instanceof WorkflowApiError &&
+        record(error.response).code === 'NATIVE_DOSSIER_SOURCE_REVIEW_REQUIRED'
+      )
+        return {
+          success: false,
+          text: error.message,
+          data: {
+            sources: Array.isArray(record(error.response).sources)
+              ? (record(error.response).sources as unknown[]).map((value) => {
+                  const source = record(value);
+                  return {
+                    id: text(source.id),
+                    label: text(source.label),
+                    reviewedAt: text(source.reviewedAt),
+                    expiresAt: text(source.expiresAt),
+                  };
+                })
+              : [],
+          },
+          effectReceipts: [],
+          failureProvenance: {
+            kind: 'handler_error',
+            boundary: 'handler',
+            code: 'NATIVE_DOSSIER_SOURCE_REVIEW_REQUIRED',
+            retryable: false,
+          },
+        };
       // error-policy:J1 action boundary returns the failure to the planner.
-      return { success: false, text: error instanceof Error ? error.message : String(error) };
+      return {
+        success: false,
+        text: error instanceof Error ? error.message : String(error),
+        effectReceipts: [],
+        // A service may commit before a later readback or schedule sync fails.
+        // Do not replay an unqualified mutation after an ambiguous outcome.
+        failureProvenance: {
+          kind: 'handler_error',
+          boundary: 'handler',
+          code: 'WORKFLOW_OPERATION_FAILED_RECONCILE_BEFORE_RETRY',
+          retryable: false,
+        },
+      };
     }
   },
 };

@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest import stage_eliza1_source_weights as stage  # noqa: E402
+from eliza_training.manifest import stage_eliza1_source_weights as stage  # noqa: E402
 
 
 class FakeHfApi:

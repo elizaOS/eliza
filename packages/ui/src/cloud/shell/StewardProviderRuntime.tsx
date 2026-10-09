@@ -1,5 +1,5 @@
 /**
- * Lazy Steward runtime — the heavy `@elizaos/login` / `@elizaos/ui` chunk.
+ * Lazy Steward runtime — the heavy `@elizaos/auth` / `@elizaos/ui` chunk.
  *
  * Loaded only by {@link StewardAuthProvider} when a token is present or the
  * route needs auth, so the wallet/Steward stack never lands on the first-paint
@@ -10,8 +10,11 @@
  * (honoring `exp`) running while a cloud surface is mounted.
  */
 
-import { LoginClient } from "@elizaos/login";
-import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { LoginClient } from "@elizaos/auth";
+import {
+  dispatchStewardSessionChange,
+  replaceStoredStewardTokenIfCurrent,
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import {
   type ComponentProps,
   type ReactNode,
@@ -19,8 +22,8 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { dispatchStewardSessionChange } from "../../events/steward-session-event";
-import { LoginProvider, useAuth as useStewardAuth } from "../../login/index";
+import { LoginProvider } from "../../login/provider";
+import { useAuth as useStewardAuth } from "../../login/useAuth";
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
@@ -40,6 +43,10 @@ import {
   tokenIsExpired,
   tokenSecsRemaining,
 } from "./StewardProviderShared";
+import {
+  loopbackCliToken,
+  useLoopbackCliSession,
+} from "./use-loopback-cli-session";
 
 const REFRESH_CHECK_INTERVAL_MS = 60_000;
 const REFRESH_AHEAD_SECS = 120;
@@ -87,6 +94,9 @@ const ELIZA_STEWARD_THEME: ComponentProps<typeof LoginProvider>["theme"] = {
 
 function AuthTokenSync({ children }: { children: ReactNode }) {
   const auth = useStewardAuth();
+  const cliSession = useLoopbackCliSession();
+  const cliCredential = loopbackCliToken();
+  const cliUser = cliSession.token === cliCredential ? cliSession.user : null;
   const { isAuthenticated, user } = auth;
   const lastSyncedToken = useRef<string | null>(null);
   const wasAuthenticated = useRef(false);
@@ -225,6 +235,8 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
     const checkAndRefresh = async (force = false): Promise<void> => {
       const token = readStoredToken();
       if (!token) return;
+      // A localhost CLI key is verified by Cloud, never refreshed as a JWT.
+      if (loopbackCliToken() === token) return;
       if (!force) {
         const secs = tokenSecsRemaining(token);
         if (secs !== null && secs >= REFRESH_AHEAD_SECS) return;
@@ -240,7 +252,14 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
           if (res.ok) {
             const body = await parseStewardResponseBody(res);
             if (body?.token) {
-              await writeStoredStewardToken(body.token);
+              // Compare-and-swap against the token this refresh started from:
+              // a response that lands after an explicit sign-out (or an
+              // account switch) must not resurrect the ended session.
+              const replaced = await replaceStoredStewardTokenIfCurrent(
+                token,
+                body.token,
+              );
+              if (!replaced) return;
               lastSyncedToken.current = body.token;
               wasAuthenticated.current = true;
             }
@@ -339,21 +358,24 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
   }, [isAuthenticated, user]);
 
   // Map the SDK context to the local context shape explicitly. The structural
-  // pass-through is fragile across @elizaos/login resolutions; verifyEmailCallback
+  // pass-through is fragile across @elizaos/auth resolutions; verifyEmailCallback
   // must narrow the MFA-required union before exposing tokens.
   const localAuth = useMemo<LocalStewardAuthValue>(
     () => ({
-      isAuthenticated: auth.isAuthenticated,
-      isLoading: auth.isLoading,
-      user: auth.user
-        ? {
-            id: auth.user.id,
-            email: auth.user.email ?? undefined,
-            walletAddress: auth.user.walletAddress,
-          }
-        : null,
-      session: auth.session,
+      isAuthenticated: cliCredential ? cliUser !== null : auth.isAuthenticated,
+      isLoading: cliCredential ? cliSession.loading : auth.isLoading,
+      user: cliCredential
+        ? cliUser
+        : auth.user
+          ? {
+              id: auth.user.id,
+              email: auth.user.email ?? undefined,
+              walletAddress: auth.user.walletAddress,
+            }
+          : null,
+      session: cliCredential ? null : auth.session,
       signOut: () => {
+        if (loopbackCliToken()) return clearStaleStewardSession();
         // Retire explicit-sync proof before the SDK begins its own fallible
         // sign-out work. A same-token login after any partial teardown must
         // establish the local server cookie again.
@@ -367,7 +389,8 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
         scrubPersistedAgentProfileTokens();
         return auth.signOut();
       },
-      getToken: () => auth.getToken(),
+      getToken: () =>
+        cliCredential ? (cliUser ? cliCredential : null) : auth.getToken(),
       verifyEmailCallback: async (token: string, email: string) => {
         const result = await auth.verifyEmailCallback(token, email);
         if ("mfaRequired" in result) {
@@ -376,7 +399,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
         return { token: result.token, refreshToken: result.refreshToken };
       },
     }),
-    [auth],
+    [auth, cliSession.loading, cliCredential, cliUser],
   );
 
   return (

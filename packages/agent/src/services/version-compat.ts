@@ -18,14 +18,9 @@ export const AI_PROVIDER_PLUGINS: readonly string[] = [
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
   "@elizaos/plugin-openrouter",
-  "@elizaos/plugin-zerollama",
-  "@elizaos/plugin-google-genai",
   "@elizaos/plugin-groq",
   "@elizaos/plugin-xai",
-  "@elizaos/plugin-zai",
   "@elizaos/plugin-elizacloud",
-  "@elizaos/plugin-codex-cli",
-  "@elizaos/plugin-cli-inference",
   "@elizaos/plugin-nearai",
   "@elizaos/plugin-vercel-ai-gateway",
 ];
@@ -36,10 +31,7 @@ export const AI_PROVIDER_PLUGINS: readonly string[] = [
  * (e.g. "elizaOSCloud") that differs from the npm package name.  The
  * diagnostic must recognise both forms to avoid false-positive warnings.
  */
-const AI_PROVIDER_PLUGIN_ALIASES: readonly string[] = [
-  "elizaOSCloud",
-  "codex-cli",
-];
+const AI_PROVIDER_PLUGIN_ALIASES: readonly string[] = ["elizaOSCloud"];
 
 // ---------------------------------------------------------------------------
 // Semver comparison for stable and prerelease tags.

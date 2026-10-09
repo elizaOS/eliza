@@ -16,7 +16,7 @@
  *   packages/cloud/api/v1/apps/[id]/route.ts
  *   packages/cloud/api/v1/apps/check-name/route.ts
  *
- * Mirrors the gate/cleanup shape of group-l-app-charges: a `serverReachable`
+ * Mirrors the gate/cleanup shape of group-l-app-monetization: a `serverReachable`
  * probe, a `hasTestApiKey` flag, a `describeE2E` skip gate, a `createTestApp()`
  * helper that POSTs with `skipGitHubRepo: true`, a `createdAppIds[]` ledger, and
  * an `afterAll` that DELETEs each created app with `?deleteGitHubRepo=false`.

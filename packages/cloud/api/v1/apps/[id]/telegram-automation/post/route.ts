@@ -1,8 +1,8 @@
 // Handles v1 cloud API v1 apps id telegram automation post route traffic with route-local auth expectations.
-import { Hono } from "hono";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * App Telegram Post API
@@ -10,20 +10,21 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * Manually trigger an announcement for an app.
  */
 
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import {
+  type GenerativeOperationContext,
+  isGenerativeOperationAdmissionError,
+} from "@elizaos/cloud-shared/lib/services/generative-operation";
+import { telegramAppAutomationService } from "@elizaos/cloud-shared/lib/services/telegram-automation/app-automation";
+import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { z } from "zod";
 import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import {
-  type GenerativeOperationContext,
-  isGenerativeOperationAdmissionError,
-} from "@/lib/services/generative-operation";
-import { telegramAppAutomationService } from "@/lib/services/telegram-automation/app-automation";
-import { logger } from "@/lib/utils/logger";
 
 const postSchema = z.object({
   text: z.string().max(4000).optional(),
@@ -43,10 +44,16 @@ async function __hono_POST(
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
+  // Without text the service posts a generated announcement, so a
+  // malformed body must be rejected rather than read as "no text".
+  const decodedBody = await decodeOptionalRequestJson(request);
+  if (!decodedBody.ok) {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
   let body: z.infer<typeof postSchema>;
   try {
-    const rawBody = await request.json().catch(() => ({}));
-    body = postSchema.parse(rawBody);
+    body = postSchema.parse(decodedBody.value);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return Response.json(
@@ -54,7 +61,7 @@ async function __hono_POST(
         { status: 400 },
       );
     }
-    return Response.json({ error: "Invalid request body" }, { status: 400 });
+    throw error;
   }
 
   try {

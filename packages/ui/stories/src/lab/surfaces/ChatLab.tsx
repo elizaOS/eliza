@@ -11,7 +11,7 @@
 import { ChatOverlay } from "@ui-src/components/shell/ChatOverlay";
 import type { ShellController } from "@ui-src/components/shell/useShellController";
 
-import { GlassStyles } from "@ui-src/glass";
+import { GlassStyles } from "@ui-src/glass/GlassSurface";
 import * as React from "react";
 import { createPortal } from "react-dom";
 import {

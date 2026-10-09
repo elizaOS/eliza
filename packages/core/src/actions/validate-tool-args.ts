@@ -8,9 +8,15 @@
  * `pattern`s are compiled defensively and bounded by input length to blunt ReDoS,
  * since a JS regex runs synchronously and cannot be interrupted.
  */
-import type { Action } from "../types";
+import { toActionParameterValue } from "../action-parameter-value";
+import type { Action } from "../types/components.js";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
-import { actionToJsonSchema, type JsonSchema } from "./action-schema";
+import {
+	type ActionParametersJsonSchema,
+	actionToJsonSchema,
+	type JsonSchema,
+	untypedUnionConstraintKeys,
+} from "./action-schema";
 
 export type { JsonSchema } from "./action-schema";
 
@@ -139,11 +145,7 @@ function validateObject(
 	const output: Record<string, unknown> = {};
 
 	for (const key of schema.required ?? []) {
-		if (
-			!hasOwn(value, key) ||
-			value[key] === undefined ||
-			value[key] === null
-		) {
+		if (!hasOwn(value, key) || value[key] === undefined) {
 			errors.push(
 				`Missing required argument '${path ? `${path}.${key}` : key}'`,
 			);
@@ -178,7 +180,7 @@ function validateObject(
 	}
 
 	for (const [key, childSchema] of Object.entries(properties)) {
-		if (hasOwn(value, key) && value[key] !== undefined && value[key] !== null) {
+		if (hasOwn(value, key) && value[key] !== undefined) {
 			const childPath = path ? `${path}.${key}` : key;
 			const before = errors.length;
 			const childValue = validateSchema(
@@ -216,6 +218,8 @@ export function validateSchema(
 	path: string,
 	errors: string[],
 ): unknown {
+	let unionValue = value;
+	let hasUnion = false;
 	if (schema.anyOf && schema.anyOf.length > 0) {
 		let matched: unknown = value;
 		let ok = false;
@@ -233,7 +237,8 @@ export function validateSchema(
 				`Argument '${formatPath(path)}' did not satisfy any anyOf branch`,
 			);
 		}
-		return matched;
+		unionValue = matched;
+		hasUnion = true;
 	}
 
 	if (schema.oneOf && schema.oneOf.length > 0) {
@@ -256,10 +261,39 @@ export function validateSchema(
 				`Argument '${formatPath(path)}' satisfied multiple oneOf branches (${matches})`,
 			);
 		}
-		return matched;
+		unionValue = matched;
+		hasUnion = true;
+	}
+
+	// Check the authored common type and constraints against the original input:
+	// branch defaults/normalization must not hide a sibling constraint failure.
+	if (hasUnion) {
+		const { anyOf: _anyOf, oneOf: _oneOf, ...siblings } = schema;
+		if (!siblings.type) {
+			const unsupported = untypedUnionConstraintKeys(siblings);
+			if (unsupported.length)
+				errors.push(
+					`Argument '${formatPath(path)}' has an unsupported untyped union schema: declare a common type or move ${unsupported.join(", ")} into typed branches`,
+				);
+			return unionValue;
+		}
+		const before = errors.length;
+		const normalized = validateSchema(siblings, value, path, errors);
+		return errors.length === before && unionValue !== value
+			? validateSchema(siblings, unionValue, path, errors)
+			: normalized;
 	}
 
 	switch (schema.type) {
+		case "null":
+			if (value !== null) {
+				errors.push(
+					`Argument '${formatPath(path)}' expected null, got ${describeType(value)}`,
+				);
+				return value;
+			}
+			return validateEnum(schema, value, path, errors);
+
 		case "string": {
 			if (typeof value !== "string") {
 				errors.push(
@@ -338,6 +372,12 @@ export function validateSchema(
 				);
 				return value;
 			}
+			if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+				errors.push(
+					`Argument '${formatPath(path)}' has ${value.length} items, exceeding maximum ${schema.maxItems}`,
+				);
+				return value;
+			}
 			return value.map((entry, index) =>
 				validateSchema(
 					schema.items ?? { type: "string" },
@@ -363,16 +403,45 @@ export function validateSchema(
 	}
 }
 
-function omitDeclaredModelSentinels(
+function normalizeModelParameters(
 	action: Action,
 	args: Record<string, unknown>,
 ): Record<string, unknown> {
 	let normalized = args;
 	for (const parameter of action.parameters ?? []) {
+		if (!hasOwn(args, parameter.name)) continue;
 		const suppliedValue = args[parameter.name];
+		const schema = parameter.schema;
+		const branches = [...(schema.anyOf ?? []), ...(schema.oneOf ?? [])];
+		const requiresObject =
+			schema.type === "object" ||
+			(schema.type === undefined &&
+				branches.length > 0 &&
+				branches.every((branch) => branch.type === "object"));
+		// Decode only a declared object parameter's transport representation.
+		// String and mixed unions retain literal text; recursive schema validation
+		// still enforces every discriminator, property and value after decoding.
+		if (requiresObject && typeof suppliedValue === "string") {
+			let parsed: unknown;
+			try {
+				parsed = JSON.parse(suppliedValue);
+			} catch {
+				// error-policy:J3 malformed model JSON stays untrusted input and fails
+				// the authored object schema rather than guessing or repairing it.
+			}
+			if (isRecord(parsed)) {
+				const value = toActionParameterValue(parsed);
+				if (normalized === args) normalized = { ...args };
+				Object.defineProperty(normalized, parameter.name, {
+					value,
+					enumerable: true,
+					configurable: true,
+					writable: true,
+				});
+			}
+		}
 		if (
 			parameter.required ||
-			!hasOwn(args, parameter.name) ||
 			typeof suppliedValue !== "string" ||
 			!parameter.modelOmissionSentinels?.length
 		) {
@@ -387,6 +456,37 @@ function omitDeclaredModelSentinels(
 		delete normalized[parameter.name];
 	}
 	return normalized;
+}
+
+/** Admits explicitly declared selector aliases without weakening native wire schemas. */
+function admitLegacyRequiredAlternatives(
+	action: Action,
+	schema: ActionParametersJsonSchema,
+	args: Record<string, unknown>,
+): ActionParametersJsonSchema {
+	const required = schema.required.filter((name) => {
+		if (hasOwn(args, name)) return true;
+		const parameter = action.parameters?.find((entry) => entry.name === name);
+		const canonical = schema.properties[name];
+		if (canonical?.type !== "string") return true;
+		return !parameter?.legacyRequiredAlternatives?.some((alternative) => {
+			if (!hasOwn(schema.properties, alternative) || !hasOwn(args, alternative))
+				return false;
+			const alternativeSchema = schema.properties[alternative];
+			const value = args[alternative];
+			if (
+				alternativeSchema.type !== "string" ||
+				typeof value !== "string" ||
+				value.trim().length === 0
+			)
+				return false;
+			const errors: string[] = [];
+			validateSchema(alternativeSchema, value, alternative, errors);
+			validateSchema(canonical, value, name, errors);
+			return errors.length === 0;
+		});
+	});
+	return { ...schema, required };
 }
 
 export function validateToolArgs(
@@ -404,8 +504,18 @@ export function validateToolArgs(
 		};
 	}
 
-	const normalizedArgs = omitDeclaredModelSentinels(action, args);
-	const validatedArgs = validateObject(schema, normalizedArgs, "", errors);
+	const normalizedArgs = normalizeModelParameters(action, args);
+	const admissionSchema = admitLegacyRequiredAlternatives(
+		action,
+		schema,
+		normalizedArgs,
+	);
+	const validatedArgs = validateObject(
+		admissionSchema,
+		normalizedArgs,
+		"",
+		errors,
+	);
 	const invalidParameterNames = Object.keys(normalizedArgs).filter(
 		(name) => !Object.hasOwn(validatedArgs, name),
 	);

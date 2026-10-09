@@ -5,17 +5,20 @@
  * DELETE: hard-delete after ownership check.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import type { NewUserCharacter } from "@elizaos/cloud-shared/db/repositories";
+import {
+  failureResponse,
+  NotFoundError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { cache } from "@elizaos/cloud-shared/lib/cache/client";
+import { CacheKeys } from "@elizaos/cloud-shared/lib/cache/keys";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
+import type { ElizaCharacter } from "@elizaos/cloud-shared/lib/types";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import type { NewUserCharacter } from "@/db/repositories";
-import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { cache } from "@/lib/cache/client";
-import { CacheKeys } from "@/lib/cache/keys";
-import { charactersService } from "@/lib/services/characters/characters";
-import type { ElizaCharacter } from "@/lib/types";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

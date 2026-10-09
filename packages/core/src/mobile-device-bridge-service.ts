@@ -43,7 +43,7 @@ export interface MobileDeviceBridgeStatus {
 /**
  * Runtime service contract for the mobile device bridge.
  *
- * The mobile host (e.g. `@elizaos/plugin-capacitor-bridge`) registers a
+ * The mobile host (e.g. `@elizaos/plugin-native-inference/host-bridge`) registers a
  * concrete subclass via a plugin `services` array; consumers resolve it with
  * `runtime.getService<MobileDeviceBridgeService>(ServiceType.MOBILE_DEVICE_BRIDGE)`.
  * There is no global/`Symbol.for` slot — registration flows through the normal

@@ -12,6 +12,12 @@ import type {
 
 const STATUS_CACHE_TTL_MS = 5_000;
 let statusCache: { expiresAt: number; value: AppBlockerStatus } | null = null;
+let statusGeneration = 0;
+
+function invalidateStatusCache(): void {
+  statusGeneration++;
+  statusCache = null;
+}
 
 // ---------------------------------------------------------------------------
 // Native backend adapter
@@ -32,6 +38,7 @@ export function registerNativeAppBlockerBackend(
   backend: NativeAppBlockerBackend,
 ): void {
   nativeBackend = backend;
+  invalidateStatusCache();
 }
 
 export function getNativeAppBlockerBackend(): NativeAppBlockerBackend | null {
@@ -79,8 +86,13 @@ export async function getCachedAppBlockerStatus(): Promise<AppBlockerStatus> {
   if (statusCache && statusCache.expiresAt > now) {
     return statusCache.value;
   }
+  const generation = statusGeneration;
   const status = await getAppBlockerStatus();
-  statusCache = { expiresAt: now + STATUS_CACHE_TTL_MS, value: status };
+  // A read started before a mutation or backend replacement must not refill
+  // the cache after that change has invalidated it.
+  if (generation === statusGeneration) {
+    statusCache = { expiresAt: now + STATUS_CACHE_TTL_MS, value: status };
+  }
   return status;
 }
 
@@ -104,11 +116,19 @@ export async function selectAppsForBlocking(): Promise<SelectAppsResult> {
 export async function startAppBlock(
   options: BlockAppsOptions,
 ): Promise<BlockAppsResult> {
-  statusCache = null;
-  return getPlugin().blockApps(options);
+  invalidateStatusCache();
+  try {
+    return await getPlugin().blockApps(options);
+  } finally {
+    invalidateStatusCache();
+  }
 }
 
 export async function stopAppBlock(): Promise<UnblockAppsResult> {
-  statusCache = null;
-  return getPlugin().unblockApps();
+  invalidateStatusCache();
+  try {
+    return await getPlugin().unblockApps();
+  } finally {
+    invalidateStatusCache();
+  }
 }

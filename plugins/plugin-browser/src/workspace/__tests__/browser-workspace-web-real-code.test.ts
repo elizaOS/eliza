@@ -59,6 +59,88 @@ describe("browser workspace web-mode real-code command flow", () => {
     await __resetBrowserWorkspaceStateForTests();
   });
 
+  it("keeps navigation metadata distinct from a subsequent page read", async () => {
+    const opened = await executeBrowserWorkspaceCommand(
+      { subaction: "open", url: "about:blank", show: true },
+      webEnv,
+    );
+    expect(opened.pageContentObserved).toBe(false);
+    if (!opened.tab) throw new Error("Open did not return a tab");
+    const id = opened.tab.id;
+    await executeBrowserWorkspaceCommand(
+      {
+        id,
+        subaction: "network",
+        networkAction: "route",
+        url: "https://example.test/title",
+        responseBody: homeHtml,
+      },
+      webEnv,
+    );
+    const navigation = await executeBrowserWorkspaceCommand(
+      {
+        id,
+        subaction: "navigate",
+        url: "https://example.test/title",
+      },
+      webEnv,
+    );
+    expect(navigation.pageContentObserved).toBe(false);
+    expect(navigation.tab?.title).toBe("example.test");
+    const read = await executeBrowserWorkspaceCommand(
+      {
+        id,
+        subaction: "get",
+        selector: "title",
+      },
+      webEnv,
+    );
+    expect(read.value).toBe("Browser Workspace Test Shop");
+    expect(read.pageContentObserved).not.toBe(false);
+  });
+
+  it("reads page prose without script or style payloads and leaves HTML intact", async () => {
+    const tab = await openBrowserWorkspaceTab(
+      { show: true, url: "about:blank" },
+      webEnv,
+    );
+    await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        subaction: "network",
+        networkAction: "route",
+        url: "https://example.test/text",
+        responseBody:
+          '<html><body><h1>Rehearsal</h1><p>Keep all prose.</p><script>window.privateImplementation="script-noise";</script><style>.style-noise{color:red}</style><input name="query" value="visible-search"><input type="hidden" name="csrf" value="hidden-token"><input type="password" name="password" value="password-secret"></body></html>',
+      },
+      webEnv,
+    );
+    await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "navigate", url: "https://example.test/text" },
+      webEnv,
+    );
+    const text = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "get", selector: "body" },
+      webEnv,
+    );
+    expect(text.value).toBe("RehearsalKeep all prose.");
+    const snapshot = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "snapshot" },
+      webEnv,
+    );
+    expect(JSON.stringify(snapshot)).not.toContain("script-noise");
+    expect(JSON.stringify(snapshot)).not.toContain("style-noise");
+    expect(JSON.stringify(snapshot)).toContain("visible-search");
+    expect(JSON.stringify(snapshot)).not.toContain("hidden-token");
+    expect(JSON.stringify(snapshot)).not.toContain("password-secret");
+    const html = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "get", selector: "body", getMode: "html" },
+      webEnv,
+    );
+    expect(html.value).toContain("script-noise");
+    expect(html.value).toContain("style-noise");
+  });
+
   it("navigates, clicks, types, screenshots, and extracts DOM through the command router", async () => {
     const tab = await openBrowserWorkspaceTab(
       { show: true, url: "about:blank" },
@@ -233,6 +315,91 @@ describe("browser workspace web-mode real-code command flow", () => {
     expect(resultText.value).toBe(
       "Form submission reached the routed POST response.",
     );
+  });
+
+  it("uses document base, external form ownership, submitter data, and disabled controls", async () => {
+    const tab = await openBrowserWorkspaceTab(
+      { show: true, url: "about:blank" },
+      webEnv,
+    );
+    const pageUrl = "https://example.test/page";
+    const targetUrl = "https://example.test/base/submit?q=hello&choice=go";
+    const html = `<base href="https://example.test/base/">
+      <a id="relative" href="details">Details</a>
+      <form id="search" action="submit"><input name="q" value="hello"></form>
+      <button id="external" form="search" name="choice" value="go">Go</button>
+      <button id="ordinary" form="search" type="button">Not submit</button>
+      <fieldset disabled><input id="disabled" type="checkbox"><legend><input id="legend" type="checkbox"></legend></fieldset>`;
+    for (const [url, responseBody] of [
+      [pageUrl, html],
+      [targetUrl, "<h1>Submitted</h1>"],
+      ["https://example.test/base/details", "<h1>Details</h1>"],
+    ]) {
+      await executeBrowserWorkspaceCommand(
+        {
+          id: tab.id,
+          subaction: "network",
+          networkAction: "route",
+          url,
+          responseBody,
+        },
+        webEnv,
+      );
+    }
+    await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "navigate", url: pageUrl },
+      webEnv,
+    );
+    await expect(
+      executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "click", selector: "#disabled" },
+        webEnv,
+      ),
+    ).rejects.toThrow(/disabled/);
+    const legend = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "click", selector: "#legend" },
+      webEnv,
+    );
+    expect(legend.value).toMatchObject({ checked: true });
+    const ordinary = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "click", selector: "#ordinary" },
+      webEnv,
+    );
+    expect(ordinary.value).toMatchObject({ text: "Not submit" });
+    const submitted = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "click", selector: "#external" },
+      webEnv,
+    );
+    expect(submitted.tab?.url).toBe(targetUrl);
+    await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "navigate", url: pageUrl },
+      webEnv,
+    );
+    const followed = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "click", selector: "#relative" },
+      webEnv,
+    );
+    expect(followed.tab?.url).toBe("https://example.test/base/details");
+    await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        subaction: "network",
+        networkAction: "route",
+        url: "https://example.test/empty",
+        responseStatus: 204,
+      },
+      webEnv,
+    );
+    await expect(
+      executeBrowserWorkspaceCommand(
+        {
+          id: tab.id,
+          subaction: "navigate",
+          url: "https://example.test/empty",
+        },
+        webEnv,
+      ),
+    ).resolves.toMatchObject({ tab: { url: "https://example.test/empty" } });
   });
 
   it("preserves semantic page content beyond the former fixed snapshot ceiling", async () => {

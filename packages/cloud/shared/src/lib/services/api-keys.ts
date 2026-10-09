@@ -6,10 +6,12 @@
 
 import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
-import { and, eq, gt, isNull, notExists, or, sql } from "drizzle-orm";
+import { and, count, eq, gt, isNull, notExists, or, sql } from "drizzle-orm";
 import { type DbTransaction, dbWrite } from "../../db/client";
 import { encryptApiKey } from "../../db/crypto/api-keys";
-import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories";
+import { writeTransaction } from "../../db/helpers";
+import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories/api-keys";
+import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { ForbiddenError } from "../api/cloud-worker-errors";
 import { isMobileApiKeySecret, MOBILE_API_KEY_PREFIX } from "../auth/mobile-api-key";
@@ -22,10 +24,64 @@ import {
   invalidateInferenceAuthContextsByKeyHashes,
 } from "./inference-auth-cache";
 import { revokeInferenceApiKey } from "./inference-credential-revocation";
+import {
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationResourceLimit,
+} from "./organization-quota-policy";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export { isMobileApiKeySecret, MOBILE_API_KEY_PREFIX } from "../auth/mobile-api-key";
+
+/** Plan-limited count of user-created API keys; keys themselves are free (#22958). */
+export interface ApiKeyUsage {
+  used: number;
+  limit: number;
+  remaining: number;
+}
+
+/** Typed refusal when a user-created key would exceed the plan's API-key ceiling. */
+export class ApiKeyLimitExceededError extends ElizaError {
+  override readonly name = "ApiKeyLimitExceededError";
+  constructor(
+    readonly organizationId: string,
+    readonly used: number,
+    readonly limit: number,
+  ) {
+    super(`Organization has reached its API key limit of ${limit}`, {
+      code: "API_KEY_LIMIT_EXCEEDED",
+      context: { organizationId, used, limit },
+    });
+  }
+}
+
+type UserCreatedApiKeyInput = Omit<
+  NewApiKey,
+  | "key_hash"
+  | "key_prefix"
+  | "key_ciphertext"
+  | "key_nonce"
+  | "key_auth_tag"
+  | "key_kms_key_id"
+  | "key_kms_key_version"
+  | "source_app_id"
+  | "user_created"
+>;
+
+/** Counts keys held against the ceiling: every user-created key not yet deleted. */
+async function countUserCreatedKeys(tx: DbTransaction, organizationId: string): Promise<number> {
+  const [row] = await tx
+    .select({ value: count() })
+    .from(apiKeys)
+    .where(
+      and(
+        eq(apiKeys.organization_id, organizationId),
+        eq(apiKeys.user_created, true),
+        isNull(apiKeys.deleted_at),
+      ),
+    );
+  return Number(row?.value ?? 0);
+}
 
 function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
@@ -106,6 +162,27 @@ export interface MobileApiKeyAccountRevocationResult {
 export interface MobileApiKeySelfRevocationResult extends MobileApiKeyAccountRevocationResult {
   userId: string;
   organizationId: string;
+}
+
+/**
+ * Writes the durable audit record for an API-key mutation inside the SAME
+ * database transaction as the mutation. A throw rolls the mutation back, so a
+ * required audit sink failure can never leave an unaudited key change behind.
+ */
+export type ApiKeyMutationAudit<T> = (tx: DbTransaction, outcome: T) => Promise<void>;
+
+async function withMutationAudit<T>(
+  mutate: (tx: DbTransaction | undefined) => Promise<T>,
+  audit: ApiKeyMutationAudit<T> | undefined,
+  outerTx?: DbTransaction,
+): Promise<T> {
+  if (!audit) return await mutate(outerTx);
+  const run = async (tx: DbTransaction): Promise<T> => {
+    const outcome = await mutate(tx);
+    await audit(tx, outcome);
+    return outcome;
+  };
+  return outerTx ? await run(outerTx) : await dbWrite.transaction(run);
 }
 
 export interface MobileCredentialSummary {
@@ -373,17 +450,60 @@ export class ApiKeysService {
       | "source_app_id"
     >,
     tx?: DbTransaction,
+    audit?: ApiKeyMutationAudit<ApiKey>,
   ): Promise<{
     apiKey: ApiKey;
     plainKey: string;
   }> {
     const { apiKey, plainKey } = await this.buildApiKeyInsert(data);
-    const created = await apiKeysRepository.create(apiKey, tx);
+    const created = await withMutationAudit(
+      (inner) => apiKeysRepository.create(apiKey, inner),
+      audit,
+      tx,
+    );
 
     return {
       apiKey: created,
       plainKey,
     };
+  }
+
+  /**
+   * Creates a user-managed key under the plan's API-key ceiling. The
+   * organization policy lock serializes concurrent creates, so N parallel
+   * requests at N-1 keys admit exactly one. Deactivated keys still count
+   * until deleted, so deactivate/create/reactivate cannot exceed the ceiling.
+   */
+  async createUserManaged(
+    data: UserCreatedApiKeyInput,
+    audit?: ApiKeyMutationAudit<ApiKey>,
+  ): Promise<{ apiKey: ApiKey; plainKey: string; usage: ApiKeyUsage }> {
+    // Encrypt outside the transaction so KMS work does not hold the policy lock.
+    const { apiKey, plainKey } = await this.buildApiKeyInsert({ ...data, user_created: true });
+    return writeTransaction(async (tx) => {
+      await lockOrganizationPolicy(tx, data.organization_id);
+      const policy = await readOrganizationQuotaPolicyInTransaction(tx, data.organization_id);
+      const limit = Number(requireOrganizationResourceLimit(policy, "apiKeys"));
+      const used = await countUserCreatedKeys(tx, data.organization_id);
+      if (used >= limit) throw new ApiKeyLimitExceededError(data.organization_id, used, limit);
+      const created = await apiKeysRepository.create(apiKey, tx);
+      await audit?.(tx, created);
+      return {
+        apiKey: created,
+        plainKey,
+        usage: { used: used + 1, limit, remaining: Math.max(limit - used - 1, 0) },
+      };
+    });
+  }
+
+  /** Reads the organization's API-key usage against its plan ceiling. */
+  async getUsage(organizationId: string): Promise<ApiKeyUsage> {
+    return writeTransaction(async (tx) => {
+      const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
+      const limit = Number(requireOrganizationResourceLimit(policy, "apiKeys"));
+      const used = await countUserCreatedKeys(tx, organizationId);
+      return { used, limit, remaining: Math.max(limit - used, 0) };
+    });
   }
 
   private async buildApiKeyInsert(
@@ -507,6 +627,7 @@ export class ApiKeysService {
             created_at: sql<Date>`NOW()`.as("created_at"),
             updated_at: sql<Date>`NOW()`.as("updated_at"),
             deleted_at: sql<Date | null>`${apiKey.deleted_at ?? null}::timestamp`.as("deleted_at"),
+            user_created: sql<boolean>`false`.as("user_created"),
           })
           .from(sql`(SELECT 1) AS singleton`)
           .where(notExists(usableDefaultKey)),
@@ -575,18 +696,20 @@ export class ApiKeysService {
     await apiKeysRepository.incrementUsage(id);
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, audit?: ApiKeyMutationAudit<void>): Promise<void> {
     const existing = await apiKeysRepository.findByIdConsistent(id);
     if (existing?.source_app_id) {
       throw ForbiddenError(
         "Mobile-issued credentials can only be revoked through the mobile authorization lifecycle",
       );
     }
+    // Inference revocation precedes the row delete: if the audited delete then
+    // rolls back, the key is fenced (fail-closed) and a retry converges.
     if (existing) {
       await revokeInferenceApiKey(existing.organization_id, existing.id);
     }
 
-    await apiKeysRepository.delete(id);
+    await withMutationAudit((tx) => apiKeysRepository.delete(id, tx), audit);
     if (existing) {
       await this.invalidateCache(existing.key_hash);
     }
@@ -600,7 +723,10 @@ export class ApiKeysService {
    * replacement. The old identity is therefore permanently fenced before an
    * atomic database replacement creates the new row identity.
    */
-  async regenerate(id: string): Promise<{ apiKey: ApiKey; plainKey: string }> {
+  async regenerate(
+    id: string,
+    audit?: ApiKeyMutationAudit<ApiKey>,
+  ): Promise<{ apiKey: ApiKey; plainKey: string }> {
     const existing = await apiKeysRepository.findByIdConsistent(id);
     if (!existing) {
       throw new ElizaError("API key not found", {
@@ -624,8 +750,12 @@ export class ApiKeysService {
       rate_limit: existing.rate_limit,
       is_active: true,
       expires_at: existing.expires_at,
+      user_created: existing.user_created,
     });
-    const apiKey = await apiKeysRepository.replace(existing.id, replacement);
+    const apiKey = await withMutationAudit(
+      (tx) => apiKeysRepository.replace(existing.id, replacement, tx),
+      audit,
+    );
     await this.invalidateCache(existing.key_hash);
     return { apiKey, plainKey };
   }
@@ -651,6 +781,7 @@ export class ApiKeysService {
     credentialId: string,
     userId: string,
     organizationId: string,
+    audit?: ApiKeyMutationAudit<MobileApiKeyAccountRevocationResult>,
   ): Promise<MobileApiKeyAccountRevocationResult | null> {
     if (!isUuid(credentialId) || !isUuid(userId) || !isUuid(organizationId)) return null;
 
@@ -663,13 +794,23 @@ export class ApiKeysService {
     if (existingReceipt) return { receipt: existingReceipt, revokedNow: false };
     if (!existing) return null;
 
-    const tombstone = await apiKeysRepository.tombstoneMobileByOwner(
-      credentialId,
-      userId,
-      organizationId,
-      new Date(),
+    const receipt = await withMutationAudit(
+      async (tx) =>
+        mobileRevocationReceipt(
+          await apiKeysRepository.tombstoneMobileByOwner(
+            credentialId,
+            userId,
+            organizationId,
+            new Date(),
+            tx,
+          ),
+        ),
+      audit
+        ? async (tx, revoked) => {
+            if (revoked) await audit(tx, { receipt: revoked, revokedNow: true });
+          }
+        : undefined,
     );
-    const receipt = mobileRevocationReceipt(tombstone);
     if (receipt) return { receipt, revokedNow: true };
 
     const concurrent = mobileRevocationReceipt(
@@ -690,6 +831,7 @@ export class ApiKeysService {
    */
   async revokePresentedMobileCredential(
     secret: string,
+    audit?: ApiKeyMutationAudit<MobileApiKeySelfRevocationResult>,
   ): Promise<MobileApiKeySelfRevocationResult | null> {
     if (!isMobileApiKeySecret(secret)) return null;
     const keyHash = crypto.createHash("sha256").update(secret).digest("hex");
@@ -698,10 +840,15 @@ export class ApiKeysService {
     if (existingResult) return existingResult;
     if (!existing || !isUuid(existing.source_app_id)) return null;
 
-    const tombstone = await apiKeysRepository.tombstoneExactMobileCredential(
-      existing.id,
-      keyHash,
-      new Date(),
+    const tombstone = await withMutationAudit(
+      (tx) =>
+        apiKeysRepository.tombstoneExactMobileCredential(existing.id, keyHash, new Date(), tx),
+      audit
+        ? async (tx, revoked) => {
+            const result = mobileSelfRevocationResult(revoked, true);
+            if (result) await audit(tx, result);
+          }
+        : undefined,
     );
     if (!tombstone) {
       const concurrentResult = mobileSelfRevocationResult(
@@ -730,7 +877,7 @@ export class ApiKeysService {
    * The primary hash lookup is also the proof for a response-loss retry. */
   async revokePresentedStandardCredential(
     secret: string,
-    audit?: (tx: DbTransaction, result: MobileApiKeySelfRevocationResult) => Promise<void>,
+    audit?: ApiKeyMutationAudit<MobileApiKeySelfRevocationResult>,
   ): Promise<MobileApiKeySelfRevocationResult | null> {
     if (!/^eliza_[0-9a-f]{64}$/.test(secret)) return null;
     const hash = crypto.createHash("sha256").update(secret).digest("hex");
@@ -756,17 +903,16 @@ export class ApiKeysService {
         : null;
     let result = resultFor(existing, false);
     if (!result) {
-      const row = await dbWrite.transaction(async (tx) => {
-        const row = await apiKeysRepository.tombstoneExactStandardCredential(
-          existing.id,
-          hash,
-          new Date(),
-          tx,
-        );
-        const value = resultFor(row, true);
-        if (value && audit) await audit(tx, value);
-        return row;
-      });
+      const row = await withMutationAudit(
+        (tx) =>
+          apiKeysRepository.tombstoneExactStandardCredential(existing.id, hash, new Date(), tx),
+        audit
+          ? async (tx, row) => {
+              const value = resultFor(row, true);
+              if (value) await audit(tx, value);
+            }
+          : undefined,
+      );
       result =
         resultFor(row, true) ??
         resultFor(await apiKeysRepository.findByHashConsistent(hash), false);
@@ -782,6 +928,7 @@ export class ApiKeysService {
   /** Revokes only the exact active mobile row proven at the request boundary. */
   async revokeExactMobileCredential(
     credential: Pick<ApiKey, "id" | "key_hash" | "source_app_id">,
+    audit?: ApiKeyMutationAudit<MobileApiKeySelfRevocationResult>,
   ): Promise<MobileApiKeySelfRevocationResult> {
     if (
       !isUuid(credential.id) ||
@@ -810,10 +957,20 @@ export class ApiKeysService {
       });
     }
 
-    const tombstone = await apiKeysRepository.tombstoneExactMobileCredential(
-      credential.id,
-      credential.key_hash,
-      new Date(),
+    const tombstone = await withMutationAudit(
+      (tx) =>
+        apiKeysRepository.tombstoneExactMobileCredential(
+          credential.id,
+          credential.key_hash,
+          new Date(),
+          tx,
+        ),
+      audit
+        ? async (tx, revoked) => {
+            const result = mobileSelfRevocationResult(revoked, true);
+            if (result) await audit(tx, result);
+          }
+        : undefined,
     );
     if (!tombstone) {
       const concurrentResult = mobileSelfRevocationResult(

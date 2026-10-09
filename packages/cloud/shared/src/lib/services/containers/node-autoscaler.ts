@@ -141,7 +141,7 @@ export class NodeAutoscaler {
     private readonly nowFn: () => number = () => Date.now(),
     // Compute provider seam: defaults (lazily, per-call) to `getComputeProvider()`
     // — which resolves to the Hetzner client in production, so behavior is
-    // unchanged. Injecting `InMemoryComputeProvider` here lets tests drive the
+    // unchanged. Injecting a compute provider here lets tests drive the
     // provision/drain path without monkey-patching the module. #8919
     private readonly provider?: ComputeProvider,
     private readonly settlementSleep: (delayMs: number) => Promise<void> = (delayMs) =>
@@ -210,10 +210,27 @@ export class NodeAutoscaler {
       belowBuffer &&
       (!recentlyProvisioned || belowHotFloor);
 
+    // A failed provider delete leaves placement disabled. Rediscover only
+    // explicit persisted deprovision requests, never ordinary operator cordons.
+    const pendingDrains: DockerNode[] = [];
+    for (const node of nodes) {
+      if (
+        !node.enabled &&
+        isAutoscaledHetznerNode(node) &&
+        node.metadata.autoscaleDeprovisionRequested === true &&
+        (await countRetainedWorkloadsOnNode(node.node_id)) === 0
+      ) {
+        pendingDrains.push(node);
+      }
+    }
+
     const drainCandidates =
       shouldScaleUp || belowBuffer
-        ? []
-        : await this.findDrainCandidates(healthyEnabled, allocatedByNode, totalAvailable);
+        ? pendingDrains
+        : [
+            ...pendingDrains,
+            ...(await this.findDrainCandidates(healthyEnabled, allocatedByNode, totalAvailable)),
+          ];
 
     let reason = "steady";
     if (shouldScaleUp) {
@@ -545,7 +562,12 @@ export class NodeAutoscaler {
       throw new HetznerCloudError("not_found", `node ${nodeId} not registered`);
     }
 
-    if (node.enabled) {
+    if (options.deprovision === true && isAutoscaledHetznerNode(node)) {
+      const requested = await dockerNodesRepository.requestAutoscaleDeprovision(node.id);
+      if (!requested) {
+        throw new HetznerCloudError("not_found", `node ${nodeId} disappeared before drain`);
+      }
+    } else if (node.enabled) {
       await dockerNodesRepository.update(node.id, { enabled: false });
       logger.info("[autoscaler] Disabled node for drain", { nodeId });
     }
@@ -610,8 +632,6 @@ export class NodeAutoscaler {
     allocatedByNode: Map<string, number>,
     totalAvailable: number,
   ): Promise<DockerNode[]> {
-    if (healthyEnabled.length <= 1) return [];
-
     const ageThreshold = this.nowFn() - this.policy.idleNodeMinAgeMs;
     const oldEnough = healthyEnabled.filter(
       (n) => isAutoscaledHetznerNode(n) && n.created_at.getTime() < ageThreshold,
@@ -629,8 +649,9 @@ export class NodeAutoscaler {
       })),
     );
 
+    // The configured slot floor is authoritative, including zero. Keeping an
+    // extra node unconditionally would keep charging an empty fleet forever.
     let remainingAvailable = totalAvailable;
-    let remainingHealthyNodes = healthyEnabled.length;
     const drainCandidates: DockerNode[] = [];
 
     for (const { node, retainedCount } of counts) {
@@ -640,12 +661,10 @@ export class NodeAutoscaler {
       if (allocated > 0) continue;
 
       const nodeAvailable = Math.max(0, node.capacity - allocated);
-      if (remainingHealthyNodes <= 1) continue;
       if (remainingAvailable - nodeAvailable < preservationFloor) continue;
 
       drainCandidates.push(node);
       remainingAvailable -= nodeAvailable;
-      remainingHealthyNodes -= 1;
     }
 
     return drainCandidates;

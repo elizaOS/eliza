@@ -1,3 +1,4 @@
+import pytest
 """
 Tests for Tokenization Utilities
 
@@ -12,8 +13,9 @@ MASK FORMAT:
 - mask = token_id: Completion token, trained on
 """
 
-from src.training.tokenization_utils import (
+from eliza_training.rl.tokenization_utils import (
     TokenizationResult,
+    MaskAlignmentError,
     create_masks_from_response_start,
     fix_historical_masks,
     tokenize_conversation_for_trainer,
@@ -387,23 +389,13 @@ class TestCreateMasksFromResponseStart:
         # All prompt (all -100)
         assert masks == [-100, -100, -100, -100, -100]
 
-    def test_negative_start_clamps(self):
-        tokens = [1, 2, 3, 4, 5]
-        response_start = -10
+    def test_negative_start_rejects_invalid_boundary(self):
+        with pytest.raises(MaskAlignmentError):
+            create_masks_from_response_start([1, 2, 3, 4, 5], -10)
 
-        masks = create_masks_from_response_start(tokens, response_start)
-
-        # Clamps to 0, so all completion
-        assert masks == [1, 2, 3, 4, 5]
-
-    def test_beyond_end_clamps(self):
-        tokens = [1, 2, 3, 4, 5]
-        response_start = 100
-
-        masks = create_masks_from_response_start(tokens, response_start)
-
-        # Clamps to end, so all prompt
-        assert masks == [-100, -100, -100, -100, -100]
+    def test_beyond_end_rejects_invalid_boundary(self):
+        with pytest.raises(MaskAlignmentError):
+            create_masks_from_response_start([1, 2, 3, 4, 5], 100)
 
 
 # =============================================================================

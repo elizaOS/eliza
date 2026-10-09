@@ -4,8 +4,8 @@
  * and clears launch parameters only after the owner has handled the outcome.
  */
 import * as React from "react";
-import { decodeOsIntentFromHash } from "../../../os-intent/host";
 import { clearAssistantLaunchPayloadFromHash } from "../../../platform/assistant-launch-payload";
+import { decodeOsIntentFromHash } from "../../../platform/os-intent";
 import type { ShellControllerSync } from "./useShellControllerSync";
 
 export function useOsIntentRouting(sync: ShellControllerSync): void {
@@ -14,8 +14,11 @@ export function useOsIntentRouting(sync: ShellControllerSync): void {
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     let active = true;
-    const consume = (): void => {
-      const hash = window.location.hash;
+    const consume = (event?: HashChangeEvent): void => {
+      // Boot can enqueue several hash changes before the browser delivers them.
+      const hash = event?.newURL
+        ? new URL(event.newURL).hash
+        : window.location.hash;
       const decoded = decodeOsIntentFromHash(hash);
       if (!decoded.ok || processingRef.current.has(decoded.intent.intentId)) {
         return;
@@ -29,7 +32,8 @@ export function useOsIntentRouting(sync: ShellControllerSync): void {
             decoded.intent.type === "send" ? "review-send" : "execute",
         })
         .then(() => {
-          if (active) clearAssistantLaunchPayloadFromHash();
+          if (active && window.location.hash === hash)
+            clearAssistantLaunchPayloadFromHash();
         })
         .catch((error: unknown) =>
           sync.reportError("OS intent dispatch failed", error),

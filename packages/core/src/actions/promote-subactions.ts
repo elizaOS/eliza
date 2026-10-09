@@ -20,12 +20,12 @@ import type {
 	Handler,
 	HandlerCallback,
 	HandlerOptions,
-	IAgentRuntime,
-	JsonValue,
-	Memory,
-	State,
 	Validator,
-} from "../types";
+} from "../types/components.js";
+import type { Memory } from "../types/memory.js";
+import type { JsonValue } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import type { State } from "../types/state.js";
 import {
 	CANONICAL_SUBACTION_KEY,
 	DEFAULT_SUBACTION_KEYS,
@@ -34,7 +34,12 @@ import {
 } from "./subaction-dispatch";
 
 export interface SubactionPromotionOverrides {
-	/** Override the virtual action's description. */
+	/** Complete authored parameters for this operation, before discriminator
+	 * pinning. The parent and other operations keep their original contracts. */
+	parameters?: readonly ActionParameter[];
+	/** Operation-specific description for the virtual. The umbrella
+	 * description is not repeated in it; planner tool rendering states it once
+	 * per exposed family. */
 	description?: string;
 	/**
 	 * Set the virtual action's compressed description — the short one-line
@@ -80,7 +85,51 @@ interface PromotedAction extends Action {
 		parent: string;
 		virtuals: readonly string[];
 		parentRoutingHint?: string;
+		/** The umbrella description at promotion time, stated once per family. */
+		parentDescription: string;
+		subaction: string;
+		/** Operation-specific text from `overrides[subaction].description`. */
+		operationDescription?: string;
 	};
+}
+
+/**
+ * The family context a promoted virtual's own description deliberately omits.
+ * A virtual's `description` carries only its operation-specific text; the
+ * umbrella description is stated once per tool list by planner tool rendering
+ * (and composed back by canonical alias contracts) instead of once per virtual.
+ */
+export function promotedSubactionDescription(action: Action):
+	| {
+			parent: string;
+			parentDescription: string;
+			subaction: string;
+			operationDescription?: string;
+	  }
+	| undefined {
+	const marker = (action as PromotedAction)[PROMOTED_MARKER];
+	return marker
+		? {
+				parent: marker.parent,
+				parentDescription: marker.parentDescription,
+				subaction: marker.subaction,
+				...(marker.operationDescription
+					? { operationDescription: marker.operationDescription }
+					: {}),
+			}
+		: undefined;
+}
+
+/** The pre-split composed text `${parentDescription} — ${blurb}` for a virtual. */
+export function composedPromotedSubactionDescription(
+	action: Action,
+): string | undefined {
+	const promoted = promotedSubactionDescription(action);
+	return promoted
+		? `${promoted.parentDescription} — ${
+				promoted.operationDescription ?? `subaction = ${promoted.subaction}`
+			}`
+		: undefined;
 }
 
 /**
@@ -105,12 +154,38 @@ export function promotedSubactionParent(action: Action): string | undefined {
 }
 
 /**
- * Returns the list of subaction string values declared by an umbrella's
- * `action` parameter (or one of the legacy aliases). The lookup is purely
- * structural: it inspects the JSON Schema enum on the parameter named
- * `action` / `subaction` / `op` / `operation` / `verb`. Returns an empty array
- * if no enum is found.
+ * The discriminator an umbrella call needs to run as one of its promoted
+ * children without the sub-planner: the single-value enum that
+ * `pinDiscriminatorForVirtual` left on the child's copy of the parent's
+ * discriminator parameter. `undefined` unless `childName` is declared in
+ * `parent.subActions` and resolves through the admitted `lookup` to a generated action of this parent
+ * carrying such a pin, so a name that is not a promoted child of this umbrella
+ * can never bypass sub-planner routing.
  */
+export function pinnedDiscriminatorForPromotedChild(
+	parent: Action,
+	childName: string,
+	lookup: (name: string) => Action | undefined,
+): { child: string; discriminator: string; value: string } | undefined {
+	const wanted = toUpperSnake(childName);
+	const declared = parent.subActions?.find(
+		(entry) =>
+			toUpperSnake(typeof entry === "string" ? entry : entry.name) === wanted,
+	);
+	if (!declared) return undefined;
+	const child = lookup(typeof declared === "string" ? declared : declared.name);
+	if (!child || promotedSubactionParent(child) !== parent.name)
+		return undefined;
+	const discriminator = findDiscriminatorParameter(child.parameters);
+	if (!discriminator) return undefined;
+	const enumValues = (discriminator.schema as { enum?: unknown }).enum;
+	if (!Array.isArray(enumValues) || enumValues.length !== 1) return undefined;
+	const value = enumValues[0];
+	if (typeof value !== "string") return undefined;
+	return { child: child.name, discriminator: discriminator.name, value };
+}
+
+/** Reads the discriminator enum from action, subaction, op, operation, or verb. Returns an empty array when none is declared. */
 export function listSubactionsFromParameters(
 	parameters: readonly ActionParameter[] | undefined,
 ): readonly string[] {
@@ -176,23 +251,23 @@ function parameterAppliesToSubaction(
  * Build the virtual's exposed parameter schema:
  *
  * 1. Drop parameters whose `subactions` applicability list excludes the
- *    pinned value. Without this, every virtual duplicates the parent's FULL
- *    schema — a wide umbrella (MESSAGE: 58 parameters, 23 subactions)
- *    multiplies into hundreds of kilobytes of near-identical JSON Schema on
- *    every planner turn even though each virtual's handler reads only a
- *    handful of them. The parent keeps the full surface, so nothing is lost
- *    when the planner picks the umbrella directly. The `subactions` marker
- *    itself is stripped from the virtual's copy — once the discriminator is
- *    pinned the list carries no information.
+ * pinned value. Without this, every virtual duplicates the parent's FULL
+ * schema — a wide umbrella (MESSAGE: 58 parameters, 23 subactions)
+ * multiplies into hundreds of kilobytes of near-identical JSON Schema on
+ * every planner turn even though each virtual's handler reads only a
+ * handful of them. The parent keeps the full surface, so nothing is lost
+ * when the planner picks the umbrella directly. The `subactions` marker
+ * itself is stripped from the virtual's copy — once the discriminator is
+ * pinned the list carries no information.
  *
  * 2. Replace the parent's discriminator parameter (e.g. `action` with
- *    enum=[create, spawn_agent, send, ...]) with one whose enum is pinned to
- *    the single subaction value this virtual represents.
+ * enum=[create, spawn_agent, send,...]) with one whose enum is pinned to
+ * the single subaction value this virtual represents.
  *
  * Why the pinning matters: without it, every virtual exposes the
  * FULL discriminator enum to the LLM's tool schema, even though its name
  * already implies which subaction it dispatches. The model sees
- * `TASKS_SPAWN_AGENT(action: enum[14 values], task, agentType, ...)` and
+ * `TASKS_SPAWN_AGENT(action: enum[14 values], task, agentType,...)` and
  * is asked to set `action` to a value — but `action` is meant to be
  * implicit from the virtual name. With weaker LLMs (hosted small instruct
  * models, native function-calling planners that have to fill structured args),
@@ -208,6 +283,15 @@ function parameterAppliesToSubaction(
  * the discriminator into `mergeOptionsWithSubaction` regardless, so
  * dispatch is unaffected.
  */
+/**
+ * Description a promoted virtual writes on its pinned discriminator. Exported
+ * so the umbrella's alias-contract renderer (planned-tool.ts) can recognise
+ * the pin and carry it as `pins[name] = value` instead of the full override.
+ */
+export function pinnedDiscriminatorDescription(subaction: string): string {
+	return `Subaction discriminator (auto-set to "${subaction}" for this virtual; do not change).`;
+}
+
 function pinDiscriminatorForVirtual(
 	parameters: readonly ActionParameter[] | undefined,
 	subaction: string,
@@ -225,7 +309,7 @@ function pinDiscriminatorForVirtual(
 			const { subactions: _stray, ...discriminatorRest } = parameter;
 			sliced.push({
 				...discriminatorRest,
-				description: `Subaction discriminator (auto-set to "${subaction}" for this virtual; do not change).`,
+				description: pinnedDiscriminatorDescription(subaction),
 				required: false,
 				schema: {
 					...baseSchema,
@@ -362,7 +446,7 @@ function buildVirtualValidator(parent: Action, subaction: string): Validator {
 /**
  * Promote each subaction of an umbrella action to a virtual top-level Action.
  *
- * Returns `[parent, ...virtuals]`. The parent stays at index 0 so callers can
+ * Returns `[parent,...virtuals]`. The parent stays at index 0 so callers can
  * safely spread the result into a plugin's `actions: [...]` array. The parent
  * is annotated with the virtual names as `subActions`; virtual actions inject
  * the parent's structural discriminator into `options.parameters` before
@@ -385,10 +469,15 @@ export function promoteSubactionsToActions(
 		const subKey = sub.toLowerCase();
 		const override = overrides[subKey] ?? {};
 		const virtualName = `${toUpperSnake(namePrefix)}_${toUpperSnake(sub)}`;
-		const subBlurb = override.description
-			? override.description
-			: `subaction = ${subKey}`;
-		const description = `${parent.description} — ${subBlurb}`;
+		// The umbrella description is not repeated per virtual: an exposed
+		// family repeated it once per operation (live: nine MESSAGE_*
+		// tools each restating the MESSAGE description, ~5K planner tokens).
+		// Consumers state it once per family through
+		// `promotedSubactionDescription`.
+		const operationDescription = override.description?.trim() || undefined;
+		const description = operationDescription
+			? `${parent.name} operation "${subKey}": ${operationDescription}`
+			: `${parent.name} operation "${subKey}".`;
 		const similes = Array.from(
 			new Set([
 				// Parent's name is first so simile-based search/routing can still
@@ -396,7 +485,7 @@ export function promoteSubactionsToActions(
 				//
 				// The parent's own simile ARRAY is deliberately NOT inherited:
 				// retrieval drops any simile claimed by more than one catalog
-				// parent as ambiguous (#16567), so with two or more promoted
+				// parent as ambiguous, so with two or more promoted
 				// virtuals, inheritance guarantees every family simile is claimed
 				// by every sibling and dropped — killing simile routing for the
 				// whole umbrella (live 2026-08-10: all TASKS similes dead and
@@ -429,12 +518,17 @@ export function promoteSubactionsToActions(
 			examples,
 			handler: buildVirtualHandler(parent, subKey),
 			validate: buildVirtualValidator(parent, subKey),
-			parameters: pinDiscriminatorForVirtual(parent.parameters, subKey),
+			parameters: pinDiscriminatorForVirtual(
+				override.parameters ?? parent.parameters,
+				subKey,
+			),
 			toolSchemaStrict: parent.toolSchemaStrict,
 			contexts: parent.contexts,
 			contextGate: parent.contextGate,
 			roleGate: parent.roleGate,
 			disclosureGate: parent.disclosureGate,
+			egress: parent.egress,
+			historicalObservationOperations: parent.historicalObservationOperations,
 			cacheStable: parent.cacheStable,
 			cacheScope: parent.cacheScope,
 			suppressPostActionContinuation: parent.suppressPostActionContinuation,
@@ -453,6 +547,9 @@ export function promoteSubactionsToActions(
 				parent: parent.name,
 				virtuals: [virtualName],
 				parentRoutingHint: parent.routingHint,
+				parentDescription: parent.description,
+				subaction: subKey,
+				...(operationDescription ? { operationDescription } : {}),
 			},
 			enumerable: true,
 			configurable: false,

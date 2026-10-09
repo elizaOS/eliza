@@ -1,11 +1,15 @@
 // Handles cloud API elevenlabs voices jobs route traffic with route-local auth expectations.
+
+import {
+  getErrorStatusCode,
+  nextJsonFromCaughtError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { exposedVoiceCloneFailureReason } from "@elizaos/cloud-shared/lib/services/voice-clone-failure";
+import { voiceCloningService } from "@elizaos/cloud-shared/lib/services/voice-cloning";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { getErrorStatusCode, nextJsonFromCaughtError } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { exposedVoiceCloneFailureReason } from "@/lib/services/voice-clone-failure";
-import { voiceCloningService } from "@/lib/services/voice-cloning";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * GET /api/elevenlabs/voices/jobs

@@ -1,10 +1,11 @@
 /**
  * Cost-trend alert banners (over-budget, trending) for the cloud analytics surface.
  */
+
+import type { AnalyticsCostTrendingDto } from "@elizaos/cloud-sdk";
 import { AlertTriangle, Info, TrendingDown } from "lucide-react";
 import type { ReactNode } from "react";
-import { cn } from "../../lib/utils";
-import type { AnalyticsCostTrendingDto } from "../../types/cloud-api";
+import { cn } from "../../../utils/cn";
 
 type CostAlertsTrending = AnalyticsCostTrendingDto;
 
@@ -24,10 +25,13 @@ export function CostAlerts({ costTrending }: CostAlertsProps) {
     costTrending.daysUntilBalanceZero !== null &&
     costTrending.daysUntilBalanceZero < 7
   ) {
+    const days = costTrending.daysUntilBalanceZero;
+    const runway =
+      days < 1 ? "less than 1 day" : days === 1 ? "1 day" : `${days} days`;
     alerts.push({
       type: "error",
       title: "Low Balance",
-      description: `You will run out of balance in ${costTrending.daysUntilBalanceZero} days at current burn rate. Consider adding funds.`,
+      description: `You will run out of balance in ${runway} at current burn rate. Consider adding funds.`,
     });
   }
 
@@ -49,12 +53,12 @@ export function CostAlerts({ costTrending }: CostAlertsProps) {
 
   if (alerts.length === 0) {
     return (
-      <div className="rounded-sm border border-white/10 bg-white/[0.04] p-5 text-sm text-white">
+      <div className="rounded-sm border border-border bg-bg-muted p-5 text-sm text-txt">
         <div className="flex items-start gap-4">
           <TrendingDown className="size-5 shrink-0" />
           <div className="space-y-2">
             <p className="font-semibold">All good</p>
-            <p className="text-sm text-white/70">
+            <p className="text-sm text-muted">
               Usage is tracking within healthy thresholds.
             </p>
           </div>

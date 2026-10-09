@@ -181,4 +181,4 @@ export type {
   InboxAutoReplyConfig,
   InboxTriageConfig,
   InboxTriageRules,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";

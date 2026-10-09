@@ -16,24 +16,26 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import {
-  client,
-  type RuntimeDebugSnapshot,
-  type RuntimeOrderItem,
-  type RuntimeServiceOrderItem,
-} from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type {
+  RuntimeDebugSnapshot,
+  RuntimeOrderItem,
+  RuntimeServiceOrderItem,
+} from "../../api/client-types-core";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useAppSelector } from "../../state";
+import { PageLayout } from "../../layouts/page-layout";
+import { useAppSelector } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatDateTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import {
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "../composites/sidebar/sidebar-layout";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -598,6 +600,7 @@ export function RuntimeView({
       testId="runtime-sidebar"
       collapsible
       contentIdentity="runtime"
+      footerClassName="!pb-[calc(var(--eliza-chat-clearance,0px)+0.5rem)]"
     >
       <SidebarPanel>
         <div className="mt-2 space-y-2">

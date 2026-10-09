@@ -2,8 +2,7 @@
  * Multi-turn agent CONVERSATION journey — KEYLESS mock-LLM variant.
  *
  * The cloud-e2e suite proves provisioning (`provision.spec.ts`), app deploy
- * (`remote-app-deploy.spec.ts`), and the per-app inference-billing loop
- * (`monetized-mock-llm-journey.spec.ts`), but
+ * (`remote-app-deploy.spec.ts`), and app deploy billing, but
  * nothing exercised the biggest uncovered surface: a real agent holding a
  * MULTI-TURN conversation — where turn 2 depends on turn 1's context and the
  * transcript + per-turn billing persist. This spec closes that gap.
@@ -37,8 +36,7 @@
  *   - Creator EARNINGS / per-turn markup are an APP-scoped concept (X-App-Id +
  *     appCreditsService) — the agent-conversation path bills the org for
  *     inference but mints no creator markup, so there is nothing to assert there.
- *     The app earnings loop is covered by monetized-mock-llm-journey.spec.ts and
- *     monetized-full-loop.spec.ts. We assert the per-turn CREDIT DEDUCTION that
+ *     Creator earnings are retired (#22961 / #23022). We assert the per-turn CREDIT DEDUCTION that
  *     genuinely applies to a conversation.
  */
 

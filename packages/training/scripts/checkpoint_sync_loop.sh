@@ -162,7 +162,7 @@ resolve_instance_id() {
 # instance still booting).
 ssh_endpoint() {
   local instance_id="$1"
-  ( cd "$ROOT" && python3 -m scripts.lib.vast ssh "$instance_id" ) 2>/dev/null
+  ( cd "$ROOT" && python3 -m eliza_training.lib.vast ssh "$instance_id" ) 2>/dev/null
 }
 
 # List remote `checkpoint-*` dirs (and `final` if present) under the run.

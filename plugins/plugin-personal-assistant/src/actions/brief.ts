@@ -9,14 +9,21 @@
  *   - `reset_recalibration`  — restore demoted item classes
  *
  * Pulls from each domain (calendar feed, inbox triage, life-domain due items,
- * money recurring charges, regret-audited commitment-ledger obligations) per
- * the `include` arg, then runs a single LLM
- * compose pass to render a narrative over the structured `LifeOpsBriefing`
- * shape. Briefings are kept in-memory.
+ * regret-audited commitment-ledger obligations) per
+ * the `include` arg. Standalone callers compose the narrative locally; planned
+ * turns defer complete narrative grounding to final reply composition.
+ * Briefings are kept in-memory.
  *
  * Owner-only — `hasLifeOpsAccess` (which delegates to `hasOwnerAccess`).
  */
 
+import type {
+  LifeOpsGoogleConnectorStatus,
+  LifeOpsOccurrenceView,
+  LifeOpsOverview,
+  LifeOpsTaskDefinition,
+} from "@elizaos/contracts";
+import { calendarDateKey, resolveCalendarTimeZone } from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -25,18 +32,30 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  MessageRef,
+  State,
 } from "@elizaos/core";
 import {
-  getDefaultTriageService,
+  ActionMode,
+  applyGroundedActionReply,
+  createUnavailableGroundedActionReply,
+  ElizaError,
+  extractUserText,
+  getActionReplyOwner,
   getTrajectoryContext,
   logger,
   ModelType,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
+  unwrapUserMessageText,
 } from "@elizaos/core";
-import { FinancesService } from "@elizaos/plugin-finances/finances-service";
+import type { MessageRef, TriageOptions } from "@elizaos/plugin-assistant";
+import { getDefaultTriageService, rankScored } from "@elizaos/plugin-assistant";
+import {
+  resolveCalendarWindow,
+  resolveNextCalendarEventWindow,
+} from "@elizaos/plugin-calendar";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { isWholeGenericBriefRequest } from "../lifeops/briefing/direct-routing.js";
 import {
   buildBriefEditorialContract,
   type LifeOpsBriefItemEngagementSummary,
@@ -48,20 +67,25 @@ import {
   buildCommitmentRegretAudit,
   type CommitmentRegretAuditItem,
 } from "../lifeops/commitments/index.js";
+import { DEFAULT_TIME_WINDOWS } from "../lifeops/defaults.js";
+import { resolveOwnerDefinitionSurface } from "../lifeops/definition-owner-surface.js";
+import { formatCalendarEventDateTime } from "../lifeops/google/format-helpers.js";
 import {
   BRIEF_NARRATIVE_INSTRUCTIONS,
   MEETING_PREP_INSTRUCTIONS,
 } from "../lifeops/optimized-prompt-instructions.js";
+import { resolveOwnerFactStore } from "../lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import type {
   LifeOpsBriefing,
   LifeOpsBriefingCalendarItem,
   LifeOpsBriefingCommitmentItem,
   LifeOpsBriefingEditorialContract,
+  LifeOpsBriefingInboxCollection,
   LifeOpsBriefingInboxItem,
   LifeOpsBriefingKind,
+  LifeOpsBriefingLifeCollection,
   LifeOpsBriefingLifeItem,
-  LifeOpsBriefingMoneyItem,
   LifeOpsBriefingPeriod,
   LifeOpsBriefingSections,
 } from "../types/briefing.js";
@@ -137,7 +161,6 @@ interface BriefIncludeFlags {
   calendar?: boolean;
   inbox?: boolean;
   life?: boolean;
-  money?: boolean;
   commitments?: boolean;
 }
 
@@ -158,21 +181,21 @@ const INTERNAL_URL = new URL("http://127.0.0.1/");
 interface BriefLifeOpsService {
   getCalendarFeed(
     requestUrl: URL,
-    request: { timeMin: string; timeMax: string },
+    request: { timeMin: string; timeMax: string; timeZone: string },
   ): Promise<{ events?: readonly unknown[] }>;
-  getOverview(): Promise<{
-    occurrences?: readonly unknown[];
-    reminders?: readonly unknown[];
-    goals?: readonly unknown[];
-  }>;
-  listOwnerOccurrencesCompletedToday(): Promise<
-    ReadonlyArray<{
-      id: string;
-      definitionKind: string;
-      title: string;
-      dueAt: string | null;
-    }>
+  getOverview(): Promise<
+    Pick<LifeOpsOverview, "occurrences" | "reminders" | "goals" | "summary">
   >;
+  listOwnerOccurrencesCompletedToday(): Promise<
+    readonly LifeOpsOccurrenceView[]
+  >;
+  definitions: {
+    listDefinitionRows(): Promise<readonly LifeOpsTaskDefinition[]>;
+  };
+  getGoogleConnectorAccounts(
+    requestUrl: URL,
+    side?: "owner" | "agent",
+  ): Promise<LifeOpsGoogleConnectorStatus[]>;
 }
 
 async function getBriefLifeOpsService(
@@ -182,19 +205,28 @@ async function getBriefLifeOpsService(
   return new LifeOpsService(runtime);
 }
 
-function periodWindow(period: LifeOpsBriefingPeriod): {
+async function periodWindow(
+  runtime: IAgentRuntime,
+  period: LifeOpsBriefingPeriod,
+): Promise<{
   readonly start: Date;
   readonly end: Date;
-} {
+  readonly timeZone: string;
+}> {
   const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  if (period === "tomorrow") {
-    start.setDate(start.getDate() + 1);
-  }
-  const end = new Date(start);
-  end.setDate(end.getDate() + (period === "this_week" ? 7 : 1));
-  return { start, end };
+  const { timeZone } = await resolveCalendarTimeZone(runtime, now);
+  const today = resolveCalendarWindow({ now, timeZone });
+  const window =
+    period === "tomorrow"
+      ? resolveCalendarWindow({ now: new Date(today.timeMax), timeZone })
+      : period === "this_week"
+        ? resolveNextCalendarEventWindow({ now, timeZone, lookaheadDays: 7 })
+        : today;
+  return {
+    start: new Date(window.timeMin),
+    end: new Date(window.timeMax),
+    timeZone,
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -228,57 +260,49 @@ function mapMessageRefToBriefingItem(
   };
 }
 
-function normalizeLifeKind(value: unknown): LifeOpsBriefingLifeItem["kind"] {
-  return value === "todo" ||
-    value === "reminder" ||
-    value === "habit" ||
-    value === "goal"
-    ? value
-    : "reminder";
-}
-
-function normalizeMoneyCadence(
-  value: unknown,
-): LifeOpsBriefingMoneyItem["cadence"] {
-  switch (value) {
-    case "weekly":
-    case "monthly":
-    case "irregular":
-      return value;
-    case "annual":
-    case "yearly":
-      return "yearly";
-    case "daily":
-      return "daily";
-    default:
-      return "irregular";
+function briefingDefinitionKind(
+  definition: LifeOpsTaskDefinition | undefined,
+): LifeOpsBriefingLifeItem["kind"] {
+  if (definition) {
+    switch (resolveOwnerDefinitionSurface(definition)) {
+      case "OWNER_REMINDERS":
+      case "OWNER_ALARMS":
+        return "reminder";
+      case "OWNER_ROUTINES":
+        return "habit";
+      case "OWNER_TODOS":
+        return "todo";
+    }
   }
+  throw new ElizaError(
+    "The briefing item's definition classification is unavailable.",
+    {
+      code: "BRIEF_DEFINITION_CLASSIFICATION_UNAVAILABLE",
+    },
+  );
 }
 
 async function loadCalendarFromLifeOps(args: {
   runtime: IAgentRuntime;
   period: LifeOpsBriefingPeriod;
 }): Promise<readonly LifeOpsBriefingCalendarItem[]> {
-  try {
-    const service = await getBriefLifeOpsService(args.runtime);
-    const { start, end } = periodWindow(args.period);
-    const feed = await service.getCalendarFeed(INTERNAL_URL, {
-      timeMin: start.toISOString(),
-      timeMax: end.toISOString(),
-    });
-    const events = Array.isArray(feed.events) ? feed.events : [];
-    return events.map((event) =>
-      mapCalendarFeedEventToBriefingItem(event, {
-        startAt: start.toISOString(),
-        endAt: end.toISOString(),
-      }),
-    );
-  } catch (error) {
-    logger.warn(
-      `[BRIEF] calendar load failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return [];
-  }
+  const service = await getBriefLifeOpsService(args.runtime);
+  const { start, end, timeZone } = await periodWindow(
+    args.runtime,
+    args.period,
+  );
+  const feed = await service.getCalendarFeed(INTERNAL_URL, {
+    timeMin: start.toISOString(),
+    timeMax: end.toISOString(),
+    timeZone,
+  });
+  const events = Array.isArray(feed.events) ? feed.events : [];
+  return events.map((event) =>
+    mapCalendarFeedEventToBriefingItem(event, {
+      startAt: start.toISOString(),
+      endAt: end.toISOString(),
+    }),
+  );
 }
 
 /** Preserve the calendar provider event id used by later mutation receipts. */
@@ -306,114 +330,171 @@ export function mapCalendarFeedEventToBriefingItem(
 async function loadInboxFromTriage(args: {
   runtime: IAgentRuntime;
   period: LifeOpsBriefingPeriod;
-}): Promise<readonly LifeOpsBriefingInboxItem[]> {
-  if (typeof args.runtime.getService !== "function") return [];
-  try {
-    const { start } = periodWindow(args.period);
-    const refs = await getDefaultTriageService().triage(args.runtime, {
-      sinceMs: start.getTime(),
+  explicit?: boolean;
+}): Promise<LifeOpsBriefingInboxCollection | undefined> {
+  const triage = getDefaultTriageService();
+  const reads: TriageOptions[] = [];
+  let failed = 0;
+  const reportFailure = (
+    error: unknown,
+    source: string,
+    accountId?: string,
+  ) => {
+    failed++;
+    args.runtime.reportError("Brief.loadInbox", error, {
+      source: "inbox",
+      messageSource: source,
+      ...(accountId ? { accountId } : {}),
     });
-    return refs.map(mapMessageRefToBriefingItem);
-  } catch (error) {
-    logger.warn(
-      `[BRIEF] inbox load failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return [];
+  };
+  for (const adapter of triage.listAdapters()) {
+    if (!adapter.capabilities().list) continue;
+    if (adapter.source !== "gmail") {
+      if (adapter.isAvailable(args.runtime))
+        reads.push({ sources: [adapter.source] });
+      continue;
+    }
+    try {
+      const service = await getBriefLifeOpsService(args.runtime);
+      const accounts = await service.getGoogleConnectorAccounts(
+        INTERNAL_URL,
+        "owner",
+      );
+      for (const account of accounts) {
+        if (
+          !account.configured ||
+          !(account.connected || account.reason === "needs_reauth") ||
+          !account.grantedCapabilities.includes("google.gmail.triage")
+        )
+          continue;
+        const accountId = account.grant?.connectorAccountId;
+        if (!accountId || !adapter.isAvailable(args.runtime)) {
+          reportFailure(
+            new ElizaError(
+              "The configured Gmail inbox reader is unavailable.",
+              { code: "BRIEF_CONFIGURED_INBOX_UNAVAILABLE" },
+            ),
+            "gmail",
+            accountId ?? undefined,
+          );
+          continue;
+        }
+        reads.push({ sources: ["gmail"], worldIds: [accountId] });
+      }
+    } catch (error) {
+      reportFailure(error, "gmail");
+    }
   }
+  if (reads.length === 0 && failed === 0) {
+    return args.explicit ? { items: [], coverage: "not_connected" } : undefined;
+  }
+  const { start } = await periodWindow(args.runtime, args.period);
+  const refs: MessageRef[] = [];
+  let succeeded = 0;
+  for (const read of reads) {
+    try {
+      refs.push(
+        ...(await triage.triage(args.runtime, {
+          ...read,
+          sinceMs: start.getTime(),
+        })),
+      );
+      succeeded++;
+    } catch (error) {
+      reportFailure(error, read.sources?.[0] ?? "inbox", read.worldIds?.[0]);
+    }
+  }
+  return {
+    items: rankScored(refs).map(mapMessageRefToBriefingItem),
+    coverage:
+      failed > 0 ? (succeeded > 0 ? "partial" : "unavailable") : "complete",
+  };
 }
+
+type BriefDefinitions = ReadonlyMap<string, LifeOpsTaskDefinition>;
 
 async function loadLifeFromOverview(args: {
   runtime: IAgentRuntime;
-}): Promise<readonly LifeOpsBriefingLifeItem[]> {
-  try {
-    const service = await getBriefLifeOpsService(args.runtime);
-    const overview = await service.getOverview();
-    const records = [
-      ...(Array.isArray(overview.occurrences) ? overview.occurrences : []),
-      ...(Array.isArray(overview.reminders) ? overview.reminders : []),
-      ...(Array.isArray(overview.goals) ? overview.goals : []),
-    ];
-    return records.map((item) => {
-      const record = asRecord(item);
-      const metadata = asRecord(record.metadata);
-      return {
-        id: readString(record, "id") ?? "life-item",
-        kind: normalizeLifeKind(
-          readString(record, "kind") ??
-            readString(record, "type") ??
-            readString(record, "subjectType") ??
-            metadata.kind,
-        ),
-        title: readString(record, "title") ?? "Untitled item",
-        dueAt:
-          readString(record, "dueAt") ??
-          readString(record, "scheduledFor") ??
-          null,
-      };
-    });
-  } catch (error) {
-    logger.warn(
-      `[BRIEF] life load failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return [];
-  }
+  loadDefinitions: () => Promise<BriefDefinitions>;
+}): Promise<LifeOpsBriefingLifeCollection> {
+  const service = await getBriefLifeOpsService(args.runtime);
+  const overview = await service.getOverview();
+  const occurrences = Array.isArray(overview.occurrences)
+    ? overview.occurrences
+    : [];
+  const occurrenceIds = new Set(
+    occurrences.map((item) => readString(asRecord(item), "id")).filter(Boolean),
+  );
+  // Reminder-plan steps project the same occurrence, not additional owner items.
+  const reminders = Array.isArray(overview.reminders)
+    ? overview.reminders.filter((item) => {
+        const occurrenceId = readString(asRecord(item), "occurrenceId");
+        return !occurrenceId || !occurrenceIds.has(occurrenceId);
+      })
+    : [];
+  const goals = Array.isArray(overview.goals) ? overview.goals : [];
+  // This public batch read uses the caller's definition scopes and includes
+  // archived rows; never infer human item kinds from storage's raw kind.
+  const definitionsById =
+    occurrences.length > 0 ? await args.loadDefinitions() : new Map();
+  const records = [...occurrences, ...reminders, ...goals];
+  const items = records.map((item, index) => {
+    const record = asRecord(item);
+    const ownerId = readString(record, "ownerId");
+    const ownerType = readString(record, "ownerType");
+    return {
+      id:
+        readString(record, "id") ??
+        readString(record, "occurrenceId") ??
+        (ownerId && ownerType
+          ? `${ownerType}:${ownerId}:${record.stepIndex ?? index}`
+          : `life-item:${index}`),
+      kind:
+        index < occurrences.length
+          ? briefingDefinitionKind(
+              definitionsById.get(readString(record, "definitionId") ?? ""),
+            )
+          : index < occurrences.length + reminders.length
+            ? ("reminder" as const)
+            : ("goal" as const),
+      title: readString(record, "title") ?? "Untitled item",
+      ...(index < occurrences.length
+        ? { state: occurrences[index].state }
+        : {}),
+      dueAt:
+        readString(record, "dueAt") ??
+        readString(record, "scheduledFor") ??
+        null,
+    };
+  });
+  return { items, summary: overview.summary };
 }
 
 /**
  * Owner items completed today, for the evening/recap narrative. Loaded from
  * the same service read the lifeops provider uses so the brief's "wins" and
- * the chat context can never disagree. A failed load degrades to an empty
- * list like the sibling loaders — the brief still composes — but the failure
- * is surfaced through `runtime.reportError` so the agent sees it in
- * RECENT_ERRORS instead of an evening brief that silently implies a win-less
- * day.
+ * the chat context can never disagree. A failed load reaches the composition
+ * boundary, which records its unavailable marker and reports the failure.
  */
 async function loadCompletedTodayFromService(args: {
   runtime: IAgentRuntime;
+  loadDefinitions: () => Promise<BriefDefinitions>;
 }): Promise<readonly LifeOpsBriefingLifeItem[]> {
-  try {
-    const service = await getBriefLifeOpsService(args.runtime);
-    const completed = await service.listOwnerOccurrencesCompletedToday();
-    return completed.map((occurrence) => ({
-      id: occurrence.id,
-      kind: normalizeLifeKind(occurrence.definitionKind),
-      title: occurrence.title,
-      dueAt: occurrence.dueAt ?? null,
-    }));
-  } catch (error) {
-    // error-policy:J4 the brief composes from independent optional sources;
-    // one broken source must not kill the whole evening brief. The degrade is
-    // designed (section omitted, narrative simply cannot claim wins) and the
-    // failure stays observable: reportError feeds RECENT_ERRORS + owner
-    // escalation rather than a log-only warn masquerading as an empty day.
-    args.runtime.reportError("Brief.loadCompletedToday", error, {
-      surface: "evening-brief-wins",
-    });
-    return [];
-  }
-}
-
-async function loadMoneyFromPayments(args: {
-  runtime: IAgentRuntime;
-}): Promise<readonly LifeOpsBriefingMoneyItem[]> {
-  try {
-    // Recurring-charge data moved out of LifeOpsService to FinancesService
-    // (@elizaos/plugin-finances); call it there directly.
-    const finances = new FinancesService(args.runtime);
-    const charges = await finances.getRecurringCharges({});
-    return charges.map((charge) => ({
-      id: `${charge.merchantNormalized}:${charge.cadence}`,
-      merchant: charge.merchantDisplay,
-      amountUsd: charge.averageAmountUsd,
-      cadence: normalizeMoneyCadence(charge.cadence),
-      nextChargeAt: charge.nextExpectedAt,
-    }));
-  } catch (error) {
-    logger.warn(
-      `[BRIEF] money load failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return [];
-  }
+  const service = await getBriefLifeOpsService(args.runtime);
+  const completed = await service.listOwnerOccurrencesCompletedToday();
+  if (completed.length === 0) return [];
+  const definitionsById = await args.loadDefinitions();
+  return completed.map((occurrence) => ({
+    id: occurrence.id,
+    kind: briefingDefinitionKind(definitionsById.get(occurrence.definitionId)),
+    title: occurrence.title,
+    dueAt: occurrence.dueAt ?? null,
+    completedAt:
+      typeof occurrence.completionPayload?.completedAt === "string"
+        ? occurrence.completionPayload.completedAt
+        : null,
+    state: occurrence.state,
+  }));
 }
 
 /** Map one regret-audit item onto the briefing's commitment shape. */
@@ -443,25 +524,15 @@ async function loadCommitmentsFromLedger(args: {
 }): Promise<readonly LifeOpsBriefingCommitmentItem[]> {
   const adapter = (args.runtime as { adapter?: { db?: unknown } }).adapter;
   if (!adapter?.db) return [];
-  try {
-    const records = await new LifeOpsRepository(
-      args.runtime,
-    ).listCommitmentLedgerRecords(String(args.runtime.agentId), {
-      statuses: ["open", "tracked"],
-    });
-    const audit = buildCommitmentRegretAudit(records, {
-      nowIso: new Date().toISOString(),
-    });
-    return audit.items.map(mapRegretAuditItemToBriefingItem);
-  } catch (error) {
-    // error-policy:J4 the brief composes from independent optional sources;
-    // a broken ledger read must not kill the whole brief. The degrade is
-    // designed (section omitted) and stays observable through reportError.
-    args.runtime.reportError("Brief.loadCommitments", error, {
-      surface: "brief-commitment-regret-audit",
-    });
-    return [];
-  }
+  const records = await new LifeOpsRepository(
+    args.runtime,
+  ).listCommitmentLedgerRecords(String(args.runtime.agentId), {
+    statuses: ["open", "tracked"],
+  });
+  const audit = buildCommitmentRegretAudit(records, {
+    nowIso: new Date().toISOString(),
+  });
+  return audit.items.map(mapRegretAuditItemToBriefingItem);
 }
 
 async function loadEngagementSummariesFromLifeOps(args: {
@@ -493,8 +564,8 @@ async function loadEngagementSummariesFromLifeOps(args: {
 
 /**
  * Persist one `rendered` impression per surfaced (non-omitted) editorial item.
- * Called only after the callback delivery of the composed brief resolved, so a
- * failed delivery never fabricates visibility. Returns the number of rows
+ * Called only after standalone callback delivery or the planner turn
+ * delivery boundary resolved, so a failed delivery never fabricates visibility. Returns the number of rows
  * written so callers and tests can assert the ledger reflects the delivery.
  */
 async function recordRenderedImpressionsInLifeOps(args: {
@@ -565,7 +636,7 @@ async function recordRenderedImpressionsInLifeOps(args: {
 /**
  * Composer hooks — overridable for tests. Defaults compose from LifeOps'
  * structural services: calendar feed, MESSAGE triage, overview reminders, and
- * recurring payments. Unavailable sources degrade to empty arrays.
+ * recurring payments. The composition boundary records unavailable sources.
  */
 export interface BriefComposers {
   loadCalendar: (args: {
@@ -575,16 +646,18 @@ export interface BriefComposers {
   loadInbox: (args: {
     runtime: IAgentRuntime;
     period: LifeOpsBriefingPeriod;
-  }) => Promise<readonly LifeOpsBriefingInboxItem[]>;
+    explicit?: boolean;
+  }) => Promise<
+    | readonly LifeOpsBriefingInboxItem[]
+    | LifeOpsBriefingInboxCollection
+    | undefined
+  >;
   loadLife: (args: {
     runtime: IAgentRuntime;
     period: LifeOpsBriefingPeriod;
-  }) => Promise<readonly LifeOpsBriefingLifeItem[]>;
-  loadMoney: (args: {
-    runtime: IAgentRuntime;
-    period: LifeOpsBriefingPeriod;
-  }) => Promise<readonly LifeOpsBriefingMoneyItem[]>;
-  /** Evening/recap wins: owner items completed within the current local day. */
+  }) => Promise<
+    readonly LifeOpsBriefingLifeItem[] | LifeOpsBriefingLifeCollection
+  >;
   loadCompletedToday: (args: {
     runtime: IAgentRuntime;
   }) => Promise<readonly LifeOpsBriefingLifeItem[]>;
@@ -596,7 +669,7 @@ export interface BriefComposers {
   loadEngagementSummaries: (args: {
     runtime: IAgentRuntime;
   }) => Promise<readonly LifeOpsBriefItemEngagementSummary[]>;
-  /** Ledger write for delivered brief items; runs only after callback delivery. */
+  /** Ledger write for brief items after their owning delivery boundary. */
   recordRenderedImpressions: (args: {
     runtime: IAgentRuntime;
     briefing: LifeOpsBriefing;
@@ -605,18 +678,20 @@ export interface BriefComposers {
   }) => Promise<number>;
 }
 
-const defaultComposers: BriefComposers = {
+const defaultComposers: Omit<
+  BriefComposers,
+  "loadLife" | "loadCompletedToday"
+> = {
   loadCalendar: loadCalendarFromLifeOps,
   loadInbox: loadInboxFromTriage,
-  loadLife: loadLifeFromOverview,
-  loadMoney: loadMoneyFromPayments,
-  loadCompletedToday: loadCompletedTodayFromService,
   loadCommitments: loadCommitmentsFromLedger,
   loadEngagementSummaries: loadEngagementSummariesFromLifeOps,
   recordRenderedImpressions: recordRenderedImpressionsInLifeOps,
 };
 
-let activeComposers: BriefComposers = defaultComposers;
+let activeComposers: typeof defaultComposers &
+  Partial<Pick<BriefComposers, "loadLife" | "loadCompletedToday">> =
+  defaultComposers;
 
 /**
  * Override the briefing composers. Service-backed loaders can be injected
@@ -664,17 +739,51 @@ function resolveSubaction(params: BriefActionParameters): Subaction | null {
 function resolveIncludeFlags(input: BriefIncludeFlags | undefined): {
   calendar: boolean;
   inbox: boolean;
+  inboxExplicit: boolean;
   life: boolean;
-  money: boolean;
   commitments: boolean;
 } {
   return {
     calendar: input?.calendar !== false,
     inbox: input?.inbox !== false,
+    inboxExplicit: input?.inbox === true,
     life: input?.life !== false,
-    money: input?.money !== false,
     commitments: input?.commitments !== false,
   };
+}
+
+/** Generic daily dossiers use morning before the owner's evening start and
+ * evening from that start, in the authoritative owner zone. Explicitly named
+ * kinds and standalone calls never use this default policy. */
+async function resolveGenericDailySubaction(
+  runtime: IAgentRuntime,
+  now: Date,
+): Promise<ComposeSubaction> {
+  const [{ timeZone }, facts] = await Promise.all([
+    resolveCalendarTimeZone(runtime, now),
+    resolveOwnerFactStore(runtime).read(),
+  ]);
+  const evening = DEFAULT_TIME_WINDOWS.find(
+    (window) => window.name === "evening",
+  );
+  if (!evening)
+    throw new ElizaError("Default evening window is unavailable", {
+      code: "BRIEF_EVENING_WINDOW_UNAVAILABLE",
+    });
+  const configured = facts.eveningWindow?.value.startLocal;
+  const eveningStart = configured
+    ? Number(configured.slice(0, 2)) * 60 + Number(configured.slice(3, 5))
+    : evening.startMinute;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(now);
+  const localMinute =
+    Number(parts.find((part) => part.type === "hour")?.value) * 60 +
+    Number(parts.find((part) => part.type === "minute")?.value);
+  return localMinute >= eveningStart ? "compose_evening" : "compose_morning";
 }
 
 function resolvePeriod(
@@ -722,6 +831,10 @@ function resolveBriefOptimizationTask(args: {
   return asksForMeetingPrep ? "meeting_prep" : "morning_brief";
 }
 
+// Preserve source scope through both initial composition and final reply synthesis.
+const BRIEF_SOURCE_SCOPE_INSTRUCTIONS =
+  "This briefing covers selected sources for the requested period, not the owner's entire stored inventory. activeGoalCount counts active goals only; zero does not mean no goals are stored or tracked. Empty collections describe only this period and source selection. For a general brief, focus on the supplied items and omit empty categories unless the owner explicitly asked about them. Do not broaden scoped counts into claims that nothing exists or nothing is tracked. Return finished owner-facing prose; never describe your composing process or editorial rules.";
+
 // Static instruction block for the briefing narrative. This is the optimization
 // target for the `morning_brief` LifeOps task (#8795): an OptimizedPromptService
 // artifact, when present, replaces it; otherwise this inline baseline is used,
@@ -731,20 +844,140 @@ export function buildNarrativePrompt(args: {
   kind: LifeOpsBriefingKind;
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
+  sourceErrors?: LifeOpsBriefing["sourceErrors"];
+  lifeSummary?: LifeOpsBriefing["lifeSummary"];
+  timeZone?: string;
+  asOf?: string;
   editorial?: LifeOpsBriefingEditorialContract;
   runtime?: IAgentRuntime;
   optimizationTask?: BriefOptimizationTask;
 }): string {
-  const payload = JSON.stringify(
-    {
-      kind: args.kind,
-      period: args.period,
-      sections: args.sections,
-      editorial: args.editorial,
-    },
-    null,
-    2,
-  );
+  const asOf = args.asOf ?? new Date().toISOString();
+  const asOfMs = Date.parse(asOf);
+  const localAsOfDate =
+    args.timeZone && Number.isFinite(asOfMs)
+      ? calendarDateKey(new Date(asOfMs), args.timeZone)
+      : undefined;
+  const describeTime = (value: string | null | undefined) => {
+    if (!value || !args.timeZone || !Number.isFinite(Date.parse(value)))
+      return undefined;
+    const instant = new Date(value);
+    const localDate = calendarDateKey(instant, args.timeZone);
+    return {
+      localTime: formatCalendarEventDateTime(
+        { startAt: value, timezone: args.timeZone },
+        { includeYear: true, includeTimeZoneName: true },
+      ),
+      localDate,
+      ...(localAsOfDate
+        ? {
+            dateRelationToAsOf:
+              localDate === localAsOfDate
+                ? "same_local_date"
+                : localDate < localAsOfDate
+                  ? "earlier_local_date"
+                  : "later_local_date",
+          }
+        : {}),
+      relationToAsOf:
+        instant.getTime() < asOfMs
+          ? "before_as_of"
+          : instant.getTime() > asOfMs
+            ? "after_as_of"
+            : "at_as_of",
+    };
+  };
+  const calendar = args.sections.calendar?.map((item) => {
+    const startAt = describeTime(item.startAt);
+    const endAt = describeTime(item.endAt);
+    return {
+      ...item,
+      ...(startAt || endAt
+        ? {
+            timeContext: {
+              ...(startAt ? { startAt } : {}),
+              ...(endAt ? { endAt } : {}),
+            },
+          }
+        : {}),
+    };
+  });
+  const withItemTimes = <
+    T extends { dueAt: string | null; completedAt?: string | null },
+  >(
+    item: T,
+  ) => {
+    const dueAt = describeTime(item.dueAt);
+    const completedAt = describeTime(item.completedAt);
+    return {
+      ...item,
+      ...(dueAt || completedAt
+        ? {
+            timeContext: {
+              ...(dueAt ? { dueAt } : {}),
+              ...(completedAt ? { completedAt } : {}),
+            },
+          }
+        : {}),
+    };
+  };
+  const life = args.sections.life?.map(withItemTimes);
+  const sections = {
+    ...args.sections,
+    ...(calendar ? { calendar } : {}),
+    ...(life ? { life } : {}),
+    ...(args.sections.completedToday
+      ? { completedToday: args.sections.completedToday.map(withItemTimes) }
+      : {}),
+    ...(args.sections.commitments
+      ? { commitments: args.sections.commitments.map(withItemTimes) }
+      : {}),
+  };
+  const editorial = args.editorial
+    ? {
+        // Ranking and engagement diagnostics explain how this contract was
+        // chosen; they are not facts to narrate about the owner. Keep them in
+        // the canonical briefing while rendering only the resulting decisions.
+        maxItems: args.editorial.maxItems,
+        items: args.editorial.items.map((item) => {
+          const localTime =
+            item.source === "life"
+              ? life?.find((source) => source.id === item.sourceId)?.timeContext
+                  ?.dueAt
+              : item.source === "calendar"
+                ? calendar?.find((source) => source.id === item.sourceId)
+                    ?.timeContext?.startAt
+                : undefined;
+          return {
+            itemId: item.itemId,
+            source: item.source,
+            kind: item.kind,
+            sourceId: item.sourceId,
+            title: item.title,
+            summary: localTime
+              ? `${item.source === "life" ? "due" : "starts"} ${localTime.localTime} (${localTime.relationToAsOf})`
+              : item.summary,
+          };
+        }),
+        decisions: args.editorial.decisions.map(({ itemId, action }) => ({
+          itemId,
+          action,
+        })),
+        pushback: args.editorial.pushback,
+      }
+    : undefined;
+  const payload = JSON.stringify({
+    kind: args.kind,
+    period: args.period,
+    sections,
+    sourceErrors: args.sourceErrors,
+    lifeSummary: args.lifeSummary,
+    timeZone: args.timeZone,
+    asOf,
+    localAsOf: describeTime(asOf)?.localTime,
+    localAsOfDate,
+    editorial,
+  });
   const optimizationTask = args.optimizationTask ?? "morning_brief";
   const instructions =
     optimizationTask === "meeting_prep"
@@ -765,6 +998,9 @@ export function buildNarrativePrompt(args: {
   return `You are composing the owner's ${args.kind} briefing for ${args.period}.
 
 ${instructions}
+${BRIEF_SOURCE_SCOPE_INSTRUCTIONS}
+Write directly to the owner in ordinary conversational language, not a tracking or status report. For an evening brief with completedToday items, start with what was marked done today; the editorial lead then guides the still-open items. Keep item names and categories faithful. Do not narrate which records went active or contrast open carryovers with finished tasks. An uncompleted reminder record does not prove that its real-world activity is unfinished; its dueAt is a scheduled time, not activation or delivery time. When timing matters, use the supplied owner-local clock times rather than guessing dayparts or elapsed time.
+Use asOf/localAsOfDate as the briefing clock and timeContext.localTime/localDate as the authoritative owner-local display. The requested briefing kind does not change the current date, daypart or selected period. When a named morning/evening brief is requested outside that daypart, identify it as a preview as of localAsOf and describe only the supplied period. An empty today-only calendar does not establish tomorrow's or the next morning's availability. When describing an empty calendar, name its supplied local date or say today. End after the verified facts; omit vague forecasts and motivational closing lines. Use relationToAsOf for before/after the clock and dateRelationToAsOf for the local day: same_local_date with before_as_of means earlier today, not yesterday or last evening; earlier_local_date requires its supplied date, not a guessed daypart. Prefer exact local dates/times when relative wording is ambiguous. Describe completion timing only from completedAt and its local timeContext, never dueAt or updatedAt. Completion and delivery cannot be inferred from a timestamp; before_as_of alone does not mean an item remains outstanding. Item state and lifeSummary counts are canonical source facts. Express them in ordinary language: visible means still open, snoozed means postponed but still open, completed means done, and skipped remains distinct. A notification does not make an item completed. Describe source coverage and item status conversationally; do not use source/status labels. An omitted section was not selected: do not discuss omitted domains or claim they were checked, empty, or unavailable.${args.sourceErrors ? "\nRequested sources marked unavailable are unavailable, not empty; partial means some inboxes could not be checked while supplied items remain valid. not_connected means no readable inbox connection: say the inbox is not connected and suggest connecting an email/message account to include its messages. Do not say a not_connected inbox check failed. Say what could not be checked in one compact, ordinary-language clause. Name the unavailable domain as supplied; do not rename an inbox error as an email/social-provider failure. Never claim it has no items or nothing due." : ""}
 
 Data:
 ${payload}`;
@@ -775,8 +1011,11 @@ async function composeNarrative(args: {
   kind: LifeOpsBriefingKind;
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
+  sourceErrors?: LifeOpsBriefing["sourceErrors"];
+  lifeSummary?: LifeOpsBriefing["lifeSummary"];
   editorial: LifeOpsBriefingEditorialContract;
   optimizationTask: BriefOptimizationTask;
+  asOf: string;
 }): Promise<
   | {
       text: string;
@@ -787,14 +1026,6 @@ async function composeNarrative(args: {
   if (typeof args.runtime.useModel !== "function") {
     return undefined;
   }
-  const prompt = buildNarrativePrompt({
-    kind: args.kind,
-    period: args.period,
-    sections: args.sections,
-    editorial: args.editorial,
-    runtime: args.runtime,
-    optimizationTask: args.optimizationTask,
-  });
   // Tag the trajectory with the exact LifeOps prompt task resolved above so the
   // call buckets into its per-capability dataset for the GEPA loop (#8795).
   // A failed compose pass degrades to a narrative-less structured briefing —
@@ -802,6 +1033,20 @@ async function composeNarrative(args: {
   // which all fall back to a safe default rather than propagating the error.
   let raw: unknown;
   try {
+    const prompt = buildNarrativePrompt({
+      kind: args.kind,
+      period: args.period,
+      sections: args.sections,
+      sourceErrors: args.sourceErrors,
+      lifeSummary: args.lifeSummary,
+      asOf: args.asOf,
+      timeZone: (
+        await resolveCalendarTimeZone(args.runtime, new Date(args.asOf))
+      ).timeZone,
+      editorial: args.editorial,
+      runtime: args.runtime,
+      optimizationTask: args.optimizationTask,
+    });
     raw = await runWithTrajectoryPurpose(args.optimizationTask, async () => {
       const active = getTrajectoryContext();
       const response = await args.runtime.useModel(ModelType.TEXT_LARGE, {
@@ -816,7 +1061,7 @@ async function composeNarrative(args: {
         task: args.optimizationTask,
         error: error instanceof Error ? error.message : String(error),
       },
-      "[BRIEF] narrative compose model call failed; returning structured briefing without a narrative",
+      "[BRIEF] narrative compose failed; returning structured briefing without a narrative",
     );
     return undefined;
   }
@@ -849,33 +1094,95 @@ async function assembleBriefing(args: {
   include: ReturnType<typeof resolveIncludeFlags>;
   format: "narrative" | "json";
   optimizationTask: BriefOptimizationTask;
+  asOf: string;
 }): Promise<LifeOpsBriefing> {
+  const { asOf } = args;
   const composers = activeComposers;
+  // Both built-in collectors classify the same owner's definitions. Share only
+  // this assembly's lazy read, including failures; later briefs read afresh.
+  let definitions: Promise<BriefDefinitions> | undefined;
+  const loadDefinitions = () =>
+    (definitions ??= getBriefLifeOpsService(args.runtime)
+      .then((service) => service.definitions.listDefinitionRows())
+      .then(
+        (records) =>
+          new Map(records.map((definition) => [definition.id, definition])),
+      ));
+  const sourceErrors: NonNullable<LifeOpsBriefing["sourceErrors"]> = {};
+  const collectSource = async <T>(
+    source: keyof LifeOpsBriefingSections,
+    collect: () => Promise<T>,
+  ): Promise<T | readonly never[]> => {
+    try {
+      return await collect();
+    } catch (error) {
+      // error-policy:J4 compose the remaining requested sources, while retaining
+      // an explicit unavailable marker and the diagnostic cause.
+      args.runtime.reportError(
+        `Brief.load${source.charAt(0).toUpperCase()}${source.slice(1)}`,
+        error,
+        { source },
+      );
+      sourceErrors[source] = "unavailable";
+      return [];
+    }
+  };
   const [
     calendarItems,
-    inboxItems,
-    lifeItems,
-    moneyItems,
+    inboxCollection,
+    lifeCollection,
     commitmentItems,
     engagementSummaries,
   ] = await Promise.all([
     args.include.calendar
-      ? composers.loadCalendar({ runtime: args.runtime, period: args.period })
+      ? collectSource("calendar", () =>
+          composers.loadCalendar({
+            runtime: args.runtime,
+            period: args.period,
+          }),
+        )
       : Promise.resolve([] as readonly LifeOpsBriefingCalendarItem[]),
     args.include.inbox
-      ? composers.loadInbox({ runtime: args.runtime, period: args.period })
+      ? collectSource("inbox", () =>
+          composers.loadInbox({
+            runtime: args.runtime,
+            period: args.period,
+            explicit: args.include.inboxExplicit,
+          }),
+        )
       : Promise.resolve([] as readonly LifeOpsBriefingInboxItem[]),
     args.include.life
-      ? composers.loadLife({ runtime: args.runtime, period: args.period })
+      ? collectSource("life", () =>
+          composers.loadLife
+            ? composers.loadLife({ runtime: args.runtime, period: args.period })
+            : loadLifeFromOverview({ runtime: args.runtime, loadDefinitions }),
+        )
       : Promise.resolve([] as readonly LifeOpsBriefingLifeItem[]),
-    args.include.money
-      ? composers.loadMoney({ runtime: args.runtime, period: args.period })
-      : Promise.resolve([] as readonly LifeOpsBriefingMoneyItem[]),
     args.include.commitments
-      ? composers.loadCommitments({ runtime: args.runtime })
+      ? collectSource("commitments", () =>
+          composers.loadCommitments({ runtime: args.runtime }),
+        )
       : Promise.resolve([] as readonly LifeOpsBriefingCommitmentItem[]),
     composers.loadEngagementSummaries({ runtime: args.runtime }),
   ]);
+
+  const inboxItems =
+    inboxCollection === undefined
+      ? undefined
+      : "items" in inboxCollection
+        ? inboxCollection.items
+        : inboxCollection;
+  if (
+    inboxCollection &&
+    "items" in inboxCollection &&
+    inboxCollection.coverage !== "complete"
+  )
+    sourceErrors.inbox = inboxCollection.coverage;
+
+  const lifeItems =
+    "items" in lifeCollection ? lifeCollection.items : lifeCollection;
+  const lifeSummary =
+    "items" in lifeCollection ? lifeCollection.summary : undefined;
 
   const kind = SUBACTION_TO_KIND[args.subaction];
   // The evening brief is the recap surface: it must know what got DONE today
@@ -883,18 +1190,24 @@ async function assembleBriefing(args: {
   // (#16935). Morning/weekly briefs keep their forward-looking shape.
   const completedToday =
     kind === "evening" && args.include.life
-      ? await composers.loadCompletedToday({ runtime: args.runtime })
+      ? await collectSource("completedToday", () =>
+          composers.loadCompletedToday
+            ? composers.loadCompletedToday({ runtime: args.runtime })
+            : loadCompletedTodayFromService({
+                runtime: args.runtime,
+                loadDefinitions,
+              }),
+        )
       : [];
 
   const sections: LifeOpsBriefingSections = {
     ...(args.include.calendar ? { calendar: calendarItems } : {}),
-    ...(args.include.inbox ? { inbox: inboxItems } : {}),
-    ...(args.include.life ? { life: lifeItems } : {}),
-    ...(completedToday.length > 0 ? { completedToday } : {}),
-    ...(args.include.money ? { money: moneyItems } : {}),
-    ...(args.include.commitments && commitmentItems.length > 0
-      ? { commitments: commitmentItems }
+    ...(args.include.inbox && inboxItems !== undefined
+      ? { inbox: inboxItems }
       : {}),
+    ...(args.include.life ? { life: lifeItems } : {}),
+    ...(kind === "evening" && args.include.life ? { completedToday } : {}),
+    ...(args.include.commitments ? { commitments: commitmentItems } : {}),
   };
 
   const editorial = buildBriefEditorialContract({
@@ -908,8 +1221,11 @@ async function assembleBriefing(args: {
       kind,
       period: args.period,
       sections,
+      ...(lifeSummary ? { lifeSummary } : {}),
+      ...(Object.keys(sourceErrors).length > 0 ? { sourceErrors } : {}),
       editorial,
       optimizationTask: args.optimizationTask,
+      asOf,
     });
   }
 
@@ -917,8 +1233,10 @@ async function assembleBriefing(args: {
     id: newBriefingId(),
     kind,
     period: args.period,
-    generatedAt: new Date().toISOString(),
+    generatedAt: asOf,
     sections,
+    ...(lifeSummary ? { lifeSummary } : {}),
+    ...(Object.keys(sourceErrors).length > 0 ? { sourceErrors } : {}),
     editorial,
     ...(narrativeResult?.text ? { narrative: narrativeResult.text } : {}),
     ...(narrativeResult?.optimizationTrace
@@ -1107,20 +1425,21 @@ export const briefAction: Action & {
     "surface:internal",
   ],
   description:
-    "Compose owner LifeOpsBriefing: morning/evening/weekly; calendar feed, inbox triage, life due, money recurring charges. Subactions: compose_morning, compose_evening, compose_weekly, recalibrate (demote repeatedly ignored brief item classes; reversible), reset_recalibration (restore demoted classes).",
+    "Compose owner LifeOpsBriefing: morning/evening/weekly; calendar feed, inbox triage, life due. Subactions: compose_morning, compose_evening, compose_weekly, recalibrate (demote repeatedly ignored brief item classes; reversible), reset_recalibration (restore demoted classes).",
   descriptionCompressed:
     "BRIEF compose_morning|compose_evening|compose_weekly|recalibrate|reset_recalibration; LifeOpsBriefing",
   routingHint:
     'briefing/digest ("morning brief", "evening summary", "this week", "daily digest") -> BRIEF; one-domain read -> CALENDAR.feed, MESSAGE.triage, etc.',
-  contexts: ["briefing", "calendar", "inbox", "tasks", "finance"],
+  contexts: ["productivity", "calendar", "inbox", "tasks", "finance"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   parameters: [
     {
       name: "action",
+      required: true,
       description:
-        "Brief op: compose_morning | compose_evening | compose_weekly | recalibrate | reset_recalibration.",
+        "Brief op: compose_morning | compose_evening | compose_weekly | recalibrate | reset_recalibration. Unnamed daily dossiers use morning before the owner-local evening-window start, then evening; explicitly named kinds are retained.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
@@ -1141,7 +1460,7 @@ export const briefAction: Action & {
     {
       name: "include",
       description:
-        "Include flags, default true: { calendar?, inbox?, life?, money? }.",
+        "Include flags: { calendar?, inbox?, life? }. Ordinary briefs use configured inboxes by default. Leave include.inbox unset for ordinary briefs; set true only when the owner explicitly requests inbox/email coverage, or false to exclude it.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
@@ -1166,7 +1485,21 @@ export const briefAction: Action & {
     }
 
     const params = getParams(options);
-    const subaction = resolveSubaction(params);
+    const requestText = extractUserText(unwrapUserMessageText(message));
+    const plannerOwned = getActionReplyOwner(message.id) === "planner";
+    const genericRequest =
+      plannerOwned && isWholeGenericBriefRequest(requestText);
+    const asOf = new Date().toISOString();
+    let subaction = resolveSubaction(params);
+    // Resolve the actual whole request before any control operation can run.
+    // A planner-selected recalibration is not authority to mutate preferences.
+    if (genericRequest) {
+      subaction = /\bmorning\b/iu.test(requestText)
+        ? "compose_morning"
+        : /\bevening\b/iu.test(requestText)
+          ? "compose_evening"
+          : await resolveGenericDailySubaction(runtime, new Date(asOf));
+    }
     if (!subaction) {
       return {
         success: false,
@@ -1196,27 +1529,99 @@ export const briefAction: Action & {
       };
     }
 
-    const include = resolveIncludeFlags(params.include);
-    const period = resolvePeriod(params, subaction);
+    // Whole ordinary briefs use existing connected-source defaults. Model flags
+    // cannot invent required sources or exclude them; explicit user selections
+    // stay outside this contract. The loader retains genuine source failures.
+    const include = resolveIncludeFlags(
+      genericRequest ? undefined : params.include,
+    );
+    const period = genericRequest ? "today" : resolvePeriod(params, subaction);
     const format: "narrative" | "json" =
-      params.format === "json" ? "json" : "narrative";
+      !genericRequest && params.format === "json" ? "json" : "narrative";
     const optimizationTask = resolveBriefOptimizationTask({ params, message });
+    const deferReply = format === "narrative" && plannerOwned;
 
     const briefing = await assembleBriefing({
       runtime,
       subaction,
       period,
       include,
-      format,
+      format: deferReply ? "json" : format,
       optimizationTask,
+      asOf,
     });
+
+    const result: ActionResult = {
+      success: true,
+      data: {
+        subaction,
+        optimizationTask,
+        briefing,
+        briefingId: briefing.id,
+        replyContext: {
+          domain: "briefing",
+          sourceScope: BRIEF_SOURCE_SCOPE_INSTRUCTIONS,
+        },
+      },
+    };
+    if (deferReply) {
+      try {
+        const prompt = buildNarrativePrompt({
+          kind: briefing.kind,
+          period: briefing.period,
+          sections: briefing.sections,
+          sourceErrors: briefing.sourceErrors,
+          lifeSummary: briefing.lifeSummary,
+          editorial: briefing.editorial,
+          asOf: briefing.generatedAt,
+          timeZone: (
+            await resolveCalendarTimeZone(
+              runtime,
+              new Date(briefing.generatedAt),
+            )
+          ).timeZone,
+          runtime,
+          optimizationTask,
+        });
+        // The complete briefing prompt is the sole model-facing representation.
+        // Keep the original snapshot in data for post-delivery impressions.
+        return applyGroundedActionReply(
+          {
+            ...result,
+            promptData: {
+              subaction,
+              optimizationTask,
+              briefingId: briefing.id,
+            },
+            promptDataMode: "replace-data",
+          },
+          {
+            kind: "deferred",
+            grounding: JSON.stringify({ domain: "briefing", prompt }),
+          },
+        );
+      } catch (error) {
+        // error-policy:J1 preserve collected sources when presentation context fails.
+        // Never retry collection or substitute an ungrounded owner-local clock.
+        runtime.reportError("Brief.replyGrounding", error, {
+          briefingId: briefing.id,
+        });
+        return applyGroundedActionReply(
+          result,
+          createUnavailableGroundedActionReply({
+            kind: "reply_generation_error",
+            code: "BRIEF_REPLY_GROUNDING_FAILED",
+          }),
+        );
+      }
+    }
 
     const text =
       briefing.narrative ??
-      `Composed your ${briefing.kind} briefing for ${briefing.period}.`;
+      `Composed your ${briefing.kind} briefing for ${briefing.period}.${briefing.sourceErrors?.inbox === "not_connected" ? " Your inbox isn't connected. Connect an email or message account to include its messages." : ""}${Object.values(briefing.sourceErrors ?? {}).some((coverage) => coverage !== "not_connected") ? " Some requested information could not be checked." : ""}`;
 
     logger.info(
-      `[BRIEF] ${subaction} id=${briefing.id} period=${briefing.period} calendar=${briefing.sections.calendar?.length ?? 0} inbox=${briefing.sections.inbox?.length ?? 0} life=${briefing.sections.life?.length ?? 0} money=${briefing.sections.money?.length ?? 0} commitments=${briefing.sections.commitments?.length ?? 0}`,
+      `[BRIEF] ${subaction} id=${briefing.id} period=${briefing.period} calendar=${briefing.sections.calendar?.length ?? 0} inbox=${briefing.sections.inbox?.length ?? 0} life=${briefing.sections.life?.length ?? 0} commitments=${briefing.sections.commitments?.length ?? 0}`,
     );
 
     await callback?.({
@@ -1249,17 +1654,79 @@ export const briefAction: Action & {
     }
 
     return {
-      success: true,
+      ...result,
       text,
       userFacingText: text,
-      verifiedUserFacing: true,
+      // Generated narrative is licensed reply material, not mandatory verbatim
+      // output. Preserve exact structured JSON while the evaluator owns prose.
+      ...(format === "json" ? { verifiedUserFacing: true } : {}),
       turnComplete: true,
-      data: {
-        subaction,
-        optimizationTask,
-        briefing,
-        briefingId: briefing.id,
-      },
     };
+  },
+};
+
+/** Current-turn results come from the executor, never message-supplied metadata. */
+function deferredBriefings(state: State | undefined): LifeOpsBriefing[] {
+  const results = state?.data?.actionResults;
+  if (!Array.isArray(results)) return [];
+  return results.flatMap((result: ActionResult) => {
+    const data = result?.data;
+    const subaction = data?.subaction;
+    const briefing = data?.briefing as LifeOpsBriefing | undefined;
+    return result?.success === true &&
+      result.transcriptVisibility === "internal" &&
+      result.turnComplete === false &&
+      !result.replyFailure &&
+      typeof data?.replyGrounding === "string" &&
+      typeof subaction === "string" &&
+      COMPOSE_SUBACTIONS.some((value) => value === subaction) &&
+      (data.actionName === ACTION_NAME ||
+        // Whole-request reconciliation may convert a wrongly selected control
+        // child into compose; only the successful deferred compose above qualifies.
+        SUBACTIONS.some(
+          (value) =>
+            data.actionName === `${ACTION_NAME}_${value.toUpperCase()}`,
+        )) &&
+      briefing &&
+      briefing.id === data.briefingId
+      ? [briefing]
+      : [];
+  });
+}
+
+/** The existing post-delivery lifecycle supplies final text and exact source results. */
+export const briefDeliveredImpressionsAction: Action = {
+  name: "BRIEF_RECORD_DELIVERED_IMPRESSIONS",
+  description:
+    "Record surfaced briefing items after the owner's reply is delivered.",
+  mode: ActionMode.ALWAYS_AFTER,
+  roleGate: { minRole: "OWNER" },
+  validate: async (runtime, message, state) =>
+    deferredBriefings(state).length > 0 && hasLifeOpsAccess(runtime, message),
+  handler: async (runtime, message, state, _options, _callback, responses) => {
+    // Final planner replies carry simple=true; early response-handler acks do not.
+    // Never fall back to an earlier ack when the final response is withheld.
+    const response = responses?.at(-1);
+    const content = response?.content;
+    if (
+      !response ||
+      response.entityId !== runtime.agentId ||
+      response.roomId !== message.roomId ||
+      content?.simple !== true ||
+      content.transcriptVisibility === "internal" ||
+      content?.elizaSyntheticFailure === true ||
+      typeof content?.text !== "string" ||
+      !content.text.trim()
+    )
+      return { success: true };
+    for (const briefing of deferredBriefings(state)) {
+      await activeComposers.recordRenderedImpressions({
+        runtime,
+        briefing,
+        deliveredText: content.text,
+        format: "narrative",
+      });
+    }
+    return { success: true };
   },
 };

@@ -15,7 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";
 import type {
   TrajectoryListResult,
@@ -35,14 +35,14 @@ import {
   FramedPageBody,
   FramedPageHeader,
 } from "../../layouts/framed-page";
-import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
+import { cn } from "../../utils/cn";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,
-} from "../../utils/trajectory-format";
+} from "../../utils/trajectory-format.js";
 import { PagePanel } from "../composites/page-panel";
 import { TrajectorySidebarItem } from "../composites/trajectories/trajectory-sidebar-item";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
@@ -60,25 +60,24 @@ import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
 const MOBILE_WORKSPACE_QUERY = "(max-width: 799px), (max-height: 599px)";
 const PAGE_SIZE = 50;
-
 type TrajectoryLoadIssue =
   | "dedicated-required"
   | "unavailable"
   | "restricted"
   | "offline"
   | "error";
-type ManagementCapability = "checking" | "available" | "unavailable";
-
+type ManagementCapability = "checking" | "available" | "unavailable" | "error";
 const TRAJECTORIES_RUNTIME_UNAVAILABLE_CODE =
   "trajectories_runtime_unavailable";
-
 function isTrajectoriesRuntimeUnavailable(error: unknown): boolean {
   return (
-    (error as { code?: unknown } | null)?.code ===
-    TRAJECTORIES_RUNTIME_UNAVAILABLE_CODE
+    (
+      error as {
+        code?: unknown;
+      } | null
+    )?.code === TRAJECTORIES_RUNTIME_UNAVAILABLE_CODE
   );
 }
-
 /** Classify transport failures without leaking server text into the UI. */
 export function classifyTrajectoryLoadError(
   error: unknown,
@@ -90,7 +89,6 @@ export function classifyTrajectoryLoadError(
   } | null;
   const status = typeof candidate?.status === "number" ? candidate.status : 0;
   const kind = typeof candidate?.kind === "string" ? candidate.kind : "";
-
   if (isTrajectoriesRuntimeUnavailable(error)) return "dedicated-required";
   if (status === 404 || status === 405) return "unavailable";
   if (status === 401 || status === 403) return "restricted";
@@ -108,22 +106,27 @@ export function classifyTrajectoryLoadError(
   }
   return "error";
 }
-
 function isMissingManagementCapability(error: unknown): boolean {
-  const status = (error as { status?: unknown } | null)?.status;
+  const status = (
+    error as {
+      status?: unknown;
+    } | null
+  )?.status;
   return (
     isTrajectoriesRuntimeUnavailable(error) || status === 404 || status === 405
   );
 }
-
 export function shouldRetryTrajectoryLoad(error: unknown): boolean {
   return (
     !isTrajectoriesRuntimeUnavailable(error) &&
     (isCapabilityWarmupMiss(error) ||
-      (error as { status?: unknown } | null)?.status === 503)
+      (
+        error as {
+          status?: unknown;
+        } | null
+      )?.status === 503)
   );
 }
-
 function agentSafeId(value: string): string {
   return (
     value
@@ -133,7 +136,6 @@ function agentSafeId(value: string): string {
       .slice(0, 80) || "trajectory"
   );
 }
-
 function AgentToolbarButton({
   agentId,
   agentLabel,
@@ -159,10 +161,8 @@ function AgentToolbarButton({
     description: agentDescription,
     onActivate,
   });
-
   return <Button ref={ref} {...agentProps} {...buttonProps} />;
 }
-
 function AgentDropdownMenuItem({
   agentId,
   agentLabel,
@@ -182,17 +182,14 @@ function AgentDropdownMenuItem({
     group: agentGroup,
     description: agentDescription,
   });
-
   return <DropdownMenuItem ref={ref} {...agentProps} {...itemProps} />;
 }
-
 function formatTrajectorySourceLabel(trajectory: TrajectoryRecord): string {
   const parts = [trajectory.source];
   if (trajectory.scenarioId) parts.push(trajectory.scenarioId);
   if (trajectory.batchId) parts.push(trajectory.batchId);
   return parts.join(" / ");
 }
-
 function AgentTrajectorySidebarItem({
   trajectory,
   selected,
@@ -212,7 +209,6 @@ function AgentTrajectorySidebarItem({
     description: "Open this recorded agent run",
     onActivate: onSelect,
   });
-
   return (
     <TrajectorySidebarItem
       active={selected}
@@ -242,7 +238,6 @@ function AgentTrajectorySidebarItem({
     />
   );
 }
-
 function issueCopy(issue: TrajectoryLoadIssue, hasSavedData: boolean) {
   if (hasSavedData) {
     if (issue === "dedicated-required") {
@@ -262,7 +257,6 @@ function issueCopy(issue: TrajectoryLoadIssue, hasSavedData: boolean) {
           description: "Live updates will resume when the agent reconnects.",
         };
   }
-
   switch (issue) {
     case "dedicated-required":
       return {
@@ -293,13 +287,11 @@ function issueCopy(issue: TrajectoryLoadIssue, hasSavedData: boolean) {
       };
   }
 }
-
 export interface TrajectoriesViewProps {
   contentHeader?: ReactNode;
   selectedTrajectoryId?: string | null;
   onSelectTrajectory?: (id: string | null) => void;
 }
-
 export function TrajectoriesView(props: TrajectoriesViewProps) {
   const authority = useActiveAgentAuthority();
   return (
@@ -310,13 +302,14 @@ export function TrajectoriesView(props: TrajectoriesViewProps) {
     />
   );
 }
-
 function TrajectoriesViewForAuthority({
   contentHeader,
   selectedTrajectoryId: controlledId,
   onSelectTrajectory: controlledOnSelect,
   authority,
-}: TrajectoriesViewProps & { authority: string }) {
+}: TrajectoriesViewProps & {
+  authority: string;
+}) {
   const t = useAppSelector((s) => s.t);
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const isMobileWorkspace = useMediaQuery(MOBILE_WORKSPACE_QUERY);
@@ -326,13 +319,11 @@ function TrajectoriesViewForAuthority({
   const [loadIssue, setLoadIssue] = useState<TrajectoryLoadIssue | null>(null);
   const [managementCapability, setManagementCapability] =
     useState<ManagementCapability>("checking");
-
   const [internalId, setInternalId] = useState<string | null>(null);
   const selectedTrajectoryId = controlledOnSelect
     ? (controlledId ?? null)
     : internalId;
   const onSelectTrajectory = controlledOnSelect ?? setInternalId;
-
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(0);
   const previousSearchQueryRef = useRef(searchQuery);
@@ -348,7 +339,6 @@ function TrajectoriesViewForAuthority({
     [searchPlaceholder, onQuery],
   );
   useRegisterViewChatBinding(chatBinding);
-
   const cacheKey = `trajectories:${authority}:${page}:${searchQuery}`;
   const cachedResult = getCached<TrajectoryListResult>(cacheKey);
   const [result, setResult] = useState<TrajectoryListResult | null>(
@@ -360,12 +350,10 @@ function TrajectoriesViewForAuthority({
     string | null
   >(null);
   const [clearingAll, setClearingAll] = useState(false);
-
   const loadTrajectories = useCallback(
     async (options?: { silent?: boolean }) => {
       if (!options?.silent) setLoading(true);
       setLoadIssue(null);
-
       try {
         const trajectoryResult = await runCapabilityWarmup(
           () =>
@@ -392,57 +380,52 @@ function TrajectoriesViewForAuthority({
     },
     [authority, cacheKey, page, runCapabilityWarmup, searchQuery],
   );
-
   useEffect(() => {
     setResult(getCached<TrajectoryListResult>(cacheKey)?.data ?? null);
     setLoadIssue(null);
     setManagementCapability("checking");
   }, [cacheKey]);
-
   useEffect(() => {
     void loadTrajectories({
       silent: getCached<TrajectoryListResult>(cacheKey) != null,
     });
   }, [loadTrajectories, cacheKey]);
-
-  useEffect(() => {
-    let cancelled = false;
+  const loadManagementCapability = useCallback(async () => {
     const requestedAuthority = authority;
-    void runCapabilityWarmup(() => client.getTrajectoryConfig())
-      .then(() => {
-        if (!cancelled && authorityRef.current === requestedAuthority) {
-          setManagementCapability("available");
-        }
-      })
-      .catch((error: unknown) => {
-        if (isCapabilityWarmupAbort(error)) return;
-        if (!cancelled && authorityRef.current === requestedAuthority) {
-          setManagementCapability(
-            isMissingManagementCapability(error) ? "unavailable" : "checking",
-          );
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
+    setManagementCapability("checking");
+    try {
+      await runCapabilityWarmup(() => client.getTrajectoryConfig());
+      if (authorityRef.current === requestedAuthority) {
+        setManagementCapability("available");
+      }
+    } catch (error) {
+      if (
+        isCapabilityWarmupAbort(error) ||
+        authorityRef.current !== requestedAuthority
+      ) {
+        return;
+      }
+      setManagementCapability(
+        isMissingManagementCapability(error) ? "unavailable" : "error",
+      );
+    }
   }, [authority, runCapabilityWarmup]);
-
+  useEffect(() => {
+    void loadManagementCapability();
+  }, [loadManagementCapability]);
   useIntervalWhenDocumentVisible(() => {
     void loadTrajectories({ silent: true });
   }, 15000);
-
   useEffect(() => {
     const previousSearchQuery = previousSearchQueryRef.current;
     if (previousSearchQuery === searchQuery) return;
     previousSearchQueryRef.current = searchQuery;
     if (selectedTrajectoryId != null) onSelectTrajectory(null);
   }, [searchQuery, selectedTrajectoryId, onSelectTrajectory]);
-
   const trajectories = useMemo(() => result?.trajectories ?? [], [result]);
   const total = result?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const hasActiveFilters = searchQuery.trim().length > 0;
-
   useLayoutEffect(() => {
     if (loading) return;
     if (trajectories.length === 0) {
@@ -477,7 +460,6 @@ function TrajectoriesViewForAuthority({
     selectedTrajectoryId,
     trajectories,
   ]);
-
   const detailTrajectoryId =
     selectedTrajectoryId &&
     trajectories.some((trajectory) => trajectory.id === selectedTrajectoryId)
@@ -485,7 +467,6 @@ function TrajectoriesViewForAuthority({
       : isMobileWorkspace
         ? null
         : (trajectories[0]?.id ?? null);
-
   const managementUnavailable = useCallback(() => {
     setManagementCapability("unavailable");
     setActionNotice?.(
@@ -494,14 +475,12 @@ function TrajectoriesViewForAuthority({
       3600,
     );
   }, [setActionNotice]);
-
   const actionFailed = useCallback(
     (message: string) => {
       setActionNotice?.(message, "error", 4200);
     },
     [setActionNotice],
   );
-
   const handleExport = async (
     format: "json" | "jsonl" | "csv" | "zip",
     includePrompts: boolean,
@@ -527,12 +506,10 @@ function TrajectoriesViewForAuthority({
       setExporting(false);
     }
   };
-
   const handleDeleteTrajectory = useCallback(
     async (trajectoryId: string) => {
       const normalizedId = trajectoryId.trim();
       if (!normalizedId) return;
-
       setDeletingTrajectoryId(normalizedId);
       try {
         const response = await client.deleteTrajectories([normalizedId]);
@@ -573,7 +550,6 @@ function TrajectoriesViewForAuthority({
       trajectories,
     ],
   );
-
   const handleClearAllTrajectories = useCallback(async () => {
     setClearingAll(true);
     try {
@@ -606,7 +582,6 @@ function TrajectoriesViewForAuthority({
     onSelectTrajectory,
     setActionNotice,
   ]);
-
   const clearAllDisabled =
     loading || clearingAll || deletingTrajectoryId !== null || total === 0;
   const issue = loadIssue
@@ -619,7 +594,6 @@ function TrajectoriesViewForAuthority({
   const showList = !isMobileWorkspace || detailTrajectoryId === null;
   const showDetail = !isMobileWorkspace || detailTrajectoryId !== null;
   const showingMobileDetail = isMobileWorkspace && detailTrajectoryId !== null;
-
   const managementActions =
     managementCapability === "available" && trajectories.length > 0 ? (
       <div className="flex items-center gap-1">
@@ -717,7 +691,6 @@ function TrajectoriesViewForAuthority({
         />
       </div>
     ) : null;
-
   return (
     <ShellViewAgentSurface viewId="trajectories">
       <FramedPage
@@ -736,9 +709,6 @@ function TrajectoriesViewForAuthority({
             />
           ) : null}
           <FramedPageHeader
-            title={t("trajectoriesview.Title", {
-              defaultValue: "Trajectories",
-            })}
             actions={contentHeader}
             className="min-w-0 flex-1 text-[color:var(--settings-foreground)]"
           />
@@ -846,6 +816,36 @@ function TrajectoriesViewForAuthority({
                         Retry
                       </Button>
                     ) : null}
+                  </div>
+                ) : null}
+
+                {managementCapability === "error" ? (
+                  <div
+                    role="status"
+                    className="mt-2 flex items-start gap-2 rounded-[12px] bg-[var(--settings-fill)] px-3 py-2.5 text-[13px] leading-5 text-[color:var(--settings-muted)]"
+                  >
+                    <AlertTriangle
+                      className="mt-0.5 size-4 shrink-0"
+                      aria-hidden
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-[color:var(--settings-foreground)]">
+                        Management controls are unavailable
+                      </div>
+                      <div>
+                        Export and delete controls could not be checked.
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="touch"
+                      variant="ghostMuted"
+                      className="shrink-0"
+                      aria-label="Retry management controls"
+                      onClick={() => void loadManagementCapability()}
+                    >
+                      Retry
+                    </Button>
                   </div>
                 ) : null}
 

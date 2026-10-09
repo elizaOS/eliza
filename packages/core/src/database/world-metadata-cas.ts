@@ -1,7 +1,4 @@
-/**
- * Shared value-comparison and revision helpers protect world metadata across
- * compare-and-swap and legacy whole-world adapter writes.
- */
+/** Revision and comparison helpers for atomic and whole-world metadata writes. */
 
 import { ElizaError } from "../errors";
 import type { Metadata } from "../types/primitives";
@@ -62,10 +59,7 @@ export function getWorldMetadataRevision(
 		: null;
 }
 
-/**
- * Require a legacy whole-world writer to carry the revision it read. A stale
- * or malformed request is an observable failure, never a silent lost update.
- */
+/** Requires whole-world writers to carry the revision they read. Stale or malformed requests fail explicitly. */
 export function requireFreshWorldMetadataRevision(
 	storedMetadata: Metadata | undefined,
 	writerMetadata: Metadata | undefined,
@@ -114,6 +108,10 @@ export function mergeWorldMetadataForLegacyWrite(
 	// newly constructed owner-only projection during message ingestion.
 	delete incoming.roles;
 	delete incoming.roleSources;
+	// The role-write audit trail is the same authority state: caller metadata
+	// is a possibly-stale round-tripped snapshot, so its shorter audit array
+	// must never erase appended rows on the stored world.
+	delete incoming[WORLD_METADATA_ROLE_AUDIT_KEY];
 	return {
 		...stored,
 		...incoming,
@@ -121,6 +119,12 @@ export function mergeWorldMetadataForLegacyWrite(
 		...(stored.roleSources === undefined
 			? {}
 			: { roleSources: stored.roleSources }),
+		...(stored[WORLD_METADATA_ROLE_AUDIT_KEY] === undefined
+			? {}
+			: {
+					[WORLD_METADATA_ROLE_AUDIT_KEY]:
+						stored[WORLD_METADATA_ROLE_AUDIT_KEY],
+				}),
 		[WORLD_METADATA_REVISION_KEY]: storedRevision,
 	};
 }

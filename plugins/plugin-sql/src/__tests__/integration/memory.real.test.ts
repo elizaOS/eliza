@@ -3,7 +3,8 @@
  * real isolated PGlite/Postgres adapter: create/update/delete, partial and
  * nested-partial metadata updates, room/id-list/pagination reads, embedding
  * search, document+fragment cascade delete, and Memory<->MemoryModel field
- * mapping.
+ * mapping. Message-content replacement and atomic publication are checked for
+ * the same jsonb text rejection as create and update.
  */
 import {
   ChannelType,
@@ -21,7 +22,8 @@ import { v4 } from "uuid";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { embeddingTable, memoryTable } from "../../schema";
+import { embeddingTable } from "../../schema/embedding";
+import { memoryTable } from "../../schema/memory";
 import { MemoryStore } from "../../stores/memory.store";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
@@ -120,6 +122,114 @@ describe("Memory Integration Tests", () => {
     },
   });
 
+  it.each(["adapter", "store"])(
+    "%s preserves complete large memory source text across create and update while rejecting hostile metadata",
+    async (path) => {
+      const writer =
+        path === "adapter"
+          ? {
+              create: adapter.createMemory.bind(adapter),
+              update: adapter.updateMemory.bind(adapter),
+            }
+          : new MemoryStore({
+              getDb: () => adapter.getDatabase() as DrizzleDatabase,
+              withRetry: (operation) => operation(),
+              withIsolationContext: (entityId, operation) =>
+                adapter.withEntityContext(entityId, operation),
+              agentId: testAgentId,
+              getEmbeddingDimension: () => "dim384",
+              getEmbeddingSpace: () => null,
+            });
+      const text = 'source \\"🌍\n'.repeat(150_000);
+      const content: Content = {
+        text: `${text}message-end`,
+        attachments: [
+          {
+            id: "source-a",
+            url: "https://example.test/source-a",
+            title: "Source A",
+            source: "test",
+            description: "Complete attachment",
+            text: `${text}attachment-end`,
+          },
+        ],
+      };
+      const memory = createTestMemory(content);
+      const id = await writer.create(memory, "messages");
+      expect((await adapter.getMemoryById(id))?.content).toEqual(content);
+      const updated: Content = {
+        ...content,
+        text: `${text}updated-message-end`,
+        attachments: content.attachments!.map((attachment) => ({
+          ...attachment,
+          text: `${text}updated-attachment-end`,
+        })),
+      };
+      expect(await writer.update({ id, content: updated })).toBe(true);
+      expect((await adapter.getMemoryById(id))?.content).toEqual(updated);
+
+      const invalidContents: Array<{ content: Content; code: string }> = [
+        {
+          content: { text: "replacement", metadata: { text } },
+          code: "SQL_JSON_SANITIZE_UNBOUNDED",
+        },
+        { content: { text: "bad\0source" }, code: "SQL_JSON_UNSUPPORTED_NUL" },
+        { content: { text: "bad \ud83d" }, code: "SQL_JSON_UNSUPPORTED_SURROGATE" },
+        {
+          content: {
+            text: "replacement",
+            attachments: [{ ...content.attachments![0], text: "bad\0attachment" }],
+          },
+          code: "SQL_JSON_UNSUPPORTED_NUL",
+        },
+      ];
+      let accessorInvoked = false;
+      const accessorContent: Content = {
+        get text() {
+          accessorInvoked = true;
+          return text;
+        },
+      };
+      invalidContents.push({ content: accessorContent, code: "SQL_JSON_SANITIZE_UNBOUNDED" });
+      for (const { content: invalid, code } of invalidContents) {
+        const rejected = createTestMemory(invalid);
+        await expect(writer.create(rejected, "messages")).rejects.toMatchObject({ code });
+        expect(await adapter.getMemoryById(rejected.id!)).toBeNull();
+        await expect(writer.update({ id, content: invalid })).rejects.toMatchObject({
+          code: "DB_UPDATE_FAILED",
+          cause: { code },
+        });
+        expect((await adapter.getMemoryById(id))?.content).toEqual(updated);
+      }
+      expect(accessorInvoked).toBe(false);
+    }
+  );
+
+  it("preserves large document fragments and retains their upload budget on updates", async () => {
+    const content = { text: "fragment 🌍\n".repeat(150_000) };
+    const fragment = createTestMemory(content);
+    const id = await adapter.createMemory(fragment, "document_fragments");
+    expect((await adapter.getMemoryById(id))?.content).toEqual(content);
+
+    const updated = { text: `${content.text}complete-fragment-end` };
+    expect(await adapter.updateMemory({ id, content: updated })).toBe(true);
+    expect((await adapter.getMemoryById(id))?.content).toEqual(updated);
+
+    const oversized = { text: "x".repeat(32 * 1024 * 1024) };
+    const rejected = createTestMemory(oversized);
+    await expect(adapter.createMemory(rejected, "document_fragments")).rejects.toMatchObject({
+      code: "SQL_JSON_SANITIZE_UNBOUNDED",
+    });
+    expect(await adapter.getMemoryById(rejected.id!)).toBeNull();
+    await expect(
+      adapter.updateMemory({ id, content: oversized, metadata: fragment.metadata })
+    ).rejects.toMatchObject({
+      code: "DB_UPDATE_FAILED",
+      cause: { code: "SQL_JSON_SANITIZE_UNBOUNDED" },
+    });
+    expect((await adapter.getMemoryById(id))?.content).toEqual(updated);
+  });
+
   it("should create and retrieve a memory with an embedding", async () => {
     const memory = createTestMemory(
       { text: "test" },
@@ -149,6 +259,7 @@ describe("Memory Integration Tests", () => {
                 adapter.withEntityContext(entityId, operation),
               agentId: testAgentId,
               getEmbeddingDimension: () => "dim384",
+              getEmbeddingSpace: () => null,
             });
       const text = String.raw`C:\notes\version-3.5 https://example.org \u0000`;
       const memory = createTestMemory({
@@ -212,6 +323,120 @@ describe("Memory Integration Tests", () => {
       });
     }
   );
+
+  const storedMemoryIds = async () =>
+    (
+      await (adapter.getDatabase() as DrizzleDatabase)
+        .select({ id: memoryTable.id })
+        .from(memoryTable)
+    )
+      .map((row) => row.id)
+      .sort();
+
+  it("rejects NUL and lone surrogates in a message content replacement without writing any row", async () => {
+    const id = await adapter.createMemory(createTestMemory({ text: "original" }), "messages");
+    const stored = await adapter.getMemoryById(id);
+    // Over the inline limit, so the replacement stages segment rows before the parent update.
+    const segmentedText = "segment source\n".repeat(5_000);
+    const invalidReplacements: Array<{ content: Content; code: string }> = [
+      { content: { text: "x \ud83d" }, code: "SQL_JSON_UNSUPPORTED_SURROGATE" },
+      { content: { text: "x \u0000" }, code: "SQL_JSON_UNSUPPORTED_NUL" },
+      {
+        content: { text: "x", metadata: { label: "cut \ud83d" } },
+        code: "SQL_JSON_UNSUPPORTED_SURROGATE",
+      },
+      { content: { text: "x", metadata: { label: "a\u0000b" } }, code: "SQL_JSON_UNSUPPORTED_NUL" },
+      {
+        content: { text: segmentedText, thought: "cut \ud83d" },
+        code: "SQL_JSON_UNSUPPORTED_SURROGATE",
+      },
+    ];
+    for (const { content, code } of invalidReplacements) {
+      await expect(runtime.replaceMessageMemoryContent(id, content)).rejects.toMatchObject({
+        code,
+      });
+      expect(await adapter.getMemoryById(id)).toEqual(stored);
+      expect(await storedMemoryIds()).toEqual([id]);
+    }
+
+    const emoji: Content = { text: "x 🙂", metadata: { label: "🙂" } };
+    await runtime.replaceMessageMemoryContent(id, emoji);
+    expect((await adapter.getMemoryById(id))?.content).toEqual(emoji);
+  });
+
+  it("rejects NUL and lone surrogates in an atomic publication head without writing any row", async () => {
+    // Each call stages a fresh immutable dependency before the head write.
+    const publish = (
+      headId: UUID,
+      content: Content,
+      metadata: MemoryMetadata,
+      expectedRevision: string | null
+    ) =>
+      adapter.compareAndSwapMemoryPublication({
+        head: {
+          memory: { ...createTestMemory(content), id: headId, metadata },
+          tableName: "publication_heads",
+        },
+        dependencies: [
+          {
+            memory: createTestMemory({ text: "immutable dependency" }),
+            tableName: "publication_shards",
+          },
+        ],
+        expectedRevision,
+      });
+    const headId = v4() as UUID;
+    await expect(
+      publish(headId, { text: "head" }, { type: MemoryType.CUSTOM, revision: "r1" }, null)
+    ).resolves.toMatchObject({ status: "published" });
+    const stored = await adapter.getMemoryById(headId);
+    const rowIds = await storedMemoryIds();
+    expect(rowIds).toHaveLength(2);
+
+    const invalidHeads: Array<{ content: Content; metadata: MemoryMetadata; code: string }> = [
+      {
+        content: { text: "x \ud83d" },
+        metadata: { type: MemoryType.CUSTOM, revision: "r2" },
+        code: "SQL_JSON_UNSUPPORTED_SURROGATE",
+      },
+      {
+        content: { text: "x \u0000" },
+        metadata: { type: MemoryType.CUSTOM, revision: "r2" },
+        code: "SQL_JSON_UNSUPPORTED_NUL",
+      },
+      {
+        content: { text: "x" },
+        metadata: { type: MemoryType.CUSTOM, revision: "r2", label: "cut \ud83d" },
+        code: "SQL_JSON_UNSUPPORTED_SURROGATE",
+      },
+      {
+        content: { text: "x" },
+        metadata: { type: MemoryType.CUSTOM, revision: "r2", label: "a\u0000b" },
+        code: "SQL_JSON_UNSUPPORTED_NUL",
+      },
+    ];
+    for (const { content, metadata, code } of invalidHeads) {
+      // A first publication inserts the head; a revision swap updates the stored one.
+      for (const [id, expectedRevision] of [
+        [v4() as UUID, null],
+        [headId, "r1"],
+      ] as const) {
+        await expect(publish(id, content, metadata, expectedRevision)).rejects.toMatchObject({
+          code,
+        });
+        expect(await adapter.getMemoryById(headId)).toEqual(stored);
+        expect(await storedMemoryIds()).toEqual(rowIds);
+      }
+    }
+
+    const emoji: Content = { text: "x 🙂" };
+    await expect(
+      publish(headId, emoji, { type: MemoryType.CUSTOM, revision: "r2", label: "🙂" }, "r1")
+    ).resolves.toMatchObject({ status: "published" });
+    const republished = await adapter.getMemoryById(headId);
+    expect(republished?.content).toEqual(emoji);
+    expect(republished?.metadata).toMatchObject({ revision: "r2", label: "🙂" });
+  });
 
   it("preserves repeated shared values in atomic memory batches", async () => {
     const shared = { text: "Release 3.5" };
@@ -565,11 +790,66 @@ describe("Memory Integration Tests", () => {
       expect(epochOnly[0].createdAt).toBe(0);
     });
 
+    it("filters getMemories by metadata with the same containment as countMemories", async () => {
+      const withMetadata = (text: string, extra: Record<string, unknown>) => {
+        const memory = createTestMemory({ text });
+        return { ...memory, metadata: { ...memory.metadata, ...extra } };
+      };
+      await adapter.createMemory(withMetadata("slot", { kind: "slot" }), "memories");
+      await adapter.createMemory(
+        withMetadata("slot-extra", { kind: "slot", extra: 1 }),
+        "memories"
+      );
+      await adapter.createMemory(withMetadata("other", { kind: "other" }), "memories");
+
+      const filter = { kind: "slot" };
+      const memories = await adapter.getMemories({
+        roomId: testRoomId,
+        tableName: "memories",
+        metadata: filter,
+      });
+      const count = await adapter.countMemories({
+        roomIds: [testRoomId],
+        tableName: "memories",
+        metadata: filter,
+      });
+
+      expect(memories.map((memory) => memory.content.text).sort()).toEqual(["slot", "slot-extra"]);
+      expect(count).toBe(memories.length);
+    });
+
     it("should count memories in a room", async () => {
       await adapter.createMemory(createTestMemory({ text: "mem1" }), "memories");
       await adapter.createMemory(createTestMemory({ text: "mem2" }), "memories");
       const count = await adapter.countMemories(testRoomId, false, "memories");
       expect(count).toBe(2);
+    });
+
+    it("counts zero rows for an explicit empty roomIds list instead of the whole table", async () => {
+      const otherRoomId = v4() as UUID;
+      await adapter.createRooms([
+        {
+          id: otherRoomId,
+          agentId: testAgentId,
+          worldId: testWorldId,
+          name: "Other Room",
+          source: "test",
+          type: ChannelType.GROUP,
+        } as Room,
+      ]);
+      await adapter.createMemory(createTestMemory({ text: "room a one" }), "messages");
+      await adapter.createMemory(createTestMemory({ text: "room a two" }), "messages");
+      await adapter.createMemory(
+        { ...createTestMemory({ text: "room b one" }), roomId: otherRoomId },
+        "messages"
+      );
+
+      expect(await adapter.countMemories({ roomIds: [], tableName: "messages" })).toBe(0);
+      expect(await adapter.countMemories({ tableName: "messages" })).toBe(3);
+      expect(await adapter.countMemories({ roomIds: [testRoomId], tableName: "messages" })).toBe(2);
+      expect(
+        await adapter.countMemories({ roomIds: [testRoomId, otherRoomId], tableName: "messages" })
+      ).toBe(3);
     });
 
     it("should require tableName on reads and default counts to the messages table", async () => {

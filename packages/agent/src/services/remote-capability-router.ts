@@ -51,15 +51,17 @@ import {
   type PluginResponseHandlerFieldEvaluatorHandleParams,
   type PluginResponseHandlerFieldEvaluatorParseParams,
   type PluginResponseHandlerFieldEvaluatorShouldRunParams,
+  parsePositiveInteger,
   type RemotePluginCapability,
   type RuntimeBrokerCapabilityMethod,
   RuntimeBrokerCapabilityRouter,
   Service,
   type TerminalCapability,
   type TerminalRunParams,
+  trimEndCharacters,
 } from "@elizaos/core";
-import { parsePositiveInteger } from "@elizaos/shared";
-import { trimEndCharacters } from "../utils/string-boundaries.ts";
+
+import { parseCapabilityRouterEndpointsSetting } from "./remote-capability-router-settings.ts";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
@@ -825,57 +827,13 @@ function parseEndpointList(
   value: string | undefined,
   token?: string,
 ): RemoteCapabilityEndpointConfig[] {
-  if (!value) return [];
-  const parsed = tryParseEndpointJson(value, token);
-  if (parsed) return parsed;
-  return value
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((baseUrl, index) => ({
-      id: `remote-${index + 1}`,
-      baseUrl: stripTrailingSlash(baseUrl),
-      ...(token === undefined ? {} : { token }),
-    }));
-}
-
-function tryParseEndpointJson(
-  value: string,
-  token?: string,
-): RemoteCapabilityEndpointConfig[] | null {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    const endpoints: RemoteCapabilityEndpointConfig[] = [];
-    for (let index = 0; index < parsed.length; index += 1) {
-      const item = parsed[index];
-      if (typeof item === "string" && item.trim()) {
-        endpoints.push({
-          id: `remote-${index + 1}`,
-          baseUrl: stripTrailingSlash(item.trim()),
-          ...(token === undefined ? {} : { token }),
-        });
-      } else if (isRecord(item) && typeof item.baseUrl === "string") {
-        endpoints.push({
-          id:
-            typeof item.id === "string" && item.id.trim()
-              ? item.id.trim()
-              : `remote-${index + 1}`,
-          baseUrl: stripTrailingSlash(item.baseUrl.trim()),
-          ...(typeof item.token === "string" && item.token.trim()
-            ? { token: item.token.trim() }
-            : token === undefined
-              ? {}
-              : { token }),
-        });
-      } else {
-        return null;
-      }
-    }
-    return endpoints;
-  } catch {
-    return null;
-  }
+  // Malformed values throw CapabilityRouterSettingError rather than being
+  // reinterpreted as a comma-separated list of garbage URLs.
+  return parseCapabilityRouterEndpointsSetting(value).map((endpoint) =>
+    endpoint.token !== undefined || token === undefined
+      ? endpoint
+      : { ...endpoint, token },
+  );
 }
 
 function isPluginModuleMethod(method: RuntimeBrokerCapabilityMethod): boolean {

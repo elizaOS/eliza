@@ -7,14 +7,15 @@
  * service tag from services/headscale/acl.hujson.
  */
 
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
+import { HeadscaleClient } from "@elizaos/cloud-shared/lib/services/headscale-client";
+import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { creditsService } from "@/lib/services/credits";
-import { HeadscaleClient } from "@/lib/services/headscale-client";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CUSTOMER_TUNNEL_TAG = "tag:eliza-tunnel";
 const DEFAULT_EXPIRY_SECONDS = 60 * 60;
@@ -43,8 +44,13 @@ app.post("/", async (c) => {
     const { user } = await requirePaidRouteStanding(c, {
       route: "tunnels.tailscale.auth-key",
     });
-    const rawBody = await c.req.json().catch(() => ({}));
-    const parsed = authKeyRequestSchema.safeParse(rawBody);
+    // An omitted body uses the defaults; a malformed one must not debit
+    // credits and mint a key with default settings.
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const parsed = authKeyRequestSchema.safeParse(decodedBody.value);
     if (!parsed.success) {
       return c.json(
         {
@@ -135,7 +141,7 @@ app.post("/", async (c) => {
             error: "Insufficient credits",
             requiredCredits: tunnelAuthKeyCostUsd,
             currentBalance: debit.newBalance,
-            topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
+            topUpUrl: "https://cloud.eliza.app/cloud/billing",
             billing: tunnelBilling(tunnelAuthKeyCostUsd, false),
           },
           402,

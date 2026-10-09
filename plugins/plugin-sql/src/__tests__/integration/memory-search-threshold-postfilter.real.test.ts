@@ -171,6 +171,18 @@ describe("searchMemoriesByEmbedding threshold post-filter (query-shape identity)
     expect(zero.map((m) => m.id)).toEqual(absent.map((m) => m.id));
   });
 
+  it("can omit returned vectors without changing matched records, scores or order", async () => {
+    const params = { embedding: QUERY, tableName: TABLE, roomId, count: 6, match_threshold: 0.7 };
+    const withVectors = await adapter.searchMemories(params);
+    const withoutVectors = await adapter.searchMemories({ ...params, includeEmbedding: false });
+    expect(withVectors).toHaveLength(6);
+    expect(withVectors.every((memory) => memory.embedding?.length === DIMS)).toBe(true);
+    expect(withoutVectors.every((memory) => memory.embedding === undefined)).toBe(true);
+    expect(withoutVectors).toEqual(
+      withVectors.map((memory) => ({ ...memory, embedding: undefined }))
+    );
+  });
+
   it("keeps scope predicates inside the ordered scan (no starvation from closer out-of-scope rows)", async () => {
     // Plant closer vectors in ANOTHER room; a room-scoped search must still
     // surface this room's row rather than starving on the global top-K.
@@ -207,5 +219,32 @@ describe("searchMemoriesByEmbedding threshold post-filter (query-shape identity)
       match_threshold: 0.7,
     });
     expect(scoped.map((m) => m.id)).toEqual([idBySimilarity.get(0.98)]);
+    const excluded = await adapter.searchMemories({
+      embedding: QUERY,
+      tableName: TABLE,
+      excludeRoomIds: [otherRoomId],
+      count: 1,
+      match_threshold: 0.7,
+    });
+    expect(excluded).toEqual(scoped);
+    const nextPage = await adapter.searchMemories({
+      embedding: QUERY,
+      tableName: TABLE,
+      excludeRoomIds: [otherRoomId],
+      count: 1,
+      offset: 1,
+      match_threshold: 0.7,
+    });
+    expect(nextPage.map((m) => m.id)).toEqual([idBySimilarity.get(0.95)]);
+    expect(
+      await adapter.searchMemories({
+        embedding: QUERY,
+        tableName: TABLE,
+        roomId,
+        excludeRoomIds: [roomId],
+        count: 1,
+        match_threshold: 0.7,
+      })
+    ).toEqual([]);
   });
 });

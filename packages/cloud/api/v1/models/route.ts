@@ -4,16 +4,16 @@
  * is best-effort, never makes the catalog read fail closed.
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
+import { getCurrentUser } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   getAiProviderConfigurationError,
   hasAnyAiProviderConfigured,
-} from "@/lib/providers/language-model";
-import { getCachedMergedModelCatalog } from "@/lib/services/model-catalog";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import { getCachedMergedModelCatalog } from "@elizaos/cloud-shared/lib/services/model-catalog";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

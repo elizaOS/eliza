@@ -4,7 +4,8 @@
  * mirror, retry, or direct writer converges instead of replacing newer turns.
  */
 
-import { isBlockedHostname, isPrivateIpAddress, stringToUuid } from "@elizaos/core/edge";
+import { stringToUuid } from "@elizaos/core";
+import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core/protocol";
 import type { ModelMessage } from "ai";
 import type {
   SharedRuntimeHistoryMessage,
@@ -12,6 +13,12 @@ import type {
   SharedRuntimeReminderActionProvenance,
 } from "../../../db/schemas/shared-runtime-history";
 import { logger } from "../../utils/logger";
+import {
+  currentNwsObservationSource,
+  isCurrentWeatherUnavailableReason,
+  isVerifiedCurrentNwsObservation,
+  parseCurrentWeatherSourceDiagnostics,
+} from "./shared-current-weather";
 
 export const MAX_PUBLIC_WEB_GROUNDING_AGE_MS = 24 * 60 * 60 * 1_000;
 export const MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS = 60_000;
@@ -111,14 +118,25 @@ export function parseSharedPublicWebGrounding(
     candidate.observedAt <= Date.now() + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS
   ) {
     const query = candidate.query.trim();
+    const sourceDiagnostics = parseCurrentWeatherSourceDiagnostics(candidate.sourceDiagnostics);
     return query
-      ? { kind: "web_search_unavailable", query, observedAt: candidate.observedAt }
+      ? {
+          kind: "web_search_unavailable",
+          query,
+          observedAt: candidate.observedAt,
+          ...(isCurrentWeatherUnavailableReason(candidate.unavailableReason)
+            ? { unavailableReason: candidate.unavailableReason }
+            : {}),
+          ...(sourceDiagnostics ? { sourceDiagnostics } : {}),
+        }
       : undefined;
   }
   if (
     candidate.kind !== "web_search" ||
     typeof candidate.query !== "string" ||
-    (candidate.provider !== "parallel" && candidate.provider !== "exa") ||
+    (candidate.provider !== "parallel" &&
+      candidate.provider !== "exa" &&
+      candidate.provider !== "nws") ||
     typeof candidate.text !== "string" ||
     typeof candidate.observedAt !== "number" ||
     !Number.isSafeInteger(candidate.observedAt) ||
@@ -134,6 +152,19 @@ export function parseSharedPublicWebGrounding(
   if (!query || !text || !sources || sources.length === 0) {
     return undefined;
   }
+  const weatherObservation =
+    candidate.provider === "nws" &&
+    isVerifiedCurrentNwsObservation(candidate.weatherObservation, query, Date.now(), false)
+      ? candidate.weatherObservation
+      : undefined;
+  if (
+    candidate.provider === "nws" &&
+    (!weatherObservation ||
+      sources.length !== 1 ||
+      sources[0].url !== weatherObservation.sourceUrl ||
+      sources[0].text !== currentNwsObservationSource(weatherObservation).text)
+  )
+    return undefined;
   return {
     kind: "web_search",
     query,
@@ -143,6 +174,7 @@ export function parseSharedPublicWebGrounding(
     sourceUrls: sources.map((source) => source.url),
     sources,
     truncated: false,
+    ...(weatherObservation ? { weatherObservation } : {}),
   };
 }
 
@@ -205,7 +237,7 @@ export function parseSharedReminderActionProvenance(
 /** Encodes untrusted evidence as JSON so result text cannot forge envelope boundaries. */
 export function encodeSharedPublicWebGrounding(value: SharedRuntimePublicGrounding): string {
   const parsed = parseSharedPublicWebGrounding(value);
-  if (!parsed || parsed.kind !== "web_search") {
+  if (parsed?.kind !== "web_search") {
     throw new TypeError("Invalid Shared public web grounding");
   }
   return JSON.stringify({
@@ -243,7 +275,11 @@ export function sharedPublicWebGrounding(
   for (let index = (actionResults?.length ?? 0) - 1; index >= 0; index -= 1) {
     const candidate = actionResults?.[index];
     if (!candidate || typeof candidate !== "object") continue;
-    const record = candidate as { success?: unknown; text?: unknown; data?: unknown };
+    const record = candidate as {
+      success?: unknown;
+      text?: unknown;
+      data?: unknown;
+    };
     if (!record.data || typeof record.data !== "object") continue;
     const data = record.data as Record<string, unknown>;
     if (data.actionName !== "WEB_SEARCH") continue;
@@ -261,11 +297,14 @@ export function sharedPublicWebGrounding(
               : observedAt,
           sourceUrls: data.sourceUrls,
           sources: data.sources,
+          weatherObservation: data.weatherObservation,
           truncated: false,
         })
       : parseSharedPublicWebGrounding({
           kind: "web_search_unavailable",
           query: data.query,
+          unavailableReason: data.unavailableReason,
+          sourceDiagnostics: data.sourceDiagnostics,
           observedAt,
         });
     const invalidAvailableReceipt = attemptedAvailable && !parsed;
@@ -389,6 +428,20 @@ function selectedGrounding(
   if (latest.grounding.kind === "web_search_unavailable") {
     return { ...latest, status: "unavailable" };
   }
+  // A fresh search receipt does not date the weather in an indexed excerpt.
+  // Preserve old provenance for follow-up selection, but never project it as
+  // current weather evidence. A new verified observation must run instead.
+  if (
+    latest.grounding.query.startsWith("current public weather in ") &&
+    (latest.grounding.provider !== "nws" ||
+      !isVerifiedCurrentNwsObservation(
+        latest.grounding.weatherObservation,
+        latest.grounding.query,
+        now,
+      ))
+  ) {
+    return { ...latest, status: "fresh_search_required" };
+  }
   if (
     latest.grounding.observedAt < now - MAX_PUBLIC_WEB_GROUNDING_AGE_MS ||
     latest.grounding.observedAt > now + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS
@@ -449,7 +502,10 @@ function groundingProjectionMessages(
   if (options?.nativeToolProjection === false) {
     return [
       groundingAuthorityMarker(selection),
-      { role: "user", content: encodeSharedPublicWebGrounding(selection.grounding) },
+      {
+        role: "user",
+        content: encodeSharedPublicWebGrounding(selection.grounding),
+      },
     ];
   }
   const toolCallId = `persisted-web-${stringToUuid(`shared:${messageIdentity(message)}`)}`;
@@ -510,7 +566,10 @@ export function sharedRuntimeModelHistoryMessages(
     if (selected?.index === index && selected.status === "available") {
       messages.push(...groundingProjectionMessages(message, selected));
     }
-    messages.push({ role: message.role, content: sharedRuntimeModelHistoryContent(message) });
+    messages.push({
+      role: message.role,
+      content: sharedRuntimeModelHistoryContent(message),
+    });
     if (selected?.index === index && selected.status !== "available") {
       messages.push(...groundingProjectionMessages(message, selected));
     }
@@ -518,22 +577,33 @@ export function sharedRuntimeModelHistoryMessages(
   return messages;
 }
 
-/** Inserts historical evidence without splitting a live tool call/result pair. */
+/** Merge server-owned policy into the leading system while preserving untrusted evidence roles. */
 export function insertSharedRuntimeGroundingMessages(
   messages: ModelMessage[],
   groundingMessages: ModelMessage[],
 ): ModelMessage[] {
   if (groundingMessages.length === 0) return messages;
   // Later planner iterations end in a live tool result, not the user's turn.
-  // Anchor evidence before the last user message so the current tool pair
-  // remains adjacent for providers that enforce message ordering.
+  // Anchor evidence before the last user so live tool call/result pairs stay adjacent.
   const currentUserIndex = messages.findLastIndex((message) => message.role === "user");
   if (currentUserIndex < 0) return messages;
-  return [
+  // These system messages are emitted only by the server's grounding projection
+  // helpers above. Public search text stays in its original user/tool messages.
+  // Qwen-compatible requests have one leading system message, not a later system.
+  const policy = groundingMessages
+    .filter((message) => message.role === "system")
+    .map((message) => message.content)
+    .join("\n\n");
+  const grounded = [
     ...messages.slice(0, currentUserIndex),
-    ...groundingMessages,
+    ...groundingMessages.filter((message) => message.role !== "system"),
     ...messages.slice(currentUserIndex),
   ];
+  if (!policy) return grounded;
+  const first = grounded[0];
+  return first?.role === "system"
+    ? [{ ...first, content: `${first.content}\n\n${policy}` }, ...grounded.slice(1)]
+    : [{ role: "system", content: policy }, ...grounded];
 }
 
 function isPersistedMessage(value: unknown): value is SharedRuntimeHistoryMessageLike {

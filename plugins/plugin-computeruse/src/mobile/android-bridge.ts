@@ -17,7 +17,7 @@
  * never compiled into the consumer build.
  *
  * The Kotlin counterpart is:
- *   plugin-capacitor-bridge/android/src/main/java/ai/elizaos/computeruse/ComputerUsePlugin.kt
+ *   plugin-native-inference/android-bridge/src/main/java/ai/elizaos/computeruse/ComputerUsePlugin.kt
  *
  * The Capacitor plugin jsName is "ComputerUse" — same as iOS. Both platforms
  * resolve through `Capacitor.Plugins.ComputerUse` so the planner layer can

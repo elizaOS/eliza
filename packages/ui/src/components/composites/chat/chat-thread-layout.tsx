@@ -5,22 +5,12 @@
  * carries the game-modal spacing variant. Consumed by ChatView.
  */
 import * as React from "react";
-
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
+import { assignRef } from "../../../utils/refs";
 import { Card } from "../../ui/card";
 import type { ChatVariant } from "./chat-types";
 
 type RefLike<T> = ((instance: T | null) => void) | { current: T | null } | null;
-
-function assignRef<T>(ref: RefLike<T> | undefined, value: T | null): void {
-  if (typeof ref === "function") {
-    ref(value);
-    return;
-  }
-  if (ref) {
-    ref.current = value;
-  }
-}
 
 export interface ChatThreadLayoutProps
   extends React.HTMLAttributes<HTMLElement> {

@@ -1,6 +1,7 @@
 /**
  * Vite config for the standalone story gallery app (aliases, shims, dev server).
  */
+
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,27 +9,21 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig, type Plugin } from "vite";
+import { rejectRuntimeInRendererPlugin } from "../../app/scripts/lib/renderer-runtime-boundary.ts";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
 const uiSrc = path.resolve(here, "../src");
-const sharedSrc = path.resolve(here, "../../shared/src");
-const sharedAssets = path.resolve(here, "../../shared/assets");
+const designOutput = testOutputPath("ui-design-lab", "dist");
+const brandAssets = path.resolve(here, "../assets");
 const cleanupHelper = path.resolve(
   repoRoot,
-  "packages/scripts/rm-path-recursive.mjs",
+  "packages/scripts/rm-path-recursive.ts",
 );
-const coreBrowserShim = path.resolve(here, "src/eliza-core-browser-shim.ts");
-const fastRedactShim = path.resolve(here, "src/fast-redact-browser-shim.ts");
-const nodeBuiltinsShim = path.resolve(
-  here,
-  "src/node-builtins-browser-shim.ts",
-);
-const loggerSrc = path.resolve(repoRoot, "packages/logger/src/index.ts");
-
 // Brand components (ElizaLogo, lockups, …) reference assets under `/brand/*`
-// (BRAND_PATHS in @elizaos/shared/brand → packages/shared/assets). Serve those
-// from the shared package in dev and copy them into dist on build so the
+// (BRAND_PATHS in @elizaos/ui/brand → packages/ui/assets). Serve those
+// from the UI assets in dev and copy them into dist on build so the
 // catalog renders logos instead of broken images.
 function brandAssetsPlugin(): Plugin {
   const types: Record<string, string> = {
@@ -46,8 +41,8 @@ function brandAssetsPlugin(): Plugin {
       server.middlewares.use((req, res, next) => {
         const url = (req.url ?? "").split("?")[0];
         if (!url.startsWith("/brand/")) return next();
-        const file = path.join(sharedAssets, url.slice("/brand/".length));
-        if (!file.startsWith(sharedAssets) || !fs.existsSync(file))
+        const file = path.join(brandAssets, url.slice("/brand/".length));
+        if (!file.startsWith(brandAssets) || !fs.existsSync(file))
           return next();
         res.setHeader(
           "Content-Type",
@@ -57,21 +52,30 @@ function brandAssetsPlugin(): Plugin {
       });
     },
     closeBundle() {
-      const dest = path.resolve(here, "dist/brand");
+      const dest = path.join(designOutput, "brand");
       execFileSync("node", [cleanupHelper, dest], {
         cwd: repoRoot,
         stdio: "inherit",
       });
-      fs.cpSync(sharedAssets, dest, { recursive: true });
+      fs.cpSync(brandAssets, dest, { recursive: true });
     },
   };
 }
-
 export default defineConfig({
   root: here,
-  // Shared UI source reads Node's `process.env` (terminal/theme, globals, etc.)
-  // unguarded at module load; shim it to an empty object so those modules can
-  // be imported in the browser catalog.
+  build: {
+    outDir: designOutput,
+    emptyOutDir: true,
+    rolldownOptions: {
+      input: Object.fromEntries(
+        ["lab", "voice", "permission-preview", "launcher-icons"].map((name) => [
+          name,
+          path.join(here, `${name}.html`),
+        ]),
+      ),
+    },
+  },
+  // Renderer dependencies can inspect environment flags during initialization.
   define: {
     "process.env": "({})",
   },
@@ -80,7 +84,12 @@ export default defineConfig({
   // the catalog/lab rendered every component with its inline styles only —
   // positioning utilities like `fixed`/`absolute` silently no-op'd, so the
   // floating chat overlay flowed statically instead of anchoring to the frame.
-  plugins: [tailwindcss(), react(), brandAssetsPlugin()],
+  plugins: [
+    rejectRuntimeInRendererPlugin(),
+    tailwindcss(),
+    react(),
+    brandAssetsPlugin(),
+  ],
   resolve: {
     alias: [
       { find: "@ui-src", replacement: uiSrc },
@@ -91,47 +100,7 @@ export default defineConfig({
       // renderer modules and the thunk registry would come up empty.
       { find: /^@elizaos\/ui$/, replacement: path.resolve(uiSrc, "index.ts") },
       { find: /^@elizaos\/ui\/(.+)$/, replacement: `${uiSrc}/$1` },
-      { find: "@elizaos/core", replacement: coreBrowserShim },
-      { find: "@elizaos/logger", replacement: loggerSrc },
-      { find: /^@elizaos\/shared$/, replacement: sharedSrc },
-      { find: /^@elizaos\/shared\/(.+)$/, replacement: `${sharedSrc}/$1` },
-      { find: "fast-redact", replacement: fastRedactShim },
-      // The shared barrel re-exports a node-only package-root resolver
-      // (utils/eliza-root.ts). The catalog never calls it, but its top-level
-      // `node:*` imports throw under Vite's dev externalization; alias to browser shims.
-      { find: "node:url", replacement: nodeBuiltinsShim },
-      { find: "node:fs/promises", replacement: nodeBuiltinsShim },
-      { find: "node:fs", replacement: nodeBuiltinsShim },
-      { find: "node:path", replacement: nodeBuiltinsShim },
-      { find: "node:os", replacement: nodeBuiltinsShim },
-      // The @elizaos/shared loopback/sandbox guards read node:net.isIP (and a
-      // few node:crypto bits) at module load — shim them so the barrel resolves.
-      { find: "node:net", replacement: nodeBuiltinsShim },
-      { find: "node:crypto", replacement: nodeBuiltinsShim },
     ],
-  },
-  optimizeDeps: {
-    esbuildOptions: {
-      plugins: [
-        {
-          name: "elizaos-core-browser-entry",
-          setup(build) {
-            build.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
-              path: coreBrowserShim,
-            }));
-            build.onResolve({ filter: /^@elizaos\/core\/browser$/ }, () => ({
-              path: coreBrowserShim,
-            }));
-            build.onResolve({ filter: /^@elizaos\/logger$/ }, () => ({
-              path: loggerSrc,
-            }));
-            build.onResolve({ filter: /^fast-redact$/ }, () => ({
-              path: fastRedactShim,
-            }));
-          },
-        },
-      ],
-    },
   },
   server: {
     port: 4321,

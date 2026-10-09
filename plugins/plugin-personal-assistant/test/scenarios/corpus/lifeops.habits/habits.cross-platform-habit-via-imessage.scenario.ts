@@ -4,7 +4,7 @@
  * sources should converge to the same definition.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { seedLifeOpsDefinition } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({
@@ -15,7 +15,7 @@ export default scenario({
   tags: ["lifeops", "habits", "cross-platform", "imessage"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

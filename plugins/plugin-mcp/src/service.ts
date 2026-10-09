@@ -15,6 +15,7 @@
  * restartConnection to the action and route layers. Tool input schemas are
  * rewritten per model provider via the tool-compatibility layer.
  */
+
 import {
   ElizaError,
   fetchWithSsrfGuard,
@@ -22,8 +23,8 @@ import {
   isElizaError,
   logger,
   Service,
+  validateMcpServerConfig,
 } from "@elizaos/core";
-import { validateMcpServerConfig } from "@elizaos/core/security/mcp-server-config";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -36,13 +37,17 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { JSONSchema7 } from "json-schema";
 import {
+  assertMcpJsonSchemaBudget,
+  MCP_TOOL_SCHEMA_UNBOUNDED,
+} from "./protocol-utils/schema-budget.js";
+import {
   createMcpToolCompatibilitySync as createMcpToolCompatibility,
   type McpToolCompatibility,
 } from "./tool-compatibility";
 import {
   BACKOFF_MULTIPLIER,
   type ConnectionState,
-  DEFAULT_MCP_TIMEOUT_SECONDS,
+  DEFAULT_MCP_TIMEOUT_MS,
   DEFAULT_PING_CONFIG,
   type HttpMcpServerConfig,
   INITIAL_RETRY_DELAY,
@@ -59,8 +64,8 @@ import {
   type StdioMcpServerConfig,
 } from "./types";
 import { buildMcpProviderData } from "./utils/mcp";
-import { assertMcpJsonSchemaBudget, MCP_TOOL_SCHEMA_UNBOUNDED } from "./utils/schema-budget";
 
+const MAX_DISCOVERY_PAGES = 1000;
 /** Route every MCP HTTP request through core's DNS-pinned SSRF transport. */
 export async function guardedMcpFetch(input: string | URL, init?: RequestInit): Promise<Response> {
   const guarded = await fetchWithSsrfGuard({
@@ -70,31 +75,21 @@ export async function guardedMcpFetch(input: string | URL, init?: RequestInit): 
   await guarded.release();
   return guarded.response;
 }
-
 export class McpService extends Service {
   static serviceType: string = MCP_SERVICE_NAME;
   capabilityDescription = "Enables the agent to interact with MCP (Model Context Protocol) servers";
-
   private connections: Map<string, McpConnection> = new Map();
   private connectionStates: Map<string, ConnectionState> = new Map();
-  private mcpProvider: McpProvider = {
-    values: { mcp: {}, mcpText: "" },
-    data: { mcp: {} },
-    text: "",
-  };
   private pingConfig: PingConfig = DEFAULT_PING_CONFIG;
   private toolCompatibility: McpToolCompatibility | null = null;
   private compatibilityInitialized = false;
-
   private initializationPromise: Promise<void> | null = null;
-
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     if (runtime) {
       this.initializationPromise = this.initializeMcpServers();
     }
   }
-
   static async start(runtime: IAgentRuntime): Promise<McpService> {
     const service = new McpService(runtime);
     if (service.initializationPromise) {
@@ -102,13 +97,11 @@ export class McpService extends Service {
     }
     return service;
   }
-
   async waitForInitialization(): Promise<void> {
     if (this.initializationPromise) {
       await this.initializationPromise;
     }
   }
-
   async stop(): Promise<void> {
     for (const [name] of this.connections) {
       await this.deleteConnection(name);
@@ -120,20 +113,13 @@ export class McpService extends Service {
     }
     this.connectionStates.clear();
   }
-
   private async initializeMcpServers(): Promise<void> {
     const mcpSettings = this.getMcpSettings();
-
     if (!mcpSettings?.servers || Object.keys(mcpSettings.servers).length === 0) {
-      this.mcpProvider = buildMcpProviderData([]);
       return;
     }
-
     await this.updateServerConnections(mcpSettings.servers);
-    const servers = this.getServers();
-    this.mcpProvider = buildMcpProviderData(servers);
   }
-
   private getMcpSettings(): McpSettings | undefined {
     const configured = this.getConfiguredMcpSettings();
     const envServers = this.readEnvMcpServers();
@@ -145,7 +131,6 @@ export class McpService extends Service {
       servers: { ...(configured?.servers ?? {}), ...envServers },
     };
   }
-
   private getConfiguredMcpSettings(): McpSettings | undefined {
     const rawSettings = this.runtime.getSetting("mcp");
     if (rawSettings !== undefined && rawSettings !== null) {
@@ -157,7 +142,6 @@ export class McpService extends Service {
       }
       return rawSettings;
     }
-
     const characterSettings = this.runtime.character.settings;
     if (characterSettings && typeof characterSettings === "object" && "mcp" in characterSettings) {
       const characterMcpSettings = characterSettings.mcp;
@@ -169,10 +153,8 @@ export class McpService extends Service {
       }
       return characterMcpSettings;
     }
-
     return undefined;
   }
-
   /**
    * Servers declared via the host environment as `MCP_SERVER_<NAME>_URL`, with
    * an optional `MCP_SERVER_<NAME>_TYPE` of `sse` or `http` (anything else
@@ -191,7 +173,6 @@ export class McpService extends Service {
     }
     return servers;
   }
-
   private async validateServerConfigs(
     serverConfigs: Readonly<Record<string, McpServerConfig>>
   ): Promise<Record<string, McpServerConfig>> {
@@ -209,20 +190,17 @@ export class McpService extends Service {
     }
     return validated;
   }
-
   private async updateServerConnections(
     serverConfigs: Readonly<Record<string, McpServerConfig>>
   ): Promise<void> {
     const safeConfigs = await this.validateServerConfigs(serverConfigs);
     const currentNames = new Set(this.connections.keys());
     const newNames = new Set(Object.keys(safeConfigs));
-
     for (const name of currentNames) {
       if (!newNames.has(name)) {
         await this.deleteConnection(name);
       }
     }
-
     const connectionPromises = Object.entries(safeConfigs).map(async ([name, config]) => {
       try {
         const currentConnection = this.connections.get(name);
@@ -238,18 +216,11 @@ export class McpService extends Service {
         // failed server surfaces as a visibly distinct disconnected entry (or
         // is absent when it never got a transport), and the failure lands in
         // RECENT_ERRORS via reportError.
-        const partial = this.connections.get(name);
-        if (partial && partial.server.status !== "connected") {
-          partial.server.status = "disconnected";
-          this.appendErrorMessage(partial, error instanceof Error ? error.message : String(error));
-        }
         this.runtime.reportError("mcp.connect", error, { serverName: name });
       }
     });
-
     await Promise.all(connectionPromises);
   }
-
   /**
    * Builds (or rebuilds) one server's connection.
    *
@@ -264,7 +235,9 @@ export class McpService extends Service {
   private async initializeConnection(
     name: string,
     config: McpServerConfig,
-    options: { readonly preserveReconnectAttempts?: boolean } = {}
+    options: {
+      readonly preserveReconnectAttempts?: boolean;
+    } = {}
   ): Promise<void> {
     const carriedReconnectAttempts = options.preserveReconnectAttempts
       ? (this.connectionStates.get(name)?.reconnectAttempts ?? 0)
@@ -274,15 +247,14 @@ export class McpService extends Service {
       status: "connecting",
       reconnectAttempts: carriedReconnectAttempts,
       consecutivePingFailures: 0,
+      config: JSON.stringify(config),
     };
     this.connectionStates.set(name, state);
-
     const client = new Client({ name: "elizaOS", version: "1.0.0" }, { capabilities: {} });
     const transport: McpConnection["transport"] =
       config.type === "stdio"
         ? await this.buildStdioClientTransport(name, config)
         : await this.buildHttpClientTransport(name, config);
-
     const connection: McpConnection = {
       server: {
         name,
@@ -294,31 +266,42 @@ export class McpService extends Service {
     };
     this.connections.set(name, connection);
     this.setupTransportHandlers(name, connection, state);
-    await client.connect(transport);
-
-    const capabilities = client.getServerCapabilities();
-    const tools = await this.fetchToolsList(name);
-    const resources = capabilities?.resources ? await this.fetchResourcesList(name) : [];
-    const resourceTemplates = capabilities?.resources
-      ? await this.fetchResourceTemplatesList(name)
-      : [];
-
-    connection.server = {
-      status: "connected",
-      name,
-      config: JSON.stringify(config),
-      error: "",
-      tools,
-      resources,
-      resourceTemplates,
-    };
-    state.status = "connected";
-    state.lastConnected = new Date();
-    state.reconnectAttempts = 0;
-    state.consecutivePingFailures = 0;
-    this.startPingMonitoring(name);
+    try {
+      await client.connect(transport);
+      const capabilities = client.getServerCapabilities();
+      const tools = capabilities?.tools ? await this.fetchToolsList(name) : [];
+      const resources = capabilities?.resources ? await this.fetchResourcesList(name) : [];
+      const resourceTemplates = capabilities?.resources
+        ? await this.fetchResourceTemplatesList(name)
+        : [];
+      connection.server = {
+        status: "connected",
+        name,
+        config: JSON.stringify(config),
+        error: "",
+        tools,
+        resources,
+        resourceTemplates,
+      };
+      state.status = "connected";
+      state.lastConnected = new Date();
+      state.reconnectAttempts = 0;
+      state.consecutivePingFailures = 0;
+      this.startPingMonitoring(name);
+    } catch (error) {
+      // Keep discovery failures visible and restartable, but release their child
+      // before either the caller or the existing reconnect ladder handles them.
+      await this.closeConnectionResources(name, connection);
+      connection.server.status = "disconnected";
+      state.status = "disconnected";
+      state.lastError = error instanceof Error ? error : new Error(String(error));
+      connection.server.error = state.lastError.message;
+      if (this.connectionStates.get(name) === state && !this.connections.has(name)) {
+        this.connections.set(name, connection);
+      }
+      throw error;
+    }
   }
-
   private setupTransportHandlers(
     name: string,
     connection: McpConnection,
@@ -326,8 +309,8 @@ export class McpService extends Service {
   ): void {
     const config = JSON.parse(connection.server.config) as McpServerConfig;
     const isHttpTransport = config.type !== "stdio";
-
     connection.transport.onerror = async (error): Promise<void> => {
+      if (this.connections.get(name) !== connection) return;
       const errorMessage = error?.message ?? String(error);
       const lower = errorMessage.toLowerCase();
       // For HTTP transports the optional server→client stream (the long-lived
@@ -344,37 +327,31 @@ export class McpService extends Service {
           lower.includes("sse stream disconnected") ||
           lower.includes("timeout") ||
           lower.includes("timed out"));
-
       if (!isExpectedTimeout) {
         logger.error({ error, serverName: name }, `Transport error for "${name}"`);
         connection.server.status = "disconnected";
         this.appendErrorMessage(connection, error.message);
       }
-
       if (!isHttpTransport) {
         this.handleDisconnection(name, error);
       }
     };
-
     connection.transport.onclose = async (): Promise<void> => {
+      if (this.connections.get(name) !== connection) return;
       if (!isHttpTransport) {
         connection.server.status = "disconnected";
         this.handleDisconnection(name, new Error("Transport closed"));
       }
     };
   }
-
   private startPingMonitoring(name: string): void {
     const connection = this.connections.get(name);
     if (!connection) return;
-
     const config = JSON.parse(connection.server.config) as McpServerConfig;
     const isHttpTransport = config.type !== "stdio";
-
     if (isHttpTransport) {
       return;
     }
-
     const state = this.connectionStates.get(name);
     if (!state || !this.pingConfig.enabled) return;
     if (state.pingInterval) clearInterval(state.pingInterval);
@@ -387,22 +364,14 @@ export class McpService extends Service {
       });
     }, this.pingConfig.intervalMs);
   }
-
   private async sendPing(name: string): Promise<void> {
     const connection = this.connections.get(name);
     if (!connection) throw new Error(`No connection for ping: ${name}`);
-
-    await Promise.race([
-      connection.client.listTools(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Ping timeout")), this.pingConfig.timeoutMs)
-      ),
-    ]);
-
+    // The SDK bounds the protocol ping and cleans up its timer/request on settlement.
+    await connection.client.ping({ timeout: this.pingConfig.timeoutMs });
     const state = this.connectionStates.get(name);
     if (state) state.consecutivePingFailures = 0;
   }
-
   private handlePingFailure(name: string, error: Error): void {
     const state = this.connectionStates.get(name);
     if (!state) return;
@@ -411,7 +380,6 @@ export class McpService extends Service {
       this.handleDisconnection(name, error);
     }
   }
-
   private handleDisconnection(name: string, error: Error | unknown): void {
     const state = this.connectionStates.get(name);
     if (!state) return;
@@ -433,51 +401,63 @@ export class McpService extends Service {
     const delay = INITIAL_RETRY_DELAY * BACKOFF_MULTIPLIER ** state.reconnectAttempts;
     state.reconnectTimeout = setTimeout(async () => {
       state.reconnectAttempts++;
-      const connection = this.connections.get(name);
-      const config = connection?.server?.config;
-      if (config) {
-        try {
-          await this.initializeConnection(name, JSON.parse(config), {
-            preserveReconnectAttempts: true,
-          });
-        } catch (err) {
-          // error-policy:J5 background reconnect; failure is observed in
-          // handleDisconnection, which records lastError and backs off (capped).
-          this.handleDisconnection(name, err);
-        }
+      // Reconnect from the config persisted on the ConnectionState, never from
+      // `this.connections.get(name)`: `initializeConnection` begins by calling
+      // `deleteConnection`, which removes the live McpConnection. When a retry's
+      // transport build throws before the connection is re-added, the map entry
+      // stays gone, so a map lookup would read undefined and the ladder would
+      // silently die after a single failed attempt instead of climbing to
+      // MAX_RECONNECT_ATTEMPTS.
+      try {
+        await this.initializeConnection(name, JSON.parse(state.config), {
+          preserveReconnectAttempts: true,
+        });
+      } catch (err) {
+        // error-policy:J5 background reconnect; failure is observed in
+        // handleDisconnection, which records lastError and backs off (capped).
+        this.handleDisconnection(name, err);
       }
     }, delay);
   }
-
-  async deleteConnection(name: string): Promise<void> {
-    const connection = this.connections.get(name);
-    if (connection) {
-      const closeResults = await Promise.allSettled([
-        connection.transport.close(),
-        connection.client.close(),
-      ]);
+  private async closeConnectionResources(name: string, connection: McpConnection): Promise<void> {
+    // Detach before closing so our callbacks ignore intentional shutdown while
+    // the SDK's own callbacks still settle outstanding requests normally.
+    if (this.connections.get(name) === connection) {
       this.connections.delete(name);
-      for (const result of closeResults) {
-        if (result.status === "rejected") {
-          logger.warn(
-            { error: result.reason, serverName: name },
-            `Failed to close MCP connection resource for "${name}"`
-          );
-        }
+      const state = this.connectionStates.get(name);
+      if (state?.pingInterval) {
+        clearInterval(state.pingInterval);
+        state.pingInterval = undefined;
+      }
+      // Preserve retries scheduled by a real transport failure during discovery.
+      // Explicit deletion cancels them in deleteConnection before closing.
+    }
+    const closeResults = await Promise.allSettled([
+      connection.transport.close(),
+      connection.client.close(),
+    ]);
+    for (const result of closeResults) {
+      if (result.status === "rejected") {
+        logger.warn(
+          { error: result.reason, serverName: name },
+          `Failed to close MCP connection resource for "${name}"`
+        );
       }
     }
+  }
+  async deleteConnection(name: string): Promise<void> {
+    const connection = this.connections.get(name);
     const state = this.connectionStates.get(name);
     if (state) {
       if (state.pingInterval) clearInterval(state.pingInterval);
       if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
       this.connectionStates.delete(name);
     }
+    if (connection) await this.closeConnectionResources(name, connection);
   }
-
   private getServerConnection(serverName: string): McpConnection | undefined {
     return this.connections.get(serverName);
   }
-
   private async buildStdioClientTransport(
     name: string,
     config: StdioMcpServerConfig
@@ -485,7 +465,6 @@ export class McpService extends Service {
     if (!config.command) {
       throw new Error(`Missing command for stdio MCP server ${name}`);
     }
-
     const rejection = await validateMcpServerConfig({
       type: "stdio",
       command: config.command,
@@ -497,7 +476,6 @@ export class McpService extends Service {
     if (rejection) {
       throw new Error(`MCP stdio server "${name}" rejected at spawn: ${rejection}`);
     }
-
     return new StdioClientTransport({
       command: config.command,
       args: config.args ? [...config.args] : undefined,
@@ -509,7 +487,6 @@ export class McpService extends Service {
       cwd: config.cwd,
     });
   }
-
   private async buildHttpClientTransport(
     name: string,
     config: HttpMcpServerConfig
@@ -517,7 +494,6 @@ export class McpService extends Service {
     if (!config.url) {
       throw new Error(`Missing URL for HTTP MCP server ${name}`);
     }
-
     const rejection = await validateMcpServerConfig({
       type: config.type,
       url: config.url,
@@ -525,35 +501,69 @@ export class McpService extends Service {
     if (rejection) {
       throw new Error(`MCP remote server "${name}" rejected at connect: ${rejection}`);
     }
-
     const url = new URL(config.url);
     if (config.type === "streamable-http") {
       return new StreamableHTTPClientTransport(url, { fetch: guardedMcpFetch });
     }
     return new SSEClientTransport(url, { fetch: guardedMcpFetch });
   }
-
   private appendErrorMessage(connection: McpConnection, error: string): void {
     const newError = connection.server.error ? `${connection.server.error}\n${error}` : error;
     connection.server.error = newError;
   }
-
+  private async fetchAllPages<T>(
+    serverName: string,
+    list: string,
+    fetchPage: (cursor?: string) => Promise<{ items: readonly T[]; nextCursor?: string }>
+  ): Promise<T[]> {
+    const items: T[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | undefined;
+    let pageCount = 0;
+    do {
+      if (pageCount++ === MAX_DISCOVERY_PAGES) {
+        throw new ElizaError("MCP discovery exceeded its pagination limit", {
+          code: "MCP_PAGINATION_LIMIT_EXCEEDED",
+          context: { serverName, list, maxPages: MAX_DISCOVERY_PAGES },
+          severity: "ephemeral",
+        });
+      }
+      const page = await fetchPage(cursor);
+      for (const item of page.items) items.push(item);
+      cursor = page.nextCursor;
+      // Cursors are opaque: an empty string is still a continuation, and an
+      // empty page does not terminate discovery while nextCursor is present.
+      if (cursor !== undefined) {
+        if (seenCursors.has(cursor)) {
+          throw new ElizaError("MCP server repeated a pagination cursor", {
+            code: "MCP_PAGINATION_CURSOR_REPEATED",
+            context: { serverName, list },
+            severity: "ephemeral",
+          });
+        }
+        seenCursors.add(cursor);
+      }
+    } while (cursor !== undefined);
+    return items;
+  }
   private async fetchToolsList(serverName: string): Promise<Tool[]> {
     const connection = this.getServerConnection(serverName);
     if (!connection) {
       return [];
     }
-
-    const response = await connection.client.listTools();
-
-    const tools = (response?.tools ?? []).flatMap((tool) => {
+    const discovered = await this.fetchAllPages(serverName, "tools/list", async (cursor) => {
+      const response = await connection.client.listTools(
+        cursor === undefined ? undefined : { cursor },
+        { timeout: this.connectionRequestTimeout(connection) }
+      );
+      return { items: response?.tools ?? [], nextCursor: response?.nextCursor };
+    });
+    const tools = discovered.flatMap((tool) => {
       const processedTool = { ...tool };
-
       if (tool.inputSchema) {
         if (!this.compatibilityInitialized) {
           this.initializeToolCompatibility();
         }
-
         try {
           processedTool.inputSchema = this.applyToolCompatibility(
             tool.inputSchema as JSONSchema7
@@ -576,43 +586,48 @@ export class McpService extends Service {
           return [];
         }
       }
-
       return [processedTool];
     });
-
     return tools;
   }
-
   private async fetchResourcesList(serverName: string): Promise<Resource[]> {
     const connection = this.getServerConnection(serverName);
     if (!connection) {
       return [];
     }
-
-    const response = await connection.client.listResources();
-    return response?.resources ?? [];
+    return this.fetchAllPages(serverName, "resources/list", async (cursor) => {
+      const response = await connection.client.listResources(
+        cursor === undefined ? undefined : { cursor },
+        { timeout: this.connectionRequestTimeout(connection) }
+      );
+      return { items: response?.resources ?? [], nextCursor: response?.nextCursor };
+    });
   }
-
   private async fetchResourceTemplatesList(serverName: string): Promise<ResourceTemplate[]> {
     const connection = this.getServerConnection(serverName);
     if (!connection) {
       return [];
     }
-
-    const response = await connection.client.listResourceTemplates();
-    return response?.resourceTemplates ?? [];
+    return this.fetchAllPages(serverName, "resources/templates/list", async (cursor) => {
+      const response = await connection.client.listResourceTemplates(
+        cursor === undefined ? undefined : { cursor },
+        { timeout: this.connectionRequestTimeout(connection) }
+      );
+      return { items: response?.resourceTemplates ?? [], nextCursor: response?.nextCursor };
+    });
   }
-
   public getServers(): McpServer[] {
     return Array.from(this.connections.values())
       .filter((conn) => !conn.server.disabled)
       .map((conn) => conn.server);
   }
-
+  /**
+   * Built from the live connections, so a server that connects or recovers
+   * after startup (reconnect ladder, restart) is offered with its tools.
+   */
   public getProviderData(): McpProvider {
-    return this.mcpProvider;
+    return buildMcpProviderData(this.getServers());
   }
-
   public async callTool(
     serverName: string,
     toolName: string,
@@ -625,13 +640,7 @@ export class McpService extends Service {
     if (connection.server.disabled) {
       throw new Error(`Server "${serverName}" is disabled`);
     }
-
-    let timeout = DEFAULT_MCP_TIMEOUT_SECONDS;
-    const config = JSON.parse(connection.server.config) as McpServerConfig;
-    if (config.type === "stdio" && config.timeoutInMillis) {
-      timeout = config.timeoutInMillis;
-    }
-
+    const timeout = this.connectionRequestTimeout(connection);
     const result = await connection.client.callTool(
       {
         name: toolName,
@@ -645,7 +654,6 @@ export class McpService extends Service {
     }
     return result as CallToolResult;
   }
-
   public async readResource(serverName: string, uri: string): Promise<McpResourceResponse> {
     const connection = this.connections.get(serverName);
     if (!connection) {
@@ -654,9 +662,17 @@ export class McpService extends Service {
     if (connection.server.disabled) {
       throw new Error(`Server "${serverName}" is disabled`);
     }
-    return await connection.client.readResource({ uri });
+    return await connection.client.readResource(
+      { uri },
+      { timeout: this.connectionRequestTimeout(connection) }
+    );
   }
-
+  private connectionRequestTimeout(connection: McpConnection): number {
+    const config = JSON.parse(connection.server.config) as McpServerConfig;
+    return config.type === "stdio"
+      ? (config.timeoutInMillis ?? DEFAULT_MCP_TIMEOUT_MS)
+      : (config.timeout ?? DEFAULT_MCP_TIMEOUT_MS);
+  }
   public async restartConnection(serverName: string): Promise<void> {
     const connection = this.connections.get(serverName);
     const config = connection?.server?.config;
@@ -677,14 +693,11 @@ export class McpService extends Service {
       await this.initializeConnection(serverName, parsedConfig);
     }
   }
-
   private initializeToolCompatibility(): void {
     if (this.compatibilityInitialized) return;
-
     this.toolCompatibility = createMcpToolCompatibility(this.runtime);
     this.compatibilityInitialized = true;
   }
-
   public applyToolCompatibility(toolSchema: JSONSchema7): JSONSchema7 {
     // This boundary applies even when the current provider needs no rewrite:
     // selection later JSON-stringifies the retained schema for the model.
@@ -692,11 +705,9 @@ export class McpService extends Service {
     if (!this.compatibilityInitialized) {
       this.initializeToolCompatibility();
     }
-
     if (!this.toolCompatibility || !toolSchema) {
       return toolSchema;
     }
-
     return this.toolCompatibility.transformToolSchema(toolSchema);
   }
 }

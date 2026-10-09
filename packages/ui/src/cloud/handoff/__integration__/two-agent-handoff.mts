@@ -7,7 +7,7 @@
  *
  * Run (with agent A on :41339 holding conversation `handoff-test-conv-1` and
  * agent B on :41340):
- *   node packages/app-core/scripts/run-node-tsx.mjs \
+ *   node packages/app/scripts/run-node-tsx.ts \
  *     packages/ui/src/cloud/handoff/__integration__/two-agent-handoff.mts
  */
 import {

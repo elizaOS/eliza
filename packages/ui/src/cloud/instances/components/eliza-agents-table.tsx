@@ -9,38 +9,9 @@ import type {
   NormalizedAgentListItemDto,
 } from "@elizaos/cloud-sdk";
 import {
-  AGENT_PRICING,
-  formatHourlyRate,
+  DEDICATED_COMPUTE_PRICE_HEADER,
+  getDedicatedComputePriceAcceptance,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  Badge,
-  BulkDeleteDialog,
-  BulkSelectionBar,
-  DashboardDataList,
-  DashboardDataListDesktop,
-  DashboardDataListFilteredCount,
-  DashboardDataListMobile,
-  DataListEmptyState,
-  Input,
-  runBulkDelete,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@elizaos/ui/cloud-ui";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpDown,
@@ -56,17 +27,53 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "../../../bridge/toast";
+import {
+  BulkDeleteDialog,
+  BulkSelectionBar,
+  runBulkDelete,
+} from "../../../cloud-ui/components/bulk-select";
+import {
+  DashboardDataList,
+  DashboardDataListDesktop,
+  DashboardDataListFilteredCount,
+  DashboardDataListMobile,
+} from "../../../cloud-ui/components/data-list/dashboard-data-list";
+import { DataListEmptyState } from "../../../cloud-ui/components/data-list/data-list-empty-state";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+} from "../../../components/ui/alert-dialog";
+import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
+import { Input } from "../../../components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../../components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../../../components/ui/tooltip";
 import { currentElizaAppOrigin } from "../../../utils/cloud-agent-base";
 import { api, apiWithStatus } from "../../lib/api-client";
-import { parseAgentsResponse } from "../lib/data/eliza-agents";
-import { useT } from "../lib/i18n";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
+import { parseAgentsResponse } from "../lib/eliza-agents";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import { statusDotColor } from "../lib/sandbox-status";
 import { type TrackedJob, useJobPoller } from "../lib/use-job-poller";
 import { useSandboxListPoll } from "../lib/use-sandbox-status-poll";
 import { AgentCostBadge } from "./agent-cost-badge";
+import { AgentDeactivationDetails } from "./agent-deactivation-details";
+import { DedicatedStartConfirmation } from "./dedicated-start-confirmation";
 
 /**
  * Envelope the agent provision/suspend job endpoints return. 202 and 409
@@ -355,6 +362,10 @@ export function ElizaAgentsTable({
   // Deactivate (sleep) needs a billing-transparency confirm before the job is
   // enqueued; the row Moon button stages the id here and the dialog confirms.
   const [deactivateId, setDeactivateId] = useState<string | null>(null);
+  const [startTarget, setStartTarget] = useState<{
+    id: string;
+    action: "provision" | "wake";
+  } | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
     new Set(),
@@ -683,6 +694,10 @@ export function ElizaAgentsTable({
           `/api/v1/eliza/agents/${id}/provision`,
           {
             method: "POST",
+            headers: {
+              [DEDICATED_COMPUTE_PRICE_HEADER]:
+                getDedicatedComputePriceAcceptance(),
+            },
           },
         ),
       optimisticStatus: "provisioning",
@@ -800,6 +815,10 @@ export function ElizaAgentsTable({
       request: () =>
         apiWithStatus<AgentJobEnvelope>(`/api/v1/eliza/agents/${id}/wake`, {
           method: "POST",
+          headers: {
+            [DEDICATED_COMPUTE_PRICE_HEADER]:
+              getDedicatedComputePriceAcceptance(),
+          },
         }),
       optimisticStatus: "provisioning",
       labels: {
@@ -956,6 +975,24 @@ export function ElizaAgentsTable({
 
   return (
     <TooltipProvider>
+      <DedicatedStartConfirmation
+        open={startTarget !== null}
+        disabled={
+          !!actionInProgress ||
+          (startTarget !== null && poller.isActive(startTarget.id))
+        }
+        onOpenChange={(open) => {
+          if (!open) setStartTarget(null);
+        }}
+        onConfirm={() => {
+          const target = startTarget;
+          setStartTarget(null);
+          if (target)
+            void (target.action === "wake"
+              ? handleWake(target.id)
+              : handleProvision(target.id));
+        }}
+      />
       <DashboardDataList>
         <BulkSelectionBar
           count={selectedIds.size}
@@ -1175,7 +1212,12 @@ export function ElizaAgentsTable({
                                     "cloud.elizaAgentsTable.resumeAgent",
                                     { defaultValue: "Resume agent" },
                                   )}
-                                  onClick={() => handleProvision(sb.id)}
+                                  onClick={() =>
+                                    setStartTarget({
+                                      id: sb.id,
+                                      action: "provision",
+                                    })
+                                  }
                                   disabled={busy}
                                 >
                                   <Play className="size-4" />
@@ -1225,7 +1267,12 @@ export function ElizaAgentsTable({
                                     "cloud.elizaAgentsTable.reactivateAgent",
                                     { defaultValue: "Reactivate agent" },
                                   )}
-                                  onClick={() => handleWake(sb.id)}
+                                  onClick={() =>
+                                    setStartTarget({
+                                      id: sb.id,
+                                      action: "wake",
+                                    })
+                                  }
                                   disabled={busy}
                                 >
                                   <Sun className="size-4" />
@@ -1384,7 +1431,9 @@ export function ElizaAgentsTable({
                           aria-label={t("cloud.elizaAgentsTable.resumeAgent", {
                             defaultValue: "Resume agent",
                           })}
-                          onClick={() => handleProvision(sb.id)}
+                          onClick={() =>
+                            setStartTarget({ id: sb.id, action: "provision" })
+                          }
                           disabled={busy}
                         >
                           <Play className="size-3.5" />
@@ -1417,7 +1466,9 @@ export function ElizaAgentsTable({
                               defaultValue: "Reactivate agent",
                             },
                           )}
-                          onClick={() => handleWake(sb.id)}
+                          onClick={() =>
+                            setStartTarget({ id: sb.id, action: "wake" })
+                          }
                           disabled={busy}
                         >
                           <Sun className="size-3.5" />
@@ -1525,34 +1576,7 @@ export function ElizaAgentsTable({
         }}
       >
         <AlertDialogContent className="bg-card border-border">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-txt-strong">
-              {t("cloud.containers.agentActions.deactivateTitle", {
-                defaultValue: "Deactivate this agent?",
-              })}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-muted">
-              <span className="block">
-                {t("cloud.containers.agentActions.deactivateBody1", {
-                  defaultValue:
-                    "Your agent stops running and stops consuming hourly credits (currently {{rate}} while running).",
-                  rate: formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE),
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.deactivateBody2", {
-                  defaultValue:
-                    "Eliza retains your agent data during deactivation. If deactivation cannot complete, the agent stays running and billing continues.",
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.deactivateBody3", {
-                  defaultValue:
-                    "Reactivation restores the agent's retained data and can take a few minutes; it requires available credits.",
-                })}
-              </span>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
+          <AgentDeactivationDetails />
           <AlertDialogFooter>
             <AlertDialogCancel className="border-border bg-transparent text-txt hover:bg-surface">
               {t("cloud.elizaAgentsTable.cancel", { defaultValue: "Cancel" })}

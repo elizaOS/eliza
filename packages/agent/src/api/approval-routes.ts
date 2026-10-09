@@ -12,27 +12,24 @@ import {
   PENDING_USER_ACTION_WEIGHT,
   type PendingUserAction,
   type PendingUserActionOption,
-  type RouteHelpers,
   ServiceType,
   type Task,
   type UUID,
 } from "@elizaos/core";
-import {
-  APPROVAL_SERVICE,
-  type ApprovalService,
-} from "../services/approval/service.ts";
-import type {
-  ApprovalAction,
-  ApprovalListFilter,
-  ApprovalQueue,
-  ApprovalRequest,
-  ApprovalRequestState,
-} from "../services/approval/types.ts";
+import type { RouteHelpers } from "@elizaos/host/protocol";
+
 import {
   APPROVAL_EXECUTION_CAPABILITY,
   APPROVAL_EXECUTION_PROTOCOL_VERSION,
-} from "../services/approval/types.ts";
-import { PENDING_PROMPTS_SERVICE } from "../services/pending-prompts/service.ts";
+  APPROVAL_SERVICE,
+  type ApprovalAction,
+  type ApprovalListFilter,
+  type ApprovalQueue,
+  type ApprovalRequest,
+  type ApprovalRequestState,
+  type ApprovalService,
+  PENDING_PROMPTS_SERVICE,
+} from "@elizaos/plugin-assistant";
 
 interface ApprovalRouteRuntime {
   agentId?: string;
@@ -351,15 +348,24 @@ export async function handleApprovalRoute(
     helpers.error(res, parsedState.message, 400);
     return true;
   }
+  // Device payloads require the enrollment credential and are served only by
+  // /api/client-devices; this legacy aggregate has no device authority. They
+  // are excluded in the query so they cannot fill the limit and crowd out
+  // other pending approvals, and filtered again below as defence in depth.
   const filter: ApprovalListFilter = {
     subjectUserId: null,
     state: parsedState.state,
     action: null,
+    excludeAction: "device_action",
     limit,
   };
 
   const queue = getAgentApprovalQueue(state);
-  const approvals = queue ? await queue.list(filter) : [];
+  const approvals = queue
+    ? (await queue.list(filter)).filter(
+        (approval) => approval.action !== "device_action",
+      )
+    : [];
   const [serviceActions, taskActions, promptActions] = await Promise.all([
     listServicePendingUserActions(state, ServiceType.APPROVAL),
     listApprovalTaskActions(state),

@@ -10,15 +10,15 @@
  *        Body: JSON-RPC 2.0 request (or batch)
  */
 
-import { Hono } from "hono";
-import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 import {
   rpcConfigForChain,
   rpcHandlerForChain,
   SUPPORTED_RPC_CHAINS,
-} from "@/lib/services/proxy/services/rpc";
-import type { ProxyRequestBody } from "@/lib/services/proxy/types";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/proxy/rpc";
+import type { ProxyRequestBody } from "@elizaos/cloud-shared/lib/services/proxy/types";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 
 const LEGACY_CHAIN_ALIASES: Record<
   string,

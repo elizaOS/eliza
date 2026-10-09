@@ -8,8 +8,9 @@
  */
 
 import { ElizaError } from "../errors";
-import type { JsonValue } from "../types";
+import { withStandaloneTrajectory } from "../trajectory-utils";
 import type { UUID } from "../types/primitives";
+import type { JsonValue } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
 import type { Task, TaskMetadata, TaskRunStatus } from "../types/task";
@@ -80,18 +81,7 @@ export class TaskService extends Service {
 	private executingTaskPromises = new Set<Promise<void>>();
 	/** When false, checkTasks skips the DB query. Set true by markDirty(); start true so first tick always queries. WHY: avoid redundant getTasks every second when nothing changed. */
 	private tasksDirty = true;
-	/**
-	 * Task IDs already self-healed for a missing worker (#SHADOW-ACCOUNT-DEBUG).
-	 * WHY: an orphaned task — one whose worker is not registered in THIS build
-	 * (e.g. a repeat task created by an older build whose worker name changed, or
-	 * a plugin that no longer loads) — otherwise fails validation every 1s tick
-	 * FOREVER: it never reaches executeTask (the only place that deletes/pauses),
-	 * so it re-emits TASK_WORKER_MISSING → TASK_TICK_FAILED every second. That
-	 * loop is what narrated into Shadow's chat 9× via the RECENT_ERRORS provider
-	 * + repeat-failure escalation. Self-heal (pause repeat / delete non-repeat)
-	 * fixes the source; this set makes the ONE diagnostic per orphan idempotent
-	 * so a transient getTasks/update failure can't re-narrate on the next tick.
-	 */
+	/** Tracks tasks quarantined for missing workers, preventing repeated diagnostics while pause/delete operations settle. */
 	private quarantinedOrphans = new Set<string>();
 	/**
 	 * Service construction time (epoch-ms). A missing worker inside
@@ -104,7 +94,7 @@ export class TaskService extends Service {
 	 * owner's chat view on every boot.
 	 */
 	private readonly startedAt: number;
-	/** Set true in stop(). runTick returns immediately when true (daemon may call runTick after unregister). */
+	/** Closes admission synchronously before runtime teardown; active work still drains. */
 	private stopped = false;
 	/**
 	 * Boot grace window (ms) during which a missing worker is skipped silently
@@ -132,16 +122,6 @@ export class TaskService extends Service {
 	 */
 	static async start(runtime: IAgentRuntime): Promise<Service> {
 		const service = new TaskService(runtime);
-		// WHY: batcher owns HOW (sections, packing, cache); task system owns WHEN. One scheduler for all periodic drains.
-		runtime.registerTaskWorker({
-			name: "BATCHER_DRAIN",
-			execute: async (rt, options) => {
-				const affinityKey = options.affinityKey as string;
-				if (!rt.promptBatcher || !affinityKey) return undefined;
-				await rt.promptBatcher.drainAffinityGroup(affinityKey);
-				return undefined;
-			},
-		});
 		await service.startTimer();
 		return service;
 	}
@@ -286,6 +266,8 @@ export class TaskService extends Service {
 		const errors: ElizaError[] = [];
 
 		for (const task of tasks) {
+			// Validation can await another worker before reaching this task.
+			if (this.stopped) break;
 			const context = { taskId: task.id, taskName: task.name };
 			const metadata = task.metadata as TaskMetadata | undefined;
 			if (task.tags?.includes("repeat") && metadata?.paused) {
@@ -309,6 +291,17 @@ export class TaskService extends Service {
 					new ElizaError("Scheduled task is missing an id", {
 						code: "TASK_INVALID_ID",
 						context,
+						severity: "fatal",
+					}),
+				);
+				continue;
+			}
+
+			if (task.scheduleError !== undefined) {
+				errors.push(
+					new ElizaError(task.scheduleError, {
+						code: "TASK_SCHEDULE_INVALID",
+						context: { ...context, field: "metadata.scheduledAt" },
 						severity: "fatal",
 					}),
 				);
@@ -547,6 +540,11 @@ export class TaskService extends Service {
 			if (value != null && (!finite(value) || value < 0))
 				return `metadata.${field}`;
 		}
+		for (const field of ["wakeAt", "wakeRevision"] as const) {
+			const value = metadata?.[field];
+			if (value != null && (!Number.isSafeInteger(value) || value < 0))
+				return `metadata.${field}`;
+		}
 		const failureCount = metadata?.failureCount;
 		if (failureCount != null && (!finite(failureCount) || failureCount < 0)) {
 			return "metadata.failureCount";
@@ -624,17 +622,19 @@ export class TaskService extends Service {
 	async runTick(tasks: Task[]): Promise<void> {
 		if (this.stopped) return;
 		const validation = await this.validateTasks(tasks);
+		if (this.stopped) return;
 		const failures: ElizaError[] = [...validation.errors];
 		const now = this.clock.now();
 
 		for (const task of validation.tasks) {
+			if (this.stopped) break;
 			// Non-repeat tasks: run when due (or immediately if no dueAt/scheduledAt). WHY: one-shot "run at time X" (e.g. follow-up) uses dueAt or metadata.scheduledAt.
 			if (!task.tags?.includes("repeat")) {
 				// A paused one-shot must not run and must not reach the
 				// execute-and-delete lifecycle — pauseTask() promises that ticks
 				// after the pause skip the row until resumeTask(). The repeat
 				// branch below has its own paused skip; this mirrors it for
-				// one-shots (#24277). A tick that captured this snapshot before
+				// one-shots. A tick that captured this snapshot before
 				// pauseTask persisted may still run once — documented as
 				// already-selected-work semantics on pauseTask().
 				if (task.metadata?.paused === true) {
@@ -665,7 +665,7 @@ export class TaskService extends Service {
 				continue;
 			}
 
-			// Resolve lastRan (updatedAt) with backward-compat fallback
+			// Use updatedAt for lastRan, then the stored fallback.
 			let lastRan: number;
 			if (
 				task.metadata?.updatedAt != null &&
@@ -688,7 +688,12 @@ export class TaskService extends Service {
 			const notAfterMs = taskMetadata?.notAfter;
 
 			const idealNextRun = lastRan + updateIntervalMs;
-			const earliest = idealNextRun - notBeforeMs;
+			const wakeAt =
+				this.runtime.adapter?.supportsAtomicTaskWake === true &&
+				!taskMetadata?.failureCount
+					? taskMetadata?.wakeAt
+					: undefined;
+			const earliest = Math.min(idealNextRun - notBeforeMs, wakeAt ?? Infinity);
 
 			if (now < earliest) {
 				continue;
@@ -820,13 +825,23 @@ export class TaskService extends Service {
 
 		this.executingTasks.add(task.id);
 		const startTime = this.clock.now();
+		const observedWakeRevision = task.metadata?.wakeRevision;
+		const observedWakeAt = task.metadata?.wakeAt;
 
 		try {
 			const taskOptions = (task.metadata ?? {}) as Record<
 				string,
 				JsonValue | object
 			>;
-			const result = await worker.execute(this.runtime, taskOptions, task);
+			const result = await withStandaloneTrajectory(
+				this.runtime,
+				{
+					source: "task",
+					metadata: { taskId: task.id, taskName: task.name },
+					deferUntilModelCall: true,
+				},
+				() => worker.execute(this.runtime, taskOptions, task),
+			);
 			if (result?.preserveTask) {
 				return;
 			}
@@ -838,12 +853,11 @@ export class TaskService extends Service {
 				}
 				const meta = latestTask.metadata as TaskMetadata | undefined;
 				const baseInterval = meta?.baseInterval ?? meta?.updateInterval;
-				const newMeta: TaskMetadata = {
-					...meta,
+				const bookkeeping: Partial<TaskMetadata> = {
 					updatedAt: this.clock.now(),
 					failureCount: 0,
-					lastError: undefined,
 				};
+				const cleared: (keyof TaskMetadata)[] = ["lastError"];
 				const nextInterval =
 					result != null &&
 					typeof result === "object" &&
@@ -866,12 +880,47 @@ export class TaskService extends Service {
 					);
 				}
 				if (nextInterval != null) {
-					newMeta.updateInterval = nextInterval;
-					delete newMeta.baseInterval;
+					bookkeeping.updateInterval = nextInterval;
+					cleared.push("baseInterval");
 				} else if (baseInterval != null && typeof baseInterval === "number") {
-					newMeta.updateInterval = baseInterval;
+					bookkeeping.updateInterval = baseInterval;
 				}
-				await this.runtime.updateTask(task.id, { metadata: newMeta });
+				const nextWakeAt = result?.nextWakeAt;
+				if (
+					nextWakeAt !== undefined &&
+					(!Number.isSafeInteger(nextWakeAt) || nextWakeAt < 0)
+				)
+					throw new ElizaError("Task returned an invalid absolute wake", {
+						code: "TASK_WAKE_INVALID",
+					});
+				if (
+					this.runtime.adapter?.supportsAtomicTaskWake === true &&
+					(observedWakeAt !== undefined || nextWakeAt !== undefined)
+				) {
+					const outcome = await this.runtime.patchTaskMetadata(task.id, {
+						set: bookkeeping,
+						unset: cleared,
+						wake: {
+							consumeRevision: observedWakeRevision ?? 0,
+							...(nextWakeAt !== undefined ? { requestAt: nextWakeAt } : {}),
+						},
+					});
+					if (outcome === "unsupported")
+						throw new ElizaError("Atomic task wake capability was withdrawn", {
+							code: "TASK_WAKE_UNSUPPORTED",
+						});
+				} else {
+					if (nextWakeAt !== undefined)
+						this.runtime.reportError(
+							"TaskService.absoluteWake",
+							new ElizaError(
+								"Adapter retains interval cadence; atomic wake unavailable",
+								{ code: "TASK_WAKE_UNSUPPORTED" },
+							),
+							{ taskId: task.id, diagnosticOnly: true },
+						);
+					await this.persistTaskMetadata(task.id, meta, bookkeeping, cleared);
+				}
 			} else {
 				await this.runtime.deleteTask(task.id);
 				this.runtime.logger.debug(
@@ -903,9 +952,9 @@ export class TaskService extends Service {
 					const neverPause =
 						rawMax === Infinity || (typeof rawMax === "number" && rawMax <= 0);
 					const maxFailures = neverPause ? Infinity : (rawMax ?? 5);
-					const newMeta: TaskMetadata & Record<string, unknown> = {
-						...(meta ?? {}),
-						updatedAt: this.clock.now(),
+					const failedAt = this.clock.now();
+					const newMeta: Partial<TaskMetadata> = {
+						updatedAt: failedAt,
 						failureCount,
 						lastError: error instanceof Error ? error.message : String(error),
 					};
@@ -932,8 +981,20 @@ export class TaskService extends Service {
 							baseInterval * 2 ** failureCount,
 							300_000,
 						);
+						if (
+							error instanceof ElizaError &&
+							typeof error.retryAt === "number" &&
+							Number.isFinite(error.retryAt)
+						) {
+							// Provider deadlines are floors, not capped exponential backoff.
+							// Compensate for the scheduler's optional early-run tolerance.
+							newMeta.updateInterval = Math.max(
+								newMeta.updateInterval,
+								error.retryAt - failedAt + (meta?.notBefore ?? 0),
+							);
+						}
 					}
-					await this.runtime.updateTask(task.id, { metadata: newMeta });
+					await this.persistTaskMetadata(task.id, meta, newMeta);
 				} else if (task.id) {
 					await this.runtime.deleteTask(task.id);
 					this.runtime.logger.debug(
@@ -1004,12 +1065,29 @@ export class TaskService extends Service {
 	 * WHY separate from timer: serverless has no long-lived process; host drives execution explicitly.
 	 */
 	async runDueTasks(): Promise<void> {
-		const allTasks = await this.runtime.getTasks({
-			tags: ["queue"],
-			agentIds: [this.runtime.agentId],
-		});
-		if (allTasks.length) {
-			await this.runTick(allTasks);
+		while (this.activeTick) {
+			await this.activeTick;
+		}
+		const run = (async () => {
+			const allTasks = await this.runtime.getTasks({
+				tags: ["queue"],
+				agentIds: [this.runtime.agentId],
+			});
+			if (allTasks.length) {
+				await this.runTick(allTasks);
+			}
+		})();
+		const tick = run.then(
+			() => undefined,
+			() => undefined,
+		);
+		this.activeTick = tick;
+		try {
+			await run;
+		} finally {
+			if (this.activeTick === tick) {
+				this.activeTick = null;
+			}
 		}
 	}
 
@@ -1023,6 +1101,31 @@ export class TaskService extends Service {
 			throw new Error(`Task ${taskId} not found`);
 		}
 		await this.executeTask(task);
+	}
+
+	/**
+	 * Writes a key-level metadata change. The adapter's atomic patch keeps a
+	 * concurrent writer's keys intact (an operator pause landing during a run's
+	 * bookkeeping, or vice versa); when the adapter has no atomic patch, the
+	 * change is merged over the freshest snapshot the caller read and written
+	 * whole. `unset` keys are removed in both modes.
+	 */
+	private async persistTaskMetadata(
+		taskId: UUID,
+		snapshot: TaskMetadata | undefined,
+		set: Partial<TaskMetadata>,
+		unset: readonly (keyof TaskMetadata)[] = [],
+	): Promise<void> {
+		const outcome = await this.runtime.patchTaskMetadata(taskId, {
+			set,
+			unset,
+		});
+		if (outcome !== "unsupported") return;
+		const merged: Record<string, unknown> = { ...(snapshot ?? {}), ...set };
+		for (const key of unset) delete merged[key];
+		await this.runtime.updateTask(taskId, {
+			metadata: merged as TaskMetadata,
+		});
 	}
 
 	/**
@@ -1045,9 +1148,7 @@ export class TaskService extends Service {
 		if (!task) {
 			throw new Error(`Task ${taskId} not found`);
 		}
-		await this.runtime.updateTask(taskId, {
-			metadata: { ...task.metadata, paused: true } as TaskMetadata,
-		});
+		await this.persistTaskMetadata(taskId, task.metadata, { paused: true });
 	}
 
 	/**
@@ -1059,9 +1160,7 @@ export class TaskService extends Service {
 		if (!task) {
 			throw new Error(`Task ${taskId} not found`);
 		}
-		await this.runtime.updateTask(taskId, {
-			metadata: { ...task.metadata, paused: false } as TaskMetadata,
-		});
+		await this.persistTaskMetadata(taskId, task.metadata, { paused: false });
 		if (runImmediately) {
 			const updated = await this.runtime.getTask(taskId);
 			if (updated) {
@@ -1119,17 +1218,18 @@ export class TaskService extends Service {
 		}
 	}
 
-	/**
-	 * Stops the timer if it is currently running.
-	 */
-
-	async stop() {
+	/** Stop new ticks before the runtime closes room admissions. */
+	prepareStop() {
 		this.stopped = true;
 		unregisterTaskSchedulerRuntime(this.runtime.agentId);
 		if (this.hasTimer) {
 			this.hasTimer = false;
 			this.clock.clearInterval(this.timer);
 		}
+	}
+
+	async stop() {
+		this.prepareStop();
 		if (this.activeTick) {
 			await this.activeTick;
 		}

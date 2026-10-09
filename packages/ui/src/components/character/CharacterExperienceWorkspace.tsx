@@ -7,7 +7,7 @@
  * `showTitle={false}` when the host view already supplies a ViewHeader.
  */
 import { memo, useEffect, useMemo, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import {

@@ -25,14 +25,13 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
 
 import torch  # noqa: E402
 from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: E402
 
-from format_for_training import format_record  # type: ignore  # noqa: E402
-from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-from training.optimizer import (  # noqa: E402
+from eliza_training.format_for_training import format_record  # type: ignore  # noqa: E402
+from eliza_training.training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from eliza_training.training.optimizer import (  # noqa: E402
     build_apollo_mini_optimizer,
     build_apollo_optimizer,
     optimizer_state_bytes,

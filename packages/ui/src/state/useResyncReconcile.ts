@@ -8,7 +8,7 @@
 
 import { type MutableRefObject, useEffect } from "react";
 import { RESYNC_EVENT, type ResyncEventDetail } from "./AppContext.hooks";
-import type { LoadConversationMessagesResult } from "./internal";
+import type { LoadConversationMessagesResult } from "./types";
 
 export interface UseResyncReconcileDeps {
   /** Stable ref whose `.current` is the conversation the user is viewing. */

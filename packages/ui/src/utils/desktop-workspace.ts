@@ -2,7 +2,8 @@
  * Desktop workspace helpers over the Electrobun bridge, including click-audit
  * entry-point tagging for tray/palette/settings launch points.
  */
-import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 
 export type DesktopClickAuditEntryPoint =
   | "tray"
@@ -25,7 +26,7 @@ export type DesktopWorkspaceSurface =
   | "chat"
   | "browser"
   | "release"
-  | "triggers"
+  | "automations"
   | "plugins"
   | "cloud";
 
@@ -48,9 +49,10 @@ export const DESKTOP_WORKSPACE_SURFACES: readonly DesktopWorkspaceSurfaceDef[] =
       description: "Open the detached release center window.",
     },
     {
-      id: "triggers",
-      label: "Triggers Window",
-      description: "Open scheduled trigger controls in a detached window.",
+      id: "automations",
+      label: "Automations Window",
+      description:
+        "Open workflows and scheduled automations in a detached window.",
     },
     {
       id: "plugins",

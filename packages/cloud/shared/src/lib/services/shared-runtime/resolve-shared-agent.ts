@@ -509,7 +509,7 @@ export async function resolveSharedAgent(
       ({ warmInferenceAdmissionSnapshot }) => warmInferenceAdmissionSnapshot(user.organization_id),
     );
     const characterWarm = agent.character_id
-      ? import("../characters/characters").then(({ charactersService }) =>
+      ? import("../characters").then(({ charactersService }) =>
           charactersService.getById(agent.character_id!),
         )
       : Promise.resolve(null);

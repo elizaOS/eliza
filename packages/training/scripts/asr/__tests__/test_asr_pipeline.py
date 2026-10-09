@@ -9,18 +9,16 @@ Three suites:
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
 # Add the asr scripts dir to sys.path so we can import the modules directly.
 ASR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ASR_DIR))
 
-import finetune_asr  # noqa: E402
-import eval_asr  # noqa: E402
-import push_asr_gguf_to_hf  # noqa: E402
+from eliza_training.asr import finetune_asr  # noqa: E402
+from eliza_training.asr import eval_asr  # noqa: E402
+from eliza_training.asr import push_asr_gguf_to_hf  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

@@ -6,9 +6,10 @@
  * proposals only; it has no send, purchase, registration, calendar-mutation,
  * vendor-booking, or responsibility-reassignment verb.
  */
+
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   completeLifeOpsEffect,
   lifeOpsAppliedEffect,
@@ -179,7 +180,6 @@ export function createHouseholdOperationsAction(
     ],
     tags: [
       "domain:household",
-      "domain:tasks",
       "capability:read",
       "capability:write",
       "effect:receipt-required",

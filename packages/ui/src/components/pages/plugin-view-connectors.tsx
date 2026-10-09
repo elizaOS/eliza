@@ -15,14 +15,14 @@ import {
   UserRound,
 } from "lucide-react";
 import { type ReactNode, type RefCallback, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import {
-  type CloudCompatAgent,
-  type CloudOAuthConnectionRole,
-  client,
-  type PluginInfo,
-} from "../../api";
-import { useAppSelectorShallow } from "../../state";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type {
+  CloudCompatAgent,
+  CloudOAuthConnectionRole,
+} from "../../api/client-types-cloud";
+import type { PluginInfo } from "../../api/client-types-config";
+import { useAppSelectorShallow } from "../../state/app-store";
 import {
   buildManagedDiscordSettingsReturnUrl,
   resolveManagedDiscordAgentChoice,

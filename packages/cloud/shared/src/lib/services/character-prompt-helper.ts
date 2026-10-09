@@ -7,7 +7,7 @@
  */
 
 import { logger } from "../utils/logger";
-import { charactersService } from "./characters/characters";
+import { charactersService } from "./characters";
 
 export interface CharacterPromptContext {
   name: string;

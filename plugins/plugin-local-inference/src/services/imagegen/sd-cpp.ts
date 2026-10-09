@@ -70,7 +70,7 @@
  *     sd-cpp (see `mflux.ts`), but sd-cpp Metal is the fallback.
  *   Linux riscv64 (CPU): unavailable as a shipped binary. Cross-compile via
  *     `zig cc --target=riscv64-linux-musl` (same toolchain
- *     packages/app-core/scripts/aosp/compile-libllama.mjs uses).
+ *     packages/app/scripts/aosp/compile-libllama.ts uses).
  *     There is no Node/host build script for sd-cpp in this repo — sd-cpp
  *     is a child-process backend wrapping a precompiled `sd` binary
  *     fetched from releases.elizaos.ai. Wiring riscv64 is a CDN-side

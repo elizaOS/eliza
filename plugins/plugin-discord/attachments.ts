@@ -1,7 +1,8 @@
 /**
  * Downloads Discord message attachments and detects their media type. Exposes
  * `AttachmentManager`, used when normalizing inbound messages into runtime
- * Media.
+ * Media. Processed entries are cached by attachment id in a bounded TTL map
+ * that does not retain extracted transcript text.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -92,11 +93,21 @@ function isSafeRemoteAttachmentUrl(url: string): boolean {
 	}
 }
 
+/** Hard cap with newest-wins eviction; signed CDN URLs must not grow the map. */
+export const DISCORD_ATTACHMENT_CACHE_MAX_ENTRIES = 64;
+/** Same TTL sweep as recently processed Discord message ids. */
+export const DISCORD_ATTACHMENT_CACHE_TTL_MS = 2 * 60 * 1000;
+
+type CachedAttachment = {
+	media: Media;
+	cachedAt: number;
+};
+
 /**
  * Class representing an Attachment Manager.
  */
 export class AttachmentManager {
-	private attachmentCache: Map<string, Media> = new Map();
+	private attachmentCache = new Map<string, CachedAttachment>();
 	private runtime: IAgentRuntime;
 
 	/**
@@ -147,9 +158,43 @@ export class AttachmentManager {
 		return processedAttachments;
 	}
 
+	private sweepAttachmentCache(now = Date.now()): void {
+		for (const [id, entry] of this.attachmentCache) {
+			if (now - entry.cachedAt > DISCORD_ATTACHMENT_CACHE_TTL_MS) {
+				this.attachmentCache.delete(id);
+			}
+		}
+	}
+
+	private readCachedAttachment(id: string): Media | undefined {
+		this.sweepAttachmentCache();
+		const entry = this.attachmentCache.get(id);
+		if (!entry) {
+			return undefined;
+		}
+		this.attachmentCache.delete(id);
+		this.attachmentCache.set(id, entry);
+		return entry.media;
+	}
+
+	private storeCachedAttachment(id: string, media: Media): void {
+		this.sweepAttachmentCache();
+		const cachedMedia: Media = { ...media };
+		delete cachedMedia.text;
+		this.attachmentCache.delete(id);
+		this.attachmentCache.set(id, { media: cachedMedia, cachedAt: Date.now() });
+		while (this.attachmentCache.size > DISCORD_ATTACHMENT_CACHE_MAX_ENTRIES) {
+			const oldest = this.attachmentCache.keys().next().value;
+			if (oldest === undefined) {
+				break;
+			}
+			this.attachmentCache.delete(oldest);
+		}
+	}
+
 	/**
 	 * Processes the provided attachment to generate a media object.
-	 * If the media for the attachment URL is already cached, it will return the cached media.
+	 * If the media for the attachment id is already cached, it will return the cached media.
 	 * Otherwise, it will determine the type of attachment (PDF, text, audio, video, image, generic)
 	 * and call the corresponding processing method to generate the media object.
 	 *
@@ -157,7 +202,7 @@ export class AttachmentManager {
 	 * @returns A promise that resolves to a Media object representing the attachment, or null if the attachment could not be processed
 	 */
 	async processAttachment(attachment: Attachment): Promise<Media | null> {
-		const cached = this.attachmentCache.get(attachment.url);
+		const cached = this.readCachedAttachment(attachment.id);
 		if (cached) {
 			return cached;
 		}
@@ -174,7 +219,7 @@ export class AttachmentManager {
 				"Skipping attachment with non-remote URL",
 			);
 			media = await this.processGenericAttachment(attachment);
-			this.attachmentCache.set(attachment.url, media);
+			this.storeCachedAttachment(attachment.id, media);
 			return media;
 		}
 
@@ -201,7 +246,7 @@ export class AttachmentManager {
 		}
 
 		if (media) {
-			this.attachmentCache.set(attachment.url, media);
+			this.storeCachedAttachment(attachment.id, media);
 		}
 		return media;
 	}

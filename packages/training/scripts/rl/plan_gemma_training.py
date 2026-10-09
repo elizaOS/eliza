@@ -3,12 +3,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from gemma_capacity import (
+from eliza_training.training.gemma_capacity import (
     GEMMA_MODEL_SPECS,
     build_capacity_report,
     parse_context_length,

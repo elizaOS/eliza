@@ -9,7 +9,8 @@
  *   - TOMORROW / further out (≥ {@link REMINDER_DISTANT_WINDOW_MS})    → "low",
  *   - later today (in between)                                        → "normal".
  *
- * Non-calendar reminders keep "normal" (this issue only tiers calendar events).
+ * Occurrence reminders use "high" so timed alerts share the same priority on
+ * foreground and background notification surfaces.
  *
  * The event start time is the reminder's `dueAt` — for a `calendar_event` row
  * `dueAt` is set to `event.startAt` (the nudge's own fire time lives in
@@ -32,8 +33,9 @@ export function resolveReminderNotificationPriority(args: {
   dueAt: string | null;
   nowMs: number;
 }): ReminderNotificationPriority {
-  // Only calendar events tier by lead time; other reminders stay normal.
-  if (args.ownerType !== "calendar_event" || !args.dueAt) return "normal";
+  // Occurrence alerts are high; calendar lead-time tiers stay distinct.
+  if (args.ownerType === "occurrence") return "high";
+  if (!args.dueAt) return "normal";
   const startMs = Date.parse(args.dueAt);
   if (!Number.isFinite(startMs)) return "normal";
 

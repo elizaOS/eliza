@@ -10,7 +10,7 @@ import {
   resolveMacosEvidenceGitHead,
   runBrowserCheck,
   startMacosBrowserEvidenceServer,
-} from "../../scripts/capture-macos-desktop-evidence.mjs";
+} from "../../../../packages/scripts/plugins/plugin-computeruse/capture-macos-desktop-evidence.ts";
 
 describe("macOS desktop evidence capture", () => {
   afterEach(() => {

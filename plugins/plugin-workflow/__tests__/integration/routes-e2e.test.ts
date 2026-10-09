@@ -13,10 +13,12 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { AgentRuntime } from '@elizaos/core';
+import { registerHttpPluginRoutes } from '@elizaos/host/protocol';
 
 import { tryHandleRuntimePluginRoute } from '../../../../packages/agent/src/api/runtime-plugin-routes';
 import { workflowRoutePlugin } from '../../src/plugin-routes';
 import { workflowRoutes } from '../../src/routes/index';
+import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from '../../src/services/embedded-workflow-service';
 import { WORKFLOW_SERVICE_TYPE } from '../../src/services/workflow-service';
 
 const servers: http.Server[] = [];
@@ -120,17 +122,24 @@ function makeWorkflowService(state: FakeServiceState) {
 }
 
 function makeRuntime(
-  options: { withService?: boolean; state?: FakeServiceState } = {}
+  options: { withService?: boolean; state?: FakeServiceState; embedded?: unknown } = {}
 ): AgentRuntime {
-  const { withService = true, state = { calls: [] } } = options;
+  const { withService = true, state = { calls: [] }, embedded = null } = options;
   const service = makeWorkflowService(state);
-  return {
+  const runtime = {
     agentId: 'agent-route-test',
     character: { name: 'Route Test Agent', settings: {} },
-    routes: [...workflowRoutes, ...(workflowRoutePlugin.routes ?? [])],
     getSetting: () => null,
-    getService: (key: string) => (withService && key === WORKFLOW_SERVICE_TYPE ? service : null),
+    getService: (key: string) => {
+      if (key === EMBEDDED_WORKFLOW_SERVICE_TYPE) return embedded;
+      return withService && key === WORKFLOW_SERVICE_TYPE ? service : null;
+    },
   } as unknown as AgentRuntime;
+  registerHttpPluginRoutes(runtime, {
+    name: 'workflow-test',
+    routes: [...workflowRoutes, ...(workflowRoutePlugin.routes ?? [])],
+  });
+  return runtime;
 }
 
 async function startServer(
@@ -175,15 +184,16 @@ function ownerArg(state: FakeServiceState, method: string): unknown {
 
 describe('plugin-workflow rawPath routes through real dispatch (#19044)', () => {
   test('GET /api/workflow/status answers the Smithers engine descriptor', async () => {
-    const base = await startServer(makeRuntime());
+    const base = await startServer(makeRuntime({ embedded: makeWorkflowService({ calls: [] }) }));
 
     const res = await fetch(`${base}/api/workflow/status`);
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
-      mode: 'cloud',
+      mode: 'local',
       status: 'ready',
-      platform: 'cloud',
+      platform: 'runtime',
+      executionLocation: 'agent-runtime',
       engine: 'smthrs',
     });
   });
@@ -348,6 +358,97 @@ describe('plugin-workflow rawPath routes through real dispatch (#19044)', () => 
     expect(await res.json()).toMatchObject({
       error: 'Workflow service is unavailable',
     });
+  });
+
+  // `/status` advertises hostedDigestProtocol: 1, so every hosted path must be
+  // reachable through the real dispatcher, not only by calling the handler.
+  test.each([
+    ['POST', '/api/workflow/hosted/live-calendars'],
+    ['GET', '/api/workflow/hosted/live-accounts'],
+    ['GET', '/api/workflow/hosted/sources'],
+    ['POST', '/api/workflow/hosted/sources'],
+    ['POST', '/api/workflow/hosted/sources/revoke'],
+    ['GET', '/api/workflow/hosted/loops'],
+    ['POST', '/api/workflow/hosted/loops'],
+    ['GET', '/api/workflow/hosted/results'],
+    ['POST', '/api/workflow/hosted/results/ack'],
+  ])('%s %s reaches the hosted digest handler', async (method, path) => {
+    const base = await startServer(makeRuntime());
+
+    const res = method === 'GET' ? await fetch(`${base}${path}`) : await postJson(base, path, {});
+
+    // No embedded runtime in this harness: the handler's own 503, not a 404.
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: 'Workflow runtime is unavailable' });
+  });
+
+  test('hosted digest routes dispatch to the embedded service and keep their body caps', async () => {
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    const embedded = {
+      listHostedDigests: (...args: unknown[]) => {
+        calls.push({ method: 'listHostedDigests', args });
+        return Promise.resolve([{ id: 'loop-1' }]);
+      },
+      listDigestLiveCalendars: (...args: unknown[]) => {
+        calls.push({ method: 'listDigestLiveCalendars', args });
+        return Promise.resolve({ calendars: [] });
+      },
+    };
+    const base = await startServer(makeRuntime({ embedded }));
+
+    const loops = await fetch(`${base}/api/workflow/hosted/loops`);
+    expect(loops.status).toBe(200);
+    expect(await loops.json()).toEqual({ loops: [{ id: 'loop-1' }] });
+    expect(calls.map((call) => call.method)).toEqual(['listHostedDigests']);
+
+    // Over the handler's 2000-byte cap: the dispatcher refuses the body (it
+    // may answer an error or close the socket) and the service is never hit.
+    const oversized = await postJson(base, '/api/workflow/hosted/live-calendars', {
+      accountId: 'x'.repeat(3000),
+    }).then(
+      (res) => res.status,
+      () => 'connection closed'
+    );
+    expect(oversized === 'connection closed' || oversized >= 400).toBe(true);
+    expect(calls.map((call) => call.method)).toEqual(['listHostedDigests']);
+
+    const withinCap = await postJson(base, '/api/workflow/hosted/live-calendars', {});
+    expect(withinCap.status).toBe(200);
+    expect(calls.map((call) => call.method)).toEqual([
+      'listHostedDigests',
+      'listDigestLiveCalendars',
+    ]);
+  });
+
+  test.each([
+    '/api/workflow/hosted/sources/revoke',
+    '/api/workflow/hosted/loops',
+    '/api/workflow/hosted/results/ack',
+  ])('%s refuses a body over the dispatcher default before any service runs', async (path) => {
+    let serviceCalls = 0;
+    const record = () => {
+      serviceCalls++;
+      return Promise.resolve({});
+    };
+    const embedded = {
+      revokeDigestSource: record,
+      saveHostedDigest: record,
+      acknowledgeDigest: record,
+    };
+    const base = await startServer(makeRuntime({ embedded }));
+
+    // These routes keep the dispatcher's 1 MiB default, which is stricter
+    // than their handler limit (MAX_WORKFLOW_JSON_BYTES, 2 MB).
+    const status = await postJson(base, path, {
+      confirmed: true,
+      padding: 'x'.repeat(1_100_000),
+    }).then(
+      (res) => res.status,
+      () => 'connection closed'
+    );
+
+    expect(status === 'connection closed' || status >= 400).toBe(true);
+    expect(serviceCalls).toBe(0);
   });
 
   test('paths outside the route table fall through the dispatcher to 404', async () => {

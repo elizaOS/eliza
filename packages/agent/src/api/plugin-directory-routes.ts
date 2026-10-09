@@ -5,12 +5,13 @@
  * local-code-execution policy (blocked in locked-down store variants) and an
  * available runtime; the directory must be an absolute path.
  */
+
 import type http from "node:http";
 import path from "node:path";
 import {
   buildStoreVariantBlockedMessage,
   isLocalCodeExecutionAllowed,
-} from "@elizaos/core";
+} from "@elizaos/host";
 import { buildPluginReloadedViewEvent } from "./plugin-reloaded-event.ts";
 import type { ServerState } from "./server-types.ts";
 

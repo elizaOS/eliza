@@ -7,7 +7,7 @@
  * anchor's slot is unchanged. Definitions (not calendar events) are used because
  * the scenario runtime has no Google/Apple calendar write grant.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 function assertApiBody(options: {
   includesAll?: ReadonlyArray<string>;
@@ -68,7 +68,7 @@ export default scenario({
   tags: ["lifeops", "calendar", "conflict", "reschedule", "outcome"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

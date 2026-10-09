@@ -1,10 +1,12 @@
+import { delegationRecords } from "./db/delegation-records";
 /**
- * Assembles the browser-safe Eliza Cloud plugin surface: inference handlers,
+ * Assembles the Node-hosted Eliza Cloud plugin surface: inference handlers,
  * account providers, services, lifecycle hooks, and its app-shell view manifest.
  */
 
-import type { IAgentRuntime, Plugin, ProcessEnvLike } from "@elizaos/core";
-import { logger, ModelType, registerProviderModels } from "@elizaos/core";
+import { type IAgentRuntime, type ProcessEnvLike, type Plugin, ElizaError, logger, ModelType, registerProviderModels } from "@elizaos/core";
+
+
 // Cloud account actions
 import { cloudAccountStatusAction } from "./actions/cloud-account-status";
 import { createCloudApiKeyAction } from "./actions/create-cloud-api-key";
@@ -35,6 +37,7 @@ import {
   handleVideoGeneration,
 } from "./models";
 // Cloud services
+import { CloudGoogleDelegationService } from "./services/cloud-google-delegation";
 import { CloudAuthService } from "./services/cloud-auth";
 import { CloudBackupService } from "./services/cloud-backup";
 import { CloudBootstrapServiceImpl } from "./services/cloud-bootstrap";
@@ -54,6 +57,11 @@ import {
 } from "./utils/config";
 import { createCloudApiClient } from "./utils/sdk-client";
 import { createWaifuMeteringHandler } from "./utils/waifu-metering";
+
+const accountActionsPolicy = process.env.ELIZAOS_CLOUD_ACCOUNT_ACTIONS ?? "enabled";
+if (accountActionsPolicy !== "enabled" && accountActionsPolicy !== "disabled") {
+  throw new ElizaError("Invalid Cloud account action policy", { code: "CLOUD_ACCOUNT_ACTION_POLICY_INVALID" });
+}
 
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as string;
 const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as string;
@@ -171,11 +179,13 @@ export function registerCloudEmbeddingModels(runtime: IAgentRuntime): void {
       modelType,
       handler: handler as Parameters<IAgentRuntime["registerModel"]>[1],
       priority: elizaOSCloudPlugin.priority,
+      metadata: { displayModelSetting: "ELIZAOS_CLOUD_EMBEDDING_MODEL" },
     }))
   );
 }
 
 export const elizaOSCloudPlugin: Plugin = {
+  schema: { delegationRecords },
   name: "elizaOSCloud",
   // "elizaOSCloud" is a load-bearing runtime identity (model-provider name in
   // version-compat, inference timing, runtime model context) that cannot be
@@ -309,6 +319,7 @@ export const elizaOSCloudPlugin: Plugin = {
   //   6. CloudBackupService — needs auth for snapshot API calls
   services: [
     CloudAuthService,
+    CloudGoogleDelegationService,
     CloudBootstrapServiceImpl,
     CloudManagedGatewayRelayService,
     CloudModelRegistryService,
@@ -330,7 +341,7 @@ export const elizaOSCloudPlugin: Plugin = {
   // All validate() on the CLOUD_AUTH signed-in state so they vanish from the
   // planner tool list when the agent has no cloud credential; handlers
   // re-guard because validate is advisory.
-  actions: [
+  actions: accountActionsPolicy === "disabled" ? [] : [
     cloudAccountStatusAction,
     listCloudAgentsAction,
     createCloudApiKeyAction,
@@ -618,3 +629,5 @@ export { validateCloudBaseUrl } from "./cloud/validate-url";
 export * from "./plugin";
 export * from "./register-routes";
 export * from "./cloud";
+
+export type { CloudProxyConfigLike } from "./lib/config-like";

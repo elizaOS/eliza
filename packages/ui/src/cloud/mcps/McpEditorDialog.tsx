@@ -11,14 +11,9 @@
  * selection here (a `containerId` picker is a follow-up tied to that surface).
  */
 
-import {
-  formatOrganizationCreditUsd,
-  legacyMcpPointsToOrganizationCredits,
-} from "@elizaos/cloud-sdk/browser-contracts";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "../../bridge/toast";
 import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -36,14 +31,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
-import { Switch } from "../../components/ui/switch";
 import { Textarea } from "../../components/ui/textarea";
 import { ApiError } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import type {
   CreateUserMcpInput,
   McpCategory,
-  McpPricingType,
   McpTool,
   UpdateUserMcpInput,
   UserMcpRecord,
@@ -62,8 +55,6 @@ const CATEGORIES: McpCategory[] = [
   "other",
 ];
 
-const PRICING_TYPES: McpPricingType[] = ["free", "credits", "x402"];
-
 function slugify(value: string): string {
   return value
     .toLowerCase()
@@ -80,10 +71,6 @@ interface FormState {
   category: McpCategory;
   externalEndpoint: string;
   endpointPath: string;
-  pricingType: McpPricingType;
-  priceUsd: string;
-  x402PriceUsd: string;
-  x402Enabled: boolean;
   toolsText: string;
   documentationUrl: string;
 }
@@ -96,51 +83,9 @@ function emptyForm(): FormState {
     category: "utilities",
     externalEndpoint: "",
     endpointPath: "/mcp",
-    pricingType: "credits",
-    priceUsd: "0.01",
-    x402PriceUsd: "0.0001",
-    x402Enabled: false,
     toolsText: "",
     documentationUrl: "",
   };
-}
-
-/** Default credit price seeded when no usable stored price exists. */
-const DEFAULT_CREDIT_PRICE_USD = "0.01";
-
-/** Parse a price field, returning null instead of coercing a typo to free. */
-export function parseEditorPriceUsd(raw: string): number | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return parsed;
-}
-
-/**
- * Seed the price field from the record. `price_usd` is only meaningful for a
- * credits-priced MCP — the server projects "0" for every other pricing type,
- * so switching an x402 MCP to credits must fall back to the default rather
- * than pre-filling a free price.
- */
-export function resolveEditorPriceUsd(mcp: UserMcpRecord): string {
-  if (mcp.pricing_type !== "credits") return DEFAULT_CREDIT_PRICE_USD;
-
-  const canonical = mcp.price_usd?.trim();
-  if (canonical && parseEditorPriceUsd(canonical) !== null) return canonical;
-
-  const legacyPoints = parseEditorPriceUsd(
-    String(mcp.credits_per_request ?? ""),
-  );
-  // Quantize through the shared credit authority: a bare `points / 100` seeds
-  // the field with a float artifact such as "0.011000000000000001".
-  if (legacyPoints !== null) {
-    return formatOrganizationCreditUsd(
-      legacyMcpPointsToOrganizationCredits(legacyPoints),
-    );
-  }
-
-  return DEFAULT_CREDIT_PRICE_USD;
 }
 
 function formFromRecord(mcp: UserMcpRecord): FormState {
@@ -151,10 +96,6 @@ function formFromRecord(mcp: UserMcpRecord): FormState {
     category: (mcp.category as McpCategory) ?? "utilities",
     externalEndpoint: mcp.external_endpoint ?? "",
     endpointPath: mcp.endpoint_path ?? "/mcp",
-    pricingType: mcp.pricing_type,
-    priceUsd: resolveEditorPriceUsd(mcp),
-    x402PriceUsd: mcp.x402_price_usd ?? "0.0001",
-    x402Enabled: mcp.x402_enabled,
     toolsText: mcp.tools.map((t) => `${t.name}: ${t.description}`).join("\n"),
     documentationUrl: mcp.documentation_url ?? "",
   };
@@ -209,30 +150,17 @@ export function McpEditorDialog({
 
   const tools = useMemo(() => parseTools(form.toolsText), [form.toolsText]);
 
-  // A malformed price must block submission: coercing it to 0 would silently
-  // republish a paid MCP as free.
-  const priceUsd =
-    form.pricingType === "credits"
-      ? parseEditorPriceUsd(form.priceUsd)
-      : undefined;
-  const x402PriceUsd =
-    form.pricingType === "x402"
-      ? parseEditorPriceUsd(form.x402PriceUsd)
-      : undefined;
-
   const valid =
     form.name.trim().length > 0 &&
     form.description.trim().length > 0 &&
     (isEdit || form.slug.trim().length > 0) &&
-    (isEdit || form.externalEndpoint.trim().length > 0) &&
-    (form.pricingType !== "credits" || priceUsd !== null) &&
-    (form.pricingType !== "x402" || x402PriceUsd !== null);
+    (isEdit || form.externalEndpoint.trim().length > 0);
 
   const onSubmit = async () => {
     if (!valid) {
       toast.error(
-        t("cloud.mcps.invalidPrice", {
-          defaultValue: "Enter a valid non-negative price per request.",
+        t("cloud.mcps.missingFields", {
+          defaultValue: "Fill in the name, description and endpoint.",
         }),
       );
       return;
@@ -245,10 +173,8 @@ export function McpEditorDialog({
           category: form.category,
           endpointPath: form.endpointPath.trim() || undefined,
           tools,
-          pricingType: form.pricingType,
-          priceUsd: priceUsd ?? undefined,
-          x402PriceUsd: x402PriceUsd ?? undefined,
-          x402Enabled: form.x402Enabled,
+          // Paid MCP listings are retired (#22961): every listing is free.
+          pricingType: "free",
           documentationUrl: form.documentationUrl.trim() || null,
         };
         await update.mutateAsync({ mcpId: editing.id, input });
@@ -263,10 +189,8 @@ export function McpEditorDialog({
           externalEndpoint: form.externalEndpoint.trim(),
           endpointPath: form.endpointPath.trim() || undefined,
           tools,
-          pricingType: form.pricingType,
-          priceUsd: priceUsd ?? undefined,
-          x402PriceUsd: x402PriceUsd ?? undefined,
-          x402Enabled: form.x402Enabled,
+          // Paid MCP listings are retired (#22961): every listing is free.
+          pricingType: "free",
           documentationUrl: form.documentationUrl.trim() || undefined,
         };
         await create.mutateAsync(input);
@@ -396,87 +320,14 @@ export function McpEditorDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="mcp-pricing">
-                {t("cloud.mcps.pricingLabel", { defaultValue: "Pricing" })}
-              </Label>
-              <Select
-                value={form.pricingType}
-                onValueChange={(v) =>
-                  update_("pricingType", v as McpPricingType)
-                }
-              >
-                <SelectTrigger id="mcp-pricing">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRICING_TYPES.map((p) => (
-                    <SelectItem key={p} value={p} className="capitalize">
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
-          {form.pricingType === "credits" && (
-            <div className="grid gap-2">
-              <Label htmlFor="mcp-price-usd">
-                {t("cloud.mcps.creditsLabel", {
-                  defaultValue: "Price per request (USD cloud credit)",
-                })}
-              </Label>
-              <Input
-                id="mcp-price-usd"
-                type="number"
-                min={0}
-                step="0.0001"
-                value={form.priceUsd}
-                aria-invalid={priceUsd === null}
-                onChange={(e) => update_("priceUsd", e.target.value)}
-              />
-              {priceUsd === null && (
-                <p role="alert" className="text-destructive text-xs">
-                  {t("cloud.mcps.invalidPrice", {
-                    defaultValue:
-                      "Enter a valid non-negative price per request.",
-                  })}
-                </p>
-              )}
-            </div>
-          )}
-
-          {form.pricingType === "x402" && (
-            <div className="grid gap-2">
-              <Label htmlFor="mcp-x402-price">
-                {t("cloud.mcps.x402PriceLabel", {
-                  defaultValue: "Price per request (USD)",
-                })}
-              </Label>
-              <Input
-                id="mcp-x402-price"
-                type="number"
-                min={0}
-                step="0.0001"
-                value={form.x402PriceUsd}
-                onChange={(e) => update_("x402PriceUsd", e.target.value)}
-              />
-            </div>
-          )}
-
-          <Card flow="rowBetween" variant="insetCompact">
-            <Label htmlFor="mcp-x402-enabled" className="cursor-pointer">
-              {t("cloud.mcps.x402EnabledLabel", {
-                defaultValue: "Enable x402 micropayments",
-              })}
-            </Label>
-            <Switch
-              id="mcp-x402-enabled"
-              checked={form.x402Enabled}
-              onCheckedChange={(v) => update_("x402Enabled", v)}
-            />
-          </Card>
+          <p className="text-xs text-muted" data-testid="mcp-free-listing-note">
+            {t("cloud.mcps.freeListingNote", {
+              defaultValue:
+                "MCP listings are free. Paid listings and creator earnings have been retired.",
+            })}
+          </p>
 
           {!isEdit && (
             <div className="grid gap-2">

@@ -45,6 +45,7 @@ interface AddEarningsParams {
   description: string;
   metadata?: Record<string, unknown>;
   dedupeBySourceId?: boolean;
+  reversesRedemption?: boolean;
   /** Reuse the caller's settlement transaction when this earning is one leg of a larger unit. */
   transaction?: DbTransaction;
 }
@@ -56,30 +57,6 @@ interface AddEarningsResult {
   /** True when an existing (source, sourceId) ledger entry was reused (dedupeBySourceId). */
   deduplicated?: boolean;
   error?: string;
-}
-
-interface LockEarningsParams {
-  userId: string;
-  amount: number;
-  redemptionId: string;
-  metadata?: {
-    ipAddress?: string;
-    userAgent?: string;
-  };
-}
-
-interface LockEarningsResult {
-  success: boolean;
-  lockedAmount: number;
-  ledgerEntryId?: string;
-  error?: string;
-}
-
-interface RefundEarningsParams {
-  userId: string;
-  redemptionId: string;
-  amount: number;
-  reason: string;
 }
 
 export class RedeemableEarningsReplayMismatchError extends Error {
@@ -418,14 +395,23 @@ class RedeemableEarningsService {
 
         [earnings] = await tx
           .update(redeemableEarnings)
-          .set({
-            total_earned: sql`${redeemableEarnings.total_earned} + ${amountDecimal}`,
-            available_balance: sql`${redeemableEarnings.available_balance} + ${amountDecimal}`,
-            [sourceColumn.name]: sql`${sourceColumn} + ${amountDecimal}`,
-            last_earning_at: new Date(),
-            version: sql`${redeemableEarnings.version} + 1`,
-            updated_at: new Date(),
-          })
+          .set(
+            params.reversesRedemption
+              ? {
+                  total_redeemed: sql`GREATEST(0, ${redeemableEarnings.total_redeemed} - ${amountDecimal})`,
+                  available_balance: sql`${redeemableEarnings.available_balance} + ${amountDecimal}`,
+                  version: sql`${redeemableEarnings.version} + 1`,
+                  updated_at: new Date(),
+                }
+              : {
+                  total_earned: sql`${redeemableEarnings.total_earned} + ${amountDecimal}`,
+                  available_balance: sql`${redeemableEarnings.available_balance} + ${amountDecimal}`,
+                  [sourceColumn.name]: sql`${sourceColumn} + ${amountDecimal}`,
+                  last_earning_at: new Date(),
+                  version: sql`${redeemableEarnings.version} + 1`,
+                  updated_at: new Date(),
+                },
+          )
           .where(eq(redeemableEarnings.user_id, userId))
           .returning();
       }
@@ -529,6 +515,7 @@ class RedeemableEarningsService {
      * once. Default false preserves the additive reconciliation behavior.
      */
     dedupeBySourceId?: boolean;
+    countAsRedeemed?: boolean;
     /** Reuse an owning settlement transaction so every money leg commits together. */
     transaction?: DbTransaction;
   }): Promise<{
@@ -660,13 +647,22 @@ class RedeemableEarningsService {
       // Reduce balances - use GREATEST to prevent going negative
       const [updated] = await tx
         .update(redeemableEarnings)
-        .set({
-          total_earned: sql`GREATEST(0, ${redeemableEarnings.total_earned} - ${amountDecimal})`,
-          available_balance: sql`GREATEST(0, ${redeemableEarnings.available_balance} - ${amountDecimal})`,
-          [sourceColumn.name]: sql`GREATEST(0, ${sourceColumn} - ${amountDecimal})`,
-          version: sql`${redeemableEarnings.version} + 1`,
-          updated_at: new Date(),
-        })
+        .set(
+          params.countAsRedeemed
+            ? {
+                total_redeemed: sql`${redeemableEarnings.total_redeemed} + ${amountDecimal}`,
+                available_balance: sql`GREATEST(0, ${redeemableEarnings.available_balance} - ${amountDecimal})`,
+                version: sql`${redeemableEarnings.version} + 1`,
+                updated_at: new Date(),
+              }
+            : {
+                total_earned: sql`GREATEST(0, ${redeemableEarnings.total_earned} - ${amountDecimal})`,
+                available_balance: sql`GREATEST(0, ${redeemableEarnings.available_balance} - ${amountDecimal})`,
+                [sourceColumn.name]: sql`GREATEST(0, ${sourceColumn} - ${amountDecimal})`,
+                version: sql`${redeemableEarnings.version} + 1`,
+                updated_at: new Date(),
+              },
+        )
         .where(eq(redeemableEarnings.user_id, userId))
         .returning();
 
@@ -761,355 +757,6 @@ class RedeemableEarningsService {
     return {
       success: true,
       newBalance: reducedBalance,
-      ledgerEntryId: result.ledgerEntryId,
-    };
-  }
-
-  /**
-   * Lock earnings for a pending redemption
-   *
-   * CRITICAL: This moves earnings from available to pending.
-   * The earnings are still owned by the user but cannot be redeemed again.
-   */
-  async lockForRedemption(params: LockEarningsParams): Promise<LockEarningsResult> {
-    const { userId, amount, redemptionId, metadata } = params;
-
-    if (amount <= 0) {
-      return {
-        success: false,
-        lockedAmount: 0,
-        error: "Amount must be positive",
-      };
-    }
-
-    const amountDecimal = new Decimal(amount).toFixed(4);
-
-    const result = await dbWrite.transaction(async (tx) => {
-      // Get earnings with row lock
-      const [earnings] = await tx
-        .select()
-        .from(redeemableEarnings)
-        .where(eq(redeemableEarnings.user_id, userId))
-        .for("update");
-
-      if (!earnings) {
-        throw new Error("No earnings record found");
-      }
-
-      const available = new Decimal(
-        parseRedeemableEarningsNumber(earnings.available_balance, "available_balance"),
-      );
-      const requested = new Decimal(amountDecimal);
-
-      // Check sufficient balance
-      if (available.lt(requested)) {
-        throw new Error(
-          `Insufficient redeemable balance. Available: $${available.toFixed(2)}, Requested: $${requested.toFixed(2)}`,
-        );
-      }
-
-      // Check for existing pending redemption with same ID (idempotency)
-      const existingLedger = await tx.query.redeemableEarningsLedger.findFirst({
-        where: and(
-          eq(redeemableEarningsLedger.user_id, userId),
-          eq(redeemableEarningsLedger.redemption_id, redemptionId),
-          eq(redeemableEarningsLedger.entry_type, "redemption"),
-        ),
-      });
-
-      if (existingLedger) {
-        // Idempotent - return existing
-        return {
-          earnings,
-          ledgerEntryId: existingLedger.id,
-          isExisting: true,
-        };
-      }
-
-      // Update balances atomically
-      // CRITICAL: Use WHERE clause to ensure sufficient balance
-      const [updated] = await tx
-        .update(redeemableEarnings)
-        .set({
-          available_balance: sql`${redeemableEarnings.available_balance} - ${amountDecimal}`,
-          total_pending: sql`${redeemableEarnings.total_pending} + ${amountDecimal}`,
-          version: sql`${redeemableEarnings.version} + 1`,
-          updated_at: new Date(),
-        })
-        .where(
-          and(
-            eq(redeemableEarnings.user_id, userId),
-            // CRITICAL: Only update if balance is still sufficient
-            sql`CAST(${redeemableEarnings.available_balance} AS DECIMAL) >= ${amount}`,
-          ),
-        )
-        .returning();
-
-      if (!updated) {
-        throw new Error("Balance changed during transaction. Please retry.");
-      }
-
-      // Create ledger entry
-      const [ledgerEntry] = await tx
-        .insert(redeemableEarningsLedger)
-        .values({
-          user_id: userId,
-          entry_type: "redemption",
-          amount: `-${amountDecimal}`, // Negative for redemption
-          balance_after: updated.available_balance,
-          redemption_id: redemptionId,
-          description: `Redemption locked: $${amount.toFixed(2)}`,
-          metadata: normalizeLedgerMetadata(metadata),
-        })
-        .returning();
-
-      return {
-        earnings: updated,
-        ledgerEntryId: ledgerEntry.id,
-        isExisting: false,
-      };
-    });
-
-    logger.info("[RedeemableEarnings] Locked for redemption", {
-      userId: userId.slice(0, 8) + "...",
-      amount,
-      redemptionId: redemptionId.slice(0, 8) + "...",
-      newAvailable: parseRedeemableEarningsNumber(
-        result.earnings.available_balance,
-        "available_balance",
-      ),
-      isExisting: result.isExisting,
-    });
-
-    return {
-      success: true,
-      lockedAmount: amount,
-      ledgerEntryId: result.ledgerEntryId,
-    };
-  }
-
-  /**
-   * Refund earnings from a failed/rejected redemption
-   *
-   * Moves funds from pending back to available.
-   */
-  async refundRedemption(
-    params: RefundEarningsParams,
-  ): Promise<{ success: boolean; error?: string }> {
-    const { userId, redemptionId, amount, reason } = params;
-
-    const amountDecimal = new Decimal(amount).toFixed(4);
-
-    const isExisting = await dbWrite.transaction(async (tx) => {
-      // Get earnings with row lock
-      const [earnings] = await tx
-        .select()
-        .from(redeemableEarnings)
-        .where(eq(redeemableEarnings.user_id, userId))
-        .for("update");
-
-      if (!earnings) {
-        throw new Error("Earnings record not found");
-      }
-
-      // Check for existing refund with same redemption ID (idempotency)
-      const existingRefund = await tx.query.redeemableEarningsLedger.findFirst({
-        where: and(
-          eq(redeemableEarningsLedger.user_id, userId),
-          eq(redeemableEarningsLedger.redemption_id, redemptionId),
-          eq(redeemableEarningsLedger.entry_type, "refund"),
-        ),
-      });
-
-      if (existingRefund) {
-        // Idempotent - already refunded, no mutation
-        return true;
-      }
-
-      // Update balances - move from pending back to available
-      const [updated] = await tx
-        .update(redeemableEarnings)
-        .set({
-          total_pending: sql`GREATEST(0, ${redeemableEarnings.total_pending} - ${amountDecimal})`,
-          available_balance: sql`${redeemableEarnings.available_balance} + ${amountDecimal}`,
-          version: sql`${redeemableEarnings.version} + 1`,
-          updated_at: new Date(),
-        })
-        .where(eq(redeemableEarnings.user_id, userId))
-        .returning();
-
-      if (!updated) {
-        throw new Error("Earnings record not found");
-      }
-
-      // Add refund ledger entry
-      await tx.insert(redeemableEarningsLedger).values({
-        user_id: userId,
-        entry_type: "refund",
-        amount: amountDecimal, // Positive - refund adds back
-        balance_after: updated.available_balance,
-        redemption_id: redemptionId,
-        description: `Refund: ${reason}`,
-        metadata: normalizeLedgerMetadata({
-          refunded_at: new Date().toISOString(),
-        }),
-      });
-
-      return false;
-    });
-
-    logger.info("[RedeemableEarnings] Redemption refunded", {
-      userId: userId.slice(0, 8) + "...",
-      redemptionId: redemptionId.slice(0, 8) + "...",
-      amount,
-      reason,
-      isExisting,
-    });
-
-    return { success: true };
-  }
-
-  /**
-   * Convert redeemable earnings into spendable org credit balance.
-   *
-   * Used by the earnings auto-fund flow: a creator's app earnings keep
-   * the same creator's containers running. Decrements available_balance
-   * and increments total_converted_to_credits — does NOT touch
-   * total_earned (lifetime) or total_redeemed (token cashout) so creator
-   * stats stay correct.
-   *
-   * Caller is responsible for crediting the org balance after this
-   * succeeds; this method only debits the user's earnings.
-   */
-  async convertToCredits(params: {
-    userId: string;
-    amount: number;
-    organizationId: string;
-    description: string;
-    metadata?: Record<string, unknown>;
-    /**
-     * Stable per-charge key (e.g. `container:<id>:<utc-day>`). When supplied,
-     * the conversion is idempotent: a re-run with the same key returns the
-     * original ledger entry instead of debiting earnings again. Enforced both
-     * here (lookup under the per-user advisory lock) and by a partial unique
-     * index on `redeemable_earnings_ledger((metadata->>'idempotency_key'))`.
-     */
-    idempotencyKey?: string;
-  }): Promise<{ success: boolean; newBalance: number; ledgerEntryId: string; error?: string }> {
-    const { userId, amount, organizationId, description, metadata = {}, idempotencyKey } = params;
-
-    if (amount <= 0) {
-      return { success: false, newBalance: 0, ledgerEntryId: "", error: "Amount must be positive" };
-    }
-
-    const amountDecimal = new Decimal(amount).toFixed(4);
-    const ledgerMetadata = normalizeLedgerMetadata({
-      ...metadata,
-      transaction_type: "credit_conversion",
-      ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
-    });
-
-    const result = await dbWrite.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${userId}`}))`,
-      );
-
-      const [earnings] = await tx
-        .select()
-        .from(redeemableEarnings)
-        .where(eq(redeemableEarnings.user_id, userId))
-        .for("update");
-
-      if (!earnings) {
-        throw new Error("No earnings record found");
-      }
-
-      // Idempotency: if this exact charge was already converted, return the
-      // prior ledger entry without re-debiting. The advisory lock above
-      // serializes concurrent conversions for this user, so the prior entry is
-      // always visible here once committed.
-      if (idempotencyKey) {
-        const [existing] = await tx
-          .select({ id: redeemableEarningsLedger.id })
-          .from(redeemableEarningsLedger)
-          .where(
-            and(
-              eq(redeemableEarningsLedger.entry_type, "credit_conversion"),
-              sql`${redeemableEarningsLedger.metadata} ->> 'idempotency_key' = ${idempotencyKey}`,
-            ),
-          )
-          .limit(1);
-
-        if (existing) {
-          return { earnings, ledgerEntryId: existing.id, idempotent: true };
-        }
-      }
-
-      const available = new Decimal(
-        parseRedeemableEarningsNumber(earnings.available_balance, "available_balance"),
-      );
-      if (available.lt(amountDecimal)) {
-        throw new Error(
-          `Insufficient redeemable balance. Available: $${available.toFixed(4)}, Requested: $${amount.toFixed(4)}`,
-        );
-      }
-
-      const [updated] = await tx
-        .update(redeemableEarnings)
-        .set({
-          available_balance: sql`${redeemableEarnings.available_balance} - ${amountDecimal}`,
-          total_converted_to_credits: sql`${redeemableEarnings.total_converted_to_credits} + ${amountDecimal}`,
-          version: sql`${redeemableEarnings.version} + 1`,
-          updated_at: new Date(),
-        })
-        .where(
-          and(
-            eq(redeemableEarnings.user_id, userId),
-            sql`CAST(${redeemableEarnings.available_balance} AS DECIMAL) >= ${amount}`,
-          ),
-        )
-        .returning();
-
-      if (!updated) {
-        throw new Error("Balance changed during transaction. Please retry.");
-      }
-
-      const [ledgerEntry] = await tx
-        .insert(redeemableEarningsLedger)
-        .values({
-          user_id: userId,
-          entry_type: "credit_conversion",
-          amount: `-${amountDecimal}`,
-          balance_after: updated.available_balance,
-          source_id: organizationId,
-          description,
-          metadata: ledgerMetadata,
-        })
-        .returning();
-
-      return { earnings: updated, ledgerEntryId: ledgerEntry.id, idempotent: false };
-    });
-
-    const convertedBalance = parseRedeemableEarningsNumber(
-      result.earnings.available_balance,
-      "available_balance",
-    );
-    logger.info(
-      result.idempotent
-        ? "[RedeemableEarnings] Skipped duplicate conversion (idempotent)"
-        : "[RedeemableEarnings] Converted to org credits",
-      {
-        userId: `${userId.slice(0, 8)}...`,
-        organizationId: `${organizationId.slice(0, 8)}...`,
-        amount,
-        idempotencyKey,
-        newBalance: convertedBalance,
-      },
-    );
-
-    return {
-      success: true,
-      newBalance: convertedBalance,
       ledgerEntryId: result.ledgerEntryId,
     };
   }

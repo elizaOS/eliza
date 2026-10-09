@@ -3,23 +3,21 @@
  * capability display. Keeping the catalog outside the dialog prevents
  * presentational components from depending on the enrollment state machine.
  */
-
-import type { LinkedAccountProviderId } from "@elizaos/shared";
-
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 export type AccountProviderCategory = "chat" | "coding" | "local" | "cloud";
-
 export interface AccountProviderOption {
   id: LinkedAccountProviderId;
   name: string;
+  labelKey: string;
   category: AccountProviderCategory;
   description: string;
   eligibility: string[];
   unavailable?: boolean;
 }
-
 export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   {
     id: "anthropic-subscription",
+    labelKey: "accounts.provider.anthropicSubscription",
     name: "Claude subscription",
     category: "coding",
     description:
@@ -28,6 +26,7 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "openai-codex",
+    labelKey: "accounts.provider.openaiCodex",
     name: "OpenAI Codex subscription",
     category: "coding",
     description: "Browser or device login for Codex coding agents.",
@@ -35,6 +34,7 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "gemini-cli",
+    labelKey: "accounts.provider.geminiCli",
     name: "Gemini CLI subscription",
     category: "coding",
     description:
@@ -43,6 +43,7 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "zai-coding",
+    labelKey: "accounts.provider.zaiCoding",
     name: "z.ai Coding Plan",
     category: "coding",
     description:
@@ -51,6 +52,7 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "kimi-coding",
+    labelKey: "accounts.provider.kimiCoding",
     name: "Kimi Coding Endpoint Key",
     category: "coding",
     description:
@@ -59,6 +61,7 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "deepseek-coding",
+    labelKey: "accounts.provider.deepseekCoding",
     name: "DeepSeek coding subscription",
     category: "coding",
     description: "No safe first-party subscription flow is available yet.",
@@ -67,6 +70,7 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "anthropic-api",
+    labelKey: "accounts.provider.anthropicApi",
     name: "Anthropic API",
     category: "chat",
     description: "Bring your own Anthropic API key for Claude chat models.",
@@ -74,6 +78,7 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "openai-api",
+    labelKey: "accounts.provider.openaiApi",
     name: "OpenAI API",
     category: "chat",
     description: "Bring your own OpenAI API key for GPT chat models.",
@@ -81,6 +86,7 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "cerebras-api",
+    labelKey: "accounts.provider.cerebrasApi",
     name: "Cerebras API",
     category: "chat",
     description: "Low-latency hosted inference with your Cerebras API key.",
@@ -88,6 +94,7 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "deepseek-api",
+    labelKey: "accounts.provider.deepseekApi",
     name: "DeepSeek API",
     category: "chat",
     description:
@@ -96,6 +103,7 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "zai-api",
+    labelKey: "accounts.provider.zaiApi",
     name: "z.ai API",
     category: "chat",
     description: "Direct z.ai API key for model routing.",
@@ -103,6 +111,7 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "moonshot-api",
+    labelKey: "accounts.provider.moonshotApi",
     name: "Kimi / Moonshot API",
     category: "chat",
     description: "Direct Moonshot API key for Kimi models.",
@@ -110,6 +119,7 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "openrouter-api",
+    labelKey: "accounts.provider.openrouterApi",
     name: "OpenRouter",
     category: "chat",
     description:
@@ -118,6 +128,7 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   },
   {
     id: "xai-api",
+    labelKey: "accounts.provider.xaiApi",
     name: "xAI API",
     category: "chat",
     description:
@@ -125,9 +136,18 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
     eligibility: ["model inference", "code-agent", "API key"],
   },
 ];
-
 export function getAccountProviderOption(
   providerId: LinkedAccountProviderId,
 ): AccountProviderOption | undefined {
   return ACCOUNT_PROVIDER_OPTIONS.find((option) => option.id === providerId);
+}
+
+export function accountProviderDisplayName(
+  providerId: LinkedAccountProviderId,
+  t: (key: string, vars?: Record<string, unknown>) => string,
+): string {
+  const option = getAccountProviderOption(providerId);
+  return option
+    ? t(option.labelKey, { defaultValue: option.name })
+    : providerId;
 }

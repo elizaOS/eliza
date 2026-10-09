@@ -2,9 +2,9 @@
  * Foundational scalar and JSON types shared across the whole type system: `UUID`,
  * `Content`, `Media`, `Metadata`, the JSON value/object unions, and channel-type
  * enums. The leaf dependency most other `types/*` modules build on; keep it
- * free of runtime-specific imports so browser/edge builds can consume it.
+ * independent of runtime initialization.
  */
-import type { InteractionBlock } from "./interactions";
+import type { InteractionBlock } from "./interactions.js";
 
 /**
  * JSON-serializable primitive value.
@@ -23,7 +23,7 @@ export type JsonObject = { [key: string]: JsonValue };
 
 /**
  * Minimal process-like environment shape for packages that also run in
- * browsers, workers, or tests where `process.env` may not exist.
+ * tests and callers supplying an explicit environment.
  */
 export type ProcessEnvLike = Record<string, string | undefined>;
 
@@ -95,6 +95,12 @@ export interface Content {
 	/** The main text content visible to users */
 	text?: string;
 
+	/** Exact quote origins are read hints, never permission or authorship proof. */
+	sourceReplyReferences?: {
+		replySha256: string;
+		sources: { eventId: string; sourceSha256: string }[];
+	};
+
 	/**
 	 * Core-validated effect receipts grounding this exact visible text. Plugins
 	 * cannot establish proof by setting this field alone; the delivery boundary
@@ -115,24 +121,24 @@ export interface Content {
 	/** Actions to be performed */
 	actions?: string[];
 
-	/**
-	 * Legacy serialized provider names from pre-v5 planner replies. The v5
-	 * message loop does not use model-emitted content to select providers;
-	 * providers enter prompts through context routing or `alwaysInResponseState`.
-	 */
+	/** Serialized provider names for stored replies. Model output does not select runtime providers; context routing and alwaysInResponseState govern prompt composition. */
 	providers?: string[];
 
 	/** Source/origin of the content (e.g., 'discord', 'telegram') */
 	source?: string;
 
 	/**
-	 * Provenance flag for the humanness voice gate (#14873): `true` marks text
+	 * Provenance flag for the humanness voice gate: `true` marks text
 	 * that is already final user-facing copy (a model-generated reply, output
 	 * the voice gate already rephrased, or a byte-exact canonical action reply)
 	 * so `ensureAgentVoice` preserves it. Hardcoded templates, ordinary tool
 	 * output, and raw error strings leave this unset for rephrasing.
 	 */
 	agentVoiced?: boolean;
+	reminderPresentation?: import("./reminder-presentation").ReminderPresentation;
+
+	/** Host-authored status, independent of model prose and safe without inference. */
+	systemNotice?: import("./system-notice").SystemNotice;
 
 	/** Target/destination for responses */
 	target?: string;
@@ -148,7 +154,7 @@ export interface Content {
 	 * that record an emoji reaction as a short display stub in `text` (e.g.
 	 * `*Added 👍 to: "first 50 chars…"*`) set this so context-building can feed
 	 * the planner the complete reacted-to statement instead of a truncated
-	 * fragment it would otherwise back-rationalize into a phantom task (#9874).
+	 * fragment it would otherwise back-rationalize into a phantom task.
 	 */
 	reactedMessageText?: string;
 
@@ -259,12 +265,8 @@ export interface Media {
 	 */
 	thumbnailUrl?: string;
 
-	// --- Additive metadata widening (#8876) ----------------------------------
-	// All optional and backward-compatible: `Media` is serialized inside
-	// `memories.content` (jsonb) and `central_messages.content` (text), so adding
-	// optional keys is a pure type change with zero at-rest migration. Fine-grained
-	// kind (pdf/code/transcript/3d) is derived from `mimeType` at read time — the
-	// coarse `ContentType` enum stays frozen and append-only.
+	// Optional media metadata is serialized with content. Derive fine-grained kind from mimeType;
+	// ContentType is the coarse category.
 
 	/** Authoritative IANA media type of the bytes (e.g. `application/pdf`). */
 	mimeType?: string;
@@ -327,7 +329,7 @@ export interface Media {
 
 	/**
 	 * Served URL of this attachment's PII-scrubbed variant — a SEPARATE
-	 * content-addressed media object under its own sha256 (#14781; per #8876
+	 * content-addressed media object under its own sha256 (; per
 	 * redacted variants are new bytes, never an edit of the original). When a
 	 * viewer's disclosure resolves to `redacted`, the DTO layer emits this URL
 	 * in place of `url` and withholds the original. Never a file id — the URL

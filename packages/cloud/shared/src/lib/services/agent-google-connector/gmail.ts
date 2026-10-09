@@ -1,5 +1,10 @@
 // Coordinates cloud service gmail behavior behind route handlers.
 import { stripHtmlRawTextElements } from "@elizaos/core";
+import {
+  gmailAttachmentParts,
+  MAX_GMAIL_ATTACHMENT_BYTES,
+} from "@elizaos/plugin-google-workspace/gmail-attachments";
+import { gmailThreadSourceLink } from "@elizaos/plugin-google-workspace/gmail-source-link";
 import { extractBody, sanitizeHeaderValue } from "../../utils/google-mcp-shared";
 import type { OAuthConnectionRole } from "../oauth/types";
 import {
@@ -64,6 +69,7 @@ type GoogleGmailMetadataResponse = {
 };
 
 type GoogleGmailListResponse = {
+  nextPageToken?: string;
   messages?: Array<{
     id?: string;
     threadId?: string;
@@ -175,8 +181,20 @@ function decodeHtmlEntities(value: string): string {
     quot: '"',
     "#39": "'",
   };
-  return value.replace(/&(nbsp|amp|lt|gt|quot|#39);/gi, (entity, name: string) => {
-    return namedEntities[name.toLowerCase()] ?? entity;
+  return value.replace(/&(nbsp|amp|lt|gt|quot|#x[0-9a-f]+|#\d+);/gi, (entity, name: string) => {
+    const key = name.toLowerCase();
+    const named = namedEntities[key];
+    if (named !== undefined) return named;
+    // Gmail HTML writes apostrophes as &#x27;. Named &#39; is already covered.
+    const hex = /^#x([0-9a-f]+)$/i.exec(key);
+    const decimal = hex ? null : /^#(\d+)$/.exec(key);
+    const digits = hex?.[1] ?? decimal?.[1];
+    if (!digits) return entity;
+    const code = Number.parseInt(digits, hex ? 16 : 10);
+    if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) return entity;
+    if (code >= 0xd800 && code <= 0xdfff) return entity;
+    if (code === 0xa0) return " ";
+    return String.fromCodePoint(code);
   });
 }
 
@@ -195,7 +213,7 @@ function htmlToPlainText(value: string): string {
     .trim();
 }
 
-function normalizeManagedGmailBodyText(value: string): string {
+export function normalizeManagedGmailBodyText(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
     return "";
@@ -204,10 +222,6 @@ function normalizeManagedGmailBodyText(value: string): string {
     return htmlToPlainText(trimmed);
   }
   return trimmed.replace(/\r\n/g, "\n").trim();
-}
-
-function deriveHtmlLink(threadId: string): string {
-  return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(threadId)}`;
 }
 
 function classifyReplyNeed(args: {
@@ -277,7 +291,7 @@ function classifyReplyNeed(args: {
   };
 }
 
-function normalizeGoogleGmailMessage(
+export function normalizeGoogleGmailMessage(
   message: GoogleGmailMetadataResponse,
   selfEmail: string | null,
 ): ManagedGoogleGmailMessage | null {
@@ -335,7 +349,7 @@ function normalizeGoogleGmailMessage(
     triageScore: triage.triageScore,
     triageReason: triage.triageReason,
     labels,
-    htmlLink: deriveHtmlLink(threadId),
+    htmlLink: gmailThreadSourceLink(threadId, selfEmail),
     metadata: {
       historyId: message.historyId?.trim() || null,
       sizeEstimate: typeof message.sizeEstimate === "number" ? message.sizeEstimate : null,
@@ -404,11 +418,18 @@ async function fetchManagedGoogleGmailMessages(args: {
   selfEmail: string | null;
   query?: string;
   labelIds?: string[];
-}): Promise<ManagedGoogleGmailMessage[]> {
+  pageToken?: string;
+}): Promise<{ messages: ManagedGoogleGmailMessage[]; nextPageToken: string | null }> {
+  if (
+    args.pageToken !== undefined &&
+    (typeof args.pageToken !== "string" || !args.pageToken.length || args.pageToken.length > 4096)
+  )
+    fail(400, "Invalid Gmail page token.");
   const listParams = new URLSearchParams({
     maxResults: String(Math.min(Math.max(args.maxResults, 1), 50)),
     includeSpamTrash: "false",
   });
+  if (args.pageToken) listParams.set("pageToken", args.pageToken);
   for (const labelId of args.labelIds ?? []) {
     listParams.append("labelIds", labelId);
   }
@@ -424,11 +445,24 @@ async function fetchManagedGoogleGmailMessages(args: {
     url: `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}?${listParams.toString()}`,
   });
   const listed = (await listResponse.json()) as GoogleGmailListResponse;
+  if (
+    !listed ||
+    (listed.messages !== undefined && !Array.isArray(listed.messages)) ||
+    (listed.messages?.length ?? 0) > Math.min(Math.max(args.maxResults, 1), 50)
+  )
+    fail(502, "Invalid Gmail search page.");
+  if (
+    listed.nextPageToken !== undefined &&
+    (typeof listed.nextPageToken !== "string" ||
+      !listed.nextPageToken.length ||
+      listed.nextPageToken.length > 4096)
+  )
+    fail(502, "Invalid Gmail continuation token.");
 
   const messages = await Promise.all(
     (listed.messages ?? []).map(async (messageRef) => {
       const messageId = messageRef.id?.trim();
-      if (!messageId) return null;
+      if (!messageId) fail(502, "Google Gmail returned a missing message identity.");
       const params = new URLSearchParams({ format: "metadata" });
       for (const header of GMAIL_METADATA_HEADERS) {
         params.append("metadataHeaders", header);
@@ -441,11 +475,14 @@ async function fetchManagedGoogleGmailMessages(args: {
         url: `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(messageId)}?${params.toString()}`,
       });
       const parsed = (await response.json()) as GoogleGmailMetadataResponse;
-      return normalizeGoogleGmailMessage(parsed, args.selfEmail);
+      const normalized = normalizeGoogleGmailMessage(parsed, args.selfEmail);
+      if (!normalized || normalized.externalId !== messageId)
+        fail(502, "Google Gmail returned a partial message payload.");
+      return normalized;
     }),
   );
 
-  return messages.filter((message): message is ManagedGoogleGmailMessage => message !== null);
+  return { messages, nextPageToken: listed.nextPageToken ?? null };
 }
 
 export async function fetchManagedGoogleGmailTriage(args: {
@@ -466,7 +503,7 @@ export async function fetchManagedGoogleGmailTriage(args: {
     connectorStatus.identity && typeof connectorStatus.identity.email === "string"
       ? connectorStatus.identity.email
       : null;
-  const messages = await fetchManagedGoogleGmailMessages({
+  const page = await fetchManagedGoogleGmailMessages({
     organizationId: args.organizationId,
     userId: args.userId,
     side: args.side,
@@ -477,7 +514,8 @@ export async function fetchManagedGoogleGmailTriage(args: {
   });
 
   return {
-    messages: messages.sort((left, right) => {
+    nextPageToken: page.nextPageToken,
+    messages: page.messages.sort((left, right) => {
       const scoreDelta = right.triageScore - left.triageScore;
       if (scoreDelta !== 0) return scoreDelta;
       const aTime = Date.parse(left.receivedAt);
@@ -497,6 +535,7 @@ export async function fetchManagedGoogleGmailSearch(args: {
   grantId?: string;
   query: string;
   maxResults: number;
+  pageToken?: string;
 }): Promise<ManagedGoogleGmailSearchResult> {
   const maxResults = Math.min(Math.max(args.maxResults, 1), 50);
   const query = args.query.trim();
@@ -522,7 +561,7 @@ export async function fetchManagedGoogleGmailSearch(args: {
       : null;
 
   return {
-    messages: await fetchManagedGoogleGmailMessages({
+    ...(await fetchManagedGoogleGmailMessages({
       organizationId: args.organizationId,
       userId: args.userId,
       side: args.side,
@@ -530,7 +569,8 @@ export async function fetchManagedGoogleGmailSearch(args: {
       maxResults,
       selfEmail,
       query,
-    }),
+      pageToken: args.pageToken,
+    })),
     syncedAt: new Date().toISOString(),
   };
 }
@@ -635,16 +675,18 @@ export async function readManagedGoogleGmailMessage(args: {
     side: args.side,
     grantId: args.grantId,
     url: `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(args.messageId)}?format=full`,
+    maxResponseBytes: Math.ceil(MAX_GMAIL_ATTACHMENT_BYTES / 3) * 4 + 65536,
   });
   const parsed = (await response.json()) as GoogleGmailMetadataResponse;
   const message = normalizeGoogleGmailMessage(parsed, selfEmail);
-  if (!message) {
+  if (!message || message.externalId !== args.messageId) {
     fail(502, "Google Gmail returned a partial message payload.");
   }
   const rawBody = parsed.payload ? extractBody(parsed.payload) : "";
   return {
     message,
     bodyText: normalizeManagedGmailBodyText(rawBody) || message.snippet,
+    attachments: gmailAttachmentParts(parsed.payload).map((part) => part.descriptor),
   };
 }
 

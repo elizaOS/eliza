@@ -33,18 +33,16 @@ Run:
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import random
-import sys
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.eliza_record import build, stable_id  # noqa: E402
-from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
+from eliza_training.lib.eliza_record import build, stable_id  # noqa: E402
+from eliza_training.lib.jsonl import write_jsonl  # noqa: E402
+from eliza_training.lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 OUT_DIR = ROOT / "data" / "synthesized" / "core_prompts"
 
@@ -1576,16 +1574,6 @@ GENERATORS: list[tuple[str, Callable[[ExpectedResponseEncoder, random.Random, in
     ("should_follow_room", gen_should_follow_room),
 ]
 
-
-def write_jsonl(records: Iterable[dict[str, Any]], path: Path) -> int:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    n = 0
-    with path.open("w", encoding="utf-8") as f:
-        for rec in records:
-            f.write(json.dumps(rec, ensure_ascii=False, separators=(",", ":")))
-            f.write("\n")
-            n += 1
-    return n
 
 
 def main() -> int:

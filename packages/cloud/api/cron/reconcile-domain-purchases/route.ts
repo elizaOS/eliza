@@ -6,13 +6,13 @@
  * provider status, refunds a verified failure once, or finishes local assignment.
  */
 
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { domainPurchaseAttemptsRepository } from "@elizaos/cloud-shared/db/repositories/domain-purchase-attempts";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { type Context, Hono } from "hono";
-import { domainPurchaseAttemptsRepository } from "@/db/repositories/domain-purchase-attempts";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { appsService } from "@/lib/services/apps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   executeDomainPurchase,
   getPinnedDomainPurchaseYears,

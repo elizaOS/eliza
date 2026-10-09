@@ -13,7 +13,7 @@
  * and are persisted for an inbox history rather than streamed as conversation.
  */
 
-import type { JsonValue, UUID } from "./primitives.ts";
+import type { JsonValue, UUID } from "./primitives.js";
 
 /**
  * Delivery urgency. Drives OS urgency/sound and whether a focused client also
@@ -27,11 +27,11 @@ export type NotificationPriority = "low" | "normal" | "high" | "urgent";
  * behavior a `NotificationPriority` binds to. Producers still pass a priority;
  * the tier is what the priority *means*:
  *
- * | Tier        | Priority        | Behavior                                             |
+ * | Tier | Priority | Behavior |
  * |-------------|-----------------|------------------------------------------------------|
  * | `interrupt` | `urgent`,`high` | OS notification (even focused for `urgent`), toast, inbox, badge |
- * | `digest`    | `normal`        | inbox + unread badge, no OS interrupt while focused  |
- * | `silent`    | `low`           | inbox only, no badge weight, auto-expires            |
+ * | `digest` | `normal` | inbox + unread badge, no OS interrupt while focused |
+ * | `silent` | `low` | inbox only, no badge weight, auto-expires |
  *
  * The tier is never stored on the record — it is a pure function of priority so
  * the two can never drift. Use {@link tierForPriority} to name it.
@@ -60,6 +60,9 @@ export type NotificationCategory =
 export interface AgentNotification {
 	/** Stable unique id (also the dedupe identity for the inbox). */
 	id: UUID;
+	/** Coordinates on returned copies only; canonical persisted rows remain unchanged. */
+	nativeEpoch?: string;
+	nativeSequence?: number;
 	/** Short, human-facing headline. Required. */
 	title: string;
 	/** Longer detail line. Optional. */
@@ -137,10 +140,73 @@ export interface NotificationQuery {
 	limit?: number;
 }
 
+/** Native delivery coordinates live beside canonical records, never inside storage rows. */
+export interface NativeNotification
+	extends Pick<
+		AgentNotification,
+		| "id"
+		| "title"
+		| "category"
+		| "priority"
+		| "createdAt"
+		| "deepLink"
+		| "groupKey"
+	> {
+	body: string;
+	readAt: number | null;
+	expiresAt: number | null;
+	nativeEpoch: string;
+	nativeSequence: number;
+	/** Closed presentation metadata; arbitrary producer data never crosses this rail. */
+	data?: { ownerType?: string; conversationId?: string; messageId?: string };
+}
+
+/** Single atomic cache value; original notification objects remain unchanged. */
+export interface NotificationInboxSnapshot {
+	version: 2;
+	notifications: AgentNotification[];
+	nativeEpoch: string;
+	nativeSequence: number;
+	nativeSequences: Record<string, number>;
+}
+
+/** Native pages deliberately have no unread/category filters: a complete page closes gaps. */
+export interface NativeNotificationQuery {
+	nativeEpoch?: string;
+	afterSequence?: number;
+	throughSequence?: number;
+	limit?: number;
+}
+
+export interface NativeNotificationPage {
+	notifications: NativeNotification[];
+	nativeEpoch: string;
+	throughSequence: number;
+	/** Last emitted sequence while incomplete; the fixed fence when complete. */
+	nextSequence: number;
+	complete: boolean;
+	unreadCount: number;
+	serviceStatus: "ready";
+}
+
+export const NATIVE_NOTIFICATION_PAGE_LIMIT = 128;
+export const NATIVE_NOTIFICATION_RECORD_BYTES = 16 * 1024;
+export const NATIVE_NOTIFICATION_PAGE_BYTES = 256 * 1024;
+
 /** The shape the notification stream carries over the agent event bus. */
 export interface NotificationEventData {
 	type: "notification" | "notification_update";
+	/** Authoritative single-item deletion hint; never a new OS arrival. */
+	removed?: boolean;
 	notification: AgentNotification;
+	/** Optional bounded native rail. Standard record contents stay unchanged. */
+	nativeNotification?: NativeNotification;
+	nativeProjectionError?: {
+		code: string;
+		notificationId: string;
+		nativeEpoch: string;
+		nativeSequence: number;
+	};
 	/** Total unread after this notification, so clients can update a badge. */
 	unreadCount: number;
 	/** Index signature for Record<string, unknown> compatibility on the bus. */

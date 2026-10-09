@@ -7,23 +7,41 @@
  * separate permission-gated API for hidden browser tabs.
  */
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
-import type { NotificationPriority } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import type { NotificationCategory, NotificationPriority } from "@elizaos/core";
+import { logger } from "../logger.ts";
 import {
   isSafeDeepLink,
   navigateDeepLink,
+  readNotificationChatTarget,
 } from "../state/notifications/navigate-deep-link";
-import { getNativePlugin } from "./native-plugins";
+import {
+  getNativePlugin,
+  type PushNotificationsPluginLike,
+} from "./native-plugins";
 
 export interface NativeNotificationRequest {
   /** Stable string id (used to derive a numeric LocalNotifications id). */
   id: string;
   title: string;
   body?: string;
+  /** Server record identity and activation boundary for native-owned receipts. */
+  createdAt?: number;
+  nativeEpoch?: string;
+  nativeSequence?: number;
+  source?: string;
+  readAt?: number | null;
+  expiresAt?: number | null;
+  /** Captured producer authority, not a URL chosen by notification content. */
+  expectedBase?: string;
+  /** Native fingerprint captured with the producer's registration authority. */
+  expectedOwner?: string;
   /** App route / URL to open on tap. */
   deepLink?: string;
+  /** Canonical, read-only chat destination from the notification producer. */
+  data?: Record<string, unknown>;
   /** Drives the delivery loudness (Android channel, web silence). */
   priority: NotificationPriority;
+  category?: NotificationCategory;
   /**
    * Coalescing key. When set, the OS surface is tagged by it so a superseding
    * same-group arrival REPLACES the prior notification (matching the inbox's
@@ -69,7 +87,7 @@ interface LocalNotificationActionPerformed {
 
 export interface LocalNotificationTapRoutingDeps {
   getPlugin: () => LocalNotificationsPluginLike;
-  navigate: (deepLink: string) => void;
+  navigate: (deepLink: string, data?: unknown) => void;
 }
 
 interface ElizaIntentPluginLike extends Record<string, unknown> {
@@ -204,7 +222,11 @@ export function initLocalNotificationTapRouting(
             { src: "local-notification-tap" },
             "[local-notification-tap] routed native notification action",
           );
-          deps.navigate(deepLink);
+          if (
+            readNotificationChatTarget(action.notification?.extra) === undefined
+          )
+            deps.navigate(deepLink);
+          else deps.navigate(deepLink, action.notification?.extra);
         }
       }),
     )
@@ -228,11 +250,6 @@ export function initLocalNotificationTapRouting(
  */
 export function __resetEnsuredChannelsForTests(): void {
   ensuredChannels.clear();
-}
-
-/** Test-only: permit an isolated listener registration in each test case. */
-export function __resetLocalNotificationTapRoutingForTests(): void {
-  localNotificationTapListenerPromise = null;
 }
 
 /**
@@ -295,7 +312,70 @@ async function tryLocalNotifications(
     if (requested.display !== "granted") return "denied";
   }
 
-  const channel = await ensureAndroidChannel(plugin, req.priority);
+  let channelPriority = req.priority;
+  const ownerType = req.data?.ownerType;
+  if (
+    Capacitor.getPlatform() === "android" &&
+    (req.category === "reminder" || req.category === undefined) &&
+    (ownerType === "occurrence" || ownerType === "calendar_event")
+  ) {
+    const push =
+      getNativePlugin<PushNotificationsPluginLike>("PushNotifications");
+    const capabilities = await push.getReminderDataCapabilities?.();
+    if (
+      req.category === "reminder" &&
+      capabilities?.reminderPresentation === true
+    ) {
+      if (typeof push.presentReminderNotification !== "function") return false;
+      const result = await push.presentReminderNotification({
+        notificationId: req.id,
+        ...(req.groupKey !== undefined ? { groupKey: req.groupKey } : {}),
+        title: req.title,
+        body: req.body ?? "",
+        priority: req.priority,
+        ownerType,
+        ...(req.deepLink && isSafeDeepLink(req.deepLink)
+          ? { deepLink: req.deepLink }
+          : {}),
+        ...(typeof req.data?.conversationId === "string"
+          ? { conversationId: req.data.conversationId }
+          : {}),
+        ...(typeof req.data?.messageId === "string"
+          ? { messageId: req.data.messageId }
+          : {}),
+      });
+      return result?.accepted === true;
+    }
+    // Preserve the older binary's existing channel contract; only the new
+    // presenter guarantees managed groups. Never add a second post after it.
+    if (
+      capabilities?.reminderChannelSelection === true &&
+      typeof push.resolveReminderChannel === "function"
+    ) {
+      const selected = await push.resolveReminderChannel({
+        priority: req.priority,
+        ownerType,
+      });
+      if (typeof selected.blocked !== "boolean" || selected.blocked)
+        return false;
+      const entry = Object.entries(ANDROID_CHANNELS).find(
+        ([, channel]) => channel.id === selected.channelId,
+      );
+      if (
+        !entry ||
+        (entry[0] !== req.priority &&
+          !(
+            ownerType === "occurrence" &&
+            req.priority === "high" &&
+            entry[0] === "normal"
+          ))
+      )
+        return false;
+      if (entry[0] === "normal") channelPriority = "normal";
+    } else if (ownerType === "occurrence" && req.priority === "high")
+      return false;
+  }
+  const channel = await ensureAndroidChannel(plugin, channelPriority);
   // A required Android channel that couldn't be created means the OS would drop
   // the post — don't claim success; let the store's glass fallback deliver.
   if (channel.unusable) return false;
@@ -315,7 +395,9 @@ async function tryLocalNotifications(
         // exact-alarm settings screen even though no future alarm is needed.
         isExactNotification: false,
         ...(channel.channelId ? { channelId: channel.channelId } : {}),
-        ...(safeDeepLink ? { extra: { deepLink: safeDeepLink } } : {}),
+        ...(safeDeepLink
+          ? { extra: { ...req.data, deepLink: safeDeepLink } }
+          : {}),
       },
     ],
   });
@@ -384,7 +466,7 @@ export function showWebNotification(req: NativeNotificationRequest): boolean {
           // Scheme-checked: a producer-supplied deepLink must never reach a raw
           // top-window navigation (javascript: → XSS, arbitrary https → open
           // redirect). navigateDeepLink drops anything but app routes / http(s).
-          navigateDeepLink(deepLink);
+          void navigateDeepLink(deepLink, req.data);
         } catch {
           // error-policy:J6 best-effort tap navigation; the app is already
           // focused and the dashboard notification center still lists it.
@@ -408,6 +490,51 @@ export function showWebNotification(req: NativeNotificationRequest): boolean {
 export async function showNativeNotification(
   req: NativeNotificationRequest,
 ): Promise<"local" | "intent" | "none"> {
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
+    const plugin =
+      getNativePlugin<PushNotificationsPluginLike>("PushNotifications");
+    if (typeof plugin.getNativeNotificationDeliveryStatus === "function") {
+      const native = await plugin.getNativeNotificationDeliveryStatus();
+      if (native.transport === "native") {
+        // A failed/offline native connection never hands this record to a
+        // second LocalNotifications receipt store. Both arrival paths share
+        // the native inbox, including first-activation buffering.
+        if (
+          !req.expectedOwner ||
+          native.owner !== req.expectedOwner ||
+          typeof req.createdAt !== "number" ||
+          typeof req.expectedBase !== "string" ||
+          typeof req.nativeEpoch !== "string" ||
+          typeof req.nativeSequence !== "number" ||
+          !Number.isSafeInteger(req.nativeSequence) ||
+          req.nativeSequence <= 0 ||
+          typeof plugin.presentNativeNotification !== "function"
+        )
+          return "none";
+        const result = await plugin.presentNativeNotification({
+          expectedOwner: req.expectedOwner,
+          expectedBase: req.expectedBase,
+          notification: {
+            id: req.id,
+            title: req.title,
+            body: req.body ?? "",
+            createdAt: req.createdAt,
+            nativeEpoch: req.nativeEpoch,
+            nativeSequence: req.nativeSequence,
+            source: req.source ?? "renderer",
+            category: req.category ?? "general",
+            priority: req.priority,
+            readAt: req.readAt ?? null,
+            expiresAt: req.expiresAt ?? null,
+            ...(req.deepLink ? { deepLink: req.deepLink } : {}),
+            ...(req.groupKey ? { groupKey: req.groupKey } : {}),
+            ...(req.data ? { data: req.data } : {}),
+          },
+        });
+        return result.presented ? "local" : "none";
+      }
+    }
+  }
   // error-policy:J4 documented first-that-succeeds channel chain; a failed
   // channel falls through and an all-failed dispatch returns "none" (the
   // dashboard notification center is the source of truth either way).

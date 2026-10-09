@@ -18,7 +18,7 @@ import {
 import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import { captureHostExecutionBaseline } from "@elizaos/host";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import { InMemorySessionStore } from "../services/session-store.js";

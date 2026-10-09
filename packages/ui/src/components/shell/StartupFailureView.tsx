@@ -8,13 +8,15 @@
 
 import { AlertCircle, Power } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { waitForCloudAgentRunning } from "../../api/client-cloud";
-import { useBranding } from "../../config/branding";
-import { type BugReportDraft, useOptionalBugReport } from "../../hooks";
-import { startFreshFirstRunReload } from "../../platform";
-import type { StartupErrorState } from "../../state";
-import { type useApp, useAppSelector } from "../../state";
+import { useBranding } from "../../config/branding-react.hooks";
+import type { BugReportDraft } from "../../hooks/useBugReport.hooks";
+import { useOptionalBugReport } from "../../hooks/useBugReport.hooks";
+import { useAppSelector } from "../../state/app-store";
+import type { StartupErrorState } from "../../state/types";
+import type { useApp } from "../../state/useApp";
+import { MyRuntimesContainer } from "../cockpit/MyRuntimesContainer";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
@@ -56,7 +58,7 @@ function startupReasonLabel(
 }
 
 const SCREEN_SHELL_CLASS =
-  "relative flex min-h-screen w-full items-center justify-center overflow-hidden px-4 py-6 font-body text-txt sm:px-6";
+  "relative flex min-h-screen w-full justify-center px-4 py-6 font-body text-txt sm:px-6";
 interface StartupFailureViewProps {
   error: StartupErrorState;
   onRetry: () => void;
@@ -96,6 +98,10 @@ export function StartupFailureView({
   const reasonLabel = startupReasonLabel(t, error.reason);
   const startupDraft = buildStartupBugReportDraft(reasonLabel, error);
   const stopped = error.reason === "agent-stopped";
+  const connectionUnavailable =
+    error.reason === "backend-unreachable" ||
+    error.reason === "backend-timeout";
+  const [connectionSettingsOpen, setConnectionSettingsOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const startAttempt = useRef<AbortController | null>(null);
@@ -126,12 +132,16 @@ export function StartupFailureView({
   };
 
   return (
-    <Card asChild variant="sandboxFrame" className={SCREEN_SHELL_CLASS}>
+    <Card
+      asChild
+      variant="sandboxFrame"
+      className={`${SCREEN_SHELL_CLASS} ${connectionSettingsOpen ? "max-h-screen items-start overflow-y-auto" : "items-center overflow-hidden"}`}
+    >
       <div>
         <Card
           surface="cardOverlay"
           border="subtle"
-          className="relative z-10 w-full max-w-[720px] overflow-hidden"
+          className="relative z-10 w-full max-w-[720px] shrink-0 overflow-hidden"
         >
           <CardHeader className="pb-6 pt-6">
             <div className="flex flex-col gap-4">
@@ -169,10 +179,15 @@ export function StartupFailureView({
                 ? t("startupfailureview.StoppedDescription", {
                     defaultValue: "Start your Dedicated agent to continue.",
                   })
-                : t("startupfailureview.TryAgainDescription", {
-                    defaultValue:
-                      "Try again in a moment. If this keeps happening, the details below can help diagnose the problem.",
-                  })}
+                : connectionUnavailable
+                  ? t("startupfailureview.ReconnectDescription", {
+                      defaultValue:
+                        "Your connection settings are kept. Eliza will keep trying to reconnect. You can also retry now.",
+                    })
+                  : t("startupfailureview.TryAgainDescription", {
+                      defaultValue:
+                        "Try again in a moment. If this keeps happening, the details below can help diagnose the problem.",
+                    })}
             </p>
             {!stopped ? (
               <Card
@@ -218,7 +233,7 @@ export function StartupFailureView({
               </p>
             ) : null}
 
-            <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
+            <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:flex-wrap sm:items-center">
               {stopped && error.cloudAgentId ? (
                 <Button
                   variant="default"
@@ -254,37 +269,34 @@ export function StartupFailureView({
                   </a>
                 </Button>
               ) : null}
-              {error.reason === "backend-unreachable" ? (
-                <Button
-                  variant="default"
-                  size="lg"
-                  onClick={() => startFreshFirstRunReload()}
-                  className="w-full sm:w-auto sm:min-w-[11rem]"
-                  data-testid="startup-start-over"
-                >
-                  {t("startupfailureview.StartOver", {
-                    defaultValue: "Start over",
-                  })}
-                </Button>
-              ) : null}
               <Button
-                variant={
-                  error.reason === "backend-unreachable" || stopped
-                    ? "outline"
-                    : "default"
-                }
+                variant={stopped ? "outline" : "default"}
                 size="lg"
                 onClick={onRetry}
                 disabled={starting}
                 className="w-full sm:w-auto sm:min-w-[11rem]"
                 data-testid="startup-retry"
               >
-                {stopped
+                {stopped || connectionUnavailable
                   ? t("startupfailureview.RetryConnection", {
                       defaultValue: "Retry connection",
                     })
                   : t("startupfailureview.RetryStartup")}
               </Button>
+              {connectionUnavailable ? (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => setConnectionSettingsOpen((open) => !open)}
+                  aria-expanded={connectionSettingsOpen}
+                  aria-controls="startup-connection-settings"
+                  className="w-full sm:w-auto sm:min-w-[10rem]"
+                >
+                  {t("startupfailureview.ConnectionSettings", {
+                    defaultValue: "Connection settings",
+                  })}
+                </Button>
+              ) : null}
               {bugReport && !stopped ? (
                 <Button
                   variant="outline"
@@ -310,6 +322,11 @@ export function StartupFailureView({
                 </Button>
               ) : null}
             </div>
+            {connectionUnavailable && connectionSettingsOpen ? (
+              <div id="startup-connection-settings">
+                <MyRuntimesContainer />
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>

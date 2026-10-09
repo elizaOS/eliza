@@ -18,6 +18,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { billingFundingReservations } from "./billing-funding-reservations";
 import { creditTransactions } from "./credit-transactions";
 import { orgStorageObjects } from "./org-storage-mutations";
 import { organizations } from "./organizations";
@@ -58,9 +59,11 @@ export const orgStorageReadOperations = pgTable(
     capability_revoked_at: timestamp("capability_revoked_at", { withTimezone: true }),
     retain_until: timestamp("retain_until", { withTimezone: true }),
     credit_transaction_id: uuid("credit_transaction_id"),
+    /** Allowance-first subscription funding receipt; exclusive with credit_transaction_id. */
+    funding_reservation_id: uuid("funding_reservation_id"),
     provider_succeeded_at: timestamp("provider_succeeded_at", { withTimezone: true }),
     completed_at: timestamp("completed_at", { withTimezone: true }),
-    access_count: bigint("access_count", { mode: "bigint" }).notNull().default(0n),
+    access_count: bigint("access_count", { mode: "bigint" }).notNull().default(sql`0`),
     last_access_at: timestamp("last_access_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -76,6 +79,14 @@ export const orgStorageReadOperations = pgTable(
       columns: [table.credit_transaction_id],
       foreignColumns: [creditTransactions.id],
     }).onDelete("restrict"),
+    funding_reservation: foreignKey({
+      name: "org_storage_read_operations_funding_reservation_fkey",
+      columns: [table.funding_reservation_id, table.organization_id],
+      foreignColumns: [billingFundingReservations.id, billingFundingReservations.organization_id],
+    }).onDelete("restrict"),
+    funding_reservation_unique: uniqueIndex("org_storage_read_operations_funding_reservation_uidx")
+      .on(table.funding_reservation_id)
+      .where(sql`${table.funding_reservation_id} IS NOT NULL`),
     renewal_root: foreignKey({
       name: "org_storage_read_operations_renewal_root_fkey",
       columns: [table.renewal_root_id],
@@ -115,6 +126,7 @@ export const orgStorageReadOperations = pgTable(
           AND ${table.result_etag} IS NULL AND ${table.response_status} IS NULL
           AND ${table.response_json} IS NULL AND ${table.provider_succeeded_at} IS NULL
           AND ${table.completed_at} IS NULL AND ${table.credit_transaction_id} IS NULL
+          AND ${table.funding_reservation_id} IS NULL
           AND ${table.last_access_at} IS NULL AND ${table.access_count} = 0
         ))
         AND (${table.state} = 'prepared' OR (
@@ -124,15 +136,22 @@ export const orgStorageReadOperations = pgTable(
           OR ${table.provider_succeeded_at} IS NOT NULL)
         AND (${table.state} NOT IN ('committed', 'failed') OR ${table.completed_at} IS NOT NULL)
         AND (${table.state} <> 'provider_succeeded' OR (
-          ${table.credit_transaction_id} IS NULL AND ${table.completed_at} IS NULL
+          ${table.credit_transaction_id} IS NULL AND ${table.funding_reservation_id} IS NULL
+          AND ${table.completed_at} IS NULL
         ))
         AND (${table.state} = 'committed' OR (
-          ${table.credit_transaction_id} IS NULL
+          ${table.credit_transaction_id} IS NULL AND ${table.funding_reservation_id} IS NULL
           AND ${table.last_access_at} IS NULL AND ${table.access_count} = 0
         ))
         AND (${table.state} <> 'committed' OR (
-          (${table.price_usd} = 0 AND ${table.credit_transaction_id} IS NULL)
-          OR (${table.price_usd} > 0 AND ${table.credit_transaction_id} IS NOT NULL)
+          (${table.price_usd} = 0 AND ${table.credit_transaction_id} IS NULL
+            AND ${table.funding_reservation_id} IS NULL)
+          OR (${table.price_usd} > 0 AND (
+            (${table.credit_transaction_id} IS NOT NULL
+              AND ${table.funding_reservation_id} IS NULL)
+            OR (${table.credit_transaction_id} IS NULL
+              AND ${table.funding_reservation_id} IS NOT NULL)
+          ))
         ))
         AND (${table.method} = 'list' OR ${table.state} IN ('prepared', 'failed')
           OR ${table.object_id} IS NOT NULL)

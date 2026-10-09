@@ -15,21 +15,23 @@
 // touch path start to finish. Run: bun run --cwd packages/app
 // test:e2e:android:touch-gesture (set ELIZA_ANDROID_REQUIRE_AGENT=0 to exercise
 // the frontend-only gestures without a live agent).
+
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Page } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   captureAndroidLogcat,
   captureAndroidScreenshot,
   startChunkedAndroidScreenRecord,
-} from "../../scripts/lib/android-capture.mjs";
+} from "../../scripts/lib/android-capture.ts";
 import {
   adbDevice,
   resolveAdb,
   resolveSerial,
-} from "../../scripts/lib/android-device.mjs";
+} from "../../scripts/lib/android-device.ts";
 import { expect, gotoRoute, test, waitForShellReady } from "./android-harness";
 
 declare global {
@@ -53,23 +55,9 @@ declare global {
 const ISSUE_EVIDENCE_DIR = "12344-android-gesture-matrix";
 const HOST_AGENT_BASE = "http://127.0.0.1:31337";
 
-function repoRootFromCwd() {
-  let dir = process.cwd();
-  while (dir !== path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, ".git"))) return dir;
-    dir = path.dirname(dir);
-  }
-  return path.resolve(process.cwd(), "../..");
-}
-
 const ARTIFACT_DIR = path.join(
   process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
-    path.join(
-      repoRootFromCwd(),
-      "test-results",
-      "android-artifacts",
-      ISSUE_EVIDENCE_DIR,
-    ),
+    testOutputPath("android-artifacts", ISSUE_EVIDENCE_DIR),
   "touch-gesture",
 );
 

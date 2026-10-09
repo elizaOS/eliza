@@ -8,7 +8,7 @@ import type {
   CodingAgentCreateTaskInput,
   OrchestratorRoomRosterOverview,
 } from "../../api/client-types-cloud";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { OrchestratorRoomView } from "../chat/widgets/agent-orchestrator-room-view";
 import { CockpitNewSessionForm } from "./CockpitNewSessionForm";
 import type { CockpitSpawnTarget } from "./cockpit-modes";

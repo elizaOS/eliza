@@ -3,7 +3,7 @@
  *
  * What runs where:
  *   - API: `accounts-api-server.ts` under bun — the REAL `handleAccountsRoutes`
- *     (packages/agent) + REAL `AccountPool` (packages/app-core src, pinned via
+ *     (packages/agent) + REAL `AccountPool` (packages/app src, pinned via
  *     tsconfig.e2e-paths.json) over a scratch on-disk credential store.
  *   - UI: the REAL `AccountList` component tree (AccountCard, AddAccountDialog,
  *     RotationStrategyPicker, EditableAccountLabel, useAccounts, ElizaClient)
@@ -151,17 +151,24 @@ async function bundleFixture() {
   const result = await build({
     entryPoints: [join(here, "accounts-fixture.tsx")],
     bundle: true,
-    format: "iife",
+    format: "esm",
     platform: "browser",
     jsx: "automatic",
     loader: { ".tsx": "tsx", ".ts": "ts" },
     define: { "process.env.NODE_ENV": '"production"' },
     plugins: [stubAppState, stubElizaCore, stubNodeBuiltins],
     write: false,
+    outfile: join(here, "fixture.js"),
     absWorkingDir: repoRoot,
     logLevel: "silent",
   });
-  return result.outputFiles[0].text;
+  const js = result.outputFiles.find((file) => file.path.endsWith(".js"));
+  if (!js) throw new Error("Accounts fixture JavaScript was not emitted");
+  return {
+    js: js.text,
+    css:
+      result.outputFiles.find((file) => file.path.endsWith(".css"))?.text ?? "",
+  };
 }
 
 async function compileCss(bundleJsPath) {
@@ -186,10 +193,10 @@ const elizaHome = join(workDir, "eliza-home");
 await mkdir(fixtureDir, { recursive: true });
 await mkdir(elizaHome, { recursive: true });
 
-const js = await bundleFixture();
+const { js, css: importedCss } = await bundleFixture();
 const jsPath = join(fixtureDir, "fixture.js");
 await writeFile(jsPath, js);
-const css = await compileCss(jsPath);
+const css = `${await compileCss(jsPath)}\n${importedCss}`;
 await writeFile(join(fixtureDir, "fixture.css"), css);
 await writeFile(
   join(fixtureDir, "index.html"),
@@ -199,7 +206,7 @@ await writeFile(
 <link rel="stylesheet" href="/fixture.css">
 <style>html,body{margin:0;min-height:100%;background:var(--bg,#0b0b0b);color:var(--text,#eee)}</style>
 <script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
-</head><body><div id="root"></div><script src="/fixture.js"></script></body></html>`,
+</head><body><div id="root"></div><script type="module" src="/fixture.js"></script></body></html>`,
 );
 console.log(`fixture bundled (${js.length} bytes js, ${css.length} bytes css)`);
 
@@ -294,9 +301,12 @@ const poolAccounts = async () =>
 const consoleLog = [];
 const networkLog = [];
 let shot = 0;
-async function snap(page, name, fullPage = true) {
-  shot += 1;
-  const file = `${String(shot).padStart(2, "0")}-${name}.png`;
+let supplementalShots = 0;
+async function snap(page, name, fullPage = true, supplemental = false) {
+  if (supplemental) supplementalShots += 1;
+  else shot += 1;
+  const prefix = supplemental ? "supplement" : String(shot).padStart(2, "0");
+  const file = `${prefix}-${name}.png`;
   await page.screenshot({
     path: join(evidenceDir, file),
     animations: "allow",
@@ -304,6 +314,43 @@ async function snap(page, name, fullPage = true) {
   });
   console.log(`  screenshot ${file}`);
   return file;
+}
+
+const layoutMeasurements = [];
+async function assertAccountControlsFit(page, state) {
+  const add = page.getByRole("button", { name: "Add account", exact: true });
+  const geometry = await add.evaluate((button) => {
+    const section = button.closest("section");
+    const trigger = section?.querySelector("[role=combobox]");
+    if (!section || !trigger) throw new Error("Account controls unavailable");
+    const bounds = (element) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, width: rect.width };
+    };
+    return {
+      viewport: document.documentElement.clientWidth,
+      pageWidth: document.documentElement.scrollWidth,
+      card: bounds(section),
+      add: bounds(button),
+      strategy: bounds(trigger),
+    };
+  });
+  layoutMeasurements.push({ state, ...geometry });
+  assert(
+    geometry.pageWidth <= geometry.viewport,
+    `${state}: no horizontal page overflow`,
+  );
+  for (const name of ["add", "strategy"]) {
+    const rect = geometry[name];
+    assert(
+      rect.width > 0 &&
+        rect.left >= geometry.card.left &&
+        rect.right <= geometry.card.right &&
+        rect.left >= 0 &&
+        rect.right <= geometry.viewport,
+      `${state}: ${name} control stays within the card and viewport`,
+    );
+  }
 }
 
 const browser = await chromium.launch();
@@ -314,7 +361,10 @@ const desktopContext = await browser.newContext({
 });
 const page = await desktopContext.newPage();
 const desktopVideo = page.video();
-page.on("pageerror", (e) => pageErrors.push(String(e)));
+page.on("pageerror", (e) => {
+  pageErrors.push(String(e));
+  console.error(`[browser] ${e.stack ?? e}`);
+});
 page.on("console", (m) => consoleLog.push(`[${m.type()}] ${m.text()}`));
 page.on("request", (r) => {
   if (r.url().includes("/api/") || r.url().includes("/__e2e__/")) {
@@ -472,21 +522,114 @@ try {
   );
   await snap(page, "health-states");
 
-  // Mobile viewport captures of the populated + health states.
-  const mobile = await browser.newPage({
-    viewport: { width: 390, height: 844 },
-    deviceScaleFactor: 2,
-    isMobile: true,
-    hasTouch: true,
-  });
-  mobile.on("pageerror", (e) => pageErrors.push(`mobile: ${String(e)}`));
-  await mobile.goto(base);
-  await mobile.locator("text=Rate-limited").waitFor({ state: "visible" });
-  await snap(mobile, "mobile-health-states");
-  await mobile.locator("#rotation-strategy-anthropic-api").click();
-  await snap(mobile, "mobile-strategy-menu-open", false);
-  await mobile.keyboard.press("Escape");
-  await mobile.close();
+  await assertAccountControlsFit(page, "desktop-rest");
+  await page.getByRole("button", { name: "Add account", exact: true }).hover();
+  await assertAccountControlsFit(page, "desktop-hover");
+  await snap(page, "desktop-add-hover", true, true);
+
+  // Use the same real component/API/pool at narrow widths; screenshots alone
+  // did not detect a nonwrapping action row extending beyond the viewport.
+  for (const width of [390, 320]) {
+    const context = await browser.newContext({
+      viewport: { width, height: 844 },
+      deviceScaleFactor: 2,
+      isMobile: true,
+      hasTouch: true,
+      recordVideo: { dir: evidenceDir, size: { width, height: 844 } },
+    });
+    const mobile = await context.newPage();
+    const video = mobile.video();
+    mobile.on("pageerror", (e) =>
+      pageErrors.push(`mobile-${width}: ${String(e)}`),
+    );
+    mobile.on("console", (m) =>
+      consoleLog.push(`[mobile-${width}:${m.type()}] ${m.text()}`),
+    );
+    mobile.on("response", (r) => {
+      if (r.url().includes("/api/"))
+        networkLog.push(
+          `< mobile-${width} ${r.status()} ${r.request().method()} ${r.url().replace(base, "")}`,
+        );
+    });
+    try {
+      await mobile.goto(base);
+      await mobile.locator("text=Rate-limited").waitFor({ state: "visible" });
+      await assertAccountControlsFit(mobile, `mobile-${width}-rest`);
+      await snap(
+        mobile,
+        width === 390
+          ? "mobile-health-states"
+          : `mobile-${width}-health-states`,
+        true,
+        width !== 390,
+      );
+      const add = mobile.getByRole("button", {
+        name: "Add account",
+        exact: true,
+      });
+      await add.hover();
+      await assertAccountControlsFit(mobile, `mobile-${width}-touch-pointer`);
+      await snap(mobile, `mobile-${width}-touch-pointer`, true, true);
+      await add.tap();
+      const dialog = mobile.getByRole("dialog");
+      await dialog.waitFor({ state: "visible" });
+      await snap(mobile, `mobile-${width}-add-dialog`, true, true);
+      await dialog.getByRole("button", { name: "Cancel", exact: true }).tap();
+      await dialog.waitFor({ state: "hidden" });
+      const strategy = mobile.locator("#rotation-strategy-anthropic-api");
+      await strategy.tap();
+      await snap(
+        mobile,
+        width === 390
+          ? "mobile-strategy-menu-open"
+          : `mobile-${width}-strategy-menu-open`,
+        false,
+        width !== 390,
+      );
+      const menu = await mobile.getByRole("listbox").boundingBox();
+      assert(
+        menu && menu.x >= 0 && menu.x + menu.width <= width,
+        `mobile-${width}: strategy menu fits viewport`,
+      );
+      await mobile
+        .getByRole("option", { name: "Drain soonest reset", exact: false })
+        .tap();
+      await strategy
+        .getByText("Drain soonest reset", { exact: true })
+        .waitFor();
+      await assertAccountControlsFit(mobile, `mobile-${width}-long-strategy`);
+      await snap(mobile, `mobile-${width}-long-strategy`, true, true);
+      await strategy.tap();
+      await mobile
+        .getByRole("option", { name: "Round-robin", exact: false })
+        .tap();
+      await strategy.getByText("Round-robin", { exact: true }).waitFor();
+    } finally {
+      await context.close();
+      if (video)
+        await video.saveAs(join(evidenceDir, `accounts-mobile-${width}.webm`));
+    }
+    // A narrow mouse viewport exercises genuine hover-capable media queries;
+    // touch emulation intentionally does not fabricate a CSS hover state.
+    const pointerContext = await browser.newContext({
+      viewport: { width, height: 844 },
+    });
+    try {
+      const pointer = await pointerContext.newPage();
+      pointer.on("pageerror", (error) =>
+        pageErrors.push(`pointer-${width}: ${String(error)}`),
+      );
+      await pointer.goto(base);
+      await pointer.locator("text=Rate-limited").waitFor({ state: "visible" });
+      await pointer
+        .getByRole("button", { name: "Add account", exact: true })
+        .hover();
+      await assertAccountControlsFit(pointer, `mobile-${width}-mouse-hover`);
+      await snap(pointer, `mobile-${width}-mouse-hover`, true, true);
+    } finally {
+      await pointerContext.close();
+    }
+  }
 
   // 09 — disable toggle (PATCH enabled=false). Poll the REAL pool state until
   // the PATCH lands (bounded) instead of sleeping a fixed interval.
@@ -568,10 +711,14 @@ try {
     join(evidenceDir, "assertions.log"),
     `${results.join("\n")}\n`,
   );
+  await writeFile(
+    join(evidenceDir, "layout-measurements.json"),
+    `${JSON.stringify(layoutMeasurements, null, 2)}\n`,
+  );
   await rm(workDir, { recursive: true, force: true });
 }
 
 console.log(
-  `\n${failures === 0 ? "ALL ASSERTIONS PASSED" : `${failures} ASSERTION(S) FAILED`} — ${shot} screenshots in ${evidenceDir}`,
+  `\n${failures === 0 ? "ALL ASSERTIONS PASSED" : `${failures} ASSERTION(S) FAILED`} — ${shot + supplementalShots} screenshots in ${evidenceDir}`,
 );
 process.exit(failures === 0 ? 0 : 1);

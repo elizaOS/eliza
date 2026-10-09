@@ -8,12 +8,9 @@
  *
  * Also pins the drift fixes made alongside this test:
  *   - `apps/{id}/users` is GET-only (POST must 404)
- *   - the documented org-credit and app-credit checkout bodies are accepted
+ *   - the documented org-credit checkout body is accepted
  */
-import {
-  approveAppForMonetizationTest,
-  authedClient,
-} from "../src/helpers/monetization";
+import { authedClient } from "../src/helpers/monetization";
 import { expect, test } from "../src/helpers/test-fixtures";
 
 /** A documented endpoint must resolve to a real route with working auth. */
@@ -90,34 +87,14 @@ test.describe("skill ↔ API contract", () => {
     });
     expect(rename.status, "rename/config app").toBe(200);
 
-    // `set markup percentage` is compliance-gated (#10732): a freshly created
-    // app is a review DRAFT, and turning monetization ON is refused with 403
-    // until review approves it. The route/method/auth the skill documents are
-    // correct — the prerequisite is a business rule the skill omitted, so pin
-    // BOTH halves of the real contract here (the same shape
-    // monetized-full-loop.spec.ts pins) rather than only the post-approval one.
-    const draftMonetization = await c(
-      "PUT",
-      `/api/v1/apps/${appId}/monetization`,
-      {
-        monetizationEnabled: true,
-        inferenceMarkupPercentage: 50,
-        purchaseSharePercentage: 10,
-      },
-    );
-    expect(
-      draftMonetization.status,
-      "draft app cannot enable monetization before compliance approval",
-    ).toBe(403);
-
-    await approveAppForMonetizationTest(appId, c);
-
+    // App creator monetization is retired (#22961 / #23022): enabling a
+    // markup answers 410 `creator_monetization_retired` for every app.
     const monetization = await c("PUT", `/api/v1/apps/${appId}/monetization`, {
       monetizationEnabled: true,
       inferenceMarkupPercentage: 50,
       purchaseSharePercentage: 10,
     });
-    expect(monetization.status, "set markup percentage").toBe(200);
+    expect(monetization.status, "app monetization is retired").toBe(410);
 
     const affiliate = await c<{
       success?: boolean;
@@ -128,15 +105,6 @@ test.describe("skill ↔ API contract", () => {
 
     // --- Endpoints that touch Stripe/registrar/etc: assert the route + auth are
     //     correct (reachable), not the downstream provider result. ---
-    const charge = await c("POST", `/api/v1/apps/${appId}/charges`, {
-      amount: 5,
-      providers: ["stripe"],
-    });
-    expect(
-      routeExists(charge.status),
-      `charge user reachable (status ${charge.status})`,
-    ).toBe(true);
-
     const orgCheckout = await c("POST", "/api/v1/credits/checkout", {
       amountUsd: 25,
       success_url: "https://example.com/ok",
@@ -145,17 +113,6 @@ test.describe("skill ↔ API contract", () => {
     expect(
       routeExists(orgCheckout.status),
       `org-credit checkout reachable with documented body (status ${orgCheckout.status})`,
-    ).toBe(true);
-
-    const appCheckout = await c("POST", "/api/v1/app-credits/checkout", {
-      app_id: appId,
-      amount: 25,
-      success_url: "https://example.com/ok",
-      cancel_url: "https://example.com/no",
-    });
-    expect(
-      routeExists(appCheckout.status),
-      `app-credit checkout reachable with documented body (status ${appCheckout.status})`,
     ).toBe(true);
 
     const tunnel = await c(

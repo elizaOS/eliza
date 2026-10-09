@@ -36,7 +36,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from lib.generation_integrity import require_complete_generation
+from eliza_training.lib.generation_integrity import require_complete_generation
 
 DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 DEFAULT_MODEL = "gpt-oss-120b"

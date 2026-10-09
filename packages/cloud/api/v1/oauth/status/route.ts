@@ -5,18 +5,18 @@
  * Twilio, Blooio) for the authenticated organization.
  */
 
-import { Hono } from "hono";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   failureResponse,
   ApiError as WorkerApiError,
-} from "@/lib/api/cloud-worker-errors";
-import { ApiError } from "@/lib/api/errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { blooioAutomationService } from "@/lib/services/blooio-automation";
-import { oauthService } from "@/lib/services/oauth";
-import { twilioAutomationService } from "@/lib/services/twilio-automation";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/errors";
+import { blooioAutomationService } from "@elizaos/cloud-shared/lib/services/blooio-automation";
+import { oauthService } from "@elizaos/cloud-shared/lib/services/oauth";
+import { twilioAutomationService } from "@elizaos/cloud-shared/lib/services/twilio-automation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 interface LegacyServiceStatus {
   id: string;

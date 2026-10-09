@@ -11,7 +11,8 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger, resolveAliasedEnvValue } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import { getSharp } from "./image/sharp-compat";
 import type { BoundingBox } from "./types";
 
@@ -57,17 +58,7 @@ function defaultLibraryPath(): string {
         : "so";
   return (
     process.env.ELIZA_FACE_CPP_LIB ??
-    path.join(
-      __dirname,
-      "..",
-      "..",
-      "..",
-      "packages",
-      "native-plugins",
-      "face-cpp",
-      "build",
-      `libface.${ext}`,
-    )
+    path.join(__dirname, "..", "native", "face-cpp", "build", `libface.${ext}`)
   );
 }
 
@@ -309,7 +300,7 @@ export class BlazeFaceGgmlDetector {
     this.bindings = await loadBindings();
     if (!this.bindings) {
       throw new Error(
-        `${MODULE_TAG} face-cpp library unavailable; build packages/native/plugins/face-cpp first.`,
+        `${MODULE_TAG} face-cpp library unavailable; build plugins/plugin-vision/native/face-cpp first.`,
       );
     }
     const ggufPath = defaultDetWeightsPath();
@@ -317,7 +308,7 @@ export class BlazeFaceGgmlDetector {
       await fs.access(ggufPath);
     } catch {
       throw new Error(
-        `${MODULE_TAG} BlazeFace GGUF missing at ${ggufPath} — see scripts/blazeface_to_gguf.py.`,
+        `${MODULE_TAG} BlazeFace GGUF missing at ${ggufPath} — see packages/scripts/plugins/plugin-vision/native/face-cpp/blazeface_to_gguf.py.`,
       );
     }
     this.handle = this.bindings.open(ggufPath);

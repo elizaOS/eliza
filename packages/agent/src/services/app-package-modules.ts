@@ -12,9 +12,6 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { AppPackageRouteContext, Plugin } from "@elizaos/core";
-import { ElizaError, resolveStateDir } from "@elizaos/core";
-import { readJsonFile } from "@elizaos/core/atomic-json";
 import {
   type AppLaunchDiagnostic,
   type AppLaunchPreparation,
@@ -22,34 +19,37 @@ import {
   type AppRunSessionContext,
   type AppSessionState,
   type AppViewerAuthMessage,
+  ElizaError,
   hasAppInterface,
-  isMobilePlatform,
   packageNameToAppRouteSlug,
-} from "@elizaos/shared";
-import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
+  readJsonFile,
+  resolveStateDir,
+} from "@elizaos/core";
+import {
+  type AppPackageRouteContext,
+  isMobilePlatform,
+  type HttpPlugin as Plugin,
+} from "@elizaos/host/protocol";
+import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
+import { uniquePaths } from "../utils/paths.ts";
 import { getPluginInfo } from "./registry-client.ts";
 
 export type {
   AppLaunchSessionContext,
   AppRunSessionContext,
-} from "@elizaos/shared";
-
+} from "@elizaos/core";
 export type AppLaunchPreparationResolver = (
   ctx: AppLaunchSessionContext,
 ) => Promise<AppLaunchPreparation | null>;
-
 export type AppViewerAuthMessageResolver = (
   ctx: AppLaunchSessionContext,
 ) => Promise<AppViewerAuthMessage | null>;
-
 export type AppLaunchSessionResolver = (
   ctx: AppLaunchSessionContext,
 ) => Promise<AppSessionState | null>;
-
 export type AppRunSessionRefresher = (
   ctx: AppRunSessionContext,
 ) => Promise<AppSessionState | null>;
-
 export type AppRouteModule = {
   handleAppRoutes?: (ctx: AppPackageRouteContext) => Promise<boolean>;
   prepareLaunch?: AppLaunchPreparationResolver;
@@ -63,80 +63,43 @@ export type AppRouteModule = {
   stopRun?: (ctx: AppRunSessionContext) => Promise<void>;
   [key: string]: unknown;
 };
-
 type AppPluginWithBridge = Plugin & {
   appBridge?: AppRouteModule;
 };
-
 type AppPluginModule = {
   default?: AppPluginWithBridge;
   [key: string]: unknown;
 };
-
 const runtimeAppRouteModules = new Map<string, AppRouteModule>();
-
 function runtimeAppRouteKey(appIdentifier: string): string {
   return packageNameToAppRouteSlug(appIdentifier) ?? appIdentifier;
 }
-
 export function registerRuntimeAppRouteModule(
   appIdentifier: string,
   routeModule: AppRouteModule,
 ): void {
   runtimeAppRouteModules.set(runtimeAppRouteKey(appIdentifier), routeModule);
 }
-
 export function hasRuntimeAppRouteModule(appIdentifier: string): boolean {
   return runtimeAppRouteModules.has(runtimeAppRouteKey(appIdentifier));
 }
-
 export function unregisterRuntimeAppRouteModule(appIdentifier: string): void {
   runtimeAppRouteModules.delete(runtimeAppRouteKey(appIdentifier));
-}
-
-function uniquePaths(paths: string[]): string[] {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  for (const candidate of paths) {
-    const resolved = path.resolve(candidate);
-    if (!seen.has(resolved)) {
-      seen.add(resolved);
-      ordered.push(resolved);
-    }
-  }
-  return ordered;
-}
-
-function resolveWorkspaceRoots(): string[] {
-  const envRoot = process.env.ELIZA_WORKSPACE_ROOT?.trim();
-  if (envRoot) {
-    return uniquePaths([envRoot]);
-  }
-
-  const cwd = process.cwd();
-  return uniquePaths([
-    cwd,
-    path.resolve(cwd, ".."),
-    path.resolve(cwd, "..", ".."),
-  ]);
 }
 
 function packageNameToDirName(packageName: string): string {
   return packageName.replace(/^@[^/]+\//, "");
 }
-
 function sanitiseInstalledPackageDirName(packageName: string): string {
   return packageName.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
-
 /**
  * Directory where the plugin-installer writes dynamically-installed plugins.
- * Matches `packages/app-core/src/services/plugin-installer.ts::pluginsBaseDir`.
+ * Matches `packages/app/src/services/plugin-installer.ts::pluginsBaseDir`.
  */
 function installedPluginsBaseDir(): string {
   return path.join(resolveStateDir(), "plugins", "installed");
 }
-
 /**
  * Path to a dynamically-installed plugin's actual package directory (inside
  * `node_modules` under the install target). Returns null if not installed.
@@ -152,34 +115,29 @@ function resolveInstalledPluginDir(packageName: string): string | null {
     ? installRoot
     : null;
 }
-
 async function readPackageName(packageDir: string): Promise<string | null> {
   try {
     const packageJson = JSON.parse(
       await fs.promises.readFile(path.join(packageDir, "package.json"), "utf8"),
-    ) as { name?: unknown };
+    ) as {
+      name?: unknown;
+    };
     return typeof packageJson.name === "string" ? packageJson.name : null;
   } catch {
     return null;
   }
 }
-
 async function resolveWorkspacePackageDirs(
   packageName: string,
 ): Promise<string[]> {
   const dirName = packageNameToDirName(packageName);
   const candidateDirs: string[] = [];
 
-  for (const workspaceRoot of resolveWorkspaceRoots()) {
+  for (const workspaceRoot of resolveWorkspaceRootsForDiscovery()) {
     candidateDirs.push(
       path.join(workspaceRoot, "plugins", dirName),
       path.join(workspaceRoot, "packages", dirName),
     );
-    if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
-      // Opt-in for older external workspaces that place apps under apps/.
-      candidateDirs.push(path.join(workspaceRoot, "apps", dirName));
-    }
-
     let rootEntries: fs.Dirent[] = [];
     try {
       rootEntries = await fs.promises.readdir(workspaceRoot, {
@@ -188,7 +146,6 @@ async function resolveWorkspacePackageDirs(
     } catch {
       continue;
     }
-
     for (const entry of rootEntries) {
       if (!entry.isDirectory() || entry.name.startsWith(".")) {
         continue;
@@ -197,14 +154,8 @@ async function resolveWorkspacePackageDirs(
         path.join(workspaceRoot, entry.name, "plugins", dirName),
         path.join(workspaceRoot, entry.name, "packages", dirName),
       );
-      if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
-        candidateDirs.push(
-          path.join(workspaceRoot, entry.name, "apps", dirName),
-        );
-      }
     }
   }
-
   const matches: string[] = [];
   for (const candidateDir of uniquePaths(candidateDirs)) {
     if (!fs.existsSync(path.join(candidateDir, "package.json"))) {
@@ -215,17 +166,14 @@ async function resolveWorkspacePackageDirs(
       matches.push(candidateDir);
     }
   }
-
   return matches;
 }
-
 export async function resolveWorkspacePackageDir(
   packageName: string,
 ): Promise<string | null> {
   const matches = await resolveWorkspacePackageDirs(packageName);
   return matches[0] ?? null;
 }
-
 async function importModule<T>(specifier: string): Promise<T> {
   try {
     return (await import(/* webpackIgnore: true */ specifier)) as T;
@@ -238,7 +186,6 @@ async function importModule<T>(specifier: string): Promise<T> {
     });
   }
 }
-
 function isOptionalEntrypointAbsent(specifier: string): boolean {
   const parts = specifier.split("/");
   const packageName = parts
@@ -248,7 +195,9 @@ function isOptionalEntrypointAbsent(specifier: string): boolean {
   const searchPaths = createRequire(import.meta.url).resolve.paths(packageName);
   if (!searchPaths) return false;
   for (const searchPath of searchPaths) {
-    let manifest: { exports?: unknown };
+    let manifest: {
+      exports?: unknown;
+    };
     try {
       manifest = JSON.parse(
         fs.readFileSync(
@@ -298,7 +247,6 @@ function isOptionalEntrypointAbsent(specifier: string): boolean {
   }
   return true;
 }
-
 async function importOptionalModule<T>(specifier: string): Promise<T | null> {
   try {
     const resolved = import.meta.resolve(specifier);
@@ -335,7 +283,6 @@ async function importOptionalModule<T>(specifier: string): Promise<T | null> {
   }
   return importModule<T>(specifier);
 }
-
 async function importFirstExistingModule<T>(
   candidatePaths: string[],
 ): Promise<T | null> {
@@ -345,17 +292,14 @@ async function importFirstExistingModule<T>(
   }
   return null;
 }
-
 export function packageNameToAppSlug(packageName: string): string | null {
   return packageNameToAppRouteSlug(packageName);
 }
-
 interface ResolvedAppModuleTarget {
   packageName: string | null;
   localPath: string | null;
   bridgeExport: string | null;
 }
-
 interface LocalPackageJson {
   elizaos?: {
     app?: {
@@ -363,13 +307,11 @@ interface LocalPackageJson {
     };
   };
 }
-
 interface LocalPluginManifest {
   app?: {
     bridgeExport?: unknown;
   };
 }
-
 async function readLocalBridgeExport(
   packageDir: string,
 ): Promise<string | null> {
@@ -386,13 +328,11 @@ async function readLocalBridgeExport(
   const manifestBridgeExport = manifest?.app?.bridgeExport;
   return typeof manifestBridgeExport === "string" ? manifestBridgeExport : null;
 }
-
 async function resolveAppModuleTarget(
   appIdentifier: string,
 ): Promise<ResolvedAppModuleTarget | null> {
   const trimmed = appIdentifier.trim();
   if (!trimmed) return null;
-
   if (!trimmed.startsWith("@")) {
     const registryInfo = await getPluginInfo(trimmed);
     if (
@@ -406,11 +346,9 @@ async function resolveAppModuleTarget(
       };
     }
   }
-
   const packageCandidates = trimmed.startsWith("@")
     ? [trimmed]
     : [`@elizaos/app-${trimmed}`, `@elizaos/plugin-${trimmed}`];
-
   for (const packageName of packageCandidates) {
     const localPath = await resolveWorkspacePackageDir(packageName);
     if (localPath) {
@@ -421,7 +359,6 @@ async function resolveAppModuleTarget(
       };
     }
   }
-
   const registryInfo = await getPluginInfo(trimmed);
   if (
     registryInfo &&
@@ -433,14 +370,12 @@ async function resolveAppModuleTarget(
       bridgeExport: registryInfo.appMeta?.bridgeExport ?? null,
     };
   }
-
   return {
     packageName: trimmed.startsWith("@") ? trimmed : null,
     localPath: null,
     bridgeExport: null,
   };
 }
-
 function normalizeBridgeExport(bridgeExport: string | null): string | null {
   if (!bridgeExport) return null;
   const trimmed = bridgeExport.trim();
@@ -449,7 +384,6 @@ function normalizeBridgeExport(bridgeExport: string | null): string | null {
   }
   return trimmed;
 }
-
 function buildLocalBridgeCandidates(
   localPath: string,
   bridgeExport: string | null,
@@ -458,15 +392,12 @@ function buildLocalBridgeCandidates(
   if (!normalized) {
     return [];
   }
-
   const relativePath = normalized.slice(2);
   const hasExtension = /\.[cm]?[jt]s$/.test(relativePath);
   const candidates = new Set<string>();
-
   const add = (candidate: string) => {
     candidates.add(path.join(localPath, candidate));
   };
-
   if (hasExtension) {
     add(relativePath);
     add(path.join("src", relativePath));
@@ -478,10 +409,8 @@ function buildLocalBridgeCandidates(
     add(path.join("src", `${relativePath}.js`));
     add(path.join("dist", `${relativePath}.js`));
   }
-
   return [...candidates];
 }
-
 function bridgeExportToSpecifier(
   packageName: string,
   bridgeExport: string | null,
@@ -492,25 +421,24 @@ function bridgeExportToSpecifier(
   }
   return `${packageName}/${normalized.slice(2)}`;
 }
-
 function isMobileBundleRuntime(): boolean {
   return (
-    (globalThis as { __ELIZA_MOBILE_BUNDLE__?: boolean })
-      .__ELIZA_MOBILE_BUNDLE__ === true || isMobilePlatform()
+    (
+      globalThis as {
+        __ELIZA_MOBILE_BUNDLE__?: boolean;
+      }
+    ).__ELIZA_MOBILE_BUNDLE__ === true || isMobilePlatform()
   );
 }
-
 function isSelfAgentPackage(packageName: string | null): boolean {
   return packageName === "@elizaos/agent";
 }
-
 async function importLocalAppRouteModule(
   appIdentifier: string,
 ): Promise<AppRouteModule | null> {
   const resolved = await resolveAppModuleTarget(appIdentifier);
   const localPath = resolved?.localPath ?? null;
   if (!localPath) return null;
-
   const candidatePaths = [
     ...buildLocalBridgeCandidates(localPath, resolved?.bridgeExport ?? null),
     path.join(localPath, "src", "app.ts"),
@@ -522,7 +450,6 @@ async function importLocalAppRouteModule(
   ];
   return importFirstExistingModule<AppRouteModule>(candidatePaths);
 }
-
 async function importLocalAppPluginModule(
   packageName: string,
 ): Promise<AppPluginModule | null> {
@@ -541,13 +468,12 @@ async function importLocalAppPluginModule(
     localPaths.push(installedDir);
   }
   if (localPaths.length === 0) return null;
-
   let firstModule: AppPluginModule | null = null;
   for (const localPath of localPaths) {
     // Prefer the plugin's React-free `plugin` entry over the package barrel.
     // The barrel (`index.ts`) re-exports the plugin's React view components, and
     // importing those into the Node agent fails to transpile/resolve (JSX
-    // runtime, `@elizaos/app-core/ui-compat`, …). The agent only needs the
+    // runtime, `@elizaos/app/ui-compat`, …). The agent only needs the
     // Plugin object's view *declarations* to register the views, and those live
     // in `plugin.ts` free of any UI imports. `index.*` stays as a fallback for
     // plugins that define their Plugin object inline in the barrel.
@@ -577,16 +503,18 @@ async function importLocalAppPluginModule(
   }
   return null;
 }
-
 function isPluginLike(value: unknown): value is Plugin {
   return (
     typeof value === "object" &&
     value !== null &&
     "name" in value &&
-    typeof (value as { name?: unknown }).name === "string"
+    typeof (
+      value as {
+        name?: unknown;
+      }
+    ).name === "string"
   );
 }
-
 function resolvePluginExport(
   module: AppPluginModule,
   packageName: string,
@@ -594,29 +522,23 @@ function resolvePluginExport(
   if (isPluginLike(module.default)) {
     return module.default;
   }
-
   for (const value of Object.values(module)) {
     if (isPluginLike(value) && value.name === packageName) {
       return value;
     }
   }
-
   return null;
 }
-
 function resolvePluginAppBridge(plugin: Plugin | null): AppRouteModule | null {
   if (!plugin || typeof plugin !== "object") {
     return null;
   }
-
   const bridge = (plugin as AppPluginWithBridge).appBridge;
   if (!bridge || typeof bridge !== "object") {
     return null;
   }
-
   return bridge;
 }
-
 export async function importAppRouteModule(
   appIdentifier: string,
 ): Promise<AppRouteModule | null> {
@@ -626,25 +548,21 @@ export async function importAppRouteModule(
   if (runtimeModule) {
     return runtimeModule;
   }
-
   const resolved = await resolveAppModuleTarget(appIdentifier);
   const packageName = resolved?.packageName ?? null;
   // Workspace overrides are selected before packaged routes; a broken override is an error.
   const localModule = await importLocalAppRouteModule(appIdentifier);
   if (localModule) return localModule;
-
   if (!packageName) {
     return null;
   }
   if (isMobileBundleRuntime() && isSelfAgentPackage(packageName)) {
     return null;
   }
-
   const bridgeSpecifier = bridgeExportToSpecifier(
     packageName,
     resolved?.bridgeExport ?? null,
   );
-
   const specifiers = [
     bridgeSpecifier,
     `${packageName}/app`,
@@ -657,14 +575,12 @@ export async function importAppRouteModule(
   }
   return resolvePluginAppBridge(await importAppPlugin(packageName));
 }
-
 export async function importAppPlugin(
   packageName: string,
 ): Promise<Plugin | null> {
   if (isMobileBundleRuntime() && isSelfAgentPackage(packageName)) {
     return null;
   }
-
   // Named imports apply the package's source conditions and keep React-only barrels out of the host.
   const subpathModule = await importOptionalModule<AppPluginModule>(
     `${packageName}/plugin`,

@@ -8,6 +8,7 @@
  */
 import {
   Activity,
+  AlarmClock,
   AppWindow,
   BarChart2,
   Bird,
@@ -88,6 +89,7 @@ const ICONS: Record<string, LucideIcon> = {
   CircleDollarSign,
   ClipboardList,
   Clock,
+  AlarmClock,
   Clock3,
   Cloud,
   CreditCard,
@@ -148,7 +150,7 @@ const ICONS: Record<string, LucideIcon> = {
 const KEYWORD_ICONS: Array<[RegExp, LucideIcon]> = [
   [/@elizaos\/plugin-native-settings|device settings/, SlidersHorizontal],
   [/@elizaos\/plugin-wallet-ui|wallet ui/, CreditCard],
-  [/@elizaos\/plugin-documents|\bdocuments\b/, Files],
+  [/@elizaos\/plugin-knowledge|\bdocuments\b/, Files],
   [/setting|preference|config/, Settings],
   [/calendar|schedule|agenda/, CalendarDays],
   [/\bnotes?\b|sticky ?note/, StickyNote],

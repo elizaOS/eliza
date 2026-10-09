@@ -7,19 +7,19 @@
  * @route GET /api/v1/discovery
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { cache } from "@/lib/cache/client";
-import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { cache } from "@elizaos/cloud-shared/lib/cache/client";
+import { CacheKeys, CacheTTL } from "@elizaos/cloud-shared/lib/cache/keys";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { charactersService } from "@/lib/services/characters/characters";
-import { userMcpsService } from "@/lib/services/user-mcps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
+import { userMcpsService } from "@elizaos/cloud-shared/lib/services/user-mcps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { serializeLegacyMcpCreditPricing } from "./pricing";
 
 const serviceTypeSchema = z.enum(["agent", "mcp"]);
@@ -531,12 +531,9 @@ async function fetchLocalAgents(
       x402Support: false,
       verified: false,
       slug,
-      pricing: char.monetization_enabled
-        ? {
-            type: "credits",
-            description: `${char.inference_markup_percentage}% markup on inference costs`,
-          }
-        : { type: "free", description: "Free to use" },
+      // Agent A2A/MCP chat bills the caller's credits at the base inference
+      // cost; creator markup is retired (#22961), so no agent adds a surcharge.
+      pricing: { type: "credits", description: "Standard inference costs" },
     };
   });
   return { rows, truncated };

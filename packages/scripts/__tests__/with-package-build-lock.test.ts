@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../..");
-const WRAPPER = path.resolve(SCRIPT_DIR, "../with-package-build-lock.mjs");
+const WRAPPER = path.resolve(SCRIPT_DIR, "../with-package-build-lock.ts");
 const LOCK_ROOT = path.join(REPO_ROOT, ".turbo", "build-locks");
 const NODE_BIN = "node";
 const cleanupPaths = new Set<string>();

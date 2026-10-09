@@ -16,6 +16,20 @@
  * exposing alternating layers without rescans.
  */
 
+import { REASONING_TAG_NAMES } from "./utils/reasoning-tags";
+
+const NON_SPEECH_TAGS = [...REASONING_TAG_NAMES, "tool_calls?", "tools?"].join(
+	"|",
+);
+const NON_SPEECH_BLOCK = new RegExp(
+	`<(${NON_SPEECH_TAGS})\\b[^>]*>[\\s\\S]*?(?:<\\/\\1>|$)`,
+	"gi",
+);
+const INCOMPLETE_NON_SPEECH_TAG = new RegExp(
+	`<(?:${NON_SPEECH_TAGS})\\b[^>]*$`,
+	"gi",
+);
+
 function collapseWhitespace(input: string): string {
 	return input.replace(/\s+/g, " ").trim();
 }
@@ -26,14 +40,8 @@ function stripUrls(input: string): string {
 
 function stripThinkingAndMarkup(input: string): string {
 	let text = input;
-	text = text.replace(
-		/<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi,
-		" ",
-	);
-	text = text.replace(
-		/<(?:think|analysis|reasoning|tool_calls?|tools?)\b[^>]*$/gi,
-		" ",
-	);
+	text = text.replace(NON_SPEECH_BLOCK, " ");
+	text = text.replace(INCOMPLETE_NON_SPEECH_TAG, " ");
 	text = text.replace(/```[\s\S]*?```/g, " ");
 	text = text.replace(/`([^`]+)`/g, "$1");
 	text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
@@ -66,12 +74,7 @@ const DIRECTION_CLOSERS = new Map([
 	["}", "{"],
 ] as const);
 
-/**
- * Removes all balanced bracket regions in linear time. Independent stacks
- * preserve the legacy sanitizer's permissive handling of crossed delimiter
- * types while ensuring that a deeply nested outer direction cannot become
- * speech merely because the compatibility peel reached its pass budget.
- */
+/** Removes balanced bracket regions in linear time. Independent delimiter stacks support crossed bracket types without exposing nested stage directions as speech. */
 function stripResidualBalancedDirections(input: string): string {
 	const removals = new Int32Array(input.length + 1);
 	const openerStacks = new Map<string, number[]>(
@@ -166,18 +169,47 @@ function sanitizeSpeechPunctuation(input: string): string {
 	text = text.replace(/[–—]/g, ", ");
 	// Collapse repeated punctuation BEFORE the spacing rules separate the
 	// repeats ("Wait!!!" must speak as "Wait!", not "Wait! ! !"). Twin of
-	// packages/shared/src/spoken-text.ts (#20519) — change both together.
+	// The browser and Node hosts now share this implementation.
 	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
-	text = text.replace(/\s{0,32}([,;:，；：])\s{0,32}/g, "$1 ");
-	text = text.replace(/\s{0,32}([.!?。！？])\s{0,32}/g, "$1 ");
-	text = text.replace(/[^\p{L}\p{N}\s.,!?'"%/$:+，。！？；：-]/gu, " ");
+	// A mark inside a number (`3.14`, `1,299`, `10:30`) is part of one spoken
+	// token: spacing it makes TTS read "3. 14" as a sentence break and two
+	// numbers, so the spacing rules skip it. A comma whose digit group runs to
+	// the end of the text stays unspaced too: a streamed `$1,2` may still become
+	// `$1,299`, and spacing it would commit `$1,` as already spoken.
+	text = text.replace(
+		/(?!(?<=\d)(?:[.:]\d|,\d{3}(?!\d)|,\d{1,3}$))\s{0,32}([,;:，；：])\s{0,32}/g,
+		"$1 ",
+	);
+	text = text.replace(
+		/(?!(?<=\d)(?:[.:]\d|,\d{3}(?!\d)|,\d{1,3}$))\s{0,32}([.!?。！？])\s{0,32}/g,
+		"$1 ",
+	);
+	// U+2116 (numero sign) is speech-semantic, not punctuation: keep it so a
+	// later language-aware stage can read "№4" instead of a stripped "4".
+	text = text.replace(/[^\p{L}\p{N}\s.,!?'"%/$:+，。！？；：\u2116-]/gu, " ");
 	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
 	text = text.replace(/^[,;:.!?，。！？；：]+/g, " ");
 	return text;
 }
 
+/**
+ * NFKC folds the numero sign (`№`, U+2116) to Latin `No`, erasing a
+ * speech-semantic distinction before the TTS/language layer can interpret it.
+ * Keep each `№<number>` token verbatim and normalize only the surrounding text,
+ * so downstream voice handling still sees the original sign while literal Latin
+ * text such as a user-typed `No4` is left alone.
+ */
+const NUMERO_TOKEN_PATTERN = /(\u2116\s*\p{N}+)/u;
+
+function normalizeCompatibilityPreservingNumero(input: string): string {
+	return input
+		.split(NUMERO_TOKEN_PATTERN)
+		.map((part, index) => (index % 2 === 1 ? part : part.normalize("NFKC")))
+		.join("");
+}
+
 export function sanitizeSpeechText(input: string): string {
-	const normalized = input.normalize("NFKC");
+	const normalized = normalizeCompatibilityPreservingNumero(input);
 	const stripped = stripThinkingAndMarkup(normalized);
 	const withoutDirections = stripNonSpeechDirections(stripped);
 	return collapseWhitespace(sanitizeSpeechPunctuation(withoutDirections));

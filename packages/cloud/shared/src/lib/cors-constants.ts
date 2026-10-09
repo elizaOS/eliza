@@ -14,6 +14,7 @@ export const CORS_ALLOW_HEADER_NAMES = [
   "Content-Type",
   "Authorization",
   "X-API-Key",
+  "X-Eliza-Dedicated-Price",
   "X-App-Id",
   "X-Request-ID",
   // Note: Cookie is ineffective with wildcard origin but listed for non-wildcard CORS flows
@@ -85,6 +86,8 @@ export const CORS_EXPOSE_HEADER_NAMES = [
   "X-Eliza-Stream-Parse-Ms",
   "X-Eliza-Stream-Bridge-Ms",
   "X-Eliza-TTS-Provider",
+  "X-Eliza-TTS-Speed",
+  "X-Eliza-TTS-Timing",
 ] as const;
 
 export const CORS_ALLOW_METHOD_NAMES = [

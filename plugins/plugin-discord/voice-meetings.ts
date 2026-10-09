@@ -37,7 +37,7 @@ import type {
 	MeetingTranscriptEvent,
 	TranscriptConsentState,
 	TranscriptSegment,
-} from "@elizaos/shared";
+} from "@elizaos/core/protocol";
 import type { ICompatRuntime } from "./compat";
 
 /** Sample rate the meeting pipeline consumes (matches plugin-meetings). */

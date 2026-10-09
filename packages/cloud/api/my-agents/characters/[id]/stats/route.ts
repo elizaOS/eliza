@@ -3,15 +3,15 @@
  * Returns view/interaction/message counts for the authed user's character.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { dbRead } from "@elizaos/cloud-shared/db/client";
+import { elizaRoomCharactersTable } from "@elizaos/cloud-shared/db/schemas/eliza-room-characters";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { memoryTable } from "@elizaos/plugin-sql";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { dbRead } from "@/db/client";
-import { memoryTable } from "@/db/schemas/eliza";
-import { elizaRoomCharactersTable } from "@/db/schemas/eliza-room-characters";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { charactersService } from "@/lib/services/characters/characters";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 const uuidPattern =

@@ -2,7 +2,7 @@
  * Twilio connector contribution.
  *
  * Twilio doesn't have a `service-mixin-twilio.ts`; transport is owned by
- * `@elizaos/plugin-phone`. Credentials are read from `process.env` per the
+ * `@elizaos/plugin-native-phone`. Credentials are read from `process.env` per the
  * legacy `readTwilioCredentialsFromEnv()` shape.
  *
  * Send target syntax:
@@ -16,7 +16,7 @@ import {
   sendTwilioVoiceCall,
   type TwilioCredentials,
   type TwilioDeliveryResult,
-} from "@elizaos/plugin-phone/twilio";
+} from "@elizaos/plugin-native-phone/twilio";
 import {
   type ConnectorSendPayload,
   dispatchReceipt,

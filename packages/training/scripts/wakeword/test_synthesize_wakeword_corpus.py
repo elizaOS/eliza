@@ -9,20 +9,17 @@ not here. Skips cleanly when numpy/scipy/soundfile aren't installed.
 
 from __future__ import annotations
 
-import sys
 import wave
 from pathlib import Path
 
 import pytest
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
 np = pytest.importorskip("numpy")
 pytest.importorskip("scipy")
 
-from scripts.wakeword import synthesize_wakeword_corpus as sc  # noqa: E402
+from eliza_training.wakeword import synthesize_wakeword_corpus as sc  # noqa: E402
 
 
 def test_clip_geometry_is_two_seconds_at_16k() -> None:

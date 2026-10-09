@@ -1,0 +1,15 @@
+{
+  "description": "RSA public keys whose AVB encoding digests were produced by AOSP avbtool.py (external/avb main) extract_public_key and matched byte-for-byte by encodeAvbPublicKey on 2026-10-02.",
+  "vectors": [
+    {
+      "bits": 2048,
+      "avbtoolSha256": "8a1378f7a6ac785140d220a907e2d3549e04b7103f9ca473b267c581d95ea3cb",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyvxAKY4757erGFor8Rlh\nErDmoBlA7k+KKj8Mz2JrH8pyTu3yVxSnuRWRT8KdAz9U3XpI1FSOAFDl70pi6KJs\nqNMeTCo5Kb7cJaWh8GOCYPvRQXeVVuQ18mbn8DP6RtC1i+1B2sxom/dX3n7H1ZKi\n8A/Tlh/W5aNYFiz+rNYpK7vEsLw9r1SsuptvEU+OmFrx6aYYbM1Cfu9SEnA1wZMz\nAY5QrqpUXOo/C++6Y01i9i99kRD7BA9/8/PxpHVR+CoEY+reE74lqCEwHEfcJlUi\nFkGba8KH5sVe2aQOmFeHE6xID1TovUask51SI1X+0b8MlaXWH64lNl63fZAba0nr\nyQIDAQAB\n-----END PUBLIC KEY-----\n"
+    },
+    {
+      "bits": 4096,
+      "avbtoolSha256": "3672bd6c6d0ae06da40afc5ecf6ed1b834c0b6a6a3080fc03564fed4d819f0de",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAu9wr904YdmLOp0ZXHsn2\nrhKLXZenFjx0oCBWyL3AGSh+d3I+lNrQnnxtfOKpMJVOqYL+mYOzv0GkghvqJiMZ\novdHMrvlTs3kJhsa98BbZJSJaLxk/Kp8XPVlt9d3Ph3nb/pEgn7AROSv6834ElyR\nTVkMgdZ6ZcewjJSh8nk6sbp9INJPyXpLHHTHob0PJdxuPmrNo/qwrQa+MujimsD/\n6+NZ2rNrULdq542k1ahyPr0vjiJkJx5e3n72et36SwbfCO4se8yTG+PvpraDdarz\nIP+jlwqH3K26XgM1QNho97TAVI48/jobmm5UJzICBR7r7KeJJW/Jx5XLeg6Zi21T\n7RCGC/JNPRflVOkQ/++SRL395gysIowi9GmYE4VxO7478zk0sptFjqT069pZZ3bK\nvLRQlSYio7gntt75msauOCs9gQhc+dfdR3ztlO7PJyVkUTEp0ZjAoJsmfC0NKCG2\nB3pPSHrd57+XFJyImzRpnav47wC7KcbKkX+9fWJUAcpKRojOyl5mUsCI0KDJjXa7\nuc6LnYN47OicaxCm2euCmee0kG+bIldydmOZlxV7FD09ezwI4b6cKi4jaAJ6fFGz\nqFk0JxkuHcZYksIyhLomgOpgLrdZKYIsPWtjSjSyStbL7Qoojj1NCVSitMw40u7g\n6DyzfrS2XSUwDBajC0ai+fECAwEAAQ==\n-----END PUBLIC KEY-----\n"
+    }
+  ]
+}

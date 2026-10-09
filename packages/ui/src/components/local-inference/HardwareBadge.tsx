@@ -4,8 +4,8 @@
  * limited GPU probe when only the OS-fallback detector ran.
  */
 
+import type { HardwareProbe } from "@elizaos/contracts";
 import { AlertTriangle, Cpu, Gauge, HardDrive } from "lucide-react";
-import type { HardwareProbe } from "../../api/client-local-inference";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { bucketLabel } from "./hub-utils";
 

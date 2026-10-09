@@ -51,10 +51,10 @@ import {
   MAX_UNTRUSTED_REGEX_INPUT_LENGTH,
   MAX_UNTRUSTED_REGEX_PATTERN_LENGTH,
   matchesSafeUntrustedRegexPattern,
-} from "@elizaos/shared/config/config-catalog";
+} from "@elizaos/host/protocol";
+import { formatCalendarDate, parseCalendarDate } from "./calendar-date";
 import { strictEmailValid } from "./email";
-import type { FormControl, TypeHandler } from "./types";
-
+import type { ControlType, FormControl, TypeHandler } from "./types";
 /**
  * Validation result.
  *
@@ -67,11 +67,9 @@ export interface ValidationResult {
   valid: boolean;
   error?: string;
 }
-
 // ============================================================================
 // TYPE HANDLER REGISTRY
 // ============================================================================
-
 /**
  * Global registry for custom type handlers.
  *
@@ -81,7 +79,6 @@ export interface ValidationResult {
  * - Easy to mock in tests (clearTypeHandlers)
  */
 const typeHandlers: Map<string, TypeHandler> = new Map();
-
 /**
  * Register a custom type handler.
  *
@@ -104,16 +101,25 @@ const typeHandlers: Map<string, TypeHandler> = new Map();
 export function registerTypeHandler(type: string, handler: TypeHandler): void {
   typeHandlers.set(type, handler);
 }
-
 /**
  * Get a type handler.
  *
  * @returns The handler or undefined if not registered
  */
-export function getTypeHandler(type: string): TypeHandler | undefined {
-  return typeHandlers.get(type);
+export function getTypeHandler(type: string): TypeHandler | undefined;
+export function getTypeHandler(
+  type: string,
+  controlType: ControlType | undefined,
+): TypeHandler | ControlType | undefined;
+export function getTypeHandler(
+  type: string,
+  controlType?: ControlType,
+): TypeHandler | ControlType | undefined {
+  // New per-runtime custom types own their field grammar. An explicit legacy
+  // handler still overrides a built-in, as it did before service lookups.
+  if (controlType && !controlType.builtin) return controlType;
+  return typeHandlers.get(type) ?? controlType;
 }
-
 /**
  * Clear all type handlers.
  *
@@ -125,11 +131,9 @@ export function getTypeHandler(type: string): TypeHandler | undefined {
 export function clearTypeHandlers(): void {
   typeHandlers.clear();
 }
-
 // ============================================================================
 // FIELD VALIDATION
 // ============================================================================
-
 /**
  * Validate a value against a control's validation rules.
  *
@@ -152,6 +156,7 @@ export function clearTypeHandlers(): void {
 export function validateField(
   value: JsonValue,
   control: FormControl,
+  controlType?: ControlType,
 ): ValidationResult {
   // Check required first - fastest check
   if (control.required) {
@@ -162,23 +167,24 @@ export function validateField(
       };
     }
   }
-
   // Empty optional fields are valid
   // WHY: No need to validate undefined/null/empty for optional fields
   if (value === undefined || value === null || value === "") {
     return { valid: true };
   }
-
   // Check custom type handler first
   // WHY: Allows overriding built-in types or adding new ones
-  const handler = typeHandlers.get(control.type);
-  if (handler?.validate) {
+  const handler = getTypeHandler(control.type, controlType);
+  if (handler?.validate && !(handler === controlType && controlType.builtin)) {
     const result = handler.validate(value, control);
     if (!result.valid) {
       return result;
     }
+    // A registered custom type owns its value grammar. Field-level text
+    // constraints still apply, but a built-in switch must not override it.
+    if (controlType && !controlType.builtin)
+      return validateText(value, control);
   }
-
   // Type-specific validation
   // WHY switch: Clear separation of validation logic per type
   switch (control.type) {
@@ -200,17 +206,15 @@ export function validateField(
       return validateText(value, control);
   }
 }
-
 /**
  * Caps and dialect for `FormControl.pattern` come from the shared
- * agent-authored-regex policy in `@elizaos/shared`, the same gate the config
+ * agent-authored-regex policy in `@elizaos/core`, the same gate the config
  * and UI renderers use. Re-exported here so form code and its tests have one
  * name for them and one source of truth for the numbers.
  */
 export const MAX_CONTROL_PATTERN_LENGTH = MAX_UNTRUSTED_REGEX_PATTERN_LENGTH;
 export const MAX_CONTROL_PATTERN_INPUT_LENGTH =
   MAX_UNTRUSTED_REGEX_INPUT_LENGTH;
-
 /**
  * Test a caller-supplied form control pattern against a value.
  *
@@ -231,8 +235,13 @@ export function testControlPattern(
   pattern: string,
   value: string,
 ):
-  | { ok: true }
-  | { ok: false; reason: "unsupported" | "mismatch" | "too-long" } {
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      reason: "unsupported" | "mismatch" | "too-long";
+    } {
   if (typeof pattern !== "string" || pattern.length === 0) {
     return { ok: false, reason: "unsupported" };
   }
@@ -249,7 +258,6 @@ export function testControlPattern(
     ? { ok: true }
     : { ok: false, reason: "mismatch" };
 }
-
 /**
  * Validate text field.
  *
@@ -260,7 +268,6 @@ function validateText(
   control: FormControl,
 ): ValidationResult {
   const strValue = String(value);
-
   // Pattern validation. Untrusted pattern text never reaches a bare
   // `new RegExp(...).test(...)`; see testControlPattern.
   if (control.pattern) {
@@ -272,7 +279,6 @@ function validateText(
       };
     }
   }
-
   // Length validation
   // WHY separate minLength/maxLength: min/max used for numeric values too
   if (control.minLength !== undefined && strValue.length < control.minLength) {
@@ -281,14 +287,12 @@ function validateText(
       error: `${control.label || control.key} must be at least ${control.minLength} characters`,
     };
   }
-
   if (control.maxLength !== undefined && strValue.length > control.maxLength) {
     return {
       valid: false,
       error: `${control.label || control.key} must be at most ${control.maxLength} characters`,
     };
   }
-
   // Enum validation
   // WHY enum: Simple allowed-values without full select options
   if (control.enum && control.enum.length > 0) {
@@ -299,10 +303,8 @@ function validateText(
       };
     }
   }
-
   return { valid: true };
 }
-
 /**
  * Validate email field.
  *
@@ -316,18 +318,15 @@ function validateEmail(
   control: FormControl,
 ): ValidationResult {
   const rawValue = String(value);
-
   if (!strictEmailValid(rawValue)) {
     return {
       valid: false,
       error: `${control.label || control.key} must be a valid email address`,
     };
   }
-
   // Also apply text validation (pattern, length)
   return validateText(value, control);
 }
-
 /**
  * Strictly parse a string as a number, rejecting trailing garbage.
  *
@@ -348,15 +347,25 @@ function validateEmail(
  * input returns NaN so callers treat it as an invalid number.
  */
 const STRICT_NUMBER_PATTERN = /^[+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
-
 function parseStrictNumber(input: string): number {
-  const cleaned = input.replace(/[,$]/g, "").trim();
-  if (!STRICT_NUMBER_PATTERN.test(cleaned)) {
+  // A dollar sign is a currency mark only at the start, after an optional
+  // sign. Stripping every "$" turned "1$2" into 12. Anchoring on "^$" alone
+  // rejected "-$50", which is a negative amount.
+  const cleaned = input
+    .trim()
+    .replace(/^([+-]?)\s*\$/, "$1")
+    .trim();
+  if (
+    cleaned.includes(",") &&
+    !/^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d*)?(?:e[+-]?\d+)?$/i.test(cleaned)
+  )
+    return Number.NaN;
+  const normalized = cleaned.replace(/,/g, "");
+  if (!STRICT_NUMBER_PATTERN.test(normalized)) {
     return Number.NaN;
   }
-  return Number(cleaned);
+  return Number(normalized);
 }
-
 /**
  * Validate number field.
  *
@@ -371,14 +380,12 @@ function validateNumber(
   // trailing garbage ("50abc", "0x10") must be rejected, not coerced.
   const numValue =
     typeof value === "number" ? value : parseStrictNumber(String(value));
-
   if (!Number.isFinite(numValue)) {
     return {
       valid: false,
       error: `${control.label || control.key} must be a number`,
     };
   }
-
   // Min/max validation
   if (control.min !== undefined && numValue < control.min) {
     return {
@@ -386,15 +393,52 @@ function validateNumber(
       error: `${control.label || control.key} must be at least ${control.min}`,
     };
   }
-
   if (control.max !== undefined && numValue > control.max) {
     return {
       valid: false,
       error: `${control.label || control.key} must be at most ${control.max}`,
     };
   }
-
   return { valid: true };
+}
+/**
+ * The single boolean contract used by validation, normalization and display.
+ *
+ * WHY one contract: validation accepted both directions while the parser held
+ * only the true-like literals, so `parseValue` silently coerced "no", "false",
+ * "0" and "off" to `false` and treated an unknown persisted string such as
+ * "maybe" as `false` too, while `formatValue` rendered any non-empty string —
+ * including "no" — as a confident "Yes". A shared parser keeps the three call
+ * sites from drifting apart again.
+ */
+const BOOLEAN_TRUE_LITERALS: readonly string[] = ["true", "yes", "1", "on"];
+const BOOLEAN_FALSE_LITERALS: readonly string[] = ["false", "no", "0", "off"];
+
+/** A parsed boolean, or an explicit unknown that callers must not round to a value. */
+export type ParsedBoolean =
+  | { readonly known: true; readonly value: boolean }
+  | { readonly known: false };
+
+/**
+ * Parse a stored or extracted value against the boolean contract.
+ *
+ * Unknown input is reported, never guessed: resolving an unrecognised string to
+ * `false` is indistinguishable from a real "no", which is what made an invalid
+ * persisted value render as a confident answer.
+ */
+export function parseBoolean(value: JsonValue): ParsedBoolean {
+  if (typeof value === "boolean") {
+    return { known: true, value };
+  }
+  // Extraction often wraps a literal in spaces. " yes " is yes, not an unknown.
+  const literal = String(value).trim().toLowerCase();
+  if (BOOLEAN_TRUE_LITERALS.includes(literal)) {
+    return { known: true, value: true };
+  }
+  if (BOOLEAN_FALSE_LITERALS.includes(literal)) {
+    return { known: true, value: false };
+  }
+  return { known: false };
 }
 
 /**
@@ -409,74 +453,45 @@ function validateBoolean(
   value: JsonValue,
   _control: FormControl,
 ): ValidationResult {
-  if (typeof value === "boolean") {
+  if (parseBoolean(value).known) {
     return { valid: true };
   }
-
-  // Accept common boolean-like strings
-  const strValue = String(value).toLowerCase();
-  const truthy = ["true", "yes", "1", "on"];
-  const falsy = ["false", "no", "0", "off"];
-
-  if (truthy.includes(strValue) || falsy.includes(strValue)) {
-    return { valid: true };
-  }
-
   return { valid: false, error: "Must be true or false" };
 }
-
 /**
  * Validate date field.
  *
- * WHY flexible parsing:
- * - Users say "tomorrow", "next Monday", "12/25/2024"
- * - LLM should normalize to parseable format
- * - We accept anything Date() can parse
+ * Date-only fields require an explicit year and a real calendar day. A host
+ * timezone must not turn local midnight into a different submitted date.
  */
 function validateDate(
   value: JsonValue,
   control: FormControl,
 ): ValidationResult {
-  let dateValue: Date;
-
-  if (value instanceof Date) {
-    dateValue = value;
-  } else if (typeof value === "string" || typeof value === "number") {
-    dateValue = new Date(value);
-  } else {
+  const iso = typeof value === "string" ? parseCalendarDate(value) : undefined;
+  if (!iso) {
     return {
       valid: false,
       error: `${control.label || control.key} must be a valid date`,
     };
   }
-
-  // Invalid Date check
-  if (Number.isNaN(dateValue.getTime())) {
-    return {
-      valid: false,
-      error: `${control.label || control.key} must be a valid date`,
-    };
-  }
-
+  const timestamp = new Date(`${iso}T00:00:00.000Z`).getTime();
   // Min/max as timestamps
   // WHY: Form definition can set date ranges (e.g., dates after today only)
-  if (control.min !== undefined && dateValue.getTime() < control.min) {
+  if (control.min !== undefined && timestamp < control.min) {
     return {
       valid: false,
       error: `${control.label || control.key} is too early`,
     };
   }
-
-  if (control.max !== undefined && dateValue.getTime() > control.max) {
+  if (control.max !== undefined && timestamp > control.max) {
     return {
       valid: false,
       error: `${control.label || control.key} is too late`,
     };
   }
-
   return { valid: true };
 }
-
 /**
  * Validate select field.
  *
@@ -494,20 +509,16 @@ function validateSelect(
     // No options defined - treat as text
     return { valid: true };
   }
-
   const strValue = String(value);
   const validValues = options.map((opt) => opt.value);
-
   if (!validValues.includes(strValue)) {
     return {
       valid: false,
       error: `${control.label || control.key} must be one of the available options`,
     };
   }
-
   return { valid: true };
 }
-
 /**
  * Validate file field (validates metadata, not content).
  *
@@ -520,30 +531,55 @@ function validateFile(
   value: JsonValue,
   control: FormControl,
 ): ValidationResult {
-  if (!control.file) {
-    return { valid: true };
-  }
-
   // Value should be an array of file metadata
   const files = Array.isArray(value) ? value : [value];
-
+  if (files.length === 0) {
+    return control.required
+      ? {
+          valid: false,
+          error: `${control.label || control.key} is required`,
+        }
+      : { valid: true };
+  }
   // Check max files
-  if (control.file.maxFiles && files.length > control.file.maxFiles) {
+  if (
+    control.file?.maxFiles !== undefined &&
+    files.length > control.file.maxFiles
+  ) {
     return {
       valid: false,
       error: `Maximum ${control.file.maxFiles} files allowed`,
     };
   }
-
   for (const file of files) {
-    if (!file || typeof file !== "object") continue;
-
-    const fileObj = file as { size?: number; mimeType?: string };
-
+    if (!file || typeof file !== "object" || Array.isArray(file)) {
+      return { valid: false, error: "Invalid file data" };
+    }
+    const fileObj = file as {
+      id?: unknown;
+      name?: unknown;
+      size?: number;
+      mimeType?: unknown;
+      url?: unknown;
+    };
+    if (
+      typeof fileObj.id !== "string" ||
+      fileObj.id.trim().length === 0 ||
+      typeof fileObj.name !== "string" ||
+      fileObj.name.trim().length === 0 ||
+      typeof fileObj.mimeType !== "string" ||
+      fileObj.mimeType.trim().length === 0 ||
+      typeof fileObj.size !== "number" ||
+      !Number.isFinite(fileObj.size) ||
+      fileObj.size < 0 ||
+      typeof fileObj.url !== "string" ||
+      fileObj.url.trim().length === 0
+    ) {
+      return { valid: false, error: "Invalid file data" };
+    }
     // Check file size
     if (
-      control.file.maxSize &&
-      fileObj.size &&
+      control.file?.maxSize !== undefined &&
       fileObj.size > control.file.maxSize
     ) {
       return {
@@ -551,9 +587,8 @@ function validateFile(
         error: `File size exceeds maximum of ${formatBytes(control.file.maxSize)}`,
       };
     }
-
     // Check accepted MIME types
-    if (control.file.accept && fileObj.mimeType) {
+    if (control.file?.accept) {
       const { mimeType } = fileObj;
       const accepted = control.file.accept.some((pattern) =>
         matchesMimeType(mimeType, pattern),
@@ -566,10 +601,8 @@ function validateFile(
       }
     }
   }
-
   return { valid: true };
 }
-
 /**
  * Check if a MIME type matches a pattern.
  *
@@ -583,14 +616,16 @@ function validateFile(
  * matchesMimeType('application/pdf', 'image/*') // false
  */
 export function matchesMimeType(mimeType: string, pattern: string): boolean {
-  if (pattern === "*/*") return true;
-  if (pattern.endsWith("/*")) {
-    const prefix = pattern.slice(0, -1); // "image/" from "image/*"
-    return mimeType.startsWith(prefix);
+  // Type and subtype are case-insensitive. "IMAGE/*" must accept image/png.
+  const type = mimeType.toLowerCase();
+  const expected = pattern.toLowerCase();
+  if (expected === "*/*") return true;
+  if (expected.endsWith("/*")) {
+    const prefix = expected.slice(0, -1); // "image/" from "image/*"
+    return type.startsWith(prefix);
   }
-  return mimeType === pattern;
+  return type === expected;
 }
-
 /**
  * Format bytes to human-readable string.
  *
@@ -603,11 +638,9 @@ function formatBytes(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
-
 // ============================================================================
 // VALUE PARSING
 // ============================================================================
-
 /**
  * Parse a string value to the appropriate type based on control type.
  *
@@ -620,13 +653,23 @@ function formatBytes(bytes: number): string {
  * @param control - Field definition to determine type
  * @returns Parsed value of appropriate type
  */
-export function parseValue(value: string, control: FormControl): JsonValue {
+export function parseValue(
+  value: string,
+  control: FormControl,
+  controlType?: ControlType,
+): JsonValue {
   // Check for custom type handler
-  const handler = typeHandlers.get(control.type);
-  if (handler?.parse) {
+  const handler = getTypeHandler(control.type, controlType);
+  if (
+    handler?.parse &&
+    !(
+      handler === controlType &&
+      controlType.builtin &&
+      control.type === "number"
+    )
+  ) {
     return handler.parse(value);
   }
-
   switch (control.type) {
     case "number": {
       // Strict parse so garbage-suffixed input is not coerced to a
@@ -644,28 +687,25 @@ export function parseValue(value: string, control: FormControl): JsonValue {
       // invalid when validateNumber re-parses it, forcing the re-ask.
       return Number.isFinite(parsed) ? parsed : value;
     }
-
     case "boolean": {
-      const lower = value.toLowerCase();
-      return ["true", "yes", "1", "on"].includes(lower);
+      const parsed = parseBoolean(value);
+      // On rejection, preserve the ORIGINAL string instead of a fabricated
+      // `false`. WHY: an unrecognised extraction would otherwise persist as a
+      // confident "no" that submit-time revalidation then accepts. Mirroring
+      // the number case above keeps the raw string, so the re-ask still fires.
+      return parsed.known ? parsed.value : value;
     }
-
     case "date": {
-      const timestamp = Date.parse(value);
-      return Number.isFinite(timestamp)
-        ? new Date(timestamp).toISOString()
-        : value;
+      return parseCalendarDate(value) ?? value;
     }
     default:
       // Keep as string for text-like types
       return value;
   }
 }
-
 // ============================================================================
 // VALUE FORMATTING
 // ============================================================================
-
 /**
  * Format a value for display.
  *
@@ -679,15 +719,12 @@ export function parseValue(value: string, control: FormControl): JsonValue {
  * @param control - Field definition with display hints
  * @returns Human-readable string representation
  */
-export function formatValue(value: JsonValue, control: FormControl): string {
+export function formatValue(
+  value: JsonValue,
+  control: FormControl,
+  controlType?: ControlType,
+): string {
   if (value === undefined || value === null) return "";
-
-  // Check for custom type handler
-  const handler = typeHandlers.get(control.type);
-  if (handler?.format) {
-    return handler.format(value);
-  }
-
   // Sensitive fields should be masked
   // WHY: Passwords, tokens shouldn't be echoed back to user
   if (control.sensitive) {
@@ -697,20 +734,22 @@ export function formatValue(value: JsonValue, control: FormControl): string {
     }
     return "****";
   }
-
+  const handler = getTypeHandler(control.type, controlType);
+  if (handler?.format) return handler.format(value);
   switch (control.type) {
     case "number":
       // Use locale formatting for numbers
       return typeof value === "number" ? value.toLocaleString() : String(value);
-
-    case "boolean":
-      // Human-friendly boolean display
-      return value ? "Yes" : "No";
-
+    case "boolean": {
+      // Human-friendly boolean display. An unknown persisted value must not
+      // render as a confident "Yes" merely because a non-empty string is
+      // truthy: the raw value is shown so it reads as invalid.
+      const parsed = parseBoolean(value);
+      if (!parsed.known) return String(value);
+      return parsed.value ? "Yes" : "No";
+    }
     case "date":
-      // Locale-appropriate date format
-      return value instanceof Date ? value.toLocaleDateString() : String(value);
-
+      return formatCalendarDate(String(value)) ?? String(value);
     case "select":
       // Show option label instead of value
       // WHY: User sees "United States" not "US"
@@ -721,16 +760,27 @@ export function formatValue(value: JsonValue, control: FormControl): string {
         if (option) return option.label;
       }
       return String(value);
-
     case "file":
       // Show file names
       if (Array.isArray(value)) {
         return value
-          .map((f) => (f as { name?: string }).name || "file")
+          .map(
+            (f) =>
+              (
+                f as {
+                  name?: string;
+                }
+              ).name || "file",
+          )
           .join(", ");
       }
-      return (value as { name?: string }).name || "file";
-
+      return (
+        (
+          value as {
+            name?: string;
+          }
+        ).name || "file"
+      );
     default:
       return String(value);
   }

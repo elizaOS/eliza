@@ -1,46 +1,9 @@
 /**
- * Canonical provenance envelope for stored connector messages: which surface a
- * memory came from, under which connector account, in which room, from which
- * sender, when, and how well attested — derived strictly from metadata the
- * connectors already stamp, never fabricated.
- *
- * Three separable concerns live here, deliberately small:
- *
- * 1. {@link deriveCanonicalProvenance} — reads source / account / room / sender
- *    / timestamp / trust / scope off a stored {@link Memory} using the metadata
- *    the connectors stamp (`metadata.provider`, `metadata.accountId`, the
- *    nested `metadata[source]` identity object). The source is normalized
- *    through the connector-source registry so `discord-local` and `discord`
- *    are one surface. Missing or conflicting required fields return a typed
- *    invalid result and the item is withheld from recall — nothing defaults to
- *    `global`. Sender attestation is recorded as a structural fact
- *    (`sender-stamped`), never labelled "connector-verified": a nested
- *    metadata object is present at ingestion, but that is not an unforgeable
- *    attestation of the platform identity it carries.
- *
- * 2. {@link canonicalDedupeKey} — `source:account:room:platformRecordId`. Two
- *    deliveries of the same webhook collapse; the same text from two connector
- *    accounts does not, because the account segment differs. Room identity is
- *    part of the key because platform message ids are room-local (Telegram
- *    message ids are scoped to a chat, so two chats can legitimately reuse an
- *    id without being the same record). Account identity is part of the key,
- *    never squashed.
- *
- * 3. {@link searchCanonicalConversationMemories} — the production retrieval
- *    for conversation-mode message search. Requester identity and destination
- *    are derived ONLY from process-bound trusted delivery-audience evidence
- *    minted for the exact runtime/turn ({@link deliveryMessage}); the adapter
- *    vector scan is constrained by the attested room before ranking so a
- *    global top-K cannot starve eligible same-room rows. It then runs, in
- *    order: provenance validation, the mandatory scope ladder
- *    (`./filter.ts`), and destination containment. Adapter errors and
- *    access-context lookup failures propagate as a typed `unavailable`
- *    availability — never an empty "complete" result.
- *
- * Composes with — never duplicates — `./filter.ts`: that ladder gates a single
- * memory's {@link MemoryScope} against the requester's role; this module then
- * pins disclosure to the destination unless the trusted delivery-audience layer
- * has revalidated the live room type and participants for owner-only recall.
+ * Validates connector-stamped provenance and deduplicates by source, account, room, and
+ * platform record. Production recall derives requester and destination authority from the
+ * exact process-bound delivery turn, constrains storage before ranking, then applies
+ * provenance, disclosure, and destination checks. Missing provenance or failed lookups never
+ * become globally visible or falsely complete results.
  */
 
 import { normalizeConnectorSource } from "../connectors";
@@ -55,14 +18,10 @@ import {
 	revalidateOwnerExclusiveDisclosure,
 	trustedDeliveryAudienceIsBoundToRuntime,
 } from "../security/trusted-delivery-audience";
-import type {
-	AccessContext,
-	IAgentRuntime,
-	Memory,
-	MemoryScope,
-	MessageChatType,
-	UUID,
-} from "../types";
+import type { AccessContext } from "../types/access-context.js";
+import type { Memory, MemoryScope, MessageChatType } from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import { actorFromAccessContext, canReadScope } from "./filter";
 
 /**
@@ -70,12 +29,12 @@ import { actorFromAccessContext, canReadScope } from "./filter";
  *
  * - `self`: the agent's own message (entity is the agent).
  * - `sender-stamped`: the ingesting connector wrote a nested
- *   `metadata[source]` identity object carrying `userId`/`id`. This records the
- *   structural fact that a stable identity was stamped at ingestion — the same
- *   evidence `roles.ts` reads. It is NOT labelled "connector-verified" because
- *   ordinary stored metadata is not an unforgeable attestation.
+ * `metadata[source]` identity object carrying `userId`/`id`. This records the
+ * structural fact that a stable identity was stamped at ingestion — the same
+ * evidence `roles.ts` reads. It is NOT labelled "connector-verified" because
+ * ordinary stored metadata is not an unforgeable attestation.
  * - `unverified`: no stable connector identity was recorded. Content-supplied
- *   metadata from a chat client lands here and must never be promoted.
+ * metadata from a chat client lands here and must never be promoted.
  */
 export type CanonicalTrust = "self" | "sender-stamped" | "unverified";
 
@@ -120,7 +79,7 @@ export type RecallDenyCode =
 	/**
 	 * The item lives in a different room than the destination. Cross-room
 	 * disclosure is audience policy and is owned by the trusted-delivery-audience
-	 * layer (#17206), not by this envelope.
+	 * layer, not by this envelope.
 	 */
 	| "cross_room_denied";
 
@@ -384,27 +343,14 @@ export function deriveCanonicalProvenance(
 	};
 }
 
-/**
- * Stable idempotency key for a canonical item. Separator-free identifiers keep
- * the legacy `source:account:room:platformRecordId` form; delimiter-bearing
- * account or record identifiers use a versioned JSON tuple so distinct tuples
- * cannot serialize to the same key.
- *
- * Redelivery of one webhook collapses to one key. The same text arriving under
- * two connector accounts yields two keys, so account identity survives
- * de-duplication instead of being merged away. Room identity is part of the
- * key because platform message ids are room-local: a Telegram message id is
- * scoped to a chat, so the same id in two chats is two records, not one.
- */
+/** Builds a stable idempotency key including source, account, room, and platform record. Separator-free identifiers use a colon tuple; delimiter-bearing identifiers use versioned JSON to prevent collisions. */
 export function canonicalDedupeKey(provenance: CanonicalProvenance): string {
 	if (
 		provenance.accountId.includes(":") ||
 		provenance.platformMessageId.includes(":")
 	) {
-		// The legacy key is retained byte-for-byte for its unambiguous input
-		// domain. Delimiter-bearing identifiers use a versioned JSON tuple: JSON
-		// string encoding is injective for strings, and `|` cannot occur in a
-		// validated canonical source, so a v2 key cannot collide with a legacy key.
+		// Colon tuples are unambiguous without delimiters. Versioned JSON preserves delimiter-
+		// bearing identifiers without colliding with canonical source prefixes.
 		return `v2|${JSON.stringify([
 			provenance.source,
 			provenance.accountId,
@@ -592,8 +538,12 @@ export function buildCanonicalRecall(
 interface CanonicalMemorySearchBaseInput {
 	runtime: IAgentRuntime;
 	embedding: number[];
+	/** False omits returned vectors, without changing ranking or source checks. */
+	includeEmbedding?: boolean;
+	/** Additional room exclusions only narrow the authorized recall scope. */
+	excludeRoomIds?: UUID[];
 	query?: string;
-	/** @deprecated Production recall derives the agent from `runtime.agentId`. */
+	/** Caller metadata; runtime.agentId determines the retrieval agent. */
 	agentId?: UUID;
 	/** Explicit result count. Omit when the complete eligible result set is required. */
 	count?: number;
@@ -775,6 +725,7 @@ export async function searchCanonicalConversationMemories(
 		? normalizeConnectorSource(input.source)
 		: undefined;
 	const allCandidates: Memory[] = [];
+	const excludedRooms = new Set(input.excludeRoomIds);
 	let candidateWindowComplete = true;
 	const seenIds = new Set<string>();
 	let roundCount = initialCount;
@@ -784,6 +735,12 @@ export async function searchCanonicalConversationMemories(
 		try {
 			roundCandidates = await input.runtime.searchMemories({
 				embedding: input.embedding,
+				...(input.includeEmbedding === false
+					? { includeEmbedding: false }
+					: {}),
+				...(input.excludeRoomIds?.length
+					? { excludeRoomIds: input.excludeRoomIds }
+					: {}),
 				tableName: "messages",
 				match_threshold: input.matchThreshold,
 				count: roundCount,
@@ -817,32 +774,34 @@ export async function searchCanonicalConversationMemories(
 
 		// Deduplicate against what we already have and accumulate.
 		for (const mem of roundCandidates) {
+			// Enforce exclusions even for an adapter that ignores the optional filter.
+			if (excludedRooms.has(mem.roomId)) continue;
 			const memId = mem.id?.toString();
 			if (memId && seenIds.has(memId)) continue;
 			if (memId) seenIds.add(memId);
 			allCandidates.push(mem);
 		}
 
-		// Quick-check: if this round added enough candidates to potentially
-		// satisfy the requested count after filtering, we can stop early.
-		// We check the raw count since we don't know the filter ratio yet.
-		const evaluated = evaluateCanonicalRecall({
-			candidates: allCandidates,
-			agentId: input.runtime.agentId,
-			requester,
-			destinationRoomId,
-			crossRoomGate,
-		});
-		const accumulatedEligible = normalizedSource
-			? evaluated.items.filter(
-					(item) => item.provenance.source === normalizedSource,
-				).length
-			: evaluated.items.length;
+		// Limited searches need intermediate eligibility checks to know when
+		// to stop. Complete recall validates once after exhausting the adapter.
+		let hasEnoughEligible = false;
+		if (explicitCount !== undefined) {
+			const evaluated = evaluateCanonicalRecall({
+				candidates: allCandidates,
+				agentId: input.runtime.agentId,
+				requester,
+				destinationRoomId,
+				crossRoomGate,
+			});
+			const accumulatedEligible = normalizedSource
+				? evaluated.items.filter(
+						(item) => item.provenance.source === normalizedSource,
+					).length
+				: evaluated.items.length;
+			hasEnoughEligible = accumulatedEligible >= explicitCount;
+		}
 
-		if (
-			(explicitCount !== undefined && accumulatedEligible >= explicitCount) ||
-			roundCandidates.length < roundCount
-		) {
+		if (hasEnoughEligible || roundCandidates.length < roundCount) {
 			// Either we have enough valid items, or the adapter returned
 			// fewer than requested — it exhausted the eligible set.
 			if (roundCandidates.length < roundCount) {

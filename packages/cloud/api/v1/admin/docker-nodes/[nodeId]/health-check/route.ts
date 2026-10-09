@@ -1,9 +1,10 @@
 // Handles admin cloud API v1 admin docker nodes nodeid health check route traffic with privileged auth expectations.
+
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { forwardToContainerControlPlane } from "../../../../_container-control-plane-forward";
 
 const app = new Hono<AppEnv>();

@@ -1,0 +1,82 @@
+[
+  {
+    "connector": "anthropic",
+    "service": "anthropic",
+    "port": 18814
+  },
+  {
+    "connector": "apple-reminders",
+    "service": "apple-reminders",
+    "port": 18810
+  },
+  {
+    "connector": "calendar",
+    "service": "google",
+    "port": 18802
+  },
+  {
+    "connector": "cerebras",
+    "service": "cerebras",
+    "port": 18815
+  },
+  {
+    "connector": "discord",
+    "service": "discord",
+    "port": 18804
+  },
+  {
+    "connector": "duffel",
+    "service": "duffel",
+    "port": 18813
+  },
+  {
+    "connector": "eliza-cloud",
+    "service": "cloud-managed",
+    "port": 18816
+  },
+  {
+    "connector": "github",
+    "service": "github",
+    "port": 18806
+  },
+  {
+    "connector": "gmail",
+    "service": "google",
+    "port": 18801
+  },
+  {
+    "connector": "notion",
+    "service": "notion",
+    "port": 18807
+  },
+  {
+    "connector": "ntfy",
+    "service": "ntfy",
+    "port": 18812
+  },
+  {
+    "connector": "plaid",
+    "service": "plaid",
+    "port": 18809
+  },
+  {
+    "connector": "slack",
+    "service": "slack",
+    "port": 18803
+  },
+  {
+    "connector": "spotify",
+    "service": "spotify",
+    "port": 18817
+  },
+  {
+    "connector": "telegram",
+    "service": "telegram",
+    "port": 18805
+  },
+  {
+    "connector": "twilio",
+    "service": "twilio",
+    "port": 18808
+  }
+]

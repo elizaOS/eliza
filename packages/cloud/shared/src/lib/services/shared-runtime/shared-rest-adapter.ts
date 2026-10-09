@@ -16,16 +16,18 @@
  * item, so no conversation index is needed.
  */
 
-import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
-import type { SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
-import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
+import { type SharedReminderDelivery } from "@elizaos/plugin-scheduling";
+import { type RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError } from "../../api/errors";
 import { logger } from "../../utils/logger";
-import type { BridgeRequest } from "../eliza-sandbox-bridge";
+import { type BridgeRequest } from "../eliza-sandbox";
 import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
-import type { SharedAgentCharacter } from "./run-shared-agent-turn";
-import type { SharedRuntimeAgent } from "./shared-runtime-agent";
-import type { SharedRuntimeChannel } from "./shared-runtime-channel";
+import type { NetworkSharedTurnObservation } from "./network-shared-context";
+import { type PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
+import { type SharedAgentCharacter } from "./run-shared-agent-turn";
+import { type SharedRuntimeAgent } from "./shared-runtime-agent";
+import { type SharedRuntimeChannel } from "./shared-runtime-channel";
 import { type BridgeExecutionContext, sharedRuntimeChatService } from "./shared-runtime-chat";
 import {
   parseSharedProviderTimingReceipt,
@@ -33,13 +35,11 @@ import {
 } from "./shared-runtime-timing";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
-
 /** Serialize the privacy-bounded provider receipt into finite Server-Timing metrics. */
 export function sharedTurnServerTiming(receipt: SharedProviderTimingReceipt | undefined): string {
   if (!receipt) return "";
   return `shared_model;dur=${receipt.durationMs.toFixed(1)};desc="provider=${receipt.selectedProvider} calls=${receipt.callCount} fallbacks=${receipt.fallbackCount} replayed=${receipt.replayed ? 1 : 0} clamped=${receipt.clamped ? 1 : 0}"`;
 }
-
 /** Minimal subset of the agent-server REST `Conversation` the chat client reads. */
 export interface SharedRestConversation {
   id: string;
@@ -54,7 +54,6 @@ export interface SharedRestConversation {
    */
   updatedAt: string;
 }
-
 /** Minimal subset of the agent-server REST `ConversationMessage`. */
 export interface SharedRestMessage {
   id: string;
@@ -63,12 +62,10 @@ export interface SharedRestMessage {
   timestamp: number;
   interrupted?: boolean;
 }
-
 /** The canonical (single) conversation id for a shared agent === its agent id. */
 function canonicalConversationId(agentId: string): string {
   return agentId;
 }
-
 function makeConversation(
   agentId: string,
   agentName: string,
@@ -78,12 +75,12 @@ function makeConversation(
   // updatedAt === createdAt: the canonical conversation is never renamed/moved.
   return { id, title: agentName || "Chat", roomId: id, createdAt, updatedAt: createdAt };
 }
-
 /** GET .../api/health — the agent is in-Worker; if it resolves, it's up. */
-export function sharedRestHealth(): { status: "ok" } {
+export function sharedRestHealth(): {
+  status: "ok";
+} {
   return { status: "ok" };
 }
-
 /**
  * GET .../api/status — the startup-coordinator's FIRST hard gate: it calls
  * `getStatus()` before anything else and bails unless `state === "running"`.
@@ -100,7 +97,6 @@ export function sharedRestStatus(agentName: string): {
 } {
   return { state: "running", agentName: agentName || "Eliza", canRespond: true };
 }
-
 // ---------------------------------------------------------------------------
 // Shell-endpoint defaults (mobile/web startup-coordinator unblock)
 // ---------------------------------------------------------------------------
@@ -120,7 +116,6 @@ export function sharedRestStatus(agentName: string): {
 //                      packages/agent/src/api/builtin-views.ts +
 //                      registerBuiltinViews() in views-registry.ts
 //   config           → packages/agent/src/api/config-routes.ts (open-ended object)
-
 /** Minimal subset of the agent-server `ViewRegistryEntry` the chat client reads. */
 interface SharedRestViewRegistration {
   id: string;
@@ -137,7 +132,6 @@ interface SharedRestViewRegistration {
   builtin: boolean;
   hasHeroImage?: boolean;
 }
-
 /**
  * GET .../api/first-run/status — a shared agent is cloud-provisioned and never
  * runs first-run, so it is always "complete". Mirrors the cloud-container branch
@@ -149,25 +143,27 @@ export function sharedRestFirstRunStatus(): {
 } {
   return { complete: true, cloudProvisioned: true };
 }
-
 /**
  * GET .../api/first-run — "no setup needed". The app only fetches first-run
  * options when status reports incomplete; for a shared agent that never happens,
  * but return a benign already-complete payload so any probe degrades gracefully.
  */
-export function sharedRestFirstRun(): { complete: true; ok: true } {
+export function sharedRestFirstRun(): {
+  complete: true;
+  ok: true;
+} {
   return { complete: true, ok: true };
 }
-
 /**
  * POST .../api/first-run — onboarding "submit". A shared agent has no config to
  * persist, so this is a harmless no-op that echoes the agent-server success
  * shape (`{ ok: true }`) instead of 404'ing onboarding.
  */
-export function sharedRestFirstRunSubmit(): { ok: true } {
+export function sharedRestFirstRunSubmit(): {
+  ok: true;
+} {
   return { ok: true };
 }
-
 /**
  * Route of the one view this tier serves. Hoisted out of the registry entry
  * because `SharedRestViewRegistration.path` is optional, while the navigate ack
@@ -175,7 +171,6 @@ export function sharedRestFirstRunSubmit(): { ok: true } {
  * entry and the ack from drifting apart.
  */
 const SHARED_CHAT_VIEW_PATH = "/chat";
-
 /** The single builtin chat view a shared agent exposes (a `gui` view). */
 const SHARED_CHAT_VIEW: SharedRestViewRegistration = {
   id: "chat",
@@ -192,7 +187,6 @@ const SHARED_CHAT_VIEW: SharedRestViewRegistration = {
   builtin: true,
   hasHeroImage: false,
 };
-
 /**
  * GET .../api/views — the shell's view registry. A shared agent ships only the
  * single builtin chat view so the app boots into a working chat surface. Shape
@@ -213,7 +207,6 @@ export function sharedRestViews(viewType?: string): {
   }
   return { views: [SHARED_CHAT_VIEW] };
 }
-
 /**
  * POST .../api/views/:viewId/navigate — the shell's navigation ack. Navigation
  * is client-side routing; the agent-server route only echoes the resolved view
@@ -236,7 +229,6 @@ export function sharedRestViewNavigate(viewId: string): {
     viewType: SHARED_CHAT_VIEW.viewType,
   };
 }
-
 /**
  * POST .../api/conversations/:id/greeting — the opening agent line the chat view
  * requests for an empty conversation.
@@ -272,7 +264,6 @@ export function sharedRestGreeting(
     persisted: false,
   };
 }
-
 /**
  * GET .../api/runtime/mode — the client's runtime-mode snapshot
  * (ui/src/api/runtime-mode-client.ts → useRuntimeMode()). A Tier-0 agent runs
@@ -298,10 +289,9 @@ export function sharedRestRuntimeMode(): {
     remoteApiBaseConfigured: false,
   };
 }
-
 /**
  * GET .../api/commands — the universal slash-command catalog
- * (`CommandsCatalogResponse` in @elizaos/shared; read by
+ * (`CommandsCatalogResponse` in @elizaos/core; read by
  * ui/src/api/client-skills.ts `listCommands`). A Tier-0 agent has no agent
  * server and therefore no command registry to enumerate: the builtin catalog is
  * assembled by the runtime from registered plugin commands, and none of those
@@ -313,10 +303,11 @@ export function sharedRestRuntimeMode(): {
  * "Failed to load the slash-command catalog; slash menu will be empty" — the
  * same empty menu, reached through an error path.
  */
-export function sharedRestCommands(): { commands: [] } {
+export function sharedRestCommands(): {
+  commands: [];
+} {
   return { commands: [] };
 }
-
 /**
  * GET .../api/custom-actions — user-defined custom actions
  * (ui/src/api/client-skills.ts `listCustomActions`, shape
@@ -325,20 +316,20 @@ export function sharedRestCommands(): { commands: [] } {
  * full-runtime route returns exactly `{ actions: [] }` when nothing is defined,
  * so this matches the contract the client already handles.
  */
-export function sharedRestCustomActions(): { actions: [] } {
+export function sharedRestCustomActions(): {
+  actions: [];
+} {
   return { actions: [] };
 }
-
 /** GET .../api/agent/events — the agent event log the shell's activity surfaces
  * poll (ui/src/api/client-agent.ts). A Tier-0 agent runs stateless per-request
  * in a Worker and keeps no event ring buffer, so there is nothing to report.
- * Mirrors the iOS local-agent kernel's synthesis of this same probe
- * (`ui/src/api/ios-local-agent-kernel.ts` → `{ events: [] }`).
  */
-export function sharedRestAgentEvents(): { events: [] } {
+export function sharedRestAgentEvents(): {
+  events: [];
+} {
   return { events: [] };
 }
-
 /**
  * POST .../api/agent/start — the client's startup handshake.
  * A shared agent runs in-Worker with no agent server to boot, so the "start"
@@ -354,7 +345,6 @@ export function sharedRestAgentStart(agentName: string): {
     status: sharedRestStatus(agentName),
   };
 }
-
 /**
  * GET .../api/stream/settings — streaming/avatar settings for the stream view.
  * A shared agent exposes no stream configuration; `{}` is the empty-settings
@@ -368,7 +358,6 @@ export function sharedRestStreamSettings(): {
 } {
   return { ok: true, settings: {} };
 }
-
 /**
  * POST .../api/apps/overlay-presence — the app shell reporting which overlay is
  * on screen. Pure presence telemetry consumed by the app-manager runtime to
@@ -377,10 +366,12 @@ export function sharedRestStreamSettings(): {
  * (`{ ok: true, appName: null }`) — `appName: null` states plainly that no
  * overlay app was resolved rather than inventing one.
  */
-export function sharedRestOverlayPresence(): { ok: true; appName: null } {
+export function sharedRestOverlayPresence(): {
+  ok: true;
+  appName: null;
+} {
   return { ok: true, appName: null };
 }
-
 /**
  * GET .../api/config — the dashboard's open-ended agent config. A shared agent
  * exposes no editable config through this adapter, but it DOES declare its
@@ -400,31 +391,34 @@ export function sharedRestOverlayPresence(): { ok: true; appName: null } {
  * The client still reads the rest of the object defensively (`ui`/`cloud`) and
  * falls back. These flags let the app delete its per-base special-casing.
  */
-export function sharedRestConfig(): { websocket: false; streaming: false } {
+export function sharedRestConfig(): {
+  websocket: false;
+  streaming: false;
+} {
   return { websocket: false, streaming: false };
 }
-
-/**
- * GET .../api/auth/me — the app's HARD startup gate (App.tsx auth gate →
- * useAuthStatus → authMe(), ui/src/api/auth-client.ts). A shared agent has no
- * agent server and no owner-password flow; it is reached purely through the
- * caller's authenticated API key, which the route already validated
- * (resolveSharedAgent → requireUserOrApiKeyWithOrg). So the caller is, by
- * construction, an authed machine identity — return it in the agent-server's
- * `bearer-agent` shape (auth-routes.ts authorized branch: identity.kind
- * "machine", session machine with no expiry, access mode "bearer"). Without an
- * `ok:true` body here, the client maps the 404 to status 503 →
- * "server_unavailable" → StartupFailureView and never reaches chat. The identity
- * is the agent itself (id = agentId, displayName = agentName) — the only stable
- * identity this adapter owns.
- */
+/** Machine identity for a caller admitted by the shared-agent auth boundary.
+ * Shared runtimes expose USER capabilities and have no local owner session. */
 export function sharedRestAuthMe(
   agentId: string,
   agentName: string,
 ): {
-  identity: { id: string; displayName: string; kind: "machine" };
-  session: { id: string; kind: "machine"; expiresAt: null };
-  access: { mode: "bearer"; passwordConfigured: false; ownerConfigured: false };
+  identity: {
+    id: string;
+    displayName: string;
+    kind: "machine";
+  };
+  session: {
+    id: string;
+    kind: "machine";
+    expiresAt: null;
+  };
+  access: {
+    mode: "bearer";
+    role: "USER";
+    passwordConfigured: false;
+    ownerConfigured: false;
+  };
 } {
   return {
     identity: {
@@ -433,10 +427,9 @@ export function sharedRestAuthMe(
       kind: "machine",
     },
     session: { id: "bearer", kind: "machine", expiresAt: null },
-    access: { mode: "bearer", passwordConfigured: false, ownerConfigured: false },
+    access: { mode: "bearer", role: "USER", passwordConfigured: false, ownerConfigured: false },
   };
 }
-
 /**
  * GET .../api/auth/status — legacy startup-coordinator probe. The newer
  * top-level gate uses `/api/auth/me`, but `ElizaClient.getAuthStatus()` still
@@ -461,7 +454,6 @@ export function sharedRestAuthStatus(): {
     passwordConfigured: false,
   };
 }
-
 /**
  * GET .../api/character — the character the app reads. Reuse the same cache-only
  * character resolver as the shared turn; a linked-character cache miss schedules
@@ -472,29 +464,33 @@ export async function sharedRestCharacter(
   agent: SharedRuntimeAgent,
   agentName: string,
   executionCtx: BridgeExecutionContext,
-): Promise<{ character: SharedAgentCharacter; agentName: string }> {
+): Promise<{
+  character: SharedAgentCharacter;
+  agentName: string;
+}> {
   const character = await sharedRuntimeChatService.getCharacter(agent, executionCtx);
   return { character, agentName: agentName || "Eliza" };
 }
-
 /** GET .../api/conversations — always the one canonical conversation. */
 export function sharedRestConversationsList(
   agentId: string,
   agentName: string,
   createdAt: string,
-): { conversations: SharedRestConversation[] } {
+): {
+  conversations: SharedRestConversation[];
+} {
   return { conversations: [makeConversation(agentId, agentName, createdAt)] };
 }
-
 /** POST .../api/conversations — returns the canonical conversation (idempotent). */
 export function sharedRestConversationCreate(
   agentId: string,
   agentName: string,
   createdAt: string,
-): { conversation: SharedRestConversation } {
+): {
+  conversation: SharedRestConversation;
+} {
   return { conversation: makeConversation(agentId, agentName, createdAt) };
 }
-
 /**
  * PATCH .../api/conversations/:id — shared-runtime agents expose one canonical
  * conversation and have no agent-server-side conversation index to mutate.
@@ -505,23 +501,29 @@ export function sharedRestConversationUpdate(
   agentId: string,
   agentName: string,
   createdAt: string,
-  patch?: { title?: unknown } | null,
-): { conversation: SharedRestConversation } {
+  patch?: {
+    title?: unknown;
+  } | null,
+): {
+  conversation: SharedRestConversation;
+} {
   const title =
     typeof patch?.title === "string" && patch.title.trim() ? patch.title.trim() : agentName;
   return { conversation: makeConversation(agentId, title, createdAt) };
 }
-
 /**
  * DELETE .../api/conversations/:id — deleting the canonical shared-runtime
  * conversation is a no-op because it is derived from the agent identity.
  */
-export function sharedRestConversationDelete(): { ok: true } {
+export function sharedRestConversationDelete(): {
+  ok: true;
+} {
   return { ok: true };
 }
-
 function sharedRestMessageTimestamp(
-  turn: { createdAt?: unknown },
+  turn: {
+    createdAt?: unknown;
+  },
   index: number,
   total: number,
 ): number {
@@ -531,9 +533,8 @@ function sharedRestMessageTimestamp(
   // Legacy shared-runtime history rows predate createdAt. Keep them finite but
   // safely older than the UI's "just sent" reconciliation window, so a repeated
   // failed send is still restored instead of being masked by an old same-text row.
-  return Date.now() - 5 * 60_000 - (total - index);
+  return Date.now() - 5 * 60000 - (total - index);
 }
-
 /**
  * GET .../api/conversations/:id/messages — read the bridge's persisted turn
  * history for this room and present it in the REST message shape. New rows use
@@ -543,13 +544,18 @@ export async function sharedRestMessagesGet(
   agentId: string,
   conversationId: string,
   namespace: RuntimeDurableObjectNamespace,
-): Promise<{ messages: SharedRestMessage[] }> {
+): Promise<{
+  messages: SharedRestMessage[];
+}> {
   const history = await coordinateSharedHistory(agentId, conversationId, { namespace });
   // Lifecycle system events shape model continuity but are not authored chat
   // bubbles, so keep them private to the canonical history/prompt boundary.
   const visibleHistory = history.filter(
-    (turn): turn is typeof turn & { role: "user" | "assistant" } =>
-      turn.role === "user" || turn.role === "assistant",
+    (
+      turn,
+    ): turn is typeof turn & {
+      role: "user" | "assistant";
+    } => turn.role === "user" || turn.role === "assistant",
   );
   const messages = visibleHistory.map((turn, index) => ({
     id: turn.id ?? `${conversationId}:${index}`,
@@ -560,7 +566,6 @@ export async function sharedRestMessagesGet(
   }));
   return { messages };
 }
-
 /**
  * POST .../api/conversations/:id/messages — forward the user text to the shared
  * bridge `message.send` (which runs the turn, persists history, and bills), then
@@ -580,11 +585,18 @@ export async function sharedRestMessageSend(
   trustedDelivery?: SharedReminderDelivery,
   trustedUserUtterance?: string,
   trustedChannel?: SharedRuntimeChannel,
+  /** Server-resolved Dedicated fallback account state (#25146); never from RPC params. */
+  trustedAccountState?: PersonalSharedFallbackAccountState,
+  traceId?: string,
+  abortSignal?: AbortSignal,
+  trustedNetworkContext?: NetworkSharedTurnObservation,
 ): Promise<{
   text: string;
   agentName: string;
   timing?: SharedProviderTimingReceipt;
   mediaUrls?: string[];
+  responded?: false;
+  responseReason?: "no_response";
 }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -595,6 +607,7 @@ export async function sharedRestMessageSend(
     params: {
       text,
       roomId: conversationId,
+      ...(trustedNetworkContext ? { userId: agent.user_id } : {}),
       ...(clientMessageId ? { clientMessageId } : {}),
       ...(trustedDelivery ? { trustedDelivery } : {}),
     },
@@ -604,8 +617,12 @@ export async function sharedRestMessageSend(
   const response = await coordinateSharedBridge(agent, rpc, {
     executionCtx,
     namespace,
+    ...(traceId ? { traceId } : {}),
+    ...(abortSignal ? { abortSignal } : {}),
     ...(funding === "platform" ? { agentKind: "personal" as const } : {}),
     ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
+    ...(trustedAccountState ? { trustedAccountState } : {}),
+    ...(trustedNetworkContext ? { trustedNetworkContext } : {}),
     channel: trustedChannel ?? {
       type: ChannelType.DM,
       source: trustedDelivery?.platform ?? MESSAGE_SOURCE_CLIENT_CHAT,
@@ -624,14 +641,23 @@ export async function sharedRestMessageSend(
     text?: unknown;
     timing?: unknown;
     actionResults?: unknown;
+    responded?: unknown;
   };
   const replyText = typeof result.text === "string" ? result.text : "";
   const mediaUrls = Array.isArray(result.actionResults)
     ? result.actionResults.flatMap((entry) => {
         if (!entry || typeof entry !== "object") return [];
-        const data = (entry as { data?: unknown }).data;
+        const data = (
+          entry as {
+            data?: unknown;
+          }
+        ).data;
         if (!data || typeof data !== "object") return [];
-        const mediaUrl = (data as { mediaUrl?: unknown }).mediaUrl;
+        const mediaUrl = (
+          data as {
+            mediaUrl?: unknown;
+          }
+        ).mediaUrl;
         return typeof mediaUrl === "string" && mediaUrl.trim() ? [mediaUrl.trim()] : [];
       })
     : [];
@@ -645,6 +671,9 @@ export async function sharedRestMessageSend(
   return {
     text: replyText,
     agentName: agentName || "Eliza",
+    ...(result.responded === false
+      ? { responded: false as const, responseReason: "no_response" as const }
+      : {}),
     ...(mediaUrls.length > 0 ? { mediaUrls } : {}),
     ...(timing ? { timing } : {}),
   };

@@ -4,7 +4,8 @@
  * Settings section (`/settings#cloud-security`).
  */
 
-import { DashboardPageContainer, useSetPageHeader } from "../../cloud-ui";
+import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboard-page";
+import { useSetPageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { ActiveSessionsPanel } from "./components/active-sessions-panel";

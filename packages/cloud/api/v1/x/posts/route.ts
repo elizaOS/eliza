@@ -4,11 +4,11 @@
  * (or legacy confirmSend). Optional reply / quote target.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { createXPost } from "@elizaos/cloud-shared/lib/services/x";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { createXPost } from "@/lib/services/x";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { xRouteErrorResponse } from "../error-response";
 
 const requestSchema = z

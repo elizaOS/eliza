@@ -1,7 +1,8 @@
 // Handles webhook cloud API eliza app webhook telegram route traffic with signature or internal auth checks.
+
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { isPersonalSharedTelegramEdgeEnabled } from "@/api-app/personal-shared-telegram-edge";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { forwardToWebhookGateway, safeWebhookSuffix } from "../_forward";
 import {
   handlePersonalTelegramDeliveryLedger,

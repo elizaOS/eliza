@@ -8,12 +8,13 @@
  * entry per seeded message. Classification quality is graded by the sibling
  * inbox-triage-classification-outcome scenario.
  */
-import type { MessageAdapter, MessageRef, MessageSource } from "@elizaos/core";
 import type {
-  ScenarioCheckResult,
-  ScenarioContext,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+  MessageAdapter,
+  MessageRef,
+  MessageSource,
+} from "@elizaos/plugin-assistant";
+import type { ScenarioCheckResult, ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 // Stable source-message ids so the seed adapters and the finalCheck readback
 // agree.
@@ -152,9 +153,7 @@ async function assertOrganicTriagePersisted(
   if (!runtime) {
     return "inbox-capability outcome: scenario runtime unavailable";
   }
-  const { InboxRepository } = (await import(
-    "@elizaos/plugin-inbox/inbox/repository"
-  )) as {
+  const { InboxRepository } = (await import("@elizaos/plugin-inbox")) as {
     InboxRepository: new (
       rt: unknown,
     ) => {
@@ -195,7 +194,7 @@ export default scenario({
   tags: ["lifeops", "inbox", "inbox_triage", "llm-eval"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

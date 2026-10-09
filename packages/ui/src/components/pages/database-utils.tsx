@@ -4,8 +4,8 @@
  * These render query/table results the view fetches; they hold no data of their
  * own.
  */
-import type { ColumnInfo } from "../../api";
-import { useAppSelector } from "../../state";
+import type { ColumnInfo } from "../../api/client-types-core";
+import { useAppSelector } from "../../state/app-store";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";

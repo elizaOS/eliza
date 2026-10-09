@@ -29,11 +29,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-  Switch,
-} from "../../cloud-ui";
+} from "../../components/ui/alert-dialog";
 import { Badge, type BadgeProps } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
+import { Switch } from "../../components/ui/switch";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   POOLED_PROVIDER_LABELS,

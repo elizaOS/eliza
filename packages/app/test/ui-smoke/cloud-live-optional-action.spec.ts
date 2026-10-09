@@ -475,6 +475,72 @@ test.describe("Cloud live optional action boundary", () => {
     });
   });
 
+  test("takes the non-billable cancellation path when approval is absent", async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <button data-testid="activation-confirm" aria-pressed="false">Start Dedicated</button>
+      <button data-testid="activation-cancel" aria-pressed="false">Not now</button>
+      <output data-testid="confirmation-count">0</output>
+      <output data-testid="cancellation-count">0</output>
+      <script>
+        document.addEventListener("click", (event) => {
+          if (!(event.target instanceof HTMLButtonElement)) return;
+          const confirmation = document.querySelector('[data-testid="activation-confirm"]');
+          const cancellation = document.querySelector('[data-testid="activation-cancel"]');
+          if (event.target.dataset.testid === "activation-confirm") {
+            document.querySelector('[data-testid="confirmation-count"]').textContent = "1";
+            return;
+          }
+          if (event.target.dataset.testid !== "activation-cancel") return;
+          const cancellationCount = document.querySelector('[data-testid="cancellation-count"]');
+          cancellationCount.textContent = String(Number(cancellationCount.textContent) + 1);
+          cancellation.setAttribute("aria-pressed", "true");
+          setTimeout(() => {
+            window.__testActiveBinding = "shared";
+          }, 10);
+        });
+      </script>
+    `);
+    const gate = createCloudLiveDedicatedConsentGate({});
+
+    await expect(
+      waitForCloudLivePersonalIdentity({
+        readBinding: () =>
+          page.evaluate(
+            () =>
+              (window as typeof window & { __testActiveBinding?: string })
+                .__testActiveBinding ?? null,
+          ),
+        runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
+        retryRecovery: page.getByTestId("identity-retry"),
+        dedicatedConsent: {
+          gate,
+          confirmationChoices: page.getByTestId("activation-confirm"),
+          cancellationChoices: page.getByTestId("activation-cancel"),
+          performConfirmation: async (confirmation) => {
+            await confirmation.click();
+            return "activation";
+          },
+          performCancellation: async (cancellation) => {
+            await cancellation.click();
+          },
+        },
+        timeoutMs: 500,
+        runtimeCloudGraceMs: 50,
+        pollIntervalMs: 5,
+      }),
+    ).resolves.toBe("shared");
+    await expect(page.getByTestId("confirmation-count")).toHaveText("0");
+    await expect(page.getByTestId("cancellation-count")).toHaveText("1");
+    expect(gate.snapshot()).toEqual({
+      approvalGrantedCount: 0,
+      confirmationOfferCount: 1,
+      confirmationClickCount: 0,
+      cancellationCount: 1,
+    });
+  });
+
   test("rejects billable approval outside an explicit staging dispatch", () => {
     for (const env of [
       {

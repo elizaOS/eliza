@@ -5,7 +5,7 @@
  * clicks one.
  *
  * The block vocabulary, parsing, neutral layout, and the callback codec all live
- * in `@elizaos/core` (`messaging/interactions`) so the dashboard, Telegram, and
+ * in `@elizaos/core` so the dashboard, Telegram, and
  * Discord render the same agent output identically. This module is the thin
  * Discord-specific projection: neutral buttons → `DiscordActionRow` specs that
  * `buildComponents` (utils.ts) turns into discord.js builders.
@@ -27,6 +27,8 @@ import type { DiscordActionRow, DiscordComponentOptions } from "./types";
 const MAX_BUTTONS_PER_ROW = 5;
 const MAX_ROWS = 5;
 const MAX_CUSTOM_ID_BYTES = 100;
+/** Discord rejects the whole message when a button label exceeds 80 characters. */
+const MAX_BUTTON_LABEL_LENGTH = 80;
 
 /** discord.js ButtonStyle numeric values. */
 const BUTTON_STYLE = { primary: 1, secondary: 2, danger: 4 } as const;
@@ -70,6 +72,13 @@ function toComponent(button: NeutralButton): DiscordComponentOptions | null {
 	return null;
 }
 
+/** Prose form of an option that cannot ship as a button. */
+function overflowLabel(button: { label?: string; url?: string }): string {
+	return button.url && button.label
+		? `${button.label} (${button.url})`
+		: (button.label ?? "");
+}
+
 /**
  * Project a reply's interaction blocks onto Discord action rows + the prose to
  * display. Plain replies (no blocks) pass through unchanged with no components,
@@ -90,6 +99,9 @@ export function renderDiscordInteractions(
 
 	const rows: DiscordActionRow[] = [];
 	const extraLines: string[] = [];
+	// Options Discord cannot render as buttons (label over the length limit, or
+	// past the row cap) are surfaced as prose so none is silently unreachable.
+	const overflowLabels: string[] = [];
 	let needsFreeTextReply = false;
 
 	for (const block of blocks) {
@@ -101,9 +113,15 @@ export function renderDiscordInteractions(
 		});
 		let producedButton = false;
 		for (const row of layout.rows) {
-			const components = (row.buttons ?? [])
-				.map(toComponent)
-				.filter((c): c is DiscordComponentOptions => c !== null);
+			const components: DiscordComponentOptions[] = [];
+			for (const button of row.buttons ?? []) {
+				if (button.label.length > MAX_BUTTON_LABEL_LENGTH) {
+					overflowLabels.push(overflowLabel(button));
+					continue;
+				}
+				const component = toComponent(button);
+				if (component) components.push(component);
+			}
 			if (components.length > 0) {
 				rows.push({ type: 1, components });
 				producedButton = true;
@@ -125,20 +143,14 @@ export function renderDiscordInteractions(
 	// cap, surface the dropped options as prose and invite a typed reply so no
 	// option is silently unreachable.
 	const visibleRows = rows.slice(0, MAX_ROWS);
-	const droppedButtons = rows.slice(MAX_ROWS).flatMap((row) => row.components);
-	if (droppedButtons.length > 0) {
+	for (const row of rows.slice(MAX_ROWS)) {
+		overflowLabels.push(...row.components.map(overflowLabel));
+	}
+	if (overflowLabels.length > 0) {
 		needsFreeTextReply = true;
-		const droppedLabels = droppedButtons
-			.map((button) =>
-				button.url && button.label
-					? `${button.label} (${button.url})`
-					: (button.label ?? ""),
-			)
-			.filter((label) => label.trim().length > 0);
-		if (droppedLabels.length > 0) {
-			extraLines.push(
-				`More options (reply with one): ${droppedLabels.join(", ")}`,
-			);
+		const labels = overflowLabels.filter((label) => label.trim().length > 0);
+		if (labels.length > 0) {
+			extraLines.push(`More options (reply with one): ${labels.join(", ")}`);
 		}
 	}
 

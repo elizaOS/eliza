@@ -5,7 +5,8 @@
  */
 import { ElizaError, type UUID } from "@elizaos/core";
 import { and, eq, inArray } from "drizzle-orm";
-import { participantTable, roomTable } from "../schema/index";
+import { participantTable } from "../schema/participant";
+import { roomTable } from "../schema/room";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
 

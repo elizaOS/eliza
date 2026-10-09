@@ -1,52 +1,32 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+/** Runs real authentication and encrypted-storage contracts in one package. */
 import { defineConfig } from "vitest/config";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const monorepoRoot = path.resolve(here, "../..");
-const coreSrc = path.join(monorepoRoot, "packages/core/src");
-const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud/routing/src");
-const loggerSrc = path.join(monorepoRoot, "packages/logger/src");
-const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
-const vaultSrc = path.join(monorepoRoot, "packages/vault/src");
+import {
+  buildWorkspaceSourceAliases,
+  workspaceRepoRoot,
+} from "../scripts/vitest/source-aliases.ts";
 
 export default defineConfig({
   resolve: {
-    alias: [
-      {
-        find: /^@elizaos\/core$/,
-        replacement: path.join(coreSrc, "index.node.ts"),
-      },
-      {
-        find: /^@elizaos\/core\/atomic-json$/,
-        replacement: path.join(coreSrc, "utils/atomic-json.ts"),
-      },
-      { find: /^@elizaos\/core\/(.+)$/, replacement: path.join(coreSrc, "$1") },
-      {
-        find: /^@elizaos\/cloud-routing$/,
-        replacement: path.join(cloudRoutingSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/logger$/,
-        replacement: path.join(loggerSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: path.join(sharedSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/(.+)$/,
-        replacement: path.join(sharedSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/vault$/,
-        replacement: path.join(vaultSrc, "index.ts"),
-      },
-    ],
+    conditions: ["eliza-source", "node"],
+    alias: buildWorkspaceSourceAliases(workspaceRepoRoot),
   },
   test: {
-    include: ["src/**/*.test.ts"],
+    // Isolate PGlite/WASM teardown in separate processes. The thread pool can
+    // abort Node 24 in ThreadIsolation::UnregisterWasmAllocation on Linux.
+    pool: "forks",
+    maxWorkers: 1,
+    server: { deps: { inline: [/@elizaos\//] } },
+    include: [
+      "src/auth/**/*.test.ts",
+      "src/accounts/**/*.test.ts",
+      "src/vault/**/*.test.ts",
+      "src/kms/**/*.test.ts",
+      "src/providers/**/*.test.ts",
+      "test/*.test.ts",
+    ],
+    hookTimeout: 60_000,
     environment: "node",
-    testTimeout: 30_000,
+    testTimeout: 60_000,
   },
 });

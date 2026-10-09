@@ -3,12 +3,12 @@
  * The internal GET and scheduled POST boundary are protected by CRON_SECRET.
  */
 
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { autoTopUpService } from "@elizaos/cloud-shared/lib/services/auto-top-up";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { type Context, Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { autoTopUpService } from "@/lib/services/auto-top-up";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 const AUTO_TOP_UP_CRON_LIMIT = 100;

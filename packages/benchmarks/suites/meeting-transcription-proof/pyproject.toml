@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-meeting-transcription-proof"
+version = "0.1.0"
+description = "Meeting transcription proof registry for Zoom, Google Meet, local capture, cloud agents, and hybrid inference."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "ElizaOS Team" }]
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+[project.scripts]
+meeting-transcription-proof = "elizaos_meeting_transcription_proof.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_meeting_transcription_proof"]
+
+[tool.hatch.build.targets.wheel.force-include]
+fixtures = "fixtures"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

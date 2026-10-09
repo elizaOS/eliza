@@ -37,9 +37,9 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from training.tokenization import tokenize_with_explicit_limit
+from eliza_training.training.tokenization import tokenize_with_explicit_limit
 
-from lib.generation_integrity import (
+from eliza_training.lib.generation_integrity import (
     model_context_tokens,
     remaining_model_context_tokens,
     require_complete_generated_tokens,
@@ -2048,7 +2048,7 @@ async def run_feed_crl(config: FeedCRLConfig) -> dict[str, Any]:
     # Initialize checkpoint syncer if configured
     syncer = None
     try:
-        from src.training.checkpoint_sync import CheckpointSyncer
+        from eliza_training.rl.checkpoint_sync import CheckpointSyncer
 
         if os.environ.get("CHECKPOINT_SYNC_BACKEND") or os.environ.get("CHECKPOINT_RSYNC_HOST"):
             syncer = CheckpointSyncer.from_env()

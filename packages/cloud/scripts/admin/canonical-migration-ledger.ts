@@ -1,18 +1,15 @@
 /** Dependency-light, read-only canonical Cloud migration ledger validation. */
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const HASH_IDENTITY_ENFORCEMENT_TAG =
   "0194_job_execution_interruptions_catalog_guard";
-const MIGRATIONS_DIR =
-  [
-    path.join(process.cwd(), "packages/cloud/shared/src/db/migrations"),
-    path.join(process.cwd(), "src/db/migrations"),
-  ].find((candidate) =>
-    existsSync(path.join(candidate, "meta/_journal.json")),
-  ) ?? path.join(process.cwd(), "packages/cloud/shared/src/db/migrations");
+// Bind deployment evidence to this checkout, including isolated CI working directories.
+const MIGRATIONS_DIR = fileURLToPath(
+  new URL("../../shared/src/db/migrations/", import.meta.url),
+);
 const JOURNAL_PATH = path.join(MIGRATIONS_DIR, "meta/_journal.json");
 
 export interface JournalEntry {

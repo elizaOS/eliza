@@ -6,23 +6,20 @@
  */
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import type { AgentStatus } from "../api";
+import type { AgentStatus } from "../api/client-types-core";
 import { deliverSystemNotification } from "../bridge/notification-delivery";
 import {
+  type ActionNotice,
   type ActionNoticeFn,
   type ActionTone,
   TOAST_TTL_MS,
 } from "./action-notice";
+
 import {
   loadPersistedFirstRunComplete,
   savePersistedFirstRunComplete,
 } from "./persistence";
-import type {
-  ActionNotice,
-  AppState,
-  LifecycleAction,
-  StartupErrorState,
-} from "./types";
+import type { AppState, LifecycleAction, StartupErrorState } from "./types";
 
 // ── State shape ────────────────────────────────────────────────────────
 
@@ -445,5 +442,3 @@ export function useLifecycleState(cloudOnly?: boolean): LifecycleStateHook {
     agentStatusRef,
   };
 }
-
-export type { LifecycleAction_ as LifecycleDispatchAction };

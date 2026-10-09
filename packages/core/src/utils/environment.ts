@@ -1,384 +1,125 @@
-/**
- * Browser- and Node-compatible environment-variable abstraction — a
- * cross-platform interface for reading and setting env vars in both browser and
- * Node runtimes (via a cached singleton and typed convenience getters), plus
- * Node-only upward .env discovery and dotenv loading.
- */
-
 import { parseBooleanValue } from "./boolean.js";
+import { normalizeEnvValue } from "./env.js";
 
-/**
- * Type representing the runtime environment
- */
-export type RuntimeEnvironment = "node" | "browser" | "unknown";
+/** Canonical environment-variable reader. */
 
-/**
- * Interface for environment configuration
- */
-export interface EnvironmentConfig {
-	[key: string]: string | boolean | number | undefined;
+export interface ReadEnvOptions {
+	/** Environment object to read from. Defaults to `process.env`. */
+	env?: NodeJS.ProcessEnv;
+	/** Value to return when the canonical name is not set. */
+	defaultValue?: string;
 }
 
-/**
- * Detect the current runtime environment
- */
-export function detectEnvironment(): RuntimeEnvironment {
-	// Check for Node.js
-	if (
-		typeof process !== "undefined" &&
-		process.versions &&
-		process.versions.node
-	) {
-		return "node";
-	}
-
-	// Check for browser
-	if (
-		typeof globalThis !== "undefined" &&
-		typeof (globalThis as { window?: Window }).window !== "undefined" &&
-		typeof (globalThis as { document?: Document }).document !== "undefined"
-	) {
-		return "browser";
-	}
-
-	return "unknown";
+export function readEnv(
+	canonicalKey: string,
+	options: ReadEnvOptions = {},
+): string | undefined {
+	const env = options.env ?? process.env;
+	return normalizeEnvValue(env[canonicalKey]) ?? options.defaultValue;
 }
 
-/**
- * Environment variable storage for browser environments
- */
-class BrowserEnvironmentStore {
-	private store: EnvironmentConfig = {};
-
-	constructor() {
-		// Load from window.ENV if available (common pattern for browser apps)
-		const globalWindow = (
-			globalThis as { window?: { ENV?: EnvironmentConfig } }
-		).window;
-		if (globalWindow?.ENV) {
-			this.store = { ...globalWindow.ENV };
-		}
-
-		// Also check for __ENV__ (another common pattern)
-		const globalEnv = (globalThis as { __ENV__?: EnvironmentConfig }).__ENV__;
-		if (globalEnv) {
-			this.store = { ...this.store, ...globalEnv };
-		}
-	}
-
-	get(key: string): string | undefined {
-		const value = this.store[key];
-		return value !== undefined ? String(value) : undefined;
-	}
-
-	set(key: string, value: string | boolean | number): void {
-		this.store[key] = value;
-	}
-
-	has(key: string): boolean {
-		return key in this.store;
-	}
-
-	getAll(): EnvironmentConfig {
-		return { ...this.store };
-	}
+/** Boolean form of {@link readEnv}: truthy when the value is `1`/`true`/`yes`/`on`. */
+export function readEnvBool(
+	canonicalKey: string,
+	options: Omit<ReadEnvOptions, "defaultValue"> & {
+		defaultValue?: boolean;
+	} = {},
+): boolean {
+	const raw = readEnv(canonicalKey, { env: options.env });
+	return parseBooleanValue(raw) ?? options.defaultValue ?? false;
 }
 
+/** Canonical setting resolver: per-agent runtime setting first, then env. */
+
 /**
- * Environment abstraction class
+ * Minimal structural shape of a runtime that can resolve a setting. Kept local
+ * (rather than importing `IAgentRuntime`) to avoid coupling simple settings
+ * consumers to the complete runtime type graph.
  */
-class Environment {
-	private readonly runtime: RuntimeEnvironment;
-	private browserStore: BrowserEnvironmentStore | null = null;
-	private cache: Map<string, string | undefined> = new Map();
+export interface SettingReader {
+	getSetting(key: string): string | boolean | number | null;
+}
 
-	constructor() {
-		this.runtime = detectEnvironment();
-		if (this.runtime === "browser") {
-			this.browserStore = new BrowserEnvironmentStore();
-		}
+export type ResolveSettingOptions = ReadEnvOptions;
+
+/**
+ * Resolve a configuration value the way single-tenant / headless plugins want
+ * it: the per-agent runtime setting first, then `process.env` as a deployment
+ * fallback, then an optional default.
+ *
+ * This opt-in fallback must not be used for tenant settings in shared hosts.
+ * AgentRuntime.getSetting stays agent-scoped and never reads process.env.
+ *
+ * Runtime values are coerced to string. The env fallback uses {@link readEnv}
+ * semantics (trimmed; empty strings treated as unset).
+ *
+ * @param runtime - Runtime to read the per-agent setting from (may be null)
+ * @param key - Setting / environment variable name
+ * @param options - `defaultValue` and/or an explicit `env` record
+ * @returns The resolved string, `options.defaultValue`, or `undefined`
+ */
+export function resolveSetting(
+	runtime: SettingReader | null | undefined,
+	key: string,
+	options: ResolveSettingOptions = {},
+): string | undefined {
+	const fromRuntime = runtime?.getSetting(key);
+	if (fromRuntime !== undefined && fromRuntime !== null) {
+		return String(fromRuntime);
 	}
+	return readEnv(key, options);
+}
 
-	/**
-	 * Get the current runtime environment
-	 */
-	getRuntime(): RuntimeEnvironment {
-		return this.runtime;
-	}
+/** Node environment access with explicit cache invalidation after settings reload. */
 
-	/**
-	 * Check if running in Node.js
-	 */
-	isNode(): boolean {
-		return this.runtime === "node";
-	}
-
-	/**
-	 * Check if running in browser
-	 */
-	isBrowser(): boolean {
-		return this.runtime === "browser";
-	}
-
-	/**
-	 * Get an environment variable
-	 */
+export class Environment {
+	private readonly cache = new Map<string, string | undefined>();
 	get(key: string, defaultValue?: string): string | undefined {
-		// Check cache first
-		if (this.cache.has(key)) {
-			const cached = this.cache.get(key);
-			return cached ?? defaultValue;
-		}
-
-		let value: string | undefined;
-
-		if (this.runtime === "node") {
-			value = process.env[key];
-		} else if (this.browserStore) {
-			value = this.browserStore.get(key);
-		}
-
-		// Cache the result
-		this.cache.set(key, value);
-
-		return value ?? defaultValue;
+		if (!this.cache.has(key)) this.cache.set(key, process.env[key]);
+		return this.cache.get(key) ?? defaultValue;
 	}
-
-	/**
-	 * Set an environment variable (mainly for browser/testing)
-	 */
 	set(key: string, value: string | boolean | number): void {
-		const stringValue = String(value);
-
-		// Clear cache
 		this.cache.delete(key);
-
-		if (this.runtime === "node") {
-			process.env[key] = stringValue;
-		} else if (this.browserStore) {
-			this.browserStore.set(key, value);
-		}
+		process.env[key] = String(value);
 	}
-
-	/**
-	 * Check if an environment variable exists
-	 */
 	has(key: string): boolean {
 		return this.get(key) !== undefined;
 	}
-
-	/**
-	 * Get all environment variables
-	 */
-	getAll(): EnvironmentConfig {
-		if (this.runtime === "node") {
-			return { ...process.env };
-		}
-
-		if (this.browserStore) {
-			return this.browserStore.getAll();
-		}
-
-		return {};
+	getAll(): Record<string, string | undefined> {
+		return { ...process.env };
 	}
-
-	/**
-	 * Get a boolean environment variable
-	 */
 	getBoolean(key: string, defaultValue = false): boolean {
-		const value = this.get(key);
-		return parseBooleanValue(value) ?? defaultValue;
+		return parseBooleanValue(this.get(key)) ?? defaultValue;
 	}
-
-	/**
-	 * Get a number environment variable
-	 */
 	getNumber(key: string, defaultValue?: number): number | undefined {
-		const value = this.get(key);
-		if (value === undefined) {
-			return defaultValue;
-		}
-		const trimmed = value.trim();
-		if (!trimmed) {
-			return defaultValue;
-		}
-		const parsed = Number(trimmed);
-		return !Number.isFinite(parsed) ? defaultValue : parsed;
+		const value = this.get(key)?.trim();
+		if (!value) return defaultValue;
+		const parsed = Number(value);
+		return Number.isFinite(parsed) ? parsed : defaultValue;
 	}
-
-	/**
-	 * Clear the cache (useful for testing)
-	 */
 	clearCache(): void {
 		this.cache.clear();
 	}
 }
-
-/**
- * Singleton instance of the Environment class
- */
-let environmentInstance: Environment | null = null;
-
-/**
- * Get the singleton Environment instance
- */
+const environment = new Environment();
 export function getEnvironment(): Environment {
-	if (!environmentInstance) {
-		environmentInstance = new Environment();
-	}
-	return environmentInstance;
+	return environment;
 }
-
-/**
- * Convenience function to get an environment variable
- */
 export function getEnv(key: string, defaultValue?: string): string | undefined {
-	return getEnvironment().get(key, defaultValue);
+	return environment.get(key, defaultValue);
 }
-
-/**
- * Convenience function to set an environment variable
- */
 export function setEnv(key: string, value: string | boolean | number): void {
-	getEnvironment().set(key, value);
+	environment.set(key, value);
 }
-
-/**
- * Convenience function to check if an environment variable exists
- */
 export function hasEnv(key: string): boolean {
-	return getEnvironment().has(key);
+	return environment.has(key);
 }
-
-/**
- * Convenience function to get a boolean environment variable
- */
 export function getBooleanEnv(key: string, defaultValue = false): boolean {
-	return getEnvironment().getBoolean(key, defaultValue);
+	return environment.getBoolean(key, defaultValue);
 }
-
-/**
- * Convenience function to get a number environment variable
- */
 export function getNumberEnv(
 	key: string,
 	defaultValue?: number,
 ): number | undefined {
-	return getEnvironment().getNumber(key, defaultValue);
-}
-
-/**
- * Initialize browser environment with config
- * This should be called early in browser apps to set up environment
- */
-export function initBrowserEnvironment(config: EnvironmentConfig): void {
-	const env = getEnvironment();
-	if (env.isBrowser()) {
-		for (const [key, value] of Object.entries(config)) {
-			if (value !== undefined) {
-				env.set(key, value);
-			}
-		}
-	}
-}
-
-/**
- * Export the current runtime for convenience
- */
-export const currentRuntime = detectEnvironment();
-
-/**
- * Re-export the Environment class for advanced usage
- */
-export { Environment };
-
-// ============================================================================
-// .env File Loading (Node.js only)
-// ============================================================================
-
-/**
- * Find the .env file by traversing up the directory tree
- * Searches from startDir upwards until it finds a .env file or reaches the root
- *
- * @param startDir - Directory to start searching from (defaults to process.cwd())
- * @param filenames - Array of filenames to search for (defaults to ['.env', '.env.local'])
- * @returns Path to the .env file if found, null otherwise
- */
-export function findEnvFile(
-	startDir?: string,
-	filenames: string[] = [".env", ".env.local"],
-): string | null {
-	if (typeof process === "undefined" || !process.cwd) {
-		return null;
-	}
-
-	const moduleBuiltin = process.getBuiltinModule("module") as
-		| { createRequire?: (filename: string) => NodeJS.Require }
-		| undefined;
-	const nodeRequire = moduleBuiltin?.createRequire?.(import.meta.url);
-	if (!nodeRequire) {
-		return null;
-	}
-
-	const fs = nodeRequire("node:fs") as typeof import("node:fs");
-	const path = nodeRequire("node:path") as typeof import("node:path");
-
-	let currentDir = startDir || process.cwd();
-
-	while (true) {
-		for (const filename of filenames) {
-			const candidate = path.join(currentDir, filename);
-			if (fs.existsSync(candidate)) {
-				return candidate;
-			}
-		}
-
-		const parentDir = path.dirname(currentDir);
-		if (parentDir === currentDir) {
-			break;
-		}
-		currentDir = parentDir;
-	}
-
-	return null;
-}
-
-/**
- * Load environment variables from .env file into process.env
- *
- * Node.js only - does nothing in browser environments
- *
- * @param envPath - Optional explicit path to .env file. If not provided, will search upwards from cwd
- * @returns true if .env was found and loaded successfully
- * @throws Error if the .env file exists but cannot be parsed
- */
-export function loadEnvFile(envPath?: string): boolean {
-	if (typeof process === "undefined" || !process.cwd) {
-		return false;
-	}
-
-	const moduleBuiltin = process.getBuiltinModule("module") as
-		| { createRequire?: (filename: string) => NodeJS.Require }
-		| undefined;
-	const nodeRequire = moduleBuiltin?.createRequire?.(import.meta.url);
-	if (!nodeRequire) {
-		return false;
-	}
-
-	const dotenv = nodeRequire("dotenv") as typeof import("dotenv");
-
-	const resolvedPath = envPath || findEnvFile();
-	if (!resolvedPath) {
-		return false;
-	}
-
-	const result = dotenv.config({ path: resolvedPath });
-
-	if (result.error) {
-		throw new Error(
-			`Failed to parse .env file at ${resolvedPath}: ${result.error.message}`,
-		);
-	}
-
-	return true;
+	return environment.getNumber(key, defaultValue);
 }

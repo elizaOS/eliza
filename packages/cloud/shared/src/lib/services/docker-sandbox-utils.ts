@@ -647,7 +647,10 @@ export function requiresDockerHostGateway(targetUrl: string): boolean {
  * Validate that line so warnings or unexpected output do not get mistaken
  * for a container ID.
  */
-export function extractDockerCreateContainerId(output: string): string {
+export function extractDockerCreateContainerId(
+  output: string,
+  options: { requireFullId?: boolean } = {},
+): string {
   const lines = output
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -668,12 +671,31 @@ export function extractDockerCreateContainerId(output: string): string {
     );
   }
 
+  if (options.requireFullId) {
+    if (!/^[0-9a-f]{64}$/.test(containerId)) {
+      throw new Error("[docker-sandbox] paid compute requires the full immutable Docker id");
+    }
+    return containerId;
+  }
   return containerId.slice(0, 12);
 }
 
 // ---------------------------------------------------------------------------
 // Port Allocation
 // ---------------------------------------------------------------------------
+
+/**
+ * Count the exclusions that fall inside [min, max). Provisioning passes one
+ * shared used-port set (bridge, WebUI, and app-container ports) for disjoint
+ * ranges, so out-of-range entries must not count toward exhaustion.
+ */
+function countInRangePorts(excluded: Set<number>, min: number, max: number): number {
+  let count = 0;
+  for (const port of excluded) {
+    if (port >= min && port < max) count++;
+  }
+  return count;
+}
 
 /**
  * Pick a random port in [min, max) that is not in the exclusion set.
@@ -683,23 +705,19 @@ export function extractDockerCreateContainerId(output: string): string {
  */
 export function allocatePort(min: number, max: number, excluded: Set<number>): number {
   const range = max - min;
-  if (excluded.size >= range) {
+  if (excluded.size >= range && countInRangePorts(excluded, min, max) >= range) {
     throw new Error(
       `[docker-sandbox] No available ports in range [${min}, ${max}). All ${range} ports are allocated.`,
     );
   }
-  let port: number;
-  let attempts = 0;
-  do {
-    port = min + Math.floor(Math.random() * range);
-    attempts++;
-    if (attempts > range * 2) {
-      throw new Error(
-        `[docker-sandbox] Failed to find an available port in range [${min}, ${max}) after ${attempts} attempts.`,
-      );
-    }
-  } while (excluded.has(port));
-  return port;
+  // Start randomly, then visit each candidate once. Repeated random draws can
+  // miss the only free port and incorrectly report exhaustion.
+  const start = Math.floor(Math.random() * range);
+  for (let offset = 0; offset < range; offset++) {
+    const port = min + ((start + offset) % range);
+    if (!excluded.has(port)) return port;
+  }
+  throw new Error(`[docker-sandbox] No available ports in range [${min}, ${max}).`);
 }
 
 export function readDockerHostPortFromMetadata(metadata: unknown): number | null {

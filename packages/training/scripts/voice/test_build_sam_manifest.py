@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.voice import build_same_manifest as bsm
+from eliza_training.voice import build_sam_manifest as bsm
 
 
 def _silence_wav(path: Path, duration_s: float = 2.0, sample_rate: int = 44100) -> None:

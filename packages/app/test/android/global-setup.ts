@@ -3,7 +3,7 @@
 // the on-device agent is reachable — failing LOUDLY with a logcat snapshot when
 // the local runtime did not come up (the user must know if local fails to
 // start). It does NOT stage models or boot the agent itself; run the local
-// bring-up (scripts/android-e2e.mjs, or mobile-local-chat-smoke) first.
+// bring-up (scripts/android-e2e.ts, or mobile-local-chat-smoke) first.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -18,8 +18,8 @@ import {
   resolveAdb,
   resolveApk,
   resolveSerial,
-} from "../../scripts/lib/android-device.mjs";
-import { parsePort } from "../../scripts/lib/host-agent.mjs";
+} from "../../scripts/lib/android-device.ts";
+import { parsePort } from "../../scripts/lib/host-agent.ts";
 
 const HEALTH_POLL_MS = Number(
   process.env.ELIZA_ANDROID_HEALTH_TIMEOUT_MS ?? 180_000,

@@ -21,9 +21,9 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useRafCoalescer } from "../../gestures";
+import { useRafCoalescer } from "../../gestures/useRafCoalescer";
 import type { ActivityEvent } from "../../hooks/useActivityEvents";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { shellLocalStorage } from "../../surface-realm-channel";
 // Direct sub-path import for WidgetHost to avoid the widgets/index.ts ↔
 // WidgetHost.tsx chunk-level cycle. The barrel still works fine for
@@ -32,7 +32,7 @@ import {
   getWidgetRegistryVersion,
   resolveWidgetsForSlot,
   subscribeWidgetRegistry,
-} from "../../widgets";
+} from "../../widgets/registry";
 import { useChatSidebarVisibility } from "../../widgets/useChatSidebarVisibility";
 import {
   isWidgetVisible,
@@ -45,7 +45,7 @@ import {
   type WidgetVisibilityCandidate,
   WidgetVisibilityEditor,
 } from "./WidgetVisibilityPanel";
-import { buildAppsSectionVisibilityCandidate } from "./WidgetVisibilityPanel.helpers";
+import { buildAppsSectionVisibilityCandidate } from "./WidgetVisibilityPanel.tsx";
 
 interface TasksEventsPanelProps {
   open: boolean;

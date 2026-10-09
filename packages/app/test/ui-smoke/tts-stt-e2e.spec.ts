@@ -35,7 +35,7 @@
  * The TTS/STT backends themselves (ElevenLabs cloud, local ASR, omnivoice)
  * are NOT exercised here — those are integration territory and require
  * credentials + heavy local models (see
- * `packages/app-core/src/services/phrase-chunked-tts.test.ts` for the
+ * `plugins/plugin-local-inference/src/services/voice/phrase-chunked-tts.test.ts` for the
  * backend adapter's contract; `plugins/plugin-local-inference` for the
  * native ASR/TTS subsystem). This spec is about wiring: did the app call
  * the right endpoint with the right payload, and did the response flow back
@@ -60,6 +60,8 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+
+import { seedStewardSession } from "./helpers/test-auth";
 
 function makeSilentWav(): Buffer {
   const sampleRate = 8_000;
@@ -422,6 +424,8 @@ async function forceBrowserSpeechRecognition(page: Page): Promise<void> {
 test.beforeEach(async ({ page }) => {
   installPageDiagnosticsGuard(page);
   await seedAppStorage(page);
+  // Exercise signed-in capture rather than the Cloud login gate.
+  await seedStewardSession(page);
   await installDefaultAppRoutes(page);
 });
 

@@ -48,6 +48,9 @@ export const emailMessages: EmailMessages = {
   containerShutdownWarning: {
     subject: '🚨 URGENT: ang container na "{{containerName}}" ay ipa-shut down sa loob ng 48 oras',
   },
+  agentRetentionDeletionNotice: {
+    subject: 'Ang iyong agent na "{{agentName}}" ay buburahin sa loob ng {{daysRemaining}} araw',
+  },
   footer: {
     copyright: "© {{year}} Eliza Cloud. Lahat ng karapatan ay nakalaan.",
   },

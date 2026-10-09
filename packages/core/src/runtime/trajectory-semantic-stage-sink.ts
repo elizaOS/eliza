@@ -1,16 +1,6 @@
 /**
- * Fans the per-turn runtime recorder's decision stages out to the database
- * trajectory step so app-chat trajectories carry the same Stage-1/planner/
- * tool/evaluation semantics as the JSON file recorder (#17030). The message
- * service wraps its file recorder with this sink at the single construction
- * point; every existing `recordStage` emit site then lands in both stores
- * without a second stage vocabulary.
- *
- * The database side is addressed through the resolved "trajectories" service's
- * `logSemanticStage` hook, keyed by the turn's AsyncLocalStorage
- * `trajectoryStepId`. Fan-out failures are J7 diagnostics: they are warned and
- * reported through `runtime.reportError` and never propagate into the file
- * write or the user turn.
+ * Copies runtime decision stages into database trajectory steps without changing their
+ * causal turn ownership.
  */
 
 import { getTrajectoryContext } from "../trajectory-context";

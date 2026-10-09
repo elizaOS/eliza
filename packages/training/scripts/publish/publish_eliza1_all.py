@@ -48,10 +48,8 @@ log = logging.getLogger("publish_eliza1_all")
 
 TRAINING_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = TRAINING_ROOT.parents[1]
-if str(TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(TRAINING_ROOT))
 
-from scripts.manifest import eliza1_manifest as M  # noqa: E402
+from eliza_training.manifest import eliza1_manifest as M  # noqa: E402
 
 ORG = "elizaos"
 MODEL_REPO_ID = M.ELIZA_1_HF_REPO
@@ -162,8 +160,8 @@ def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
     # 2) eval/bench results + kernel-verify evidence + gates. These are part of
     #    the single eliza-1-training dataset repo under evals/.
     eval_sources: list[tuple[Path, str]] = []
-    gates_yaml = TRAINING_ROOT / "benchmarks" / "eliza1_gates.yaml"
-    gates_py = TRAINING_ROOT / "benchmarks" / "eliza1_gates.py"
+    gates_yaml = TRAINING_ROOT / "scripts" / "release" / "eliza1_gates.yaml"
+    gates_py = TRAINING_ROOT / "scripts" / "release" / "gates.py"
     models_status = TRAINING_ROOT / "benchmarks" / "MODELS_STATUS.md"
     for src, dst in (
         (gates_yaml, "evals/gates/eliza1_gates.yaml"),
@@ -236,7 +234,7 @@ def _bundle_dry_run(tier: str, bundle_dir: Path) -> Outcome:
     cmd = [
         sys.executable,
         "-m",
-        "scripts.publish.orchestrator",
+        "eliza_training.publish.orchestrator",
         "--tier",
         tier,
         "--bundle-dir",
@@ -320,11 +318,10 @@ def _sft_weights_status(tier: str = "2b") -> Outcome:
         return Outcome(
             repo,
             "model-weights",
-            "published",
-            f"SFT gate GREEN ({run.name}) — run "
-            f"`python scripts/push_model_to_hf.py --registry-key eliza-1-{tier} "
-            f"--checkpoint {final} --repo-id {repo}` then publish under "
-            f"`bundles/{tier}/` in the single model repo",
+            "pending",
+            f"SFT gate GREEN ({run.name}); weights have not been published. "
+            f"Stage {final} into a bundle, then run the gated publish orchestrator "
+            f"for tier {tier} to obtain an upload receipt.",
         )
     return Outcome(
         repo,

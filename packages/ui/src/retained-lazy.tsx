@@ -330,14 +330,6 @@ export function invalidateRetainedLazyModule<TProps extends object>(
   if (entry.refCount === 0) cleanupEntry(entry, "invalidate");
 }
 
-export function preloadRetainedLazyModule<TProps extends object>(
-  loader: RetainedLazyLoader<TProps>,
-  options: { cacheKey?: string } = {},
-): Promise<RetainedLazyModule<TProps>> {
-  installRetainedModuleLifecycle();
-  return ensureEntry(loader, { key: options.cacheKey }).promise;
-}
-
 export function __resetRetainedLazyModulesForTests(): void {
   for (const entry of retainedModuleCache.values()) {
     if (entry.retentionTimer) clearTimeout(entry.retentionTimer);

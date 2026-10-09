@@ -19,13 +19,13 @@
  * check fails so a single boolean grep is enough for alerts.
  */
 
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { getProviderEnvDiagnostics } from "@elizaos/cloud-shared/lib/services/oauth/provider-registry";
+import { isStewardPlatformConfigured } from "@elizaos/cloud-shared/lib/services/steward-platform-users";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
-import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
-import { getProviderEnvDiagnostics } from "@/lib/services/oauth/provider-registry";
-import { isStewardPlatformConfigured } from "@/lib/services/steward-platform-users";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 interface CheckResult {
   configured: boolean;
@@ -70,7 +70,7 @@ app.get("/", async (c) => {
       configured: Boolean(env.CRON_SECRET),
       message: env.CRON_SECRET
         ? "CRON_SECRET present"
-        : "CRON_SECRET not set — scheduled jobs (container-billing, process-redemptions) cannot authenticate",
+        : "CRON_SECRET not set — scheduled jobs (container-billing, agent-billing) cannot authenticate",
     };
 
     const oauthProviders = getProviderEnvDiagnostics();

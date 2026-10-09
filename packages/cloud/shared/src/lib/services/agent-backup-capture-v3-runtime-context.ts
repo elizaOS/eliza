@@ -6,8 +6,8 @@
  */
 
 import { isIP } from "node:net";
+import { type AgentBackupManifestV3 } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import type { AgentBackupManifestV3 } from "@elizaos/shared";
 import { and, eq, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import type { AgentBackupOperationClaim } from "../../db/repositories/agent-backup-catalog";

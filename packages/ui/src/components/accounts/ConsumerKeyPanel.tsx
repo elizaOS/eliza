@@ -18,14 +18,14 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import type {
   ConsumerKeyCreated,
   ConsumerKeyPatch,
   ConsumerKeySummary,
 } from "../../api/client-agent-consumer-keys";
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
+import { cn } from "../../utils/cn";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";

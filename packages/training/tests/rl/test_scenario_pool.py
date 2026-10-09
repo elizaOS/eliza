@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from src.training.scenario_pool import (
+from eliza_training.rl.scenario_pool import (
     CurriculumManager,
     MarketState,
     NewsItem,
@@ -24,7 +24,7 @@ from src.training.scenario_pool import (
     ScenarioPoolConfig,
     SocialPost,
 )
-from src.training.state_paths import resolve_state_dir, resolve_trajectory_dir
+from eliza_training.rl.state_paths import resolve_state_dir, resolve_trajectory_dir
 
 
 @pytest.fixture(autouse=True)

@@ -3,7 +3,7 @@
  * The private school detail is seeded into LifeOps state and must not leak
  * into unrelated partner or work messages.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
@@ -14,7 +14,7 @@ export default scenario({
   tags: ["lifeops", "coparenting", "privacy", "messaging", "mvp", "14789"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

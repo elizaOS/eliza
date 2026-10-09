@@ -1,24 +1,33 @@
+import { ElizaError } from "../errors.ts";
+import type { RecordedStage } from "../runtime/trajectory-recorder.ts";
+import type { JsonValue } from "../types/primitives.ts";
+import { asRecord } from "../utils/type-guards.ts";
+import { sanitizeTrajectoryJsonObject } from "./trajectory-json.ts";
+
+/** Defines the canonical semantic stage-kind vocabulary shared by trajectory producers and transports. */
+
+export const RECORDED_STAGE_KINDS = [
+	"messageHandler",
+	"planner",
+	"tool",
+	"toolSearch",
+	"evaluation",
+	"subPlanner",
+	"compaction",
+	"factsAndRelationships",
+] as const;
+
+export type RecordedStageKind = (typeof RECORDED_STAGE_KINDS)[number];
+
 /**
  * Defines the versioned semantic-stage envelope shared by trajectory storage,
  * exports, and viewer read contracts, adapting the richer runtime recorder
  * stages without creating a second stage vocabulary.
  */
 
-import { ElizaError } from "../errors";
-import type { RecordedStage } from "../runtime/trajectory-recorder";
-import {
-	RECORDED_STAGE_KINDS,
-	type RecordedStageKind,
-} from "../runtime/trajectory-stage-kind";
-import type { JsonValue } from "../types/primitives";
-import { asRecord } from "../utils/type-guards";
-import { sanitizeTrajectoryJsonObject } from "./trajectory-json";
-
 export const TRAJECTORY_SEMANTIC_STAGE_SCHEMA_VERSION = 1 as const;
 
-const TRAJECTORY_SEMANTIC_STAGE_MAX_DEPTH = 20;
 const TRAJECTORY_SEMANTIC_STAGE_MAX_ID_CHARS = 256;
-const utf8Encoder = new TextEncoder();
 
 const SEMANTIC_STAGE_KEYS = new Set([
 	"schemaVersion",
@@ -116,59 +125,55 @@ function isJsonValue(
 	value: unknown,
 	state: {
 		seen: WeakSet<object>;
-		nodes: number;
-		remainingBytes: number;
 	},
-	depth = 0,
 ): value is JsonValue {
-	state.nodes += 1;
-	if (depth > TRAJECTORY_SEMANTIC_STAGE_MAX_DEPTH) {
-		return false;
+	// Canonical tool schemas can be deeply nested. Walk the complete payload
+	// without imposing a depth cap or consuming the JavaScript call stack.
+	const pending: Array<{ value: unknown } | { leave: object }> = [{ value }];
+	for (let frame = pending.pop(); frame; frame = pending.pop()) {
+		if ("leave" in frame) {
+			state.seen.delete(frame.leave);
+			continue;
+		}
+		const current = frame.value;
+		if (
+			current === null ||
+			typeof current === "boolean" ||
+			typeof current === "string"
+		)
+			continue;
+		if (typeof current === "number") {
+			if (!Number.isFinite(current)) return false;
+			continue;
+		}
+		if (typeof current !== "object" || state.seen.has(current)) return false;
+		state.seen.add(current);
+		// Remove a container only after its descendants, preserving path-local
+		// cycle detection while accepting shared non-cyclic object references.
+		pending.push({ leave: current });
+		if (Array.isArray(current)) {
+			for (let index = current.length - 1; index >= 0; index--) {
+				if (index in current) pending.push({ value: current[index] });
+			}
+			continue;
+		}
+		const prototype = Object.getPrototypeOf(current);
+		if (prototype !== Object.prototype && prototype !== null) return false;
+		const record = asRecord(current);
+		if (!record) return false;
+		const values = Object.values(record);
+		for (let index = values.length - 1; index >= 0; index--) {
+			pending.push({ value: values[index] });
+		}
 	}
-	const serializedScalarBytes = (scalar: string | number | boolean | null) =>
-		utf8Encoder.encode(JSON.stringify(scalar)).byteLength;
-	if (value === null || typeof value === "boolean") {
-		state.remainingBytes -= serializedScalarBytes(value);
-		return state.remainingBytes >= 0;
-	}
-	if (typeof value === "string") {
-		state.remainingBytes -= serializedScalarBytes(value);
-		return true;
-	}
-	if (typeof value === "number") {
-		if (!Number.isFinite(value)) return false;
-		state.remainingBytes -= serializedScalarBytes(value);
-		return true;
-	}
-	if (typeof value !== "object") return false;
-	if (state.seen.has(value)) return false;
-	state.seen.add(value);
-	if (Array.isArray(value)) {
-		const valid = value.every((entry) => isJsonValue(entry, state, depth + 1));
-		state.seen.delete(value);
-		return valid;
-	}
-	const prototype = Object.getPrototypeOf(value);
-	if (prototype !== Object.prototype && prototype !== null) return false;
-	const record = asRecord(value);
-	if (!record) return false;
-	const valid = Object.entries(record).every(([key, entry]) => {
-		state.remainingBytes -= serializedScalarBytes(key) + 1;
-		return isJsonValue(entry, state, depth + 1);
-	});
-	state.seen.delete(value);
-	return valid;
+	return true;
 }
 
 function createSemanticStageValidationState(): {
 	seen: WeakSet<object>;
-	nodes: number;
-	remainingBytes: number;
 } {
 	return {
 		seen: new WeakSet(),
-		nodes: 0,
-		remainingBytes: Number.POSITIVE_INFINITY,
 	};
 }
 

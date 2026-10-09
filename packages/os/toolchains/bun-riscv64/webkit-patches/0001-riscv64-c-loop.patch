@@ -1,0 +1,67 @@
+diff --git a/Source/JavaScriptCore/domjit/DOMJITEffect.h b/Source/JavaScriptCore/domjit/DOMJITEffect.h
+index 6ba8511..42d7628 100644
+--- a/Source/JavaScriptCore/domjit/DOMJITEffect.h
++++ b/Source/JavaScriptCore/domjit/DOMJITEffect.h
+@@ -30,6 +30,20 @@
+ 
+ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
+ 
++#if !ENABLE(DFG_JIT)
++namespace JSC {
++namespace DFG {
++
++enum AbstractHeapKind : uint8_t {
++    InvalidAbstractHeap,
++    Heap,
++    SideState,
++};
++
++}
++}
++#endif
++
+ namespace JSC {
+ namespace DOMJIT {
+ 
+diff --git a/Source/JavaScriptCore/runtime/JSModuleLoader.cpp b/Source/JavaScriptCore/runtime/JSModuleLoader.cpp
+index 98e72ce..047e905 100644
+--- a/Source/JavaScriptCore/runtime/JSModuleLoader.cpp
++++ b/Source/JavaScriptCore/runtime/JSModuleLoader.cpp
+@@ -50,6 +50,7 @@
+ #include "SyntheticModuleRecord.h"
+ #include "TopExceptionScope.h"
+ #include "VMTrapsInlines.h"
++#include <wtf/Scope.h>
+ #include <wtf/text/MakeString.h>
+ 
+ namespace JSC {
+diff --git a/Source/JavaScriptCore/runtime/Options.cpp b/Source/JavaScriptCore/runtime/Options.cpp
+index 587ff75..1032176 100644
+--- a/Source/JavaScriptCore/runtime/Options.cpp
++++ b/Source/JavaScriptCore/runtime/Options.cpp
+@@ -1426,10 +1426,12 @@ void Options::assertOptionsAreCoherent()
+         coherent = false;
+         dataLog("INCOHERENT OPTIONS: at least one of useLLInt or useJIT must be true\n");
+     }
++#if ENABLE(WEBASSEMBLY)
+     if (useWasm() && !(useWasmIPInt() || useBBQJIT())) {
+         coherent = false;
+         dataLog("INCOHERENT OPTIONS: at least one of useWasmIPInt, or useBBQJIT must be true\n");
+     }
++#endif
+     if (useProfiler() && useConcurrentJIT()) {
+         coherent = false;
+         dataLogLn("Bytecode profiler is not concurrent JIT safe.");
+diff --git a/Source/WTF/wtf/PlatformEnable.h b/Source/WTF/wtf/PlatformEnable.h
+index fab2960..5962e75 100644
+--- a/Source/WTF/wtf/PlatformEnable.h
++++ b/Source/WTF/wtf/PlatformEnable.h
+@@ -718,7 +718,7 @@
+ #define ENABLE_JIT 0
+ #endif
+ 
+-#if CPU(RISCV64)
++#if CPU(RISCV64) && !ENABLE(C_LOOP)
+ #undef ENABLE_WEBASSEMBLY
+ #define ENABLE_WEBASSEMBLY 1
+ #undef ENABLE_WEBASSEMBLY_OMGJIT

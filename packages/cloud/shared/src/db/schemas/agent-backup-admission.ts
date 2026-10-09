@@ -188,7 +188,7 @@ export const agentBackupAdmissionClaimShards = pgTable(
   {
     work_kind: text("work_kind").$type<AgentBackupAdmissionWorkKind>().notNull(),
     shard_id: smallint("shard_id").notNull(),
-    last_turn: bigint("last_turn", { mode: "bigint" }).notNull().default(0n),
+    last_turn: bigint("last_turn", { mode: "bigint" }).notNull().default(sql`0`),
     /** Start turn and DB-clock high-water for one bounded deferred/lease recovery sweep. */
     recovery_start_turn: bigint("recovery_start_turn", { mode: "bigint" }),
     recovery_cutoff_at: timestamp("recovery_cutoff_at", { withTimezone: true }),

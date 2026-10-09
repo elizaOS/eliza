@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Provision and SetupWizard are removed from this product. Seed their
+         Android framework completion state for fresh settings databases so
+         assist keys and other setup-gated framework features work. Eliza's
+         account/provider onboarding remains owned by the application. These
+         defaults do not rewrite an existing user's settings on boot. -->
+    <bool name="def_device_provisioned">true</bool>
+    <bool name="def_user_setup_complete">true</bool>
+</resources>

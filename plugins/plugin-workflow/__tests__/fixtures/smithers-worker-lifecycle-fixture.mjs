@@ -9,7 +9,17 @@ const payload = JSON.parse(readFileSync(process.env.ELIZA_SMTHRS_PAYLOAD_PATH, '
 const mode = payload.input.fixtureMode;
 const emit = (message) => process.stdout.write(`${prefix}${JSON.stringify(message)}\n`);
 
-if (mode === 'ignore-termination') {
+if (mode === 'exit-seven') {
+  process.exit(7);
+} else if (mode === 'self-term') {
+  process.kill(process.pid, 'SIGTERM');
+} else if (mode === 'empty-success') {
+  process.exit(0);
+} else if (mode === 'exit-without-result') {
+  process.exit(17);
+} else if (mode === 'signal-without-result') {
+  process.kill(process.pid, 'SIGKILL');
+} else if (mode === 'ignore-termination') {
   process.on('SIGTERM', () => {});
   setInterval(() => {}, 1_000);
 } else if (mode === 'exit-with-inherited-pipe') {
@@ -62,8 +72,11 @@ if (mode === 'ignore-termination') {
     emit({ kind: 'result', result: { runId: payload.runId, status: 'finished' } });
   }, 5);
 } else if (mode === 'event-before-result') {
-  emit({ kind: 'event', event: { type: 'TaskStarted' } });
-  emit({ kind: 'result', result: { runId: payload.runId, status: 'finished' } });
+  emit({ kind: 'event', event: { type: 'TaskStarted', workerPid: process.pid } });
+  emit({
+    kind: 'result',
+    result: { runId: payload.runId, status: 'finished', ...payload.input.terminalResult },
+  });
 } else if (mode === 'oversized-stdout-line') {
   process.stdout.write('x'.repeat(Number(payload.input.outputBytes)));
 } else {

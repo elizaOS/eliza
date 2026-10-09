@@ -4,7 +4,7 @@
  * glyph.
  */
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Card } from "../ui/card";
 import { resolveLauncherIconAsset } from "./launcher-ionicons";
 

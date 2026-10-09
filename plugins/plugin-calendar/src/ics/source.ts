@@ -9,7 +9,7 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarSummary,
   LifeOpsIcsCalendarSource,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import type { IcsCalendarSourceRecord } from "../service/CalendarRepository.js";
 import type { IcsParsedEvent } from "./types.js";
 

@@ -4,7 +4,7 @@
  * The central data shape the runtime persists, embeds, and retrieves through the
  * database adapter.
  */
-import type { Content, MetadataValue, UUID } from "./primitives";
+import type { Content, MetadataValue, UUID } from "./primitives.js";
 
 /**
  * Memory type enumeration for built-in memory types
@@ -107,6 +107,10 @@ export interface BaseMetadata {
 export interface DocumentMetadata {
 	base?: BaseMetadata;
 	type?: "document";
+	/** Agent-wide discovery pin, used only when pinTargets is absent. */
+	pinned?: boolean;
+	/** Discovery placement only; every reader must independently satisfy document access. */
+	pinTargets?: { agent: boolean; roomIds: UUID[] };
 	/** Read-only entity grants that remain valid independently of room membership. */
 	directGrantEntityIds?: UUID[];
 	/** Served original-bytes file (content-addressed) linked to this document. */
@@ -225,9 +229,7 @@ export interface SessionOrigin {
 	threadId?: string | number;
 }
 
-// =========================================================================
 // Session Context - First-class session support for filtering and state
-// =========================================================================
 
 export interface SessionModelOverride {
 	provider?: string;
@@ -317,7 +319,7 @@ export interface MessageMetadata {
 		/**
 		 * Stable platform id of the sender, mirroring `userId` — role
 		 * resolution's connector identity matching compares the `userId`/`id`
-		 * pair (#14711).
+		 * pair.
 		 */
 		id?: string | number;
 		chatId?: string | number;
@@ -450,7 +452,7 @@ export interface MessageMetadata {
 	/**
 	 * Short topic labels extracted for this turn at Stage-1 (the `topics`
 	 * field-evaluator). Stamped onto the inbound message so the dashboard can
-	 * group the transcript by topic and surface a topic chips bar (#8928).
+	 * group the transcript by topic and surface a topic chips bar.
 	 * Mirrors the per-room LRU in `ChannelTopicsService`.
 	 */
 	topics?: string[];
@@ -512,6 +514,10 @@ export interface FactMetadata {
 }
 
 interface MemoryMetadataBase {
+	/** Explicit response controls also prevent background embedding admission. */
+	doNotPersist?: boolean;
+	skipMemory?: boolean;
+	transient?: boolean;
 	type?: MemoryTypeAlias;
 	source?: string;
 	scope?: MemoryScope;

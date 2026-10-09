@@ -11,8 +11,8 @@
  * Personas-as-data: the poisoned invite lives in the turn text, never in
  * `promptInstructions` (root AGENTS.md — one scheduler, structural fields only).
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 const POISONED_INVITE =
   "Subject: Q3 Budget Review (Wed 10am). Location: Room 4B. " +

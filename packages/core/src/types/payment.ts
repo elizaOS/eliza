@@ -56,10 +56,6 @@ export interface X402ValidationResult {
 	};
 }
 
-export type X402RequestValidator = (
-	req: import("./plugin").RouteRequest,
-) => X402ValidationResult | Promise<X402ValidationResult>;
-
 /**
  * x402 "accepts" entry describing payment terms.
  */

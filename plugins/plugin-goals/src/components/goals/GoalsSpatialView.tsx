@@ -17,15 +17,15 @@
  */
 
 import {
-  Button,
-  Card,
-  Divider,
+  SpatialButton as Button,
+  SpatialCard as Card,
+  SpatialDivider as Divider,
   Field,
-  HStack,
-  List,
-  Text,
-  VStack,
-} from "@elizaos/ui/spatial";
+  SpatialHStack as HStack,
+  SpatialList as List,
+  SpatialText as Text,
+  SpatialVStack as VStack,
+} from "@elizaos/ui";
 import {
   GOAL_STATUSES,
   type GoalItem,

@@ -14,6 +14,20 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type {
+  GenericBillingCommandPayload,
+  GenericBillingCommandResult,
+} from "../../lib/services/generic-billing-command-types";
+import type { observeOriginalInvoiceDebt } from "../../lib/services/observed-invoice-debt";
+import type { observeRetainedCollectingInvoiceCapture } from "../../lib/services/retained-collecting-invoice-capture";
+import type { observeRetainedInvoiceBalance } from "../../lib/services/retained-invoice-balance-observation";
+import type { CheckoutContract } from "../../lib/services/subscription-checkout-contract";
+import type { SubscriptionInvoiceEventEvidence } from "../../lib/services/subscription-invoice-event-evidence";
+import type { SubscriptionRenewalReview } from "../../lib/services/subscription-renewal-review-contract";
+import { appBillingScopes, billingMerchants } from "./app-billing";
+import { appClientRegistrations } from "./app-delegations";
+import { apps } from "./apps";
+import { billingIdentitySubjects } from "./billing-identities";
 import { billingSubscriptionRevisions, billingSubscriptions } from "./billing-subscriptions";
 import { organizations } from "./organizations";
 import { users } from "./users";
@@ -24,6 +38,17 @@ export const BILLING_SUBSCRIPTION_COMMAND_KINDS = [
   "downgrade",
   "cancel",
   "resume",
+  "portal",
+  "expire_checkout",
+  "delete_customer",
+  "merchant_create",
+  "merchant_adopt",
+  "merchant_platform",
+  "merchant_onboarding",
+  "plan_create",
+  "plan_adopt",
+  "refund",
+  "import",
 ] as const;
 export type BillingSubscriptionCommandKind = (typeof BILLING_SUBSCRIPTION_COMMAND_KINDS)[number];
 
@@ -42,21 +67,35 @@ export const billingSubscriptionCommands = pgTable(
   "billing_subscription_commands",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    app_id: uuid("app_id").references(() => apps.id, { onDelete: "restrict" }),
+    livemode: boolean("livemode"),
+    merchant_id: uuid("merchant_id"),
+    client_registration_id: uuid("client_registration_id"),
+    request_payload: jsonb("request_payload").$type<GenericBillingCommandPayload>(),
+    provider_result: jsonb("provider_result").$type<GenericBillingCommandResult>(),
+    billing_scope_id: uuid("billing_scope_id"),
+    merchant_key: text("merchant_key").notNull().default("platform"),
     organization_id: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
     subscription_id: uuid("subscription_id"),
     requested_by_user_id: uuid("requested_by_user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => billingIdentitySubjects.id, { onDelete: "restrict" }),
     kind: text("kind").$type<BillingSubscriptionCommandKind>().notNull(),
-    target_plan_key: text("target_plan_key").$type<"plus_monthly" | "pro_monthly">(),
+    target_quantity: integer("target_quantity").notNull().default(1),
+    target_plan_revision_id: uuid("target_plan_revision_id"),
+    target_plan_key: text("target_plan_key"),
     expected_subscription_revision: bigint("expected_subscription_revision", {
       mode: "number",
     }),
     idempotency_key: text("idempotency_key").notNull(),
     provider_idempotency_key: text("provider_idempotency_key").notNull(),
     request_digest: text("request_digest").notNull(),
+    checkout_contract: jsonb("checkout_contract").$type<{
+      payload: CheckoutContract;
+      digest: string;
+    }>(),
     status: text("status").$type<BillingSubscriptionCommandStatus>().notNull().default("PREPARED"),
     state_revision: bigint("state_revision", { mode: "number" }).notNull().default(1),
     execution_generation: bigint("execution_generation", { mode: "number" }).notNull().default(0),
@@ -64,8 +103,69 @@ export const billingSubscriptionCommands = pgTable(
     lease_token: uuid("lease_token"),
     lease_expires_at: timestamp("lease_expires_at", { withTimezone: true }),
     cancellation_dispatch_state: text("cancellation_dispatch_state").$type<"ready" | "started">(),
+    organization_upgrade_dispatch_state: text("organization_upgrade_dispatch_state").$type<
+      "ready" | "started"
+    >(),
     provider_started_at: timestamp("provider_started_at", { withTimezone: true }),
     provider_response_digest: text("provider_response_digest"),
+    organization_upgrade_settlement_evidence: jsonb(
+      "organization_upgrade_settlement_evidence",
+    ).$type<{
+      kind: "historical_target_with_live_compatibility";
+      eventId: string;
+      eventDigest: string;
+      liveDigest: string;
+      livePeriodStart: string;
+      livePeriodEnd: string;
+      observedAt: string;
+    }>(),
+    organization_upgrade_failure_evidence: jsonb("organization_upgrade_failure_evidence").$type<{
+      kind: "original_invoice_void";
+      invoiceId: string;
+      invoiceDigest: string;
+      paymentIntentId: string | null;
+      paymentIntentDigest: string | null;
+      liveDigest: string;
+      livePeriodStart: string;
+      livePeriodEnd: string;
+      observedAt: string;
+    }>(),
+    organization_schedule_configuration_snapshot: jsonb(
+      "organization_schedule_configuration_snapshot",
+    ).$type<Record<string, unknown>>(),
+    organization_schedule_configuration_evidence: jsonb(
+      "organization_schedule_configuration_evidence",
+    ).$type<{
+      kind: "original_schedule_configured";
+      effectiveAt: number;
+      targetPlanKey: "plus_monthly" | "pro_monthly";
+      scheduleId: string;
+      requestDigest: string;
+      snapshotDigest: string;
+      retainedTermsDigest: string;
+      reviewDigest: string;
+      providerBindingDigest: string;
+      quoteId: string;
+      sourceDigest: string;
+      createEffectId: string;
+      configurationEffectId: string;
+      createReceiptDigest: string;
+      configurationReceiptDigest: string;
+      observedAt: string;
+    }>(),
+    organization_schedule_failure_evidence: jsonb("organization_schedule_failure_evidence").$type<{
+      kind: "original_unconfigured_schedule_released";
+      scheduleId: string;
+      quoteId: string;
+      createEffectId: string;
+      releaseEffectId: string;
+      createReceiptDigest: string;
+      releaseReceiptDigest: string;
+      snapshotDigest: string;
+      retainedTermsDigest: string;
+      sourceDigest: string;
+      observedAt: string;
+    }>(),
     error_code: text("error_code"),
     completed_at: timestamp("completed_at", { withTimezone: true }),
     result_subscription_id: uuid("result_subscription_id"),
@@ -76,11 +176,54 @@ export const billingSubscriptionCommands = pgTable(
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    app_mode_fk: foreignKey({
+      columns: [table.billing_scope_id, table.app_id, table.livemode],
+      foreignColumns: [appBillingScopes.id, appBillingScopes.app_id, appBillingScopes.livemode],
+      name: "billing_commands_scope_app_mode_fk",
+    }).onDelete("restrict"),
+    merchant_mode_fk: foreignKey({
+      columns: [table.merchant_id, table.livemode],
+      foreignColumns: [billingMerchants.id, billingMerchants.livemode],
+      name: "billing_commands_merchant_mode_fk",
+    }).onDelete("restrict"),
+    registration_app_fk: foreignKey({
+      columns: [table.client_registration_id, table.app_id],
+      foreignColumns: [appClientRegistrations.id, appClientRegistrations.app_id],
+      name: "billing_commands_registration_app_fk",
+    }).onDelete("restrict"),
+    admin_idempotency_unique: uniqueIndex("billing_commands_admin_idempotency_idx")
+      .on(table.app_id, table.livemode, table.idempotency_key)
+      .where(sql`${table.billing_scope_id} IS NULL AND ${table.app_id} IS NOT NULL`),
+    app_identity_check: check(
+      "billing_commands_app_identity_check",
+      sql`(${table.app_id} IS NULL AND ${table.livemode} IS NULL AND ${table.merchant_id} IS NULL AND ${table.client_registration_id} IS NULL AND ${table.request_payload} IS NULL AND ${table.provider_result} IS NULL AND ${table.billing_scope_id} IS NULL) OR (${table.app_id} IS NOT NULL AND ${table.livemode} IS NOT NULL AND (${table.billing_scope_id} IS NULL OR ${table.merchant_id} IS NOT NULL))`,
+    ),
+    app_scope_fk: foreignKey({
+      columns: [table.billing_scope_id, table.organization_id],
+      foreignColumns: [appBillingScopes.id, appBillingScopes.organization_id],
+    }).onDelete("restrict"),
     subscription_tenant_fk: foreignKey({
       columns: [table.subscription_id, table.organization_id],
       foreignColumns: [billingSubscriptions.id, billingSubscriptions.organization_id],
       name: "billing_subscription_commands_subscription_tenant_fk",
     }).onDelete("restrict"),
+    result_revision_fk: foreignKey({
+      columns: [
+        table.result_subscription_id,
+        table.organization_id,
+        table.result_subscription_revision,
+      ],
+      foreignColumns: [
+        billingSubscriptionRevisions.subscription_id,
+        billingSubscriptionRevisions.organization_id,
+        billingSubscriptionRevisions.revision,
+      ],
+      name: "billing_commands_result_revision_fk",
+    }).onDelete("restrict"),
+    result_revision_check: check(
+      "billing_commands_result_revision_check",
+      sql`${table.result_subscription_revision} IS NULL OR (${table.status} = 'APPLIED' AND ${table.result_subscription_id} IS NOT NULL AND ${table.result_subscription_revision} > 0)`,
+    ),
     result_subscription_tenant_fk: foreignKey({
       columns: [table.result_subscription_id, table.organization_id],
       foreignColumns: [billingSubscriptions.id, billingSubscriptions.organization_id],
@@ -93,7 +236,7 @@ export const billingSubscriptionCommands = pgTable(
     }).onDelete("restrict"),
     schedule_predecessor_check: check(
       "billing_subscription_commands_schedule_predecessor_check",
-      sql`(${table.schedule_predecessor_command_id} IS NULL OR (${table.kind} IN ('cancel','resume') AND ${table.schedule_predecessor_command_id} <> ${table.id})) AND (${table.kind} <> 'resume' OR (${table.cancellation_dispatch_state} IS NULL AND ${table.status} <> 'APPLIED') OR ${table.schedule_predecessor_command_id} IS NOT NULL)`,
+      sql`${table.app_id} IS NOT NULL OR ((${table.schedule_predecessor_command_id} IS NULL OR (${table.kind} IN ('cancel','resume') AND ${table.schedule_predecessor_command_id} <> ${table.id})) AND (${table.kind} <> 'resume' OR (${table.cancellation_dispatch_state} IS NULL AND ${table.status} <> 'APPLIED') OR ${table.schedule_predecessor_command_id} IS NOT NULL))`,
     ),
     result_revision_tenant_fk: foreignKey({
       columns: [
@@ -108,13 +251,97 @@ export const billingSubscriptionCommands = pgTable(
       ],
       name: "billing_subscription_commands_result_revision_tenant_fk",
     }).onDelete("restrict"),
+    organization_schedule_configuration_snapshot_shape: check(
+      "organization_schedule_configuration_snapshot_shape",
+      sql`${table.organization_schedule_configuration_snapshot} IS NULL OR (
+        ${table.organization_schedule_configuration_evidence} IS NOT NULL
+        AND jsonb_typeof(${table.organization_schedule_configuration_snapshot})='object'
+        AND NOT ${table.organization_schedule_configuration_snapshot} ? 'lastResponse'
+      ) IS TRUE`,
+    ),
+    organization_schedule_configuration_evidence_shape: check(
+      "organization_schedule_configuration_evidence_shape",
+      sql`${table.organization_schedule_configuration_evidence} IS NULL OR (
+ ${table.kind}='downgrade' AND ${table.app_id} IS NULL AND ${table.billing_scope_id} IS NULL AND ${table.merchant_key}='platform' AND ${table.status}='APPLIED'
+ AND jsonb_typeof(${table.organization_schedule_configuration_evidence})='object'
+ AND ${table.organization_schedule_configuration_evidence}->>'kind'='original_schedule_configured'
+ AND ${table.organization_schedule_configuration_evidence}->>'targetPlanKey' IN ('plus_monthly','pro_monthly')
+ AND jsonb_typeof(${table.organization_schedule_configuration_evidence}->'effectiveAt')='number'
+ AND ${table.organization_schedule_configuration_evidence}->>'effectiveAt' ~ '^[0-9]+$'
+ AND ${table.organization_schedule_configuration_evidence}->>'scheduleId' ~ '^sub_sched_[A-Za-z0-9]+$'
+ AND ${table.organization_schedule_configuration_evidence} ?& ARRAY['kind','effectiveAt','targetPlanKey','scheduleId','requestDigest','snapshotDigest','retainedTermsDigest','reviewDigest','providerBindingDigest','quoteId','sourceDigest','createEffectId','configurationEffectId','createReceiptDigest','configurationReceiptDigest','observedAt']
+ AND ${table.organization_schedule_configuration_evidence}-ARRAY['kind','effectiveAt','targetPlanKey','scheduleId','requestDigest','snapshotDigest','retainedTermsDigest','reviewDigest','providerBindingDigest','quoteId','sourceDigest','createEffectId','configurationEffectId','createReceiptDigest','configurationReceiptDigest','observedAt']='{}'::jsonb
+ AND ${table.organization_schedule_configuration_evidence}->>'requestDigest' ~ '^[a-f0-9]{64}$'
+ AND ${table.organization_schedule_configuration_evidence}->>'snapshotDigest' ~ '^[a-f0-9]{64}$'
+ AND ${table.organization_schedule_configuration_evidence}->>'retainedTermsDigest' ~ '^[a-f0-9]{64}$'
+ AND ${table.organization_schedule_configuration_evidence}->>'reviewDigest' ~ '^[a-f0-9]{64}$'
+ AND ${table.organization_schedule_configuration_evidence}->>'providerBindingDigest' ~ '^[a-f0-9]{64}$'
+ AND jsonb_typeof(${table.organization_schedule_configuration_evidence}->'quoteId')='string'
+ AND ${table.organization_schedule_configuration_evidence}->>'sourceDigest' ~ '^[a-f0-9]{64}$'
+ AND jsonb_typeof(${table.organization_schedule_configuration_evidence}->'createEffectId')='string'
+ AND jsonb_typeof(${table.organization_schedule_configuration_evidence}->'configurationEffectId')='string'
+ AND ${table.organization_schedule_configuration_evidence}->>'createReceiptDigest' ~ '^[a-f0-9]{64}$'
+ AND ${table.organization_schedule_configuration_evidence}->>'configurationReceiptDigest' ~ '^[a-f0-9]{64}$'
+ AND jsonb_typeof(${table.organization_schedule_configuration_evidence}->'observedAt')='string'
+) IS TRUE`,
+    ),
+    organization_schedule_failure_evidence_shape: check(
+      "organization_schedule_failure_evidence_shape",
+      sql` ${table.organization_schedule_failure_evidence} IS NULL OR (
+  ${table.kind}='downgrade' AND ${table.app_id} IS NULL AND ${table.billing_scope_id} IS NULL AND ${table.merchant_key}='platform'
+  AND ${table.status}='FAILED' AND ${table.error_code}='ORIGINAL_SCHEDULE_CREATE_COMPENSATED'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence})='object'
+  AND ${table.organization_schedule_failure_evidence}->>'kind'='original_unconfigured_schedule_released'
+  AND ${table.organization_schedule_failure_evidence}->>'scheduleId' ~ '^sub_sched_[A-Za-z0-9]+$'
+  AND ${table.organization_schedule_failure_evidence}->>'createReceiptDigest' ~ '^[a-f0-9]{64}$'
+  AND ${table.organization_schedule_failure_evidence}->>'releaseReceiptDigest' ~ '^[a-f0-9]{64}$'
+  AND ${table.organization_schedule_failure_evidence}->>'snapshotDigest' ~ '^[a-f0-9]{64}$'
+  AND ${table.organization_schedule_failure_evidence}->>'retainedTermsDigest' ~ '^[a-f0-9]{64}$'
+  AND ${table.organization_schedule_failure_evidence}->>'sourceDigest' ~ '^[a-f0-9]{64}$'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence}->'quoteId')='string'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence}->'createEffectId')='string'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence}->'releaseEffectId')='string'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence}->'observedAt')='string'
+  AND ${table.organization_schedule_failure_evidence}-ARRAY['kind','scheduleId','createReceiptDigest','releaseReceiptDigest','snapshotDigest','retainedTermsDigest','sourceDigest','quoteId','createEffectId','releaseEffectId','observedAt']='{}'::jsonb
+ ) IS TRUE`,
+    ),
+    organization_upgrade_failure_evidence_shape: check(
+      "organization_upgrade_failure_evidence_shape",
+      sql`
+ ${table.organization_upgrade_failure_evidence} IS NULL OR (${table.kind}='upgrade' AND ${table.app_id} IS NULL AND ${table.billing_scope_id} IS NULL AND ${table.merchant_key}='platform' AND ${table.status}='FAILED'
+ AND ${table.error_code}='ORIGINAL_UPGRADE_INVOICE_VOID' AND ${table.organization_upgrade_dispatch_state}='started'
+ AND ${table.organization_upgrade_failure_evidence}->>'kind'='original_invoice_void'
+ AND ${table.organization_upgrade_failure_evidence}->>'invoiceId' ~ '^in_[A-Za-z0-9]+$'
+ AND ${table.organization_upgrade_failure_evidence}->>'invoiceDigest' ~ '^[a-f0-9]{64}$'
+ AND ${table.organization_upgrade_failure_evidence}->>'liveDigest' ~ '^[a-f0-9]{64}$'
+ AND ((${table.organization_upgrade_failure_evidence}->'paymentIntentId'='null'::jsonb AND ${table.organization_upgrade_failure_evidence}->'paymentIntentDigest'='null'::jsonb)
+ OR (${table.organization_upgrade_failure_evidence}->>'paymentIntentId' ~ '^pi_[A-Za-z0-9]+$' AND ${table.organization_upgrade_failure_evidence}->>'paymentIntentDigest' ~ '^[a-f0-9]{64}$'))
+ AND jsonb_typeof(${table.organization_upgrade_failure_evidence}->'livePeriodStart')='string'
+ AND jsonb_typeof(${table.organization_upgrade_failure_evidence}->'livePeriodEnd')='string'
+ AND jsonb_typeof(${table.organization_upgrade_failure_evidence}->'observedAt')='string') IS TRUE`,
+    ),
+    organization_upgrade_dispatch_check: check(
+      "billing_commands_org_upgrade_dispatch_check",
+      sql`${table.organization_upgrade_dispatch_state} IS NULL OR (${table.app_id} IS NULL AND ${table.billing_scope_id} IS NULL AND ${table.kind} = 'upgrade' AND ${table.organization_upgrade_dispatch_state} IN ('ready','started'))`,
+    ),
     cancellation_dispatch_check: check(
       "billing_subscription_commands_cancellation_dispatch_check",
       sql`${table.cancellation_dispatch_state} IS NULL OR (${table.kind} IN ('cancel','resume') AND ${table.cancellation_dispatch_state} IN ('ready','started'))`,
     ),
+    historical_settlement_shape: check(
+      "organization_upgrade_settlement_evidence_shape",
+      sql`${table.organization_upgrade_settlement_evidence} IS NULL OR (${table.kind}='upgrade' AND ${table.app_id} IS NULL AND ${table.billing_scope_id} IS NULL AND ${table.merchant_key}='platform' AND ${table.status}='APPLIED'
+ AND ${table.organization_upgrade_settlement_evidence}->>'kind'='historical_target_with_live_compatibility'
+ AND ${table.organization_upgrade_settlement_evidence}->>'eventId' ~ '^evt_[A-Za-z0-9]+$'
+ AND ${table.organization_upgrade_settlement_evidence}->>'eventDigest' ~ '^[a-f0-9]{64}$'
+ AND ${table.organization_upgrade_settlement_evidence}->>'liveDigest' ~ '^[a-f0-9]{64}$'
+ AND jsonb_typeof(${table.organization_upgrade_settlement_evidence}->'livePeriodStart')='string'
+ AND jsonb_typeof(${table.organization_upgrade_settlement_evidence}->'livePeriodEnd')='string'
+ AND jsonb_typeof(${table.organization_upgrade_settlement_evidence}->'observedAt')='string') IS TRUE`,
+    ),
     cancellation_result_check: check(
       "billing_subscription_commands_cancellation_result_check",
-      sql`(${table.kind} IN ('cancel','resume') AND ${table.status} = 'APPLIED' AND ${table.result_subscription_id} IS NOT NULL AND ${table.subscription_id} IS NOT NULL AND ${table.result_subscription_id} = ${table.subscription_id} AND ${table.result_subscription_revision} IS NOT NULL AND ${table.result_subscription_revision} > 0) OR ((${table.kind} NOT IN ('cancel','resume') OR ${table.status} <> 'APPLIED') AND ${table.result_subscription_revision} IS NULL)`,
+      sql`(${table.app_id} IS NOT NULL OR ((${table.kind} IN ('cancel','resume','upgrade') AND ${table.status} = 'APPLIED' AND ${table.result_subscription_id} IS NOT NULL AND ${table.subscription_id} IS NOT NULL AND ${table.result_subscription_id} = ${table.subscription_id} AND ${table.result_subscription_revision} IS NOT NULL AND ${table.result_subscription_revision} > 0) OR ((${table.kind} NOT IN ('cancel','resume','upgrade') OR ${table.status} <> 'APPLIED') AND ${table.result_subscription_revision} IS NULL))) OR (${table.app_id} IS NULL AND ${table.billing_scope_id} IS NULL AND ${table.kind}='downgrade' AND ${table.status}='APPLIED' AND ${table.organization_schedule_configuration_evidence} IS NOT NULL AND ${table.subscription_id} IS NOT NULL AND ${table.result_subscription_id}=${table.subscription_id} AND ${table.result_subscription_revision}=${table.expected_subscription_revision}+1) IS TRUE`,
     ),
     id_organization_unique: uniqueIndex("billing_subscription_commands_id_org_idx").on(
       table.id,
@@ -122,16 +349,34 @@ export const billingSubscriptionCommands = pgTable(
     ),
     organization_idempotency_unique: uniqueIndex(
       "billing_subscription_commands_org_idempotency_idx",
-    ).on(table.organization_id, table.idempotency_key),
+    )
+      .on(table.organization_id, table.idempotency_key)
+      .where(sql`${table.billing_scope_id} IS NULL AND ${table.app_id} IS NULL`),
+    scoped_idempotency_unique: uniqueIndex("billing_subscription_commands_scope_idempotency_idx")
+      .on(table.billing_scope_id, table.idempotency_key)
+      .where(sql`${table.billing_scope_id} IS NOT NULL`),
     provider_idempotency_unique: uniqueIndex(
       "billing_subscription_commands_provider_idempotency_idx",
-    ).on(table.provider_idempotency_key),
+    ).on(table.merchant_key, table.provider_idempotency_key),
     one_live_checkout_per_organization: uniqueIndex(
       "billing_subscription_commands_live_checkout_org_idx",
     )
       .on(table.organization_id)
       .where(
-        sql`${table.kind} = 'checkout' AND ${table.status} IN ('PREPARED','OUTCOME_UNKNOWN','SUCCEEDED')`,
+        sql`${table.billing_scope_id} IS NULL AND ${table.app_id} IS NULL AND ${table.kind} = 'checkout' AND ${table.status} IN ('PREPARED','OUTCOME_UNKNOWN','SUCCEEDED')`,
+      ),
+    import_source_unique: uniqueIndex("billing_subscription_import_source_idx")
+      .on(
+        table.app_id,
+        table.livemode,
+        sql`(${table.request_payload}->'manifest'->>'sourceSystem')`,
+        sql`(${table.request_payload}->'manifest'->>'sourceRecordId')`,
+      )
+      .where(sql`${table.kind} = 'import'`),
+    live_scoped_checkout: uniqueIndex("billing_subscription_commands_live_scope_idx")
+      .on(table.billing_scope_id)
+      .where(
+        sql`${table.billing_scope_id} IS NOT NULL AND ${table.kind} IN ('checkout','upgrade','downgrade','cancel','resume','import') AND ${table.status} IN ('PREPARED','OUTCOME_UNKNOWN','SUCCEEDED')`,
       ),
     status_lease_idx: index("billing_subscription_commands_status_lease_idx").on(
       table.status,
@@ -143,7 +388,7 @@ export const billingSubscriptionCommands = pgTable(
     ),
     intent_check: check(
       "billing_subscription_commands_intent_check",
-      sql`(${table.kind} = 'checkout' AND ${table.subscription_id} IS NULL AND ${table.expected_subscription_revision} IS NULL AND ${table.target_plan_key} IS NOT NULL AND ${table.target_plan_key} IN ('plus_monthly','pro_monthly')) OR (${table.kind} IN ('upgrade','downgrade') AND ${table.subscription_id} IS NOT NULL AND ${table.expected_subscription_revision} > 0 AND ${table.target_plan_key} IS NOT NULL AND ${table.target_plan_key} IN ('plus_monthly','pro_monthly')) OR (${table.kind} IN ('cancel','resume') AND ${table.subscription_id} IS NOT NULL AND ${table.expected_subscription_revision} > 0 AND ${table.target_plan_key} IS NULL)`,
+      sql`(${table.kind} IN ('checkout','import') AND ${table.subscription_id} IS NULL AND ${table.expected_subscription_revision} IS NULL AND ${table.target_plan_key} IS NOT NULL AND (${table.billing_scope_id} IS NOT NULL AND ${table.target_plan_revision_id} IS NOT NULL OR ${table.target_plan_key} IN ('plus_monthly','pro_monthly'))) OR (${table.kind} IN ('upgrade','downgrade') AND ${table.subscription_id} IS NOT NULL AND ${table.expected_subscription_revision} > 0 AND ${table.target_plan_key} IS NOT NULL AND (${table.billing_scope_id} IS NOT NULL AND ${table.target_plan_revision_id} IS NOT NULL OR ${table.target_plan_key} IN ('plus_monthly','pro_monthly'))) OR (${table.kind} IN ('cancel','resume') AND ${table.subscription_id} IS NOT NULL AND ${table.expected_subscription_revision} > 0 AND ${table.target_plan_key} IS NULL) OR (${table.app_id} IS NOT NULL AND ${table.kind} IN ('portal','expire_checkout') AND ${table.target_plan_key} IS NULL AND ${table.target_plan_revision_id} IS NULL AND ((${table.subscription_id} IS NULL AND ${table.expected_subscription_revision} IS NULL) OR (${table.subscription_id} IS NOT NULL AND ${table.expected_subscription_revision} > 0))) OR (${table.app_id} IS NOT NULL AND ${table.billing_scope_id} IS NOT NULL AND ${table.kind} = 'delete_customer' AND ${table.subscription_id} IS NULL AND ${table.expected_subscription_revision} IS NULL AND ${table.target_plan_key} IS NULL AND ${table.target_plan_revision_id} IS NULL) OR (${table.app_id} IS NOT NULL AND ${table.billing_scope_id} IS NULL AND ${table.kind} IN ('merchant_create','merchant_adopt','merchant_platform','merchant_onboarding','plan_create','plan_adopt','refund') AND ${table.subscription_id} IS NULL AND ${table.expected_subscription_revision} IS NULL AND ${table.target_plan_key} IS NULL AND ${table.target_plan_revision_id} IS NULL)`,
     ),
     idempotency_check: check(
       "billing_subscription_commands_idempotency_check",
@@ -163,7 +408,7 @@ export const billingSubscriptionCommands = pgTable(
     ),
     status_shape_check: check(
       "billing_subscription_commands_status_shape_check",
-      sql`(${table.status} = 'PREPARED' AND ${table.execution_generation} = 0 AND ${table.provider_started_at} IS NULL AND ${table.provider_response_digest} IS NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'OUTCOME_UNKNOWN' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NULL AND ${table.completed_at} IS NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'SUCCEEDED' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NOT NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'APPLIED' AND ${table.kind} IN ('checkout','cancel','resume') AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NOT NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NOT NULL AND ${table.applied_at} IS NOT NULL) OR (${table.status} = 'FAILED' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.error_code} IS NOT NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'SUPERSEDED' AND ${table.execution_generation} = 0 AND ${table.provider_started_at} IS NULL AND ${table.provider_response_digest} IS NULL AND ${table.error_code} IS NOT NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL)`,
+      sql`(${table.status} = 'PREPARED' AND ${table.execution_generation} = 0 AND ${table.provider_started_at} IS NULL AND ${table.provider_response_digest} IS NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'OUTCOME_UNKNOWN' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NULL AND ${table.completed_at} IS NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'SUCCEEDED' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NOT NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'APPLIED' AND (${table.billing_scope_id} IS NOT NULL OR ${table.kind} IN ('checkout','cancel','resume','upgrade') OR (${table.kind}='downgrade' AND ${table.organization_schedule_configuration_evidence} IS NOT NULL)) AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.provider_response_digest} IS NOT NULL AND ${table.error_code} IS NULL AND ${table.completed_at} IS NOT NULL AND (${table.result_subscription_id} IS NOT NULL OR ${table.kind} = 'import') AND ${table.applied_at} IS NOT NULL) OR (${table.status} = 'FAILED' AND ${table.execution_generation} > 0 AND ${table.provider_started_at} IS NOT NULL AND ${table.error_code} IS NOT NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL) OR (${table.status} = 'SUPERSEDED' AND ${table.execution_generation} = 0 AND ${table.provider_started_at} IS NULL AND ${table.provider_response_digest} IS NULL AND ${table.error_code} IS NOT NULL AND ${table.completed_at} IS NOT NULL AND ${table.result_subscription_id} IS NULL AND ${table.applied_at} IS NULL)`,
     ),
   }),
 );
@@ -184,6 +429,8 @@ export const subscriptionBillingFences = pgTable(
   "subscription_billing_fences",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    billing_scope_id: uuid("billing_scope_id"),
+    merchant_key: text("merchant_key").notNull().default("platform"),
     organization_id: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
@@ -202,6 +449,10 @@ export const subscriptionBillingFences = pgTable(
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    app_scope_fk: foreignKey({
+      columns: [table.billing_scope_id, table.organization_id],
+      foreignColumns: [appBillingScopes.id, appBillingScopes.organization_id],
+    }).onDelete("restrict"),
     subscription_tenant_fk: foreignKey({
       columns: [table.subscription_id, table.organization_id],
       foreignColumns: [billingSubscriptions.id, billingSubscriptions.organization_id],
@@ -215,7 +466,7 @@ export const subscriptionBillingFences = pgTable(
       table.subscription_id,
     ),
     provider_event_unique: uniqueIndex("subscription_billing_fences_provider_event_idx")
-      .on(table.provider_event_id)
+      .on(table.merchant_key, table.provider_event_id)
       .where(sql`${table.provider_event_id} IS NOT NULL`),
     state_reconcile_idx: index("subscription_billing_fences_state_reconcile_idx").on(
       table.state,
@@ -250,6 +501,8 @@ export const billingSubscriptionEventReceipts = pgTable(
   "billing_subscription_event_receipts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    billing_scope_id: uuid("billing_scope_id"),
+    merchant_key: text("merchant_key").notNull().default("platform"),
     organization_id: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
@@ -278,6 +531,10 @@ export const billingSubscriptionEventReceipts = pgTable(
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    app_scope_fk: foreignKey({
+      columns: [table.billing_scope_id, table.organization_id],
+      foreignColumns: [appBillingScopes.id, appBillingScopes.organization_id],
+    }).onDelete("restrict"),
     subscription_tenant_fk: foreignKey({
       columns: [table.subscription_id, table.organization_id],
       foreignColumns: [billingSubscriptions.id, billingSubscriptions.organization_id],
@@ -297,6 +554,8 @@ export const billingSubscriptionEventReceipts = pgTable(
       table.organization_id,
     ),
     provider_event_unique: uniqueIndex("billing_subscription_event_receipts_event_idx").on(
+      table.merchant_key,
+      table.livemode,
       table.provider_event_id,
     ),
     status_lease_idx: index("billing_subscription_event_receipts_status_lease_idx").on(
@@ -346,6 +605,8 @@ export const billingSubscriptionIncidents = pgTable(
   "billing_subscription_incidents",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    billing_scope_id: uuid("billing_scope_id"),
+    merchant_key: text("merchant_key").notNull().default("platform"),
     organization_id: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
@@ -372,6 +633,10 @@ export const billingSubscriptionIncidents = pgTable(
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    app_scope_fk: foreignKey({
+      columns: [table.billing_scope_id, table.organization_id],
+      foreignColumns: [appBillingScopes.id, appBillingScopes.organization_id],
+    }).onDelete("restrict"),
     subscription_tenant_fk: foreignKey({
       columns: [table.subscription_id, table.organization_id],
       foreignColumns: [billingSubscriptions.id, billingSubscriptions.organization_id],
@@ -418,3 +683,92 @@ export const billingSubscriptionIncidents = pgTable(
 
 export type BillingSubscriptionIncident = InferSelectModel<typeof billingSubscriptionIncidents>;
 export type NewBillingSubscriptionIncident = InferInsertModel<typeof billingSubscriptionIncidents>;
+
+/** Immutable terms accepted for a reviewed organization cancellation reversal. */
+export const billingSubscriptionRenewalReviews = pgTable(
+  "billing_subscription_renewal_reviews",
+  {
+    command_id: uuid("command_id").primaryKey(),
+    organization_id: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    payload: jsonb("payload").$type<SubscriptionRenewalReview>().notNull(),
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    command_tenant_fk: foreignKey({
+      name: "billing_renewal_review_command_tenant_fk",
+      columns: [table.command_id, table.organization_id],
+      foreignColumns: [billingSubscriptionCommands.id, billingSubscriptionCommands.organization_id],
+    }).onDelete("restrict"),
+    tenant_idx: index("billing_renewal_review_tenant_idx").on(
+      table.organization_id,
+      table.command_id,
+    ),
+    payload_check: check(
+      "billing_renewal_review_payload_check",
+      sql`(jsonb_typeof(${table.payload})='object' AND ${table.payload}->>'kind'='renewal_estimate' AND ${table.payload}->>'termsDigest' ~ '^[a-f0-9]{64}$' AND ${table.payload}->>'expectedSubscriptionRevision' ~ '^[1-9][0-9]*$') IS TRUE`,
+    ),
+  }),
+);
+
+/** Original invoice observation retained atomically with its authenticated receipt. */
+export const subscriptionInvoiceEventEvidence = pgTable(
+  "subscription_invoice_event_evidence",
+  {
+    receipt_id: uuid("receipt_id").primaryKey(),
+    organization_id: uuid("organization_id").notNull(),
+    evidence: jsonb("evidence").$type<SubscriptionInvoiceEventEvidence>().notNull(),
+  },
+  (table) => ({
+    receipt_owner_fk: foreignKey({
+      columns: [table.receipt_id, table.organization_id],
+      foreignColumns: [
+        billingSubscriptionEventReceipts.id,
+        billingSubscriptionEventReceipts.organization_id,
+      ],
+    }).onDelete("restrict"),
+  }),
+);
+
+/** Append-only versions under the original receipt; these observations do not apply money. */
+export const subscriptionInvoiceObservations = pgTable(
+  "subscription_invoice_observations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organization_id: uuid("organization_id").notNull(),
+    receipt_id: uuid("receipt_id").notNull(),
+    request_id: uuid("request_id").notNull(),
+    version: integer("version").notNull(),
+    previous_id: uuid("previous_id"),
+    observation: jsonb("observation")
+      .$type<
+        | Awaited<ReturnType<typeof observeRetainedInvoiceBalance>>
+        | Awaited<
+            | ReturnType<typeof observeRetainedCollectingInvoiceCapture>
+            | ReturnType<typeof observeOriginalInvoiceDebt>
+          >
+      >()
+      .notNull(),
+    observed_at: timestamp("observed_at", { withTimezone: true }).notNull(),
+    recorded_at: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    receipt_owner_fk: foreignKey({
+      columns: [table.receipt_id, table.organization_id],
+      foreignColumns: [
+        billingSubscriptionEventReceipts.id,
+        billingSubscriptionEventReceipts.organization_id,
+      ],
+    }).onDelete("restrict"),
+    request_unique: uniqueIndex("subscription_invoice_observation_request_unique").on(
+      table.receipt_id,
+      table.request_id,
+    ),
+    version_unique: uniqueIndex("subscription_invoice_observation_version_unique").on(
+      table.receipt_id,
+      table.version,
+    ),
+  }),
+);

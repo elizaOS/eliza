@@ -1,6 +1,9 @@
 // Handles v1 cloud API v1 container control plane forward route traffic with route-local auth expectations.
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AuthedUser } from "@/types/cloud-worker-env";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AuthedUser,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const CONTROL_PLANE_URL_KEYS = [
   "CONTAINER_CONTROL_PLANE_URL",
@@ -110,7 +113,7 @@ export async function forwardToContainerControlPlane(
  * (job processing, node autoscale, warm-pool replenish/drain, fleet upgrade,
  * node health) is driven by the daemon's `pollCycle` /
  * `runInfraMaintenanceCycle` (see
- * packages/cloud/scripts/admin/daemons/provisioning-worker.ts). The CF cron
+ * packages/cloud/services/provisioning-worker/src/index.ts). The CF cron
  * here only needs to validate auth and acknowledge — returning 200 instead of
  * a dead-forward 5xx so the scheduled invocation stops erroring.
  *

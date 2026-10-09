@@ -18,7 +18,7 @@ const repoRoot = resolve(uiSrc, "../../..");
 const outDir = join(here, "output-devices-runtimes-a11y");
 const sharedLanguageModule = join(
   repoRoot,
-  "packages/shared/src/i18n/language.ts",
+  "packages/core/src/i18n/language.ts",
 );
 await mkdir(outDir, { recursive: true });
 

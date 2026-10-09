@@ -1,36 +1,14 @@
-/**
- * Role-aware artifact disclosure decision for shared artifacts (transcripts,
- * stored files, chat attachments, meeting sessions) — the read-side selector
- * behind #14778, designed inside the #8876 attachments doctrine: bytes stay on
- * the pre-auth content-addressed store (the sha256 URL is the capability), so
- * "permission" here means URL/DTO disclosure on the REFERENCING record, never
- * a byte-serve gate. Redacted variants are separate records/media objects; this
- * module only decides which variant a viewer's DTO may reference.
- *
- * One decision, three outcomes: `full` (emit the artifact as stored),
- * `redacted` (emit the redacted-variant fields, flagged), `none` (omit the row
- * entirely). Every disclosure surface routes through this single function so
- * the role matrix — OWNER/ADMIN/agent-self full; USER grant-driven; ungranted
- * viewers fall back to the scope ladder (which fails closed on the
- * `owner-private` default) — cannot drift per surface.
- *
- * Grants ride additively on the referencing record's metadata
- * (`metadata.share.grants`, jsonb — no migration, no sha256-keyed table per
- * doctrine AD1). The grant WRITE path (share actions, room-snapshot capture)
- * belongs to the PERM-ACL/PERM-REDACT children of #14749; this module only
- * evaluates what is stored. Default-matrix ratification is tracked in #14777 —
- * revisit the ordering below if D4/D5 land differently.
- */
+/** Selects full, redacted, or omitted artifact metadata for the requester. Authorization applies to the referencing record; content-addressed URLs remain byte-access capabilities. Grants are additive and missing disclosure scope defaults to owner-private. */
+import type { AccessContext } from "../types/access-context.js";
 import type {
-	AccessContext,
 	ArtifactRoomSnapshot,
 	ArtifactShareGrant,
 	ArtifactShareGrantMode,
 	ArtifactShareMetadata,
 	Memory,
 	MemoryScope,
-	UUID,
-} from "../types";
+} from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
 import { actorFromAccessContext, canReadScope } from "./filter";
 
 /** What a viewer's DTO may contain for one artifact. */
@@ -202,18 +180,18 @@ export function artifactDisclosureRecordFromMemory(
  * Decide what `ctx`'s requester may see of one artifact record.
  *
  * Tier order (most privileged first):
- *  1. No access context → `full`. The single-owner local boundary deliberately
- *     omits a context (see `RouteHandlerContext.accessContext`), and existing
- *     unfiltered behavior there is a documented product decision.
- *  2. Agent self-read, OWNER, or ADMIN rank → `full`.
- *  3. An explicit per-entity grant wins in BOTH directions: a `full` grant
- *     elevates past the scope ladder, and a `redacted` grant narrows the viewer
- *     to the variant even when the scope ladder would allow full — the owner's
- *     per-viewer instruction (e.g. an admin "redact for everyone" pass) must
- *     not be undone by a coarse `global` scope.
- *  4. No grant → the scope ladder (`canReadScope`): a USER still reads global
- *     records and their own user-private records in full; the `owner-private`
- *     default fails closed to `none`.
+ * 1. No access context → `full`. The single-owner local boundary deliberately
+ * omits a context (see `RouteHandlerContext.accessContext`), and existing
+ * unfiltered behavior there is a documented product decision.
+ * 2. Agent self-read, OWNER, or ADMIN rank → `full`.
+ * 3. An explicit per-entity grant wins in BOTH directions: a `full` grant
+ * elevates past the scope ladder, and a `redacted` grant narrows the viewer
+ * to the variant even when the scope ladder would allow full — the owner's
+ * per-viewer instruction (e.g. an admin "redact for everyone" pass) must
+ * not be undone by a coarse `global` scope.
+ * 4. No grant → the scope ladder (`canReadScope`): a USER still reads global
+ * records and their own user-private records in full; the `owner-private`
+ * default fails closed to `none`.
  */
 export function resolveArtifactDisclosure(
 	record: ArtifactDisclosureRecord,

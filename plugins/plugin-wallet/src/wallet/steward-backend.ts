@@ -11,7 +11,7 @@
  * `getSolanaSigner()` always throws.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import type { DevCloudStewardOperationalTuple } from "@elizaos/shared";
+import { type DevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { PublicKey } from "@solana/web3.js";
 import type { Account, Hex, TypedDataDefinition } from "viem";
 import { hexToBytes } from "viem";

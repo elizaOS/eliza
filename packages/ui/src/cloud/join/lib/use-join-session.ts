@@ -9,7 +9,7 @@
  * only what it needs: `{ ready, authenticated }`.
  */
 
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useContext, useEffect, useState } from "react";
 import { decodeJwtPayload } from "../../lib/jwt";
 import { LocalStewardAuthContext } from "../../shell/StewardProvider";

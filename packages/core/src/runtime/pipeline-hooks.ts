@@ -1,15 +1,8 @@
 /** Owns runtime pipeline hook registration, ordering, execution, and telemetry. Hook handlers receive the original runtime and share its canonical state-cache invalidation and output-sanitization policies. */
 
 import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard.js";
-import { sanitizeOutboundText } from "../services/message/outbound-sanitize";
-import {
-	EventType,
-	type IAgentRuntime,
-	type PipelineHookContext,
-	type PipelineHookPhase,
-	type PipelineHookSpec,
-	type ResolvedPipelineHook,
-} from "../types";
+import { sanitizeOutboundText } from "../security/outbound-sanitize.ts";
+import { EventType } from "../types/events.js";
 import {
 	PIPELINE_HOOK_DEBUG_LOG_MS,
 	PIPELINE_HOOK_ERROR_LOG_MS,
@@ -18,10 +11,17 @@ import {
 	resolvePipelineHookSpec,
 	sortPipelineHooksByPosition,
 } from "../types/pipeline-hooks";
+import type {
+	PipelineHookContext,
+	PipelineHookPhase,
+	PipelineHookSpec,
+	ResolvedPipelineHook,
+} from "../types/pipeline-hooks.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import {
 	isUnavailableLocalModel,
 	TEXT_GENERATION_MODEL_KEYS,
-} from "./model-dispatch/policy.js";
+} from "./model-policy.js";
 
 export function coerceOutgoingMessageText(text: unknown): string {
 	if (text === null || text === undefined) {
@@ -391,7 +391,7 @@ export class RuntimePipelineHooks {
 					);
 				}
 				// Mandatory outbound hygiene, hooks or none: strip leaked model
-				// machine syntax (#15888), redact secrets, then fail-closed block
+				// machine syntax, redact secrets, then fail-closed block
 				// any security-envelope echo. Runs before the content is
 				// persisted, so stored outbound memories carry the same text the
 				// connector delivers.

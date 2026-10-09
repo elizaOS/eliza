@@ -18,6 +18,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_CODING_AGENT,
   type Media,
+  readReminderPresentation,
   requireConfirmedSendHandlerDelivery,
   type SwarmCoordinatorTaskContext,
   type SwarmEvent,
@@ -94,12 +95,31 @@ export async function routeAutonomyTextToUser(
   state: ServerState,
   responseText: string,
   source = "autonomy",
+  reminderPresentation?: unknown,
+  reminderReference?: {
+    ownerType: "occurrence";
+    ownerId: string;
+    subjectType: "owner";
+    scheduledFor: string;
+    dueAt: string | null;
+  },
+  publishNotification?: (target?: {
+    conversationId: string;
+    messageId: string;
+  }) => Promise<unknown>,
 ): Promise<void> {
   const runtime = state.runtime;
-  if (!runtime) return;
+  if (!runtime) {
+    await publishNotification?.();
+    return;
+  }
 
-  const normalizedText = responseText.trim();
-  if (!normalizedText) return;
+  const presentation = readReminderPresentation(reminderPresentation);
+  const normalizedText = presentation ? responseText : responseText.trim();
+  if (!normalizedText.trim()) {
+    await publishNotification?.();
+    return;
+  }
 
   // Find target conversation (active, or most recent)
   let conv: ConversationMeta | undefined;
@@ -119,7 +139,10 @@ export async function routeAutonomyTextToUser(
     });
     conv = sorted[0];
   }
-  if (!conv) return; // No conversations exist yet
+  if (!conv) {
+    await publishNotification?.();
+    return;
+  } // No conversations exist yet
 
   if (CHAT_SUPPRESSED_AUTONOMY_SOURCES.has(source)) {
     return;
@@ -143,14 +166,25 @@ export async function routeAutonomyTextToUser(
   // model-composed relays of a sub-agent/coordinator's output, so they skip the
   // gate; the gate fails open and returns the original text on any outage.
   let deliveredText = normalizedText;
+  let agentVoiced = false;
   if (!isEphemeral) {
     const voiced = await ensureAgentVoice(
       runtime,
-      { text: normalizedText, source },
+      {
+        text: normalizedText,
+        source,
+        ...(reminderPresentation !== undefined
+          ? {
+              reminderPresentation:
+                reminderPresentation as import("@elizaos/core").ReminderPresentation,
+            }
+          : {}),
+      },
       { source },
     );
+    agentVoiced = voiced.agentVoiced === true;
     if (typeof voiced.text === "string" && voiced.text.trim().length > 0) {
-      deliveredText = voiced.text.trim();
+      deliveredText = presentation ? voiced.text : voiced.text.trim();
     }
   }
 
@@ -164,10 +198,20 @@ export async function routeAutonomyTextToUser(
       content: {
         text: deliveredText,
         source,
-        agentVoiced: true,
+        ...(agentVoiced ? { agentVoiced: true } : {}),
+        ...(source === "reminder" && reminderReference
+          ? { metadata: reminderReference }
+          : {}),
       },
     });
-    await runtime.createMemory(agentMessage, "messages");
+    try {
+      await runtime.createMemory(agentMessage, "messages");
+    } catch (error) {
+      // Keep the notification available without claiming a nonexistent source.
+      await publishNotification?.();
+      throw error;
+    }
+    await publishNotification?.({ conversationId: conv.id, messageId });
   }
   conv.updatedAt = new Date().toISOString();
 

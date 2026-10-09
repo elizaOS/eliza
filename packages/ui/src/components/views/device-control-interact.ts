@@ -36,7 +36,10 @@ export function createDeviceControlInteractHandler(system: FlashlightPlugin) {
   };
 }
 
-export function registerDeviceControlInteractHandler(): () => void {
+export function registerDeviceControlInteractHandler(
+  installationId?: string,
+): () => void {
+  if (!installationId) return () => {};
   if (Capacitor.getPlatform() !== "android") return () => {};
 
   const system = getSystemPlugin();
@@ -45,5 +48,6 @@ export function registerDeviceControlInteractHandler(): () => void {
     "device-control",
     "gui",
     createDeviceControlInteractHandler(system as FlashlightPlugin),
+    installationId,
   );
 }

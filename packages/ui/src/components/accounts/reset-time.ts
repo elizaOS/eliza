@@ -7,7 +7,7 @@
  * and the "which resets first" ordering identical to the backend intent.
  */
 
-import type { AccountWithCredentialFlag } from "../../api/client-agent";
+import type { AccountWithCredentialFlag } from "../../api/client-agent-accounts";
 
 /** Compact human duration for a future reset instant. Null when past/absent. */
 export function formatResetIn(epochMs: number | undefined): string | null {

@@ -2,7 +2,7 @@
  * Real-PGlite DB round-trip test for the relationships data path.
  *
  * plugin-relationships is a VIEWER + KNOWLEDGE_GRAPH action over the runtime's
- * KnowledgeGraphService (owned by @elizaos/agent) — that service's
+ * KnowledgeGraphService (owned by this plugin) — that service's
  * EntityStore / RelationshipStore are the relationships domain's real backing.
  * This boots a REAL PGLite-backed AgentRuntime, registers the KG service + its
  * schema, and round-trips entities + a relationship through the SAME stores the
@@ -12,22 +12,22 @@
  */
 
 import {
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-  resolveKnowledgeGraphService,
-} from "@elizaos/agent/services/knowledge-graph";
-import {
   type AgentRuntime,
   type Memory,
-  relationshipsPlugin as nativeRelationshipsPlugin,
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
+import { relationshipsPlugin as nativeRelationshipsPlugin } from "@elizaos/plugin-assistant";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/app-core/test/helpers/real-runtime.ts";
+} from "../../../packages/app/test/helpers/real-runtime.ts";
+import {
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+  resolveKnowledgeGraphService,
+} from "../src/index.ts";
 import { relationshipsPlugin } from "../src/plugin.ts";
 
 // Registering the KG service + schema makes runtime.initialize() start the
@@ -127,6 +127,89 @@ describe("relationships KnowledgeGraph backing — real PGLite", () => {
         (entity) => entity.preferredName === "Denied Graph Person",
       ),
     ).toBe(false);
+  });
+
+  it("set_relationship updates the existing edge instead of adding a duplicate", async () => {
+    const action = runtime.actions.find(
+      (candidate) => candidate.name === "KNOWLEDGE_GRAPH",
+    );
+    if (!action) throw new Error("External graph action was not registered");
+    const relationships = service?.getRelationshipStore();
+    if (!relationships) throw new Error("RelationshipStore unavailable");
+    const toEntityId = `ent_${stringToUuid("relationships-set-relationship-target")}`;
+    const request = (evidence: string) => ({
+      parameters: {
+        op: "set_relationship",
+        toEntityId,
+        relationshipType: "manages",
+        evidence,
+      },
+    });
+    const message: Memory = {
+      id: stringToUuid("relationships-set-relationship-owner"),
+      entityId: runtime.agentId,
+      roomId: runtime.agentId,
+      content: { text: "Pat is my manager", source: "test" },
+    };
+
+    const first = await action.handler(
+      runtime,
+      message,
+      undefined,
+      request("first chat"),
+      undefined,
+    );
+    const second = await action.handler(
+      runtime,
+      message,
+      undefined,
+      request("second chat"),
+      undefined,
+    );
+
+    expect(first).toMatchObject({ success: true });
+    expect(second).toMatchObject({ success: true });
+    const edges = await relationships.list({ toEntityId, type: "manages" });
+    expect(edges).toHaveLength(1);
+    expect(edges[0]?.evidence).toEqual(["first chat", "second chat"]);
+  });
+
+  it("concurrent assertions and observations of one edge keep one edge with every evidence", async () => {
+    const relationships = service?.getRelationshipStore();
+    if (!relationships) throw new Error("RelationshipStore unavailable");
+    const edge = {
+      fromEntityId: `ent_${stringToUuid("relationships-concurrent-from")}`,
+      toEntityId: `ent_${stringToUuid("relationships-concurrent-to")}`,
+      type: "knows",
+    };
+    const evidence = ["a", "b", "c", "d", "e"].map((tag) => `chat ${tag}`);
+
+    await Promise.all(
+      evidence.map((item) =>
+        relationships.assertEdge({
+          ...edge,
+          evidence: [item],
+          confidence: 0.5,
+          source: "user_chat",
+        }),
+      ),
+    );
+    await Promise.all(
+      ["f", "g", "h"].map((tag) =>
+        relationships.observe({
+          ...edge,
+          evidence: [`chat ${tag}`],
+          confidence: 0.5,
+        }),
+      ),
+    );
+
+    const edges = await relationships.list(edge);
+    expect(edges).toHaveLength(1);
+    expect([...(edges[0]?.evidence ?? [])].sort()).toEqual(
+      [...evidence, "chat f", "chat g", "chat h"].sort(),
+    );
+    expect(edges[0]?.state.interactionCount).toBe(3);
   });
 
   it("entity upsert → get / list / resolve round-trip against the live DB", async () => {

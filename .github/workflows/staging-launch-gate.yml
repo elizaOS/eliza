@@ -1,0 +1,503 @@
+# Composed exact-SHA staging launch gate (#29922).
+#
+# Manual dispatch only. Runs the launch lanes in a fixed order against the
+# release that staging currently serves, reusing the existing checks:
+#   front door -> first turn -> reload -> messaging -> routing
+# Preflight is read-only and fails before any lane runs when the dispatch ref,
+# the pinned SHA, or a required credential is missing. The workflow certifies
+# only the exact staging head that Pages and the API Worker both serve, so the
+# harness and the product under test are the same source tree.
+#
+# Every lane writes a closed privacy-safe receipt (commit SHAs, run identity,
+# outcomes, timings, one integer/enum metric) through
+# packages/scripts/launch-gate-receipt.ts; the compose job folds them into one
+# launch-gate receipt that names the owning tracker of the first failed lane.
+# No raw Playwright output, response body, token, account identifier, or
+# message content is uploaded.
+
+name: Staging Launch Gate
+
+run-name: Staging launch gate ${{ inputs.expected_deploy_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_deploy_sha:
+        description: Exact 40-character staging head that Pages and the API Worker both serve.
+        required: true
+        type: string
+      approve_billable_dedicated_confirmation:
+        description: Approve one visible Dedicated confirmation click in the first-turn lane. This may start billable staging compute.
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-launch-gate
+  cancel-in-progress: false
+
+env:
+  EXPECTED_DEPLOY_SHA: ${{ inputs.expected_deploy_sha }}
+
+jobs:
+  preflight:
+    name: Preflight (read-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: staging
+    outputs:
+      source_sha: ${{ steps.pin.outputs.source_sha }}
+    steps:
+      - name: Require the staging ref and an exact pinned SHA
+        id: pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/staging" ]]; then
+            echo "::error::The launch gate certifies only refs/heads/staging."
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::expected_deploy_sha must be an exact lowercase 40-hex commit."
+            exit 1
+          fi
+          if [[ "$EXPECTED_DEPLOY_SHA" != "$GITHUB_SHA" ]]; then
+            echo "::error::expected_deploy_sha is not the staging head this dispatch resolved; wait for staging to converge and dispatch again."
+            exit 1
+          fi
+          echo "source_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Require launch credentials before any lane runs
+        shell: bash
+        env:
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+          TELEGRAM_EXPECTED_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          TELEGRAM_EXPECTED_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in ELIZAOS_CLOUD_API_KEY TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET TELEGRAM_EXPECTED_BOT_ID TELEGRAM_EXPECTED_BOT_USERNAME; do
+            value="${!name:-}"
+            if [[ -z "${value//[[:space:]]/}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          unset value
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing staging launch-gate configuration (names only): ${missing[*]}"
+            exit 1
+          fi
+          echo "Staging launch-gate configuration is present (values not printed)."
+
+  front-door:
+    name: Front door
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Record lane start
+        id: start
+        run: echo "ms=$(date +%s%3N)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify exact-SHA Pages/Worker release authority
+        id: authority
+        run: |
+          node packages/cloud/scripts/release-authority-drift.ts \
+            --environment staging \
+            --expected-sha "$SOURCE_SHA"
+
+      - name: Verify anonymous Steward sign-in discovery
+        id: discovery
+        run: |
+          set -euo pipefail
+          for base_url in https://staging.eliza.app https://api-staging.eliza.app; do
+            node packages/cloud/scripts/verify-steward-provider-discovery.ts \
+              --base-url "$base_url" \
+              --environment staging \
+              --surface proxy
+          done
+
+      - name: Write front-door lane receipt
+        if: ${{ always() }}
+        env:
+          STARTED_MS: ${{ steps.start.outputs.ms }}
+          LANE_OUTCOME: ${{ steps.authority.outcome == 'success' && steps.discovery.outcome == 'success' && 'success' || 'failure' }}
+        run: |
+          node packages/scripts/launch-gate-receipt.ts lane \
+            --lane front-door \
+            --outcome "$LANE_OUTCOME" \
+            --source-sha "$SOURCE_SHA" \
+            --deployed-sha "$EXPECTED_DEPLOY_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --started-ms "$STARTED_MS" \
+            --completed-ms "$(date +%s%3N)"
+
+      - name: Upload front-door lane receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: launch-gate-lane-front-door-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/launch-gate/front-door.json
+          if-no-files-found: error
+          retention-days: 14
+
+  first-turn-and-reload:
+    name: First turn and reload
+    needs: [preflight, front-door]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: staging
+    env:
+      SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Initialize private proof paths
+        run: |
+          set -euo pipefail
+          umask 077
+          proof_dir="$RUNNER_TEMP/launch-gate-proof-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$proof_dir"
+          chmod 700 "$proof_dir"
+          {
+            printf 'REMOTE_SMOKE_PATH=%s/remote-smoke.json\n' "$proof_dir"
+            printf 'LATENCY_PATH=%s/latency.json\n' "$proof_dir"
+            printf 'CONTINUITY_PATH=%s/continuity.json\n' "$proof_dir"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        env:
+          ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
+        with:
+          setup-python: "true"
+          bun-version: "1.4.2"
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright Chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
+
+      - name: Build runtime contracts and provider exports
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/plugin-elizacloud --filter=@elizaos/plugin-local-inference
+
+      - name: Run deployed Personal identity, first turn, and reload trajectory
+        id: browser
+        working-directory: packages/app
+        env:
+          ELIZA_UI_SMOKE_CLOUD_LIVE: "1"
+          ELIZA_UI_SMOKE_LIVE_STACK: "1"
+          ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: staging
+          ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: ${{ inputs.approve_billable_dedicated_confirmation && '1' || '0' }}
+          ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
+          ELIZA_UI_SMOKE_DEPLOYED_RENDERER: "1"
+          ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          # #22552: this lane must prove the first Shared HTTP attempt itself
+          # succeeds. A recovered client retry is not first-turn evidence.
+          ELIZA_UI_SMOKE_REQUIRE_SHARED_FIRST_ATTEMPT: "1"
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+          PLAYWRIGHT_NO_COPY_PROMPT: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f -- "$REMOTE_SMOKE_PATH" "$LATENCY_PATH" "$CONTINUITY_PATH"
+          export ELIZA_UI_SMOKE_DEPLOYED_BROWSER_EVIDENCE_PATH="$REMOTE_SMOKE_PATH"
+          export ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH="$LATENCY_PATH"
+          export ELIZA_UI_SMOKE_STAGING_CONTINUITY_EVIDENCE_PATH="$CONTINUITY_PATH"
+          echo "started_ms=$(date +%s%3N)" >> "$GITHUB_OUTPUT"
+          set +e
+          # Raw Playwright output can contain rendered transcript text, so it
+          # is suppressed; only closed-schema evidence leaves this job.
+          bunx playwright test \
+            --config playwright.cloud-deployed.config.ts \
+            --project=chromium \
+            test/ui-smoke/cloud-live.spec.ts >/dev/null 2>&1
+          status=$?
+          set -e
+          echo "completed_ms=$(date +%s%3N)" >> "$GITHUB_OUTPUT"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Deployed first-turn/reload trajectory failed (exit=${status}; raw-output=suppressed)."
+          fi
+          exit "$status"
+
+      - name: Validate privacy-safe first-turn evidence
+        id: first-turn
+        if: ${{ always() && steps.browser.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          latency_ms="$(bun packages/app/test/staging-cloud-chat-latency-evidence.ts "$LATENCY_PATH")"
+          echo "latency_ms=$latency_ms" >> "$GITHUB_OUTPUT"
+
+      - name: Validate privacy-safe reload continuity evidence
+        id: reload
+        if: ${{ always() && steps.browser.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          continuity="$(bun packages/app/test/cloud-live-continuity-contract.ts "$CONTINUITY_PATH")"
+          [ "$continuity" = "verified" ] || {
+            echo "::error::Reload continuity evidence did not close."
+            exit 1
+          }
+          echo "continuity=$continuity" >> "$GITHUB_OUTPUT"
+
+      - name: Write first-turn and reload lane receipts
+        if: ${{ always() }}
+        env:
+          STARTED_MS: ${{ steps.browser.outputs.started_ms }}
+          COMPLETED_MS: ${{ steps.browser.outputs.completed_ms }}
+          FIRST_TURN_OUTCOME: ${{ steps.first-turn.outcome == 'success' && 'success' || 'failure' }}
+          RELOAD_OUTCOME: ${{ steps.reload.outcome == 'success' && 'success' || 'failure' }}
+          LATENCY_MS: ${{ steps.first-turn.outputs.latency_ms }}
+          CONTINUITY: ${{ steps.reload.outputs.continuity }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          now_ms="$(date +%s%3N)"
+          started_ms="${STARTED_MS:-$now_ms}"
+          completed_ms="${COMPLETED_MS:-$now_ms}"
+          first_turn_args=(--lane first-turn --outcome "$FIRST_TURN_OUTCOME")
+          if [ "$FIRST_TURN_OUTCOME" = "success" ]; then
+            first_turn_args+=(--first-turn-latency-ms "$LATENCY_MS")
+          fi
+          reload_args=(--lane reload --outcome "$RELOAD_OUTCOME")
+          if [ "$RELOAD_OUTCOME" = "success" ]; then
+            reload_args+=(--continuity "$CONTINUITY")
+          fi
+          for args_name in first_turn_args reload_args; do
+            declare -n lane_args="$args_name"
+            node packages/scripts/launch-gate-receipt.ts lane \
+              "${lane_args[@]}" \
+              --source-sha "$SOURCE_SHA" \
+              --deployed-sha "$EXPECTED_DEPLOY_SHA" \
+              --run-id "$GITHUB_RUN_ID" \
+              --run-attempt "$GITHUB_RUN_ATTEMPT" \
+              --started-ms "$started_ms" \
+              --completed-ms "$completed_ms"
+            unset -n lane_args
+          done
+
+      - name: Upload first-turn and reload lane receipts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: launch-gate-lane-first-turn-reload-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            test-results/launch-gate/first-turn.json
+            test-results/launch-gate/reload.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload privacy-safe trajectory diagnostics
+        if: ${{ failure() && steps.browser.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: launch-gate-trajectory-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/app/**/privacy-safe-*-history-network-diagnostics.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  messaging:
+    name: Messaging
+    needs: [preflight, first-turn-and-reload]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: staging
+    env:
+      SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Record lane start
+        id: start
+        run: echo "ms=$(date +%s%3N)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify staging messaging gateway configuration
+        id: gateway
+        env:
+          ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
+          ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+        run: node packages/cloud/scripts/shared/messaging-gateway-preflight.ts --strict --channels=telegram
+
+      - name: Attest the staging Telegram bot identity (read-only getMe)
+        id: identity
+        env:
+          TELEGRAM_ATTESTATION_CONTEXT: staging-launch-gate
+          TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+          TELEGRAM_EXPECTED_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          TELEGRAM_EXPECTED_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+        run: node packages/cloud/scripts/verify-telegram-bot-identity.ts
+
+      - name: Write messaging lane receipt
+        if: ${{ always() }}
+        env:
+          STARTED_MS: ${{ steps.start.outputs.ms }}
+          LANE_OUTCOME: ${{ steps.gateway.outcome == 'success' && steps.identity.outcome == 'success' && 'success' || 'failure' }}
+        run: |
+          node packages/scripts/launch-gate-receipt.ts lane \
+            --lane messaging \
+            --outcome "$LANE_OUTCOME" \
+            --source-sha "$SOURCE_SHA" \
+            --deployed-sha "$EXPECTED_DEPLOY_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --started-ms "$STARTED_MS" \
+            --completed-ms "$(date +%s%3N)"
+
+      - name: Upload messaging lane receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: launch-gate-lane-messaging-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/launch-gate/messaging.json
+          if-no-files-found: error
+          retention-days: 14
+
+  routing:
+    name: Routing
+    needs: [preflight, messaging]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Record lane start
+        id: start
+        run: echo "ms=$(date +%s%3N)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify every staging domain routes to staging
+        id: routing
+        run: |
+          node packages/cloud/scripts/verify-environment-routing-cli.ts \
+            --environment staging \
+            --require-beacon
+
+      - name: Write routing lane receipt
+        if: ${{ always() }}
+        env:
+          STARTED_MS: ${{ steps.start.outputs.ms }}
+          LANE_OUTCOME: ${{ steps.routing.outcome == 'success' && 'success' || 'failure' }}
+        run: |
+          node packages/scripts/launch-gate-receipt.ts lane \
+            --lane routing \
+            --outcome "$LANE_OUTCOME" \
+            --source-sha "$SOURCE_SHA" \
+            --deployed-sha "$EXPECTED_DEPLOY_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --started-ms "$STARTED_MS" \
+            --completed-ms "$(date +%s%3N)"
+
+      - name: Upload routing lane receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: launch-gate-lane-routing-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/launch-gate/routing.json
+          if-no-files-found: error
+          retention-days: 14
+
+  compose:
+    name: Compose launch-gate receipt
+    needs: [preflight, front-door, first-turn-and-reload, messaging, routing]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # The receipt tool comes from the dispatch head; a preflight failure
+      # still composes a failed receipt naming the owning tracker.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Download lane receipts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: launch-gate-lane-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/launch-gate
+          merge-multiple: true
+
+      - name: Compose the terminal receipt
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployed_sha=unverified
+          if [[ "$PREFLIGHT_RESULT" == "success" ]]; then
+            deployed_sha="$EXPECTED_DEPLOY_SHA"
+          fi
+          node packages/scripts/launch-gate-receipt.ts compose \
+            --source-sha "$GITHUB_SHA" \
+            --deployed-sha "$deployed_sha" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --preflight "$PREFLIGHT_RESULT" \
+            --lanes-dir test-results/launch-gate \
+            --output test-results/launch-gate/launch-gate-receipt.json
+
+      - name: Upload the terminal receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: staging-launch-gate-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/launch-gate/launch-gate-receipt.json
+          if-no-files-found: error
+          retention-days: 30

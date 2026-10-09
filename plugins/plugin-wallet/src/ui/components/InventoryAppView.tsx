@@ -9,6 +9,7 @@
  * {@link InventoryView} renders it as the real-DOM child of its `Escape` hatch.
  * This is the DOM-only dashboard reached only through that wrapper.
  */
+
 import type {
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -17,34 +18,38 @@ import type {
   WalletMarketOverviewSource,
   WalletNftsResponse,
   WalletTradingProfileResponse,
-} from "@elizaos/shared";
-import { Avatar, AvatarFallback, AvatarImage, Button } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { client, isApiError } from "@elizaos/ui/api";
-import { shellLocalStorage } from "@elizaos/ui/bridge";
+} from "@elizaos/contracts";
 import {
+  type ActivityEvent,
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  Button,
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
+  client,
+  cn,
+  copyTextToClipboard,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  ListSkeleton,
-} from "@elizaos/ui/components";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import {
-  type ActivityEvent,
   getActiveAgentAuthority,
+  getStorageValue,
+  type InventoryChainFilters,
+  isApiError,
+  ListSkeleton,
+  PagePanel,
+  setStorageValue,
+  shellLocalStorage,
   useActiveAgentAuthority,
   useActivityEvents,
-} from "@elizaos/ui/hooks";
-import type {
-  InventoryChainFilters,
-  WalletResourceStatus,
-} from "@elizaos/ui/state";
-import { useAppSelectorShallow } from "@elizaos/ui/state";
-import { cn, copyTextToClipboard } from "@elizaos/ui/utils";
+  useAgentElement,
+  useAppSelectorShallow,
+  type WalletResourceStatus,
+} from "@elizaos/ui";
+
 import {
   Activity,
   AlertTriangle,
@@ -118,7 +123,8 @@ function supportedWalletNfts(walletNfts: WalletNftsResponse | null): NftItem[] {
   return items.filter((nft) => isSupportedWalletAssetChain(nft.chain));
 }
 
-const HIDDEN_TOKEN_IDS_KEY = "eliza:wallet:hidden-token-ids:v1";
+const HIDDEN_TOKEN_IDS_KEY = "wallet:hidden-token-ids:v1";
+const LEGACY_HIDDEN_TOKEN_IDS_KEY = "eliza:wallet:hidden-token-ids:v1";
 const WALLET_REFRESH_INTERVAL_MS = 20_000;
 type OptionalCapabilityState = "unknown" | "supported" | "unavailable";
 interface InventoryPositionAsset {
@@ -218,40 +224,30 @@ function marketOverviewUnavailable(
   };
 }
 
-function readHiddenTokenIds(): Set<string> {
+function parseHiddenTokenIds(raw: string | null): Set<string> {
+  if (!raw) return new Set();
+  const parsed: unknown = JSON.parse(raw);
+  return new Set(
+    Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [],
+  );
+}
+
+function readLegacyHiddenTokenIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
-    const raw = window.localStorage.getItem(HIDDEN_TOKEN_IDS_KEY);
-    if (!raw) return new Set();
-
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(
-      parsed.filter((item): item is string => typeof item === "string"),
+    return parseHiddenTokenIds(
+      window.localStorage.getItem(LEGACY_HIDDEN_TOKEN_IDS_KEY),
     );
   } catch {
     return new Set();
   }
 }
 
-function writeHiddenTokenIds(next: Set<string>): void {
-  if (typeof window === "undefined") return;
-  // HIDDEN_TOKEN_IDS_KEY is under the shell-reserved `eliza:` namespace, so a
-  // raw localStorage write is denied by the surface-realm raw-global guard
-  // (SurfaceRealmDeniedError) while this view holds the foreground scope, and a
-  // local try/catch would swallow it into silent persistence loss. Route
-  // reserved-key writes through the shell-privileged channel — the sanctioned
-  // path for every reserved-key writer (surface-realm-broker.ts /
-  // scan-reserved-storage-writers.mjs).
-  try {
-    shellLocalStorage.setItem(HIDDEN_TOKEN_IDS_KEY, JSON.stringify([...next]));
-  } catch {
-    // error-policy:J4 the hide-set is best-effort view preference; a genuine
-    // storage-unavailable environment (quota/private mode) degrades to an
-    // unpersisted hide for this session rather than throwing out of the click
-    // handler.
-    return;
-  }
+async function writeHiddenTokenIds(next: Set<string>): Promise<void> {
+  // The view storage facade scopes dynamic bundles to their granted keyspace.
+  await setStorageValue(HIDDEN_TOKEN_IDS_KEY, JSON.stringify([...next]));
 }
 
 function tokenId(row: TokenRow): string {
@@ -297,7 +293,9 @@ function formatPercentDelta(value: number): string {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   });
-  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  // 0.04% and -0.04% round to "0.0". A signed zero is not a move.
+  if (magnitude === "0.0") return "0.0%";
+  const sign = value > 0 ? "+" : "-";
   return `${sign}${magnitude}%`;
 }
 
@@ -830,7 +828,8 @@ function MarketMoverList({
   return (
     <div className="divide-y divide-border/60">
       {movers.map((mover) => {
-        const isPositive = mover.change24hPct >= 0;
+        const change = formatPercentDelta(mover.change24hPct);
+        const isLoss = change.startsWith("-");
         return (
           <div key={mover.id} className="flex min-w-0 items-center gap-3 p-3">
             <MarketAvatar imageUrl={mover.imageUrl} label={mover.symbol} />
@@ -856,10 +855,10 @@ function MarketMoverList({
               <div
                 className={cn(
                   "text-xs font-semibold",
-                  isPositive ? "text-txt" : "text-danger",
+                  isLoss ? "text-danger" : "text-txt",
                 )}
               >
-                {formatPercentDelta(mover.change24hPct)}
+                {change}
               </div>
             </div>
           </div>
@@ -886,6 +885,31 @@ function WalletEmptyHero() {
         <p className="text-sm font-semibold text-txt">Your wallet is empty.</p>
         <p className="text-xs-tight text-muted">
           Assets will appear here when a supported wallet has a balance.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// A turned-off wallet is not an empty wallet: nothing has been read, so the
+// surface must not claim there is no balance. The Enable control sits below.
+function WalletDisabledHero() {
+  return (
+    <div
+      data-testid="wallet-disabled"
+      className="flex min-h-36 flex-col items-center justify-center gap-3 px-5 py-6 text-center"
+    >
+      <span
+        className="flex size-11 items-center justify-center rounded-sm bg-surface text-muted"
+        role="img"
+        aria-label="Wallet off"
+      >
+        <Wallet className="size-5" aria-hidden />
+      </span>
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-txt">Wallet is off.</p>
+        <p className="text-xs-tight text-muted">
+          Enable the wallet to load balances and activity.
         </p>
       </div>
     </div>
@@ -1690,7 +1714,7 @@ function WalletHoldingsSection({
 
       {walletEnabled === false ? (
         <div className="border-t border-border/70 py-4">
-          <WalletEmptyHero />
+          <WalletDisabledHero />
           <Button
             ref={enableWalletRef}
             className="w-full"
@@ -1920,8 +1944,39 @@ export function InventoryAppView() {
   }));
   const { events: activityEvents } = useActivityEvents();
   const [hiddenTokenIds, setHiddenTokenIds] = useState<Set<string>>(() =>
-    readHiddenTokenIds(),
+    readLegacyHiddenTokenIds(),
   );
+  const hiddenTokenEdits = useRef(0);
+  const hiddenTokenSave = useRef(Promise.resolve());
+  const persistHiddenTokenIds = useCallback(
+    (next: Set<string>) => {
+      hiddenTokenSave.current = hiddenTokenSave.current
+        .then(() => writeHiddenTokenIds(next))
+        .catch(() =>
+          setActionNotice(
+            "Token visibility changed for this session but could not be saved.",
+          ),
+        );
+    },
+    [setActionNotice],
+  );
+
+  useEffect(() => {
+    let active = true;
+    void getStorageValue(HIDDEN_TOKEN_IDS_KEY)
+      .then((raw) => {
+        if (active && hiddenTokenEdits.current === 0 && raw !== null)
+          setHiddenTokenIds(parseHiddenTokenIds(raw));
+      })
+      .catch(() => {
+        if (active)
+          setActionNotice("Hidden-token preferences could not be restored.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [setActionNotice]);
+
   const [marketOverview, setMarketOverview] =
     useState<WalletMarketOverviewResponse | null>(null);
   const [marketOverviewLoading, setMarketOverviewLoading] = useState(false);
@@ -2089,33 +2144,37 @@ export function InventoryAppView() {
   // but its performance model remains intentionally absent from this surface.
   const primaryTradingProfile: WalletTradingProfileResponse | null = null;
 
+  // Only a settled, enabled wallet with an account can be "empty". Disabled and
+  // account-less wallets render their own states in WalletHoldingsSection.
   const showWalletEmptyState =
-    walletEnabled === false ||
-    !hasWalletAccount ||
-    (walletBalancesStatus === "ready" &&
-      walletNftsStatus === "ready" &&
-      displayedAssetRows.length === 0 &&
-      lpPositions.length === 0 &&
-      visibleNfts.length === 0 &&
-      activityEvents.length === 0);
+    walletEnabled !== false &&
+    hasWalletAccount &&
+    walletBalancesStatus === "ready" &&
+    walletNftsStatus === "ready" &&
+    displayedAssetRows.length === 0 &&
+    lpPositions.length === 0 &&
+    visibleNfts.length === 0 &&
+    activityEvents.length === 0;
 
   const handleHideToken = useCallback(
     (row: TokenRow) => {
       const next = new Set(hiddenTokenIds);
       next.add(tokenId(row));
+      hiddenTokenEdits.current += 1;
       setHiddenTokenIds(next);
-      writeHiddenTokenIds(next);
+      persistHiddenTokenIds(next);
       setActionNotice(`${row.symbol} hidden from this wallet view.`);
     },
-    [hiddenTokenIds, setActionNotice],
+    [hiddenTokenIds, persistHiddenTokenIds, setActionNotice],
   );
 
   const handleRestoreHiddenTokens = useCallback(() => {
     const next = new Set<string>();
+    hiddenTokenEdits.current += 1;
     setHiddenTokenIds(next);
-    writeHiddenTokenIds(next);
+    persistHiddenTokenIds(next);
     setActionNotice("Hidden tokens are visible again.");
-  }, [setActionNotice]);
+  }, [persistHiddenTokenIds, setActionNotice]);
 
   const handleOpenRpcSettings = useCallback(() => {
     setTab("settings");

@@ -9,8 +9,8 @@
  * NOT a crisis guard: ordinary low activation, never a 988/crisis effect
  * (#12780 not-planned).
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 const FORWARDED_NOTE =
   "Your weekly reset is here. Small starts count — try one ten-minute thing " +

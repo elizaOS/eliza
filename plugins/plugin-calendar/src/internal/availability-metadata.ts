@@ -4,8 +4,8 @@
  * conflict behavior never depends on titles, descriptions, or prompt text.
  */
 
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 
 export const CALENDAR_AVAILABILITY_KINDS = ["travel", "hold"] as const;
 export type CalendarOwnedAvailabilityKind =

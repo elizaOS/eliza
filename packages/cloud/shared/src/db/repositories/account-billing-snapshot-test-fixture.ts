@@ -1,6 +1,7 @@
 /** Builds real subscription migrations and empty infrastructure fixtures for production snapshot integration tests. */
 import { readFile } from "node:fs/promises";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
+import { installOrganizationBillingScopeTestColumns } from "./organization-billing-scope-test-fixture";
 
 const ORG = "61000000-0000-4000-8000-000000000001";
 const SUB = "62000000-0000-4000-8000-000000000001";
@@ -28,12 +29,14 @@ export async function createBillingSnapshotFixture(
   await emptyTable(execute, schema.organizations);
   await execute(`ALTER TABLE organizations ADD PRIMARY KEY(id);
       CREATE TABLE users(id uuid PRIMARY KEY);
-      CREATE TABLE credit_transactions(id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id), amount numeric(16,6), type text, metadata jsonb, UNIQUE(id,organization_id));`);
+      CREATE TABLE credit_transactions(id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id), amount numeric(16,6), type text, metadata jsonb, stripe_payment_intent_id text UNIQUE, UNIQUE(id,organization_id));`);
   for (const name of [
     "0373_subscription_authority.sql",
     "0374_subscription_funding_transaction_uniqueness.sql",
     "0379_subscription_account_authority.sql",
     "0382_subscription_notice_intents.sql",
+    "0479_organization_payment_reversal_holds.sql",
+    "0494_payment_reversal_shortfall_holds.sql",
   ]) {
     const migration = await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8");
     for (const statement of migration.split("--> statement-breakpoint")) {
@@ -61,6 +64,7 @@ export async function createBillingSnapshotFixture(
       "utf8",
     ),
   );
+  await installOrganizationBillingScopeTestColumns(execute);
   // A server-side lock gives the test an observable pause in the real reader,
   // without replacing its DB adapter, transaction configuration or selectors.
   await execute(`CREATE FUNCTION snapshot_pause() RETURNS integer LANGUAGE plpgsql VOLATILE AS $$ BEGIN ${pauseStatement} RETURN NULL; END $$;

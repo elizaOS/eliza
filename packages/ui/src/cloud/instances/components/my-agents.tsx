@@ -1,11 +1,5 @@
 "use client";
 
-/**
- * The My Agents surface: lists the user's cloud agent instances with sort/view
- * controls and the create entry point.
- */
-import { logger } from "@elizaos/logger";
-import { DashboardPageContainer, useSetPageHeader } from "@elizaos/ui/cloud-ui";
 import {
   ArrowRight,
   BookOpen,
@@ -19,8 +13,16 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "../../../bridge/toast";
+import { DashboardPageContainer } from "../../../cloud-ui/components/layout/dashboard-page";
+import { useSetPageHeader } from "../../../cloud-ui/components/layout/page-header-context.hooks";
 import { Button } from "../../../components/ui/button";
-import { useT } from "../lib/i18n";
+/**
+ * The My Agents surface: lists the user's cloud agent instances with sort/view
+ * controls and the create entry point.
+ */
+import { logger } from "../../../logger.ts";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
+import { shouldReleaseAnonSessionToken } from "./affiliate-claim-session";
 import { CharacterFilters } from "./character-filters";
 import type { AgentWithOwnership } from "./character-library-grid";
 import { CharacterLibraryGrid } from "./character-library-grid";
@@ -362,7 +364,7 @@ export function MyAgentsClient() {
           );
           fetchCharacters();
 
-          if (sessionToken) {
+          if (sessionToken && shouldReleaseAnonSessionToken(data)) {
             try {
               localStorage.removeItem("eliza-anon-session-token");
             } catch {

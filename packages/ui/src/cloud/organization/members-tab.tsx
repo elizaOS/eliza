@@ -19,7 +19,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "../../cloud-ui";
+} from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
 import { Separator } from "../../components/ui/separator";
 import { useCloudT } from "../shell/CloudI18nProvider";

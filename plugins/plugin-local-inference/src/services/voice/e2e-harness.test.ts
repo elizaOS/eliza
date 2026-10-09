@@ -1,4 +1,6 @@
 /** Covers the voice E2E harness core scoring: WER, artifact validation, and barge-in. Deterministic, fixture inputs. */
+
+import { wordErrorRate } from "@elizaos/voice";
 import { describe, expect, it } from "vitest";
 import {
 	assertRequiredVoiceArtifacts,
@@ -12,7 +14,6 @@ import {
 	scoreTtsAsrRoundTrip,
 	summarizeVoiceE2e,
 	VoiceE2eHarnessError,
-	wordErrorRate,
 } from "./e2e-harness";
 
 describe("voice E2E harness WER scoring", () => {

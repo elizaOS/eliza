@@ -4,10 +4,11 @@ import { type PersonalDedicatedReviewedBackupChainEntry } from "../../personal-d
 
 /**
  * Restore-source override for `provision()`. `from-backup` restores a specific
- * backup instead of the latest and disables unrecoverable-snapshot degradation;
- * manual restore additionally sets `requireRestoreEndpoint` so the custom-image
- * 404 compatibility skip cannot fabricate success. `fresh-boot` skips restore
- * entirely. Callers that omit an override keep latest-backup auto-restore.
+ * backup instead of the latest; manual restore additionally sets
+ * `requireRestoreEndpoint` and binds its exact admission capture. `fresh-boot`
+ * skips restore entirely after explicit data-loss consent. Callers that omit an
+ * override keep latest-backup auto-restore. No lane degrades a known-backup
+ * failure to a fresh boot.
  */
 export type ProvisionRestoreOverride =
   | {

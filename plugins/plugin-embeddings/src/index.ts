@@ -18,7 +18,6 @@ import type {
   BatchTextEmbeddingParams,
   IAgentRuntime,
   Plugin,
-  ProcessEnvLike,
   TextEmbeddingParams,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
@@ -35,14 +34,7 @@ import {
   logResolvedConfig,
 } from "./utils/config";
 
-function getProcessEnv(): ProcessEnvLike {
-  if (typeof process === "undefined" || !process.env) {
-    return {};
-  }
-  return process.env as ProcessEnvLike;
-}
-
-const env = getProcessEnv();
+const env = process.env;
 
 export const embeddingsPlugin: Plugin = {
   name: "embeddings",
@@ -71,7 +63,6 @@ export const embeddingsPlugin: Plugin = {
     EMBEDDING_FALLBACK_API_KEY: env.EMBEDDING_FALLBACK_API_KEY ?? null,
     EMBEDDING_FALLBACK_MODEL: env.EMBEDDING_FALLBACK_MODEL ?? null,
     EMBEDDING_DIMENSIONS: env.EMBEDDING_DIMENSIONS ?? null,
-    EMBEDDING_BROWSER_URL: env.EMBEDDING_BROWSER_URL ?? null,
   },
 
   async init(_config, runtime) {
@@ -108,6 +99,12 @@ export const embeddingsPlugin: Plugin = {
   },
 
   // ONLY the embedding slots are registered — this plugin is embedding-only.
+  modelMetadata: {
+    [ModelType.TEXT_EMBEDDING]: {
+      displayModelSetting: "EMBEDDING_MODEL",
+    },
+  },
+
   models: {
     [ModelType.TEXT_EMBEDDING]: async (
       runtime: IAgentRuntime,

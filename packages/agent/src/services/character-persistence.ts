@@ -6,31 +6,22 @@
  * shape the config/DB payloads; `persistCharacter` applies all three and returns
  * a success/error result rather than throwing.
  */
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import {
-  type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "../config/config.ts";
+  CHARACTER_PERSISTENCE_SERVICE,
+  type CharacterPersistenceReceipt,
+  type CharacterPersistenceServiceLike,
+  type PersistCharacterParams,
+  type PersistCharacterResult,
+} from "@elizaos/plugin-assistant/character-persistence";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
-  type CharacterHistorySource,
   type RuntimeCharacterLike,
   recordCharacterHistory,
 } from "./character-history.ts";
 
-export const CHARACTER_PERSISTENCE_SERVICE = "eliza_character_persistence";
-
-type PersistCharacterParams = {
-  character?: RuntimeCharacterLike;
-  previousCharacter?: RuntimeCharacterLike;
-  previousName?: string;
-  source?: CharacterHistorySource;
-};
-
-type PersistCharacterResult = {
-  success: boolean;
-  error?: string;
-};
+export { CHARACTER_PERSISTENCE_SERVICE } from "@elizaos/plugin-assistant/character-persistence";
 
 type AgentConfigLike = NonNullable<ElizaConfig["agents"]>["list"] extends
   | Array<infer T>
@@ -168,7 +159,10 @@ function buildPersistedCharacterData(
   return persisted;
 }
 
-export class ElizaCharacterPersistenceService extends Service {
+export class ElizaCharacterPersistenceService
+  extends Service
+  implements CharacterPersistenceServiceLike
+{
   static serviceType = CHARACTER_PERSISTENCE_SERVICE;
 
   static async start(
@@ -188,10 +182,17 @@ export class ElizaCharacterPersistenceService extends Service {
     const previousCharacter = (params.previousCharacter ??
       this.runtime.character) as RuntimeCharacterLike;
 
+    const persistence: CharacterPersistenceReceipt = {
+      config: "not-started",
+      agent: "not-started",
+      history: "not-started",
+    };
     try {
       const config = loadElizaConfig();
       const nextAgent = syncCharacterIntoConfig(config, runtimeCharacter);
+      persistence.config = "unknown";
       saveElizaConfig(config);
+      persistence.config = "committed";
 
       const persistedCharacter = buildPersistedCharacterData(runtimeCharacter);
       const runtimeMetadata =
@@ -201,7 +202,8 @@ export class ElizaCharacterPersistenceService extends Service {
           ? runtimeCharacter.metadata
           : {};
 
-      await this.runtime.updateAgent(this.runtime.agentId, {
+      persistence.agent = "unknown";
+      const updated = await this.runtime.updateAgent(this.runtime.agentId, {
         name:
           (typeof nextAgent.name === "string" && nextAgent.name.trim()) ||
           this.runtime.character.name,
@@ -211,12 +213,20 @@ export class ElizaCharacterPersistenceService extends Service {
         },
       });
 
+      if (!updated) {
+        throw new ElizaError("Character database update was not confirmed", {
+          code: "CHARACTER_AGENT_UPDATE_UNCONFIRMED",
+        });
+      }
+      persistence.agent = "committed";
+      persistence.history = "unknown";
       await recordCharacterHistory(this.runtime, {
         previousCharacter,
         nextCharacter: runtimeCharacter,
         source: params.source ?? "agent",
       });
 
+      persistence.history = "committed";
       logger.info(
         {
           agentId: this.runtime.agentId,
@@ -225,9 +235,14 @@ export class ElizaCharacterPersistenceService extends Service {
         "Persisted runtime character changes",
       );
 
-      return { success: true };
+      return { success: true, persistence };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const causeMessage =
+        error instanceof Error ? error.message : String(error);
+      const message = `${causeMessage}. Persistence status: config=${persistence.config}, agent=${persistence.agent}, history=${persistence.history}. No rollback is claimed; reload and reconcile before retrying.`;
+      this.runtime.reportError("character.persistence", error, {
+        ...persistence,
+      });
       logger.error(
         {
           agentId: this.runtime.agentId,
@@ -236,7 +251,7 @@ export class ElizaCharacterPersistenceService extends Service {
         },
         "Failed to persist runtime character changes",
       );
-      return { success: false, error: message };
+      return { success: false, error: message, persistence };
     }
   }
 

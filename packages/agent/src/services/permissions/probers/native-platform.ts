@@ -5,7 +5,7 @@
  * to a platform-unsupported state for both check() and request(), so the
  * registry reports them uniformly instead of leaving them unregistered.
  */
-import type { PermissionId, Prober } from "../contracts.js";
+import type { PermissionId, Prober } from "@elizaos/core";
 import { platformUnsupportedState } from "./_bridge.js";
 
 const NATIVE_PLATFORM_IDS = [

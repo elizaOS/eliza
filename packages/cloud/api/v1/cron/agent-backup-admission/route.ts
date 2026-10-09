@@ -7,15 +7,15 @@
  * explicitly authorized and the downstream backup executor is ready.
  */
 
+import { verifyCronSecret } from "@elizaos/cloud-shared/lib/auth/cron";
+import { runAgentBackupAdmissionCycle } from "@elizaos/cloud-shared/lib/services/agent-backup-admission-runtime";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { verifyCronSecret } from "@/lib/auth/cron";
 import {
   getScheduledCronInvocationMetadata,
   scheduledCronInvocationId,
-} from "@/lib/cron/cloudflare-cron";
-import { runAgentBackupAdmissionCycle } from "@/lib/services/agent-backup-admission-runtime";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@/api-app/cron";
 
 export const AGENT_BACKUP_ADMISSION_CALLER_PATH =
   "/api/v1/cron/agent-backup-admission";

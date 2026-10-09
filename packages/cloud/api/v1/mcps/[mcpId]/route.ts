@@ -1,7 +1,7 @@
 // Handles v1 cloud API v1 mcps mcpid route traffic with route-local auth expectations.
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Individual User MCP API
@@ -12,10 +12,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 
 import { organizationCreditsToLegacyMcpPoints } from "@elizaos/cloud-shared/billing";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { CreatorMonetizationRetiredError } from "@elizaos/cloud-shared/lib/services/creator-monetization-retirement";
+import { userMcpsService } from "@elizaos/cloud-shared/lib/services/user-mcps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { z } from "zod";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { userMcpsService } from "@/lib/services/user-mcps";
-import { logger } from "@/lib/utils/logger";
 
 // ============================================================================
 // Schemas
@@ -170,11 +171,20 @@ async function __hono_PUT(
     );
   }
 
-  const mcp = await userMcpsService.update(
-    mcpId,
-    authResult.user.organization_id,
-    validation.data,
-  );
+  let mcp: Awaited<ReturnType<typeof userMcpsService.update>>;
+  try {
+    mcp = await userMcpsService.update(
+      mcpId,
+      authResult.user.organization_id,
+      validation.data,
+    );
+  } catch (error) {
+    // error-policy:J1 paid listings are retired (#22961): a price is a typed 410.
+    if (error instanceof CreatorMonetizationRetiredError) {
+      return Response.json(error.toJSON(), { status: 410 });
+    }
+    throw error;
+  }
 
   logger.info("[API] Updated user MCP", {
     id: mcpId,

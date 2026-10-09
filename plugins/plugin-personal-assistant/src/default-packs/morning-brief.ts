@@ -1,7 +1,7 @@
 /**
  * Default pack: `morning-brief`.
  *
- * One assembler `ScheduledTask` triggered on `wake.confirmed`. Delegates the
+ * One assembler `ScheduledTask` triggered by authenticated owner activity. Delegates the
  * assembly to the existing `CheckinService.runMorningCheckin` (per GAP §2.8 —
  * `lifeops/checkin/*` becomes the assembly logic invoked by the daily-check-in
  * `ScheduledTask`'s prompt).
@@ -19,6 +19,7 @@ import {
   type CheckinSourceService,
 } from "../lifeops/checkin/checkin-service.js";
 import type { CheckinKind, CheckinReport } from "../lifeops/checkin/types.js";
+import { DOSSIER_ACTIVITY_ANCHOR_KEY } from "../lifeops/scheduled-task/dossier-activity-policy.js";
 import type { DefaultPack } from "./registry-types.js";
 import {
   compileTaskDefinition,
@@ -40,7 +41,7 @@ const morningBriefDefinition: RecapTaskDefinition = {
   },
   trigger: {
     kind: "relative_to_anchor",
-    anchorKey: "wake.confirmed",
+    anchorKey: DOSSIER_ACTIVITY_ANCHOR_KEY,
     offsetMinutes: 0,
   },
   priority: "medium",
@@ -70,7 +71,7 @@ export const morningBriefPack: DefaultPack = {
   key: MORNING_BRIEF_PACK_KEY,
   label: "Morning brief",
   description:
-    "Assembled morning briefing on wake — overdue todos, meetings, wins, inbox, calendar, contacts, promises. Delegates assembly to the scheduled briefing service, so a fresh user gets the same content the planner would.",
+    "Assembled morning briefing on first owner activity — overdue todos, meetings, wins, inbox, calendar, contacts, promises. Delegates assembly to the scheduled briefing service, so a fresh user gets the same content the planner would.",
   defaultEnabled: true,
   requiredCapabilities: [],
   records: [morningBriefRecord],

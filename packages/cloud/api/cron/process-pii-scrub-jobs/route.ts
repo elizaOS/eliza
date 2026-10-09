@@ -1,12 +1,16 @@
 // Handles scheduled cloud API cron PII scrub job drain traffic with cron auth expectations.
+
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  createPiiScrubItemExecutor,
+  resolveCloudPiiScrubEscalationHandler,
+} from "@elizaos/cloud-shared/lib/services/pii-scrub-executor";
+import { processPendingPiiScrubJobs } from "@elizaos/cloud-shared/lib/services/pii-scrub-jobs";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { createPiiScrubItemExecutor } from "@/lib/services/pii-scrub-executor";
-import { processPendingPiiScrubJobs } from "@/lib/services/pii-scrub-jobs";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * Drains pending `pii_scrub` jobs (#14808 CLOUD lane): claims batches with
@@ -15,11 +19,13 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * rest, and writes markers only on success. The serverless leg of the scrub
  * rails — same drain-consumer shape as process-stripe-queue.
  *
- * No escalation handler is registered on the Worker yet (the server compute
- * lanes — Cerebras passthrough / vllm container — are sibling slices of
- * #14808). Items whose candidate spans are not fully covered by tier-0
- * therefore FAIL CLOSED (bounded retries, then a loud failed job) instead of
- * passing un-inspected — the seam's throw-never-fabricate contract.
+ * The escalation handler comes from `resolveCloudPiiScrubEscalationHandler`;
+ * none is registered on the Worker yet (the server compute lanes — Cerebras
+ * passthrough / vllm container — are sibling slices of #14808). Items whose
+ * candidate spans are not fully covered by tier-0, and every server_discovery
+ * item, therefore FAIL CLOSED (bounded retries, then a loud failed job)
+ * instead of passing un-inspected — the seam's throw-never-fabricate contract.
+ * Markers are inspection records, never training-release authorizations.
  */
 interface PiiScrubCronDependencies {
   processPendingPiiScrubJobs: typeof processPendingPiiScrubJobs;
@@ -32,7 +38,9 @@ async function handleProcessPiiScrubJobs(
   try {
     requireCronSecret(c);
     const stats = await dependencies.processPendingPiiScrubJobs({
-      executor: createPiiScrubItemExecutor(),
+      executor: createPiiScrubItemExecutor({
+        escalate: resolveCloudPiiScrubEscalationHandler(),
+      }),
     });
     logger.info("[PiiScrubCron] pii_scrub drain complete", stats);
     return c.json({ success: true, stats });

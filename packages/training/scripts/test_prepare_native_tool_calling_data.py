@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from scripts.prepare_native_tool_calling_data import (
+from eliza_training.prepare_native_tool_calling_data import (
     native_record_from_eliza,
     source_matrix,
     validate_native_record,

@@ -64,7 +64,7 @@ RUN_NAME="${RUN_NAME:-${REGISTRY_KEY//./-}-apollo-smoke}"
 
 # Resolve SSH endpoint
 read -r REMOTE_USER REMOTE_HOST REMOTE_PORT < <(
-    cd "$ROOT" && python3 -m scripts.lib.vast ssh "$INSTANCE_ID"
+    cd "$ROOT" && python3 -m eliza_training.lib.vast ssh "$INSTANCE_ID"
 )
 SSH_TARGET="$REMOTE_USER@$REMOTE_HOST"
 SSH_PORT="$REMOTE_PORT"
@@ -79,7 +79,7 @@ ssh_run() {
 echo "[day0] step 1/6: sync code + smoke split"
 rsync -avh --partial \
     -e "ssh -p $SSH_PORT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR" \
-    "$ROOT/scripts" "$ROOT/pyproject.toml" "$ROOT/uv.lock" "$ROOT/datasets.yaml" \
+    "$ROOT/scripts" "$ROOT/setup.py" "$ROOT/README.md" "$ROOT/config" "$ROOT/pyproject.toml" "$ROOT/uv.lock" "$ROOT/datasets.yaml" \
     "$SSH_TARGET:/workspace/training/" 2>&1 | tail -3
 ssh_run "mkdir -p /workspace/training/data"
 rsync -avh --partial \
@@ -166,7 +166,7 @@ BENCH_CMD="set -e; cd /workspace/training && export PATH=\$HOME/.local/bin:\$PAT
             model_arg=\"--model \$ckpt_dir\"; out=\$variant; \
         fi; \
         echo \"=== bench \$variant ===\"; \
-        uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
+        uv run --extra train python scripts/eval/native_tool_call_bench.py \\
             \$model_arg \\
             --test-file data/smoke/val.jsonl \\
             --max-per-bucket $SMOKE_BENCH_PER_BUCKET \\

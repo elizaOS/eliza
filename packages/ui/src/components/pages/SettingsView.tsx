@@ -9,8 +9,8 @@
  * section. Also reusable in modal form (`inModal`).
  */
 
-import { isViewVisible } from "@elizaos/core";
-import { isPermissionId, type PermissionId } from "@elizaos/shared";
+import type { PermissionId } from "@elizaos/core/protocol";
+import { isPermissionId, isViewVisible } from "@elizaos/core/protocol";
 import {
   Suspense,
   useCallback,
@@ -19,18 +19,18 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { reportUserViewSwitch } from "../../chat/view-navigation-report";
 import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
 import { getBootConfig } from "../../config/boot-config-store";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
-import { cn } from "../../lib/utils";
 import { getWindowNavigationPath } from "../../navigation";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { getFrontendPlatform } from "../../platform/platform-guards";
-import { useAppSelector, useAppSelectorShallow } from "../../state";
+import { useAppSelector, useAppSelectorShallow } from "../../state/app-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
+import { cn } from "../../utils/cn";
 import { PagePanel } from "../composites/page-panel";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
 import { resolvePrimingSet } from "../permissions/permission-priming";
@@ -41,6 +41,7 @@ import {
   settingsSectionMatchesExperience,
 } from "../settings/settings-experience";
 import { buildSettingsNavigationGroups } from "../settings/settings-navigation-model";
+import type { SettingsRoute } from "../settings/settings-route";
 import {
   resolveSettingsRuntimeCapabilities,
   type SettingsRuntimeCapabilities,
@@ -48,9 +49,11 @@ import {
 } from "../settings/settings-runtime-capabilities";
 import {
   getSettingsSectionRegistryVersion,
+  type SettingsSectionDef,
   settingsSectionIsAvailable,
   subscribeSettingsSections,
 } from "../settings/settings-section-registry";
+
 import {
   backFromConnectorDetail,
   type GroupedSettingsSections,
@@ -62,8 +65,6 @@ import {
   replaceConnectorDetailHash,
   replaceSettingsHash,
   replaceSettingsHashRoute,
-  type SettingsRoute,
-  type SettingsSectionDef,
   settingsSectionLabel,
   settingsSectionTitle,
 } from "../settings/settings-sections";
@@ -73,20 +74,25 @@ import { ErrorBoundary } from "../ui/error-boundary";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 type Translate = (key: string, vars?: Record<string, unknown>) => string;
-
 function readSettingsPermissionRequest(payload: unknown): PermissionId | null {
   if (!payload || typeof payload !== "object") return null;
-  const permissionRequest = (payload as { permissionRequest?: unknown })
-    .permissionRequest;
+  const permissionRequest = (
+    payload as {
+      permissionRequest?: unknown;
+    }
+  ).permissionRequest;
   if (!permissionRequest || typeof permissionRequest !== "object") {
     return null;
   }
-  const permission = (permissionRequest as { permission?: unknown }).permission;
+  const permission = (
+    permissionRequest as {
+      permission?: unknown;
+    }
+  ).permission;
   return isPermissionId(permission) && permission !== "shell"
     ? permission
     : null;
 }
-
 /**
  * Loading placeholder for a lazily-loaded section body (#11351). The skeleton
  * mirrors the title and settings-row rhythm while the accessible status names
@@ -107,7 +113,6 @@ function SettingsSectionLoading({ title }: { title: string }) {
     </div>
   );
 }
-
 /**
  * The active section's body. Compact navigation lives at the view root
  * (not per-section), so this only renders the lazy section component behind a
@@ -159,7 +164,6 @@ function SettingsSectionContent({
     </div>
   );
 }
-
 /**
  * Inline per-section error fallback. A section that throws on mount/render must
  * degrade to this card — never blank the whole shell — so the settings nav and
@@ -203,7 +207,6 @@ function SettingsSectionFallback({
     </div>
   );
 }
-
 /**
  * A per-section agent-surface registration so the agent can open any section by
  * id from chat (`section-<id>`), independent of which section is currently
@@ -239,15 +242,14 @@ function SettingsSectionSurfaceAnchor({
       onClick={() => onSelect(section.id)}
       {...agentProps}
       /* #13889/#13590: the agent-addressable anchor carries `data-agent-id`; the
-         "which section is current" signal must live on the SAME element so the
-         `[data-agent-id^="section-"][aria-current="page"]` contract (agent
-         surface + packaged regression lane) resolves. #13590's SectionNav
-         refactor split these apart. Set after the spread so it always wins. */
+       "which section is current" signal must live on the SAME element so the
+       `[data-agent-id^="section-"][aria-current="page"]` contract (agent
+       surface + packaged regression lane) resolves. #13590's SectionNav
+       refactor split these apart. Set after the spread so it always wins. */
       aria-current={active ? "page" : undefined}
     />
   );
 }
-
 export function SettingsView({
   inModal,
   initialSection,
@@ -323,7 +325,6 @@ export function SettingsView({
   const [primePermission, setPrimePermission] = useState<PermissionId | null>(
     null,
   );
-
   const visibleSections = useMemo(
     () =>
       availableSections.filter((section) => {
@@ -354,11 +355,9 @@ export function SettingsView({
     grouped,
     activeSection,
   );
-
   useEffect(() => {
     void loadPlugins();
   }, [loadPlugins]);
-
   // Legacy path deep links: /connectors, /connectors/<id>, /settings/connectors/<id>
   // → structured hash the connectors body already understands.
   useEffect(() => {
@@ -388,7 +387,6 @@ export function SettingsView({
     }
     window.dispatchEvent(new Event("popstate"));
   }, [availableSectionIds]);
-
   const openSection = useCallback(
     (sectionId: string) => {
       if (!availableSectionIds.has(sectionId)) {
@@ -403,7 +401,6 @@ export function SettingsView({
     },
     [availableSectionIds],
   );
-
   const backToHub = useCallback(() => {
     setActiveSection(null);
     setSettingsRoute({ kind: "hub" });
@@ -415,11 +412,9 @@ export function SettingsView({
       );
     }
   }, []);
-
   const backToConnectorsIndex = useCallback(() => {
     backFromConnectorDetail();
   }, []);
-
   useEffect(() => {
     if (!initialSection) return;
     // initialSection may be a nested connectors route (`connectors/discord`)
@@ -442,7 +437,6 @@ export function SettingsView({
       openSection(route.sectionId);
     }
   }, [availableSectionIds, initialSection, openSection]);
-
   useEffect(() => {
     const permission = readSettingsPermissionRequest(navigatePayload);
     if (!permission) {
@@ -452,7 +446,6 @@ export function SettingsView({
     const [supportedPermission] = resolvePrimingSet({ only: [permission] });
     setPrimePermission(supportedPermission ?? null);
   }, [navigatePayload, navigateSequence]);
-
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleLocationChange = () => {
@@ -476,7 +469,6 @@ export function SettingsView({
       window.removeEventListener("popstate", handleLocationChange);
     };
   }, [availableSectionIds, visibleSectionIds]);
-
   // Capability requirements are hard availability boundaries, unlike
   // developer/preview visibility. An unavailable deep link must never mount a
   // desktop bridge section on a portable runtime.
@@ -493,7 +485,6 @@ export function SettingsView({
     setSettingsRoute({ kind: "hub" });
     replaceSettingsHashRoute({ kind: "hub" });
   }, [activeSection, availableSectionIds, settingsRoute]);
-
   // Explicit navigation (hash / initialSection / agent anchor) resolves
   // against the capability-eligible registry, not just the visible hub rows:
   // hidden sections stay registered so their deep-links keep working (the
@@ -513,11 +504,9 @@ export function SettingsView({
   const displayedSectionDef = isWideSettings
     ? desktopSectionDef
     : activeSectionDef;
-
   useEffect(() => {
     reportUserViewSwitch("settings", "/settings", displayedSectionDef?.id);
   }, [displayedSectionDef?.id]);
-
   // Mobile keeps the uniform top bar: the hub shows "Settings" and a section
   // shows its title with a back action. Connector detail is one level deeper
   // (detail → connectors index → settings hub → launcher).
@@ -540,7 +529,6 @@ export function SettingsView({
       label={(labelKey, fallback) => t(labelKey, { defaultValue: fallback })}
     />
   ) : null;
-
   return (
     <ShellViewAgentSurface viewId="settings">
       {detachedSettingsShell ? (
@@ -571,9 +559,9 @@ export function SettingsView({
         >
           {desktopSidebar}
           {/* Agent-surface anchors: the agent addresses every section by
-              `section-<id>` regardless of which one is shown. */}
+            `section-<id>` regardless of which one is shown. */}
           <div className="hidden">
-            {visibleSections.map((section) => (
+            {availableSections.map((section) => (
               <SettingsSectionSurfaceAnchor
                 key={section.id}
                 section={section}
@@ -651,7 +639,7 @@ export function SettingsView({
               />
             ) : (
               /* The hub IS the mobile main screen. Tapping a row swaps in
-                 the section subview; the shared header returns here. */
+           the section subview; the shared header returns here. */
               <SettingsHubList
                 grouped={navigationGrouped}
                 onSelect={openSection}

@@ -4,16 +4,16 @@
  * Accepts API key in header (`x-api-key`) or `api_key` in body (sendBeacon-friendly).
  */
 
-import { Hono } from "hono";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService } from "@/lib/services/api-keys";
-import { appsService } from "@/lib/services/apps";
-import { logger } from "@/lib/utils/logger";
-import { safeAnalyticsId } from "@/lib/utils/safe-analytics-id";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { safeAnalyticsId } from "@elizaos/cloud-shared/lib/utils/safe-analytics-id";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 function detectSource(
   origin: string,

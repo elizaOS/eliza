@@ -39,15 +39,7 @@ export * from "./api/wallet-routes.js";
 export * from "./audit/audit-log.js";
 export { walletRouterAction } from "./chains/wallet-action.js";
 export * from "./contracts.js";
-export {
-  AGENT_AUTO_MAX_DAILY_TRADES,
-  agentAutoDailyTrades,
-  canUseLocalTradeExecution,
-  getAgentAutoTradeDate,
-  recordAgentAutoTrade,
-  resolveTradePermissionMode,
-  resolveWalletExportRejection,
-} from "./lib/server-wallet-trade.js";
+export { resolveWalletExportRejection } from "./lib/server-wallet-trade.js";
 export {
   _resetForTesting,
   getWalletExportAuditLog,
@@ -79,6 +71,7 @@ export * from "./policy/policy.js";
 export * from "./providers/canonical-provider.js";
 export { stewardTradingProvider } from "./providers/steward-trading-provider.js";
 export { walletProvider } from "./providers/wallet-provider.js";
+export * from "./read.ts";
 export * from "./register-routes.js";
 export * from "./routes/plugin.js";
 /** ERC-6551 / x402 / CCTP / swaps are available from the package barrel. */
@@ -94,7 +87,10 @@ export {
   WALLET_BACKEND_SERVICE_TYPE,
   WalletBackendService,
 } from "./services/wallet-backend-service.js";
+export * from "./transactions.ts";
 export * from "./types/trade.js";
 export * from "./types/wallet-router.js";
 export * from "./wallet/index.js";
 export * from "./wallet-action.js";
+
+export * from "./watcher.ts";

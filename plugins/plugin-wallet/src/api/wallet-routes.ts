@@ -7,24 +7,34 @@
 // `server.ts` is the single wiring site that constructs the context.
 import crypto from "node:crypto";
 import type http from "node:http";
-import type { AgentRuntime, RouteRequestMeta } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import type {
-  ElizaConfig,
-  RouteHelpers,
   WalletBalancesResponse,
   WalletChain,
   WalletChainKind,
   WalletConfigStatus,
+  WalletConfigUpdateRequest,
   WalletEntry,
   WalletExportRejection as WalletExportRejectionLike,
   WalletExportRequestBody,
   WalletNftsResponse,
   WalletPrimaryMap,
   WalletRpcChain,
+  WalletRpcSelections,
   WalletSource,
-} from "@elizaos/shared";
-
+} from "@elizaos/contracts";
+import {
+  normalizeWalletRpcSelections,
+  PostWalletGenerateRequestSchema,
+  PostWalletImportRequestSchema,
+  PostWalletPrimaryRequestSchema,
+} from "@elizaos/contracts";
+import { type AgentRuntime, logger } from "@elizaos/core";
+import type {
+  ElizaConfig,
+  RouteHelpers,
+  RouteRequestMeta,
+} from "@elizaos/host/protocol";
+import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 // Mirrors `WalletRpcReadiness` from `packages/agent/src/api/wallet-rpc.ts`.
 // Defined structurally here so this plugin module stays free of
 // `@elizaos/agent` imports.
@@ -43,16 +53,8 @@ export interface WalletRpcReadinessSnapshot {
   solanaRpcUrls: string[];
 }
 
-import {
-  normalizeWalletRpcSelections,
-  PostWalletGenerateRequestSchema,
-  PostWalletImportRequestSchema,
-  PostWalletPrimaryRequestSchema,
-  resolveDevCloudStewardOperationalTuple,
-  type WalletConfigUpdateRequest,
-  type WalletRpcSelections,
-} from "@elizaos/shared";
 import * as ethers from "ethers";
+import { prefixEvmHex } from "../chains/evm/routes/evm-hex.js";
 
 type CloudWalletProvider = "privy" | "steward";
 interface CloudWalletDescriptor {
@@ -62,12 +64,13 @@ interface CloudWalletDescriptor {
   chainType: WalletChainKind;
   balance?: string | number;
 }
-
 // Cloud helpers are loaded lazily via `import()` rather than referenced at
 // module top-level so that this file is safe to import in browser builds.
 type CloudHelperBundle = {
   ElizaCloudClient: new (baseUrl: string, apiKey: string) => unknown;
-  getOrCreateClientAddressKey: () => Promise<{ address: string }>;
+  getOrCreateClientAddressKey: () => Promise<{
+    address: string;
+  }>;
   normalizeCloudSiteUrl: (value: string) => string;
   persistCloudWalletCache: (
     config: unknown,
@@ -82,7 +85,10 @@ type CloudHelperBundle = {
     },
   ) => Promise<{
     descriptors: Partial<Record<WalletChainKind, CloudWalletDescriptor>>;
-    failures: Array<{ chain: WalletChainKind; error: unknown }>;
+    failures: Array<{
+      chain: WalletChainKind;
+      error: unknown;
+    }>;
     warnings: string[];
   }>;
   resolveCloudApiKey: (
@@ -90,13 +96,11 @@ type CloudHelperBundle = {
     runtime: AgentRuntime | null,
   ) => string | null;
 };
-
 async function loadCloudHelpers(): Promise<CloudHelperBundle> {
   return (await import(
     "@elizaos/plugin-elizacloud"
   )) as unknown as CloudHelperBundle;
 }
-
 const WALLET_CONFIG_COMPAT_KEYS = new Set([
   "ALCHEMY_API_KEY",
   "INFURA_API_KEY",
@@ -111,7 +115,6 @@ const WALLET_CONFIG_COMPAT_KEYS = new Set([
   "BSC_RPC_URL",
   "SOLANA_RPC_URL",
 ]);
-
 type WalletRouteStewardConnection = {
   apiUrl: string;
   tenantId?: string;
@@ -119,7 +122,6 @@ type WalletRouteStewardConnection = {
   apiKey?: string;
   agentToken?: string;
 };
-
 function resolveWalletRouteStewardConnection(): WalletRouteStewardConnection | null {
   const authoritative = resolveDevCloudStewardOperationalTuple();
   if (authoritative) {
@@ -137,7 +139,6 @@ function resolveWalletRouteStewardConnection(): WalletRouteStewardConnection | n
         }
       : null;
   }
-
   const apiUrl = process.env.STEWARD_API_URL?.trim();
   const agentId =
     process.env.STEWARD_AGENT_ID?.trim() ||
@@ -154,7 +155,16 @@ function resolveWalletRouteStewardConnection(): WalletRouteStewardConnection | n
     ...(agentToken ? { agentToken } : {}),
   };
 }
-
+function parseWalletNetworkField(
+  value: unknown,
+): "mainnet" | "testnet" | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "") return undefined;
+  if (normalized === "mainnet" || normalized === "testnet") return normalized;
+  return null;
+}
 function resolveWalletConfigUpdateRequest(
   body: unknown,
   currentSelections: WalletRpcSelections,
@@ -162,17 +172,15 @@ function resolveWalletConfigUpdateRequest(
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return null;
   }
-
   const record = body as Record<string, unknown>;
   if (
     record.selections &&
     typeof record.selections === "object" &&
     !Array.isArray(record.selections)
   ) {
-    const walletNetwork =
-      record.walletNetwork === "testnet" || record.walletNetwork === "mainnet"
-        ? record.walletNetwork
-        : undefined;
+    const parsedNetwork = parseWalletNetworkField(record.walletNetwork);
+    if (parsedNetwork === null) return null;
+    const walletNetwork = parsedNetwork;
     const credentials =
       record.credentials &&
       typeof record.credentials === "object" &&
@@ -183,7 +191,6 @@ function resolveWalletConfigUpdateRequest(
             ).filter(([, value]) => typeof value === "string"),
           )
         : undefined;
-
     return {
       selections: normalizeWalletRpcSelections(
         record.selections as Partial<Record<keyof WalletRpcSelections, string>>,
@@ -192,28 +199,23 @@ function resolveWalletConfigUpdateRequest(
       credentials: credentials as WalletConfigUpdateRequest["credentials"],
     };
   }
-
   const compatCredentials = Object.fromEntries(
     Object.entries(record).filter(
       ([key, value]) =>
         WALLET_CONFIG_COMPAT_KEYS.has(key) && typeof value === "string",
     ),
   );
-
   if (Object.keys(compatCredentials).length === 0) {
     return null;
   }
-
+  const compatNetwork = parseWalletNetworkField(record.walletNetwork);
+  if (compatNetwork === null) return null;
   return {
     selections: currentSelections,
-    walletNetwork:
-      record.walletNetwork === "testnet" || record.walletNetwork === "mainnet"
-        ? record.walletNetwork
-        : undefined,
+    walletNetwork: compatNetwork,
     credentials: compatCredentials as WalletConfigUpdateRequest["credentials"],
   };
 }
-
 // ── Wallet route dependency injection ─────────────────────────────────
 //
 // The route handler is consumed by the agent HTTP server, but the file
@@ -221,12 +223,10 @@ function resolveWalletConfigUpdateRequest(
 // invokes is therefore supplied by the agent caller as a function on
 // `WalletRouteDependencies` / `WalletRouteContext`. See
 // `packages/agent/src/api/server.ts` for the single wiring site.
-
 export interface WalletAddressesSnapshot {
   evmAddress: string | null;
   solanaAddress: string | null;
 }
-
 export interface FetchEvmBalancesOptions {
   alchemyKey?: string | null;
   ankrKey?: string | null;
@@ -242,17 +242,18 @@ export interface FetchEvmBalancesOptions {
   baseRpcUrl?: string;
   avaxRpcUrl?: string;
 }
-
 export interface IntegrationTelemetrySpan {
   success: (attributes?: Record<string, unknown>) => void;
-  failure: (attributes: { error: unknown } & Record<string, unknown>) => void;
+  failure: (
+    attributes: {
+      error: unknown;
+    } & Record<string, unknown>,
+  ) => void;
 }
-
 export interface CreateIntegrationTelemetrySpanArgs {
   boundary: "wallet";
   operation: string;
 }
-
 export interface WalletRouteDependencies {
   getWalletAddresses: () => WalletAddressesSnapshot;
   fetchEvmBalances: (
@@ -267,7 +268,9 @@ export interface WalletRouteDependencies {
     address: string,
     rpcUrls: string[],
   ) => Promise<Omit<NonNullable<WalletBalancesResponse["solana"]>, "address">>;
-  validatePrivateKey: (privateKey: string) => { chain: WalletChain };
+  validatePrivateKey: (privateKey: string) => {
+    chain: WalletChain;
+  };
   importWallet: (
     chain: WalletChain,
     privateKey: string,
@@ -308,37 +311,50 @@ export interface WalletRouteDependencies {
   };
   isCloudWalletEnabled: () => boolean;
   persistConfigEnv: (key: string, value: string) => Promise<void>;
+  /**
+   * Durably stores local wallet private keys wherever `saveConfig` will not
+   * (OS-store mode strips keys from disk config). All-or-nothing: rejects,
+   * with prior stored keys restored, when any key cannot be stored.
+   */
+  persistWalletPrivateKeys: (
+    config: ElizaConfig,
+    keys: Partial<Record<"EVM_PRIVATE_KEY" | "SOLANA_PRIVATE_KEY", string>>,
+  ) => Promise<void>;
   createIntegrationTelemetrySpan: (
     args: CreateIntegrationTelemetrySpanArgs,
   ) => IntegrationTelemetrySpan;
 }
-
 // ── Dual-wallet response shape ────
-// Types imported from @elizaos/shared: WalletSource, WalletChainKind, WalletProviderKind,
+// Types imported from @elizaos/core: WalletSource, WalletChainKind, WalletProviderKind,
 // WalletEntry, WalletPrimaryMap
-
 interface CachedCloudWalletDescriptor {
   agentWalletId?: string | null;
   walletAddress?: string | null;
   walletProvider?: string | null;
   balance?: string | number | null;
 }
-
 function readCloudWalletCache(
   config: ElizaConfig,
 ): Partial<Record<WalletChainKind, CachedCloudWalletDescriptor>> {
   const wallet = config.wallet;
   if (!wallet || typeof wallet !== "object") return {};
-  const cloud = (wallet as { cloud?: unknown }).cloud;
+  const cloud = (
+    wallet as {
+      cloud?: unknown;
+    }
+  ).cloud;
   if (!cloud || typeof cloud !== "object") return {};
   return cloud as Partial<Record<WalletChainKind, CachedCloudWalletDescriptor>>;
 }
-
 function readPrimaryMap(config: ElizaConfig): WalletPrimaryMap {
   const wallet = config.wallet;
   const raw =
     wallet && typeof wallet === "object"
-      ? (wallet as { primary?: unknown }).primary
+      ? (
+          wallet as {
+            primary?: unknown;
+          }
+        ).primary
       : undefined;
   const out: WalletPrimaryMap = { evm: "local", solana: "local" };
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
@@ -350,11 +366,9 @@ function readPrimaryMap(config: ElizaConfig): WalletPrimaryMap {
   }
   return out;
 }
-
 function coerceCloudProvider(value: unknown): CloudWalletProvider {
   return value === "privy" || value === "steward" ? value : "privy";
 }
-
 /**
  * Build the dual-wallet `{ wallets[], primary }` block. Returns `null`
  * when the cloud-wallet flag is off so callers can omit both fields and
@@ -362,14 +376,18 @@ function coerceCloudProvider(value: unknown): CloudWalletProvider {
  */
 function buildDualWalletShape(
   config: ElizaConfig,
-  addresses: { evmAddress: string | null; solanaAddress: string | null },
+  addresses: {
+    evmAddress: string | null;
+    solanaAddress: string | null;
+  },
   isCloudWalletEnabled: () => boolean,
-): { wallets: WalletEntry[]; primary: WalletPrimaryMap } | null {
+): {
+  wallets: WalletEntry[];
+  primary: WalletPrimaryMap;
+} | null {
   if (!isCloudWalletEnabled()) return null;
-
   const primary = readPrimaryMap(config);
   const wallets: WalletEntry[] = [];
-
   if (addresses.evmAddress) {
     wallets.push({
       source: "local",
@@ -388,7 +406,6 @@ function buildDualWalletShape(
       primary: primary.solana === "local",
     });
   }
-
   const cloud = readCloudWalletCache(config);
   for (const chain of ["evm", "solana"] as const) {
     const descriptor = cloud[chain];
@@ -403,10 +420,8 @@ function buildDualWalletShape(
       });
     }
   }
-
   return { wallets, primary };
 }
-
 function readCloudWalletAddress(
   descriptor: CachedCloudWalletDescriptor | undefined,
 ): string | null {
@@ -414,7 +429,6 @@ function readCloudWalletAddress(
   const trimmed = descriptor.walletAddress.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
-
 function readCachedCloudWalletDescriptor(
   config: ElizaConfig,
   chain: WalletChainKind,
@@ -434,7 +448,6 @@ function readCachedCloudWalletDescriptor(
     balance: descriptor?.balance ?? undefined,
   };
 }
-
 function readCachedCloudWalletDescriptors(
   config: ElizaConfig,
 ): Partial<Record<WalletChainKind, CloudWalletDescriptor>> {
@@ -445,14 +458,18 @@ function readCachedCloudWalletDescriptors(
     ...(solana ? { solana } : {}),
   };
 }
-
 function resolvePrimaryWalletAddresses(
   config: ElizaConfig,
-  addresses: { evmAddress: string | null; solanaAddress: string | null },
-): { evmAddress: string | null; solanaAddress: string | null } {
+  addresses: {
+    evmAddress: string | null;
+    solanaAddress: string | null;
+  },
+): {
+  evmAddress: string | null;
+  solanaAddress: string | null;
+} {
   const primary = readPrimaryMap(config);
   const cloud = readCloudWalletCache(config);
-
   return {
     evmAddress:
       primary.evm === "cloud"
@@ -464,7 +481,6 @@ function resolvePrimaryWalletAddresses(
         : addresses.solanaAddress,
   };
 }
-
 function persistPrimarySelection(
   config: ElizaConfig,
   chain: WalletChainKind,
@@ -479,13 +495,12 @@ function persistPrimarySelection(
   wallet.primary = primary as typeof wallet.primary;
   config.wallet = wallet;
 }
-
 export interface WalletRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "readJsonBody" | "json" | "error"> {
   config: ElizaConfig;
   saveConfig: (config: ElizaConfig) => void;
-  ensureWalletKeysInEnvAndConfig: (config: ElizaConfig) => boolean;
+  ensureWalletKeysInEnvAndConfig: (config: ElizaConfig) => Promise<boolean>;
   resolveWalletExportRejection: (
     req: http.IncomingMessage,
     body: WalletExportRequestBody,
@@ -495,7 +510,6 @@ export interface WalletRouteContext
   deps: WalletRouteDependencies;
   runtime?: AgentRuntime | null;
 }
-
 async function triggerWalletRuntimeReload(
   ctx: WalletRouteContext,
   reason: string,
@@ -508,14 +522,17 @@ async function triggerWalletRuntimeReload(
   }
   return restarted;
 }
-
 const LOCAL_WALLET_SOURCE_ENV_KEYS: Record<WalletChain, string> = {
   evm: "WALLET_SOURCE_EVM",
   solana: "WALLET_SOURCE_SOLANA",
 };
-
+const WALLET_KEY_ENV_NAMES = [
+  "EVM_PRIVATE_KEY",
+  "SOLANA_PRIVATE_KEY",
+  "SOLANA_PUBLIC_KEY",
+  "WALLET_PUBLIC_KEY",
+] as const;
 type BrowserSolanaCluster = "mainnet" | "devnet" | "testnet";
-
 interface BrowserEvmTransactionRequest {
   broadcast: boolean;
   chainId: number;
@@ -523,7 +540,6 @@ interface BrowserEvmTransactionRequest {
   to: string;
   value: string;
 }
-
 interface BrowserSolanaWeb3Module {
   Keypair: {
     fromSeed(seed: Uint8Array): unknown;
@@ -547,14 +563,12 @@ interface BrowserSolanaWeb3Module {
     sendRawTransaction(bytes: Uint8Array): Promise<string>;
   };
 }
-
 const SOLANA_PKCS8_DER_PREFIX = Buffer.from(
   "302e020100300506032b657004220420",
   "hex",
 );
 const BASE58_ALPHABET =
   "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
 function normalizeBrowserString(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -562,19 +576,16 @@ function normalizeBrowserString(value: unknown): string | undefined {
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
 }
-
 function normalizeBrowserBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
-
 function normalizeBrowserHexData(value: unknown): string | undefined {
   const trimmed = normalizeBrowserString(value);
   if (!trimmed) {
     return undefined;
   }
-  return trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
+  return prefixEvmHex(trimmed);
 }
-
 function safeParseBrowserBigInt(value: string): bigint {
   try {
     return BigInt(value);
@@ -584,7 +595,6 @@ function safeParseBrowserBigInt(value: string): bigint {
     );
   }
 }
-
 function resolveLocalBrowserEvmWallet(): ethers.Wallet {
   const evmKey = normalizeBrowserString(process.env.EVM_PRIVATE_KEY);
   if (!evmKey) {
@@ -592,7 +602,6 @@ function resolveLocalBrowserEvmWallet(): ethers.Wallet {
   }
   return new ethers.Wallet(evmKey.startsWith("0x") ? evmKey : `0x${evmKey}`);
 }
-
 function base58DecodeBrowser(value: string): Buffer {
   if (!value.length) {
     return Buffer.alloc(0);
@@ -618,7 +627,6 @@ function base58DecodeBrowser(value: string): Buffer {
     ? Buffer.concat([Buffer.alloc(leadingZeroes), bytes])
     : bytes;
 }
-
 function decodeLocalBrowserSolanaPrivateKey(value: string): Buffer {
   const trimmed = value.trim();
   if (
@@ -637,10 +645,12 @@ function decodeLocalBrowserSolanaPrivateKey(value: string): Buffer {
   }
   return base58DecodeBrowser(trimmed);
 }
-
 function resolveLocalBrowserSolanaSeed(
   deriveSolanaAddress: WalletRouteDependencies["deriveSolanaAddress"],
-): { address: string; seed: Buffer } {
+): {
+  address: string;
+  seed: Buffer;
+} {
   const solanaKey = normalizeBrowserString(process.env.SOLANA_PRIVATE_KEY);
   if (!solanaKey) {
     throw new Error("Local Solana signing is unavailable.");
@@ -662,30 +672,49 @@ function resolveLocalBrowserSolanaSeed(
     seed,
   };
 }
-
+/**
+ * Strict, canonical base64. Buffer.from silently skips invalid characters, so
+ * a malformed payload would otherwise sign or relay different bytes than the
+ * caller sent (an all-invalid string signs an empty message).
+ */
+function decodeBrowserBase64(value: string, field: string): Buffer {
+  const normalized = value.trim();
+  const bytes = Buffer.from(normalized, "base64");
+  const canonical = bytes.toString("base64");
+  // Padded input must be fully padded ("Zg==", not "Zg="); unpadded input
+  // must be exactly the canonical encoding without its padding.
+  const padded = normalized.endsWith("=");
+  if (
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized) ||
+    bytes.length === 0 ||
+    (padded
+      ? canonical !== normalized
+      : canonical.replace(/=+$/, "") !== normalized)
+  )
+    throw new BrowserWalletInputError(`${field} must be valid base64.`);
+  return bytes;
+}
 function resolveBrowserSolanaMessageBytes(
   body: Record<string, unknown>,
 ): Buffer {
   const messageBase64 = normalizeBrowserString(body.messageBase64);
   if (messageBase64) {
-    return Buffer.from(messageBase64, "base64");
+    return decodeBrowserBase64(messageBase64, "messageBase64");
   }
   const message = normalizeBrowserString(body.message);
   if (!message) {
-    throw new Error("message or messageBase64 is required.");
+    throw new BrowserWalletInputError("message or messageBase64 is required.");
   }
   return Buffer.from(message, "utf8");
 }
-
-function resolveBrowserWalletMessagePayload(
+export function resolveBrowserWalletMessagePayload(
   message: string,
 ): string | Uint8Array {
   const trimmed = message.trim();
-  if (
-    trimmed.startsWith("0x") &&
-    trimmed.length >= 4 &&
-    trimmed.length % 2 === 0
-  ) {
+  // The consent preview treats 0x and 0X as the same hex payload. The signer
+  // must use that same rule, or the dialog shows "Hi" while the wallet signs
+  // the text "0X4869".
+  if (/^0x/i.test(trimmed) && trimmed.length >= 4 && trimmed.length % 2 === 0) {
     try {
       return ethers.getBytes(trimmed);
     } catch {
@@ -694,7 +723,6 @@ function resolveBrowserWalletMessagePayload(
   }
   return message;
 }
-
 async function signLocalBrowserWalletMessage(message: string): Promise<{
   mode: "local-key";
   signature: string;
@@ -707,7 +735,6 @@ async function signLocalBrowserWalletMessage(message: string): Promise<{
     ),
   };
 }
-
 async function signLocalBrowserSolanaMessage(
   body: Record<string, unknown>,
   deriveSolanaAddress: WalletRouteDependencies["deriveSolanaAddress"],
@@ -733,14 +760,40 @@ async function signLocalBrowserSolanaMessage(
     signatureBase64: signature.toString("base64"),
   };
 }
-
-function normalizeBrowserSolanaCluster(value: unknown): BrowserSolanaCluster {
-  if (value === "devnet" || value === "testnet" || value === "mainnet") {
-    return value;
+/**
+ * A browser-wallet HTTP request sent data that fails input validation
+ * (malformed cluster, missing transaction payload, missing sign-message
+ * payload). The route translates this to a 400 response — a client error
+ * the caller must fix — while signer, key, and network failures keep the
+ * 503 signer-unavailable status so clients do not retry a payload that can
+ * never be valid.
+ */
+class BrowserWalletInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BrowserWalletInputError";
   }
-  return "mainnet";
 }
-
+function normalizeBrowserSolanaCluster(value: unknown): BrowserSolanaCluster {
+  if (value === undefined || value === null) return "mainnet";
+  if (typeof value !== "string") {
+    throw new BrowserWalletInputError(
+      `Invalid Solana cluster ${JSON.stringify(String(value))}: expected "mainnet", "devnet", or "testnet".`,
+    );
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "") return "mainnet";
+  if (
+    normalized === "mainnet" ||
+    normalized === "devnet" ||
+    normalized === "testnet"
+  ) {
+    return normalized;
+  }
+  throw new BrowserWalletInputError(
+    `Invalid Solana cluster ${JSON.stringify(value)}: expected "mainnet", "devnet", or "testnet".`,
+  );
+}
 function browserSolanaClusterRpcUrl(cluster: BrowserSolanaCluster): string {
   switch (cluster) {
     case "devnet":
@@ -751,11 +804,9 @@ function browserSolanaClusterRpcUrl(cluster: BrowserSolanaCluster): string {
       return "https://api.mainnet-beta.solana.com";
   }
 }
-
 async function loadBrowserSolanaWeb3(): Promise<BrowserSolanaWeb3Module> {
   return (await import("@solana/web3.js")) as BrowserSolanaWeb3Module;
 }
-
 async function signLocalBrowserSolanaTransaction(
   body: Record<string, unknown>,
   deriveSolanaAddress: WalletRouteDependencies["deriveSolanaAddress"],
@@ -768,17 +819,15 @@ async function signLocalBrowserSolanaTransaction(
 }> {
   const transactionBase64 = normalizeBrowserString(body.transactionBase64);
   if (!transactionBase64) {
-    throw new Error("transactionBase64 is required.");
+    throw new BrowserWalletInputError("transactionBase64 is required.");
   }
+  const txBytes = decodeBrowserBase64(transactionBase64, "transactionBase64");
   const broadcast = normalizeBrowserBoolean(body.broadcast, false);
   const cluster = normalizeBrowserSolanaCluster(body.cluster);
   const { address, seed } = resolveLocalBrowserSolanaSeed(deriveSolanaAddress);
-
   const { Keypair, VersionedTransaction, Transaction, Connection } =
     await loadBrowserSolanaWeb3();
   const keypair = Keypair.fromSeed(new Uint8Array(seed));
-  const txBytes = Buffer.from(transactionBase64, "base64");
-
   let signedBytes: Uint8Array;
   let broadcastSignature: string | undefined;
   try {
@@ -804,7 +853,6 @@ async function signLocalBrowserSolanaTransaction(
       broadcastSignature = await connection.sendRawTransaction(signedBytes);
     }
   }
-
   return {
     address,
     mode: "local-key",
@@ -813,7 +861,6 @@ async function signLocalBrowserSolanaTransaction(
     cluster,
   };
 }
-
 function resolvePreferredBrowserRpcUrl(
   config: ElizaConfig,
   chainId: number,
@@ -834,7 +881,6 @@ function resolvePreferredBrowserRpcUrl(
       return null;
   }
 }
-
 async function sendLocalBrowserWalletTransaction(
   config: ElizaConfig,
   request: BrowserEvmTransactionRequest,
@@ -877,7 +923,6 @@ async function sendLocalBrowserWalletTransaction(
     provider.destroy();
   }
 }
-
 export async function handleWalletRoutes(
   ctx: WalletRouteContext,
 ): Promise<boolean> {
@@ -905,13 +950,11 @@ export async function handleWalletRoutes(
     deriveSolanaAddress,
     setSolanaWalletEnv,
   } = deps;
-
   // GET /api/wallet/addresses
   if (method === "GET" && pathname === "/api/wallet/addresses") {
     json(res, deps.getWalletAddresses());
     return true;
   }
-
   // GET /api/wallet/balances
   if (method === "GET" && pathname === "/api/wallet/balances") {
     const addresses = deps.getWalletAddresses();
@@ -919,9 +962,7 @@ export async function handleWalletRoutes(
     const alchemyKey = process.env.ALCHEMY_API_KEY?.trim() || null;
     const ankrKey = process.env.ANKR_API_KEY?.trim() || null;
     const heliusKey = process.env.HELIUS_API_KEY?.trim() || null;
-
     const result: WalletBalancesResponse = { evm: null, solana: null };
-
     if (addresses.evmAddress && rpcReadiness.evmBalanceReady) {
       const evmBalancesSpan = createIntegrationTelemetrySpan({
         boundary: "wallet",
@@ -950,7 +991,6 @@ export async function handleWalletRoutes(
         logger.warn(`[wallet] EVM balance fetch failed: ${err}`);
       }
     }
-
     if (addresses.solanaAddress && rpcReadiness.solanaBalanceReady) {
       const solanaBalancesSpan = createIntegrationTelemetrySpan({
         boundary: "wallet",
@@ -970,11 +1010,9 @@ export async function handleWalletRoutes(
         logger.warn(`[wallet] Solana balance fetch failed: ${err}`);
       }
     }
-
     json(res, result);
     return true;
   }
-
   // GET /api/wallet/nfts
   // No NFT indexer is wired here yet. Return an empty, well-typed collection
   // so the wallet and inventory views render cleanly instead of hitting an
@@ -984,7 +1022,6 @@ export async function handleWalletRoutes(
     json(res, empty);
     return true;
   }
-
   // POST /api/wallet/import
   if (method === "POST" && pathname === "/api/wallet/import") {
     const rawImport = await readJsonBody<Record<string, unknown>>(req, res);
@@ -999,11 +1036,9 @@ export async function handleWalletRoutes(
       return true;
     }
     const body = parsedImport.data;
-
     const chain: WalletChain = body.chain
       ? body.chain
       : deps.validatePrivateKey(body.privateKey).chain;
-
     // When steward is configured, warn that keys should be imported via vault
     const stewardAuthority = resolveDevCloudStewardOperationalTuple();
     const stewardWarning = (
@@ -1013,19 +1048,30 @@ export async function handleWalletRoutes(
     )
       ? "Steward vault is configured. Consider importing keys directly into the vault instead of storing plaintext keys locally."
       : undefined;
-
+    const envBeforeImport = Object.fromEntries(
+      WALLET_KEY_ENV_NAMES.map((name) => [name, process.env[name]]),
+    );
     const result = deps.importWallet(chain, body.privateKey);
-
     if (!result.success) {
       error(res, result.error ?? "Import failed", 422);
       return true;
     }
-
-    if (!config.env) config.env = {};
     const envKey = chain === "evm" ? "EVM_PRIVATE_KEY" : "SOLANA_PRIVATE_KEY";
+    try {
+      await deps.persistWalletPrivateKeys(config, {
+        [envKey]: process.env[envKey] ?? "",
+      });
+    } catch (err) {
+      for (const [name, value] of Object.entries(envBeforeImport)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      error(res, `Failed to store imported wallet key: ${String(err)}`, 500);
+      return true;
+    }
+    if (!config.env) config.env = {};
     (config.env as Record<string, string>)[envKey] = process.env[envKey] ?? "";
     persistPrimarySelection(config, chain, "local");
-
     let configSaveWarning: string | undefined;
     try {
       saveConfig(config);
@@ -1034,11 +1080,9 @@ export async function handleWalletRoutes(
       logger.warn(`[api] ${msg}`);
       configSaveWarning = msg;
     }
-
     const warnings: string[] = [];
     if (configSaveWarning) warnings.push(configSaveWarning);
     if (stewardWarning) warnings.push(stewardWarning);
-
     const walletSourceEnvKey = LOCAL_WALLET_SOURCE_ENV_KEYS[chain];
     process.env[walletSourceEnvKey] = "local";
     try {
@@ -1051,12 +1095,10 @@ export async function handleWalletRoutes(
       );
       return true;
     }
-
     const restarted = await triggerWalletRuntimeReload(
       ctx,
       "Wallet configuration updated",
     );
-
     json(res, {
       ok: true,
       chain,
@@ -1066,7 +1108,6 @@ export async function handleWalletRoutes(
     });
     return true;
   }
-
   // POST /api/wallet/generate
   if (method === "POST" && pathname === "/api/wallet/generate") {
     const rawGen = await readJsonBody<Record<string, unknown>>(req, res);
@@ -1083,7 +1124,6 @@ export async function handleWalletRoutes(
     const body = parsedGen.data;
     const requestedSource = body.source;
     const targetChain = body.chain ?? "both";
-
     // ── Steward-first: delegate wallet generation to steward ──────────
     const stewardConnection = resolveWalletRouteStewardConnection();
     if (stewardConnection && requestedSource !== "local") {
@@ -1101,26 +1141,30 @@ export async function handleWalletRoutes(
         if (stewardConnection.tenantId) {
           headers["X-Steward-Tenant"] = stewardConnection.tenantId;
         }
-
         // Check if agent already exists (has wallets)
         let agentEvm: string | null = null;
         let agentSolana: string | null = null;
         let agentExists = false;
-
         try {
           const agentRes = await fetch(
             `${stewardConnection.apiUrl}/agents/${encodeURIComponent(stewardConnection.agentId)}`,
-            { headers: { ...headers }, signal: AbortSignal.timeout(15_000) },
+            { headers: { ...headers }, signal: AbortSignal.timeout(15000) },
           );
           if (agentRes.ok) {
             agentExists = true;
             const agentBody = (await agentRes.json()) as {
               data?: {
                 walletAddress?: string;
-                walletAddresses?: { evm?: string; solana?: string };
+                walletAddresses?: {
+                  evm?: string;
+                  solana?: string;
+                };
               };
               walletAddress?: string;
-              walletAddresses?: { evm?: string; solana?: string };
+              walletAddresses?: {
+                evm?: string;
+                solana?: string;
+              };
             };
             const agent = agentBody.data ?? agentBody;
             agentEvm =
@@ -1132,7 +1176,6 @@ export async function handleWalletRoutes(
         } catch {
           // agent doesn't exist or fetch failed — will try to create
         }
-
         // If agent doesn't exist, create it (steward auto-generates wallets)
         if (!agentExists) {
           const createRes = await fetch(`${stewardConnection.apiUrl}/agents`, {
@@ -1142,23 +1185,27 @@ export async function handleWalletRoutes(
               id: stewardConnection.agentId,
               name: stewardConnection.agentId,
             }),
-            signal: AbortSignal.timeout(15_000),
+            signal: AbortSignal.timeout(15000),
           });
-
           if (!createRes.ok) {
             const errText = await createRes.text().catch(() => "Unknown error");
             error(res, `Steward agent creation failed: ${errText}`, 502);
             return true;
           }
-
           const createBody = (await createRes.json()) as {
             ok?: boolean;
             data?: {
               walletAddress?: string;
-              walletAddresses?: { evm?: string; solana?: string };
+              walletAddresses?: {
+                evm?: string;
+                solana?: string;
+              };
             };
             walletAddress?: string;
-            walletAddresses?: { evm?: string; solana?: string };
+            walletAddresses?: {
+              evm?: string;
+              solana?: string;
+            };
           };
           const created = createBody.data ?? createBody;
           agentEvm =
@@ -1166,14 +1213,15 @@ export async function handleWalletRoutes(
             created.walletAddress?.trim() ||
             null;
           agentSolana = created.walletAddresses?.solana?.trim() || null;
-
           logger.info(
             `[wallet] Created steward agent "${stewardConnection.agentId}" with wallets`,
           );
         }
-
         // Cache steward addresses in env for synchronous access
-        const generated: Array<{ chain: WalletChain; address: string }> = [];
+        const generated: Array<{
+          chain: WalletChain;
+          address: string;
+        }> = [];
         if (agentEvm && (targetChain === "both" || targetChain === "evm")) {
           process.env.STEWARD_EVM_ADDRESS = agentEvm;
           generated.push({ chain: "evm", address: agentEvm });
@@ -1187,7 +1235,6 @@ export async function handleWalletRoutes(
           generated.push({ chain: "solana", address: agentSolana });
           logger.info(`[wallet] Steward Solana wallet: ${agentSolana}`);
         }
-
         json(res, {
           ok: true,
           wallets: generated,
@@ -1205,7 +1252,6 @@ export async function handleWalletRoutes(
         // Fall through to local generation
       }
     }
-
     if (requestedSource === "steward" && !stewardConnection) {
       error(
         res,
@@ -1214,15 +1260,34 @@ export async function handleWalletRoutes(
       );
       return true;
     }
-
     // ── Legacy local key generation (fallback) ────────────────────────
+    const evmWallet =
+      targetChain === "both" || targetChain === "evm"
+        ? deps.generateWalletForChain("evm")
+        : null;
+    const solanaWallet =
+      targetChain === "both" || targetChain === "solana"
+        ? deps.generateWalletForChain("solana")
+        : null;
+    try {
+      await deps.persistWalletPrivateKeys(config, {
+        ...(evmWallet ? { EVM_PRIVATE_KEY: evmWallet.privateKey } : {}),
+        ...(solanaWallet
+          ? { SOLANA_PRIVATE_KEY: solanaWallet.privateKey }
+          : {}),
+      });
+    } catch (err) {
+      error(res, `Failed to store generated wallet key: ${String(err)}`, 500);
+      return true;
+    }
     if (!config.env) config.env = {};
-
-    const generated: Array<{ chain: WalletChain; address: string }> = [];
+    const generated: Array<{
+      chain: WalletChain;
+      address: string;
+    }> = [];
     const generatedChains: WalletChain[] = [];
-
-    if (targetChain === "both" || targetChain === "evm") {
-      const result = deps.generateWalletForChain("evm");
+    if (evmWallet) {
+      const result = evmWallet;
       process.env.EVM_PRIVATE_KEY = result.privateKey;
       (config.env as Record<string, string>).EVM_PRIVATE_KEY =
         result.privateKey;
@@ -1231,9 +1296,8 @@ export async function handleWalletRoutes(
       generated.push({ chain: "evm", address: result.address });
       logger.info(`[eliza-api] Generated EVM wallet: ${result.address}`);
     }
-
-    if (targetChain === "both" || targetChain === "solana") {
-      const result = deps.generateWalletForChain("solana");
+    if (solanaWallet) {
+      const result = solanaWallet;
       setSolanaWalletEnv(result.privateKey);
       (config.env as Record<string, string>).SOLANA_PRIVATE_KEY =
         result.privateKey;
@@ -1242,7 +1306,6 @@ export async function handleWalletRoutes(
       generated.push({ chain: "solana", address: result.address });
       logger.info(`[eliza-api] Generated Solana wallet: ${result.address}`);
     }
-
     let configSaveWarning: string | undefined;
     try {
       saveConfig(config);
@@ -1251,7 +1314,6 @@ export async function handleWalletRoutes(
       logger.warn(`[api] ${msg}`);
       configSaveWarning = msg;
     }
-
     for (const chainName of generatedChains) {
       const walletSourceEnvKey = LOCAL_WALLET_SOURCE_ENV_KEYS[chainName];
       process.env[walletSourceEnvKey] = "local";
@@ -1266,12 +1328,10 @@ export async function handleWalletRoutes(
         return true;
       }
     }
-
     const restarted = await triggerWalletRuntimeReload(
       ctx,
       "Wallet configuration updated",
     );
-
     json(res, {
       ok: true,
       wallets: generated,
@@ -1281,7 +1341,6 @@ export async function handleWalletRoutes(
     });
     return true;
   }
-
   // GET /api/wallet/config
   if (method === "GET" && pathname === "/api/wallet/config") {
     const addresses = deps.getWalletAddresses();
@@ -1356,7 +1415,6 @@ export async function handleWalletRoutes(
     }
     return true;
   }
-
   if (
     method === "POST" &&
     (pathname === "/api/wallet/browser-transaction" ||
@@ -1366,14 +1424,12 @@ export async function handleWalletRoutes(
   ) {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
-
     const hasLocalEvmKey = Boolean(
       normalizeBrowserString(process.env.EVM_PRIVATE_KEY),
     );
     const hasLocalSolanaKey = Boolean(
       normalizeBrowserString(process.env.SOLANA_PRIVATE_KEY),
     );
-
     if (pathname === "/api/wallet/browser-sign-message") {
       const message = normalizeBrowserString(body.message);
       if (!message) {
@@ -1391,7 +1447,6 @@ export async function handleWalletRoutes(
       }
       return true;
     }
-
     if (pathname === "/api/wallet/browser-solana-sign-message") {
       if (!hasLocalSolanaKey) {
         error(res, "No browser Solana signer is available.", 503);
@@ -1403,11 +1458,16 @@ export async function handleWalletRoutes(
           await signLocalBrowserSolanaMessage(body, deriveSolanaAddress),
         );
       } catch (err) {
+        // Invalid request input is a client error, not a signer outage:
+        // replying 503 would invite clients to retry an unusable payload.
+        if (err instanceof BrowserWalletInputError) {
+          error(res, err.message, 400);
+          return true;
+        }
         error(res, err instanceof Error ? err.message : String(err), 503);
       }
       return true;
     }
-
     if (pathname === "/api/wallet/browser-solana-transaction") {
       if (!hasLocalSolanaKey) {
         error(res, "No browser Solana transaction signer is available.", 503);
@@ -1419,16 +1479,20 @@ export async function handleWalletRoutes(
           await signLocalBrowserSolanaTransaction(body, deriveSolanaAddress),
         );
       } catch (err) {
+        // Invalid request input is a client error, not a signer outage:
+        // replying 503 would invite clients to retry an unusable payload.
+        if (err instanceof BrowserWalletInputError) {
+          error(res, err.message, 400);
+          return true;
+        }
         error(res, err instanceof Error ? err.message : String(err), 503);
       }
       return true;
     }
-
     if (!hasLocalEvmKey) {
       error(res, "No browser EVM transaction signer is available.", 503);
       return true;
     }
-
     const request: BrowserEvmTransactionRequest = {
       broadcast: normalizeBrowserBoolean(body.broadcast, true),
       chainId:
@@ -1439,12 +1503,10 @@ export async function handleWalletRoutes(
       to: normalizeBrowserString(body.to) ?? "",
       value: normalizeBrowserString(body.value) ?? "0",
     };
-
     if (!request.to || !Number.isFinite(request.chainId)) {
       error(res, "to and a valid chainId are required.", 400);
       return true;
     }
-
     try {
       json(
         res,
@@ -1459,7 +1521,6 @@ export async function handleWalletRoutes(
     }
     return true;
   }
-
   // POST /api/wallet/primary — flag-gated (404 when ENABLE_CLOUD_WALLET is off).
   // Body: { chain: "evm"|"solana", source: "local"|"cloud" }
   if (method === "POST" && pathname === "/api/wallet/primary") {
@@ -1481,9 +1542,7 @@ export async function handleWalletRoutes(
     const chain = parsedPrimary.data.chain as WalletChainKind;
     const source = parsedPrimary.data.source as WalletSource;
     const previousPrimary = readPrimaryMap(config)[chain];
-
     persistPrimarySelection(config, chain, source);
-
     let configSaveWarning: string | undefined;
     try {
       saveConfig(config);
@@ -1491,7 +1550,6 @@ export async function handleWalletRoutes(
       configSaveWarning = `Config save failed: ${String(err)}`;
       logger.warn(`[api] ${configSaveWarning}`);
     }
-
     const envKey =
       chain === "evm" ? "WALLET_SOURCE_EVM" : "WALLET_SOURCE_SOLANA";
     try {
@@ -1500,12 +1558,10 @@ export async function handleWalletRoutes(
       error(res, `Failed to persist ${envKey}: ${String(err)}`, 500);
       return true;
     }
-
     const restarted =
       previousPrimary === source
         ? false
         : await triggerWalletRuntimeReload(ctx, "primary-changed");
-
     json(res, {
       ok: true,
       chain,
@@ -1515,7 +1571,6 @@ export async function handleWalletRoutes(
     });
     return true;
   }
-
   // POST /api/wallet/refresh-cloud — flag-gated.
   // Re-queries the Eliza Cloud bridge for per-chain wallet descriptors and
   // refreshes `config.wallet.cloud.*`. Provision is best-effort so one bad
@@ -1527,7 +1582,6 @@ export async function handleWalletRoutes(
       error(res, "Not found", 404);
       return true;
     }
-
     const cloud = config.cloud;
     const cloudHelpers = await loadCloudHelpers();
     const {
@@ -1546,17 +1600,19 @@ export async function handleWalletRoutes(
       error(res, "Cloud not linked — sign in to Eliza Cloud first", 400);
       return true;
     }
-
     const agentEntry = config.agents?.list?.[0];
     const agentId =
       agentEntry?.id ??
-      (ctx.runtime as { agentId?: string } | null)?.agentId ??
+      (
+        ctx.runtime as {
+          agentId?: string;
+        } | null
+      )?.agentId ??
       null;
     if (!agentId) {
       error(res, "No agent configured", 400);
       return true;
     }
-
     try {
       const { address: clientAddress } = await getOrCreateClientAddressKey();
       const bridge = new ElizaCloudClient(baseUrl, apiKey);
@@ -1605,14 +1661,11 @@ export async function handleWalletRoutes(
         );
       }
       persistCloudWalletCache(config as never, descriptors);
-
       process.env.ENABLE_CLOUD_WALLET = "1";
       await persistConfigEnv("ENABLE_CLOUD_WALLET", "1");
-
       const cloudConfig: Record<string, unknown> = { ...(cloud ?? {}) };
       cloudConfig.clientAddressPublicKey = clientAddress;
       config.cloud = cloudConfig as typeof config.cloud;
-
       if (descriptors.evm?.walletAddress) {
         process.env.ELIZA_CLOUD_EVM_ADDRESS = descriptors.evm.walletAddress;
         await persistConfigEnv(
@@ -1623,7 +1676,6 @@ export async function handleWalletRoutes(
         await persistConfigEnv("WALLET_SOURCE_EVM", "cloud");
         persistPrimarySelection(config, "evm", "cloud");
       }
-
       if (descriptors.solana?.walletAddress) {
         process.env.ELIZA_CLOUD_SOLANA_ADDRESS =
           descriptors.solana.walletAddress;
@@ -1635,7 +1687,6 @@ export async function handleWalletRoutes(
         await persistConfigEnv("WALLET_SOURCE_SOLANA", "cloud");
         persistPrimarySelection(config, "solana", "cloud");
       }
-
       let configSaveWarning: string | undefined;
       try {
         saveConfig(config);
@@ -1643,12 +1694,10 @@ export async function handleWalletRoutes(
         configSaveWarning = `Config save failed: ${String(err)}`;
         logger.warn(`[api] ${configSaveWarning}`);
       }
-
       const responseWarnings = [...warnings];
       if (configSaveWarning) {
         responseWarnings.push(configSaveWarning);
       }
-
       const nextPrimary = readPrimaryMap(config);
       const nextEvmAddress = descriptors.evm?.walletAddress ?? null;
       const nextSolanaAddress = descriptors.solana?.walletAddress ?? null;
@@ -1660,7 +1709,6 @@ export async function handleWalletRoutes(
       const restarted = walletBindingChanged
         ? await triggerWalletRuntimeReload(ctx, "cloud-refreshed")
         : false;
-
       json(res, {
         ok: true,
         restarting: restarted,
@@ -1686,12 +1734,10 @@ export async function handleWalletRoutes(
     }
     return true;
   }
-
   // PUT /api/wallet/config
   if (method === "PUT" && pathname === "/api/wallet/config") {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
-
     const updateRequest = resolveWalletConfigUpdateRequest(
       body,
       getStoredWalletRpcSelections(config),
@@ -1700,16 +1746,13 @@ export async function handleWalletRoutes(
       error(res, "Invalid wallet config update");
       return true;
     }
-
     applyWalletRpcConfigUpdate(config, updateRequest);
-
     const selectedProviders = normalizeWalletRpcSelections(
       updateRequest.selections,
     );
     const shouldEnableCloudWallet = Object.values(selectedProviders).every(
       (provider) => provider === "eliza-cloud",
     );
-
     if (shouldEnableCloudWallet) {
       process.env.ENABLE_CLOUD_WALLET = "1";
       try {
@@ -1723,7 +1766,6 @@ export async function handleWalletRoutes(
         return true;
       }
     }
-
     let configSaveWarning: string | undefined;
     try {
       saveConfig(config);
@@ -1732,14 +1774,12 @@ export async function handleWalletRoutes(
       logger.warn(`[api] ${msg}`);
       configSaveWarning = msg;
     }
-
     json(res, {
       ok: true,
       ...(configSaveWarning ? { warnings: [configSaveWarning] } : {}),
     });
     return true;
   }
-
   if (method === "GET" && pathname === "/api/wallet/approvals/stream") {
     error(
       res,
@@ -1748,7 +1788,6 @@ export async function handleWalletRoutes(
     );
     return true;
   }
-
   const approvalDecision = /^\/api\/wallet\/approvals\/([^/]+)\/decision$/.exec(
     pathname,
   );
@@ -1760,7 +1799,6 @@ export async function handleWalletRoutes(
     );
     return true;
   }
-
   // POST /api/wallet/export — removed (no plaintext key export from the agent API).
   if (method === "POST" && pathname === "/api/wallet/export") {
     error(
@@ -1770,6 +1808,5 @@ export async function handleWalletRoutes(
     );
     return true;
   }
-
   return false;
 }

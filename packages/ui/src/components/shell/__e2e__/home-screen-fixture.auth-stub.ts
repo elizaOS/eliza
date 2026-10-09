@@ -21,6 +21,7 @@ const AUTHENTICATED_STATE = {
   session: { id: "fixture-session", kind: "local" as const, expiresAt: null },
   access: {
     mode: "local" as const,
+    role: "OWNER" as const,
     passwordConfigured: false,
     ownerConfigured: true,
   },

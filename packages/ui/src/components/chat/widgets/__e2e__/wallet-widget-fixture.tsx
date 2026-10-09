@@ -1,7 +1,7 @@
 /**
  * Render fixture for the wallet price surface (#14344, #16943). Two modes,
- * chosen by the URL; the runner stubs `../../../api` with the matching
- * response:
+ * chosen by the URL; the runner stubs `../../../api/client` (and the legacy
+ * `../../../api` barrel) with the matching response:
  *
  *   - default (widget-only): mounts the REAL `WalletBalanceWidget` on an
  *     orange home-like field so the screenshot harness captures the

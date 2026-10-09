@@ -37,6 +37,25 @@ export function normalizeSystemPromptRole(
 	return normalized || undefined;
 }
 
+/** Role labels describe the caller; executable permissions remain runtime-enforced. */
+function roleDescription(role: string): string {
+	switch (role) {
+		case "OWNER":
+			return "The agent's owner; may manage its configuration and delegate work within runtime permissions.";
+		case "ADMIN":
+			return "An administrator with delegated management permissions.";
+		case "USER":
+		case "MEMBER":
+			return "A registered participant with access to permitted capabilities.";
+		case "GUEST":
+			return "A guest with access to guest-permitted capabilities.";
+		case "NONE":
+			return "No assigned access role.";
+		default:
+			return "A runtime-assigned role; permissions are enforced by the runtime.";
+	}
+}
+
 export function buildCanonicalSystemPrompt(args: {
 	character?: Pick<Character, "name" | "system" | "bio"> | null;
 	userRole?: RoleGateRole | string | null;
@@ -55,7 +74,7 @@ export function buildCanonicalSystemPrompt(args: {
 	return [
 		system,
 		bio ? `# About ${name}\n${bio}` : "",
-		role ? `user_role: ${role}` : "",
+		role ? `# User Role\n${role}: ${roleDescription(role)}` : "",
 	]
 		.filter(Boolean)
 		.join("\n\n")

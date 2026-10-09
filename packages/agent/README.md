@@ -1,312 +1,242 @@
-# `@elizaos/agent`
+# @elizaos/agent
 
-Standalone elizaOS agent and HTTP backend. Plugin routes can be registered on `AgentRuntime` and are served by the agent’s HTTP stack.
+Standalone agent host and HTTP/WebSocket backend around the elizaOS runtime.
 
-## Documentation
+Hosts explicitly compose core, assistant, storage, and model plugins. Start from the
+repository root with `bun run start`; use `bun run dev` for the app and API together.
+Configure providers and connectors through the host configuration; never expose host
+secrets to ungranted agents.
 
-- **Paid HTTP routes (webhooks, plugins):** see the docs site section on [webhooks and routes](https://docs.elizaos.ai/plugins/webhooks-and-routes).
-- **x402 micropayments on plugin routes:** configured through the runtime's `x402` config block and the `X402_API_KEY` environment variable (see `packages/agent/src/runtime/eliza.ts`).
+Import public runtime, service, role, and operation APIs from `@elizaos/agent`.
+Agent code imports core APIs and catalog maps through `@elizaos/core`.
+`RegistryClientPluginInfo` and `RegistryClientSearchResult` expose the underlying
+registry shapes; `RegistryPluginInfo` and `RegistrySearchResult` retain the
+plugin manager's extensions. The roles plugin is exported as `rolesPlugin`.
 
-## Local development
+`SqliteInteractiveTaskStore` is available from
+`@elizaos/agent/services/interactive-task-store`. Supply a private host-managed
+SQLite connection with FULL or EXTRA synchronization. The host retains database
+location, encryption and lifecycle ownership. After exclusive startup, call
+`recoverOwner` for the authenticated owner before accepting task commands; it
+pauses unfinished work and marks dispatched outcomes unknown. Persist a dispatch
+transition before any effect, then independently revalidate at the actuator.
+This journal does not execute actions or authorize browser access.
 
-From this package:
+`InteractiveTaskRuntime` and `createInteractiveTaskHandler` have matching
+`services/interactive-task-runtime` and `services/interactive-task-http` exports.
+The runtime commits dispatch before entering the host actuator and cancels
+pending work on Pause/revoke. The HTTP handler accepts only start/status and
+pause/cancel/resume; host callbacks resolve authenticated ownership and authorized
+goal references. Mount it behind the host's normal origin/transport protections.
+Account changes must revoke the old runtime, and the native actuator must recheck
+page, input revision and authorization immediately before an effect. The handler
+never accepts client observations, execution commands or outcome receipts.
 
-```bash
-bun install
-bun run typecheck
-bun run test
-```
+Actuators may implement `quiesce` to remove transient host UI. After synchronous
+Pause/cancel/revoke, hosts must await `runtime.settle()` before reporting cleanup
+complete or replacing the runtime. The HTTP handler does this automatically.
+Unconfirmed cleanup returns `TASK_CLEANUP_UNCONFIRMED`; a later status read retries
+cleanup only, without repeating the task transition or browser action.
+The pause route accepts optional `reason: "close"` when the user closes the task
+surface. This keeps the pause transition but passes `close` to `quiesce`; ordinary
+Pause, cancel, and revoke pass their own reasons. Per-task cleanup runs in control
+order, and a retry retains its reason.
 
-See `package.json` for `build`, `lint`, and other scripts.
+Trusted hosts may call `runtime.reconcile` for an unknown operation through an
+optional actuator `reconcile` readback implementation. It must read evidence only,
+never repeat the effect. Revision/epoch and account checks fence late results;
+resolved results require a durable evidence reference. Reconciliation does not
+resume the task. This method is deliberately absent from renderer HTTP routes.
 
-The default test command runs isolated Vitest batches. The repository runner
-requests `--reporter=default --reporter=junit --outputFile.junit=<path>` and the
-batch runner validates every report before writing one combined JUnit artifact.
-Missing, malformed or failed batch evidence rejects the run; entirely skipped
-suites do not satisfy the repository's required-work gate.
+## Optional phone workflows
 
-## Research tasks
+Lean-chat hosts may set `ELIZA_LEAN_CHAT_WORKFLOWS=1` to retain the workflow
+plugin while keeping the lean profile's desktop actuator exclusions. Android
+hosts may independently set `ELIZA_MOBILE_WORKFLOWS=1`; the default remains
+workflow-free, and iOS remains excluded. An explicit `workflow.enabled: false`
+or disabled `plugins.entries.workflow` overrides either opt-in.
 
-`ResearchTaskExecutor` requires a provider registered for
-`ModelType.RESEARCH`. Provider absence, rejection, or an empty report returns an
-unsuccessful `TaskResult` with a stable `errorCode`; it never falls back to
-ordinary `TEXT_LARGE` synthesis and labels that output as research.
+Android bundles include the optional workflow plugin, but execution still
+requires the separately verified workflow worker/compiler resource directory
+and the process-host configuration. Enabling the plugin does not establish
+worker readiness or authorize device effects. Use the existing reviewed
+workflow and device-action permission/receipt boundaries.
 
-## Message-interaction session persistence
+## Development
 
-`FileMessageInteractionSessionStore` is the durable single-host adapter for
-core's message-interaction session authority. It serializes independent local
-processes, writes a 0600 regular file through same-filesystem fsync and atomic
-rename, fails fast on corruption and symlinks, qualifies Linux lock owners by
-boot/process generation, and generation-fences stale takeover and release with
-an atomically published transition marker. A complete owner inode is fsynced
-before no-replace hardlink publication; malformed owners have a bounded
-recovery ceiling, while a live PID that cannot be generation-qualified fails
-closed. An abandoned transition marker also fails closed because portable
-filesystems cannot conditionally unlink a pathname generation; an operator may
-remove it only after stopping every store user and verifying that no host
-process owns the store. Operations report
-`INTERACTION_STORE_RECOVERY_REQUIRED` and do not mutate state while that marker
-remains; this state has no bounded automatic recovery. The marker path is
-reported in `error.context.markerPath`; with the default filename it is
-`<stateDirectory>/message-interaction-sessions.v1.json.lock.transition`.
-Recovery requires stopping every process that uses the store, verifying that
-none owns the adjacent `.lock` owner file, removing that exact `.transition`
-path, fsyncing the state directory, and only then restarting store users. Its
-boundary is one machine and one state directory. Multi-host deployments must
-supply a transactional database implementation of
-`MessageInteractionSessionStore` and use the session replay key as the effect or
-outbox idempotency key.
-
-Transition cleanup reports machine-distinct retry outcomes. A failure during
-pre-operation stale recovery is
-`INTERACTION_STORE_RECOVERY_CLEANUP_FAILED` with `committed: false`; a failure
-after the durable transaction commit is
-`INTERACTION_STORE_COMMITTED_CLEANUP_FAILED` with `committed: true`, so callers
-must not retry the mutation. Every other release failure after the durable write
-is `INTERACTION_STORE_COMMITTED_RELEASE_FAILED` with the same no-retry contract;
-combined operation/release failures retain the release code and recovery
-context. If publication sees a transition marker after linking its complete
-owner, no transaction starts. Offline recovery must additionally verify the
-reported owner token/inode, remove both the exact marker and owner paths, fsync
-the parent directory, and restart. Owner-candidate cleanup failure is likewise
-typed as pre-mutation (`INTERACTION_STORE_OWNER_CANDIDATE_CLEANUP_FAILED`,
-`committed: false`) whether or not the candidate was published; a published
-owner is safely detached when possible and `context.published` records which
-case occurred.
-After the state temp is renamed, a parent-directory sync failure reports
-`INTERACTION_STORE_COMMIT_AMBIGUOUS` with `committed: "unknown"`; a close
-failure after successful sync uses the same code with `committed: true`.
-Both are non-retryable and require reading the reported state file to reconcile
-the persisted session outcome. If lock unlink and transition cleanup both fail,
-the committed cleanup error retains the unlink cause, cleanup error, marker,
-lock identity/token, and exact offline recovery authority.
-
-The file authority durably commits an effect before dispatch. If the process
-dies after that commit but before retaining the receipt, the session remains
-`committed` for operator reconciliation; it is never lease-transferred,
-automatically retried, or revoked as if cancellation succeeded. The store lists
-ambiguous commits and accepts only a verified receipt to reconcile them without
-re-execution. Completed receipts are retained for seven days and unreconciled
-commits for thirty days by default, after which bounded collection prevents
-permanent capacity exhaustion.
-
-The bundled `eliza` plugin registers `MessageInteractionHostService` as the one
-runtime authority connectors resolve through `MESSAGE_INTERACTION_HOST_SERVICE`.
-Connectors submit capability profiles and trusted render bindings to `prepare`,
-then send authenticated inbound provider receipts to `consume`. Only host-owned
-effect handlers execute retained operations; completed receipts preserve the
-provider event, canonical inbound event, audit id, and app-state proof for replay.
-
-## Approval-bound plugin installation
-
-`installPlugin` always installs the canonical npm package declared by the
-registry (`plugin.npm.package`), even when lookup used a display name or alias.
-Existing callers may continue passing a version string as the third argument.
-Security-sensitive callers can instead bind the package and exact version they
-showed an operator for approval:
-
-```ts
-const result = await installPlugin("friendly-registry-alias", undefined, {
-  expected: {
-    packageName: "@vendor/canonical-plugin",
-    version: "2.4.1",
-  },
-});
-```
-
-The installer rejects a changed package or version before creating the install
-directory or executing a package manager. A bound install uses that exact npm
-package/version and does not silently fall back to a local workspace or moving
-Git branch. Successful results include `provenance` identifying the actual
-`local`, `npm`, or `git` source. npm/Bun lock integrity and resolved tarball
-metadata are returned when available; unavailable integrity stays `null`, and
-Git installs report the cloned commit.
-
-## Core relationships inventory
-
-`archiveCoreRelationshipsInventory` snapshots the complete legacy Core
-`RelationshipsService` rows for one agent using a
-`CoreRelationshipsInventoryDatabase` whose transaction owns one PostgreSQL-compatible
-session. It reads agent-scoped entities, relationships, identities and merge
-candidates, and contact components scoped to the agent's relationships world
-and source identity. Every complete JSON payload is archived and hash-checked.
-
-This explicit operator operation takes source-table `SHARE ROW EXCLUSIVE` locks
-inside a serializable transaction. Run it during a global maintenance window:
-these locks block source writers across tenants. A successful run reports
-`archived` and replaces that agent's current source snapshot, including removing
-archive rows no longer present in the source. It does not retain immutable history.
-A missing/unreadable source schema or failed archive readback rolls back the
-operation with a typed error, preserving the previous snapshot.
-
-The helper never writes canonical entities, identities, edges, or their provenance,
-and never deletes or updates legacy source rows. It provides no migration,
-projection verification, caller cutover, or authority transfer. The separate
-legacy-schema startup guard remains fail-closed until actual ownership migration
-is designed and performed.
-
-## x402 at a glance
-
-Paid routes set `x402` on a `Route`. The middleware returns **402** with payment options and accepts on-chain proofs, facilitator payment IDs, or standard payment payloads (`PAYMENT-SIGNATURE` / `X-Payment`), then verifies and settles through a facilitator before running the handler.
-
-For environment variables, events, replay protection, and buyer guidance, use the linked docs above.
-
-## Production chat latency evidence
-
-`bun run --cwd packages/agent perf:cerebras-chat` drives the real
-`generateChatResponse`/AgentRuntime/PGLite path. Run from a clean committed
-checkout. It requires an explicitly verified `ELIZA_CEREBRAS_CHAT_MODEL` and
-`CEREBRAS_API_KEY`; do not treat an old model name or historical report as
-current availability proof.
-
-The command now requires a real configured embedding service:
-`OPENAI_EMBEDDING_URL`, `OPENAI_EMBEDDING_MODEL` and
-`OPENAI_EMBEDDING_DIMENSIONS`. Set `OPENAI_EMBEDDING_API_KEY` through the normal
-local environment if that service needs authentication. Without the explicit
-endpoint, the Cerebras adapter uses feature-hash embeddings, which cannot
-certify production embedding latency. The report must contain a successful
-embedding execution and its actual outbound request.
-
-Select the experiment explicitly:
-
-- `ELIZA_CEREBRAS_CACHE_MODE=automatic` omits optional routing keys; ordinary
-  provider prefix caching remains available.
-- `ELIZA_CEREBRAS_CACHE_MODE=existing` retains the production prefix strategy.
-- `ELIZA_CEREBRAS_CACHE_MODE=conversation` applies an opaque key scoped to the
-  agent, room, model, stage and stable prefix after core cache-plan assembly.
-  It fails explicitly when any text-model call lacks that prefix; current
-  post-delivery `TEXT_SMALL` calls can make this mode unsupported for a full run.
-
-The two keyed modes require
-`ELIZA_CEREBRAS_CACHE_KEY_CAPABILITY_CONFIRMED=true` **after independently
-confirming account support**. This flag records the operator's attestation; it
-is not an account-capability probe. These overrides belong only to the
-benchmark and do not change production defaults or another provider's policy.
-Successful runs verify the effective SDK wire: automatic mode must contain no
-optional cache key, and conversation mode must retain the exact expected key
-from its model invocation. Async context joins the invocation and actual SDK
-request. This detects crossed or overwritten hints, not upstream cache residency.
-
-Set `ELIZA_CEREBRAS_CHAT_PATH=direct` or `gateway`. For gateway runs, configure
-`CEREBRAS_BASE_URL` to the authorized compatible endpoint and set
-`ELIZA_CEREBRAS_GATEWAY_SOURCE_REVISION` to its independently attested deployed
-SHA. The command checks the SHA's syntax, not remote deployment provenance.
-The text and embedding endpoints must not contain embedded credentials,
-queries or fragments.
-
-`ELIZA_CEREBRAS_CHAT_CONDITION` selects the workload:
-
-- `rolling-history`: all measured turns append to the existing conversation.
-- `fresh-room`: each sample starts a new conversation on the same runtime.
-  This is **not** proof of a cold provider cache; a shared prefix may be reused.
-- `post-idle`: each sample gets its own primed conversation, then resumes after
-  a shared idle wait. `ELIZA_CEREBRAS_CHAT_IDLE_MS` defaults to 360000. Reports
-  include the actual interval since each room's prior completion.
-
-`ELIZA_CEREBRAS_CHAT_SAMPLES` defaults to 30 and
-`ELIZA_CEREBRAS_CHAT_WARMUPS` to 3. A post-idle run adds one priming turn per
-sample; the existing cancellation probe also makes a live call. Compare matched
-model, tier, endpoint, embedding service, settings and workload across runs.
-Classify actual cache misses/reuse from upstream cached-token counts rather
-than labels, and report unavailable upstream metrics explicitly. There are no
-CI latency thresholds.
-
-Set `ELIZA_CEREBRAS_CHAT_REPORT` to a protected artifact path. Newly created
-reports use mode 0600 and contain complete synthetic prompts, SDK request
-bodies, outputs, model execution timings, provider spans and persistence
-receipts. Authorization headers are never recorded. First visible text,
-response headers, foreground completion and background quiescence are distinct;
-HTTP header latency is not provider TTFT. Missing queue time and acoustic audio
-latency are explicitly unavailable. Inspect artifacts before publishing.
-
-This text-runtime command does not certify app rendering, audio playback,
-real connector delivery or a separate deployed gateway's identity. The strict
-proof checks abort on a failed sample, so a successful report's error rate is
-zero. Both terminal success and failure reports retain every started turn in
-`turnObservations`, including its phase, last validation stage, partial streaming
-and timing observations, and completed persistence receipt when available.
-Unreached measurements remain null. Concurrent checks settle every started room
-before failure evidence is written. Retain failed runs rather than dropping them
-from a comparison. #17072 still requires current live production evidence, concurrent
-and resumed-session correctness, and any reproduced bottleneck's matched
-before/after result. Preparing this command alone does not complete the issue.
-
-For an installed desktop native embedding model, set
-`ELIZA_CEREBRAS_EMBEDDING_MODE=native`, `MODELS_DIR`,
-`LOCAL_EMBEDDING_MODEL`, and `LOCAL_EMBEDDING_DIMENSIONS` instead of the HTTP
-embedding settings. This runs the canonical `ensureLocalInferenceHandler`
-boot and selects its `eliza-local-inference` embedding handler explicitly;
-it never substitutes a benchmark embedding implementation or silently falls
-back to the OpenAI-compatible synthetic embedding path. The report records
-model and fused-library paths and SHA-256 hashes separately from HTTP wire
-evidence. Every returned vector must have the configured dimension and finite,
-nonzero values. Native readiness does not prove remote gateway readiness.
-
-For a controlled provider-only comparison after collecting a successful keyed
-runtime report with at least 30 sample requests, run:
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-ELIZA_CEREBRAS_CACHE_KEY_CAPABILITY_CONFIRMED=true bun --conditions=eliza-source packages/agent/scripts/cerebras-cache-wire-replay.ts /path/to/runtime-report.json /path/to/replay-report.json
+bun run --cwd packages/agent build  # build
+bun run --cwd packages/agent test   # tests
 ```
 
-The replay preserves every original message, tool, schema and model setting;
-only the optional cache hint changes. Shared-prefix and conversation hints
-use a fresh run scope. Mode order rotates for each matched request. It records
-complete SSE responses and every HTTP attempt, paces calls three seconds apart,
-and permits at most three attempts per request. A longer-than-60-second
-`Retry-After` stops the run instead of starting an unbounded retry loop.
-Automatic prefix caches may already be warm, and routing hints cannot guarantee
-independent cache residency. Replay results therefore describe a provider
-experiment, never app/runtime/gateway acceptance.
+Retain real end-to-end scenarios exercising host, transport, and persistence.
+The package test, test:e2e, and test:integration commands share that suite;
+do not reintroduce removed unit, mock, smoke, or source-inspection tests.
 
-The chat command's `wallMs` includes `generateChatResponse`'s room background
-drain. Use `firstVisibleTextMs` and the runtime's response-finalization spans
-for delivery timing. `backgroundQuiescenceMs` measures only an additional
-residual drain after command return. Report HTTP 429 and transport-attempt
-counts separately from completed-turn success; successful runs do not erase
-failed preflights or recovered retries. Failed-run reports retain attempted model
-inputs (including rejected experiment preflights), model outcomes, returned chat
-responses and wire attempts. A delivered reply cannot make a run successful if
-its post-delivery model work failed. Provider account tier and invoice cost are
-not measured by this command; comparisons must disclose those limits.
+Remote push (APNs/FCM) acceptance requires an enrolled device, token registration
+through the authenticated API, and confirmed delivery to that device while the
+app is backgrounded or closed. The local agent suite does not verify device delivery.
 
-### Builtin evaluator semantic evidence
-
-`packages/agent/scripts/cerebras-evaluator-semantics.ts` is a separate semantic
-check, not a latency workload. It persists two controlled conversations in a
-new isolated PGlite directory and runs the actual fact, relationship, identity,
-and task-completion evaluators through the provider. The negative conversation
-contains a deliberately failed booking action-result fixture; no booking or
-external identity API is called. Acceptance requires actual owned fact and
-identity rows, a supported colleague relationship, and matching completion
-memory/cache values. It awaits the production RelationshipsService before use.
-
-Use the normal root environment file, independently verified
-`ELIZA_CEREBRAS_CHAT_MODEL=qwen-3.8-27b`, and the native384 settings described
-above. From the repository root:
+Run the native coding CLI end to end with configured provider credentials:
 
 ```bash
-bun --env-file=.env.local --conditions=eliza-source packages/agent/scripts/cerebras-evaluator-semantics.ts --output=/tmp/evaluator-live.json --pglite-dir=/tmp/evaluator-live-db
+BENCHMARK_NATIVE_CODING_E2E=1 BENCHMARK_NATIVE_MODEL=<model> \
+  bun --conditions=eliza-source node_modules/vitest/vitest.mjs run \
+  --config packages/agent/vitest.config.ts packages/agent/test/benchmark-coding-live.test.ts
 ```
 
-Both output and database paths must be new. The report contains full model and
-wire output, fixture definitions, before/after domain records, final isolation
-readbacks, and explicit failures. Checks reject foreign-fixture claims and
-contradictory same-message completion rows even alongside valid results. Full
-reasons and relationship descriptions still require semantic inspection; a
-nonempty explanation alone is not proof of grounded reasoning. The database is retained after canonical
-runtime shutdown; this command does not certify restart durability. It makes
-nominally two merged evaluator calls, with every actual attempt recorded.
-Inspect and scan artifacts before publishing.
+This uses a real provider and isolated Git fixture, verifies executed WRITE/SHELL
+actions and Python tests, and requires clean process shutdown. Receipts are saved
+under `test-results/agent-native-coding/`. Configure provider-specific model
+settings to match `BENCHMARK_NATIVE_MODEL` when overriding the shared defaults.
 
-Replay a successful report through the actual SDK and the current evaluator
-consumer on a loopback server using `--replay=/tmp/evaluator-live.json` and new
-output/database paths. `--finish=original` preserves the saved response body;
-`--finish=length`, `content_filter`, or `malformed` requires explicit evaluator
-failure with no persisted effects. Replay blocks remote network calls and
-records the source artifact hash. These controls are deterministic transport
-replays, not additional live-model trials. Comparing an older consumer requires
-an independently pinned compatible harness; this command does not emulate old
-production behavior. Semantic success and cache/latency improvement remain
-separate claims.
+Benchmark JSON separates `turn_completed` from the optional planner assessment
+`request_fulfilled`, and preserves `action_results` and `effect_receipts`, including
+failed attempts that were later recovered. An explicit unfulfilled assessment
+fails the CLI. These fields are execution evidence; benchmark graders must still
+verify the requested outcome independently.
+
+Coding benchmark turns use the focused READ, WRITE, EDIT, and SHELL action profile.
+Create task branches in the supplied workspace; external graders collect that
+workspace’s commits and do not follow temporary worktrees.
+
+For long coding runs, set `ELIZA_CODING_MAX_PROMPT_TOKENS` to a positive integer
+to choose an explicit cumulative planner prompt-token budget. Unset runs retain
+the default 1,500,000-token limit; cached prompt tokens count toward the budget.
+The setting does not affect ordinary conversational turns or override an explicit
+host-supplied planner budget. Record the value with benchmark results.
+
+Interactive task events are committed atomically with each SQLite checkpoint.
+The authenticated `GET /tasks/:id/events?after=-1` endpoint returns ordered pages
+of up to 128 events, a cursor and `hasMore`; clients must follow all pages.
+Older journals begin with an explicit `checkpoint` event rather than invented
+history. `@elizaos/core/protocol` exports a browser-safe validator and merge
+helper (`validateTaskEvent`, `mergeTaskEvents`) that reject gaps, conflicting
+replay and wrong-task data.
+The feed contains lifecycle metadata, not page text, credentials or transcripts.
+
+`services/sqlite-message-interaction-session-store` adapts the existing
+message-interaction claim/commit/receipt protocol to a host-managed FULL/EXTRA
+SQLite connection. Do not share an open transaction with store calls. Bind choices
+to authenticated task context and revalidate at the effect boundary. Committed
+unknown outcomes survive expiry cleanup until explicit reconciliation; a retry
+must never execute them again. The host owns storage permissions and retention.
+
+`services/interactive-task-choices` binds the shared interaction authority to a
+runtime task and a trusted context hash. Identical offers reuse one durable
+session; Pause/recovery/account epochs invalidate old callbacks. `respond` accepts
+only an offered option, commits before invoking the host executor, and supplies a
+stable operation ID plus a current-task guard. The executor must still verify
+fresh observations and native authorization. Expired pending offers remain
+expired; a new task epoch or changed trusted context requires a new review.
+
+`services/interactive-task-presentation` exports `SqliteTaskPresentation` for a
+single current host-issued choice per task. It stores presentation separately
+from effect authority and rehydrates through `InteractiveTaskChoices` before
+delivery. Reads never observe or execute the task. A newer publish/clear fences
+older in-flight writes; expired or paused/old-epoch choices are not delivered.
+Only trusted workflows may publish. Hosts bind chat routes to authenticated
+account/task identity and dispatch responses through the existing choice authority;
+model text and renderer metadata must never create offers or grant execution.
+
+Hosts that hydrate credentials from an external protected store can set
+`ELIZA_CONFIG_EXTERNAL_SECRET_ENV_VARS` to up to 32 comma-separated environment
+variable names before saving config. `saveElizaConfig` omits exact string values
+currently held in those variables from its serialized copy without changing the
+in-memory credential. Empty or absent variables contribute no value. Other
+settings retain existing persistence behavior; invalid names reject the save.
+This does not scrub old files, logs, transformed secret values or other stores;
+the host still owns credential migration and custody.
+
+Each explicit uncertain-operation readback commits a recovery epoch before binding
+the actuator. An ambiguous result or lost reply therefore cannot strand the next
+readback on a native epoch that was already consumed. The original operation stays
+unknown until evidence resolves it, and recovery never resumes or repeats effects.
+
+Mobile hosts may set `ELIZA_MOBILE_DNS_SERVERS` to one through eight comma-separated
+IP literals from their trusted native network configuration. Missing configuration
+retains the public resolver defaults; malformed addresses reject before installing
+DNS overrides. This startup snapshot does not implement Private DNS, VPN-bound
+resolution or automatic network-change refresh.
+
+## Native host composition
+
+Hosts with their own native view renderers may set
+`ELIZA_NATIVE_VIEW_DECLARATIONS` before runtime startup. Its value is a JSON
+array of at most 32 navigation-only declarations with `id`, `label`, `path`,
+and optional `fallbackFor` (an exact plugin package name). For example:
+
+```json
+[{"id":"native-gallery","label":"Gallery","path":"/native-gallery"}]
+```
+
+This is trusted host configuration, never renderer metadata or a device view
+profile. Entries use existing runtime installations, have an OWNER role gate,
+declare no capabilities or controls, and retain `available: false` because they
+supply no hosted executable. Registered completed-action clients still require
+the normal owner/client/installation preparation, claim and acknowledgment.
+Ordinary originating-client delivery cannot use an unavailable hosted view.
+An exact preview builtin may have a host-selected released native counterpart;
+system/release builtins cannot be overridden. Already installed plugin entries
+remain authoritative. Later plugin replacement requires an explicit matching
+`fallbackFor`, route and modality. Without this setting, catalogs are unchanged.
+
+`native-host/gateway.mjs` is a dependency-free Node source entrypoint for native
+hosts shipping a separately verified gateway payload. Supply an explicit
+`hostPolicy`: origins, resetPaths, conversationTitle, abortReason, validateTitle,
+prepareMessage, isPaidAction, formatTaskContext, and optional messages. The policy
+owns product language and view metadata; the gateway owns authenticated loopback
+transport, bounded JSON, conversation ownership, request cancellation, account
+fencing and authenticated task presentation. Only trusted host code provides this
+policy; never accept it from renderer input.
+
+`native-host/account-state.mjs` preserves private credential-derived namespaces
+and configuration migration. `native-host/runtime-supervisor.mjs` serializes
+identity transitions and stops only the child returned by the host launcher.
+These are source entrypoints for explicit payload composition, not additional
+browser SDK or published dist exports. Production consumers must preserve their
+own registration, origin policy, encrypted storage and lifecycle adapters.
+
+The native-host end-to-end test uses real local HTTP, disk restart and child
+processes. Run `node --test packages/agent/native-host/gateway.e2e.test.mjs` from
+the repository root; it is also included by the package's Vitest suite.
+
+`native-host/private-runtime-launch.mjs` composes host-only literal settings,
+allowlisted inherited environment, persistent private tokens and a separate
+generated launch config. The trusted host supplies paths, default configuration,
+provider policy, command and launch-receipt callback. It owns one child and reaps
+it if receipt persistence fails; signal listeners are removed on child closure.
+It does not restart processes or replace the account supervisor. Parent
+directories must be private and host-controlled, and receipt callbacks must
+settle. Hosts with an existing token-format contract may supply a synchronous
+`createToken` factory; it runs only for a newly created token file. Existing
+tokens are preserved and validated regardless of the current factory. The native-host end-to-end suite covers real disk and child-process
+isolation, failure cleanup and cancellation during launch.
+
+`native-host/task-evidence-store.mjs` stores host-validated append-only evidence
+separately from the task transition journal. Supply a trusted table name, source,
+input validator, record limit and authenticated owner. The task reader must use
+the same synchronous SQLite connection without starting its own transaction.
+The store serializes ownership/epoch checks, sequencing and idempotency with
+writes; it never advances tasks or authorizes effects. Keep product measurement
+schemas and summaries in the host. Existing compatible tables are preserved.
+
+Trusted native hosts can use `native-host/private-runtime-launch.mjs`'s
+`readPrivateRuntimeJson` for bounded, read-only POSIX configuration reads. Hosts
+supply the byte budget and own parent-directory trust and schema validation.
+The reader rejects symlink leaves, non-regular files, unexpected ownership and
+group/other permissions; it never creates files or changes their permissions.
+
+Hosts whose runtime writes its own persistent configuration should use
+`preparePrivateRuntimeProfile` and continue passing their original config path
+to that runtime. It returns the saved token and parsed configuration without
+rewriting existing bytes. `preparePrivateRuntimeFiles` composes this primitive
+with a separate generated launch config for hosts that need a per-launch selection.
+
+`SqliteInteractiveTaskStore.readOwnerHistory` supplies complete owner-scoped
+histories within explicit task/event limits to a synchronous, read-only host
+projection. It reuses page validation and rejects revision, cross-connection,
+same-connection or schema changes instead of publishing a partial report. It
+adds no effect authority and must not be called inside an existing transaction.

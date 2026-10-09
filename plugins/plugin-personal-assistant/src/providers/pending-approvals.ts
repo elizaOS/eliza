@@ -13,7 +13,7 @@
  * that turn classifies into. The happy-path render is empty and the read is
  * one bounded SQL, per the always-on provider contract.
  */
-import { hasOwnerAccess } from "@elizaos/agent";
+
 import type {
   IAgentRuntime,
   Memory,
@@ -21,6 +21,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/core";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type { ApprovalRequest } from "../lifeops/approval-queue.types.js";
 
@@ -54,6 +55,7 @@ export function renderPendingApprovalsText(
   return [
     "# Pending Approvals (queued actions awaiting the owner's decision)",
     ...lines,
+    'If RESOLVE_REQUEST is absent from the available tools, first call DISCOVER_ACTIONS with mode="load" and names=["RESOLVE_REQUEST"], then resolve the pending request. An approval decision is not a new calendar creation or booking request; do not call the original creation action again.',
     'When the owner decides on one of these, resolve it with RESOLVE_REQUEST: approve dispatches the queued action; reject leaves it permanently un-dispatched. A hold — "don\'t send it", "not yet", "hold off until I confirm" — is a rejection: nothing is lost, a fresh request can be queued later. Never leave a decided request pending.',
   ].join("\n");
 }
@@ -100,7 +102,7 @@ export const pendingApprovalsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return EMPTY;
     }
     // Approvals are enqueued with subjectUserId = the requesting owner's

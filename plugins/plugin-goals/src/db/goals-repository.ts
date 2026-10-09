@@ -16,14 +16,14 @@
  */
 
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsActor,
   LifeOpsAuditEventType,
   LifeOpsGoalDefinition,
   LifeOpsGoalLink,
   LifeOpsOwnerType,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
   parseJsonRecord,
@@ -181,6 +181,36 @@ export class GoalsRepository {
     );
   }
 
+  /**
+   * Record a computed review without rewriting the rest of the goal: only
+   * `review_state`, `updated_at` and the given top-level metadata keys change,
+   * merged into the stored metadata in SQL. A review computed from an earlier
+   * read (it can span an LLM call) must not revert a concurrent edit, status
+   * change or check-in written meanwhile.
+   */
+  async updateGoalReview(
+    agentId: string,
+    goalId: string,
+    review: {
+      reviewState: LifeOpsGoalDefinition["reviewState"];
+      metadataPatch: Record<string, unknown>;
+      updatedAt: string;
+    },
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_goals.life_goal_definitions
+          SET review_state = ${sqlQuote(review.reviewState)},
+              metadata_json = (
+                COALESCE(NULLIF(metadata_json, ''), '{}')::jsonb
+                  || ${sqlJson(review.metadataPatch)}::jsonb
+              )::text,
+              updated_at = ${sqlQuote(review.updatedAt)}
+        WHERE id = ${sqlQuote(goalId)}
+          AND agent_id = ${sqlQuote(agentId)}`,
+    );
+  }
+
   async getGoal(
     agentId: string,
     goalId: string,
@@ -206,6 +236,35 @@ export class GoalsRepository {
         ORDER BY created_at ASC`,
     );
     return rows.map(parseGoal);
+  }
+
+  /**
+   * Record a check-in without rewriting the rest of the goal: only
+   * `review_state`, `updated_at` and `metadata.checkinLog` change, merged into
+   * the stored metadata in SQL, so an edit or review written while the
+   * check-in's task completion ran is kept.
+   */
+  async updateGoalCheckin(
+    agentId: string,
+    goalId: string,
+    checkin: {
+      reviewState: LifeOpsGoalDefinition["reviewState"];
+      checkinLog: readonly unknown[];
+      updatedAt: string;
+    },
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_goals.life_goal_definitions
+          SET review_state = ${sqlQuote(checkin.reviewState)},
+              metadata_json = (
+                COALESCE(NULLIF(metadata_json, ''), '{}')::jsonb
+                  || ${sqlJson({ checkinLog: checkin.checkinLog })}::jsonb
+              )::text,
+              updated_at = ${sqlQuote(checkin.updatedAt)}
+        WHERE id = ${sqlQuote(goalId)}
+          AND agent_id = ${sqlQuote(agentId)}`,
+    );
   }
 
   async deleteGoal(agentId: string, goalId: string): Promise<void> {

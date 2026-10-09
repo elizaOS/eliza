@@ -2,7 +2,7 @@
  * LifeOps relationship behavior against a real PGLite runtime, including the
  * hard boundary that keeps identity verification and merges out of chat.
  */
-import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/agent";
+
 import type {
   ActionResult,
   AgentRuntime,
@@ -10,11 +10,16 @@ import type {
   IAgentRuntime,
   Plugin,
 } from "@elizaos/core";
+import { RelationshipsService } from "@elizaos/plugin-assistant";
+import {
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+} from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/app-core/test/helpers/real-runtime.ts";
+} from "../../../packages/app/test/helpers/real-runtime.ts";
 import { entityAction } from "../src/actions/entity.ts";
 import { LifeOpsRepository } from "../src/lifeops/repository.ts";
 import { LifeOpsService } from "../src/lifeops/service.ts";
@@ -33,7 +38,8 @@ const knowledgeGraphPlugin: Plugin = {
   name: "eliza",
   description: "Test-only knowledge-graph schema + service registration.",
   schema: knowledgeGraphSchema,
-  services: [KnowledgeGraphService],
+  // The identity-merge fixtures resolve the "relationships" service.
+  services: [KnowledgeGraphService, RelationshipsService],
   actions: [entityAction],
 };
 
@@ -51,11 +57,14 @@ function handler() {
   return entityAction.handler;
 }
 
+// This runtime has no reply model, so the action keeps its receipt but
+// publishes no user-facing text or user-facing receipt ids.
 function receipt(result: ActionResult | undefined): EffectReceipt {
   expect(result?.effectReceipts).toHaveLength(1);
   const value = result?.effectReceipts?.[0];
   if (!value) throw new Error("Expected one entity effect receipt");
-  expect(result?.userFacingEffectReceiptIds).toEqual([value.receiptId]);
+  expect(result?.transcriptVisibility).toBe("internal");
+  expect(result?.userFacingEffectReceiptIds).toBeUndefined();
   return value;
 }
 
@@ -106,6 +115,37 @@ describe("relationships handler — real PGLite", () => {
       ),
     ).toBeTruthy();
     expect(await service.getDaysSinceContact(relationship.id)).toBe(0);
+  });
+
+  it("updates the existing edge when ENTITY set_relationship restates it", async () => {
+    const toEntityId = `ent_${crypto.randomUUID()}`;
+    const restate = (evidence: string) =>
+      handler()(
+        runtime,
+        makeMessage(runtime, "Pat is my manager") as never,
+        undefined,
+        {
+          parameters: {
+            subaction: "set_relationship",
+            toEntityId,
+            relationshipType: "manages",
+            evidence,
+          },
+        } as never,
+        async () => {},
+      );
+
+    const first = await restate("first chat");
+    const second = await restate("second chat");
+
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+    const relationships = await new LifeOpsRepository(
+      runtime,
+    ).relationshipStore(runtime.agentId);
+    const edges = await relationships.list({ toEntityId, type: "manages" });
+    expect(edges).toHaveLength(1);
+    expect(edges[0]?.evidence).toEqual(["first chat", "second chat"]);
   });
 
   it("keeps supported ENTITY writes receipt-backed", async () => {

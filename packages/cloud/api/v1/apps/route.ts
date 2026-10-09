@@ -5,21 +5,21 @@
  * POST /api/v1/apps  — create a new app (provisions API key + optional GitHub repo)
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { isSafeRegistrationUrl } from "@/lib/security/outbound-url";
-import { appCreditsService } from "@/lib/services/app-credits";
-import { appFactoryService } from "@/lib/services/app-factory";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { isSafeRegistrationUrl } from "@elizaos/cloud-shared/lib/security/outbound-url";
+import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
+import { appFactoryService } from "@elizaos/cloud-shared/lib/services/app-factory";
 import {
   AppCreationLimitError,
   AppNameConflictError,
   appsService,
-} from "@/lib/services/apps";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/apps";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const CreateAppSchema = z.object({
   name: z.string().min(1).max(100),

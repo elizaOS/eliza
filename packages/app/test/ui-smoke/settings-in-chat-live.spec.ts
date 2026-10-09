@@ -16,7 +16,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
-import { selectLiveProviderAsync } from "../../../app-core/test/helpers/live-provider";
+import { selectLiveProviderAsync } from "../helpers/live-provider";
 import { openAppPath, seedAppStorage } from "./helpers";
 
 const LIVE_STACK_ENABLED = process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";

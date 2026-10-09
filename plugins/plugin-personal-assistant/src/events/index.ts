@@ -7,7 +7,7 @@
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 
 export const LIFEOPS_GOOGLE_CONNECTOR_REFRESH_EVENT =
   "eliza:lifeops-google-connector-refresh" as const;

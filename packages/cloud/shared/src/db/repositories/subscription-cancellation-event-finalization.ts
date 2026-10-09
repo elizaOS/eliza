@@ -1,11 +1,13 @@
 /** Reconciles only the latest immutable applied cancellation or undo result with a fresh scheduled provider observation, publishing source, projection and receipt atomically. */
-import { and, eq } from "drizzle-orm";
-import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
+
+import { and, eq, isNull } from "drizzle-orm";
+import { observeConfiguredCancellation } from "../../lib/services/configured-schedule-cancellation";
 import {
   cancellationReobserve,
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
 } from "../../lib/services/stripe-period-end-cancellation";
+import { resolveSubscriptionLifecycleBinding } from "../../lib/services/subscription-lifecycle-provider-binding";
 import { writeTransaction } from "../helpers";
 import {
   billingSubscriptions,
@@ -16,6 +18,7 @@ import {
   billingSubscriptionCommands,
   billingSubscriptionEventReceipts,
 } from "../schemas/subscription-billing-operations";
+import { readConfiguredCancellationAuthority } from "./configured-schedule-cancellation-authority";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
 import type {
@@ -38,6 +41,7 @@ function rejectConflict(message: string, context: Record<string, unknown>): neve
   return lifecycleFailure(SUBSCRIPTION_LIFECYCLE_REOBSERVE, message, context);
 }
 export interface FinalizeCancellationEventInput {
+  providerAccountId?: string;
   organizationId: string;
   subscriptionId: string;
   commandId: string;
@@ -48,6 +52,7 @@ export interface FinalizeCancellationEventInput {
   providerEventId: string;
   eventCreatedAt: Date;
   raw: unknown;
+  rawSchedule?: unknown;
   customer: unknown;
 }
 export async function finalizeCancellationEvent(
@@ -156,6 +161,8 @@ export async function finalizeCancellationEvent(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.id, input.commandId),
         ),
@@ -166,6 +173,7 @@ export async function finalizeCancellationEvent(
       .from(billingSubscriptions)
       .where(
         and(
+          isNull(billingSubscriptions.billing_scope_id),
           eq(billingSubscriptions.organization_id, input.organizationId),
           eq(billingSubscriptions.id, input.subscriptionId),
         ),
@@ -192,21 +200,35 @@ export async function finalizeCancellationEvent(
       input.eventCreatedAt < current.last_provider_event_created_at
     )
       cancellationReobserve("out_of_order_event");
+    const environment = await resolveSubscriptionLifecycleBinding(
+      current,
+      input.providerAccountId,
+      tx,
+    );
     validateCancellationCustomer({
       raw: input.customer,
       source: current,
       organizationCustomerId: organization.stripe_customer_id,
-      environment: getCloudAwareEnv(),
+      environment,
     });
-    const observed = validatePeriodEndCancellationObservation({
-      source: current,
-      organizationCustomerId: organization.stripe_customer_id,
-      environment: getCloudAwareEnv(),
-      raw: input.raw,
-      observedAt: databaseNow,
-      requireScheduled: latest.kind === "cancel",
-      allowRetainedCanceledAt: current.canceled_at,
-    });
+    const authority = await readConfiguredCancellationAuthority(tx, current);
+    const observed = authority
+      ? observeConfiguredCancellation({
+          authority,
+          source: current,
+          rawSubscription: input.raw,
+          rawSchedule: input.rawSchedule,
+          observedAt: databaseNow,
+        })
+      : validatePeriodEndCancellationObservation({
+          source: current,
+          organizationCustomerId: organization.stripe_customer_id,
+          environment,
+          raw: input.raw,
+          observedAt: databaseNow,
+          requireScheduled: latest.kind === "cancel",
+          allowRetainedCanceledAt: current.canceled_at,
+        });
     if (
       observed.scheduled !== (latest.kind === "cancel") ||
       current.cancel_at_period_end !== observed.scheduled ||

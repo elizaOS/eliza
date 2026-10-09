@@ -25,7 +25,6 @@ import json
 import logging
 import os
 import random
-import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,10 +35,8 @@ import re
 import httpx
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1]
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.generation_integrity import require_complete_generation
+from eliza_training.lib.generation_integrity import require_complete_generation
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

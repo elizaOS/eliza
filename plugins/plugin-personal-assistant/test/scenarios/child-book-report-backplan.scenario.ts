@@ -10,7 +10,7 @@
  * title/timing), so the stored-outcome final checks can only be satisfied
  * after the child says yes to the preview.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

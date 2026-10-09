@@ -269,7 +269,7 @@ _COMMON_INITIAL_TITLE = {
     "Opens", "Close", "Closes", "Stop", "Stops", "Start", "Starts",
     "Join", "Joins", "Leave", "Leaves", "Pin", "Pins", "Unpin", "Unpins",
     "Edit", "Edits", "Drop", "Drops", "Find", "Finds", "Track", "Tracks",
-    "Trigger", "Triggers", "Build", "Builds", "Trigger", "Generate",
+    "Trigger", "Triggers", "Build", "Builds", "Generate",
     "Generates", "Inject", "Injects", "Match", "Matches", "Apply",
     "Applies", "Drive", "Drives", "Bring", "Brings", "Append", "Appends",
     "Copy", "Copies", "Move", "Moves", "Save", "Saves", "Load", "Loads",

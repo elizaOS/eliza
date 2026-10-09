@@ -202,48 +202,12 @@ def chop_mid_turn(text: str, rng: random.Random) -> Optional[str]:
 
 
 class _PrivacyFilter:
-    """Lazy loader for the canonical privacy filter.
-
-    Mandatory per packages/training/AGENTS.md §3. If
-    `validate_corpus.py` exposes a `privacy_filter(text) -> bool`
-    callable we use it; otherwise we fall back to a strict in-process
-    check that drops obvious PII patterns (emails, phone numbers, SSNs).
-    The fallback is intentionally conservative — better to drop a
-    legitimate record than to leak PII into a training corpus.
-    """
-
-    def __init__(self) -> None:
-        self._impl = self._load_canonical()
-
-    @staticmethod
-    def _load_canonical() -> Optional[callable]:
-        try:
-            from scripts.validate_corpus import privacy_filter  # type: ignore
-
-            return privacy_filter
-        except Exception:
-            return None
+    """Reject transcripts requiring redaction under the canonical local rules."""
 
     def __call__(self, text: str) -> bool:
-        if self._impl is not None:
-            try:
-                return bool(self._impl(text))
-            except Exception as exc:
-                logger.warning("canonical privacy filter raised %s; falling back", exc)
-        return self._fallback(text)
+        from eliza_training.privacy_filter_trajectories import redact_value
 
-    @staticmethod
-    def _fallback(text: str) -> bool:
-        import re
-
-        # Bare-minimum PII patterns. The canonical filter is preferred.
-        if re.search(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b", text):
-            return False
-        if re.search(r"\b\d{3}[- .]\d{2}[- .]\d{4}\b", text):  # SSN
-            return False
-        if re.search(r"\b\+?\d[\d\s().-]{8,}\b", text):  # phone
-            return False
-        return True
+        return redact_value(text) == text
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 /** Provides deterministic sensitive rows and independent DTO expectations for payment-request route tests. */
-import type { PaymentRequestRow } from "@/lib/services/payment-requests";
-import type { PaymentRequestDto } from "@/types/cloud-api";
+import type { PaymentRequestRow } from "@elizaos/cloud-shared/lib/services/payment-requests";
+import type { PaymentRequestDto } from "@elizaos/cloud-shared/types/cloud-api";
 
 /** Internal-only values that must never appear in an authenticated response. */
 export const INTERNAL_PAYMENT_REQUEST_CANARIES = [

@@ -9,7 +9,7 @@
  * evidence (or un-nest `options`) and the read-back reports the persisted edge
  * is missing that evidence string.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { relationshipEdgePersisted } from "./_helpers/kg-live-capture.ts";
 
 export default scenario({

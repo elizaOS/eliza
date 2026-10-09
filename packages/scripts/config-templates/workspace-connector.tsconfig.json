@@ -24,6 +24,7 @@
     "src/**/__tests__/**",
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
+    "src/**/*.pglite-child.ts",
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.test.tsx",

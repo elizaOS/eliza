@@ -11,7 +11,7 @@ import type {
   LifeOpsProgressionRule,
   LifeOpsTaskDefinition,
   LifeOpsTimeWindowDefinition,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import { normalizeWindowPolicy } from "./defaults.js";
 import {
   addDaysToLocalDate,
@@ -482,7 +482,32 @@ function buildOnceOccurrence(
   }
   const dueAt = new Date(cadence.dueAt);
   const relevanceStartAt = addMinutes(dueAt, -resolveLeadMinutes(cadence));
-  const relevanceEndAt = addMinutes(dueAt, resolveLagMinutes(cadence));
+  const lagMinutes = resolveLagMinutes(cadence);
+  let relevanceEndAt = addMinutes(dueAt, lagMinutes);
+  const snoozedAt =
+    typeof existing?.metadata.snoozedAt === "string"
+      ? Date.parse(existing.metadata.snoozedAt)
+      : NaN;
+  const snoozedUntil = existing?.snoozedUntil
+    ? Date.parse(existing.snoozedUntil)
+    : NaN;
+  if (
+    definition.domain === "user_lifeops" &&
+    definition.subjectType === "owner" &&
+    definition.metadata.ownerSurface === "OWNER_REMINDERS" &&
+    Number.isFinite(snoozedAt) &&
+    Number.isFinite(snoozedUntil) &&
+    snoozedUntil > snoozedAt
+  ) {
+    // Explicit snooze moves this delivery cycle, while the original due/key
+    // remain the identity of the one-time reminder.
+    relevanceEndAt = new Date(
+      Math.max(
+        relevanceEndAt.getTime(),
+        addMinutes(new Date(snoozedUntil), lagMinutes).getTime(),
+      ),
+    );
+  }
   const dueLocalDate = getZonedDateParts(dueAt, definition.timezone);
   const localDateKey = getLocalDateKey(dueLocalDate);
   return {

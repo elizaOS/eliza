@@ -1,5 +1,5 @@
 /**
- * Real app-core pairing e2e for the production auth wall.
+ * Real app pairing e2e for the production auth wall.
  *
  * Unlike auth-startup.spec.ts, this does not fulfill /api/auth/* from
  * Playwright. It starts a real startApiServer runtime with pairing enabled,
@@ -11,11 +11,11 @@ import { expect, type Page, test } from "@playwright/test";
 import {
   _resetAuthPairingStateForTests,
   ensureAuthPairingCodeForRemoteAccess,
-} from "../../../app-core/src/api/auth-pairing-routes.ts";
-import { startApiServer } from "../../../app-core/src/api/server.ts";
-import { useIsolatedConfigEnv } from "../../../app-core/test/helpers/isolated-config.ts";
-import { createRealTestRuntime } from "../../../app-core/test/helpers/real-runtime.ts";
-import { saveEnv } from "../../../app-core/test/helpers/test-utils.ts";
+} from "../../src/api/auth-pairing-routes.ts";
+import { startApiServer } from "../../src/api/server.ts";
+import { useIsolatedConfigEnv } from "../helpers/isolated-config.ts";
+import { createRealTestRuntime } from "../helpers/real-runtime.ts";
+import { saveEnv } from "../helpers/test-utils.ts";
 import { openAppPath, seedAppStorage } from "./helpers";
 
 const STATIC_API_TOKEN = "ui-smoke-static-pairing-token";
@@ -98,7 +98,7 @@ async function startPairingEnabledApi(): Promise<StartedPairingApi> {
   }
 }
 
-test("remote pairing against real app-core mints a machine session and survives reload", async ({
+test("remote pairing against real app mints a machine session and survives reload", async ({
   page,
 }) => {
   test.setTimeout(180_000);

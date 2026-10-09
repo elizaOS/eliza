@@ -3,8 +3,8 @@
  */
 import type * as React from "react";
 import { Card } from "../../../components/ui/card";
-import { cn } from "../../lib/utils";
-import { CornerBrackets } from "./corner-brackets";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
+import { cn } from "../../../utils/cn";
 
 interface AgentCardProps {
   title: string;
@@ -37,7 +37,7 @@ export function AgentCard({
       </div>
 
       <h3 className="text-xl font-bold text-txt-strong mb-2">{title}</h3>
-      <p className="text-muted-foreground text-sm mb-4">{description}</p>
+      <p className="text-muted-strong text-sm mb-4">{description}</p>
 
       {action}
     </Card>

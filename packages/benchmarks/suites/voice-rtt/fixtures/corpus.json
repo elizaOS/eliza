@@ -1,0 +1,69 @@
+[
+  {
+    "id": "short",
+    "kind": "short",
+    "transcript": "Eliza, what is next on my calendar?",
+    "inputAudioMs": 1420,
+    "pauseAfterMs": 120,
+    "expectedReply": "Your next calendar item is the product sync at 2 PM.",
+    "mockTimingsMs": {
+      "sttEagerAfterInputEnd": 88,
+      "sttFinalAfterInputEnd": 156,
+      "llmFirstTokenAfterAdmission": 108,
+      "llmCompleteAfterAdmission": 252,
+      "ttsFirstAudioAfterRequest": 158,
+      "playoutBufferMs": 40
+    }
+  },
+  {
+    "id": "long",
+    "kind": "long",
+    "transcript": "Eliza, summarize the plan for tomorrow morning and include the first two steps I should take before the meeting.",
+    "inputAudioMs": 5160,
+    "pauseAfterMs": 180,
+    "expectedReply": "Start by reviewing the agenda, then gather the notes you need before the meeting.",
+    "mockTimingsMs": {
+      "sttEagerAfterInputEnd": 126,
+      "sttFinalAfterInputEnd": 214,
+      "llmFirstTokenAfterAdmission": 172,
+      "llmCompleteAfterAdmission": 384,
+      "ttsFirstAudioAfterRequest": 196,
+      "playoutBufferMs": 44
+    }
+  },
+  {
+    "id": "pause",
+    "kind": "pause",
+    "transcript": "Eliza, remind me to call Sam ... actually make that after lunch.",
+    "inputAudioMs": 3820,
+    "pauseAfterMs": 760,
+    "expectedReply": "I will remind you to call Sam after lunch.",
+    "mockTimingsMs": {
+      "sttEagerAfterInputEnd": 134,
+      "sttFinalAfterInputEnd": 246,
+      "llmFirstTokenAfterAdmission": 148,
+      "llmCompleteAfterAdmission": 318,
+      "ttsFirstAudioAfterRequest": 174,
+      "playoutBufferMs": 42
+    }
+  },
+  {
+    "id": "barge-in",
+    "kind": "barge-in",
+    "transcript": "Eliza, read the longer update from the team.",
+    "inputAudioMs": 2280,
+    "pauseAfterMs": 130,
+    "bargeInAtMs": 620,
+    "bargeInTranscript": "Stop, I only need the headline.",
+    "expectedReply": "The launch checklist is on track, with one review still open.",
+    "mockTimingsMs": {
+      "sttEagerAfterInputEnd": 102,
+      "sttFinalAfterInputEnd": 170,
+      "llmFirstTokenAfterAdmission": 122,
+      "llmCompleteAfterAdmission": 272,
+      "ttsFirstAudioAfterRequest": 162,
+      "playoutBufferMs": 40,
+      "interruptSilenceAfterBargeIn": 184
+    }
+  }
+]

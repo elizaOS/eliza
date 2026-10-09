@@ -39,8 +39,6 @@ from pathlib import Path
 from typing import Any, Final, Mapping, Sequence
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
 try:
     from .eliza1_manifest import (
@@ -68,7 +66,7 @@ try:
     )
     from . import stage_eliza1_bundle_assets as assets_mod
 except ImportError:  # pragma: no cover - direct script execution path
-    from eliza1_manifest import (
+    from eliza_training.manifest.eliza1_manifest import (
         ELIZA_1_BACKENDS,
         ELIZA_1_MTP_TIERS,
         ELIZA_1_HF_REPO,
@@ -86,15 +84,15 @@ except ImportError:  # pragma: no cover - direct script execution path
         validate_manifest,
         write_manifest,
     )
-    from eliza1_platform_plan import (
+    from eliza_training.manifest.eliza1_platform_plan import (
         CONTEXTS_BY_TIER,
         TEXT_QUANT_BY_TIER,
         text_artifact_name,
     )
-    import stage_eliza1_bundle_assets as assets_mod
+    import eliza_training.manifest.stage_eliza1_bundle_assets as assets_mod
 
-from benchmarks.eliza1_gates import apply_gates  # noqa: E402
-from scripts.manifest.eliza1_staging_kernel import (  # noqa: E402
+from eliza_training.release.gates import apply_gates  # noqa: E402
+from eliza_training.manifest.eliza1_staging_kernel import (  # noqa: E402
     CHECKSUM_PATH,
     StagedFile,
     StagingProfile,
@@ -147,7 +145,6 @@ RECIPE_SIDECARS: Final[tuple[tuple[str, str, str], ...]] = (
 )
 POLAR_ARTIFACTS_NAME: Final[str] = "polarquant_artifacts.safetensors"
 
-_GGUF_DRAFTER_TARGET_CHECKPOINT_KEY: Final[str] = "mtp-draft.target_checkpoint_sha256"
 
 
 REAL_STAGING_PROFILE: Final[StagingProfile] = StagingProfile(
@@ -212,22 +209,9 @@ def _remove_stale_text_variants(
     return removed
 
 
-def _read_drafter_target_checkpoint_sha256(drafter_path: Path) -> str | None:
-    try:
-        from gguf import GGUFReader  # type: ignore
-    except ImportError:
-        return None
-    try:
-        reader = GGUFReader(str(drafter_path), "r")
-    except Exception:
-        return None
-    field = reader.fields.get(_GGUF_DRAFTER_TARGET_CHECKPOINT_KEY)
-    if field is None:
-        return None
-    try:
-        return str(field.parts[field.data[0]].tobytes().decode("utf-8"))
-    except Exception:
-        return None
+from eliza_training.manifest.gguf_metadata import (
+    read_drafter_target_checkpoint_sha256 as _read_drafter_target_checkpoint_sha256,
+)
 
 
 def _publish_blocking_reasons(
@@ -1072,7 +1056,7 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
     # 7. Manifest. require_publish_ready=False — failed eval/backend gates are expected at this stage.
     files = _collect_files(bundle_dir, tier=tier)  # re-collect after evidence writes
     ram_min, ram_rec = DEFAULT_RAM_BUDGET_MB[tier]
-    from scripts.quantization._kernel_manifest import kernel_manifest_fragment
+    from eliza_training.quantization._kernel_manifest import kernel_manifest_fragment
 
     manifest = build_manifest(
         tier=tier,

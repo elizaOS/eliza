@@ -131,6 +131,7 @@ export const GameModalVariant: Story = {
     variant: "game-modal",
     messages: baseMessages.slice(0, 2),
     carryoverMessages,
-    carryoverOpacity: 0.5,
+    // Capture the readable rest state, not a frozen midpoint of its exit fade.
+    carryoverOpacity: 1,
   },
 };

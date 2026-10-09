@@ -5,15 +5,15 @@
  * POST /api/v1/marketing/inventory        — create a slot on one of the org's apps
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { adInventoryService } from "@elizaos/cloud-shared/lib/services/ad-inventory";
+import { mintAdTagToken } from "@elizaos/cloud-shared/lib/services/ad-tag-token";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { adInventoryService } from "@/lib/services/ad-inventory";
-import { mintAdTagToken } from "@/lib/services/ad-tag-token";
-import { appsService } from "@/lib/services/apps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CreateSlotSchema = z.object({
   appId: z.string().uuid(),

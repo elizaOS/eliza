@@ -1,7 +1,9 @@
+import { parseBooleanValue } from "@elizaos/core";
 /**
- * WEB_SEARCH — keyless inline general web search.
+ * WEB_SEARCH — owner-selected browser search with keyless provider fallback.
  *
- * Queries the keyless Parallel.ai search MCP (with an Exa fallback) — the same
+ * Searches in the agent’s selected Chromium profile when available. Otherwise
+ * queries the keyless Parallel.ai search MCP — the same
  * backends the bundled opencode `websearch` tool uses — but INLINE this turn,
  * with no coding sub-agent spawn. Gives every runtime a fast, general web
  * search ("find me X", "latest on Y", "best Z", "who/what/where is …") that
@@ -20,29 +22,19 @@
  * @module runtime/actions/web-search
  */
 
-import {
-  type Action,
-  type ActionResult,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type State,
-  searchKeylessWeb,
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 
-const DEFAULT_NUM_RESULTS = 6;
-
-function readBooleanEnv(name: string): boolean | undefined {
-  const raw = process.env[name]?.trim().toLowerCase();
-  if (raw === undefined || raw.length === 0) return undefined;
-  if (raw === "0" || raw === "false" || raw === "off" || raw === "no") {
-    return false;
-  }
-  if (raw === "1" || raw === "true" || raw === "on" || raw === "yes") {
-    return true;
-  }
-  return undefined;
-}
+import {
+  isKeylessWebSearchUnavailableError,
+  searchBrowserFirstWeb,
+} from "@elizaos/plugin-web-search/browser-web-search";
 
 /**
  * Capability gate for the INLINE keyless web-search action. Inline WEB_SEARCH
@@ -52,18 +44,17 @@ function readBooleanEnv(name: string): boolean | undefined {
  * off unless `ELIZA_INLINE_WEB_SEARCH` explicitly overrides it.
  */
 export function isWebSearchEnabled(): boolean {
-  const master = readBooleanEnv("ELIZA_WEB_SEARCH");
+  const master = parseBooleanValue(process.env.ELIZA_WEB_SEARCH);
   if (master === false) return false;
 
-  const inline = readBooleanEnv("ELIZA_INLINE_WEB_SEARCH");
+  const inline = parseBooleanValue(process.env.ELIZA_INLINE_WEB_SEARCH);
   if (inline !== undefined) return inline;
 
-  return readBooleanEnv("ELIZA_SERVER_WEB_SEARCH") !== true;
+  return parseBooleanValue(process.env.ELIZA_SERVER_WEB_SEARCH) !== true;
 }
 
 interface WebSearchParams {
   query?: string;
-  numResults?: number;
 }
 
 function readParams(options: unknown): WebSearchParams {
@@ -71,25 +62,11 @@ function readParams(options: unknown): WebSearchParams {
     ?.parameters;
   if (!params || typeof params !== "object") return {};
   const query = params.query ?? params.q ?? params.objective;
-  const rawNum = params.numResults ?? params.num_results;
-  const n =
-    typeof rawNum === "number"
-      ? rawNum
-      : Number.parseInt(String(rawNum ?? ""), 10);
   return {
     query: typeof query === "string" ? query.trim() : undefined,
-    numResults: Number.isFinite(n) && n > 0 ? Math.min(n, 10) : undefined,
   };
 }
 
-/**
- * Extract the human-readable result text from an MCP `tools/call` response. The
- * body is either a JSON-RPC object or an SSE stream of `data:` lines; both wrap
- * the payload at `result.content[].text`. A JSON-RPC `error` envelope or a
- * tool-level `result.isError` is treated as a failure (returns undefined) — NOT
- * mistaken for a search result — so the caller falls back to the other provider
- * instead of handing the model an error string as if it were results.
- */
 export const webSearch: Action & Record<string, unknown> = {
   name: "WEB_SEARCH",
   similes: [
@@ -123,31 +100,18 @@ export const webSearch: Action & Record<string, unknown> = {
       required: true,
       schema: { type: "string" },
     },
-    {
-      name: "numResults",
-      description: "Optional number of results to return (default 6, max 10).",
-      required: false,
-      schema: { type: "number" },
-    },
-    {
-      name: "num_results",
-      description:
-        "Optional snake_case alias for numResults (default 6, max 10).",
-      required: false,
-      schema: { type: "number" },
-    },
   ],
 
   validate: async (): Promise<boolean> => isWebSearchEnabled(),
 
   handler: async (
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const { query, numResults } = readParams(options);
+    const { query } = readParams(options);
 
     if (!query) {
       const text = "Missing required parameter 'query'.";
@@ -155,10 +119,8 @@ export const webSearch: Action & Record<string, unknown> = {
       return { text, success: false, data: { actionName: "WEB_SEARCH" } };
     }
 
-    const n = numResults ?? DEFAULT_NUM_RESULTS;
-
     try {
-      const result = await searchKeylessWeb(query, { resultCount: n });
+      const result = await searchBrowserFirstWeb(runtime, query);
       if (!result) {
         const text = `No web search results for "${query}".`;
         callback?.({ text });
@@ -174,20 +136,49 @@ export const webSearch: Action & Record<string, unknown> = {
       // NOT delivered as a user-facing callback. Delivering them dumped the raw
       // search JSON/article text straight into the chat (chunked into several
       // messages) before the synthesized reply. Errors DO still call back.
+      const text = result.text;
+      const data = {
+        actionName: "WEB_SEARCH",
+        query,
+        provider: result.provider,
+        value: text,
+        truncated: result.truncated,
+      };
+      // Cost: no new I/O. The model sees the complete body once, in text;
+      // raw data.value stays intact for receipts and runtime consumers.
+      // Equality is guaranteed here by construction, never inferred by the renderer.
+      const { value: _value, ...promptData } = data;
       return {
-        text: result.text,
+        text,
         success: true,
-        data: {
-          actionName: "WEB_SEARCH",
-          query,
-          provider: result.provider,
-          value: result.text,
-          truncated: result.truncated,
-        },
+        data,
+        promptData,
+        promptDataMode: "replace-data",
       };
     } catch (err) {
       // error-policy:J1 Action failures are returned to the planner for recovery.
       const message = err instanceof Error ? err.message : String(err);
+      if (isKeylessWebSearchUnavailableError(err)) {
+        // A provider outage is not an empty search: say so, with retry timing.
+        const text = `Web search is temporarily unavailable (${err.reason}); no results were retrieved for "${query}".`;
+        callback?.({ text });
+        return {
+          text,
+          success: false,
+          data: {
+            actionName: "WEB_SEARCH",
+            query,
+            unavailable: true,
+            provider: err.provider,
+            reason: err.reason,
+            ...(err.status !== undefined ? { status: err.status } : {}),
+            ...(err.retryAfterMs !== undefined
+              ? { retryAfterMs: err.retryAfterMs }
+              : {}),
+          },
+          error: message,
+        };
+      }
       const text = `Web search failed for "${query}": ${message}`;
       callback?.({ text });
       return {

@@ -19,7 +19,7 @@ import {
   readTwilioCredentialsFromEnv,
   sendTwilioVoiceCall,
   type TwilioDeliveryResult,
-} from "@elizaos/plugin-phone/twilio";
+} from "@elizaos/plugin-native-phone/twilio";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { LifeOpsService } from "../lifeops/service.js";
 

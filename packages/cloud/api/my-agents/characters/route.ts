@@ -7,20 +7,24 @@
  * can manage their fleet without browser cookies.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import type { NewUserCharacter } from "@elizaos/cloud-shared/db/repositories";
+import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { isCategoryId } from "@elizaos/cloud-shared/lib/constants/character-categories";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
+import { discordService } from "@elizaos/cloud-shared/lib/services/discord";
+import type { ElizaCharacter } from "@elizaos/cloud-shared/lib/types";
+import type {
+  CategoryId,
+  SortBy,
+  SortOrder,
+} from "@elizaos/cloud-shared/lib/types/my-agents";
+import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import type { NewUserCharacter } from "@/db/repositories";
-import { userCharactersRepository } from "@/db/repositories/characters";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { isCategoryId } from "@/lib/constants/character-categories";
-import { charactersService } from "@/lib/services/characters/characters";
-import { discordService } from "@/lib/services/discord";
-import type { ElizaCharacter } from "@/lib/types";
-import type { CategoryId, SortBy, SortOrder } from "@/lib/types/my-agents";
-import { parseClampedLimit } from "@/lib/utils/clamp-limit";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

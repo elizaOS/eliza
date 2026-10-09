@@ -25,8 +25,8 @@ import {
   type Memory,
   type MessageHandlerResult,
   type ResponseHandlerEvaluator,
-  SIMPLE_CONTEXT_ID,
 } from "@elizaos/core";
+import { SIMPLE_CONTEXT_ID } from "@elizaos/plugin-assistant";
 
 const SUB_AGENT_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
 const EMPTY_COMPLETION_PLACEHOLDER =

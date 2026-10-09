@@ -31,18 +31,17 @@
  * Logger only, `[InferenceTiming]` prefix (AGENTS.md §9).
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { ElizaError } from "./errors";
 import { logger } from "./logger";
 
-// ---------------------------------------------------------------------------
 // Span / mark shapes
-// ---------------------------------------------------------------------------
 
 export type InferenceTimingMeta = Record<string, string | number | boolean>;
 
 export interface InferenceSpan {
 	/** Stage name, e.g. `composeState`, `model:RESPONSE_HANDLER`,
-	 *  `cloud.http:/chat/completions`, `cloud.semaphore-wait`, `evaluators`. */
+	 * `cloud.http:/chat/completions`, `cloud.semaphore-wait`, `evaluators`. */
 	name: string;
 	/** Wall-clock ms since the turn's `t0` when the span opened. */
 	startMs: number;
@@ -74,11 +73,8 @@ export const INFERENCE_MARKS = {
 export interface InferenceTurnSummary {
 	turnId: string;
 	/**
-	 * Gateway-compatible correlation id (32 lowercase hex, #16079). Sent as
-	 * `X-Eliza-Trace-Id` on elizaOS Cloud calls so one id joins the turn's
-	 * local spans with the gateway's structured events and Server-Timing.
-	 * Null only for summaries rehydrated from logs persisted before trace
-	 * correlation existed — never fabricated for such turns.
+	 * Gateway correlation ID, sent as X-Eliza-Trace-Id. Null denotes a stored summary without
+	 * correlation evidence; never invent an ID.
 	 */
 	traceId: string | null;
 	label: string;
@@ -327,35 +323,20 @@ export function buildInferenceFlowBreakdown(
 	};
 }
 
-// ---------------------------------------------------------------------------
 // Turn timer
-// ---------------------------------------------------------------------------
 
 const DEFAULT_MAX_SPANS = 512;
 
-/** Shape accepted by the Cloud gateway's bounded trace-id validator. */
-export const INFERENCE_TRACE_ID_PATTERN = /^[0-9a-f]{32}$/;
+export {
+	INFERENCE_TRACE_ID_PATTERN,
+	isInferenceTraceId,
+	mintInferenceTraceId,
+} from "./inference-trace.js";
 
-/**
- * Tests whether a value is safe to adopt across an untrusted HTTP boundary.
- *
- * Inference trace ids are intentionally stricter than generic request ids: a
- * lower-case 32-hex value is safe to echo and doubles as a W3C trace-id,
- * while UUIDs, case-folded ids, and arbitrary caller text must be replaced at
- * ingress rather than normalized into a durable correlation key.
- */
-export function isInferenceTraceId(value: unknown): value is string {
-	return typeof value === "string" && INFERENCE_TRACE_ID_PATTERN.test(value);
-}
-
-/**
- * Mint a bounded, gateway-valid correlation id (32 lowercase hex). The format
- * doubles as a W3C `traceparent` trace-id, so downstream hops can adopt it
- * without re-minting.
- */
-export function mintInferenceTraceId(): string {
-	return crypto.randomUUID().replace(/-/g, "");
-}
+import {
+	INFERENCE_TRACE_ID_PATTERN,
+	mintInferenceTraceId,
+} from "./inference-trace.js";
 
 export class InferenceTurnTimer {
 	readonly turnId: string;
@@ -374,7 +355,7 @@ export class InferenceTurnTimer {
 	constructor(args: {
 		turnId: string;
 		/** Caller-propagated id (e.g. from an upstream hop); minted when absent.
-		 *  Must match {@link INFERENCE_TRACE_ID_PATTERN}. */
+		 * Must match {@link INFERENCE_TRACE_ID_PATTERN}. */
 		traceId?: string;
 		label: string;
 		roomId?: string | null;
@@ -412,7 +393,7 @@ export class InferenceTurnTimer {
 	}
 
 	/** Open a span; returns a function that closes it. Safe to call the closer
-	 *  more than once (subsequent calls are ignored). */
+	 * more than once (subsequent calls are ignored). */
 	openSpan(name: string, meta?: InferenceTimingMeta): () => void {
 		const startEpoch = Date.now();
 		let closed = false;
@@ -516,60 +497,21 @@ export class InferenceTurnTimer {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // AsyncLocalStorage context (mirrors streaming-context.ts)
-// ---------------------------------------------------------------------------
 
 interface IInferenceTimingContextManager {
 	run<T>(timer: InferenceTurnTimer | undefined, fn: () => T): T;
 	active(): InferenceTurnTimer | undefined;
 }
 
-function isNodeEnvironment(): boolean {
-	return (
-		typeof process !== "undefined" &&
-		typeof process.versions !== "undefined" &&
-		typeof process.versions.node !== "undefined"
-	);
-}
-
 function initContextManager(): IInferenceTimingContextManager {
-	if (isNodeEnvironment() && typeof process.getBuiltinModule === "function") {
-		try {
-			const { AsyncLocalStorage } = process.getBuiltinModule(
-				"node:async_hooks",
-			) as typeof import("node:async_hooks");
-			const storage = new AsyncLocalStorage<InferenceTurnTimer | undefined>();
-			return {
-				run<T>(timer: InferenceTurnTimer | undefined, fn: () => T): T {
-					return storage.run(timer, fn);
-				},
-				active(): InferenceTurnTimer | undefined {
-					return storage.getStore();
-				},
-			};
-		} catch {
-			// error-policy:J4 browser and edge runtimes intentionally use the
-			// single-slot timing store when AsyncLocalStorage is unavailable.
-			// AsyncLocalStorage unavailable — fall back to a single-slot store.
-		}
-	}
-	// Browser/edge fallback: a single mutable slot. Does not propagate across
-	// independent async tasks, but a turn is processed sequentially per request
-	// so the active timer is correct for the common case.
-	let current: InferenceTurnTimer | undefined;
+	const storage = new AsyncLocalStorage<InferenceTurnTimer | undefined>();
 	return {
 		run<T>(timer: InferenceTurnTimer | undefined, fn: () => T): T {
-			const prev = current;
-			current = timer;
-			try {
-				return fn();
-			} finally {
-				current = prev;
-			}
+			return storage.run(timer, fn);
 		},
 		active(): InferenceTurnTimer | undefined {
-			return current;
+			return storage.getStore();
 		},
 	};
 }
@@ -593,9 +535,7 @@ export function getInferenceTimer(): InferenceTurnTimer | undefined {
 	return getManager().active();
 }
 
-// ---------------------------------------------------------------------------
 // Context-free helpers — no-ops when no timer is active
-// ---------------------------------------------------------------------------
 
 /** Time `fn` as a span on the active timer (no-op-times when none active). */
 export async function timeInferenceSpan<T>(
@@ -634,9 +574,7 @@ export function setInferenceModelProvider(
 	getInferenceTimer()?.setModelProvider(provider);
 }
 
-// ---------------------------------------------------------------------------
 // Process-wide registry (bounded ring + per-span histograms) for a dev endpoint
-// ---------------------------------------------------------------------------
 
 export interface InferenceHistogramSummary {
 	count: number;
@@ -913,21 +851,16 @@ export function buildInferenceTimingDevPayload(
 	};
 }
 
-// ---------------------------------------------------------------------------
 // Emission — one structured breakdown per turn
-// ---------------------------------------------------------------------------
 
 /**
  * `ELIZA_INFERENCE_TIMING` controls log verbosity:
- *   - unset / "0" / "false": still records into the registry; logs at `debug`.
- *   - truthy: logs the compact breakdown at `info` (the on-by-default debug mode
- *     the operator opts into when chasing latency).
+ * - unset / "0" / "false": still records into the registry; logs at `debug`.
+ * - truthy: logs the compact breakdown at `info` (the on-by-default debug mode
+ * the operator opts into when chasing latency).
  */
 function timingLogEnabled(): boolean {
-	const raw =
-		typeof process !== "undefined"
-			? process.env.ELIZA_INFERENCE_TIMING
-			: undefined;
+	const raw = process.env.ELIZA_INFERENCE_TIMING;
 	if (!raw) return false;
 	const v = raw.trim().toLowerCase();
 	return v !== "" && v !== "0" && v !== "false" && v !== "off";

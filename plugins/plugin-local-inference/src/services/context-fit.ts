@@ -6,17 +6,15 @@
  * do so without shrinking the window (#8809). Consumed by load-args and
  * recommendation to pick the boot context.
  */
-import { ELIZA_1_MIN_LOCAL_CONTEXT } from "@elizaos/shared/local-inference";
+import { ELIZA_1_MIN_LOCAL_CONTEXT } from "@elizaos/plugin-native-inference/model-catalog/device-fit";
 import { estimateQuantizedKvBytesPerToken } from "./kv-spill";
 
 const BYTES_PER_MIB = 1024 * 1024;
 const CONTEXT_STEP = 4096;
 const DEFAULT_WORKING_SET_MB = 1024;
-
 // q8_0 stores the KV cache at 34 bytes / 32 elements; f16 at 2 bytes / element.
 // f16 KV therefore costs ~1.88× the q8_0 per-token rate the estimate is keyed to.
 const F16_OVER_Q8_0_KV_RATIO = 2 / (34 / 32);
-
 export interface RuntimeContextFitInput {
 	params: string;
 	weightMb: number;
@@ -34,7 +32,6 @@ export interface RuntimeContextFitInput {
 	 */
 	preferAccurateKvWhenHeadroom?: boolean;
 }
-
 export interface RuntimeContextFit {
 	contextSize: number;
 	contextDownscaled: boolean;
@@ -44,11 +41,9 @@ export interface RuntimeContextFit {
 	/** The KV cache precision the chosen window was sized against. */
 	kvQuant: "q8_0" | "f16";
 }
-
 function roundDownToStep(value: number, step: number): number {
 	return Math.max(0, Math.floor(value / step) * step);
 }
-
 /**
  * Choose the runtime context window that fits the current host budget.
  *
@@ -74,21 +69,17 @@ export function computeRuntimeContextFit(
 	) {
 		return null;
 	}
-
 	const kvBytesPerToken = estimateQuantizedKvBytesPerToken(input.params);
 	if (!Number.isFinite(kvBytesPerToken) || kvBytesPerToken <= 0) return null;
-
 	const kvBudgetMb = input.usableMb - input.weightMb - workingSetMb;
 	if (kvBudgetMb <= 0) return null;
 	const kvBudgetBytes = kvBudgetMb * BYTES_PER_MIB;
-
 	const q8MaxFittingContext = roundDownToStep(
 		kvBudgetBytes / kvBytesPerToken,
 		step,
 	);
 	if (q8MaxFittingContext < minContext) return null;
 	const q8ContextSize = Math.min(input.nativeContext, q8MaxFittingContext);
-
 	// Default: q8_0 KV, sized to the host. Opt-in headroom upgrade: if f16 KV
 	// still affords at least the q8_0-selected window, use it — more precise, and
 	// never at the cost of context.
@@ -109,7 +100,6 @@ export function computeRuntimeContextFit(
 			contextSize = Math.min(input.nativeContext, f16MaxFittingContext);
 		}
 	}
-
 	return {
 		contextSize,
 		contextDownscaled: contextSize < input.nativeContext,

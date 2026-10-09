@@ -49,7 +49,7 @@ def _fused_qk_scores_rht_pytorch(
 
     Returns: attention scores ``[batch, n_q_heads, q_len, kv_len]``.
     """
-    from quantization.fused_turboquant_vendored.core.packing import (
+    from eliza_training.quantization.fused_turboquant_vendored.core.packing import (
         unpack_2bit,
         unpack_3bit,
         unpack_nibbles,

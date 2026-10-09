@@ -14,9 +14,9 @@ import type { IAgentRuntime } from "./runtime";
  * @example
  * ```typescript
  * declare module '@elizaos/core' {
- *   interface ServiceTypeRegistry {
- *     MY_CUSTOM_SERVICE: 'my_custom_service';
- *   }
+ * interface ServiceTypeRegistry {
+ * MY_CUSTOM_SERVICE: 'my_custom_service';
+ * }
  * }
  * ```
  */
@@ -27,13 +27,11 @@ export interface ServiceTypeRegistry {
 	PDF: "pdf";
 	REMOTE_FILES: "aws_s3";
 	TUNNEL: "tunnel";
-	CLOUD_AUTH: "CLOUD_AUTH";
 	WEB_SEARCH: "web_search";
 	EMAIL: "email";
 	TEE: "tee";
 	TASK: "task";
 	APPROVAL: "approval";
-	TOOL_POLICY: "tool_policy";
 	WALLET: "wallet";
 	LP_POOL: "lp_pool";
 	TOKEN_DATA: "token_data";
@@ -95,9 +93,9 @@ export type TypedServiceClass<T extends ServiceTypeName> = {
  * @example
  * ```typescript
  * declare module '@elizaos/core' {
- *   interface ServiceClassMap {
- *     MY_SERVICE: typeof MyService;
- *   }
+ * interface ServiceClassMap {
+ * MY_SERVICE: typeof MyService;
+ * }
  * }
  * ```
  */
@@ -133,13 +131,11 @@ export const ServiceType = {
 	PDF: "pdf",
 	REMOTE_FILES: "aws_s3",
 	TUNNEL: "tunnel",
-	CLOUD_AUTH: "CLOUD_AUTH",
 	WEB_SEARCH: "web_search",
 	EMAIL: "email",
 	TEE: "tee",
 	TASK: "task",
 	APPROVAL: "approval",
-	TOOL_POLICY: "tool_policy",
 	WALLET: "wallet",
 	LP_POOL: "lp_pool",
 	TOKEN_DATA: "token_data",

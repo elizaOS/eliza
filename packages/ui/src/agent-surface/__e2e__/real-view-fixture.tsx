@@ -1,25 +1,25 @@
 /**
  * Real-plugin-view target for the agent-surface e2e. Unlike fixture.tsx (which
  * declares its own synthetic controls), this mounts REAL components from
- * `@elizaos/plugin-task-coordinator` — `TaskCard`, `BackChip`, `TaskSearchInput`
+ * `@elizaos/plugin-agent-orchestrator` — `TaskCard`, `BackChip`, `TaskSearchInput`
  * — inside the host `AgentSurfaceProvider`. Those components call the real
- * `useAgentElement` from `@elizaos/ui/agent-surface`, so the host registry
+ * `useAgentElement` from `@elizaos/ui`, so the host registry
  * discovers the plugin view's controls exactly the way DynamicViewLoader does in
  * the app. The Playwright driver then exercises the capability bridge against
  * real plugin source: list-elements → agent-click → agent-fill → state change.
  *
  * Hermetic because TaskCardList is pure presentation (no data fetch, no API
- * client): its only deps are `@elizaos/ui/agent-surface`, `lucide-react`, and
- * `react`, all of which esbuild bundles from local source alongside the host.
+ * client): esbuild resolves the public UI source entry and bundles it with
+ * `lucide-react` and `react` alongside the host.
  */
 
+import { useState } from "react";
+import { createRoot } from "react-dom/client";
 import {
   BackChip,
   TaskCard,
   TaskSearchInput,
-} from "../../../../../plugins/plugin-task-coordinator/src/TaskCardList";
-import { useState } from "react";
-import { createRoot } from "react-dom/client";
+} from "../../../../../plugins/plugin-agent-orchestrator/src/ui/TaskCardList";
 import { AgentElementOverlay } from "../AgentElementOverlay";
 import { AgentSurfaceProvider } from "../AgentSurfaceContext";
 import { handleAgentSurfaceCapability } from "../capabilities";

@@ -3,7 +3,7 @@
  *
  * Adapts the multi-account scaffolding in `accounts.ts` to the
  * `ConnectorAccountProvider` contract from
- * `@elizaos/core/connectors/account-manager`.
+ * `@elizaos/core`.
  *
  * Source of truth for accounts is character settings (`character.settings.googleChat`)
  * + GOOGLE_CHAT_ACCOUNTS JSON env var + single-account env vars

@@ -4,17 +4,19 @@
  * authoritative; loading, empty, and failed reads render as distinct states.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type {
+  LinkedAccountProviderId,
+  SubscriptionProviderSelectionId,
+} from "@elizaos/host/protocol";
 import { AlertTriangle, ChevronRight, Plus, RotateCw } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import type {
   AccountStrategy,
   AccountWithCredentialFlag,
-} from "../../api/client-agent";
+} from "../../api/client-agent-accounts";
 import { useAccounts } from "../../hooks/useAccounts";
-import { cn } from "../../lib/utils";
-import type { SubscriptionProviderSelectionId } from "../../providers";
 import { useAppSelector } from "../../state/app-store";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 import { AddAccountDialog } from "./AddAccountDialog";
@@ -36,7 +38,6 @@ interface AccountManagementPanelProps {
     providerId: SubscriptionProviderSelectionId,
   ) => Promise<void> | void;
 }
-
 function RowSkeleton() {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border/50 bg-card/40 px-3 py-2.5">
@@ -50,7 +51,6 @@ function RowSkeleton() {
     </div>
   );
 }
-
 export function AccountManagementPanel({
   activeSubscriptionId = null,
   activeChatProviderId = null,
@@ -61,7 +61,6 @@ export function AccountManagementPanel({
   const t = useAppSelector((s) => s.t);
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const accounts = useAccounts({ setActionNotice });
-
   const [pendingProviderId, setPendingProviderId] = useState<
     LinkedAccountProviderId | undefined
   >(
@@ -77,7 +76,6 @@ export function AccountManagementPanel({
     useState<AccountWithCredentialFlag | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [showAvailable, setShowAvailable] = useState(false);
-
   const providerMap = useMemo(() => {
     if (!accounts.data) return new Map();
     return new Map(
@@ -87,7 +85,6 @@ export function AccountManagementPanel({
       ]),
     );
   }, [accounts.data]);
-
   // Partition every known provider into connected vs available, keeping the
   // static option order but floating connected providers to the top.
   const { connectedOptions, availableOptions } = useMemo(() => {
@@ -117,7 +114,6 @@ export function AccountManagementPanel({
     }
     return { connectedOptions: connected, availableOptions: available };
   }, [accounts.data, providerMap]);
-
   const toggleExpanded = useCallback((id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -126,13 +122,11 @@ export function AccountManagementPanel({
       return next;
     });
   }, []);
-
   const openAdd = useCallback((providerId?: LinkedAccountProviderId) => {
     setCredentialRepairAccount(null);
     setPendingProviderId(providerId);
     setAddDialogOpen(true);
   }, []);
-
   const openCredentialRepair = useCallback(
     (
       providerId: LinkedAccountProviderId,
@@ -144,7 +138,6 @@ export function AccountManagementPanel({
     },
     [],
   );
-
   const handleMove = useCallback(
     async (
       providerId: LinkedAccountProviderId,
@@ -179,7 +172,6 @@ export function AccountManagementPanel({
     },
     [accounts],
   );
-
   const rowHandlers = {
     saving: accounts.saving,
     onPatch: accounts.patch,
@@ -205,7 +197,6 @@ export function AccountManagementPanel({
     onAdd: openAdd,
     onReauthenticate: openCredentialRepair,
   };
-
   // ── Loading skeleton (structural, matches the row layout) ──
   if (accounts.loading && !accounts.data) {
     return (
@@ -225,7 +216,6 @@ export function AccountManagementPanel({
       </div>
     );
   }
-
   // ── Explicit error + retry (never collapse into empty) ──
   if (accounts.error && !accounts.data) {
     return (
@@ -255,9 +245,7 @@ export function AccountManagementPanel({
       </div>
     );
   }
-
   const nothingConnected = connectedOptions.length === 0;
-
   return (
     <div
       className="grid gap-3"

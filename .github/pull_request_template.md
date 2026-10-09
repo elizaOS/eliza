@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> **All [contribution rules](https://github.com/elizaOS/eliza/blob/main/CONTRIBUTING.md) are required.**
+> **All [contribution rules](https://github.com/elizaOS/eliza/blob/develop/CONTRIBUTING.md) are required.**
 > Stay within the approved MVP and PRD. Prove a useful improvement. Prefer removal,
 > simpler code, and reuse. Do not submit unnecessary tests, defensive code,
 > validation, or truncation. Maintainers will close unnecessary work and apply
@@ -42,7 +42,7 @@ results. This section is required for every UI change. -->
 
 # Evidence Gate
 
-Evidence must match the reviewed commit. `scripts/pr-evidence.mjs rows`
+Evidence must match the reviewed commit. `packages/scripts/pr-evidence.ts rows`
 sets the marker from the live PR head; rerun after each push.
 <!-- evidence-head:replace-with-current-40-character-head-sha -->
 

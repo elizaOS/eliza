@@ -6,7 +6,7 @@
  * private method so it can be exercised directly; no real database connects.
  */
 import { describe, expect, it } from "vitest";
-import { RuntimeMigrator } from "../../runtime-migrator";
+import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
 
 describe("RuntimeMigrator - Database Detection", () => {

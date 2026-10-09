@@ -3,8 +3,6 @@ import type {
   AgentBalance,
   AgentIdentity,
   ChainFamily,
-  GlobalWalletApproveResult,
-  GlobalWalletConsentRequest,
   LoginClient,
   LoginProviders as LoginProvidersState,
   LoginTenantMembership,
@@ -16,19 +14,13 @@ import type {
   UserAccountsResult,
   UserAccountUnlinkResult,
   UserLinkedAccount,
-} from "@elizaos/login";
+} from "@elizaos/auth";
 
 // ─── Tenant Configuration Types ───
 
 export type PolicyExposure = "visible" | "hidden" | "enforced";
 
 export type PolicyExposureConfig = Partial<Record<PolicyType, PolicyExposure>>;
-
-export interface EnforcedPolicyOverride {
-  type: PolicyType;
-  config: Record<string, unknown>;
-  allowTightening?: boolean;
-}
 
 export interface CustomizableField {
   path: string;
@@ -150,45 +142,6 @@ export interface AgentDashboardResponse {
   recentTransactions: TxRecord[];
 }
 
-export interface PaginatedTransactionsResponse {
-  transactions: TxRecord[];
-  pagination: {
-    page: number;
-    pageSize: number;
-    total: number;
-    totalPages: number;
-  };
-}
-
-export interface SpendStats {
-  range: "24h" | "7d" | "30d" | "all";
-  totalSpent: string;
-  totalSpentFormatted: string;
-  txCount: number;
-  avgTxValue: string;
-  avgTxValueFormatted: string;
-  largestTx: { value: string; txHash: string; timestamp: string };
-  daily: Array<{
-    date: string;
-    spent: string;
-    spentFormatted: string;
-    txCount: number;
-  }>;
-  topDestinations: Array<{
-    address: string;
-    totalSent: string;
-    txCount: number;
-  }>;
-  budgetUsage?: {
-    dailyLimit: string;
-    dailyUsed: string;
-    dailyPercent: number;
-    weeklyLimit: string;
-    weeklyUsed: string;
-    weeklyPercent: number;
-  };
-}
-
 export interface ApprovalQueueEntry {
   id: string;
   agentId: string;
@@ -222,65 +175,6 @@ export interface LoginContextValue {
   tenantConfig: TenantControlPlaneConfig | null;
   isLoading: boolean;
   pollInterval: number;
-}
-
-export interface LoginGlobalWalletConsentProps {
-  /** Tenant app id in the form `tenant_id/client_id`. */
-  appId: string;
-  /** Exact app origin. Defaults to `window.location.origin` in browsers. */
-  origin?: string;
-  /** Optional redirect URI, validated against the tenant app client's allowlist. */
-  redirectUri?: string;
-  /** Requested global-wallet scopes. Defaults to `eth_accounts`. */
-  scopes?: string[];
-  /** Optional preloaded consent request for SSR or custom data loaders. */
-  initialRequest?: GlobalWalletConsentRequest;
-  onApproved?: (result: GlobalWalletApproveResult) => void;
-  onError?: (error: Error) => void;
-  className?: string;
-}
-
-// ─── Component Props ───
-
-export interface WalletOverviewProps {
-  chains?: ChainFamily[];
-  showQR?: boolean;
-  showCopy?: boolean;
-  className?: string;
-  onCopyAddress?: (address: string, chain: ChainFamily) => void;
-}
-
-export interface TransactionHistoryProps {
-  pageSize?: number;
-  statusFilter?: TxStatus[];
-  chainFilter?: number[];
-  showPolicyDetails?: boolean;
-  renderTransaction?: (tx: TxRecord) => React.ReactNode;
-  onTransactionClick?: (tx: TxRecord) => void;
-  className?: string;
-}
-
-export interface PolicyControlsProps {
-  showTemplates?: boolean;
-  onSave?: (policies: PolicyRule[]) => void;
-  readOnly?: boolean;
-  labels?: Partial<Record<PolicyType, string>>;
-  className?: string;
-}
-
-export interface ApprovalQueueProps {
-  refreshInterval?: number;
-  onResolve?: (txId: string, action: "approved" | "rejected") => void;
-  showPolicyReason?: boolean;
-  className?: string;
-}
-
-export interface SpendDashboardProps {
-  range?: "24h" | "7d" | "30d" | "all";
-  showBudgetUsage?: boolean;
-  showChart?: boolean;
-  showTopDestinations?: boolean;
-  className?: string;
 }
 
 export interface LoginLinkedAccountsProps {
@@ -357,7 +251,7 @@ export type {
 
 // ─── Multi-Tenant Types ───
 
-export type { LoginTenantMembership } from "@elizaos/login";
+export type { LoginTenantMembership } from "@elizaos/auth";
 
 // ─── Auth Types ───
 
@@ -370,11 +264,11 @@ export type {
   UserAccountsResult,
   UserAccountUnlinkResult,
   UserLinkedAccount,
-} from "@elizaos/login";
+} from "@elizaos/auth";
 
 export interface LoginAuthConfig {
   baseUrl: string;
-  storage?: import("@elizaos/login").SessionStorage;
+  storage?: import("@elizaos/auth").SessionStorage;
   tenantId?: string;
   /**
    * Optional same-origin auth proxy prefix (e.g. "/api/auth") that keeps the
@@ -387,35 +281,35 @@ export interface LoginAuthConfig {
 export interface LoginAuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
-  user: import("@elizaos/login").LoginUser | null;
-  session: import("@elizaos/login").LoginSession | null;
+  user: import("@elizaos/auth").LoginUser | null;
+  session: import("@elizaos/auth").LoginSession | null;
   /** Available auth providers (auto-fetched on mount) */
   providers: LoginProvidersState | null;
   /** Whether providers are still loading */
   isProvidersLoading: boolean;
   /** Current guest lifecycle state, including 30-day expiry messaging. */
-  guestState: import("@elizaos/login").LoginGuestState;
+  guestState: import("@elizaos/auth").LoginGuestState;
   signOut: () => void | Promise<void>;
   /** Create a bounded guest account session. */
   signInAsGuest: (
-    options?: import("@elizaos/login").LoginGuestSignInOptions,
-  ) => Promise<import("@elizaos/login").LoginAuthResult>;
+    options?: import("@elizaos/auth").LoginGuestSignInOptions,
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
   /** Upgrade the current guest with a verified email magic-link token. */
   upgradeGuestWithEmail: (
-    input: import("@elizaos/login").LoginGuestUpgradeEmailInput,
+    input: import("@elizaos/auth").LoginGuestUpgradeEmailInput,
   ) => Promise<
-    | import("@elizaos/login").LoginAuthResult
-    | import("@elizaos/login").LoginMfaRequiredResult
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
   >;
   /** Delete the current guest account server-side and clear local session state. */
-  deleteGuest: () => Promise<import("@elizaos/login").LoginGuestDeleteResult>;
+  deleteGuest: () => Promise<import("@elizaos/auth").LoginGuestDeleteResult>;
   getToken: () => string | null;
   /** Sign in with a passkey (WebAuthn). Browser-only. */
   signInWithPasskey: (
     email: string,
   ) => Promise<
-    | import("@elizaos/login").LoginAuthResult
-    | import("@elizaos/login").LoginMfaRequiredResult
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
   >;
   /**
    * Register an additional passkey for the current email on this device /
@@ -425,55 +319,55 @@ export interface LoginAuthContextValue {
   addPasskey: (
     email: string,
   ) => Promise<
-    | import("@elizaos/login").LoginAuthResult
-    | import("@elizaos/login").LoginMfaRequiredResult
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
   >;
   /** Send a magic link email. */
   signInWithEmail: (
     email: string,
     captchaToken?: string,
-  ) => Promise<import("@elizaos/login").LoginEmailResult>;
+  ) => Promise<import("@elizaos/auth").LoginEmailResult>;
   /** Send an SMS one-time passcode. */
   sendSmsOtp: (
     phone: string,
     captchaToken?: string,
-  ) => Promise<import("@elizaos/login").LoginSmsOtpResult>;
+  ) => Promise<import("@elizaos/auth").LoginSmsOtpResult>;
   /** Verify an SMS one-time passcode. */
   verifySmsOtp: (
     phone: string,
     code: string,
   ) => Promise<
-    | import("@elizaos/login").LoginAuthResult
-    | import("@elizaos/login").LoginMfaRequiredResult
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
   >;
   /** Send a WhatsApp one-time passcode through the configured provider adapter. */
   sendWhatsAppOtp: (
     phone: string,
     captchaToken?: string,
-  ) => Promise<import("@elizaos/login").LoginWhatsAppOtpResult>;
+  ) => Promise<import("@elizaos/auth").LoginWhatsAppOtpResult>;
   /** Verify a WhatsApp one-time passcode. */
   verifyWhatsAppOtp: (
     phone: string,
     code: string,
   ) => Promise<
-    | import("@elizaos/login").LoginAuthResult
-    | import("@elizaos/login").LoginMfaRequiredResult
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
   >;
   /** Verify a magic link callback token. */
   verifyEmailCallback: (
     token: string,
     email: string,
   ) => Promise<
-    | import("@elizaos/login").LoginAuthResult
-    | import("@elizaos/login").LoginMfaRequiredResult
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
   >;
   /** Sign in with an Ethereum wallet via SIWE. */
   signInWithSIWE: (
     address: string,
     signMessage: (msg: string) => Promise<string>,
   ) => Promise<
-    | import("@elizaos/login").LoginAuthResult
-    | import("@elizaos/login").LoginMfaRequiredResult
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
   >;
   /**
    * Sign in with a Solana wallet via SIWS (Sign-In With Solana).
@@ -484,80 +378,80 @@ export interface LoginAuthContextValue {
     publicKey: string,
     signMessage: (msg: Uint8Array) => Promise<Uint8Array>,
   ) => Promise<
-    | import("@elizaos/login").LoginAuthResult
-    | import("@elizaos/login").LoginMfaRequiredResult
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
   >;
   /** Sign in with an OAuth provider (Google, Discord, etc.) */
   signInWithOAuth: (
     provider: string,
     config?: { redirectUri?: string; tenantId?: string },
   ) => Promise<
-    | import("@elizaos/login").LoginAuthResult
-    | import("@elizaos/login").LoginMfaRequiredResult
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
   >;
   /** Verify a Telegram Login Widget payload and create a elizaOS session. */
   signInWithTelegram: (
-    payload: import("@elizaos/login").LoginTelegramLoginPayload,
-    config?: import("@elizaos/login").LoginTelegramLoginConfig,
+    payload: import("@elizaos/auth").LoginTelegramLoginPayload,
+    config?: import("@elizaos/auth").LoginTelegramLoginConfig,
   ) => Promise<
-    | import("@elizaos/login").LoginAuthResult
-    | import("@elizaos/login").LoginMfaRequiredResult
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
   >;
   /** Verify a Farcaster SIWF payload and create a elizaOS session. */
   signInWithFarcaster: (
-    payload: import("@elizaos/login").LoginFarcasterLoginPayload,
-    config?: import("@elizaos/login").LoginFarcasterLoginConfig,
+    payload: import("@elizaos/auth").LoginFarcasterLoginPayload,
+    config?: import("@elizaos/auth").LoginFarcasterLoginConfig,
   ) => Promise<
-    | import("@elizaos/login").LoginAuthResult
-    | import("@elizaos/login").LoginMfaRequiredResult
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
   >;
   getIdentityToken: () => Promise<
-    import("@elizaos/login").LoginIdentityTokenResult
+    import("@elizaos/auth").LoginIdentityTokenResult
   >;
-  getTotpStatus: () => Promise<import("@elizaos/login").LoginTotpStatus>;
-  enrollTotp: () => Promise<import("@elizaos/login").LoginTotpEnrollResult>;
+  getTotpStatus: () => Promise<import("@elizaos/auth").LoginTotpStatus>;
+  enrollTotp: () => Promise<import("@elizaos/auth").LoginTotpEnrollResult>;
   verifyTotp: (
     code: string,
-  ) => Promise<import("@elizaos/login").LoginTotpVerifyResult>;
+  ) => Promise<import("@elizaos/auth").LoginTotpVerifyResult>;
   completeTotpMfa: (
     challengeId: string,
     code: string,
-  ) => Promise<import("@elizaos/login").LoginAuthResult>;
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
   completeRecoveryCodeMfa: (
     challengeId: string,
     recoveryCode: string,
-  ) => Promise<import("@elizaos/login").LoginAuthResult>;
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
   stepUpWithTotp: (
     code: string,
-  ) => Promise<import("@elizaos/login").LoginAuthResult>;
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
   stepUpWithRecoveryCode: (
     recoveryCode: string,
-  ) => Promise<import("@elizaos/login").LoginAuthResult>;
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
   getRecoveryCodeStatus: () => Promise<
-    import("@elizaos/login").LoginRecoveryCodeStatus
+    import("@elizaos/auth").LoginRecoveryCodeStatus
   >;
   regenerateRecoveryCodes: (
     code: string,
-  ) => Promise<import("@elizaos/login").LoginRecoveryCodesResult>;
+  ) => Promise<import("@elizaos/auth").LoginRecoveryCodesResult>;
   unenrollTotp: (code: string) => Promise<{ ok: boolean }>;
-  getSmsMfaStatus: () => Promise<import("@elizaos/login").LoginSmsMfaStatus>;
+  getSmsMfaStatus: () => Promise<import("@elizaos/auth").LoginSmsMfaStatus>;
   enrollSmsMfa: (
     phone: string,
-  ) => Promise<import("@elizaos/login").LoginSmsMfaEnrollResult>;
+  ) => Promise<import("@elizaos/auth").LoginSmsMfaEnrollResult>;
   verifySmsMfa: (
     code: string,
-  ) => Promise<import("@elizaos/login").LoginSmsMfaVerifyResult>;
+  ) => Promise<import("@elizaos/auth").LoginSmsMfaVerifyResult>;
   sendSmsMfaCode: () => Promise<
-    import("@elizaos/login").LoginSmsMfaEnrollResult
+    import("@elizaos/auth").LoginSmsMfaEnrollResult
   >;
   completeSmsMfa: (
     challengeId: string,
     code: string,
-  ) => Promise<import("@elizaos/login").LoginAuthResult>;
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
   stepUpWithSms: (
     code: string,
-  ) => Promise<import("@elizaos/login").LoginAuthResult>;
-  completePasskeyMfa: () => Promise<import("@elizaos/login").LoginAuthResult>;
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
+  completePasskeyMfa: () => Promise<import("@elizaos/auth").LoginAuthResult>;
   unenrollSmsMfa: (code: string) => Promise<{ ok: boolean }>;
   // ─── Multi-Tenant ───
   /** Currently active tenant ID from session */
@@ -581,8 +475,8 @@ export interface LoginAuthContextValue {
 export interface LoginFormProps {
   onSuccess?: (
     result:
-      | { token: string; user: import("@elizaos/login").LoginUser }
-      | import("@elizaos/login").LoginMfaRequiredResult,
+      | { token: string; user: import("@elizaos/auth").LoginUser }
+      | import("@elizaos/auth").LoginMfaRequiredResult,
   ) => void;
   onError?: (error: Error) => void;
   showPasskey?: boolean;
@@ -602,14 +496,13 @@ export interface LoginFormProps {
   guestEmailPlaceholder?: string;
   guestTokenPlaceholder?: string;
   onGuestDeleted?: (
-    result: import("@elizaos/login").LoginGuestDeleteResult,
+    result: import("@elizaos/auth").LoginGuestDeleteResult,
   ) => void;
-  showSIWE?: boolean;
   /**
    * First-class wallet sign-in (SIWE / SIWS).
    *
    * - `true`  - render both EVM and Solana wallet panels (subject to provider feature-detect).
-   * - `false` (default) - hide both. Backwards-compatible.
+   * - `false` (default) - hide both.
    * - `{ evm: true }` - only EVM.
    * - `{ solana: true }` - only Solana.
    *
@@ -632,16 +525,16 @@ export interface LoginFormProps {
    */
   showTelegram?: boolean;
   getTelegramLoginPayload?: () =>
-    | import("@elizaos/login").LoginTelegramLoginPayload
-    | Promise<import("@elizaos/login").LoginTelegramLoginPayload>;
+    | import("@elizaos/auth").LoginTelegramLoginPayload
+    | Promise<import("@elizaos/auth").LoginTelegramLoginPayload>;
   /**
    * Show Farcaster login when the API reports Farcaster is enabled.
    * Provide `getFarcasterLoginPayload` from a SIWF-capable client flow.
    */
   showFarcaster?: boolean;
   getFarcasterLoginPayload?: () =>
-    | import("@elizaos/login").LoginFarcasterLoginPayload
-    | Promise<import("@elizaos/login").LoginFarcasterLoginPayload>;
+    | import("@elizaos/auth").LoginFarcasterLoginPayload
+    | Promise<import("@elizaos/auth").LoginFarcasterLoginPayload>;
   /** "card" adds bg/border/padding wrapper; "inline" renders with no container styling */
   variant?: "card" | "inline";
   /** Custom logo element rendered at top of the login widget */
@@ -675,8 +568,8 @@ export interface LoginUserButtonProps {
 export interface LoginEmailCallbackProps {
   onSuccess?: (
     result:
-      | { token: string; user: import("@elizaos/login").LoginUser }
-      | import("@elizaos/login").LoginMfaRequiredResult,
+      | { token: string; user: import("@elizaos/auth").LoginUser }
+      | import("@elizaos/auth").LoginMfaRequiredResult,
   ) => void;
   onError?: (error: Error) => void;
   redirectTo?: string;
@@ -685,7 +578,7 @@ export interface LoginEmailCallbackProps {
 export interface LoginOAuthCallbackProps {
   onSuccess?: (
     result:
-      | { token: string; user: import("@elizaos/login").LoginUser }
+      | { token: string; user: import("@elizaos/auth").LoginUser }
       | { code: string; state: string },
   ) => void;
   onError?: (error: Error) => void;
@@ -694,8 +587,8 @@ export interface LoginOAuthCallbackProps {
 }
 
 export interface LoginMfaChallengeProps {
-  challenge: import("@elizaos/login").LoginMfaRequiredResult["mfa"];
-  onSuccess?: (result: import("@elizaos/login").LoginAuthResult) => void;
+  challenge: import("@elizaos/auth").LoginMfaRequiredResult["mfa"];
+  onSuccess?: (result: import("@elizaos/auth").LoginAuthResult) => void;
   onError?: (error: Error) => void;
   allowRecoveryCode?: boolean;
   className?: string;

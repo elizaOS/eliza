@@ -7,6 +7,7 @@ import {
 	createUniqueUuid,
 	type EventPayload,
 	EventType,
+	truncateWellFormed,
 	type World,
 } from "@elizaos/core";
 import type {
@@ -53,9 +54,10 @@ const INTEGRATION_USER_INSTALL = 1;
 const DISCORD_DESCRIPTION_MAX = 100;
 
 function clampDescription(description: string): string {
-	return description.length > DISCORD_DESCRIPTION_MAX
-		? `${description.slice(0, DISCORD_DESCRIPTION_MAX - 1)}…`
-		: description;
+	if (description.length <= DISCORD_DESCRIPTION_MAX) return description;
+	// A raw slice can end on the lead half of an emoji and make Discord reject
+	// the whole command registration.
+	return `${truncateWellFormed(description, DISCORD_DESCRIPTION_MAX - 1)}…`;
 }
 
 export function transformCommandToDiscordApi(

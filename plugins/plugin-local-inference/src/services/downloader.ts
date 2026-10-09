@@ -38,10 +38,12 @@ import {
 } from "./lib-target";
 import {
 	bundleTierSlug,
+	collectFailedEvalNames,
 	type Eliza1DeviceCaps,
 	type Eliza1FileEntry,
 	type Eliza1Files,
 	type Eliza1Manifest,
+	manifestPassesActivationGate,
 	parseManifestOrThrow,
 	SUPPORTED_BACKENDS_BY_TIER,
 } from "./manifest";
@@ -69,6 +71,15 @@ interface ActiveJob {
 	finalPath: string;
 }
 
+/** A hub response whose body has not been consumed yet. */
+interface HubResponse {
+	statusCode: number;
+	headers: Record<string, string | string[] | undefined>;
+	body: AsyncIterable<Buffer>;
+	/** Cancel the unread body (used when a resume answer is unusable). */
+	discard: () => Promise<void>;
+}
+
 type DownloadListener = (event: DownloadEvent) => void;
 type BundleFileKind = keyof Eliza1Files;
 const HUB_FAILOVER_BASE_BACKOFF_MS = 25;
@@ -85,6 +96,37 @@ export class BundleIncompatibleError extends Error {
 	constructor(message: string) {
 		super(message);
 		this.name = "BundleIncompatibleError";
+	}
+}
+
+/**
+ * Thrown before any weight byte is fetched when the published bundle manifest
+ * fails the activation gate (`evals.textEval.passed !== true`). Activation
+ * would refuse the installed bundle with `CandidateModelActivationError`, so
+ * downloading gigabytes of candidate weights as a chat model has no use; the
+ * same predicate decides both boundaries.
+ */
+export class CandidateBundleDownloadError extends Error {
+	readonly code = "ELIZA1_BUNDLE_CANDIDATE" as const;
+	readonly modelId: string;
+	readonly manifestVersion: string;
+	readonly failedEvals: ReadonlyArray<string>;
+	constructor(args: {
+		modelId: string;
+		manifestVersion: string;
+		failedEvals: ReadonlyArray<string>;
+	}) {
+		const evalSuffix =
+			args.failedEvals.length > 0
+				? ` Failed evals: ${args.failedEvals.join(", ")}.`
+				: "";
+		super(
+			`Eliza-1 bundle ${args.modelId} (manifest ${args.manifestVersion}) is a candidate release that cannot be activated as a chat model; refusing to download its weights.${evalSuffix} Use Eliza Cloud or another provider until a passing release is published.`,
+		);
+		this.name = "CandidateBundleDownloadError";
+		this.modelId = args.modelId;
+		this.manifestVersion = args.manifestVersion;
+		this.failedEvals = args.failedEvals;
 	}
 }
 
@@ -278,6 +320,29 @@ function makeAbortError(): Error {
 interface TerminalDownloadsFile {
 	version: 1;
 	jobs: DownloadJob[];
+}
+
+/**
+ * Byte offset the response body starts at, given the offset a resume asked
+ * for. Only a `206 Partial Content` whose `Content-Range` begins exactly at
+ * the requested offset may be appended to the partial file. Any other 2xx
+ * (an origin that ignored `Range` and sent `200` with the full body) restarts
+ * the file from byte 0. A 206 for a different range is unusable: returns
+ * `null` so the caller discards it and re-requests the whole file.
+ */
+export function resolveResumeOffset(
+	requestedStart: number,
+	statusCode: number,
+	headers: Record<string, string | string[] | undefined>,
+): number | null {
+	if (requestedStart <= 0 || statusCode !== 206) return 0;
+	const raw = headers["content-range"];
+	const value = (Array.isArray(raw) ? raw[0] : raw)?.trim() ?? "";
+	const match = /^bytes\s+(\d+)-\d+\/(?:\d+|\*)$/i.exec(value);
+	if (!match?.[1]) return null;
+	return Number.parseInt(match[1], 10) === requestedStart
+		? requestedStart
+		: null;
 }
 
 async function* readFetchBody(
@@ -658,7 +723,11 @@ export class Downloader {
 			modelId,
 			state: "queued",
 			received: 0,
-			total: Math.round(catalogEntry.sizeGb * 1024 ** 3),
+			// Whole-bundle bytes, so the disk preflight and progress reflect what
+			// is actually fetched (not just the text GGUF).
+			total: Math.round(
+				(catalogEntry.downloadSizeGb ?? catalogEntry.sizeGb) * 1024 ** 3,
+			),
 			bytesPerSec: 0,
 			etaMs: null,
 			startedAt: new Date().toISOString(),
@@ -731,6 +800,7 @@ export class Downloader {
 				if (
 					job &&
 					typeof job.modelId === "string" &&
+					typeof job.updatedAt === "string" &&
 					(job.state === "completed" ||
 						job.state === "failed" ||
 						job.state === "cancelled")
@@ -978,17 +1048,47 @@ export class Downloader {
 		}
 	}
 
+	/**
+	 * Request `remotePath`, resuming from `startByte` when it is > 0. Returns
+	 * the response plus the offset its body actually starts at (see
+	 * `resolveResumeOffset`): the caller appends only when that offset is
+	 * non-zero and otherwise rewrites the staging file from byte 0.
+	 */
+	private async requestHubFileFrom(args: {
+		catalogEntry: CatalogModel;
+		remotePath: string;
+		headers: Record<string, string>;
+		signal: AbortSignal;
+		startByte: number;
+	}): Promise<{ response: HubResponse; startByte: number }> {
+		const headers = { ...args.headers };
+		if (args.startByte > 0) headers.range = `bytes=${args.startByte}-`;
+		const { response } = await this.requestHubFile({ ...args, headers });
+		const offset = resolveResumeOffset(
+			args.startByte,
+			response.statusCode,
+			response.headers,
+		);
+		if (offset !== null) return { response, startByte: offset };
+		logger.warn(
+			`[Downloader] ${args.remotePath}: origin answered the resume from byte ${args.startByte} with an unrelated range (${String(response.headers["content-range"] ?? "no Content-Range")}); re-downloading the whole file`,
+		);
+		await response.discard();
+		const { range: _range, ...fullHeaders } = headers;
+		const restarted = await this.requestHubFile({
+			...args,
+			headers: fullHeaders,
+		});
+		return { response: restarted.response, startByte: 0 };
+	}
+
 	private async requestHubFile(args: {
 		catalogEntry: CatalogModel;
 		remotePath: string;
 		headers: Record<string, string>;
 		signal: AbortSignal;
 	}): Promise<{
-		response: {
-			statusCode: number;
-			headers: Record<string, string | string[] | undefined>;
-			body: AsyncIterable<Buffer>;
-		};
+		response: HubResponse;
 		candidate: HfResolveUrlCandidate;
 	}> {
 		const candidates = buildHuggingFaceResolveUrlCandidatesForPath(
@@ -1163,23 +1263,15 @@ export class Downloader {
 					forceFresh: false,
 				});
 			} else {
-				const startByte = record.job.received;
-
-				if (startByte > 0) {
-					headers.range = `bytes=${startByte}-`;
-				}
-
-				const { response } = await this.requestHubFile({
-					catalogEntry,
-					remotePath: catalogEntry.ggufFile,
-					headers,
-					signal: record.abortController.signal,
-				});
-				let effectiveStartByte = startByte;
-				if (effectiveStartByte > 0 && response.statusCode !== 206) {
-					effectiveStartByte = 0;
-					record.job.received = 0;
-				}
+				const { response, startByte: effectiveStartByte } =
+					await this.requestHubFileFrom({
+						catalogEntry,
+						remotePath: catalogEntry.ggufFile,
+						headers,
+						signal: record.abortController.signal,
+						startByte: record.job.received,
+					});
+				record.job.received = effectiveStartByte;
 
 				const contentLengthHeader = response.headers["content-length"];
 				const contentLength = Array.isArray(contentLengthHeader)
@@ -1296,13 +1388,19 @@ export class Downloader {
 				if (err instanceof GatedRepoError) {
 					record.job.errorCode = err.code;
 					record.job.errorHttpStatus = err.httpStatus;
+				} else if (err instanceof CandidateBundleDownloadError) {
+					record.job.errorCode = err.code;
 				}
 				this.rememberTerminalDownload(record.job);
 				this.emit({ type: "failed", job: { ...record.job } });
 			}
 		} finally {
 			this.setDownloadKeepAwake(false);
-			this.active.delete(record.job.modelId);
+			// Only clear our own entry: a cancel followed by a restart replaces it
+			// with a new job that this settling download must not evict.
+			if (this.active.get(record.job.modelId) === record) {
+				this.active.delete(record.job.modelId);
+			}
 		}
 	}
 
@@ -1343,6 +1441,17 @@ export class Downloader {
 			JSON.parse(await fsp.readFile(manifestPath, "utf8")),
 			catalogEntry,
 		);
+
+		// Activation gate on the live manifest, before any weight byte: the
+		// runtime refuses to activate a candidate bundle, so it is never
+		// downloaded as a chat model either.
+		if (!manifestPassesActivationGate(manifest)) {
+			throw new CandidateBundleDownloadError({
+				modelId: catalogEntry.id,
+				manifestVersion: manifest.version,
+				failedEvals: collectFailedEvalNames(manifest),
+			});
+		}
 
 		// §7: schema version, RAM budget, and kernel-backend availability are
 		// checked against this device BEFORE any weight byte is fetched. An
@@ -1582,22 +1691,16 @@ export class Downloader {
 						"utf8",
 					);
 				}
-				record.job.received = baseBytes + startByte;
-
-				if (startByte > 0) {
-					headers.range = `bytes=${startByte}-`;
-				}
-
-				const { response } = await this.requestHubFile({
+				const resumed = await this.requestHubFileFrom({
 					catalogEntry,
 					remotePath,
 					headers,
 					signal: record.abortController.signal,
+					startByte,
 				});
-				if (startByte > 0 && response.statusCode !== 206) {
-					startByte = 0;
-					record.job.received = baseBytes;
-				}
+				const response = resumed.response;
+				startByte = resumed.startByte;
+				record.job.received = baseBytes + startByte;
 
 				const contentLengthHeader = response.headers["content-length"];
 				const contentLength = Array.isArray(contentLengthHeader)
@@ -1675,11 +1778,7 @@ export class Downloader {
 				headers: Record<string, string>;
 				signal: AbortSignal;
 			},
-		) => Promise<{
-			statusCode: number;
-			headers: Record<string, string | string[] | undefined>;
-			body: AsyncIterable<Buffer>;
-		}>;
+		) => Promise<HubResponse>;
 	}> {
 		const fetchImpl = globalThis.fetch;
 		const sleep = this.sleep;
@@ -1721,10 +1820,16 @@ export class Downloader {
 				if (!response.body) {
 					throw new Error(`Empty response body from ${url}`);
 				}
+				const rawBody = response.body;
 				return {
 					statusCode: response.status,
 					headers: Object.fromEntries(response.headers.entries()),
-					body: readFetchBody(response.body),
+					body: readFetchBody(rawBody),
+					discard: async () => {
+						// error-policy:J6 releasing an unusable response body; the
+						// caller re-requests the file, so a cancel failure is moot.
+						await rawBody.cancel().catch(() => undefined);
+					},
 				};
 			},
 		};

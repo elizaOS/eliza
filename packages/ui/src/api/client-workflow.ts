@@ -22,7 +22,7 @@ import { workflowSurfaceClient } from "./workflow-surface-routing";
 // Declaration merging
 // ---------------------------------------------------------------------------
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getWorkflowStatus(): Promise<WorkflowStatusResponse>;
     getWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
@@ -223,9 +223,11 @@ ElizaClient.prototype.cancelWorkflowExecution = async function (
 ): Promise<WorkflowExecution> {
   const result = await workflowSurfaceClient(this).fetch<{
     execution?: WorkflowExecution;
-  }>(`/api/workflow/executions/${encodeURIComponent(id)}/cancel`, {
-    method: "POST",
-  });
+  }>(
+    `/api/workflow/executions/${encodeURIComponent(id)}/cancel`,
+    { method: "POST" },
+    { skipResume: true },
+  );
   if (!result.execution) {
     throw new Error(
       "Workflow cancellation response did not include an execution.",
@@ -247,6 +249,7 @@ ElizaClient.prototype.decideWorkflowApproval = async function (
   }>(
     `/api/workflow/executions/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(nodeId)}/${iteration}`,
     { method: "POST", body: JSON.stringify({ approved, decision }) },
+    { skipResume: true },
   );
   if (!result.execution)
     throw new Error("Approval response did not include an execution.");
@@ -264,6 +267,7 @@ ElizaClient.prototype.signalWorkflowExecution = async function (
   }>(
     `/api/workflow/executions/${encodeURIComponent(runId)}/signals/${encodeURIComponent(signal)}`,
     { method: "POST", body: JSON.stringify({ payload }) },
+    { skipResume: true },
   );
   if (!result.execution)
     throw new Error("Signal response did not include an execution.");

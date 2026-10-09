@@ -213,7 +213,12 @@ const SECRET_PATTERNS: readonly RegExp[] = compileSecretPatterns();
 
 function compileSecretPatterns(): RegExp[] {
   const compiled: RegExp[] = [];
-  for (const raw of getDefaultRedactPatterns()) {
+  // Runtime logs intentionally mask values such as password=anything. Source
+  // diffs instead require literal assignment syntax; comparisons and property
+  // reads are code, not leaked credentials. Keep independent value-shape scans.
+  for (const raw of getDefaultRedactPatterns({
+    includeNamedAssignments: false,
+  })) {
     // Match core's redaction parser: a `/pattern/flags` literal keeps its flags
     // (forcing `g`), otherwise the raw source compiles with `gi`. We add `m` so
     // matching works line-by-line. Literal patterns deliberately preserve their
@@ -302,12 +307,29 @@ function forbiddenReason(
  * removal) is not something this PR is introducing, and flagging it would make
  * the gate block on pre-existing debt it can't fix.
  */
-function addedLines(diff: string): string[] {
-  const out: string[] = [];
+/**
+ * Lines of each file's new version in hunk order: added lines, plus context
+ * lines so a structured check can read an unchanged neighbour (a YAML env
+ * entry's `- name:`). Only added lines are scanned for secrets.
+ */
+function newFileLines(
+  diff: string,
+): { file: string; hunk: number; line: string; added: boolean }[] {
+  const out: { file: string; hunk: number; line: string; added: boolean }[] =
+    [];
+  let file = "";
+  let hunk = 0;
   for (const line of diff.split("\n")) {
     // `+++ b/file` header lines start with `+++`; skip those, keep real adds.
-    if (line.startsWith("+") && !line.startsWith("+++")) {
-      out.push(line.slice(1));
+    if (line.startsWith("+++")) {
+      const target = line.slice(3).trim();
+      file = target.startsWith("b/") ? target.slice(2) : target;
+    } else if (line.startsWith("@@")) {
+      hunk += 1;
+    } else if (line.startsWith("+")) {
+      out.push({ file, hunk, line: line.slice(1), added: true });
+    } else if (line.startsWith(" ")) {
+      out.push({ file, hunk, line: line.slice(1), added: false });
     }
   }
   return out;
@@ -397,8 +419,30 @@ export function reviewDiff(
 
   // 3) Secrets in ADDED lines — HARD.
   const seenSecretLines = new Set<string>();
-  for (const line of addedLines(diff)) {
-    if (matchesSecret(line)) {
+  // Kubernetes env entries put the name and the literal on separate lines:
+  // `- name: DB_PASSWORD` then `value: …`. Remember the pending name only within the same file and hunk.
+  let envName: { file: string; hunk: number; name: string } | null = null;
+  for (const { file, hunk, line, added } of newFileLines(diff)) {
+    if (envName && (envName.file !== file || envName.hunk !== hunk))
+      envName = null;
+    let secret = added && matchesSecret(line, file);
+    if (YAML_FILE.test(file)) {
+      const named = YAML_ENV_NAME.exec(line);
+      if (named) {
+        envName = { file, hunk, name: named[1] };
+      } else if (envName?.file === file && line.trim() && !/^\s*#/.test(line)) {
+        const value = YAML_ENV_VALUE.exec(line);
+        if (
+          added &&
+          value &&
+          namesCredentialValue(envName.name) &&
+          isLiteralYamlScalar(value[1])
+        )
+          secret = true;
+        envName = null;
+      }
+    }
+    if (secret) {
       // Never echo the secret itself into the finding; report a redacted
       // fingerprint (leading chars) so the reviewer can locate it without the
       // gate re-leaking the credential into the events stream / PR body.
@@ -462,8 +506,14 @@ function compileExtraForbidden(patterns?: string[]): RegExp[] {
   return out;
 }
 
-function matchesSecret(line: string): boolean {
+const YAML_FILE = /\.ya?ml$/i;
+const YAML_ENV_NAME =
+  /^\s*-\s+name:\s*["']?([A-Za-z_][A-Za-z0-9_.-]*)["']?\s*$/;
+const YAML_ENV_VALUE = /^\s*value:\s*(\S.*?)\s*$/;
+
+function matchesSecret(line: string, file: string): boolean {
   if (hasSensitiveLiteralAssignment(line)) return true;
+  if (YAML_FILE.test(file) && hasSensitiveYamlScalar(line)) return true;
   for (const pattern of SECRET_PATTERNS) {
     pattern.lastIndex = 0;
     if (pattern.test(line)) return true;
@@ -482,25 +532,25 @@ function matchesSecret(line: string): boolean {
  * material and must remain reviewable; quoted literals and dotenv-style scalar
  * assignments are the pre-write boundary's unambiguous secret-bearing forms.
  */
+function isSensitiveAssignmentKey(key: string): boolean {
+  // The runtime assignment scanner also treats bare seed fields as credentials.
+  return isSensitiveKeyName(key) || key.toLowerCase() === "seed";
+}
+
 function hasSensitiveLiteralAssignment(line: string): boolean {
   const quotedKey = /(["'])([^"'\\\r\n]+)\1\s*[:=]\s*(?=["'`])/g;
   for (const match of line.matchAll(quotedKey)) {
-    if (isSensitiveKeyName(match[2])) return true;
+    if (isSensitiveAssignmentKey(match[2])) return true;
   }
 
-  // Indentation is valid for both object fields and member assignments. For
-  // members, classify the assigned property, not its path: `this.maxTokens`
-  // must retain core's metadata exemption while `this.apiKey` stays sensitive.
-  const objectKey =
-    /(?:^|[,{])\s*(?:[A-Za-z_$][A-Za-z0-9_$]*\.)*([A-Za-z_$][A-Za-z0-9_$-]*)\s*[:=]\s*(?=["'`])/g;
-  for (const match of line.matchAll(objectKey)) {
-    if (isSensitiveKeyName(match[1])) return true;
-  }
-
-  const declaredKey =
-    /\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?=["'`])/g;
-  for (const match of line.matchAll(declaredKey)) {
-    if (isSensitiveKeyName(match[1])) return true;
+  // Literal assignments can occur inside expressions, call arguments or JSX,
+  // not just at the start of an object/line. Classify the complete assigned
+  // property name so maxTokens retains its metadata exemption. Requiring a
+  // quoted RHS excludes property reads, equality and arrow expressions.
+  const literalKey =
+    /(?<![A-Za-z0-9_$-])([A-Za-z_$][A-Za-z0-9_$-]*)\s*[:=]\s*(?=["'`])/g;
+  for (const match of line.matchAll(literalKey)) {
+    if (isSensitiveAssignmentKey(match[1])) return true;
   }
 
   // Dotenv names are not member-access paths, and `==`, `===`, and `=>` are
@@ -508,7 +558,93 @@ function hasSensitiveLiteralAssignment(line: string): boolean {
   const dotenvKey =
     /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_-]*)\s*=(?![=>])\s*\S+/;
   const dotenvMatch = dotenvKey.exec(line);
-  return dotenvMatch ? isSensitiveKeyName(dotenvMatch[1]) : false;
+  if (dotenvMatch && isSensitiveAssignmentKey(dotenvMatch[1])) return true;
+
+  // Dockerfile ENV/ARG defaults bake the literal into image layers, including
+  // multi-pair `ENV A=1 B=2` and legacy `ENV NAME value`. `$VAR` forwards a
+  // build argument or environment value rather than introducing one.
+  // Docker parses instruction keywords case-insensitively.
+  const dockerInstruction = /^\s*(?:ENV|ARG)\s+(.+)$/i.exec(line);
+  if (!dockerInstruction) return false;
+  const pairs = /(?:^|\s)([A-Za-z_][A-Za-z0-9_]*)=(?!\$)\S/g;
+  for (const match of dockerInstruction[1].matchAll(pairs)) {
+    if (namesCredentialValue(match[1])) return true;
+  }
+  const legacyEnv = /^\s*ENV\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?!\$)\S/i.exec(line);
+  return legacyEnv ? namesCredentialValue(legacyEnv[1]) : false;
+}
+
+/**
+ * Names whose value is the credential itself. Infrastructure files also name
+ * references to credentials (`secretName`, `secretKeyRef`, `key`,
+ * `existingSecret`, `passwordFile`, `tokenUrl`); those carry no secret and
+ * must not block a write.
+ */
+function namesCredentialValue(key: string): boolean {
+  return /(?:password|passwd|passphrase|token|apikey|secretkey|secretaccesskey|privatekey|(?<!existing)secret|mnemonic|seedphrase)$/.test(
+    key.toLowerCase().replace(/[_.-]/g, ""),
+  );
+}
+
+/**
+ * YAML carries credentials as unquoted plain scalars (`password: hunter2`)
+ * and as compose/Kubernetes env list items (`- NAME=value`); quoted values are
+ * already classified above. Deploy-time references such as `${{ secrets.X }}`,
+ * `${VAR}` and `$VAR`, block scalars, bare anchors, aliases and YAML nulls or
+ * booleans are not literal material. Lookup tags may reference values; arbitrary
+ * tags can still wrap literals. Only applied to `.yml`/`.yaml` files,
+ * where `name: value` is data rather than a source type annotation.
+ */
+function hasSensitiveYamlScalar(line: string): boolean {
+  const scalar =
+    /^\s*(?:-\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*:\s+(\S.*?)\s*$/.exec(line);
+  if (
+    scalar &&
+    namesCredentialValue(scalar[1]) &&
+    isLiteralYamlScalar(scalar[2])
+  )
+    return true;
+  const envItem = /^\s*-\s+([A-Za-z_][A-Za-z0-9_-]*)=(\S+)/.exec(line);
+  return envItem
+    ? namesCredentialValue(envItem[1]) && isLiteralYamlScalar(envItem[2])
+    : false;
+}
+
+function isLiteralYamlScalar(value: string): boolean {
+  // An anchor or tag can prefix the literal itself (`&db hunter2`,
+  // `!!str hunter2`); an alias (`*db`) or a bare anchor/tag is not one.
+  // A trailing comment is not part of the scalar.
+  const properties = /^(?:[&!]\S*\s+)+/.exec(value)?.[0] ?? "";
+  const scalar = value
+    .slice(properties.length)
+    .replace(/\s+#.*$/, "")
+    .trimEnd();
+  const quoted = /^(["'])(.*)\1$/.exec(scalar);
+  const unquoted = quoted?.[2] ?? scalar;
+  if (!unquoted) return false;
+  // Only recognized lookup tags resolve a referenced value. An arbitrary
+  // local tag can still wrap inline material and does not establish a lookup.
+  const localTag = /(?:^|\s)!(?!!)(\S+)(?:\s|$)/.exec(properties)?.[1];
+  if (localTag && /^(?:Ref|GetAtt|secret)$/.test(localTag)) return false;
+  if (
+    localTag === "Sub" &&
+    /^\{\{resolve:(?:secretsmanager|ssm-secure):[^{}]+\}\}$/.test(unquoted)
+  )
+    return false;
+  const explicitType = /(?:^|\s)!!(str|bool|null)(?:\s|$)/.exec(
+    properties,
+  )?.[1];
+  if (
+    explicitType === "bool" &&
+    /^(?:true|false|yes|no|on|off)$/i.test(unquoted)
+  )
+    return false;
+  if (explicitType === "null" && /^(?:null|~)$/i.test(unquoted)) return false;
+  // Quoted strings retain their literal type, except deployment interpolation.
+  if (quoted) return !/^\$/.test(unquoted);
+  if (/^[|>&*!{[$~#]/.test(unquoted)) return false;
+  if (explicitType === "str" || localTag) return true;
+  return !/^(?:null|true|false|yes|no|on|off)$/i.test(unquoted);
 }
 
 /**

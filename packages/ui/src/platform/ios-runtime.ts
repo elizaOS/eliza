@@ -1,15 +1,8 @@
-/**
- * iOS runtime-mode model (remote-mac / cloud / cloud-hybrid) and the default
- * Eliza Cloud base, used to route the iOS app's agent connection.
- */
+import { ElizaError } from "@elizaos/core/protocol";
+
 export const DEFAULT_ELIZA_CLOUD_BASE = "https://eliza.app";
 
-export type IosRuntimeMode =
-  | "remote-mac"
-  | "cloud"
-  | "cloud-hybrid"
-  | "local"
-  | "tunnel-to-mobile";
+export type IosRuntimeMode = "remote-mac" | "cloud" | "cloud-hybrid" | "local";
 
 export interface IosRuntimeConfig {
   mode: IosRuntimeMode;
@@ -19,22 +12,6 @@ export interface IosRuntimeConfig {
   cloudApiBase: string;
   deviceBridgeUrl?: string;
   deviceBridgeToken?: string;
-  /**
-   * Relay endpoint the phone dials to expose its on-device agent for an
-   * external Mac client to reach. Only used in `tunnel-to-mobile` mode.
-   * The phone-side `MobileAgentBridge` Capacitor plugin opens a long-
-   * running outbound connection to this URL; Eliza Cloud (or another
-   * configured relay) bridges traffic between this connection and a
-   * Mac-side `TunnelToMobileClient` over the user's authenticated
-   * session.
-   */
-  tunnelRelayUrl?: string;
-  /**
-   * Per-pairing token used to authorize the inbound tunnel. Distinct
-   * from the cloud auth token because the relay should not need full
-   * cloud credentials to authorize a single device pairing.
-   */
-  tunnelPairingToken?: string;
 }
 
 type RuntimeEnv = Record<string, string | boolean | undefined>;
@@ -52,24 +29,20 @@ function readString(env: RuntimeEnv, keys: string[]): string | undefined {
 
 function normalizeMode(value: string | undefined): IosRuntimeMode {
   switch (value?.trim().toLowerCase()) {
-    case "remote":
+    case undefined:
+    case "cloud":
+      return "cloud";
     case "remote-mac":
-    case "mac":
       return "remote-mac";
-    case "hybrid":
     case "cloud-hybrid":
-    case "cloud+local":
-    case "cloud-local":
       return "cloud-hybrid";
     case "local":
       return "local";
-    case "tunnel-to-mobile":
-    case "mobile-tunnel":
-    case "host-with-tunnel":
-    case "tunneled":
-      return "tunnel-to-mobile";
     default:
-      return "cloud";
+      throw new ElizaError("Invalid iOS runtime mode", {
+        code: "INVALID_IOS_RUNTIME_MODE",
+        context: { mode: value },
+      });
   }
 }
 
@@ -88,11 +61,9 @@ function mobileEnvKeys(
   suffix: "RUNTIME_MODE" | "API_BASE" | "API_TOKEN",
 ): string[] {
   const platformName = platform === "ios" ? "IOS" : "ANDROID";
-  const legacyPlatformName = platform === "ios" ? "ANDROID" : "IOS";
   return [
     `VITE_ELIZA_${platformName}_${suffix}`,
     `VITE_ELIZA_MOBILE_${suffix}`,
-    `VITE_ELIZA_${legacyPlatformName}_${suffix}`,
   ];
 }
 
@@ -116,26 +87,15 @@ export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
   const mode = normalizeMode(
     readString(env, mobileEnvKeys("ios", "RUNTIME_MODE")),
   );
-  const apiBase = readString(env, mobileEnvKeys("ios", "API_BASE"))?.replace(
-    /\/+$/,
-    "",
-  );
-  const apiToken = readString(env, mobileEnvKeys("ios", "API_TOKEN"));
+  const { apiBase, apiToken } = resolveMobileApiConnection("ios", env);
   const explicitDeviceBridgeUrl = readString(env, [
     "VITE_ELIZA_DEVICE_BRIDGE_URL",
   ]);
   const deviceBridgeToken = readString(env, ["VITE_ELIZA_DEVICE_BRIDGE_TOKEN"]);
-  const tunnelRelayUrl = readString(env, ["VITE_ELIZA_TUNNEL_RELAY_URL"]);
-  const tunnelPairingToken = readString(env, [
-    "VITE_ELIZA_TUNNEL_PAIRING_TOKEN",
-  ]);
 
   return {
     mode,
     fullBun: readBool(env, [
-      "VITE_ELIZA_IOS_FULL_BUN_AVAILABLE",
-      "VITE_ELIZA_IOS_FULL_BUN_STRICT",
-      "VITE_ELIZA_IOS_FULL_BUN_SMOKE",
       "VITE_ELIZA_IOS_FULL_BUN_AVAILABLE",
       "VITE_ELIZA_IOS_FULL_BUN_STRICT",
       "VITE_ELIZA_IOS_FULL_BUN_SMOKE",
@@ -149,7 +109,17 @@ export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
         ? { deviceBridgeUrl: apiBaseToDeviceBridgeUrl(apiBase) }
         : {}),
     ...(deviceBridgeToken ? { deviceBridgeToken } : {}),
-    ...(tunnelRelayUrl ? { tunnelRelayUrl } : {}),
-    ...(tunnelPairingToken ? { tunnelPairingToken } : {}),
   };
+}
+
+export function resolveMobileApiConnection(
+  platform: MobileRuntimePlatform,
+  env: RuntimeEnv,
+): { apiBase?: string; apiToken?: string } {
+  const apiBase = readString(env, mobileEnvKeys(platform, "API_BASE"))?.replace(
+    /\/+$/,
+    "",
+  );
+  const apiToken = readString(env, mobileEnvKeys(platform, "API_TOKEN"));
+  return { ...(apiBase ? { apiBase } : {}), ...(apiToken ? { apiToken } : {}) };
 }

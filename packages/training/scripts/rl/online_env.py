@@ -44,7 +44,7 @@ from atroposlib.envs.base import (
 )
 from pydantic import Field
 
-from lib.generation_integrity import (
+from eliza_training.lib.generation_integrity import (
     IncompleteGenerationError,
     require_complete_generation,
 )

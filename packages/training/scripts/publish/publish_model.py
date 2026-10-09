@@ -14,7 +14,7 @@ This is one of three canonical operator-facing publishers in
 This script is a thin dispatcher that picks the right concrete uploader for
 the chosen mode:
 
-  - ``--mode bundle``    → ``python -m scripts.publish.orchestrator``
+  - ``--mode bundle``    → ``python -m eliza_training.publish.orchestrator``
                           (full bundle gate + push, the canonical release path)
   - ``--mode tier``      → ``scripts.publish.publish_eliza1_model_repo``
                           (per-tier ``elizaos/eliza-1/bundles/<tier>/`` upload
@@ -37,8 +37,6 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve()
 _TRAINING_ROOT = _HERE.parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -66,10 +64,10 @@ def main(argv: list[str] | None = None) -> int:
     args, rest = ap.parse_known_args(argv)
     interpreter = os.environ.get("PYTHON", sys.executable)
     if args.mode == "bundle":
-        return _run([interpreter, "-m", "scripts.publish.orchestrator", *rest])
+        return _run([interpreter, "-m", "eliza_training.publish.orchestrator", *rest])
     if args.mode == "tier":
         return _run(
-            [interpreter, "-m", "scripts.publish.publish_eliza1_model_repo", *rest]
+            [interpreter, "-m", "eliza_training.publish.publish_eliza1_model_repo", *rest]
         )
     raise AssertionError(f"unhandled mode: {args.mode}")
 

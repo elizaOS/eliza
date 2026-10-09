@@ -5,15 +5,15 @@
  * managed Google connection (with optional capability scopes).
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
   initiateManagedGoogleConnection,
-} from "@/lib/services/agent-google-connector";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/agent-google-connector";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const app = new Hono<AppEnv>();
 
@@ -29,6 +29,8 @@ const requestSchema = z.object({
         "google.gmail.triage",
         "google.gmail.send",
         "google.gmail.manage",
+        "google.gmail.drafts",
+        "google.gmail.mailbox",
       ]),
     )
     .optional(),
@@ -37,9 +39,26 @@ const requestSchema = z.object({
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const parsed = requestSchema.safeParse(
-      await c.req.json().catch(() => ({})),
-    );
+    // An empty or absent body means "initiate with defaults". A NON-empty
+    // body that is not valid JSON is a client error and must never fall back
+    // to those defaults — that turned a truncated request into an initiated
+    // connection flow.
+    const rawBody = await c.req.text();
+    let bodyValue: unknown = {};
+    if (rawBody.trim().length > 0) {
+      try {
+        bodyValue = JSON.parse(rawBody);
+      } catch {
+        // error-policy:J3 malformed JSON is invalid request input.
+        return c.json(
+          {
+            error: "Invalid Google connector request: body is not valid JSON.",
+          },
+          400,
+        );
+      }
+    }
+    const parsed = requestSchema.safeParse(bodyValue);
     if (!parsed.success) {
       return c.json(
         {

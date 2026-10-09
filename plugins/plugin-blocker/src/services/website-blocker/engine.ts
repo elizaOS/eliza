@@ -7,6 +7,7 @@ import path from "node:path";
 import { domainToASCII } from "node:url";
 import { promisify } from "node:util";
 import type { HandlerOptions } from "@elizaos/core";
+import { getDomain } from "tldts";
 import type { PermissionState, PermissionStatus } from "./permissions.ts";
 
 const BLOCK_START_MARKER = "# >>> eliza-selfcontrol >>>";
@@ -253,11 +254,15 @@ export function buildSelfControlBlockPolicy(
   for (const website of normalizedRequestedWebsites) {
     blockedWebsites.add(website);
 
-    if (shouldAddWwwVariant(website)) {
-      blockedWebsites.add(`www.${website}`);
+    // A registrable domain and its `www.` host are the same site to the user:
+    // block both whichever one was named, and apply the site's policy group.
+    const registrable = registrableWebsiteBase(website);
+    if (registrable) {
+      blockedWebsites.add(registrable);
+      blockedWebsites.add(`www.${registrable}`);
     }
 
-    const policyGroup = WEBSITE_BLOCK_POLICY_LOOKUP.get(website);
+    const policyGroup = WEBSITE_BLOCK_POLICY_LOOKUP.get(registrable ?? website);
     if (policyGroup) {
       for (const blockedHost of policyGroup.blockedHosts) {
         blockedWebsites.add(blockedHost);
@@ -907,6 +912,7 @@ export async function stopSelfControlBlock(
       startedAt: null,
       endsAt: null,
       websites: [],
+      ...EMPTY_SELF_CONTROL_BLOCK_POLICY,
       managedBy: null,
       metadata: null,
       scheduledByAgentId: null,
@@ -1006,9 +1012,12 @@ export function normalizeWebsiteTargets(
   return [...deduped];
 }
 
-function shouldAddWwwVariant(target: string): boolean {
-  const labels = target.split(".");
-  return labels.length === 2 && labels[0] !== "www";
+/** Only a registrable domain or its www host expands to the site's pair. */
+function registrableWebsiteBase(target: string): string | null {
+  const domain = getDomain(target, { allowPrivateDomains: true });
+  return domain && (target === domain || target === `www.${domain}`)
+    ? domain
+    : null;
 }
 
 export function formatWebsiteList(websites: readonly string[]): string {

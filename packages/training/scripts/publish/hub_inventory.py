@@ -5,14 +5,16 @@ files without LFS metadata remain eligible for their normal commit path.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+from huggingface_hub import DatasetInfo
 
 if TYPE_CHECKING:
     from huggingface_hub import HfApi
 
 
 def remote_lfs_shas(api: HfApi, repo_id: str) -> dict[str, str]:
-    info = api.repo_info(repo_id, repo_type="dataset", files_metadata=True)
+    info = cast(DatasetInfo, api.repo_info(repo_id, repo_type="dataset", files_metadata=True))
     remote_shas: dict[str, str] = {}
     for sibling in info.siblings or []:
         lfs = sibling.lfs

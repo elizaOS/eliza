@@ -129,8 +129,12 @@ function normalizeThermalState(value: unknown): ThermalState | null {
  * tok/s from the telemetry ring. Pure reads — never throws into the router.
  */
 const defaultSource: LiveDeviceSignalsSource = () => {
+	const status = deviceBridge.status();
+	const primary = status.devices.find(
+		(device) => device.deviceId === status.primaryDeviceId,
+	);
 	const thermalState = normalizeThermalState(
-		deviceBridge.status().capabilities?.thermalState,
+		primary?.capabilities.thermalState,
 	);
 	const decodeTokensPerSecond =
 		inferenceTelemetry.summary(DECODE_TPS_METRIC).p50;

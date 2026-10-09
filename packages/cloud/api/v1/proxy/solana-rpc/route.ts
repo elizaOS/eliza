@@ -9,14 +9,14 @@
  *        Body: JSON-RPC 2.0 request (or batch)
  */
 
-import { Hono } from "hono";
-import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 import {
   solanaRpcConfig,
   solanaRpcHandler,
-} from "@/lib/services/proxy/services/solana-rpc";
-import type { ProxyRequestBody } from "@/lib/services/proxy/types";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/proxy/solana-rpc";
+import type { ProxyRequestBody } from "@elizaos/cloud-shared/lib/services/proxy/types";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 
 const app = new Hono<AppEnv>();
 

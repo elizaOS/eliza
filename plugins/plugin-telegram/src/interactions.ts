@@ -4,7 +4,7 @@
  * inline keyboards, and decode the callback when the user taps one.
  *
  * The block vocabulary, parsing, neutral layout, and the 64-byte-safe callback
- * codec all live in `@elizaos/core` (`messaging/interactions`) so the dashboard,
+ * codec all live in `@elizaos/core` so the dashboard,
  * Discord, and Telegram render the same agent output identically. This module is
  * the thin Telegram-specific projection: neutral buttons → telegraf buttons.
  */

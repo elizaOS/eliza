@@ -16,15 +16,15 @@
  * only while something is mounted.
  */
 
-import {
-  type SwarmActivityPlanEntry,
-  type SwarmActivityStatus,
-  type SwarmActivityTool,
-  type SwarmEvent,
-  toSwarmActivity,
+import type {
+  SwarmActivityPlanEntry,
+  SwarmActivityStatus,
+  SwarmActivityTool,
+  SwarmEvent,
 } from "@elizaos/core";
 import { useSyncExternalStore } from "react";
 import { client } from "../api/client";
+import { toSwarmActivity } from "./swarm-activity.js";
 
 /** Cap on retained tool steps per sub-agent — a long task must not grow unbounded. */
 const MAX_STEPS_PER_AGENT = 60;
@@ -347,24 +347,3 @@ export function useTaskActivity(taskId: string): TaskActivity {
     () => EMPTY_TASK,
   );
 }
-
-/** Test-only: feed a raw event and read the resulting snapshot without a socket. */
-export const __taskActivityInternals = {
-  applyEvent,
-  // Binds the WS handler exactly as `useTaskActivity` does (ref-counted), so a
-  // test can exercise the real `pty-session-event` reconstruction seam without
-  // React / a DOM environment.
-  subscribe: subscribeTask,
-  getSnapshot: (taskId: string): TaskActivity =>
-    tasks.get(taskId)?.snapshot ?? EMPTY_TASK,
-  limits: {
-    maxTasks: MAX_TASKS,
-    maxSubagentsPerTask: MAX_SUBAGENTS_PER_TASK,
-  },
-  reset: (): void => {
-    tasks.clear();
-    if (wsUnsub) wsUnsub();
-    wsUnsub = null;
-    refCount = 0;
-  },
-};

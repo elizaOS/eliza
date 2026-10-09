@@ -1,0 +1,32 @@
+{
+  "_comment": "Committed regression budgets for recall-bench (#9956), mirroring memperf/budgets.json. The runner compares MEASURED per-SearchMode rows against these and exits non-zero when a hard budget is crossed; a skipped (unmeasured) row never fails a budget. Numbers are the deterministic-embedding pipeline baseline at the 1k tier with headroom — calibrated AFTER the service.ts ranking fix (pure-vector candidates + count-not-limit pool), so reintroducing the dropped-candidate rerank (document-vector back to ~0.715) trips the document-vector floor. They catch ranking/weight/fail-open regressions, not production embedding quality (see README). 'null' is never conflated with a measured 0. The same floors also pass the (easier) smoke tier.",
+  "tier": "1k",
+  "k": 5,
+  "modes": {
+    "document-hybrid": {
+      "minRecallAt5": 0.85,
+      "minNdcgAt5": 0.85,
+      "maxP95LatencyMs": 750
+    },
+    "document-vector": {
+      "minRecallAt5": 0.85,
+      "minNdcgAt5": 0.85,
+      "maxP95LatencyMs": 750
+    },
+    "document-keyword": { "minRecallAt5": 0.25, "maxP95LatencyMs": 750 },
+    "searchMemories-vector": {
+      "minRecallAt5": 0.85,
+      "minNdcgAt5": 0.85,
+      "maxP95LatencyMs": 750
+    },
+    "keyword-chat-bm25": { "minRecallAt5": 0.3, "maxP95LatencyMs": 750 },
+    "facts-provider-keyword": { "minRecallAt5": 0.8, "maxP95LatencyMs": 750 },
+    "keyword-morph-stemmed": { "minRecallAt5": 0.6, "maxP95LatencyMs": 750 }
+  },
+  "failOpen": {
+    "minObservableRecallDrop": 0.3
+  },
+  "stemming": {
+    "minRecallLift": 0.4
+  }
+}

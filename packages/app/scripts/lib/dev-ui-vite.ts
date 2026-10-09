@@ -1,0 +1,96 @@
+/**
+ * Resolves the Vite subprocess used by app development entrypoints.
+ * Vite's bundled config loader keeps the renderer and its React plugins on the
+ * same Vite major while still resolving source-conditioned TypeScript imports
+ * before the dev server exists. Central validation keeps dashboard and
+ * shared-worktree launch paths in sync.
+ */
+
+import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import process from "node:process";
+
+interface ViteCommandOptions {
+  appDir: string;
+  force?: boolean;
+  sourceCheckout?: boolean;
+  runtime?: "bun" | "node";
+  runtimePath?: string;
+  port?: string | number;
+  viteArgs?: string[];
+}
+
+export function resolveViteCommand({
+  appDir,
+  force = false,
+  sourceCheckout = existsSync(
+    new URL("../../src/runtime/dev-server.ts", import.meta.url),
+  ),
+  runtime = process.versions.bun ? "bun" : "node",
+  runtimePath = process.execPath,
+  port,
+  viteArgs = [],
+}: ViteCommandOptions) {
+  if (!runtimePath?.trim()) {
+    throw new Error(
+      "A JavaScript runtime is required to run the Vite dev server.",
+    );
+  }
+  let viteCli = path.join(appDir, "node_modules", "vite", "bin", "vite.js");
+  if (!existsSync(viteCli)) {
+    try {
+      const appRequire = createRequire(path.join(appDir, "package.json"));
+      // Hoisted package installs put Vite at the consumer workspace root.
+      const viteRoot = path.dirname(appRequire.resolve("vite/package.json"));
+      viteCli = path.join(viteRoot, "bin", "vite.js");
+    } catch (error) {
+      // error-policy:J2 Preserve dependency resolution failure with install guidance.
+      throw new Error(
+        `Vite CLI not found for ${appDir}. Run bun install first.`,
+        { cause: error },
+      );
+    }
+  }
+  // Config loading happens before the dev server's resolver exists. Vite 8's
+  // runner loader can resolve the workspace's Vite 7 test alias while
+  // @vitejs/plugin-react resolves Vite 8, mixing Rollup and Rolldown plugin
+  // contexts and failing every dev request with `Missing field moduleType`.
+  // The bundled loader keeps one Vite owner and still handles the config's
+  // source TypeScript graph; the tsx import remains for source-conditioned
+  // runtime modules loaded after config evaluation.
+  const args = sourceCheckout ? ["--conditions=eliza-source"] : [];
+  // Node needs tsx for source-conditioned TypeScript runtime modules. Bun
+  // handles those modules natively, and loading tsx under Bun fails before
+  // Vite starts because tsx's Node-specific CJS bridge cannot be resolved.
+  if (runtime === "node" && sourceCheckout) args.push("--import", "tsx");
+  args.push(viteCli, "--configLoader", "bundle");
+  if (force) args.push("--force");
+  if (port !== undefined) args.push("--port", String(port));
+  args.push(...viteArgs);
+  return { command: runtimePath, args };
+}
+
+/**
+ * Resolves the Vite child owned by the combined API-and-UI supervisor.
+ * Vite's HTTP proxy uses Node socket methods that Bun does not implement, so
+ * this child stays on Node even when the independently supervised API uses Bun.
+ */
+export function resolveSupervisedViteCommand({
+  appDir,
+  force = false,
+  nodePath,
+  sourceCheckout,
+  port,
+  viteArgs = [],
+}: Omit<ViteCommandOptions, "runtime" | "runtimePath"> & { nodePath: string }) {
+  return resolveViteCommand({
+    appDir,
+    force,
+    sourceCheckout,
+    runtime: "node",
+    runtimePath: nodePath,
+    port,
+    viteArgs,
+  });
+}

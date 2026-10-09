@@ -27,7 +27,7 @@ interface ClientConfig {
 }
 
 export interface RuntimePgClient extends IdentityQueryClient {
-  connect(): Promise<void>;
+  connect(): Promise<unknown>;
   end(): Promise<void>;
   off(event: "error", listener: (error: Error) => void): void;
   on(event: "error", listener: (error: Error) => void): void;
@@ -65,7 +65,7 @@ export type DatabaseIdentityFailureCategory =
   | "database_query_failed"
   | "operator_setup_failed";
 
-export type DatabaseIdentityDependencyLabel = "pg" | "core_edge" | "db_client";
+export type DatabaseIdentityDependencyLabel = "pg" | "core" | "db_client";
 
 export class DatabaseIdentityDependencyError extends Error {
   constructor(readonly dependency: DatabaseIdentityDependencyLabel) {
@@ -83,7 +83,7 @@ class DatabaseIdentityClientEventError extends Error {
 
 const DEPENDENCY_PROBES = [
   ["pg", "pg"],
-  ["core_edge", "@elizaos/core/edge"],
+  ["core", "@elizaos/core"],
   ["db_client", "@elizaos/cloud-shared/db/client"],
 ] as const satisfies ReadonlyArray<
   readonly [DatabaseIdentityDependencyLabel, string]
@@ -311,7 +311,7 @@ async function clientConfig(databaseUrl: string): Promise<ClientConfig> {
   };
 }
 
-async function createRuntimePgClient(
+export async function createRuntimePgClient(
   databaseUrl: string,
 ): Promise<RuntimePgClient> {
   const { Client } = await import("pg");
@@ -495,7 +495,7 @@ async function main(): Promise<number> {
   if (process.argv.includes("--probe-dependencies")) {
     await probeDatabaseIdentityDependencies();
     process.stdout.write(
-      "[database-identity] dependency probes passed: pg,core_edge,db_client\n",
+      "[database-identity] dependency probes passed: pg,core,db_client\n",
     );
     return 0;
   }

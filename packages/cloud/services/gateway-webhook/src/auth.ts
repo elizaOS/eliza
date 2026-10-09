@@ -3,7 +3,7 @@ import {
   gatewayTokenRefreshDelayMs,
   gatewayTokenRetryDelayMs,
   requestGatewayToken,
-} from "@elizaos/cloud-services-common/gateway-auth";
+} from "@elizaos/cloud-services-common/transport";
 import { logger } from "./logger";
 
 interface AuthConfig {

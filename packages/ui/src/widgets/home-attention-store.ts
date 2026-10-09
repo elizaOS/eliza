@@ -94,10 +94,3 @@ export function usePublishHomeAttention(
     return () => clearHomeAttention(widgetKey);
   }, [widgetKey, weight]);
 }
-
-/** Test-only reset. */
-export function __resetHomeAttentionForTests(): void {
-  entries = {};
-  snapshot = [];
-  listeners.clear();
-}

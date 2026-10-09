@@ -6,8 +6,7 @@
  *
  * Caller-supplied audio URLs load only through the platform-installed guarded
  * fetcher (`models/transcription-url.ts`) so agents and tools cannot aim
- * transcription at loopback, link-local, or private hosts, and so this shared
- * module never names a Node-only core subpath a browser bundle would follow.
+ * transcription at loopback, link-local, or private hosts.
  * Provider endpoint calls (OpenAI-compatible base URL) stay on the configured
  * API path and are not remote-media fetches.
  */
@@ -50,8 +49,7 @@ function isBlobOrFile(value: unknown): value is Blob | File {
 }
 
 function isBuffer(value: unknown): value is Buffer {
-  // A real browser has no Buffer global; referencing it bare throws.
-  return typeof Buffer !== "undefined" && Buffer.isBuffer(value);
+  return Buffer.isBuffer(value);
 }
 
 function isLocalTranscriptionParams(value: unknown): value is LocalTranscriptionParams {
@@ -70,6 +68,18 @@ function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionPa
     value !== null &&
     "audioUrl" in value &&
     typeof (value as CoreTranscriptionParams).audioUrl === "string"
+  );
+}
+
+function isCoreInProcessAudio(
+  value: unknown
+): value is CoreTranscriptionParams & { audio: Uint8Array | ArrayBuffer } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "audio" in value &&
+    ((value as { audio?: unknown }).audio instanceof Uint8Array ||
+      (value as { audio?: unknown }).audio instanceof ArrayBuffer)
   );
 }
 
@@ -121,7 +131,7 @@ export async function handleTranscription(
 
   if (typeof input === "string") {
     logger.debug(`[OpenAI] Fetching audio from URL: ${input}`);
-    blob = await fetchAudioFromUrl(input);
+    blob = await fetchAudioFromUrl(input, callerSignal);
   } else if (isBlobOrFile(input)) {
     blob = input;
   } else if (isBuffer(input)) {
@@ -140,9 +150,29 @@ export async function handleTranscription(
     } else {
       blob = input.audio;
     }
+  } else if (isCoreInProcessAudio(input)) {
+    // In-process audio wins over any audioUrl: core TranscriptionParams
+    // requires an audioUrl, so callers that already hold the media send
+    // `{ audioUrl: "", audio }` (audio redaction verification). Transcribe
+    // the bytes instead of fetching the (possibly empty) URL.
+    const rawAudio = input.audio;
+    const bytes = new Uint8Array(rawAudio);
+    const inProcessMimeType = input.mimeType ?? detectAudioMimeType(bytes);
+    logger.debug(`[OpenAI] Using MIME type: ${inProcessMimeType}`);
+    blob = new Blob([bytes], { type: inProcessMimeType });
+    extraParams = { prompt: input.prompt };
   } else if (isCoreTranscriptionParams(input)) {
+    // No in-process bytes accompanied the URL: only a remote fetch can serve
+    // the transcript. An empty audioUrl is a caller-shape error, not a
+    // fetchable resource — reject it here with the same caller-shape error
+    // as the elizacloud handler instead of reaching the URL fetcher.
+    if (!input.audioUrl) {
+      throw new Error(
+        "TRANSCRIPTION requires audio bytes or a non-empty audioUrl; received an empty audioUrl with no audio."
+      );
+    }
     logger.debug(`[OpenAI] Fetching audio from URL: ${input.audioUrl}`);
-    blob = await fetchAudioFromUrl(input.audioUrl);
+    blob = await fetchAudioFromUrl(input.audioUrl, callerSignal);
     extraParams = { prompt: input.prompt };
   } else {
     throw new Error(

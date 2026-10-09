@@ -16,6 +16,10 @@ import {
   type TeeMeasurementName,
   teeMeasurementDigestMatches,
 } from "./tee-evidence.ts";
+import {
+  carryGpuVerification,
+  isGpuVerifiedEvidence,
+} from "./tee-gpu-evidence.ts";
 
 export type TeeEvidencePolicy = {
   required?: boolean;
@@ -81,7 +85,13 @@ export function evaluateTeeEvidencePolicy(
 
   let evidence: TeeEvidence;
   try {
-    evidence = normalizeTeeEvidence(evidenceInput);
+    // GPU claims survive only on evidence from the verified NVIDIA path.
+    evidence = carryGpuVerification(
+      evidenceInput,
+      normalizeTeeEvidence(evidenceInput, {
+        gpuVerified: isGpuVerifiedEvidence(evidenceInput),
+      }),
+    );
   } catch (error) {
     return {
       trusted: false,
@@ -204,6 +214,20 @@ export function evaluateTeeEvidencePolicy(
   }
 
   return { trusted: true, reason: "allowed", evidence };
+}
+
+/**
+ * True when the policy admits only dstack-appraised Intel TDX evidence. Such
+ * evidence carries the dstack identity (`app`, `compose`, `os`, `boot`) and TDX
+ * registers, never the device-local `agent`/`policy`/`device` measurements.
+ */
+export function policyAdmitsOnlyDstackTdx(policy: TeeEvidencePolicy): boolean {
+  return (
+    policy.allowedProviders?.length === 1 &&
+    policy.allowedProviders[0] === "dstack" &&
+    policy.allowedKinds?.length === 1 &&
+    policy.allowedKinds[0] === "tdx"
+  );
 }
 
 /**

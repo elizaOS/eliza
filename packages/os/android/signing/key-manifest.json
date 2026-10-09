@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-10-02",
+  "description": "Signing keys for an elizaOS AOSP image and its release metadata. Generated offline by packages/os/scripts/android/generate-release-keys.ts (see android/signing/README.md). Products add their own application keys with a separate --manifest. Private keys never enter a repository; only reviewed public fingerprints are enrolled.",
+  "references": [
+    "https://source.android.com/docs/core/ota/sign_builds",
+    "https://android.googlesource.com/platform/external/avb/+/refs/heads/main/avbtool.py"
+  ],
+  "keys": [
+    {
+      "name": "releasekey",
+      "kind": "x509-pk8",
+      "bits": 4096,
+      "consumer": "APKs signed with testkey/releasekey; OTA package signature and otacerts.zip",
+      "storage": "offline-encrypted",
+      "rotatable": false
+    },
+    {
+      "name": "platform",
+      "kind": "x509-pk8",
+      "bits": 4096,
+      "consumer": "Framework and platform-certificate apps",
+      "storage": "offline-encrypted",
+      "rotatable": false
+    },
+    {
+      "name": "shared",
+      "kind": "x509-pk8",
+      "bits": 4096,
+      "consumer": "Shared-UID home/contacts apps",
+      "storage": "offline-encrypted",
+      "rotatable": false
+    },
+    {
+      "name": "media",
+      "kind": "x509-pk8",
+      "bits": 4096,
+      "consumer": "Media/download provider apps",
+      "storage": "offline-encrypted",
+      "rotatable": false
+    },
+    {
+      "name": "networkstack",
+      "kind": "x509-pk8",
+      "bits": 4096,
+      "consumer": "NetworkStack module",
+      "storage": "offline-encrypted",
+      "rotatable": false
+    },
+    {
+      "name": "sdk_sandbox",
+      "kind": "x509-pk8",
+      "bits": 4096,
+      "consumer": "SDK sandbox",
+      "storage": "offline-encrypted",
+      "rotatable": false
+    },
+    {
+      "name": "bluetooth",
+      "kind": "x509-pk8",
+      "bits": 4096,
+      "consumer": "Bluetooth module",
+      "storage": "offline-encrypted",
+      "rotatable": false
+    },
+    {
+      "name": "nfc",
+      "kind": "x509-pk8",
+      "bits": 4096,
+      "consumer": "NFC (only for devices with NFC)",
+      "storage": "offline-encrypted",
+      "rotatable": false
+    },
+    {
+      "name": "apex",
+      "kind": "x509-pk8",
+      "bits": 4096,
+      "consumer": "APEX container signature for all APEXes",
+      "storage": "offline-encrypted",
+      "rotatable": false
+    },
+    {
+      "name": "apex_payload",
+      "kind": "avb-rsa",
+      "bits": 4096,
+      "consumer": "APEX payload (SHA256_RSA4096) for all APEXes",
+      "storage": "offline-encrypted",
+      "rotatable": false
+    },
+    {
+      "name": "avb",
+      "kind": "avb-rsa",
+      "bits": 4096,
+      "consumer": "vbmeta and chained partitions; avb_pkmd.bin for avb_custom_key or factory fusing; release contract avb.publicKeySha256",
+      "storage": "hsm",
+      "rotatable": false
+    },
+    {
+      "name": "release_manifest",
+      "kind": "ed25519",
+      "consumer": "Image release manifest signatures (scripts/release-key-policy.ts, sign-image-release.ts)",
+      "storage": "hsm",
+      "rotatable": true
+    },
+    {
+      "name": "contract_release",
+      "kind": "ed25519",
+      "consumer": "Android release contract 'release' role (android/release-trust.json)",
+      "storage": "hsm",
+      "rotatable": true
+    },
+    {
+      "name": "contract_qualification",
+      "kind": "ed25519",
+      "consumer": "Android release contract 'qualification' role (android/release-trust.json); must stay independent of contract_release",
+      "storage": "hsm",
+      "rotatable": true
+    }
+  ]
+}

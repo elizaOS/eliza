@@ -30,8 +30,9 @@ Exit codes:
 
 from __future__ import annotations
 
+from eliza_training.lib.file_integrity import sha256_file as _sha256
+
 import argparse
-import hashlib
 import json
 import logging
 import os
@@ -46,8 +47,7 @@ from typing import Iterable
 # We import the validator helpers directly so the prep + validation paths
 # share one source of truth for floors/regexes.
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
-from validate_voice_corpus import _read_transcripts, validate_corpus  # noqa: E402
+from eliza_training.voice.samantha_lora.validate_voice_corpus import _read_transcripts, validate_corpus  # noqa: E402
 
 log = logging.getLogger("samantha_lora.prep_corpus")
 
@@ -59,12 +59,6 @@ PRIVACY_SCRIPT = (
 )
 
 
-def _sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _resample_to_24k(src: Path, dst: Path) -> tuple[int, float]:

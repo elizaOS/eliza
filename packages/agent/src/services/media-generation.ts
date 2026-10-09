@@ -8,7 +8,13 @@
  */
 
 import { Buffer } from "node:buffer";
+import type {
+  AudioGenConfig,
+  ImageConfig,
+  VideoConfig,
+} from "@elizaos/contracts";
 import {
+  getStreamingContext,
   type IAgentRuntime,
   IMediaGenerationService,
   type MediaGenerationRequest,
@@ -16,13 +22,9 @@ import {
   ModelType,
   ServiceType,
 } from "@elizaos/core";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared";
+import { isElizaCloudServiceSelectedInConfig } from "@elizaos/host/protocol";
+
 import { loadEffectiveElizaConfig } from "../config/config.ts";
-import type {
-  AudioGenConfig,
-  ImageConfig,
-  VideoConfig,
-} from "../config/types.eliza.ts";
 import {
   createAudioProvider,
   createImageProvider,
@@ -43,26 +45,8 @@ function getMediaProviderOptions(): MediaProviderFactoryOptions {
   };
 }
 
-function imageConfigUsesCloud(
-  config: ImageConfig | undefined,
-  options: MediaProviderFactoryOptions,
-): boolean {
-  const mode =
-    config?.mode ?? (options.cloudMediaDisabled ? "own-key" : "cloud");
-  return mode === "cloud" && !options.cloudMediaDisabled;
-}
-
-function videoConfigUsesCloud(
-  config: VideoConfig | undefined,
-  options: MediaProviderFactoryOptions,
-): boolean {
-  const mode =
-    config?.mode ?? (options.cloudMediaDisabled ? "own-key" : "cloud");
-  return mode === "cloud" && !options.cloudMediaDisabled;
-}
-
-function audioConfigUsesCloud(
-  config: AudioGenConfig | undefined,
+function mediaConfigUsesCloud(
+  config: ImageConfig | VideoConfig | AudioGenConfig | undefined,
   options: MediaProviderFactoryOptions,
 ): boolean {
   const mode =
@@ -277,20 +261,20 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
     const providerOptions = getMediaProviderOptions();
     try {
       if (request.mediaType === "image") {
-        if (imageConfigUsesCloud(config.media?.image, providerOptions)) {
+        if (mediaConfigUsesCloud(config.media?.image, providerOptions)) {
           return hasImageGenerationModel(this.runtime);
         }
         createImageProvider(config.media?.image, providerOptions);
         return true;
       }
       if (request.mediaType === "video") {
-        if (videoConfigUsesCloud(config.media?.video, providerOptions)) {
+        if (mediaConfigUsesCloud(config.media?.video, providerOptions)) {
           return hasGenerationModel(this.runtime, ModelType.VIDEO);
         }
         createVideoProvider(config.media?.video, providerOptions);
         return true;
       }
-      if (audioConfigUsesCloud(config.media?.audio, providerOptions)) {
+      if (mediaConfigUsesCloud(config.media?.audio, providerOptions)) {
         if (request.audioKind === "sfx") return false;
         return hasGenerationModel(
           this.runtime,
@@ -311,9 +295,15 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
   ): Promise<MediaGenerationResponse> {
     const config = loadEffectiveElizaConfig();
     const providerOptions = getMediaProviderOptions();
+    const signals = [
+      getStreamingContext()?.abortSignal,
+      this.runtime.getStopSignal?.(),
+    ].filter((value): value is AbortSignal => value !== undefined);
+    const signal = signals.length ? AbortSignal.any(signals) : undefined;
+    signal?.throwIfAborted();
 
     if (request.mediaType === "image") {
-      if (imageConfigUsesCloud(config.media?.image, providerOptions)) {
+      if (mediaConfigUsesCloud(config.media?.image, providerOptions)) {
         return generateImageWithModel(this.runtime, request);
       }
 
@@ -321,6 +311,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
         config.media?.image,
         providerOptions,
       ).generate({
+        signal,
         prompt: request.prompt,
         size: request.size,
         quality: request.quality,
@@ -329,6 +320,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
         seed: request.seed,
       });
 
+      signal?.throwIfAborted();
       if (!result.success || !result.data) {
         throw new Error(result.error ?? "Image generation failed");
       }
@@ -344,7 +336,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
     }
 
     if (request.mediaType === "video") {
-      if (videoConfigUsesCloud(config.media?.video, providerOptions)) {
+      if (mediaConfigUsesCloud(config.media?.video, providerOptions)) {
         return generateVideoWithModel(
           this.runtime,
           request,
@@ -356,12 +348,14 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
         config.media?.video,
         providerOptions,
       ).generate({
+        signal,
         prompt: request.prompt,
         duration: request.duration ?? config.media?.video?.defaultDuration,
         aspectRatio: request.aspectRatio,
         imageUrl: request.imageUrl,
       });
 
+      signal?.throwIfAborted();
       if (!result.success || !result.data) {
         throw new Error(result.error ?? "Video generation failed");
       }
@@ -376,7 +370,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
       };
     }
 
-    if (audioConfigUsesCloud(config.media?.audio, providerOptions)) {
+    if (mediaConfigUsesCloud(config.media?.audio, providerOptions)) {
       return generateAudioWithModel(this.runtime, request);
     }
 
@@ -384,12 +378,17 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
       config.media?.audio,
       providerOptions,
     ).generate({
+      signal,
       prompt: request.prompt,
+      audioKind: request.audioKind,
+      voiceId: request.voice,
+      seed: request.seed,
       duration: request.duration,
       instrumental: request.instrumental,
       genre: request.genre,
     });
 
+    signal?.throwIfAborted();
     if (!result.success || !result.data) {
       throw new Error(result.error ?? "Audio generation failed");
     }
@@ -401,7 +400,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
       audioUrl: result.data.audioUrl,
       title: result.data.title,
       duration: result.data.duration,
-      mimeType: "audio/mpeg",
+      mimeType: result.data.mimeType ?? "audio/mpeg",
     };
   }
 }

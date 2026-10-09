@@ -1,3 +1,4 @@
+import { gmailThreadSourceLink } from "./gmail-source-link.js";
 /**
  * `GoogleGmailClient` — all Gmail operations behind the workspace service: raw
  * message search/get/send, plus the enriched triage layer (unread/importance
@@ -14,6 +15,12 @@ import { ElizaError, stripHtmlRawTextElements } from "@elizaos/core";
 import type { gmail_v1 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import {
+  attachmentUnavailable,
+  decodeGmailAttachment,
+  gmailAttachmentParts,
+  MAX_GMAIL_ATTACHMENT_BYTES,
+} from "./gmail-attachments.js";
+import {
   extractGmailMimeBody,
   snapshotGmailMimePart,
   walkGmailMimeParts,
@@ -21,6 +28,7 @@ import {
 import type {
   GoogleAccountRef,
   GoogleEmailAddress,
+  GoogleGmailAttachmentContent,
   GoogleGmailBulkOperation,
   GoogleGmailDraftResult,
   GoogleGmailFilterCreateResult,
@@ -231,6 +239,8 @@ export class GoogleGmailClient {
       selfEmail?: string | null;
       maxResults?: number;
       includeSpamTrash?: boolean;
+      /** Gmail label IDs; the provider returns messages carrying all of them. */
+      labelIds?: string[];
     }
   ): Promise<GoogleGmailMessageSummary[]> {
     const gmail = await this.clientFactory.gmail(
@@ -247,6 +257,7 @@ export class GoogleGmailClient {
       const response = await gmail.users.messages.list({
         userId: "me",
         q: params.query,
+        ...(params.labelIds?.length ? { labelIds: params.labelIds } : {}),
         includeSpamTrash: params.includeSpamTrash === true,
         maxResults:
           maxResults === undefined
@@ -368,7 +379,92 @@ export class GoogleGmailClient {
     return {
       message,
       bodyText: extractGoogleGmailBody(response.data.payload).trim() || message.snippet,
+      attachments: gmailAttachmentParts(response.data.payload).map((part) => part.descriptor),
     };
+  }
+
+  async getGmailAttachment(
+    params: GoogleAccountRef & { messageId: string; partId: string; maxBytes: number }
+  ): Promise<GoogleGmailAttachmentContent> {
+    // Snapshot host inputs before credential resolution or network awaits.
+    const input = { ...params };
+    try {
+      if (
+        typeof input.accountId !== "string" ||
+        !input.accountId.trim() ||
+        typeof input.messageId !== "string" ||
+        !/^[A-Za-z0-9_-]{1,256}$/.test(input.messageId) ||
+        typeof input.partId !== "string" ||
+        !/^[0-9.]{0,128}$/.test(input.partId) ||
+        !Number.isSafeInteger(input.maxBytes) ||
+        input.maxBytes < 1 ||
+        input.maxBytes > MAX_GMAIL_ATTACHMENT_BYTES
+      )
+        throw attachmentUnavailable();
+      const gmail = await this.clientFactory.gmail(
+        input,
+        ["gmail.read"],
+        "gmail.getGmailAttachment"
+      );
+      const message = await gmail.users.messages.get(
+        {
+          userId: "me",
+          id: input.messageId,
+          format: "full",
+        },
+        // The message includes unrelated body/parts, independent of the selected attachment's limit.
+        { maxContentLength: Math.ceil(MAX_GMAIL_ATTACHMENT_BYTES / 3) * 4 + 65536 }
+      );
+      if (message.data.id !== input.messageId) throw attachmentUnavailable();
+      const selected = gmailAttachmentParts(message.data.payload).find(
+        (part) => part.descriptor.partId === input.partId
+      );
+      if (!selected || selected.descriptor.size > input.maxBytes) throw attachmentUnavailable();
+      let data: unknown = selected.inlineData;
+      let size: unknown = selected.descriptor.size;
+      if (selected.descriptor.attachmentId !== null) {
+        // Re-resolve the same explicit account before the second provider read.
+        const current = await this.clientFactory.gmail(
+          input,
+          ["gmail.read"],
+          "gmail.getGmailAttachment.content"
+        );
+        const response = await current.users.messages.attachments.get(
+          { userId: "me", messageId: input.messageId, id: selected.descriptor.attachmentId },
+          { maxContentLength: Math.ceil(input.maxBytes / 3) * 4 + 65536 }
+        );
+        data = response.data.data;
+        size = response.data.size;
+      }
+      // Revalidate the same account after the final network response. Revocation
+      // during an in-flight read must not release attachment bytes to the host.
+      await this.clientFactory.gmail(input, ["gmail.read"], "gmail.getGmailAttachment.release");
+      return decodeGmailAttachment(
+        selected.descriptor,
+        input.messageId,
+        data,
+        size,
+        input.maxBytes
+      );
+    } catch {
+      // Provider responses can contain tokens and attachment bytes; do not echo them.
+      throw attachmentUnavailable();
+    }
+  }
+
+  async getGmailMessageRevision(
+    params: GoogleAccountRef & { messageId: string }
+  ): Promise<string | null> {
+    const message = await this.getGmailMessage(params);
+    if (!message) return null;
+    const historyId = message.metadata.historyId;
+    if (typeof historyId !== "string" || historyId.trim().length === 0) {
+      throw new ElizaError("Gmail did not return a stable message revision", {
+        code: "GMAIL_READ_REINDEX_REQUIRED",
+        context: { messageId: params.messageId },
+      });
+    }
+    return historyId;
   }
 
   async getGmailThread(
@@ -548,16 +644,24 @@ export class GoogleGmailClient {
       cc?: string[];
       subject: string;
       bodyText: string;
+      threadId: string;
       inReplyTo?: string | null;
       references?: string | null;
     }
   ): Promise<GoogleGmailSendResult> {
+    const threadId = params.threadId.trim();
+    if (!threadId) {
+      throw new ElizaError("Gmail reply send requires the original thread id.", {
+        code: "GOOGLE_GMAIL_REPLY_THREAD_REQUIRED",
+        severity: "fatal",
+      });
+    }
     const raw = encodeRawGmailMessage([
       `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
       ...(params.cc && params.cc.length > 0
         ? [`Cc: ${sanitizeMailHeaderValue(params.cc.join(", "))}`]
         : []),
-      `Subject: ${sanitizeMailHeaderValue(normalizeReplySubject(params.subject))}`,
+      `Subject: ${encodeMailSubject(normalizeReplySubject(params.subject))}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=UTF-8",
       ...(params.inReplyTo ? [`In-Reply-To: ${sanitizeMailHeaderValue(params.inReplyTo)}`] : []),
@@ -565,7 +669,7 @@ export class GoogleGmailClient {
       "",
       params.bodyText.replace(/\r?\n/g, "\r\n"),
     ]);
-    return this.sendRawGmailMessage(params, raw, "gmail.sendGmailReply");
+    return this.sendRawGmailMessage({ ...params, threadId }, raw, "gmail.sendGmailReply");
   }
 
   async sendGmailMessage(
@@ -585,7 +689,7 @@ export class GoogleGmailClient {
       ...(params.bcc && params.bcc.length > 0
         ? [`Bcc: ${sanitizeMailHeaderValue(params.bcc.join(", "))}`]
         : []),
-      `Subject: ${sanitizeMailHeaderValue(params.subject.trim()) || "(no subject)"}`,
+      `Subject: ${encodeMailSubject(params.subject.trim() || "(no subject)")}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=UTF-8",
       "",
@@ -606,12 +710,20 @@ export class GoogleGmailClient {
       references?: string | null;
     }
   ): Promise<GoogleGmailDraftResult> {
+    const threadId = params.threadId?.trim();
+    const isReply = Boolean(params.inReplyTo?.trim() || params.references?.trim());
+    if (isReply && !threadId) {
+      throw new ElizaError("Gmail reply draft requires the original thread id.", {
+        code: "GOOGLE_GMAIL_REPLY_THREAD_REQUIRED",
+        severity: "fatal",
+      });
+    }
     const gmail = await this.clientFactory.gmail(params, ["gmail.compose"], "gmail.createDraft");
     const raw = encodeRawGmailMessage([
       `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
       ...(params.cc?.length ? [`Cc: ${sanitizeMailHeaderValue(params.cc.join(", "))}`] : []),
       ...(params.bcc?.length ? [`Bcc: ${sanitizeMailHeaderValue(params.bcc.join(", "))}`] : []),
-      `Subject: ${sanitizeMailHeaderValue(params.subject.trim()) || "(no subject)"}`,
+      `Subject: ${encodeMailSubject(params.subject.trim() || "(no subject)")}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=UTF-8",
       ...(params.inReplyTo ? [`In-Reply-To: ${sanitizeMailHeaderValue(params.inReplyTo)}`] : []),
@@ -621,7 +733,7 @@ export class GoogleGmailClient {
     ]);
     const response = await gmail.users.drafts.create({
       userId: "me",
-      requestBody: { message: { raw, threadId: params.threadId } },
+      requestBody: { message: threadId ? { raw, threadId } : { raw } },
     });
     const draftId = response.data.id?.trim();
     if (!draftId) {
@@ -795,14 +907,15 @@ export class GoogleGmailClient {
   }
 
   private async sendRawGmailMessage(
-    params: GoogleAccountRef,
+    params: GoogleAccountRef & { threadId?: string | null },
     raw: string,
     reason: string
   ): Promise<GoogleGmailSendResult> {
     const gmail = await this.clientFactory.gmail(params, ["gmail.send"], reason);
+    const threadId = params.threadId?.trim();
     const response = await gmail.users.messages.send({
       userId: "me",
-      requestBody: { raw },
+      requestBody: threadId ? { raw, threadId } : { raw },
     });
     return {
       messageId: response.data.id ?? null,
@@ -871,6 +984,24 @@ function mapGmailHistoryChange(history: gmail_v1.Schema$History): GoogleGmailHis
   };
 }
 
+function receivedAtFromGmailMessage(
+  message: gmail_v1.Schema$Message,
+  dateHeader: string | undefined
+): string | undefined {
+  // Mailbox time is `internalDate` (epoch ms). The sender Date header is
+  // untrusted; an unparsable value used to throw and abort inbox search.
+  const fromInternal = message.internalDate ? Number(message.internalDate) : Number.NaN;
+  const internalDate = new Date(fromInternal);
+  if (Number.isFinite(internalDate.getTime())) {
+    return internalDate.toISOString();
+  }
+  if (!dateHeader) {
+    return undefined;
+  }
+  const parsed = Date.parse(dateHeader);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined;
+}
+
 function mapMessage(message: gmail_v1.Schema$Message, includeBody: boolean): GoogleMessageSummary {
   const headers = message.payload?.headers ?? [];
   const dateHeader = headerValue(headers, "Date");
@@ -890,7 +1021,7 @@ function mapMessage(message: gmail_v1.Schema$Message, includeBody: boolean): Goo
     to: parseEmailAddresses(headerValue(headers, "To")),
     cc: parseEmailAddresses(headerValue(headers, "Cc")),
     snippet: message.snippet ?? undefined,
-    receivedAt: dateHeader ? new Date(dateHeader).toISOString() : undefined,
+    receivedAt: receivedAtFromGmailMessage(message, dateHeader),
     labelIds: message.labelIds ?? undefined,
     headers: headerMap,
     ...body,
@@ -946,7 +1077,7 @@ function mapRichMessage(
     triageScore: triage.triageScore,
     triageReason: triage.triageReason,
     labels,
-    htmlLink: deriveHtmlLink(threadId, selfEmail),
+    htmlLink: gmailThreadSourceLink(threadId, selfEmail),
     metadata: {
       historyId: message.historyId?.trim() || null,
       sizeEstimate: typeof message.sizeEstimate === "number" ? message.sizeEstimate : null,
@@ -1411,7 +1542,7 @@ function encodeMessage(input: GoogleSendEmailInput): string {
     input.bcc?.length
       ? `Bcc: ${sanitizeMailHeaderValue(formatEmailAddresses(input.bcc))}`
       : undefined,
-    `Subject: ${sanitizeMailHeaderValue(input.subject)}`,
+    `Subject: ${encodeMailSubject(input.subject)}`,
     "MIME-Version: 1.0",
   ].filter(Boolean);
 
@@ -1549,26 +1680,30 @@ function normalizeSnippet(value: string | null | undefined): string {
 }
 
 function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&amp;/gi, "&");
+  const namedEntities: Record<string, string> = {
+    amp: "&",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"',
+  };
+  return value.replace(/&(nbsp|amp|lt|gt|quot|#x[0-9a-f]+|#\d+);/gi, (entity, name: string) => {
+    const key = name.toLowerCase();
+    const named = namedEntities[key];
+    if (named !== undefined) return named;
+    // Gmail HTML writes apostrophes as &#x27; and other characters as numeric references.
+    const hex = /^#x([0-9a-f]+)$/.exec(key);
+    const code = Number.parseInt(hex ? hex[1] : key.slice(1), hex ? 16 : 10);
+    if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) return entity;
+    if (code >= 0xd800 && code <= 0xdfff) return entity;
+    if (code === 0xa0) return " ";
+    return String.fromCodePoint(code);
+  });
 }
 
 function internalDateToIso(value: string | null | undefined): string {
   const ms = value ? Number(value) : Number.NaN;
   return Number.isFinite(ms) ? new Date(ms).toISOString() : new Date().toISOString();
-}
-
-function deriveHtmlLink(threadId: string, accountEmail: string | null): string {
-  const accountSegment =
-    accountEmail && accountEmail.trim().length > 0
-      ? encodeURIComponent(accountEmail.trim().toLowerCase())
-      : "0";
-  return `https://mail.google.com/mail/u/${accountSegment}/#all/${encodeURIComponent(threadId)}`;
 }
 
 function classifyReplyNeed(args: {
@@ -1687,6 +1822,34 @@ function labelsForOperation(
  */
 function sanitizeMailHeaderValue(value: string): string {
   return value.replace(/[\r\n]+/g, " ").trim();
+}
+
+/**
+ * Uses RFC 2047 encoded words for Unicode, long subjects and literal encoded-word
+ * syntax. Each word stays within the MIME line limit, including the Subject
+ * prefix; code-point iteration preserves every UTF-8 character across folds.
+ */
+function encodeMailSubject(value: string): string {
+  const subject = sanitizeMailHeaderValue(value);
+  if (/^[\x20-\x7e]*$/.test(subject) && subject.length <= 67 && !subject.includes("=?")) {
+    return subject;
+  }
+  const words: string[] = [];
+  let chunk = "";
+  let byteLength = 0;
+  for (const character of subject) {
+    const size = Buffer.byteLength(character, "utf8");
+    // 39 UTF-8 bytes produce a 64-character encoded word and a 73-character first line.
+    if (byteLength + size > 39) {
+      words.push(`=?UTF-8?B?${Buffer.from(chunk, "utf8").toString("base64")}?=`);
+      chunk = "";
+      byteLength = 0;
+    }
+    chunk += character;
+    byteLength += size;
+  }
+  if (chunk) words.push(`=?UTF-8?B?${Buffer.from(chunk, "utf8").toString("base64")}?=`);
+  return words.join("\r\n ");
 }
 
 function normalizeReplySubject(subject: string): string {

@@ -4,6 +4,27 @@
  * `@elizaos/plugin-health` into assistant DTOs. All health/circadian domain
  * logic lives in the health plugin; this is a thin owner-access wrapper.
  */
+
+import type {
+  DisconnectLifeOpsHealthConnectorRequest,
+  GetLifeOpsHealthSummaryRequest,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsHealthConnectorCapability,
+  LifeOpsHealthConnectorProvider,
+  LifeOpsHealthConnectorStatus,
+  LifeOpsHealthDailySummary,
+  LifeOpsHealthMetric,
+  LifeOpsHealthMetricSample,
+  LifeOpsHealthSummaryResponse,
+  StartLifeOpsHealthConnectorRequest,
+  StartLifeOpsHealthConnectorResponse,
+  SyncLifeOpsHealthConnectorRequest,
+} from "@elizaos/contracts";
+import {
+  LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
+  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
+} from "@elizaos/contracts";
 import {
   completeHealthConnectorOAuth,
   deleteStoredHealthToken,
@@ -22,27 +43,8 @@ import {
   startHealthConnectorOAuth,
   syncHealthConnectorData,
 } from "@elizaos/plugin-health";
-import type {
-  DisconnectLifeOpsHealthConnectorRequest,
-  GetLifeOpsHealthSummaryRequest,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsHealthConnectorCapability,
-  LifeOpsHealthConnectorProvider,
-  LifeOpsHealthConnectorStatus,
-  LifeOpsHealthDailySummary,
-  LifeOpsHealthMetric,
-  LifeOpsHealthMetricSample,
-  LifeOpsHealthSummaryResponse,
-  StartLifeOpsHealthConnectorRequest,
-  StartLifeOpsHealthConnectorResponse,
-  SyncLifeOpsHealthConnectorRequest,
-} from "../../contracts/index.js";
-import {
-  LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
-  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
-} from "../../contracts/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
+import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsHealthSyncState,
@@ -57,6 +59,11 @@ import {
   normalizeOptionalConnectorSide,
 } from "../service-normalize-connector.js";
 import { LifeOpsServiceError } from "../service-types.js";
+import {
+  getLocalDateKey,
+  getZonedDateParts,
+  parseLocalDateKey,
+} from "../time.js";
 import {
   getHealthDataConnectorStatus,
   getHealthDataConnectorStatuses,
@@ -140,13 +147,12 @@ function normalizeDateOnly(value: unknown, field: string): string | null {
   if (value === undefined || value === null || value === "") {
     return null;
   }
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+  if (typeof value !== "string") {
     fail(400, `${field} must be a YYYY-MM-DD date`);
   }
   const normalized = value.trim();
-  const parsed = Date.parse(`${normalized}T00:00:00.000Z`);
-  if (!Number.isFinite(parsed)) {
-    fail(400, `${field} must be a valid date`);
+  if (parseLocalDateKey(normalized) === null) {
+    fail(400, `${field} must be a valid YYYY-MM-DD calendar date`);
   }
   return normalized;
 }
@@ -166,14 +172,32 @@ function dateOnlyFromMs(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-function resolveHealthWindow(request: {
-  startDate?: string | null;
-  endDate?: string | null;
-  days?: number;
-}): { startDate: string; endDate: string; days: number } {
+/**
+ * The requested health window. Daily samples and sleep are keyed by the
+ * provider's local day, so the default `endDate` is the owner's local date
+ * (a UTC "today" is a day early or late away from UTC). Workouts and the
+ * connector APIs bound by instants, reading dates as UTC days; for them the
+ * default window ends on the later of the owner's and the UTC date
+ * (`instantEndDate`), so it still reaches the present for owners west of UTC.
+ */
+function resolveHealthWindow(
+  request: {
+    startDate?: string | null;
+    endDate?: string | null;
+    days?: number;
+  },
+  today: { owner: string; utc: string },
+): {
+  startDate: string;
+  endDate: string;
+  instantEndDate: string;
+  days: number;
+} {
   const days = normalizeDays(request.days);
-  const endDate =
-    normalizeDateOnly(request.endDate, "endDate") ?? dateOnlyFromMs(Date.now());
+  const explicitEnd = normalizeDateOnly(request.endDate, "endDate");
+  const endDate = explicitEnd ?? today.owner;
+  const instantEndDate =
+    explicitEnd ?? (today.owner > today.utc ? today.owner : today.utc);
   const startDate =
     normalizeDateOnly(request.startDate, "startDate") ??
     dateOnlyFromMs(
@@ -182,7 +206,7 @@ function resolveHealthWindow(request: {
   if (startDate > endDate) {
     fail(400, "startDate must be on or before endDate");
   }
-  return { startDate, endDate, days };
+  return { startDate, endDate, instantEndDate, days };
 }
 
 function normalizeHealthMetrics(
@@ -545,7 +569,10 @@ export class HealthDomain {
     const side =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-    const { startDate, endDate } = resolveHealthWindow(request);
+    const { startDate, instantEndDate } = resolveHealthWindow(
+      request,
+      await this.today(),
+    );
     const requestUrl = new URL("http://127.0.0.1/");
     const statuses = provider
       ? [
@@ -574,7 +601,7 @@ export class HealthDomain {
           token,
           grantId: grant.id,
           startDate,
-          endDate,
+          endDate: instantEndDate,
         });
         for (const sample of payload.samples) {
           await this.ctx.repository.upsertHealthMetricSample(sample);
@@ -657,14 +684,24 @@ export class HealthDomain {
         }
       }
     }
+    // The summary resolves the same window from the request itself, so its
+    // workouts keep the instant-bounded end.
     return this.getHealthSummary({
+      ...request,
       provider,
       side,
       mode,
-      startDate,
-      endDate,
       forceSync: false,
     });
+  }
+
+  private async today(): Promise<{ owner: string; utc: string }> {
+    const now = new Date();
+    const timeZone = await resolveOwnerTimeZone(this.ctx.runtime, now);
+    return {
+      owner: getLocalDateKey(getZonedDateParts(now, timeZone)),
+      utc: dateOnlyFromMs(now.getTime()),
+    };
   }
 
   async getHealthSummary(
@@ -674,14 +711,19 @@ export class HealthDomain {
     const side =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-    const { startDate, endDate } = resolveHealthWindow(request);
+    const { startDate, endDate, instantEndDate } = resolveHealthWindow(
+      request,
+      await this.today(),
+    );
     if (request.forceSync) {
+      // The request's own dates, so the sync resolves the same window and
+      // keeps its instant-bounded end.
       return this.syncHealthConnectors({
         provider,
         side,
         mode,
-        startDate,
-        endDate,
+        startDate: request.startDate,
+        endDate: request.endDate,
         days: request.days,
       });
     }
@@ -710,7 +752,7 @@ export class HealthDomain {
       this.ctx.repository.listHealthWorkouts(this.ctx.agentId(), {
         provider,
         startDate,
-        endDate,
+        endDate: instantEndDate,
         limit: 500,
       }),
       this.ctx.repository.listHealthSleepEpisodes(this.ctx.agentId(), {
@@ -730,29 +772,50 @@ export class HealthDomain {
     };
   }
 
-  async getHealthDailySummary(date: string): Promise<HealthDailySummary> {
+  async getHealthDailySummary(
+    date: string,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary> {
     try {
-      return await getDailySummary(date, resolveHealthConfig());
+      // `date` is the owner's local calendar day; the bridge bounds it in the
+      // same zone, as getHealthTrend does for its window.
+      return await getDailySummary(date, {
+        ...resolveHealthConfig(),
+        timeZone: window.timeZone,
+      });
     } catch (error) {
       translateHealthError(error);
     }
   }
 
-  async getHealthTrend(days: number): Promise<HealthDailySummary[]> {
+  async getHealthTrend(
+    days: number,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary[]> {
     try {
-      return await getRecentSummaries(days, resolveHealthConfig());
+      return await getRecentSummaries(days, {
+        ...resolveHealthConfig(),
+        timeZone: window.timeZone,
+      });
     } catch (error) {
       translateHealthError(error);
     }
   }
 
-  async getHealthDataPoints(opts: {
-    metric: HealthDataPoint["metric"];
-    startAt: string;
-    endAt: string;
-  }): Promise<HealthDataPoint[]> {
+  async getHealthDataPoints(
+    opts: {
+      metric: HealthDataPoint["metric"];
+      startAt: string;
+      endAt: string;
+    },
+    window: { timeZone: string },
+  ): Promise<HealthDataPoint[]> {
     try {
-      return await getDataPoints(opts, resolveHealthConfig());
+      // Sleep series are per local calendar day in the owner's zone.
+      return await getDataPoints(opts, {
+        ...resolveHealthConfig(),
+        timeZone: window.timeZone,
+      });
     } catch (error) {
       translateHealthError(error);
     }

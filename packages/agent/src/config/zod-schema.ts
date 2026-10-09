@@ -47,7 +47,6 @@ import {
   YoutubeStreamConfigSchema,
 } from "./zod-schema.providers-core.ts";
 import {
-  CommandsSchema,
   MessagesSchema,
   SessionSchema,
   SessionSendPolicySchema,
@@ -589,7 +588,6 @@ export const ElizaSchema = z
     audio: AudioSchema,
     media: MediaConfigSchema,
     messages: MessagesSchema,
-    commands: CommandsSchema,
     approvals: ApprovalsSchema,
     session: SessionSchema,
     cron: z

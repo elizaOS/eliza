@@ -1,7 +1,10 @@
 /**
- * Merged Monetization surface: Earnings (redemptions) + Affiliates (referrals)
- * as two tabs. This is the single monetization home, registered as the
- * `cloud-monetization` settings section.
+ * Merged Monetization surface: the read-only creator earnings statement and
+ * Affiliates (referrals) as two tabs. This is the single monetization home,
+ * registered as the `cloud-monetization` settings section.
+ *
+ * Creator monetization is retired (#22961 / #23022), so the Earnings tab is a
+ * statement of frozen balances and offers no payout action.
  *
  * The settings-section registry renders a zero-prop `Component`; the settings
  * view is mounted inside the cloud settings shell, which supplies the
@@ -20,7 +23,7 @@ import {
 } from "../../components/ui/tabs";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AffiliatesSurface } from "./affiliates/AffiliatesSurface";
-import { EarningsSurface } from "./earnings/EarningsSurface";
+import { CreatorEarningsStatement } from "./CreatorEarningsStatement";
 
 export function MonetizationView() {
   const t = useCloudT();
@@ -46,7 +49,7 @@ export function MonetizationView() {
       </TabsList>
 
       <TabsContent value="earnings">
-        <EarningsSurface />
+        <CreatorEarningsStatement />
       </TabsContent>
       <TabsContent value="affiliates">
         <AffiliatesSurface />

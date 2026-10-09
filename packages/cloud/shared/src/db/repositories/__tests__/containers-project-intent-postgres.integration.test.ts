@@ -236,6 +236,22 @@ beforeAll(async () => {
       created_at timestamp NOT NULL DEFAULT now(),
       updated_at timestamp NOT NULL DEFAULT now()
     )`,
+    `CREATE TABLE organization_payment_reversal_holds (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL,
+      reason text NOT NULL,
+      stripe_dispute_id text,
+      clawback_transaction_id uuid UNIQUE,
+      shortfall_usd numeric(16,6),
+      outstanding_usd numeric(16,6),
+      stripe_charge_id text,
+      stripe_payment_intent_id text,
+      amount_cents bigint,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      released_at timestamptz,
+      released_by text,
+      release_reason text
+    )`,
   ];
   for (const statement of ddl) {
     await database.execute(statement);

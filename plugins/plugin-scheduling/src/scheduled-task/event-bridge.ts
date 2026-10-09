@@ -100,6 +100,7 @@ export async function fireEventTriggeredTasks(
     if (!eventFilterMatches(task.trigger.filter, args.payload)) continue;
     try {
       const result = await args.runner.fireWithResult(task.taskId, {
+        cause: "automatic",
         eventPayload: args.payload,
       });
       outcome.results.push({ taskId: task.taskId, result });

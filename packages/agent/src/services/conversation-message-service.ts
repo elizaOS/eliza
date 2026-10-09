@@ -5,6 +5,7 @@
  */
 import {
   type AgentRuntime,
+  compareMemoryIds,
   ElizaError,
   type Memory,
   type UUID,
@@ -36,6 +37,12 @@ export async function deleteConversationMemories(
 ): Promise<number> {
   if (memoryIds.length === 0) return 0;
   const deletable = runtime as DeletableRuntime;
+  // The canonical runtime boundary also retires derived source evidence and
+  // invalidates room reads. A direct adapter delete bypasses those guarantees.
+  if (typeof runtime.deleteMemories === "function") {
+    await runtime.deleteMemories(memoryIds);
+    return memoryIds.length;
+  }
   if (typeof deletable.deleteManyMemories === "function") {
     await deletable.deleteManyMemories(memoryIds);
     return memoryIds.length;
@@ -95,7 +102,8 @@ function cursorFollows(
 ): boolean {
   return (
     next.createdAt > previous.createdAt ||
-    (next.createdAt === previous.createdAt && next.id > previous.id)
+    (next.createdAt === previous.createdAt &&
+      compareMemoryIds(next.id, previous.id) > 0)
   );
 }
 

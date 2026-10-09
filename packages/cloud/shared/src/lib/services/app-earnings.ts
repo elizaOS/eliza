@@ -6,11 +6,8 @@ import { ElizaError } from "@elizaos/core";
 import {
   type AppEarningsTransaction,
   appEarningsRepository,
-  type NewAppEarningsTransaction,
 } from "../../db/repositories/app-earnings";
 import { parseEarningsNumber } from "../../db/repositories/app-earnings-numeric";
-import { appsRepository } from "../../db/repositories/apps";
-import { isUniqueConstraintError } from "../utils/db-errors";
 import { logger } from "../utils/logger";
 
 /**
@@ -165,19 +162,17 @@ export class AppEarningsService {
       type?: "inference_markup" | "purchase_share" | "withdrawal" | "adjustment";
     },
   ): Promise<AppEarningsTransaction[]> {
+    // An omitted or non-finite limit is the default page of 50. An explicit
+    // finite limit, including 0, is a page — `limit || 50` treated 0 as missing,
+    // and `Math.max(0, NaN)` is `NaN`.
+    const rawLimit = options?.limit;
+    const limit =
+      typeof rawLimit === "number" && Number.isFinite(rawLimit) ? Math.max(0, rawLimit) : 50;
     if (options?.type) {
-      return await appEarningsRepository.listTransactionsByType(
-        appId,
-        options.type,
-        options?.limit || 50,
-      );
+      return await appEarningsRepository.listTransactionsByType(appId, options.type, limit);
     }
 
-    return await appEarningsRepository.listTransactions(
-      appId,
-      options?.limit || 50,
-      options?.offset || 0,
-    );
+    return await appEarningsRepository.listTransactions(appId, limit, options?.offset || 0);
   }
 
   async updatePayoutThreshold(appId: string, threshold: number): Promise<void> {
@@ -193,163 +188,6 @@ export class AppEarningsService {
     await appEarningsRepository.updatePayoutThreshold(appId, threshold);
 
     logger.info("[AppEarnings] Updated payout threshold", { appId, threshold });
-  }
-
-  /**
-   * Request a withdrawal of app earnings.
-   *
-   * NOTE: This creates a withdrawal request that is processed manually.
-   * The actual payout happens through the creator's redeemable earnings balance,
-   * which was credited when the earnings were originally recorded.
-   *
-   * The withdrawal here tracks that the creator has requested these funds
-   * and prevents them from being withdrawn again from this app's balance.
-   *
-   * @param idempotencyKey - Optional client-provided key for request deduplication
-   */
-  async requestWithdrawal(
-    appId: string,
-    amount: number,
-    idempotencyKey?: string,
-  ): Promise<{ success: boolean; message: string; transactionId?: string }> {
-    // NaN bypasses the repository's comparison guards and would poison the
-    // NUMERIC transaction history, so reject invalid amounts before any write.
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return {
-        success: false,
-        message: "Withdrawal amount must be a positive, finite number",
-      };
-    }
-
-    // Idempotent fast path: return the prior transaction if this key already ran.
-    if (idempotencyKey) {
-      const existing = await appEarningsRepository.findTransactionByIdempotencyKeyOnPrimary(
-        appId,
-        idempotencyKey,
-      );
-      if (existing) {
-        return this.idempotentWithdrawalResult(appId, idempotencyKey, existing);
-      }
-    }
-
-    const app = await appsRepository.findById(appId);
-    if (!app) {
-      return { success: false, message: "App not found" };
-    }
-
-    if (!app.monetization_enabled) {
-      return {
-        success: false,
-        message: "Monetization is not enabled for this app",
-      };
-    }
-
-    const metadata = {
-      requested_at: new Date().toISOString(),
-      status: "completed",
-      note: "Earnings are available in your redeemable balance for redemption as elizaOS tokens",
-      ...(idempotencyKey && { idempotencyKey }),
-    };
-
-    const transactionData: NewAppEarningsTransaction = {
-      app_id: appId,
-      type: "withdrawal",
-      amount: String(-amount),
-      description: `Withdrawal request: $${amount.toFixed(2)}`,
-      metadata,
-    };
-
-    // Claim the idempotency key and debit in one write transaction. The partial
-    // unique index on (app_id, metadata->>'idempotencyKey') WHERE type='withdrawal'
-    // is the concurrency gate (#10878); the transaction keeps a retry from seeing
-    // a phantom claim when validation or the conditional debit fails.
-    if (idempotencyKey) {
-      let result: Awaited<ReturnType<typeof appEarningsRepository.processIdempotentWithdrawal>>;
-      try {
-        result = await appEarningsRepository.processIdempotentWithdrawal(
-          appId,
-          amount,
-          transactionData,
-        );
-      } catch (err) {
-        if (!isUniqueConstraintError(err)) throw err;
-        // Lost the race: another request already claimed this key. Return its
-        // result idempotently WITHOUT debiting. PostgreSQL waits on a conflicting
-        // uncommitted unique-index entry before raising 23505, so this primary
-        // read sees the committed winner without read-replica lag.
-        const winner = await appEarningsRepository.findTransactionByIdempotencyKeyOnPrimary(
-          appId,
-          idempotencyKey,
-        );
-        if (winner) {
-          return this.idempotentWithdrawalResult(appId, idempotencyKey, winner);
-        }
-        // Defensive only: we never debited. The client can poll again.
-        logger.warn(
-          "[AppEarnings] Concurrent withdrawal for idempotency key; winner not yet readable",
-          { appId, idempotencyKey },
-        );
-        return {
-          success: false,
-          message: "Withdrawal already in progress for this request.",
-        };
-      }
-
-      if (!result.success) {
-        return { success: false, message: result.message };
-      }
-
-      logger.info("[AppEarnings] Withdrawal requested", {
-        appId,
-        amount,
-        transactionId: result.transaction?.id,
-        idempotencyKey,
-      });
-
-      return {
-        success: true,
-        message: `$${amount.toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
-        transactionId: result.transaction?.id,
-      };
-    }
-
-    const result = await appEarningsRepository.processWithdrawal(appId, amount);
-    if (!result.success) {
-      return { success: false, message: result.message };
-    }
-
-    const transaction = await appEarningsRepository.createTransaction(transactionData);
-
-    logger.info("[AppEarnings] Withdrawal requested", {
-      appId,
-      amount,
-      transactionId: transaction.id,
-      idempotencyKey,
-    });
-
-    return {
-      success: true,
-      message: `$${amount.toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
-      transactionId: transaction.id,
-    };
-  }
-
-  /** The response for a withdrawal request that a prior call already recorded. */
-  private idempotentWithdrawalResult(
-    appId: string,
-    idempotencyKey: string,
-    existing: AppEarningsTransaction,
-  ): { success: boolean; message: string; transactionId?: string } {
-    logger.info("[AppEarnings] Idempotent withdrawal request (duplicate)", {
-      appId,
-      idempotencyKey,
-      existingTransactionId: existing.id,
-    });
-    return {
-      success: true,
-      message: `$${Math.abs(parseEarningsNumber(existing.amount, "withdrawal_amount")).toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
-      transactionId: existing.id,
-    };
   }
 }
 

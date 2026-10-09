@@ -1,14 +1,12 @@
+/** Exposes Android Wi-Fi state and system-managed connection suggestions to Capacitor. */
 package ai.eliza.plugins.wifi
 
 import android.Manifest
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkRequest
 import android.net.wifi.ScanResult
 import android.net.wifi.WifiConfiguration
+import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
-import android.net.wifi.WifiNetworkSpecifier
-import android.net.wifi.WifiNetworkSuggestion
 import android.os.Build
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
@@ -33,10 +31,6 @@ class WiFiPlugin : Plugin() {
     private val wifiManager: WifiManager?
         get() = context.applicationContext
             .getSystemService(Context.WIFI_SERVICE) as? WifiManager
-
-    private val connectivityManager: ConnectivityManager?
-        get() = context.applicationContext
-            .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
 
     /** Cache of the last scan completion timestamp for the `maxAge` shortcut. */
     private var lastScanCompletedAtMs: Long = 0L
@@ -87,7 +81,22 @@ class WiFiPlugin : Plugin() {
         network.put("rssi", info.rssi)
         network.put("frequency", info.frequency)
         network.put("capabilities", "")
-        network.put("secured", false)
+        val secured = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            when (info.currentSecurityType) {
+                WifiInfo.SECURITY_TYPE_UNKNOWN -> null
+                WifiInfo.SECURITY_TYPE_OPEN, WifiInfo.SECURITY_TYPE_OWE -> false
+                else -> true
+            }
+        } else if (hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
+            manager.scanResults.firstOrNull { it.BSSID == info.bssid }?.let {
+                WiFiStateReader.isSecured(it.capabilities)
+            }
+        } else null
+        if (secured == null) {
+            call.reject("Android did not expose security details for the active Wi-Fi network", "NETWORK_SECURITY_UNAVAILABLE")
+            return
+        }
+        network.put("secured", secured)
         result.put("network", network)
         call.resolve(result)
     }
@@ -164,11 +173,25 @@ class WiFiPlugin : Plugin() {
             call.reject("Wi-Fi service is unavailable on this device")
             return
         }
-        val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            connectViaSuggestion(manager, ssid, password, hidden)
-        } else {
-            @Suppress("DEPRECATION")
-            connectViaLegacyConfig(manager, ssid, password, hidden)
+        val ok = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                WiFiConnectionRequests.suggest(manager, ssid, password, hidden)
+            } else {
+                @Suppress("DEPRECATION")
+                connectViaLegacyConfig(manager, ssid, password, hidden)
+            }
+        } catch (error: IllegalArgumentException) {
+            // error-policy:J3 Invalid SSIDs and passphrases reject before a connection is requested.
+            call.reject("Invalid Wi-Fi connection options: ${error.message}", "INVALID_ARGUMENT", error)
+            return
+        } catch (error: SecurityException) {
+            // error-policy:J1 Android permission and app-op denials cross the Capacitor boundary explicitly.
+            call.reject("Android denied the Wi-Fi connection request", "PERMISSION_DENIED", error)
+            return
+        } catch (error: IllegalStateException) {
+            // error-policy:J1 Service or suggestion replacement failures are not accepted connections.
+            call.reject("Wi-Fi connection request failed: ${error.message}", "WIFI_REQUEST_FAILED", error)
+            return
         }
         val response = JSObject()
         response.put("success", ok)
@@ -204,46 +227,6 @@ class WiFiPlugin : Plugin() {
     // -----------------------------------------------------------------------
 
     /**
-     * Modern (API 29+) connect path. Adds a network suggestion plus a
-     * matching `NetworkRequest` so the system attempts a connection on our
-     * behalf. Returns true when the suggestion was accepted; the actual
-     * connection state should be observed via `getConnectedNetwork`.
-     */
-    private fun connectViaSuggestion(
-        manager: WifiManager,
-        ssid: String,
-        password: String?,
-        hidden: Boolean,
-    ): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
-        val suggestionBuilder = WifiNetworkSuggestion.Builder()
-            .setSsid(ssid)
-            .setIsHiddenSsid(hidden)
-        if (!password.isNullOrEmpty()) {
-            suggestionBuilder.setWpa2Passphrase(password)
-        }
-        val suggestion = suggestionBuilder.build()
-        // Replace any prior suggestions for the same SSID before re-adding.
-        manager.removeNetworkSuggestions(listOf(suggestion))
-        val addStatus = manager.addNetworkSuggestions(listOf(suggestion))
-        if (addStatus != WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS) {
-            return false
-        }
-        val specifierBuilder = WifiNetworkSpecifier.Builder()
-            .setSsid(ssid)
-            .setIsHiddenSsid(hidden)
-        if (!password.isNullOrEmpty()) {
-            specifierBuilder.setWpa2Passphrase(password)
-        }
-        val request = NetworkRequest.Builder()
-            .addTransportType(android.net.NetworkCapabilities.TRANSPORT_WIFI)
-            .setNetworkSpecifier(specifierBuilder.build())
-            .build()
-        connectivityManager?.requestNetwork(request, NoOpNetworkCallback)
-        return true
-    }
-
-    /**
      * Legacy connect path for API 23–28. Uses the deprecated
      * `WifiConfiguration` API which still works for system / privileged
      * callers (Eliza ships as a privileged system app).
@@ -272,6 +255,4 @@ class WiFiPlugin : Plugin() {
         return enabled
     }
 
-    /** Empty callback for the `requestNetwork` call — connection state is queried separately. */
-    private object NoOpNetworkCallback : ConnectivityManager.NetworkCallback()
 }

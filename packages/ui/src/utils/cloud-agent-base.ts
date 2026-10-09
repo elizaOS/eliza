@@ -9,14 +9,13 @@ import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 
 function stripTrailingSlash(value: string): string {
   let end = value.length;
   while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
   return value.slice(0, end);
 }
-
 function normalizeHttpUrl(value: string): URL | null {
   try {
     const url = new URL(value);
@@ -26,7 +25,6 @@ function normalizeHttpUrl(value: string): URL | null {
     return null;
   }
 }
-
 function directSharedAgentPath(pathname: string): {
   apiPath: string;
   hasBridgeSuffix: boolean;
@@ -40,7 +38,6 @@ function directSharedAgentPath(pathname: string): {
     hasBridgeSuffix,
   };
 }
-
 /**
  * Shared-runtime Cloud agents expose REST at
  * `/api/v1/eliza/agents/:id` and JSON-RPC at the sibling `/bridge`.
@@ -57,7 +54,6 @@ export function normalizeDirectCloudSharedAgentApiBase(value: string): string {
   url.hash = "";
   return stripTrailingSlash(url.toString());
 }
-
 /**
  * Extract the agent id from a direct shared-runtime Cloud agent base. Shared
  * agents expose exactly one REST conversation and its id is the agent id, so
@@ -81,14 +77,12 @@ export function directCloudSharedAgentIdFromBase(
     return null;
   }
 }
-
 /** Account-native Shared ids are stable identities, not sandbox row UUIDs. */
 export function isPersonalSharedElizaId(value: string): boolean {
   return /^personal:[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
   );
 }
-
 /**
  * True only for shared-runtime adapter paths on a trusted Eliza Cloud
  * control-plane host. Path-only classification is intentionally broader for
@@ -102,11 +96,9 @@ export function isManagedCloudSharedAgentBase(
   const url = normalizeHttpUrl(value.trim());
   return Boolean(url && isElizaCloudControlPlaneHostname(url.hostname));
 }
-
 function hostnameOf(origin: string): string {
   return new URL(origin).hostname;
 }
-
 /**
  * Eliza Cloud control-plane hostnames. The bare origin (and the
  * `/api/v1/eliza/agents` collection) on any of these is NOT a per-agent base —
@@ -128,16 +120,13 @@ export const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.cloudAppHostnames,
   ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.cloudApiHostnames,
 ]);
-
 export function isStagingCloudHostname(hostname: string): boolean {
   return classifyElizaHostname(hostname).environment === "staging";
 }
-
 const PROD_CLOUD_ENVIRONMENT_BASE =
   ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin;
 const STAGING_CLOUD_ENVIRONMENT_BASE =
   ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin;
-
 /**
  * Choose the Cloud environment origin used when rebuilding a dedicated-agent
  * ingress. Prefer the live page host and an already-staging persisted base
@@ -162,14 +151,12 @@ export function resolveCloudEnvironmentBase(options: {
   ) {
     return PROD_CLOUD_ENVIRONMENT_BASE;
   }
-
   const activeUrl = options.apiBase
     ? normalizeHttpUrl(options.apiBase.trim())
     : null;
   if (activeUrl && isStagingCloudHostname(activeUrl.hostname)) {
     return STAGING_CLOUD_ENVIRONMENT_BASE;
   }
-
   const boot = options.bootCloudApiBase?.trim() ?? "";
   const bootUrl = boot ? normalizeHttpUrl(boot) : null;
   if (bootUrl && isStagingCloudHostname(bootUrl.hostname)) {
@@ -178,10 +165,8 @@ export function resolveCloudEnvironmentBase(options: {
   if (bootUrl) {
     return stripTrailingSlash(bootUrl.toString());
   }
-
   return options.fallback?.trim() || PROD_CLOUD_ENVIRONMENT_BASE;
 }
-
 /**
  * Build the shared-runtime REST adapter base for a known agent id:
  * `<cloudApiBase>/api/v1/eliza/agents/<agentId>`. This is the base where a
@@ -195,7 +180,6 @@ export function buildCloudSharedAgentApiBase(
   const base = stripTrailingSlash(cloudApiBase.trim());
   return `${base}/api/v1/eliza/agents/${encodeURIComponent(agentId.trim())}`;
 }
-
 /**
  * Build the dedicated Cloud agent REST base for the standard
  * `<agentId>.cloud.eliza.app` production ingress or the environment-matched
@@ -218,7 +202,6 @@ export function buildDedicatedCloudAgentApiBase(
       : "production";
   return buildElizaDedicatedAgentOrigin(label, environment);
 }
-
 /**
  * True when `value` is an agent-id-LESS cloud base — either an empty/blank value,
  * a bare origin, or the `/api/v1/eliza/agents` collection (no `/<agentId>`).
@@ -235,7 +218,6 @@ export function isCloudAgentsCollectionBase(
   const path = stripTrailingSlash(url.pathname);
   return path === "" || path === "/api/v1/eliza/agents";
 }
-
 /**
  * True when `value` points at an Eliza Cloud control-plane host with NO agent id
  * selected (bare origin or the agents collection). This is the "signed in but no
@@ -253,12 +235,10 @@ export function isElizaCloudControlPlaneAgentlessBase(
   }
   return isCloudAgentsCollectionBase(value);
 }
-
 const TRUSTED_ELIZA_APP_PAGES_ORIGINS = new Set([
   "https://develop.eliza-app.pages.dev",
   "https://staging.eliza-app.pages.dev",
 ]);
-
 /**
  * True when an agentless browser host is trusted to own hosted Cloud
  * onboarding. Canonical and legacy control-plane origins are always trusted.
@@ -274,15 +254,12 @@ export function isTrustedHostedCloudOnboardingBase(
 ): boolean {
   if (isElizaCloudControlPlaneAgentlessBase(value)) return true;
   if (!cloudOnlyBranding || !value?.trim()) return false;
-
   const url = normalizeHttpUrl(value.trim());
   if (url?.protocol !== "https:" || !isCloudAgentsCollectionBase(value)) {
     return false;
   }
-
   return TRUSTED_ELIZA_APP_PAGES_ORIGINS.has(url.origin.toLowerCase());
 }
-
 /**
  * True when `value` is a DEDICATED cloud agent base — an agent that lives on its
  * own `<agentId>.cloud.eliza.app` subdomain (not a control-plane host, not the
@@ -311,7 +288,6 @@ export function isDedicatedCloudAgentBase(
     host === "::1"
   );
 }
-
 /**
  * Extract the agent id from a dedicated cloud agent base
  * (`https://<agentId>.cloud.eliza.app` or its staging equivalent) — the
@@ -331,7 +307,6 @@ export function dedicatedCloudAgentIdFromBase(
   );
   return match?.[1]?.toLowerCase() ?? null;
 }
-
 /** Production managed Eliza origin, where the agent app and Cloud management
  * routes are consolidated under `cloud.eliza.app`. */
 export const PROD_ELIZA_APP_ORIGIN =
@@ -340,7 +315,6 @@ export const PROD_ELIZA_APP_ORIGIN =
  * `cloud-staging.eliza.app` uses a different tenant/session from production. */
 export const STAGING_ELIZA_APP_ORIGIN =
   ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin;
-
 /**
  * Resolve the Eliza *app* origin (the create-agent / "Open Eliza app" target)
  * for the CURRENT console host. The console dashboard has no create-agent flow
@@ -362,7 +336,6 @@ export function resolveElizaAppOrigin(
   }
   return PROD_ELIZA_APP_ORIGIN;
 }
-
 /**
  * Browser-safe wrapper: resolve the Eliza app origin from the live
  * `window.location.hostname`. Falls back to the prod app origin when there is

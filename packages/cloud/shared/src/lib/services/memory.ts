@@ -1,13 +1,14 @@
 // Coordinates cloud service memory behavior behind route handlers.
+
 import type { AgentRuntime, Content, Memory, UUID } from "@elizaos/core";
 import { assertModelOutputComplete, ChannelType, stringToUuid } from "@elizaos/core";
+import { memoryTable, participantTable } from "@elizaos/plugin-sql";
 import { streamText } from "ai";
 import { createHash } from "crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { dbRead } from "../../db/client";
 import type { ConversationMessage } from "../../db/repositories";
-import { memoryTable, participantTable } from "../../db/schemas/eliza";
 import { users } from "../../db/schemas/users";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { type MemoryRoomContext, memoryCache, type SearchResult } from "../cache/memory-cache";
@@ -17,6 +18,7 @@ import { userContextService } from "../eliza/user-context";
 import { getLanguageModel } from "../providers/language-model";
 import { logger } from "../utils/logger";
 import { conversationsService } from "./conversations";
+import { memoryTimelineDate } from "./memory-timeline";
 
 /**
  * Memory service for managing Eliza agent memories and conversation summaries.
@@ -730,7 +732,7 @@ Summary:`;
 
       case "timeline": {
         const timelineData = memories.map((m) => ({
-          date: new Date(m.memory.createdAt || Date.now()),
+          date: memoryTimelineDate(m.memory.createdAt),
           type: m.memory.content.type || "unknown",
         }));
 

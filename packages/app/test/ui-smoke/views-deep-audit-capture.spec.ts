@@ -6,6 +6,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   hideChatOverlay,
   installDefaultAppRoutes,
@@ -15,9 +16,8 @@ import {
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 import { seedBackgroundStorage } from "./helpers/view-background";
 
-const OUT_DIR = path.join(
-  process.cwd(),
-  "test-results",
+const OUT_DIR = testOutputPath(
+  "app",
   "ui-smoke-artifacts",
   "views-ux-audit-2026-07-04",
   "deep-subviews",

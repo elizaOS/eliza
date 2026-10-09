@@ -58,7 +58,7 @@ import {
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 export type {
   RemoteRunnerClient,
@@ -758,6 +758,7 @@ export class RemoteCodingCapabilityRouterService
     return {
       path: target,
       bytesWritten: Buffer.byteLength(params.text, "utf8"),
+      requestedPath: params.path,
     };
   }
 

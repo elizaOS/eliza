@@ -1,11 +1,10 @@
 {
   "compilerOptions": {
+    "customConditions": ["eliza-source"],
     "target": "ESNext",
     "module": "ESNext",
     "lib": ["ESNext", "DOM"],
     "moduleResolution": "bundler",
-    "rootDir": "../..",
-    "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -22,13 +21,8 @@
     "allowArbitraryExtensions": true,
     "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
-      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
-      "@elizaos/logger/*": ["../../packages/logger/src/*"],
-      "@elizaos/auth": ["../../packages/auth/src/index.ts"],
-      "@elizaos/auth/*": ["../../packages/auth/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"]
+      "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     },
     "noUnusedLocals": false,
     "noUnusedParameters": false,
@@ -36,7 +30,9 @@
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": false,
     "noUncheckedIndexedAccess": false,
-    "noPropertyAccessFromIndexSignature": false
+    "noPropertyAccessFromIndexSignature": false,
+    "jsx": "react-jsx",
+    "rootDir": "../.."
   },
   "include": ["**/*.ts"],
   "exclude": [
@@ -48,6 +44,8 @@
     "**/*.test.ts",
     "**/*.e2e.test.ts",
     "**/*.test.tsx",
-    "build.ts"
+    "build.ts",
+    "ui/**",
+    "src/ui/**"
   ]
 }

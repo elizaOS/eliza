@@ -14,13 +14,13 @@ import path from "node:path";
 import {
   buildAndPackReleaseCandidate,
   loadReleaseState,
-} from "../lib/release-candidate.mjs";
+} from "../lib/release-candidate.ts";
 import {
   inspectRegistryChannel,
   inspectReleaseRegistry,
   publishReleaseCandidate,
   verifyPromotedReleaseCandidate,
-} from "../lib/release-registry.mjs";
+} from "../lib/release-registry.ts";
 
 const roots: string[] = [];
 const processes: ChildProcess[] = [];
@@ -55,10 +55,11 @@ function evidencePath(...parts: string[]) {
 
 function preserveEvidence(
   candidateDirectory: string,
+  channel: string,
   receipt: Record<string, unknown>,
   logs: string,
 ) {
-  const target = evidencePath();
+  const target = evidencePath(channel);
   if (!target) return;
   fs.mkdirSync(target, { recursive: true });
   fs.cpSync(candidateDirectory, path.join(target, "candidate"), {
@@ -286,7 +287,7 @@ async function waitForExit(child: ChildProcess) {
   await new Promise<void>((resolve) => child.once("exit", () => resolve()));
 }
 
-test("real Verdaccio transport failure resumes only the integrity-matched partial publication", async () => {
+async function verifyChannelResume(channel: string) {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "release-verdaccio-"));
   roots.push(base);
   const fixture = makeRepo(base);
@@ -306,7 +307,7 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
       "@eliza-release-integration/b",
     ],
     version: "1.0.0",
-    channel: "beta",
+    channel,
     sourceSha: fixture.sourceSha,
     expectedCommit: fixture.sourceSha,
     repository: "elizaOS/eliza",
@@ -412,7 +413,7 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
     const publicVersion = await inspectRegistryChannel({
       registryUrl: resumedServer.registryUrl,
       packageRecord,
-      channel: "beta",
+      channel,
       token,
     });
     const candidateVersion = await inspectRegistryChannel({
@@ -425,7 +426,7 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
     expect(candidateVersion).toBeNull();
     channels.push({
       name: packageRecord.name,
-      beta: publicVersion,
+      [channel]: publicVersion,
       candidateTag: candidate.plan.candidateTag,
       candidateVersion,
     });
@@ -451,10 +452,10 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
   });
   expect(promoted).toMatchObject({
     state: "channel-promoted",
-    channel: "beta",
+    channel,
     channels: candidate.plan.packages.map(({ name }) => ({
       name,
-      channel: "beta",
+      channel,
       version: "1.0.0",
       candidateTagRemoved: true,
     })),
@@ -479,6 +480,7 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
   ).rejects.toThrow("Candidate registry is");
   preserveEvidence(
     candidateDirectory,
+    channel,
     {
       transport: "ephemeral local Verdaccio",
       sourceSha: fixture.sourceSha,
@@ -493,4 +495,10 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
     },
     resumedServer.logs(),
   );
-}, 120_000);
+}
+
+test.each(["beta", "next", "latest"])(
+  "real Verdaccio %s transport failure resumes only the integrity-matched partial publication",
+  verifyChannelResume,
+  120_000,
+);

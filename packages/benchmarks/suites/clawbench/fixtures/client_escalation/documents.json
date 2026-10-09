@@ -1,0 +1,12 @@
+[
+  {
+    "id": "doc_001",
+    "title": "Incident Response Playbook",
+    "content": "# Incident Response\n\n## P0 Procedure\n1. Assign incident commander\n2. Create incident channel or use #incidents\n3. Identify root cause\n4. Communicate ETA to stakeholders within 1 hour\n5. Deploy fix through hotfix pipeline\n6. Notify affected customers\n7. Write postmortem within 48 hours\n\n## Escalation Path\n- P0: Engineering Manager -> Director -> VP\n- Client-facing: Loop in Customer Success within 30 minutes"
+  },
+  {
+    "id": "doc_002",
+    "title": "Q1 OKRs Template",
+    "content": "# Q1 2026 OKRs — Platform Team\n\n## Key Results (fill in confidence 1-10)\n- KR1: Reduce P95 API latency to <200ms (confidence: __)\n- KR2: Ship Dashboard V2 beta (confidence: __)\n- KR3: Complete auth migration (confidence: __)\n- KR4: Zero P0 incidents lasting >4 hours (confidence: __)"
+  }
+]

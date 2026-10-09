@@ -800,7 +800,8 @@ describe("personal account deletion reservation", () => {
     expect(restoredOrganization).toMatchObject({
       is_active: true,
       auto_top_up_enabled: true,
-      pay_as_you_go_from_earnings: true,
+      // Earnings-funded hosting is retired (#22961 / #23022): restore never re-enables it.
+      pay_as_you_go_from_earnings: false,
       account_lifecycle_state: "active",
       account_lifecycle_revision: 2,
       account_deletion_request_id: null,

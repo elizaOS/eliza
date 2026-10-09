@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elizaos.ai/schemas/os-release-manifest.schema.json",
+  "title": "elizaOS operating-system release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "release", "artifacts"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "release": {
+      "type": "object"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "target",
+          "filename",
+          "status",
+          "sizeBytes",
+          "sha256",
+          "signature",
+          "validation"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["iso-hybrid", "raw-image", "android-image", "vm-bundle"]
+          },
+          "target": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["platform", "architecture", "device"],
+            "properties": {
+              "platform": {
+                "type": "string",
+                "enum": ["linux", "macos", "windows", "android", "cuttlefish"]
+              },
+              "architecture": {
+                "type": "string",
+                "enum": ["amd64", "x86_64", "arm64", "aarch64", "riscv64", "universal"]
+              },
+              "device": {
+                "type": "string",
+                "minLength": 1
+              },
+              "hypervisor": {
+                "type": ["string", "null"]
+              },
+              "firmware": {
+                "type": ["string", "null"]
+              }
+            }
+          },
+          "filename": {
+            "type": "string",
+            "pattern": "^[^/\\\\]+$"
+          },
+          "downloadUrl": {
+            "type": ["string", "null"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["planned", "candidate", "published", "withdrawn"]
+          },
+          "sizeBytes": {
+            "type": ["integer", "null"],
+            "minimum": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "signature": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status", "url"],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["pending", "signed", "unavailable"]
+              },
+              "url": {
+                "type": ["string", "null"]
+              }
+            }
+          },
+          "inputs": {
+            "type": "object"
+          },
+          "validation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requiredEvidence", "evidence"],
+            "properties": {
+              "requiredEvidence": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "status", "path"],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["missing", "planned", "collected", "failed"]
+                    },
+                    "path": {
+                      "type": ["string", "null"]
+                    },
+                    "notes": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

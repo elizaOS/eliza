@@ -1,664 +1,265 @@
-"""
-RL Training orchestration for Feed
+"""Public RL types and operations, loaded without eager optional dependencies."""
 
-This package provides training infrastructure:
+from importlib import import_module
 
-1. **Atropos-based Trainer** (RECOMMENDED)
-   - `atropos_trainer.py` - GRPO trainer consuming from Atropos API
-   - `feed_env.py` - RLAIF environment with LLM-as-judge scoring
+_EXPORTS = {
+    "ABTestResult": ("ab_testing", "ABTestResult"),
+    "ABTestRunner": ("ab_testing", "ABTestRunner"),
+    "ARCHETYPE_REWARD_WEIGHTS": ("rewards", "ARCHETYPE_REWARD_WEIGHTS"),
+    "ActionExecutor": ("action_executor", "ActionExecutor"),
+    "ActionOutcome": ("simulation_bridge", "ActionOutcome"),
+    "ActionResult": ("action_executor", "ActionResult"),
+    "ActionSchema": ("schemas", "ActionSchema"),
+    "ActionValidationResult": ("format_validator", "ActionValidationResult"),
+    "AgentRunner": ("rollout_generator", "AgentRunner"),
+    "AgentTickData": ("rollout_generator", "AgentTickData"),
+    "ArchetypeMetrics": ("evaluation", "ArchetypeMetrics"),
+    "AtroposTrainingConfig": ("atropos_trainer", "AtroposTrainingConfig"),
+    "AttackEpisode": ("attacker_trainer", "AttackEpisode"),
+    "AttackReward": ("attacker_trainer", "AttackReward"),
+    "AttackerConfig": ("attacker_trainer", "AttackerConfig"),
+    "AttackerTrainer": ("attacker_trainer", "AttackerTrainer"),
+    "BaselineManager": ("evaluation", "BaselineManager"),
+    "BaselineResult": ("evaluation", "BaselineResult"),
+    "BehaviorMetrics": ("rewards", "BehaviorMetrics"),
+    "BridgeMarketState": ("simulation_bridge", "MarketState"),
+    "BridgeNewsItem": ("simulation_bridge", "NewsItem"),
+    "BridgeScenario": ("simulation_bridge", "Scenario"),
+    "CallPurpose": ("tick_reward_attribution", "CallPurpose"),
+    "ContinuousRLAgent": ("continuous_rl", "ContinuousRLAgent"),
+    "ContinuousRLConfig": ("continuous_rl", "ContinuousRLConfig"),
+    "CurriculumManager": ("scenario_pool", "CurriculumManager"),
+    "DEFAULT_RUBRIC": ("rubric_loader", "DEFAULT_RUBRIC"),
+    "DatabaseConnectionManager": ("error_recovery", "DatabaseConnectionManager"),
+    "EVAL_METRICS": ("evaluation", "EVAL_METRICS"),
+    "EVAL_SCENARIOS": ("ab_testing", "EVAL_SCENARIOS"),
+    "EnvironmentStateSchema": ("schemas", "EnvironmentStateSchema"),
+    "EpisodeBuffer": ("multi_turn", "EpisodeBuffer"),
+    "EpisodeCollector": ("multi_turn", "EpisodeCollector"),
+    "ErrorCategory": ("error_recovery", "ErrorCategory"),
+    "EvalResult": ("evaluation", "EvalResult"),
+    "EvaluationSuite": ("evaluation", "EvaluationSuite"),
+    "ExecutorPortfolioState": ("action_executor", "PortfolioState"),
+    "FastRolloutGenerator": ("rollout_generator", "FastRolloutGenerator"),
+    "FastSimulator": ("fast_simulator", "FastSimulator"),
+    "FeedAtroposTrainer": ("atropos_trainer", "FeedAtroposTrainer"),
+    "FeedEnvConfig": ("feed_env", "FeedEnvConfig"),
+    "FeedHybridEnv": ("hybrid_env", "FeedHybridEnv"),
+    "FeedHybridEnvConfig": ("hybrid_env", "FeedHybridEnvConfig"),
+    "FeedOnlineEnv": ("online_env", "FeedOnlineEnv"),
+    "FeedOnlineEnvConfig": ("online_env", "FeedOnlineEnvConfig"),
+    "FeedRLAIFEnv": ("feed_env", "FeedRLAIFEnv"),
+    "FeedTinkerClient": ("tinker.tinker_client", "FeedTinkerClient"),
+    "FeedTinkerTrainer": ("tinker.tinker_trainer", "FeedTinkerTrainer"),
+    "FormatValidationResult": ("format_validator", "FormatValidationResult"),
+    "GAEConfig": ("multi_turn", "GAEConfig"),
+    "GameState": ("fast_simulator", "GameState"),
+    "GracefulShutdown": ("error_recovery", "GracefulShutdown"),
+    "KLConfig": ("kl_controller", "KLConfig"),
+    "KLControllerBase": ("kl_controller", "KLControllerBase"),
+    "KLStats": ("kl_controller", "KLStats"),
+    "LLMCallRecord": ("tick_reward_attribution", "LLMCallRecord"),
+    "LLMCallSchema": ("schemas", "LLMCallSchema"),
+    "LengthAnalysisResult": ("format_validator", "LengthAnalysisResult"),
+    "MarketState": ("scenario_pool", "MarketState"),
+    "ModelResult": ("ab_testing", "ModelResult"),
+    "MultiAgentOrchestrator": ("multi_agent_orchestrator", "MultiAgentOrchestrator"),
+    "MultiPromptDatasetBuilder": ("multi_prompt_dataset", "MultiPromptDatasetBuilder"),
+    "MultiTurnEpisodeManager": ("multi_turn", "MultiTurnEpisodeManager"),
+    "NewsItem": ("scenario_pool", "NewsItem"),
+    "OrchestratorConfig": ("multi_agent_orchestrator", "OrchestratorConfig"),
+    "PerpMarket": ("simulation_bridge", "PerpMarket"),
+    "PerpetualState": ("scenario_pool", "PerpetualState"),
+    "Position": ("simulation_bridge", "Position"),
+    "PredictionMarket": ("simulation_bridge", "PredictionMarket"),
+    "PromptDataset": ("multi_prompt_dataset", "PromptDataset"),
+    "PromptSample": ("multi_prompt_dataset", "PromptSample"),
+    "PromptTypeAnalyzer": ("multi_prompt_dataset", "PromptTypeAnalyzer"),
+    "QualityScore": ("quality_scorer", "QualityScore"),
+    "RUBRICS_VERSION": ("rubric_loader", "RUBRICS_VERSION"),
+    "ReasoningQualityResult": ("format_validator", "ReasoningQualityResult"),
+    "RecoveryResult": ("error_recovery", "RecoveryResult"),
+    "Relationship": ("simulation_bridge", "Relationship"),
+    "RewardNormalizer": ("rewards", "RewardNormalizer"),
+    "RewardTracker": ("continuous_rl", "RewardTracker"),
+    "RolloutConfig": ("rollout_generator", "RolloutConfig"),
+    "RolloutDumper": ("evaluation", "RolloutDumper"),
+    "RolloutQualityValidator": ("rollout_generator", "RolloutQualityValidator"),
+    "RolloutRecord": ("evaluation", "RolloutRecord"),
+    "RolloutResult": ("rollout_generator", "RolloutResult"),
+    "STEP_METRICS": ("evaluation", "STEP_METRICS"),
+    "SampleResult": ("tinker.tinker_client", "SampleResult"),
+    "Scenario": ("scenario_pool", "Scenario"),
+    "ScenarioPool": ("scenario_pool", "ScenarioPool"),
+    "ScenarioPoolConfig": ("scenario_pool", "ScenarioPoolConfig"),
+    "ScenarioPortfolioState": ("scenario_pool", "PortfolioState"),
+    "SchemaValidationResult": ("schemas", "ValidationResult"),
+    "ServiceConfig": ("service_manager", "ServiceConfig"),
+    "ServiceManager": ("service_manager", "ServiceManager"),
+    "ServiceStatus": ("service_manager", "ServiceStatus"),
+    "SimulationBridge": ("simulation_bridge", "SimulationBridge"),
+    "SimulatorConfig": ("fast_simulator", "SimulatorConfig"),
+    "SimulatorMetrics": ("fast_simulator", "SimulatorMetrics"),
+    "SocialContext": ("simulation_bridge", "SocialContext"),
+    "SocialPost": ("scenario_pool", "SocialPost"),
+    "StepSchema": ("schemas", "StepSchema"),
+    "TINKER_AVAILABLE": ("tinker.tinker_client", "TINKER_AVAILABLE"),
+    "TestScenario": ("evaluation", "TestScenario"),
+    "TestScenarioManager": ("evaluation", "TestScenarioManager"),
+    "ThinkTagResult": ("format_validator", "ThinkTagResult"),
+    "TickData": ("tick_reward_attribution", "TickData"),
+    "TickOutcome": ("tick_reward_attribution", "TickOutcome"),
+    "TickResult": ("simulation_bridge", "TickResult"),
+    "TickRewardAttributor": ("tick_reward_attribution", "TickRewardAttributor"),
+    "TinkerConfig": ("tinker.tinker_client", "TinkerConfig"),
+    "TinkerDatum": ("tinker.tinker_client", "TinkerDatum"),
+    "TinkerTrainingConfig": ("tinker.tinker_trainer", "TinkerTrainingConfig"),
+    "TokenizationResult": ("tokenization_utils", "TokenizationResult"),
+    "TrainStepResult": ("tinker.tinker_client", "TrainStepResult"),
+    "TrainingError": ("error_recovery", "TrainingError"),
+    "TrainingMetrics": ("tinker.tinker_trainer", "TrainingMetrics"),
+    "TrainingProgress": ("error_recovery", "TrainingProgress"),
+    "TrajectorySchema": ("schemas", "TrajectorySchema"),
+    "TurnData": ("multi_turn", "TurnData"),
+    "ValidationResult": ("quality_utils", "ValidationResult"),
+    "action_quality_reward": ("rewards", "action_quality_reward"),
+    "archetype_composite_reward": ("rewards", "archetype_composite_reward"),
+    "attribute_temporal_credit": ("temporal_credit", "attribute_temporal_credit"),
+    "build_training_samples_from_tick": (
+        "tick_reward_attribution",
+        "build_training_samples_from_tick",
+    ),
+    "build_trajectory_from_ticks": ("quality_utils", "build_trajectory_from_ticks"),
+    "calculate_action_quality_bonus": (
+        "action_executor",
+        "calculate_action_quality_bonus",
+    ),
+    "calculate_archetype_behavior_bonus": (
+        "rewards",
+        "calculate_archetype_behavior_bonus",
+    ),
+    "calculate_combined_length_penalty": (
+        "quality_scorer",
+        "calculate_combined_length_penalty",
+    ),
+    "calculate_response_length_penalty": (
+        "quality_scorer",
+        "calculate_response_length_penalty",
+    ),
+    "calculate_thinking_length_penalty": (
+        "quality_scorer",
+        "calculate_thinking_length_penalty",
+    ),
+    "calculate_tick_quality_score": ("quality_utils", "calculate_tick_quality_score"),
+    "calculate_trajectory_quality_score": (
+        "quality_utils",
+        "calculate_trajectory_quality_score",
+    ),
+    "check_prerequisites": ("service_manager", "check_prerequisites"),
+    "clamp": ("error_recovery", "clamp"),
+    "classify_error": ("error_recovery", "classify_error"),
+    "compare_trajectory_formats": ("schemas", "compare_trajectory_formats"),
+    "composite_reward": ("rewards", "composite_reward"),
+    "compute_attacker_reward": ("attacker_trainer", "compute_attacker_reward"),
+    "compute_episode_return": ("multi_turn", "compute_episode_return"),
+    "compute_kl_divergence": ("kl_controller", "compute_kl_divergence"),
+    "create_bridge": ("simulation_bridge", "create_bridge"),
+    "create_kl_controller": ("kl_controller", "create_kl_controller"),
+    "create_masks_from_response_start": (
+        "tokenization_utils",
+        "create_masks_from_response_start",
+    ),
+    "efficiency_reward": ("rewards", "efficiency_reward"),
+    "estimate_kl_from_samples": ("kl_controller", "estimate_kl_from_samples"),
+    "execute_action_for_training": ("action_executor", "execute_action_for_training"),
+    "extract_regime_from_trajectory": (
+        "market_regime",
+        "extract_regime_from_trajectory",
+    ),
+    "filter_valid_trajectories": ("error_recovery", "filter_valid_trajectories"),
+    "fix_historical_masks": ("tokenization_utils", "fix_historical_masks"),
+    "get_all_rubrics_hash": ("rubric_loader", "get_all_rubrics_hash"),
+    "get_archetype_weights": ("rewards", "get_archetype_weights"),
+    "get_available_archetypes": ("rubric_loader", "get_available_archetypes"),
+    "get_env_or_default": ("error_recovery", "get_env_or_default"),
+    "get_format_and_reasoning_scores": (
+        "format_validator",
+        "get_format_and_reasoning_scores",
+    ),
+    "get_priority_metrics": ("rubric_loader", "get_priority_metrics"),
+    "get_quality_bonus_for_archetype": (
+        "quality_scorer",
+        "get_quality_bonus_for_archetype",
+    ),
+    "get_regime_expected_return": ("reward_config", "get_regime_expected_return"),
+    "get_relative_quality_scores": ("quality_scorer", "get_relative_quality_scores"),
+    "get_rubric": ("rubric_loader", "get_rubric"),
+    "get_rubric_hash": ("rubric_loader", "get_rubric_hash"),
+    "get_rubrics_version": ("rubric_loader", "get_rubrics_version"),
+    "get_temporal_decay_rate": ("reward_config", "get_temporal_decay_rate"),
+    "get_wandb_config": ("evaluation", "get_wandb_config"),
+    "group_samples_for_grpo": ("tick_reward_attribution", "group_samples_for_grpo"),
+    "has_custom_rubric": ("rubric_loader", "has_custom_rubric"),
+    "is_recoverable": ("error_recovery", "is_recoverable"),
+    "normalize_archetype": ("rubric_loader", "normalize_archetype"),
+    "normalize_episode_rewards": ("multi_turn", "normalize_episode_rewards"),
+    "pairwise_preferences_to_scores": ("rewards", "pairwise_preferences_to_scores"),
+    "pnl_reward": ("rewards", "pnl_reward"),
+    "prepare_multi_prompt_training_data": (
+        "multi_prompt_dataset",
+        "prepare_multi_prompt_training_data",
+    ),
+    "ranking_to_scores": ("rewards", "ranking_to_scores"),
+    "recover_json_parse": ("error_recovery", "recover_json_parse"),
+    "recover_trajectory_archetype": ("error_recovery", "recover_trajectory_archetype"),
+    "relative_scores": ("rewards", "relative_scores"),
+    "reload_rubrics": ("rubric_loader", "reload_rubrics"),
+    "require_env": ("error_recovery", "require_env"),
+    "reset_simulation_rng": ("action_executor", "reset_simulation_rng"),
+    "risk_adjusted_reward": ("rewards", "risk_adjusted_reward"),
+    "run_ab_test": ("ab_testing", "run_ab_test"),
+    "run_online_training": ("continuous_rl", "run_online_training"),
+    "safe_divide": ("error_recovery", "safe_divide"),
+    "score_response": ("quality_scorer", "score_response"),
+    "score_response_batch": ("quality_scorer", "score_response_batch"),
+    "score_response_for_reward": ("quality_scorer", "score_response_for_reward"),
+    "set_simulation_seed": ("action_executor", "set_simulation_seed"),
+    "shape_trading_rewards": ("multi_turn", "shape_trading_rewards"),
+    "state_to_env_state": ("quality_utils", "state_to_env_state"),
+    "state_to_observation": ("quality_utils", "state_to_observation"),
+    "tokenize_conversation_for_trainer": (
+        "tokenization_utils",
+        "tokenize_conversation_for_trainer",
+    ),
+    "tokenize_for_trainer": ("tokenization_utils", "tokenize_for_trainer"),
+    "validate_action": ("action_executor", "validate_action"),
+    "validate_action_json": ("format_validator", "validate_action_json"),
+    "validate_for_training": ("format_validator", "validate_for_training"),
+    "validate_llm_call": ("schemas", "validate_llm_call"),
+    "validate_masks": ("tokenization_utils", "validate_masks"),
+    "validate_response_format": ("format_validator", "validate_response_format"),
+    "validate_step": ("schemas", "validate_step"),
+    "validate_think_tags": ("format_validator", "validate_think_tags"),
+    "validate_training_sample": ("multi_prompt_dataset", "validate_training_sample"),
+    "validate_trajectory": ("schemas", "validate_trajectory"),
+    "validate_trajectory_file": ("schemas", "validate_trajectory_file"),
+    "validate_trajectory_for_training": (
+        "multi_prompt_dataset",
+        "validate_trajectory_for_training",
+    ),
+    "validate_trajectory_quality": ("quality_utils", "validate_trajectory_quality"),
+    "with_retry": ("error_recovery", "with_retry"),
+    "with_retry_async": ("error_recovery", "with_retry_async"),
+}
 
-2. **Fast Rollout Generation**
-   - `rollout_generator.py` - High-speed rollout generation with full agent tick capture
-   - `fast_simulator.py` - Unified simulator for benchmark + data generation
-   - `multi_prompt_dataset.py` - Dataset preparation for each LLM call type
-
-3. **Supporting Modules**
-   - `rewards.py` - Reward functions and normalization
-   - `quality_utils.py` - Trajectory quality scoring
-   - `tick_reward_attribution.py` - Granular reward attribution for multi-call ticks
-
-See README.md for usage instructions.
-"""
-
-# Import non-torch modules directly
-# Phase 4: A/B Testing & Production Evaluation
-from .ab_testing import (
-    EVAL_SCENARIOS,
-    ABTestResult,
-    ABTestRunner,
-    ModelResult,
-    run_ab_test,
-)
-from .action_executor import (
-    ActionExecutor,
-    ActionResult,
-    calculate_action_quality_bonus,
-    execute_action_for_training,
-    reset_simulation_rng,
-    set_simulation_seed,
-    validate_action,
-)
-from .action_executor import (
-    PortfolioState as ExecutorPortfolioState,
-)
-
-# Archetype training configuration (no torch dependency)
-from .archetype_trainer import (
-    ArchetypeTrainer,
-    ArchetypeTrainingConfig,
-    ArchetypeTrainingResult,
-)
-
-# Adversarial co-training
-from .attacker_trainer import (
-    AttackEpisode,
-    AttackerConfig,
-    AttackerTrainer,
-    AttackReward,
-    compute_attacker_reward,
-)
-
-# Error recovery and graceful degradation
-from .error_recovery import (
-    DatabaseConnectionManager,
-    ErrorCategory,
-    GracefulShutdown,
-    RecoveryResult,
-    TrainingError,
-    TrainingProgress,
-    clamp,
-    classify_error,
-    filter_valid_trajectories,
-    get_env_or_default,
-    is_recoverable,
-    recover_json_parse,
-    recover_trajectory_archetype,
-    require_env,
-    safe_divide,
-    with_retry,
-    with_retry_async,
-)
-
-# Phase 3: Evaluation & Monitoring
-from .evaluation import (
-    EVAL_METRICS,
-    STEP_METRICS,
-    ArchetypeMetrics,
-    BaselineManager,
-    BaselineResult,
-    EvalResult,
-    EvaluationSuite,
-    RolloutDumper,
-    RolloutRecord,
-    TestScenario,
-    TestScenarioManager,
-    get_wandb_config,
-)
-from .format_validator import (
-    ActionValidationResult,
-    FormatValidationResult,
-    LengthAnalysisResult,
-    ReasoningQualityResult,
-    ThinkTagResult,
-    get_format_and_reasoning_scores,
-    validate_action_json,
-    validate_for_training,
-    validate_response_format,
-    validate_think_tags,
-)
-
-# Phase 4: KL control & multi-turn GAE (integrated into feed_env and online_env)
-from .kl_controller import (
-    KLConfig,
-    KLControllerBase,
-    KLStats,
-    compute_kl_divergence,
-    create_kl_controller,
-    estimate_kl_from_samples,
-)
-
-# Hidden dependencies: used by core modules but not previously exported
-from .market_regime import extract_regime_from_trajectory
-
-# Multi-prompt dataset (no torch dependency)
-from .multi_prompt_dataset import (
-    MultiPromptDatasetBuilder,
-    PromptDataset,
-    PromptSample,
-    PromptTypeAnalyzer,
-    prepare_multi_prompt_training_data,
-    validate_training_sample,
-    validate_trajectory_for_training,
-)
-from .multi_turn import (
-    EpisodeBuffer,
-    EpisodeCollector,
-    GAEConfig,
-    MultiTurnEpisodeManager,
-    TurnData,
-    compute_episode_return,
-    normalize_episode_rewards,
-    shape_trading_rewards,
-)
-from .quality_scorer import (
-    QualityScore,
-    calculate_combined_length_penalty,
-    calculate_response_length_penalty,
-    calculate_thinking_length_penalty,
-    get_quality_bonus_for_archetype,
-    get_relative_quality_scores,
-    score_response,
-    score_response_batch,
-    score_response_for_reward,
-)
-
-# Quality utilities (no torch dependency)
-from .quality_utils import (
-    ValidationResult,
-    build_trajectory_from_ticks,
-    calculate_tick_quality_score,
-    calculate_trajectory_quality_score,
-    state_to_env_state,
-    state_to_observation,
-    validate_trajectory_quality,
-)
-from .reward_config import get_regime_expected_return, get_temporal_decay_rate
-from .rewards import (
-    ARCHETYPE_REWARD_WEIGHTS,
-    # Archetype-aware scoring
-    BehaviorMetrics,
-    RewardNormalizer,
-    action_quality_reward,
-    archetype_composite_reward,
-    calculate_archetype_behavior_bonus,
-    composite_reward,
-    efficiency_reward,
-    get_archetype_weights,
-    pairwise_preferences_to_scores,
-    pnl_reward,
-    ranking_to_scores,
-    relative_scores,
-    risk_adjusted_reward,
-)
-
-# Rubric loading from config/rubrics.json (single source of truth)
-from .rubric_loader import (
-    DEFAULT_RUBRIC,
-    RUBRICS_VERSION,
-    get_all_rubrics_hash,
-    get_available_archetypes,
-    get_priority_metrics,
-    get_rubric,
-    get_rubric_hash,
-    get_rubrics_version,
-    has_custom_rubric,
-    normalize_archetype,
-    reload_rubrics,
-)
-
-# Phase 1 & 2: Online GRPO Training Infrastructure
-from .scenario_pool import (
-    CurriculumManager,
-    MarketState,
-    NewsItem,
-    PerpetualState,
-    Scenario,
-    ScenarioPool,
-    ScenarioPoolConfig,
-    SocialPost,
-)
-from .scenario_pool import (
-    PortfolioState as ScenarioPortfolioState,
-)
-
-# Schema validation for data integrity
-from .schemas import (
-    ActionSchema,
-    EnvironmentStateSchema,
-    LLMCallSchema,
-    StepSchema,
-    TrajectorySchema,
-    compare_trajectory_formats,
-    validate_llm_call,
-    validate_step,
-    validate_trajectory,
-    validate_trajectory_file,
-)
-from .schemas import (
-    ValidationResult as SchemaValidationResult,
-)
-
-# Phase 5: Simulation Bridge for online training
-from .simulation_bridge import (
-    ActionOutcome,
-    PerpMarket,
-    Position,
-    PredictionMarket,
-    Relationship,
-    SimulationBridge,
-    SocialContext,
-    TickResult,
-    create_bridge,
-)
-from .simulation_bridge import (
-    MarketState as BridgeMarketState,
-)
-from .simulation_bridge import (
-    NewsItem as BridgeNewsItem,
-)
-from .simulation_bridge import (
-    Scenario as BridgeScenario,
-)
-from .temporal_credit import attribute_temporal_credit
-
-# Tick reward attribution (no torch dependency)
-from .tick_reward_attribution import (
-    CallPurpose,
-    LLMCallRecord,
-    TickData,
-    TickOutcome,
-    TickRewardAttributor,
-    build_training_samples_from_tick,
-    group_samples_for_grpo,
-)
-from .tokenization_utils import (
-    TokenizationResult,
-    create_masks_from_response_start,
-    fix_historical_masks,
-    tokenize_conversation_for_trainer,
-    tokenize_for_trainer,
-    validate_masks,
-)
+__all__ = list(_EXPORTS)
 
 
-# Lazy imports for torch-dependent modules
-# These imports are dynamically returned via __getattr__ - not unused
 def __getattr__(name: str):
-    """Lazy import for torch-dependent modules."""
-    if name in (
-        "FeedAtroposTrainer",
-        "AtroposTrainingConfig",
-    ):
-        from .atropos_trainer import (
-            AtroposTrainingConfig,
-            FeedAtroposTrainer,
-        )
-
-        return locals()[name]
-
-    if name in (
-        "FeedRLAIFEnv",
-        "FeedEnvConfig",
-    ):
-        from .feed_env import (
-            FeedEnvConfig,
-            FeedRLAIFEnv,
-        )
-
-        return locals()[name]
-
-    if name in (
-        "FeedOnlineEnv",
-        "FeedOnlineEnvConfig",
-    ):
-        from .online_env import (
-            FeedOnlineEnv,
-            FeedOnlineEnvConfig,
-        )
-
-        return locals()[name]
-
-    if name in (
-        "FeedHybridEnv",
-        "FeedHybridEnvConfig",
-    ):
-        from .hybrid_env import (
-            FeedHybridEnv,
-            FeedHybridEnvConfig,
-        )
-
-        return locals()[name]
-
-    if name in (
-        "FastRolloutGenerator",
-        "RolloutConfig",
-        "RolloutResult",
-        "AgentTickData",
-        "RolloutQualityValidator",
-        "AgentRunner",
-    ):
-        from .rollout_generator import (
-            AgentRunner,
-            AgentTickData,
-            FastRolloutGenerator,
-            RolloutConfig,
-            RolloutQualityValidator,
-            RolloutResult,
-        )
-
-        return locals()[name]
-
-    if name in (
-        "FastSimulator",
-        "SimulatorConfig",
-        "SimulatorMetrics",
-        "GameState",
-    ):
-        from .fast_simulator import (
-            FastSimulator,
-            GameState,
-            SimulatorConfig,
-            SimulatorMetrics,
-        )
-
-        return locals()[name]
-
-    # Tinker integration (lazy - requires tinker package)
-    if name in (
-        "FeedTinkerClient",
-        "TinkerConfig",
-        "TinkerDatum",
-        "TrainStepResult",
-        "SampleResult",
-        "TINKER_AVAILABLE",
-    ):
-        from .tinker_client import (
-            TINKER_AVAILABLE,
-            FeedTinkerClient,
-            SampleResult,
-            TinkerConfig,
-            TinkerDatum,
-            TrainStepResult,
-        )
-
-        return locals()[name]
-
-    if name in (
-        "FeedTinkerTrainer",
-        "TinkerTrainingConfig",
-        "TrainingMetrics",
-    ):
-        from .tinker_trainer import (
-            FeedTinkerTrainer,
-            TinkerTrainingConfig,
-            TrainingMetrics,
-        )
-
-        return locals()[name]
-
-    # Service manager (lazy - requires requests)
-    if name in (
-        "ServiceManager",
-        "ServiceConfig",
-        "ServiceStatus",
-        "check_prerequisites",
-    ):
-        from .service_manager import (
-            ServiceConfig,
-            ServiceManager,
-            ServiceStatus,
-            check_prerequisites,
-        )
-
-        return locals()[name]
-
-    # Continuous RL (lazy - requires torch + aiohttp)
-    if name in (
-        "ContinuousRLAgent",
-        "ContinuousRLConfig",
-        "RewardTracker",
-        "run_online_training",
-    ):
-        from .continuous_rl import (
-            ContinuousRLAgent,
-            ContinuousRLConfig,
-            RewardTracker,
-            run_online_training,
-        )
-
-        return locals()[name]
-
-    if name in (
-        "MultiAgentOrchestrator",
-        "OrchestratorConfig",
-    ):
-        from .multi_agent_orchestrator import (
-            MultiAgentOrchestrator,
-            OrchestratorConfig,
-        )
-
-        return locals()[name]
-
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-__all__ = [
-    "ARCHETYPE_REWARD_WEIGHTS",
-    "DEFAULT_RUBRIC",
-    "EVAL_METRICS",
-    "EVAL_SCENARIOS",
-    "RUBRICS_VERSION",
-    "STEP_METRICS",
-    "TINKER_AVAILABLE",
-    "ABTestResult",
-    # Phase 4: A/B Testing
-    "ABTestRunner",
-    "ActionExecutor",
-    "ActionOutcome",
-    "ActionResult",
-    "ActionSchema",
-    "ActionValidationResult",
-    "AgentRunner",
-    "AgentTickData",
-    "ArchetypeMetrics",
-    # Archetype training
-    "ArchetypeTrainer",
-    "ArchetypeTrainingConfig",
-    "ArchetypeTrainingResult",
-    "AtroposTrainingConfig",
-    "AttackEpisode",
-    "AttackReward",
-    "AttackerConfig",
-    # Adversarial co-training
-    "AttackerTrainer",
-    # Atropos trainer (lazy - requires torch)
-    "FeedAtroposTrainer",
-    "FeedEnvConfig",
-    "FeedHybridEnv",
-    "FeedHybridEnvConfig",
-    "FeedOnlineEnv",
-    "FeedOnlineEnvConfig",
-    "FeedRLAIFEnv",
-    # Tinker trainer (lazy - requires tinker)
-    "FeedTinkerClient",
-    "FeedTinkerTrainer",
-    "BaselineManager",
-    "BaselineResult",
-    # Archetype-aware scoring
-    "BehaviorMetrics",
-    "BridgeMarketState",
-    "BridgeNewsItem",
-    "BridgeScenario",
-    "CallPurpose",
-    # Continuous RL & Multi-Agent Orchestration (lazy - requires torch)
-    "ContinuousRLAgent",
-    "ContinuousRLConfig",
-    "CurriculumManager",
-    "DatabaseConnectionManager",
-    "EnvironmentStateSchema",
-    "EpisodeBuffer",
-    "EpisodeCollector",
-    # Error recovery
-    "ErrorCategory",
-    "EvalResult",
-    # Phase 3: Evaluation & Monitoring
-    "EvaluationSuite",
-    "ExecutorPortfolioState",
-    # Fast rollout generation (lazy - may require torch)
-    "FastRolloutGenerator",
-    "FastSimulator",
-    "FormatValidationResult",
-    "GAEConfig",
-    "GameState",
-    "GracefulShutdown",
-    # Phase 4: KL control & multi-turn GAE
-    "KLConfig",
-    "KLControllerBase",
-    "KLStats",
-    "LLMCallRecord",
-    "LLMCallSchema",
-    "LengthAnalysisResult",
-    "MarketState",
-    "ModelResult",
-    "MultiAgentOrchestrator",
-    "MultiPromptDatasetBuilder",
-    "MultiTurnEpisodeManager",
-    "NewsItem",
-    "OrchestratorConfig",
-    "PerpMarket",
-    "PerpetualState",
-    "Position",
-    "PredictionMarket",
-    "PromptDataset",
-    "PromptSample",
-    "PromptTypeAnalyzer",
-    "QualityScore",
-    "ReasoningQualityResult",
-    "RecoveryResult",
-    "Relationship",
-    "RewardNormalizer",
-    "RewardTracker",
-    "RolloutConfig",
-    "RolloutDumper",
-    "RolloutQualityValidator",
-    "RolloutRecord",
-    "RolloutResult",
-    "SampleResult",
-    # Phase 1 & 2: Online GRPO Training Infrastructure
-    "Scenario",
-    "ScenarioPool",
-    "ScenarioPoolConfig",
-    "ScenarioPortfolioState",
-    "SchemaValidationResult",
-    "ServiceConfig",
-    # Service manager
-    "ServiceManager",
-    "ServiceStatus",
-    # Phase 5: Simulation Bridge
-    "SimulationBridge",
-    "SimulatorConfig",
-    "SimulatorMetrics",
-    "SocialContext",
-    "SocialPost",
-    "StepSchema",
-    "TestScenario",
-    "TestScenarioManager",
-    "ThinkTagResult",
-    "TickData",
-    "TickOutcome",
-    "TickResult",
-    # Tick reward attribution
-    "TickRewardAttributor",
-    "TinkerConfig",
-    "TinkerDatum",
-    "TinkerTrainingConfig",
-    "TokenizationResult",
-    "TrainStepResult",
-    "TrainingError",
-    "TrainingMetrics",
-    "TrainingProgress",
-    # Schema validation
-    "TrajectorySchema",
-    "TurnData",
-    "ValidationResult",
-    "action_quality_reward",
-    "archetype_composite_reward",
-    "attribute_temporal_credit",
-    "build_training_samples_from_tick",
-    "build_trajectory_from_ticks",
-    "calculate_action_quality_bonus",
-    "calculate_archetype_behavior_bonus",
-    "calculate_combined_length_penalty",
-    "calculate_response_length_penalty",
-    "calculate_thinking_length_penalty",
-    # Quality utilities
-    "calculate_tick_quality_score",
-    "calculate_trajectory_quality_score",
-    "check_prerequisites",
-    "clamp",
-    "classify_error",
-    "compare_trajectory_formats",
-    "composite_reward",
-    "compute_attacker_reward",
-    "compute_episode_return",
-    "compute_kl_divergence",
-    "create_bridge",
-    "create_kl_controller",
-    "create_masks_from_response_start",
-    "efficiency_reward",
-    "estimate_kl_from_samples",
-    "execute_action_for_training",
-    # Hidden dependencies (now exported)
-    "extract_regime_from_trajectory",
-    "filter_valid_trajectories",
-    "fix_historical_masks",
-    "get_all_rubrics_hash",
-    "get_archetype_weights",
-    "get_available_archetypes",
-    "get_env_or_default",
-    "get_format_and_reasoning_scores",
-    "get_priority_metrics",
-    "get_quality_bonus_for_archetype",
-    "get_regime_expected_return",
-    "get_relative_quality_scores",
-    # Rubric loading
-    "get_rubric",
-    "get_rubric_hash",
-    "get_rubrics_version",
-    "get_temporal_decay_rate",
-    "get_wandb_config",
-    "group_samples_for_grpo",
-    "has_custom_rubric",
-    "is_recoverable",
-    "normalize_archetype",
-    "normalize_episode_rewards",
-    "pairwise_preferences_to_scores",
-    # Reward functions
-    "pnl_reward",
-    "prepare_multi_prompt_training_data",
-    "ranking_to_scores",
-    "recover_json_parse",
-    "recover_trajectory_archetype",
-    "relative_scores",
-    "reload_rubrics",
-    "require_env",
-    "reset_simulation_rng",
-    "risk_adjusted_reward",
-    "run_ab_test",
-    "run_online_training",
-    "safe_divide",
-    "score_response",
-    "score_response_batch",
-    "score_response_for_reward",
-    "set_simulation_seed",
-    "shape_trading_rewards",
-    "state_to_env_state",
-    "state_to_observation",
-    "tokenize_conversation_for_trainer",
-    "tokenize_for_trainer",
-    "validate_action",
-    "validate_action_json",
-    "validate_for_training",
-    "validate_llm_call",
-    "validate_masks",
-    "validate_response_format",
-    "validate_step",
-    "validate_think_tags",
-    "validate_training_sample",
-    "validate_trajectory",
-    "validate_trajectory_file",
-    "validate_trajectory_for_training",
-    "validate_trajectory_quality",
-    "with_retry",
-    "with_retry_async",
-]
+    try:
+        module, symbol = _EXPORTS[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+    value = getattr(import_module(f".{module}", __name__), symbol)
+    globals()[name] = value
+    return value

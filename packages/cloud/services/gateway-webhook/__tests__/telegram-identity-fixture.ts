@@ -1,4 +1,4 @@
-import { __resetTelegramIdentityAttestationCacheForTests } from "@elizaos/cloud-services-common/telegram-connector";
+import { __resetTelegramIdentityAttestationCacheForTests } from "@elizaos/cloud-services-common/testing";
 
 export const TELEGRAM_TEST_TOKEN = "123456789:test-token";
 export const TELEGRAM_TEST_BOT_ID = "123456789";

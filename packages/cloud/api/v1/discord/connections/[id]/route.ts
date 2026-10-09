@@ -1,8 +1,8 @@
 // Handles v1 cloud API v1 discord connections id route traffic with route-local auth expectations.
-import { Hono } from "hono";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Discord Connection by ID API
@@ -10,14 +10,14 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * Manages individual Discord bot connections.
  */
 
-import { z } from "zod";
 import {
   discordConnectionsRepository,
   userCharactersRepository,
-} from "@/db/repositories";
-import { DiscordConnectionMetadataSchema } from "@/db/schemas/discord-connections";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/db/repositories";
+import { DiscordConnectionMetadataSchema } from "@elizaos/cloud-shared/db/schemas/discord-connections";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { z } from "zod";
 
 const UpdateConnectionSchema = z.object({
   // Character to use for responses

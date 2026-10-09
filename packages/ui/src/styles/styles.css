@@ -54,6 +54,7 @@ electrobun-wgpu {
 @source "../../../ui/src";
 @source "../../../../plugins/app-lifeops/src";
 @source "../../../../plugins/plugin-calendar/src";
+@source "../../../../plugins/plugin-knowledge/src";
 @source "../../../../plugins/plugin-maps/src";
 
 /* Memories sits beside a persistent filter rail in short landscape, where the
@@ -316,14 +317,12 @@ body.pwa-standalone textarea {
     background: transparent;
   }
 
-  /* biome-ignore lint/style/noDescendingSpecificity: intentional app-shell-column fill mirroring the class-path [data-app-shell-root] rule. */
   body [data-app-shell-root] {
     height: 100vh;
     /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh). */
     height: 100dvh;
   }
 
-  /* biome-ignore lint/style/noDescendingSpecificity: detection-independent mirror of the class-path `body.pwa-standalone textarea` rule; must apply on device where the JS class does not land. */
   body textarea {
     resize: none;
   }
@@ -647,11 +646,8 @@ kbd {
 
 /* Reduced motion - universal override is intentional for accessibility */
 @media (prefers-reduced-motion: reduce) {
-  /* biome-ignore lint/style/noDescendingSpecificity: a11y override must apply to every element regardless of prior class-level specificity. */
   *,
-  /* biome-ignore lint/style/noDescendingSpecificity: a11y override must apply to every pseudo-element. */
   *::before,
-  /* biome-ignore lint/style/noDescendingSpecificity: a11y override must apply to every pseudo-element. */
   *::after {
     /* biome-ignore lint/complexity/noImportantStyles: reduced-motion accessibility override must win the cascade. */
     animation-duration: 0.01ms !important;

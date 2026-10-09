@@ -21,7 +21,7 @@
  * carries zero guilt/scolding, no infantilizing, no therapy roleplay.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

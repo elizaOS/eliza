@@ -24,7 +24,7 @@ import {
   invalidateWeatherCache,
   rememberPreciseLocationGrant,
 } from "../../hooks/useWeather";
-import { useAppSelector, useAppSelectorShallow } from "../../state";
+import { useAppSelector, useAppSelectorShallow } from "../../state/app-store";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import {

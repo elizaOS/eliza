@@ -11,20 +11,23 @@
  * OAuth-intent layer only tracks state, scopes, and bind/deny status.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   getIpKey,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   createOAuthCallbackBus,
   type OAuthCallbackBus,
-} from "@/lib/services/oauth-callback-bus";
-import { getOAuthIntentsService } from "@/lib/services/oauth-intents-default";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/oauth-callback-bus";
+import { getOAuthIntentsService } from "@elizaos/cloud-shared/lib/services/oauth-intents-default";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const SUPPORTED_PROVIDERS = new Set([
   "google",

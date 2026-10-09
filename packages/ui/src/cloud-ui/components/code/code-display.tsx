@@ -4,9 +4,9 @@
  * Syntax-highlighted read-only code block (Prism vsc-dark-plus) for docs/snippets.
  */
 import { type HTMLAttributes, memo } from "react";
-import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
+import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus.js";
 import { Card } from "../../../components/ui/card";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 import { SyntaxHighlighter } from "./prism-light";
 
 function FocusableCodePre(props: HTMLAttributes<HTMLElement>) {

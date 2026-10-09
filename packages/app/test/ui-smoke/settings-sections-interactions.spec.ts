@@ -1,8 +1,8 @@
-// Real interaction coverage for the Settings sections + character editor.
-// all-pages-clicksafe only render-smokes settings; this drives the actual
-// controls (voice wake-word toggle, appearance theme, capability switch, app-
-// permission refresh, backup modal, character bio autosave) and asserts they
-// DO something. Keyless against the stub.
+/**
+ * Exercises Settings controls in the renderer fixture and isolated real API.
+ * Keyless cases prove dispatch or local state only; real-local Wallet cases
+ * require exact request outcomes and disk reload before accepting persistence.
+ */
 
 import { expect, type Page, test } from "@playwright/test";
 import {
@@ -42,6 +42,94 @@ test("voice settings: the wake-word toggle flips state", async ({ page }) => {
   const before = await wakeWord.isChecked();
   await wakeWord.click();
   await expect.poll(() => wakeWord.isChecked()).toBe(!before);
+});
+
+test("voice settings: rapid preference changes persist in user order", async ({
+  page,
+}) => {
+  let config: Record<string, unknown> = {
+    meta: { firstRunComplete: true },
+    agents: {
+      list: [
+        {
+          id: "00000000-0000-4000-8000-000000000001",
+          name: "UI Smoke Agent",
+        },
+      ],
+      defaults: {
+        workspace: "ui-smoke-workspace",
+        adminEntityId: "owner-ui-smoke",
+      },
+    },
+    messages: { voice: { continuous: "off" } },
+  };
+  let writesStarted = 0;
+  let writesFinished = 0;
+
+  await page.unroute("**/api/config");
+  await page.route("**/api/config", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(config),
+      });
+      return;
+    }
+    if (request.method() !== "PUT") {
+      await route.fallback();
+      return;
+    }
+
+    const writeNumber = ++writesStarted;
+    const patch = request.postDataJSON() as Record<string, unknown>;
+    if (writeNumber === 1) {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
+    config = {
+      ...config,
+      ...patch,
+      messages: {
+        ...((config.messages ?? {}) as Record<string, unknown>),
+        ...((patch.messages ?? {}) as Record<string, unknown>),
+      },
+    };
+    writesFinished += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(config),
+    });
+  });
+
+  await openAppPath(page, "/settings");
+  await openSettingsSection(page, /^Voice$/);
+  const continuous = page.getByRole("radiogroup", {
+    name: "Continuous chat mode",
+  });
+  const off = continuous.getByRole("radio", { name: "Off" });
+  const vad = continuous.getByRole("radio", { name: "VAD" });
+  const live = continuous.getByRole("radio", { name: "Live" });
+  await expect(off).toHaveAttribute("aria-checked", "true");
+
+  await vad.click();
+  await live.click();
+  await expect(live).toHaveAttribute("aria-checked", "true");
+  await expect.poll(() => writesStarted).toBe(2);
+  await expect.poll(() => writesFinished).toBe(2);
+
+  expect(config).toMatchObject({
+    messages: { voice: { continuous: "always-on" } },
+  });
+
+  await openAppPath(page, "/settings");
+  await openSettingsSection(page, /^Voice$/);
+  await expect(
+    page
+      .getByRole("radiogroup", { name: "Continuous chat mode" })
+      .getByRole("radio", { name: "Live" }),
+  ).toHaveAttribute("aria-checked", "true");
 });
 
 test("general settings: selecting a language updates the active value", async ({
@@ -101,14 +189,14 @@ test("app-permissions settings: Refresh re-queries the app permissions", async (
   await expect.poll(permReqs).toBeGreaterThan(before);
 });
 
-test("capabilities settings: the Wallet switch fires the real config write", async ({
+test("capabilities settings: the Wallet switch dispatches its config patch", async ({
   page,
 }) => {
   // Repointed from a local-only aria-checked flip (which proved nothing about
   // the backend) to the real pipeline: toggling the Wallet capability calls
   // client.updateConfig({ ui: { capabilities: { wallet } } }) → PUT /api/config.
   // We do NOT stub /api/config; the request hits the real backend (stub in
-  // keyless CI, app-core runtime under the live stack). Asserting the request
+  // keyless CI, app runtime under the live stack). Asserting the request
   // fired with the capability patch is the load-bearing, deterministic contract.
   // The local aria-checked flip is verified too, but it is no longer the point.
   const configWrites: Array<{ wallet: unknown }> = [];
@@ -146,6 +234,121 @@ test("capabilities settings: the Wallet switch fires the real config write", asy
     .not.toBe(before);
 });
 
+test.describe("Wallet capability persisted effects", () => {
+  test.skip(
+    process.env.ELIZA_UI_SMOKE_REAL_LOCAL_STACK !== "1",
+    "requires the isolated real-local API/config file; fixture responses cannot prove persistence",
+  );
+
+  async function reloadConfig(page: Page): Promise<unknown> {
+    const reload = await page.request.post("/api/config/reload");
+    expect(reload.status()).toBe(200);
+    expect(await reload.json()).toMatchObject({ reloaded: true });
+    const read = await page.request.get("/api/config");
+    expect(read.status()).toBe(200);
+    return read.json();
+  }
+
+  function uiConfiguration(config: unknown): unknown {
+    if (typeof config !== "object" || config === null || !("ui" in config)) {
+      throw new Error("The real config response is missing its UI settings");
+    }
+    return config.ui;
+  }
+
+  async function openWalletSettings(page: Page): Promise<void> {
+    await openAppPath(page, "/settings");
+    await openSettingsSection(page, /Capabilities/);
+    await expect(
+      page.locator('[data-agent-id="capability-wallet"]'),
+    ).toBeVisible();
+  }
+
+  test.beforeEach(async ({ page }) => {
+    // Remove only the static config GET fixture. Both browser reads and writes
+    // now reach the production handler backed by this stack's temporary file.
+    await page.unroute("**/api/config");
+    const seed = await page.request.put("/api/config", {
+      data: { ui: { capabilities: { wallet: false } } },
+    });
+    expect(seed.status()).toBe(200);
+    expect(await reloadConfig(page)).toMatchObject({
+      ui: { capabilities: { wallet: false } },
+    });
+  });
+
+  test("saves the clicked value and restores it from disk after navigation", async ({
+    page,
+  }) => {
+    await openWalletSettings(page);
+    const wallet = page.locator('[data-agent-id="capability-wallet"]');
+    await expect(wallet).toHaveAttribute("aria-checked", "false");
+    const saved = page.waitForResponse((response) => {
+      const request = response.request();
+      return (
+        new URL(response.url()).pathname === "/api/config" &&
+        request.method() === "PUT" &&
+        request.postData() ===
+          JSON.stringify({ ui: { capabilities: { wallet: true } } })
+      );
+    });
+    await wallet.click();
+    const response = await saved;
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ui: { capabilities: { wallet: true } },
+    });
+    expect(await reloadConfig(page)).toMatchObject({
+      ui: { capabilities: { wallet: true } },
+    });
+    await openWalletSettings(page);
+    await expect(wallet).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("a real validation rejection cannot change the persisted value", async ({
+    page,
+  }) => {
+    const before = uiConfiguration(await reloadConfig(page));
+    await openWalletSettings(page);
+    const wallet = page.locator('[data-agent-id="capability-wallet"]');
+    await expect(wallet).toHaveAttribute("aria-checked", "false");
+    let forwarded = false;
+    // Corrupt only this browser write on the wire. Do not fulfill a fake error:
+    // the owning API must parse and reject it, and its disk state must survive.
+    await page.route("**/api/config", async (route) => {
+      if (route.request().method() !== "PUT") {
+        await route.continue();
+        return;
+      }
+      expect(route.request().postDataJSON()).toEqual({
+        ui: { capabilities: { wallet: true } },
+      });
+      forwarded = true;
+      await route.continue({ postData: "{" });
+    });
+    const rejected = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/config" &&
+        response.request().method() === "PUT",
+    );
+    await wallet.click();
+    expect((await rejected).status()).toBe(400);
+    expect(forwarded).toBe(true);
+    await expect(
+      page.getByText(
+        "Failed to sync wallet setting to the agent — it may revert on reload",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await page.unroute("**/api/config");
+    // The background version checker owns separate update metadata. Compare
+    // every UI setting, so unrelated checks cannot mask or invent a mutation.
+    expect(uiConfiguration(await reloadConfig(page))).toEqual(before);
+    await openWalletSettings(page);
+    await expect(wallet).toHaveAttribute("aria-checked", "false");
+  });
+});
+
 test("backup settings: Back Up opens its modal", async ({ page }) => {
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /^Backups$/);
@@ -157,7 +360,7 @@ test("backup settings: Back Up opens its modal", async ({ page }) => {
 
 // Deep character round-trip against the REAL backend. Personality now renders
 // inline and autosaves after a 700 ms debounce; there is no open step or manual
-// Save button. The shared client and app-core route currently use PUT for the
+// Save button. The shared client and app route currently use PUT for the
 // partial character edit. This test observes a successful real response and
 // proves write→reload→read-back persistence. LIVE_ONLY: the keyless stub cannot
 // persist a character edit.

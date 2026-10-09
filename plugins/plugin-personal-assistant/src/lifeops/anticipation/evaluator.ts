@@ -14,8 +14,8 @@
  * never-engaged ones are deterministically counted as `ignored`.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import type { Evaluator, JSONSchema } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/core";
 import {
   type AnticipationOutcome,
   listUnprocessedDispatches,
@@ -76,7 +76,7 @@ export const anticipationFeedbackEvaluator: Evaluator<
     if (!message.content.text || message.entityId === runtime.agentId) {
       return false;
     }
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return false;
     }
     const markers = await listUnprocessedDispatches(runtime, message.roomId);

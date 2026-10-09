@@ -13,7 +13,7 @@ import type {
   LifeOpsOverview,
   LifeOpsWeeklyGoalReview,
   UpdateLifeOpsGoalRequest,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 
 export interface LifeOpsGoalService {
   deleteGoal(goalId: string): Promise<void>;

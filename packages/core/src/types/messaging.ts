@@ -24,13 +24,13 @@ export interface TargetInfo {
 	 * and matches the actual drop behavior.
 	 */
 	parentChannelId?: string;
-	/**
-	 * Connector account identifier for multi-account sources.
-	 * Omitted/undefined targets use the legacy source-only route.
-	 */
+	/** Connector account identifier. Omission selects source-only routing. */
 	accountId?: string;
 	roomId?: UUID;
 	entityId?: UUID;
+	/** Internal client_chat callback handoff: the message processor owns this
+	 * simple response's durable row. Not inferred from Content.responseId alone. */
+	responseMemoryId?: UUID;
 }
 
 /** One local bookkeeping failure after the provider accepted a message. */
@@ -69,20 +69,31 @@ export type SendHandlerPersistence =
 	  };
 
 /**
- * Provider-backed evidence for one logical send. Multi-chunk transports retain
- * every provider id in provider order; the final id is only a convenience for
+ * Transport evidence for one logical send. Multi-chunk transports retain
+ * every completion id in send order; the final id is only a convenience for
  * single-id APIs and must not replace the full receipt.
  */
 export interface SendHandlerReceipt {
 	providerMessageIds: readonly [string, ...string[]];
 	acceptedAt: number;
 	persistence: SendHandlerPersistence;
+	/**
+	 * What the ids above actually are. `"provider"` (the documented default)
+	 * means ids issued by the remote provider and reconcilable against it.
+	 * `"local-effect"` means ids that are locally generated completion
+	 * markers for sends whose transport returns no provider identity at all
+	 * (e.g. AppleScript-driven Messages.app); they are unique per send and
+	 * evidence that the local transport completed, not recipient delivery. They must never
+	 * be treated as provider-backed message ids for reconciliation.
+	 */
+	evidenceKind?: "provider" | "local-effect";
 }
 
 /** The final provider id from a non-empty delivery receipt. */
 export function primarySendHandlerProviderMessageId(
 	receipt: SendHandlerReceipt,
-): string {
+): string | undefined {
+	if (receipt.evidenceKind === "local-effect") return undefined;
 	return receipt.providerMessageIds[receipt.providerMessageIds.length - 1];
 }
 
@@ -121,19 +132,14 @@ export type SendHandlerOutcome =
 			message: string;
 	  };
 
-/**
- * Function result for platform sends. Returning a `Memory` remains the legacy
- * delivered receipt. Connectors that suppress, reject, or accept without a
- * persisted `Memory` return a structural outcome; `undefined` remains supported
- * for legacy connectors but carries no delivery evidence.
- */
+/** A Memory is a persisted delivery receipt. Structural outcomes represent suppression, rejection, or acceptance without a Memory. Undefined carries no delivery evidence. */
 export type SendHandlerResult = Promise<
-	// biome-ignore lint/suspicious/noConfusingVoidType: legacy connectors return Promise<void>; new connectors may return Memory for persistence.
+	// biome-ignore lint/suspicious/noConfusingVoidType: connectors may return void or a persisted Memory.
 	Memory | SendHandlerOutcome | undefined | void
 >;
 
 /** Public-feed handlers may return ordered receipts for multipart delivery. */
-// biome-ignore lint/suspicious/noConfusingVoidType: legacy post connectors return Promise<void>.
+// biome-ignore lint/suspicious/noConfusingVoidType: post connectors may return Promise<void>.
 export type PostHandlerResult = Promise<Memory | Memory[] | undefined | void>;
 
 function isStringArray(value: unknown): value is readonly string[] {
@@ -192,13 +198,21 @@ function isSendHandlerPersistence(
 function isSendHandlerReceipt(value: unknown): value is SendHandlerReceipt {
 	if (typeof value !== "object" || value === null) return false;
 	const candidate = value as Partial<SendHandlerReceipt>;
-	return (
-		isStringArray(candidate.providerMessageIds) &&
-		candidate.providerMessageIds.length > 0 &&
-		typeof candidate.acceptedAt === "number" &&
-		Number.isFinite(candidate.acceptedAt) &&
-		isSendHandlerPersistence(candidate.persistence)
-	);
+	if (!isStringArray(candidate.providerMessageIds)) return false;
+	if (candidate.providerMessageIds.length <= 0) return false;
+	if (typeof candidate.acceptedAt !== "number") return false;
+	if (!Number.isFinite(candidate.acceptedAt)) return false;
+	// The evidence-kind discriminator decides whether the ids are
+	// provider-reconcilable; an unrecognized value must invalidate the
+	// receipt rather than silently default to "provider".
+	if (
+		candidate.evidenceKind !== undefined &&
+		candidate.evidenceKind !== "provider" &&
+		candidate.evidenceKind !== "local-effect"
+	) {
+		return false;
+	}
+	return isSendHandlerPersistence(candidate.persistence);
 }
 
 /** Narrow an untrusted connector return to a complete structural outcome. */
@@ -238,11 +252,7 @@ export function isSendHandlerOutcome(
 	);
 }
 
-/**
- * Exhaustive semantic view of a send-handler return. Downstream callers use
- * this rather than truthiness so explicit refusal, partial acceptance,
- * in-flight work, and legacy `undefined` cannot become fabricated success.
- */
+/** Classifies every send result explicitly so refusal, partial acceptance, in-flight work, and undefined never imply successful delivery. */
 export type SendHandlerDisposition =
 	| {
 			kind: "delivered";
@@ -255,7 +265,7 @@ export type SendHandlerDisposition =
 			kind: "partially_delivered";
 			replayed: boolean;
 			receipt: SendHandlerReceipt;
-			providerMessageId: string;
+			providerMessageId?: string;
 			memories: readonly Memory[];
 			code: string;
 			message: string;
@@ -292,7 +302,7 @@ function memoryProviderMessageId(memory: Memory): string | undefined {
 	return typeof memory.id === "string" ? memory.id : undefined;
 }
 
-/** Convert every legacy and structural handler return into explicit semantics. */
+/** Normalizes handler returns into explicit delivery semantics. */
 export function inspectSendHandlerResult(
 	value: Awaited<SendHandlerResult>,
 ): SendHandlerDisposition {
@@ -370,13 +380,13 @@ export function inspectSendHandlerResult(
 		memories: [],
 		code: "CONNECTOR_PARTIAL_DELIVERY_REPLAY",
 		message:
-			"A prior matching attempt reached only part of the provider payload.",
+			"A prior matching attempt completed only part of the transport payload.",
 	};
 }
 
 /**
- * Require a complete provider delivery before a caller reports success.
- * Provider-accepted/local-persistence failures throw with a do-not-retry
+ * Require complete transport delivery before a caller reports success.
+ * Transport-completed/local-persistence failures throw with a do-not-retry
  * warning so outer boundaries cannot accidentally duplicate an external send.
  */
 export function requireConfirmedSendHandlerDelivery(
@@ -393,12 +403,23 @@ export function requireConfirmedSendHandlerDelivery(
 		(disposition.receipt.persistence.status === "partial" ||
 			disposition.receipt.persistence.status === "failed")
 	) {
+		const acceptance =
+			disposition.receipt.evidenceKind === "local-effect"
+				? "The local transport reported completion without provider message IDs"
+				: `The provider accepted messages ${disposition.receipt.providerMessageIds.join(", ")}`;
 		throw new Error(
-			`The provider accepted messages ${disposition.receipt.providerMessageIds.join(", ")}, but local delivery evidence is ${disposition.receipt.persistence.status}; do not retry blindly.`,
+			`${acceptance}, but local delivery evidence is ${disposition.receipt.persistence.status}; do not retry blindly.`,
 		);
 	}
 	return disposition;
 }
+
+/**
+ * `ElizaError.code` thrown by `sendMessageToTarget` when no send handler is
+ * registered for the target source, so callers can distinguish an absent
+ * delivery surface from a failed delivery.
+ */
+export const SEND_HANDLER_NOT_FOUND = "SEND_HANDLER_NOT_FOUND" as const;
 
 export type SendHandlerFunction = (
 	runtime: IAgentRuntime,
@@ -533,9 +554,7 @@ export interface MessageResult {
 	usage?: MessageUsage;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Database Messaging Types
-// ─────────────────────────────────────────────────────────────────────────────
 
 import type { Metadata } from "./primitives";
 
@@ -620,11 +639,11 @@ export interface MessagingMessage {
  * ```typescript
  * const messagingAdapter = runtime.getMessagingAdapter();
  * if (messagingAdapter) {
- *   const server = await messagingAdapter.createMessageServer({
- *     name: "Discord Server",
- *     sourceType: "discord",
- *     sourceId: "1234567890"
- *   });
+ * const server = await messagingAdapter.createMessageServer({
+ * name: "Discord Server",
+ * sourceType: "discord",
+ * sourceId: "1234567890"
+ * });
  * }
  * ```
  */
@@ -808,11 +827,16 @@ export interface IMessagingAdapter {
 	 * @param channelId The channel to fetch messages from
 	 * @param limit Max messages to return (default 50)
 	 * @param beforeTimestamp Get messages before this timestamp (for pagination)
+	 * @param beforeMessageId Continue the cursor from the row that carries
+	 * `beforeTimestamp`: rows sharing that timestamp but sorting before this id
+	 * are still returned. Without it a same-timestamp group wider than `limit`
+	 * silently loses its remainder on the next page.
 	 */
 	getMessagesForChannel(
 		channelId: UUID,
 		limit?: number,
 		beforeTimestamp?: Date,
+		beforeMessageId?: UUID,
 	): Promise<MessagingMessage[]>;
 
 	/**

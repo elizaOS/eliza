@@ -1,7 +1,7 @@
 // Handles scheduled cloud API stuck provisioning sweep route traffic with cron auth expectations.
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Cleanup Stuck Provisioning Cron
@@ -29,13 +29,13 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * Protected by CRON_SECRET.
  */
 
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { verifyCronSecret } from "@/lib/auth/cron";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { verifyCronSecret } from "@elizaos/cloud-shared/lib/auth/cron";
 import {
   ORPHAN_PENDING_THRESHOLD_MS,
   STUCK_PROVISIONING_THRESHOLD_MS,
-} from "@/lib/services/provisioning-job-types";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/provisioning-job-types";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 
 const STUCK_PROVISIONING_THRESHOLD_MINUTES =
   STUCK_PROVISIONING_THRESHOLD_MS / 60_000;

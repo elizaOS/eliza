@@ -25,20 +25,11 @@
 
 import type { AgentExecutionTier } from "@elizaos/cloud-sdk";
 import {
-  AGENT_PRICING,
+  DEDICATED_COMPUTE_PRICE_HEADER,
   formatHourlyRate,
   formatUSD,
+  getDedicatedComputePriceAcceptance,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@elizaos/ui/cloud-ui";
 import { useQuery } from "@tanstack/react-query";
 import {
   ExternalLink,
@@ -52,19 +43,31 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { client, ElizaClient } from "../../../api";
+import { client, ElizaClient } from "../../../api/client";
 import { toast } from "../../../bridge/toast";
 import { Alert } from "../../../components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
-import { getBootConfig } from "../../../config/boot-config";
+import { getBootConfig } from "../../../config/boot-config-store";
 import { dispatchCloudHandoffPhase } from "../../../events";
 import { directCloudSharedAgentIdFromBase } from "../../../utils/cloud-agent-base";
 import { silentlyRepointToDedicated } from "../../handoff/silent-repoint";
 import { runSharedToDedicatedUpgradeHandoff } from "../../handoff/start-tier-upgrade";
 import { apiWithStatus, readCloudBearerToken } from "../../lib/api-client";
-import { useT } from "../lib/i18n";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import { useJobPoller } from "../lib/use-job-poller";
+import { AgentDeactivationDetails } from "./agent-deactivation-details";
+import { DedicatedStartConfirmation } from "./dedicated-start-confirmation";
 
 interface ElizaAgentActionsProps {
   agentId: string;
@@ -77,6 +80,7 @@ interface DedicatedActivationQuote {
   quoteId: string;
   sourceAgentId: string;
   hourlyRateUsd: number;
+  minimumActivationChargeUsd: number;
   dailyRateUsd: number;
   minimumBalanceUsd: number;
   minimumRunwayDays: number;
@@ -106,6 +110,9 @@ export function ElizaAgentActions({
   const [loading, setLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const [startAction, setStartAction] = useState<"resume" | "wake" | null>(
+    null,
+  );
   const [showUpgradeConfirm, setShowUpgradeConfirm] = useState(false);
   const [upgradeQuote, setUpgradeQuote] =
     useState<DedicatedActivationQuote | null>(null);
@@ -203,6 +210,14 @@ export function ElizaAgentActions({
       if (httpStatus < 200 || httpStatus >= 300 || !data?.data) {
         throw new Error(data?.error ?? `HTTP ${httpStatus}`);
       }
+      if (
+        !Number.isFinite(data.data.minimumActivationChargeUsd) ||
+        data.data.minimumActivationChargeUsd < 0
+      ) {
+        throw new Error(
+          "The current Dedicated charge could not be loaded. Refresh and try again.",
+        );
+      }
       return data.data;
     },
     enabled: canUpgrade,
@@ -243,7 +258,18 @@ export function ElizaAgentActions({
       const { status: httpStatus, data } = await apiWithStatus<{
         data?: { jobId?: string };
         error?: string;
-      }>(url, { method, json });
+      }>(url, {
+        method,
+        json,
+        ...(isDedicated && ["resume", "wake", "provision"].includes(action)
+          ? {
+              headers: {
+                [DEDICATED_COMPUTE_PRICE_HEADER]:
+                  getDedicatedComputePriceAcceptance(),
+              },
+            }
+          : {}),
+      });
       const jobId = data?.data?.jobId;
 
       // 409 — operation already in flight; attach to the existing job when the
@@ -396,6 +422,7 @@ export function ElizaAgentActions({
         json: {
           action: "activate_dedicated",
           quoteId: upgradeQuote.quoteId,
+          minimumActivationChargeUsd: upgradeQuote.minimumActivationChargeUsd,
         },
       });
 
@@ -622,7 +649,9 @@ export function ElizaAgentActions({
                 variant="default"
                 size="sm"
                 className="min-h-touch"
-                onClick={() => doAction("resume")}
+                onClick={() =>
+                  isDedicated ? setStartAction("resume") : doAction("resume")
+                }
                 disabled={!!loading || isBusy}
               >
                 {loading === "resume" ? (
@@ -641,7 +670,9 @@ export function ElizaAgentActions({
                 variant="default"
                 size="sm"
                 className="min-h-touch"
-                onClick={() => doAction("wake")}
+                onClick={() =>
+                  isDedicated ? setStartAction("wake") : doAction("wake")
+                }
                 disabled={!!loading || isBusy}
                 title={t("cloud.containers.agentActions.reactivateHint", {
                   defaultValue:
@@ -854,6 +885,18 @@ export function ElizaAgentActions({
         )}
       </div>
 
+      <DedicatedStartConfirmation
+        open={startAction !== null}
+        disabled={!!loading || isBusy}
+        onOpenChange={(open) => {
+          if (!open) setStartAction(null);
+        }}
+        onConfirm={() => {
+          const action = startAction;
+          setStartAction(null);
+          if (action) void doAction(action);
+        }}
+      />
       {/* Upgrade confirmation renders the immutable server quote. No compute
           starts until the user confirms that exact quote. */}
       <AlertDialog
@@ -887,6 +930,13 @@ export function ElizaAgentActions({
                         daily: formatUSD(upgradeQuote.dailyRateUsd),
                         rate: formatHourlyRate(upgradeQuote.hourlyRateUsd),
                       })}
+                </span>
+                <span className="mt-3 block text-txt-strong">
+                  {t("cloud.join.dedicatedActivationMinimum", {
+                    defaultValue:
+                      "Minimum charge per successful start: {{minimum}}. Applies again after stopping and restarting.",
+                    minimum: formatUSD(upgradeQuote.minimumActivationChargeUsd),
+                  })}
                 </span>
                 <span className="mt-3 block text-txt-strong">
                   {t("cloud.containers.agentActions.upgradeBalance", {
@@ -977,34 +1027,7 @@ export function ElizaAgentActions({
         onOpenChange={setShowDeactivateConfirm}
       >
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-txt-strong">
-              {t("cloud.containers.agentActions.deactivateTitle", {
-                defaultValue: "Deactivate this agent?",
-              })}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-muted">
-              <span className="block">
-                {t("cloud.containers.agentActions.deactivateBody1", {
-                  defaultValue:
-                    "Your agent stops running and stops consuming hourly credits (currently {{rate}} while running).",
-                  rate: formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE),
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.deactivateBody2", {
-                  defaultValue:
-                    "Eliza retains your agent data during deactivation. If deactivation cannot complete, the agent stays running and billing continues.",
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.deactivateBody3", {
-                  defaultValue:
-                    "Reactivation restores the agent's retained data and can take a few minutes; it requires available credits.",
-                })}
-              </span>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
+          <AgentDeactivationDetails />
           <AlertDialogFooter>
             <AlertDialogCancel asChild>
               <Button variant="outline">

@@ -3,7 +3,8 @@
  * and stubbed file client methods.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import { client, type StoredFile } from "../../api";
+import { client } from "../../api/client";
+import type { StoredFile } from "../../api/client-files";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { FilesView } from "./FilesView";
 

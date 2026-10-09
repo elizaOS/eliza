@@ -1,9 +1,6 @@
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "rl"))
 
-from gemma_capacity import (
+from eliza_training.training.gemma_capacity import (
     BF16_BITS,
     build_capacity_report,
     estimate_apollo_optimizer_state_bytes,

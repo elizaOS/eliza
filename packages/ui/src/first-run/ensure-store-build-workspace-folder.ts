@@ -12,7 +12,7 @@ import {
   persistStoredWorkspaceFolder,
   readStoredWorkspaceFolder,
   type StoredWorkspaceFolder,
-} from "../storage/workspace-folder";
+} from "../platform/workspace-folder";
 
 export type EnsureWorkspaceFolderResult =
   | { kind: "skipped"; reason: "non-store-build" | "not-electrobun" }

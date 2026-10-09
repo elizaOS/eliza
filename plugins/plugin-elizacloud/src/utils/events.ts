@@ -4,7 +4,6 @@ import {
   type ModelEventPayload,
   type ModelTypeName,
 } from "@elizaos/core";
-import type { LanguageModelUsage } from "ai";
 
 /**
  * Extra metadata that rides along with a {@link ModelEventPayload} so that
@@ -29,15 +28,25 @@ export interface ModelUsageEventMeta {
 
 export type ModelUsageEventPayload = ModelEventPayload & ModelUsageEventMeta;
 
+/**
+ * Token counts in the naming this event contract reads. `inputTokens` and
+ * `outputTokens` are REQUIRED so a native usage object shaped with
+ * `promptTokens`/`completionTokens` (see NativeTokenUsage in models/text.ts) is
+ * rejected at compile time instead of silently collapsing to 0 (#27732). Native
+ * callers map through `toUsageEventTokens` before emitting; `totalTokens` is
+ * derived from the pair when omitted.
+ */
+export interface ModelUsageEventTokens {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens?: number;
+}
+
 export function emitModelUsageEvent(
   runtime: IAgentRuntime,
   type: ModelTypeName,
   _prompt: string,
-  usage: Partial<LanguageModelUsage> & {
-    inputTokens?: number;
-    outputTokens?: number;
-    totalTokens?: number;
-  },
+  usage: ModelUsageEventTokens,
   meta: ModelUsageEventMeta = {}
 ) {
   const inputTokens = Number(usage.inputTokens || 0);

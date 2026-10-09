@@ -43,6 +43,12 @@ export type SubscriptionFundingDebitBoundary = {
     operation: Operation;
     fundingClass: (typeof SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION)[Operation];
     expectedSignals: Readonly<Partial<Record<SubscriptionDebitSignal, number>>>;
+    /**
+     * For an allowance-eligible cash lane that never sees subscribers: the
+     * upstream file that routes subscription-funded organizations to
+     * allowance-first funding before this lane is reached.
+     */
+    routedBy?: string;
   }>;
 }[SubscriptionFundingOperation];
 
@@ -58,9 +64,12 @@ export type SubscriptionDebitSignal =
   | "raw_credit_transaction_insert";
 
 /**
- * Review-owned inventory of legacy production debit boundaries. Signal counts
- * make additions fail the audit even when they land beside an already reviewed
- * call, while operation classifications record the required migration policy.
+ * Review-owned inventory of production debit boundaries, enforced by
+ * subscription-funding-debit-boundaries.test.ts. Signal counts make additions
+ * fail even when they land beside an already reviewed call. Every
+ * allowance_eligible boundary routes subscribers through allowance-first
+ * funding; its remaining signals are the purchased-credit lane used by
+ * organizations without a funded subscription.
  */
 export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
   {
@@ -138,10 +147,12 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     expectedSignals: { debit_ledger_literal: 1, raw_credit_transaction_insert: 1 },
   },
   {
-    relativePath: "shared/src/lib/api/a2a/skills.ts",
-    operation: "ai_inference",
-    fundingClass: "allowance_eligible",
-    expectedSignals: { credit_service_reserve: 4 },
+    // Repays an unrecovered payment-reversal shortfall from purchased credit
+    // only; it never spends subscription allowance (#22930).
+    relativePath: "shared/src/db/repositories/payment-reversal-holds.ts",
+    operation: "unclassified",
+    fundingClass: "cash_only",
+    expectedSignals: { raw_credit_balance_decrement: 1, raw_credit_transaction_sql_insert: 1 },
   },
   {
     relativePath: "shared/src/lib/mcp/helpers.ts",
@@ -174,6 +185,21 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     expectedSignals: { credit_service_reserve: 2 },
   },
   {
+    // The allowance-first router: subscribers are funded allowance-first and
+    // these signals are the purchased-credit lane for every other organization,
+    // for each allowance-eligible operation its callers name.
+    relativePath: "shared/src/lib/services/allowance-first-credits.ts",
+    operation: "ai_inference",
+    fundingClass: "allowance_eligible",
+    expectedSignals: { credit_service_deduct: 1, credit_service_reserve: 1 },
+  },
+  {
+    relativePath: "shared/src/lib/services/app-inference-funding.ts",
+    operation: "app_or_marketplace",
+    fundingClass: "cash_only",
+    expectedSignals: { credit_service_reserve_and_deduct: 1 },
+  },
+  {
     relativePath: "shared/src/lib/services/app-credits.ts",
     operation: "app_or_marketplace",
     fundingClass: "cash_only",
@@ -202,6 +228,7 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     operation: "ai_inference",
     fundingClass: "allowance_eligible",
     expectedSignals: { credit_service_deduct: 1 },
+    routedBy: "shared/src/lib/services/organization-inference-admission.ts",
   },
   {
     relativePath: "shared/src/lib/services/inference-billing-ledger.ts",
@@ -211,6 +238,7 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
       raw_credit_balance_decrement: 1,
       raw_credit_transaction_sql_insert: 1,
     },
+    routedBy: "shared/src/lib/services/organization-inference-admission.ts",
   },
   {
     relativePath: "shared/src/lib/services/influencer-marketplace.ts",
@@ -219,28 +247,10 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     expectedSignals: { credit_service_deduct: 1 },
   },
   {
-    relativePath: "shared/src/lib/services/meeting-billing.ts",
-    operation: "voice",
-    fundingClass: "allowance_eligible",
-    expectedSignals: { credit_service_reserve: 1 },
-  },
-  {
-    relativePath: "shared/src/lib/services/pending-video-settlement.ts",
-    operation: "media_generation",
-    fundingClass: "allowance_eligible",
-    expectedSignals: { credit_service_reserve: 1 },
-  },
-  {
     relativePath: "shared/src/lib/services/proxy/dexscreener-handler.ts",
     operation: "search",
     fundingClass: "allowance_eligible",
     expectedSignals: { credit_service_deduct: 1 },
-  },
-  {
-    relativePath: "shared/src/lib/services/proxy/engine.ts",
-    operation: "search",
-    fundingClass: "allowance_eligible",
-    expectedSignals: { credit_service_reserve: 1 },
   },
   {
     relativePath: "shared/src/lib/services/social-media/index.ts",
@@ -261,16 +271,10 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     expectedSignals: { credit_service_deduct: 1 },
   },
   {
-    relativePath: "shared/src/lib/services/x/index.ts",
+    relativePath: "shared/src/lib/services/x.ts",
     operation: "advertising_or_promotion",
     fundingClass: "cash_only",
     expectedSignals: { credit_service_reserve_and_deduct: 1 },
-  },
-  {
-    relativePath: "shared/src/lib/utils/agent-billing.ts",
-    operation: "managed_agent_compute",
-    fundingClass: "allowance_eligible",
-    expectedSignals: { credit_service_deduct: 1 },
   },
 ] as const satisfies readonly SubscriptionFundingDebitBoundary[];
 

@@ -2,20 +2,22 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveOAuthDir } from "@elizaos/agent";
-import type {
-  AgentRuntime,
-  Content,
-  Memory,
-  TargetInfo,
-  UUID,
-} from "@elizaos/core";
-import { ChannelType, stringToUuid } from "@elizaos/core";
 import {
   LIFEOPS_DISCORD_CAPABILITIES,
   LIFEOPS_TELEGRAM_CAPABILITIES,
-} from "@elizaos/shared";
-import { TELEGRAM_LOCAL_MOCK_SESSION_PREFIX } from "../../../../plugin-telegram/src/local-client.ts";
+} from "@elizaos/contracts";
+import {
+  type AgentRuntime,
+  ChannelType,
+  type Content,
+  type Memory,
+  resolveOAuthDir,
+  stringToUuid,
+  type TargetInfo,
+  type UUID,
+} from "@elizaos/core";
+
+import { TELEGRAM_LOCAL_MOCK_SESSION_PREFIX } from "@elizaos/plugin-telegram";
 import {
   createLifeOpsConnectorGrant,
   LifeOpsRepository,
@@ -43,6 +45,7 @@ interface WhatsAppMockService {
   phoneNumber: string;
   handleWebhook(payload: Record<string, unknown>): Promise<void>;
   fetchConnectorMessages(limit?: number): Promise<Memory[]>;
+  stop(): Promise<void>;
 }
 
 interface BrowserWorkspaceTab {
@@ -108,6 +111,7 @@ function installWhatsAppMockService(runtime: AgentRuntime): Cleanup {
     async fetchConnectorMessages(_limit = 25) {
       return [];
     },
+    async stop() {},
   };
   services.set("whatsapp", [whatsappService]);
   return () => {

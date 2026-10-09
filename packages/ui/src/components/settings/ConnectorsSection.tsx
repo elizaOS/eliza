@@ -22,15 +22,15 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { PluginInfo } from "../../api";
+import type { PluginInfo } from "../../api/client-types-config";
 import {
   clearPendingFocusConnector,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
   readPendingFocusConnector,
 } from "../../events";
-import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
+import { cn } from "../../utils/cn";
 import {
   ConnectorChannelModeSwitch,
   connectorChannelModeCopy,
@@ -840,7 +840,7 @@ export function ConnectorsSection() {
     void loadPlugins();
   }, [loadPlugins]);
 
-  // The local app-core route intentionally answers 503 + Retry-After while its
+  // The local app route intentionally answers 503 + Retry-After while its
   // registry module cold-loads. The shared plugin loader preserves that as an
   // error, so this connector-owned surface performs one bounded follow-up once
   // the advertised two-second window has elapsed.

@@ -20,6 +20,7 @@ test.describe("stuck-cleanup", () => {
       user_id: seededUser.userId,
       sandbox_id: `stuck-${Date.now()}`,
       status: "provisioning",
+      execution_tier: "dedicated-always",
       agent_name: "stuck-e2e-agent",
       bridge_url: "http://127.0.0.1:65535",
       health_url: "http://127.0.0.1:65535/health",

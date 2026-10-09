@@ -11,8 +11,7 @@
  * the same event editor and calendar mutation boundary.
  */
 
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import {
   Button,
   Popover,
@@ -20,9 +19,12 @@ import {
   PopoverTrigger,
   SegmentedControl,
   Spinner,
-} from "@elizaos/ui/components";
-import { useViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
-import { useAppSelector } from "@elizaos/ui/state";
+  useAgentElement,
+  useAppSelector,
+  useViewEvent,
+  VIEW_EVENTS,
+} from "@elizaos/ui";
+
 import { CalendarClock, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import {
   type CSSProperties,
@@ -290,7 +292,19 @@ interface PositionedEvent {
   position: EventPosition;
 }
 
-function eventWindowMs(event: LifeOpsCalendarEvent): {
+/** The visible grid window (06:00-23:00 local) of the column's own day. */
+function dayGridWindow(day: Date): { start: Date; end: Date } {
+  const start = new Date(day);
+  start.setHours(DAY_START_HOUR, 0, 0, 0);
+  const end = new Date(day);
+  end.setHours(DAY_END_HOUR, 0, 0, 0);
+  return { start, end };
+}
+
+function eventWindowMs(
+  event: LifeOpsCalendarEvent,
+  day: Date,
+): {
   start: number;
   end: number;
 } | null {
@@ -299,10 +313,9 @@ function eventWindowMs(event: LifeOpsCalendarEvent): {
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
     return null;
   }
-  const dayStart = new Date(start);
-  dayStart.setHours(DAY_START_HOUR, 0, 0, 0);
-  const dayEnd = new Date(start);
-  dayEnd.setHours(DAY_END_HOUR, 0, 0, 0);
+  // Clamp to the column's day, not the event's start day: an event that runs
+  // past midnight also appears in the next day's column.
+  const { start: dayStart, end: dayEnd } = dayGridWindow(day);
   const clampedStart = Math.max(start.getTime(), dayStart.getTime());
   const clampedEnd = Math.min(end.getTime(), dayEnd.getTime());
   if (clampedEnd <= clampedStart) return null;
@@ -319,10 +332,13 @@ function eventWindowMs(event: LifeOpsCalendarEvent): {
  * width is then divided by the max concurrent lane count within each
  * cluster of connected events.
  */
-function layoutDayEvents(events: LifeOpsCalendarEvent[]): PositionedEvent[] {
+export function layoutDayEvents(
+  events: LifeOpsCalendarEvent[],
+  day: Date,
+): PositionedEvent[] {
   const windows = events
     .map((event) => {
-      const window = eventWindowMs(event);
+      const window = eventWindowMs(event, day);
       return window ? { event, ...window } : null;
     })
     .filter(
@@ -335,10 +351,7 @@ function layoutDayEvents(events: LifeOpsCalendarEvent[]): PositionedEvent[] {
 
   if (windows.length === 0) return [];
 
-  const dayStart = new Date(windows[0].event.startAt);
-  dayStart.setHours(DAY_START_HOUR, 0, 0, 0);
-  const dayEnd = new Date(windows[0].event.startAt);
-  dayEnd.setHours(DAY_END_HOUR, 0, 0, 0);
+  const { start: dayStart, end: dayEnd } = dayGridWindow(day);
   const totalMs = dayEnd.getTime() - dayStart.getTime();
 
   // First pass: assign lanes greedily.
@@ -521,7 +534,7 @@ function TimedEventButton({
         onSelectEvent(event);
       }}
       aria-pressed={isSelected}
-      className="group absolute overflow-hidden"
+      className="group absolute flex-col items-start justify-start gap-0 overflow-hidden text-left"
       layoutStyle={{
         top: `calc(${position.topPct}% + 0.1rem)`,
         height: `calc(${position.heightPct}% - 0.2rem)`,
@@ -536,10 +549,10 @@ function TimedEventButton({
       }}
       {...eventControl.agentProps}
     >
-      <div className="truncate text-[11px] font-semibold leading-tight">
+      <div className="w-full min-w-0 truncate text-[11px] font-semibold leading-tight">
         {event.title}
       </div>
-      <div className="mt-0.5 truncate text-[10px] leading-tight opacity-90">
+      <div className="mt-0.5 w-full min-w-0 truncate text-[10px] leading-tight opacity-90">
         <span>{formatTimeOfDay(event.startAt)}</span>
         {event.location ? (
           <>
@@ -571,7 +584,11 @@ function DayColumnGrid({
 }) {
   const totalHours = DAY_END_HOUR - DAY_START_HOUR;
   const isToday = isSameDayKey(day, new Date());
-  const positioned = useMemo(() => layoutDayEvents(events), [events]);
+  const dayTime = day.getTime();
+  const positioned = useMemo(
+    () => layoutDayEvents(events, new Date(dayTime)),
+    [events, dayTime],
+  );
 
   const nowTopPx = useMemo(() => {
     if (!nowInColumn) return null;

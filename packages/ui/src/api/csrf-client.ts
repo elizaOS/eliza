@@ -1,3 +1,5 @@
+import { getHostRequestTransport } from "./host-transport";
+
 /**
  * Authenticated fetch helper for dashboard API requests.
  *
@@ -13,25 +15,20 @@
  * omitted at the client before the Worker enforces the same boundary.
  */
 
-import { getBootConfig } from "../config/boot-config";
+import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
+import { getElizaApiToken } from "@elizaos/host/protocol";
+import { getBootConfig } from "../config/boot-config-store";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
-import { resolveApiUrl } from "../utils/asset-url";
+import { resolveApiUrl } from "../utils/asset-url.js";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
-import { getElizaApiToken } from "../utils/eliza-globals";
-import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
-import { CSRF_HEADER_NAME } from "./auth/sessions";
-import { desktopHttpTransportForUrl } from "./desktop-http-transport";
-import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
-import { iosInProcessAgentTransportForUrl } from "./ios-local-agent-transport";
-import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
+import { lastActivityHeadersForUrl } from "./auth/user-activity";
 import { defaultFetchTimeoutMs } from "./request-timeout";
 import { type AgentRequestContext, fetchAgentTransport } from "./transport";
 
 export { readCsrfTokenFromCookie } from "./auth/csrf-cookie";
 
 const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
-
 export async function fetchWithCsrf(
   url: string,
   init: RequestInit = {},
@@ -50,14 +47,16 @@ export async function fetchWithCsrf(
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   const isDedicatedAgentRequest = isDedicatedCloudAgentBase(url);
-
   if (!isDedicatedAgentRequest && STATE_CHANGING_METHODS.has(method)) {
     const csrfToken = readCsrfTokenForUrl(url);
     if (csrfToken) {
       headers.set(CSRF_HEADER_NAME, csrfToken);
     }
   }
-
+  if (!isDedicatedAgentRequest && !headers.has(LAST_ACTIVITY_HEADER_NAME)) {
+    for (const [name, value] of Object.entries(lastActivityHeadersForUrl(url)))
+      headers.set(name, value);
+  }
   if (!headers.has("Authorization")) {
     await hydrateAndroidLocalAgentTokenForUrl(url);
     init.signal?.throwIfAborted();
@@ -67,7 +66,6 @@ export async function fetchWithCsrf(
       headers.set("Authorization", `Bearer ${apiToken}`);
     }
   }
-
   const requestInit: RequestInit = {
     ...init,
     credentials: isDedicatedAgentRequest ? "omit" : "include",
@@ -75,7 +73,6 @@ export async function fetchWithCsrf(
   };
   return requestViaAgentTransport(url, requestInit, context);
 }
-
 /**
  * Route a caller-authenticated request through the canonical platform
  * transport selector without adding cookies, CSRF, or boot-token headers.
@@ -86,12 +83,7 @@ export async function requestViaAgentTransport(
   context: AgentRequestContext = {},
 ): Promise<Response> {
   const transport =
-    (await androidNativeAgentTransportForUrl(url)) ??
-    (await iosInProcessAgentTransportForUrl(url)) ??
-    (await desktopLocalAgentTransportForUrl(url)) ??
-    desktopHttpTransportForUrl(url) ??
-    nativeCloudHttpTransportForUrl(url) ??
-    fetchAgentTransport;
+    (await getHostRequestTransport(url, "csrf", init)) ?? fetchAgentTransport;
   return transport.request(url, init, {
     timeoutMs: context.timeoutMs ?? defaultFetchTimeoutMs(url, init),
     ...(context.responseType ? { responseType: context.responseType } : {}),

@@ -20,7 +20,7 @@ import {
   type KmsAeadOperationKeyBundleHandle,
   type KmsAeadOperationKeyBundleProvider,
   type KmsAeadOperationKeyBundleWrapped,
-} from "@elizaos/core/security/kms";
+} from "@elizaos/auth/kms";
 import {
   AGENT_BACKUP_CHUNK_ENVELOPE_V1,
   AGENT_BACKUP_MANIFEST_FORMAT,
@@ -47,7 +47,7 @@ import {
   parseAgentBackupManifestV3,
   serializeAgentBackupRecordStreamV1Magic,
   serializeAgentBackupRecordStreamV1Record,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import {
   AgentBackupCaptureV3Spool,
   type AgentBackupCaptureV3SpoolChunk,

@@ -48,7 +48,7 @@ export interface OrchestratorWidgetOptions {
   limit?: number;
 }
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getOrchestratorWidgets(
       options?: OrchestratorWidgetOptions,

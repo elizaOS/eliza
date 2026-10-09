@@ -10,7 +10,7 @@ import type {
   LifeOpsOverviewSection,
   LifeOpsOverviewSummary,
   LifeOpsTaskDefinition,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   DEFINITION_PERFORMANCE_LAST7_DAYS,
   DEFINITION_PERFORMANCE_LAST30_DAYS,
@@ -283,7 +283,16 @@ export function computeDefinitionPerformance(
   const lastCompletedAt =
     dueOccurrences
       .filter((occurrence) => occurrence.state === "completed")
-      .map((occurrence) => Date.parse(occurrence.updatedAt))
+      .map((occurrence) => {
+        const completedAt = occurrence.completionPayload?.completedAt;
+        const completedMs =
+          typeof completedAt === "string"
+            ? Date.parse(completedAt)
+            : Number.NaN;
+        return Number.isFinite(completedMs)
+          ? completedMs
+          : Date.parse(occurrence.updatedAt);
+      })
       .filter((value) => Number.isFinite(value))
       .sort((left, right) => right - left)[0] ?? null;
   const lastSkippedAt =

@@ -3,10 +3,7 @@
  * and the mixin that composes the screentime domain's summary/breakdown methods
  * onto the LifeOpsService base.
  */
-import type {
-  ScreenTimeAggregateRow,
-  ScreenTimeWeeklyAverageItem,
-} from "@elizaos/plugin-health";
+
 import type {
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeHistoryResponse,
@@ -16,7 +13,11 @@ import type {
   LifeOpsScreenTimeSummary,
   LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
   LifeOpsSocialHabitSummary as SocialHabitSummary,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type {
+  ScreenTimeAggregateRow,
+  ScreenTimeWeeklyAverageItem,
+} from "@elizaos/plugin-health";
 
 type ScreenTimeEventInput = {
   source: "app" | "website";
@@ -51,6 +52,7 @@ export interface LifeOpsScreenTimeServicePublic {
   }): Promise<ScreenTimeAggregateRow[]>;
   getScreenTimeDaily(opts: {
     date: string;
+    timeZone?: string;
     source?: LifeOpsScreenTimeSource;
     identifier?: string;
     limit?: number;

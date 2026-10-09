@@ -7,14 +7,6 @@
  */
 import type { StatusVariant } from "./status-badge";
 
-export function statusToneForBoolean(
-  condition: boolean,
-  onTone: StatusVariant = "success",
-  offTone: StatusVariant = "muted",
-): StatusVariant {
-  return condition ? onTone : offTone;
-}
-
 export function statusToneForState(status: string): StatusVariant {
   const normalized = status.trim().toLowerCase();
   if (

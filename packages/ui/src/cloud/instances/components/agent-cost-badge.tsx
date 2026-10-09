@@ -14,8 +14,12 @@ import {
   formatHourlyRate,
   formatMonthlyEstimate,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/ui/cloud-ui";
-import { useT } from "../lib/i18n";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../../../components/ui/tooltip";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 
 interface AgentCostBadgeProps {
   status: string;

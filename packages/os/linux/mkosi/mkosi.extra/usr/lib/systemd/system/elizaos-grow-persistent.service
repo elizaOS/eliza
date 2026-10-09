@@ -1,0 +1,16 @@
+[Unit]
+Description=Grow elizaOS persistent home partition to available media
+DefaultDependencies=no
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+Before=local-fs-pre.target
+ConditionKernelCommandLine=!elizaos.recovery=1
+ConditionPathExists=/usr/lib/elizaos/repart-grow/30-home.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/elizaos-grow-persistent
+RemainAfterExit=yes
+
+[Install]
+WantedBy=local-fs-pre.target

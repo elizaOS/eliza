@@ -4,6 +4,7 @@
  * committed together before a daemon can observe any infrastructure effect.
  */
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/client";
@@ -16,14 +17,13 @@ import {
 import type { BillingCancelResourceType } from "../../db/schemas/billing-cancel-commands";
 import type { AppEnv } from "../../types/cloud-worker-env";
 import { ApiError } from "../api/cloud-worker-errors";
-import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
 import { isValidUUID } from "../utils/validation";
 import {
   enqueueContainerUserStopInTx,
   lockContainerStopTargetInTx,
 } from "./container-stop-job-service";
-import { lockAgentSuspendTargetInTx, provisioningJobService } from "./provisioning-jobs";
+import { lockAgentSuspendTargetInTx, provisioningJobService } from "./provisioning-job-queue";
 
 export type BillingCancellationDisposition = "accepted" | "same_key_replay" | "same_command";
 

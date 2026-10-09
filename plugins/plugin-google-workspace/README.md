@@ -1,138 +1,55 @@
 # @elizaos/plugin-google-workspace
 
-Google Workspace integration for [elizaOS](https://github.com/elizaOS/eliza) agents — Gmail, Google Calendar, Google Drive, and Google Meet under a single per-account OAuth grant, plus a Google Chat messaging connector (service-account auth).
+Google Workspace integration for Gmail, Calendar, Drive, Meet, and People (Contacts)
+with account-scoped OAuth, plus the Google Chat messaging connector (service-account
+auth) and Google-owned assistant message projections.
 
-## What it does
+Node-only integration. Enable the relevant Google APIs and configure `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` for OAuth. Pre-issued account tokens
+can be injected without starting OAuth. Keep account scopes and token isolation intact;
+Google Chat uses its separate service-account transport.
 
-This plugin adds `GoogleWorkspaceService` to an Eliza agent runtime. The service exposes typed methods for reading and writing to Gmail, Calendar, Drive (including Docs and Sheets), and Meet. Authentication is account-scoped: every method call includes an `accountId` that maps to a stored OAuth token, so one agent can operate across multiple Google accounts simultaneously.
+## OAuth callback setup
 
-The plugin also registers with the elizaOS `ConnectorAccountManager` so the built-in connector HTTP routes can manage Google accounts (list, create, delete) and run the OAuth flow (PKCE, offline access, explicit least-privilege consent) without extra integration work.
+The connector callback path is `/api/connectors/google/oauth/callback`. Set
+`GOOGLE_REDIRECT_URI` to the exact URL served by the Eliza API at that path, then
+add that same URL to the Google OAuth client's authorized redirect URIs. The
+scheme, hostname, port, and path must match; for a public host, use HTTPS and
+route the callback path to the connector API. Plain HTTP callbacks are accepted
+only on loopback addresses. A mismatch in host, port, or path prevents account
+authorization from completing.
 
-The plugin also ships the Google Chat connector (`src/chat/`): `GoogleChatService` registers a runtime `MessageConnector` for sending and receiving messages in Chat spaces, DMs, and threads. Chat authenticates with a **service account** (`GOOGLE_CHAT_SERVICE_ACCOUNT[_FILE]` or `GOOGLE_APPLICATION_CREDENTIALS`, scope `https://www.googleapis.com/auth/chat.bot`) — a deliberately separate auth model from the Workspace OAuth grant. The plugin auto-enables when a `connectors.googlechat` block is configured (see `auto-enable.ts`); the Workspace side remains opt-in.
+## Development
 
-Google Chat target resolution, recent-target discovery, roomless reads, and
-searches consider every listed space; the connector does not silently drop
-spaces past a fixed count.
+Install dependencies with `bun install` at the repository root. Run from that root:
 
-## Capabilities
-
-### Gmail
-
-- Search messages by query string
-- Fetch message metadata and full body
-- Triage inbox (unread, importance score, reply-needed detection)
-- List unresponded threads
-- Send new messages and replies
-- Bulk modify labels/state (archive, trash, mark read/unread, apply/remove labels)
-- Create sender filters
-- Send mailto unsubscribe emails
-
-### Google Calendar
-
-- List calendars
-- List, get, create, update, and delete events
-- Create events with Google Meet links attached
-
-### Google Drive, Docs, and Sheets
-
-- Search and list files and folders
-- Get file metadata
-- Read Google Docs as plain text
-- Read Google Sheets as a 2D array of rows
-- Create Drive files (with optional content and parent folder)
-- Append text to a Google Doc
-- Write cell values to a Sheet range
-
-### Google Meet
-
-- Create meeting spaces
-- Get space details and active conference records
-- List participants, participant sessions, transcripts, and recordings
-- Fetch full transcript entries
-- End an active conference
-- Generate a structured meeting report (summary, key points, action items, full transcript)
-- Build a canonical `elizaos.meeting_artifact.v1` artifact from Google Meet API
-  responses, Google Docs transcript text, recordings, and bot-free capture
-  artifacts. The canonical artifact preserves streams, participants, participant
-  sessions, transcript spans, generated notes, mismatch warnings, missing
-  artifact classifications, and import metrics.
-
-## Requirements
-
-- Node.js (this plugin uses Node-only APIs; not supported in browser or edge environments)
-- A Google Cloud project with the OAuth 2.0 credentials and relevant APIs enabled
-
-### Google Cloud APIs to enable
-
-- Gmail API
-- Google Calendar API
-- Google Drive API
-- Google Meet API (REST)
-- Google Docs API
-- Google Sheets API
-
-## Configuration
-
-Set these environment variables (or provide them via agent `pluginParameters`):
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GOOGLE_CLIENT_ID` | No (required for OAuth) | OAuth 2.0 client ID from Google Cloud Console |
-| `GOOGLE_CLIENT_SECRET` | No (required for OAuth) | OAuth 2.0 client secret (keep private) |
-| `GOOGLE_REDIRECT_URI` | No (required for OAuth) | Redirect URI registered in Google Cloud Console |
-
-Without all three the OAuth flow throws an error; the service itself still starts (read-only agents that inject pre-issued tokens can skip OAuth).
-
-## Enabling the plugin
-
-Add the plugin to your elizaOS agent configuration:
-
-```ts
-import { googlePlugin } from "@elizaos/plugin-google-workspace";
-
-const agent = {
-  plugins: [googlePlugin],
-  // ...
-};
+```bash
+bun run --cwd plugins/plugin-google-workspace build  # build
+bun run --cwd plugins/plugin-google-workspace test   # tests
 ```
 
-## OAuth scopes
+`GoogleTaskCodeResolver` is a host-only adapter over the account-scoped Gmail
+service. A reviewed provider parser must bind a message to the actual challenge;
+there is no generic newest-code fallback. Bounded incomplete searches and multiple
+matching codes return no handle. Successful lookup returns only an opaque,
+short-lived reference, consumed once by a trusted fill adapter after a fresh
+authorization check. Hosts must revoke on account/task teardown and keep raw
+messages, parser results and consumed values out of model context and logs.
+The resolver stores handles in memory and registers no model action or HTTP route.
+It does not implement provider parsers, OAuth setup or native OTP-fill policy;
+those integrations and live acceptance remain host responsibilities.
 
-Scopes are derived from the set of capabilities requested at OAuth time, not from a hardcoded list. Requesting only `gmail.read` will ask for `gmail.readonly` only, not all Google Workspace scopes. All grants request `openid`, `userinfo.email`, and `userinfo.profile` as identity scopes.
+Message detail includes attachment descriptors. Host callers can use
+`getGmailAttachment({accountId, messageId, partId, maxBytes})` to read an inline or
+separate Gmail attachment. The reader verifies the part belongs to that message,
+re-resolves account credentials before a separate content fetch and again before
+releasing bytes after the final response, enforces a
+caller limit up to 25 MiB, and returns complete bytes with their SHA-256 hash.
+Filenames are untrusted metadata, never output paths. Hosts still own task
+reauthorization, content-type policy and document extraction; this method does
+not register a model action, parse documents or persist attachment contents.
 
-Available capabilities: `gmail.read`, `gmail.send`, `gmail.manage`, `calendar.read`, `calendar.write`, `drive.read`, `drive.write`, `meet.create`, `meet.read`.
-
-## Using the service
-
-```ts
-import type { IGoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
-
-const google = runtime.getService("google") as IGoogleWorkspaceService;
-
-// List upcoming calendar events
-const events = await google.listEvents({
-  accountId: "my-google-account-id",
-  timeMin: new Date().toISOString(),
-  limit: 10,
-});
-
-// Send an email
-const result = await google.sendGmailMessage({
-  accountId: "my-google-account-id",
-  to: ["recipient@example.com"],
-  subject: "Hello",
-  bodyText: "Message body.",
-});
-```
-
-## Custom credential resolver
-
-For testing or non-standard hosting, inject a `GoogleCredentialResolver`:
-
-```ts
-import { GoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
-
-const service = new GoogleWorkspaceService(runtime, {
-  credentialResolver: myCustomResolver,
-});
-```
+Hosts can supply `GoogleWorkspaceServiceOptions.apiRootUrl` (or a runtime-local
+`ELIZA_MOCK_GOOGLE_BASE`) for an isolated API world. `GoogleApiClientFactory`
+also accepts an explicit endpoint. Credential resolution remains account-scoped;
+independent clients do not require changing process environment variables.

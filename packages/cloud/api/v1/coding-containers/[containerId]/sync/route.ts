@@ -1,15 +1,20 @@
 // Handles v1 cloud API v1 coding containers containerid sync route traffic with route-local auth expectations.
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   buildCodingSyncResponse,
   type SyncCloudCodingContainerRequest,
   SyncCloudCodingContainerRequestSchema,
   type SyncCloudCodingContainerResponse,
-} from "@/lib/services/coding-containers";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv, AuthedUser } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/coding-containers";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+  AuthedUser,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

@@ -229,7 +229,9 @@ export const localInferenceManagementAction: Action = {
 				"../local-inference-routes.js"
 			);
 			const mutation = await applyLocalInferenceManagementMutation(input);
-			const result = ok(`Local inference ${mutation.op} updated.`, mutation);
+			const result = ok(`Local inference ${mutation.op} updated.`, {
+				...mutation,
+			});
 			await callback?.({ text: result.text, actions: ["LOCAL_INFERENCE"] });
 			return result;
 		} catch (error) {

@@ -3,11 +3,11 @@
  * and interaction-focused render states.
  */
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
-import { client } from "../../../api";
 import type {
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
 } from "../../../api/browser-contracts";
+import { client } from "../../../api/client";
 import { __setAuthStatusForTests } from "../../../hooks/useAuthStatus";
 import { mockApp } from "../../../storybook/mock-providers.helpers";
 import { BrowserStatusSidebarWidget } from "./browser-status";

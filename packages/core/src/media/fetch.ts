@@ -5,14 +5,10 @@
 
 import {
 	fetchWithSsrfGuard,
-	type LookupFn,
 	type PinnedLookupFetchLike,
-	type SsrfPolicy,
-} from "../network/index.js";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed.ts";
+} from "../network/fetch-guard.js";
+import type { LookupFn, SsrfPolicy } from "../network/ssrf.js";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.js";
 import { detectMime, extensionForMime } from "./mime.js";
 
 export type FetchMediaResult = {
@@ -48,6 +44,8 @@ export type FetchMediaOptions = {
 	url: string;
 	fetchImpl?: FetchLike;
 	filePathHint?: string;
+	/** Transparent application identification for hosts that require a named client. */
+	userAgent?: string;
 	maxBytes?: number;
 	maxRedirects?: number;
 	timeoutMs?: number;
@@ -113,8 +111,16 @@ export async function readErrorBodySnippet(
 ): Promise<string | undefined> {
 	try {
 		// Bound diagnostics too: an error response is still an untrusted body and
-		// must not bypass the caller's successful-response byte limit.
-		const text = (await readResponseWithLimit(res, maxChars)).toString("utf8");
+		// must not bypass the caller's successful-response byte limit. Read only a
+		// prefix (4 UTF-8 bytes per char covers maxChars) and cancel the rest, so
+		// a long body keeps its leading text instead of losing the whole snippet.
+		const { buffer, truncated } = await readBoundedBody(
+			res,
+			maxChars * 4,
+			"truncate",
+		);
+		// A streamed decode drops a multi-byte character cut at the prefix end.
+		const text = new TextDecoder().decode(buffer, { stream: truncated });
 		if (!text) {
 			return undefined;
 		}
@@ -123,7 +129,7 @@ export async function readErrorBodySnippet(
 			return undefined;
 		}
 		const wellFormed = toWellFormedUnicode(collapsed);
-		if (wellFormed.length <= maxChars) {
+		if (!truncated && wellFormed.length <= maxChars) {
 			return wellFormed;
 		}
 		const budget = Math.max(0, maxChars - 1);
@@ -177,6 +183,10 @@ async function fetchGuardedMedia(options: FetchMediaOptions): Promise<{
 	try {
 		return await fetchWithSsrfGuard({
 			url: options.url,
+			init:
+				options.userAgent === undefined
+					? undefined
+					: { headers: { "User-Agent": options.userAgent } },
 			fetchImpl: options.fetchImpl,
 			maxRedirects: options.maxRedirects,
 			timeoutMs: undefined,
@@ -345,21 +355,37 @@ export async function readResponseWithLimit(
 	res: Response,
 	maxBytes: number,
 ): Promise<Buffer> {
+	return (await readBoundedBody(res, maxBytes, "throw")).buffer;
+}
+
+function exceedsMaxBytes(res: Response, maxBytes: number): MediaFetchError {
+	return new MediaFetchError(
+		"max_bytes",
+		`Failed to fetch media from ${res.url || "response"}: payload exceeds maxBytes ${maxBytes}`,
+	);
+}
+
+async function readBoundedBody(
+	res: Response,
+	maxBytes: number,
+	onOverflow: "throw" | "truncate",
+): Promise<{ buffer: Buffer; truncated: boolean }> {
 	const body = res.body;
 	if (!body) {
 		const fallback = Buffer.from(await res.arrayBuffer());
-		if (fallback.length > maxBytes) {
-			throw new MediaFetchError(
-				"max_bytes",
-				`Failed to fetch media from ${res.url || "response"}: payload exceeds maxBytes ${maxBytes}`,
-			);
+		if (fallback.length <= maxBytes) {
+			return { buffer: fallback, truncated: false };
 		}
-		return fallback;
+		if (onOverflow === "throw") {
+			throw exceedsMaxBytes(res, maxBytes);
+		}
+		return { buffer: fallback.subarray(0, maxBytes), truncated: true };
 	}
 
 	const reader = body.getReader();
 	const chunks: Uint8Array[] = [];
 	let total = 0;
+	let truncated = false;
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
@@ -367,20 +393,23 @@ export async function readResponseWithLimit(
 				break;
 			}
 			if (value.length) {
-				total += value.length;
-				if (total > maxBytes) {
+				if (total + value.length > maxBytes) {
 					try {
 						await reader.cancel();
 					} catch {
 						// error-policy:J6 Cancellation is best-effort after the
-						// byte-limit failure has already been established.
+						// byte limit has already been reached.
 						// ignore cancel errors
 					}
-					throw new MediaFetchError(
-						"max_bytes",
-						`Failed to fetch media from ${res.url || "response"}: payload exceeds maxBytes ${maxBytes}`,
-					);
+					if (onOverflow === "throw") {
+						throw exceedsMaxBytes(res, maxBytes);
+					}
+					chunks.push(value.subarray(0, maxBytes - total));
+					total = maxBytes;
+					truncated = true;
+					break;
 				}
+				total += value.length;
 				chunks.push(value);
 			}
 		}
@@ -393,8 +422,11 @@ export async function readResponseWithLimit(
 		}
 	}
 
-	return Buffer.concat(
-		chunks.map((chunk) => Buffer.from(chunk)),
-		total,
-	);
+	return {
+		buffer: Buffer.concat(
+			chunks.map((chunk) => Buffer.from(chunk)),
+			total,
+		),
+		truncated,
+	};
 }

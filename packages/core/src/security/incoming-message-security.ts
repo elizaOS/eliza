@@ -13,7 +13,7 @@ import {
 	extractWrappedExternalContent,
 	wrapExternalContent,
 } from "./external-content.js";
-import { redactSensitiveText } from "./redact.js";
+import { SecretSwapSession } from "./secret-swap.js";
 
 const PUBLIC_CHANNEL_SOURCES = new Set([
 	"discord",
@@ -65,7 +65,7 @@ export type IncomingMessageSecurityMetadata = {
 const AUTONOMY_INTERNAL_SOURCE = "autonomy-service";
 
 /**
- * #12087 Item 7: `content.metadata.isAutonomous` is a runtime-internal marker
+ *: `content.metadata.isAutonomous` is a runtime-internal marker
  * that unlocks private (autonomy-only) actions via the private-action gate. Only
  * the autonomy service should set it, on messages sourced `AUTONOMY_INTERNAL_SOURCE`.
  * A connector that forwards client-supplied `content.metadata` would otherwise let
@@ -144,21 +144,20 @@ function isBoundConnectorPayload(
 	if (!payload) return false;
 	if (rendered === payload) return true;
 	if ((source ?? "").trim().toLowerCase() !== "discord") return false;
-	let offset = rendered.indexOf(payload);
-	while (offset >= 0) {
-		const prefix = rendered.slice(0, offset);
-		const suffix = rendered.slice(offset + payload.length);
-		const startsAtFieldBoundary =
-			/^\[Discord [^\r\n\]]+\] @[^\r\n]+(?: \([^\r\n)]*\))?:\s*$/u.test(prefix);
-		const endsAtFieldBoundary =
-			suffix.length === 0 ||
-			/^\r?\n\[platform_reply_reference\]\r?\n[\s\S]*\r?\n\[\/platform_reply_reference\]\r?\n\(in reply to @[^\r\n)]*\)$/u.test(
-				suffix,
-			);
-		if (startsAtFieldBoundary && endsAtFieldBoundary) return true;
-		offset = rendered.indexOf(payload, offset + 1);
-	}
-	return false;
+	// Bind to the first complete connector header. Header-shaped text later in
+	// the message remains part of the user's payload.
+	const header =
+		/^\[Discord [^\r\n]+?\] @[^\r\n]+? \((?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{2}\/\d{2}\/\d{4} \d{2}:\d{2} [^)\r\n]+\):\s*/u.exec(
+			rendered,
+		)?.[0];
+	if (!header || !rendered.startsWith(payload, header.length)) return false;
+	const suffix = rendered.slice(header.length + payload.length);
+	return (
+		suffix.length === 0 ||
+		/^\r?\n\[platform_reply_reference\]\r?\n[\s\S]*\r?\n\[\/platform_reply_reference\]\r?\n\(in reply to @[^\r\n]*\)$/u.test(
+			suffix,
+		)
+	);
 }
 
 /**
@@ -194,7 +193,7 @@ function stripForgedSecurityStamps(message: Memory): void {
 export function hardenIncomingUserMessage(message: Memory): void {
 	// Runs before the empty-text guard: an external message must never keep a
 	// forged autonomy marker or forged security stamps regardless of its text
-	// (#12087 Item 7).
+	//.
 	stripUntrustedAutonomyMarker(message);
 	stripForgedSecurityStamps(message);
 
@@ -232,6 +231,7 @@ export function hardenIncomingUserMessage(message: Memory): void {
 		message.content.text = wrapExternalContent(text, {
 			source: resolveExternalSource(source),
 			includeWarning: true,
+			purpose: "incoming_message",
 		});
 		metadata.externalContentWrapped = true;
 	}
@@ -241,23 +241,13 @@ export function hardenIncomingUserMessage(message: Memory): void {
 
 /** Redact secret-shaped substrings before persisting user text to memory. */
 export function scrubIncomingMessageTextForStorage(text: string): string {
-	return redactSensitiveText(text, { mode: "tools" });
+	const session = new SecretSwapSession();
+	return session
+		.restoreUserReplyText(session.substituteText(text))
+		.replaceAll("[redacted credential]", "***");
 }
 
-/**
- * Shared resolution: the retained `metadata.userPayloadText` stamp (the
- * trusted copy taken before wrapping). The inbound hook may promote a
- * connector's raw `content.currentMessageText` into that stamp only after
- * binding it to the rendered text; connector-only callers get the same bound
- * fallback before the hook runs. Otherwise, ONLY when the
- * `externalContentWrapped` stamp attests the envelope came from this module, a
- * marker parse of `content.text` (legacy messages persisted before the
- * retained field existed); otherwise the raw text. Unstamped marker-shaped
- * text is never parsed — the stamp is the authenticity proof, and extracting a
- * "payload" from an unauthenticated envelope would let injected marker text
- * place attacker-chosen words (e.g. a "yes" for a destructive confirm) where
- * consumers read the user's words.
- */
+/** Reads the authenticated user-payload stamp, then a connector payload bound to rendered text. Marker extraction requires this module’s externalContentWrapped stamp; untrusted marker-shaped text never establishes payload authority. */
 function resolveRetainedCandidate(message: Memory): string {
 	const text =
 		typeof message.content?.text === "string" ? message.content.text : "";

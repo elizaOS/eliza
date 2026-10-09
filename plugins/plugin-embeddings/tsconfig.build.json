@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "noEmit": false,
-    "outDir": "./dist/node",
+    "outDir": "./dist",
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,
@@ -23,10 +23,8 @@
     "types": ["bun-types", "node"],
     "resolvePackageJsonExports": true,
     "resolvePackageJsonImports": true,
-    "paths": {
-      "@elizaos/core": ["../../../packages/core/dist"]
-    }
+    "rootDir": "./src"
   },
-  "include": ["**/*.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "build.ts", "__tests__", "**/*.test.ts"]
 }

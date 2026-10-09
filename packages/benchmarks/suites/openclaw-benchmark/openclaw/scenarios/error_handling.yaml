@@ -1,0 +1,89 @@
+# OpenClaw Benchmark: Weather CLI Error Handling Task
+#
+# This scenario materializes the standard Weather CLI PRD task that asks the
+# agent to handle missing input and simulated API failures without crashing.
+
+name: Error Handling
+description: Test ability to handle invalid city and missing input paths
+
+prerequisites:
+  - setup
+  - implementation
+  - cli_arguments
+
+prompt: |
+  The setup, implementation, and CLI argument tasks have already run. Preserve
+  the existing project structure and refine src/weather.ts only as needed.
+
+  Improve error handling for the weather CLI. The command should not crash when
+  the city is missing or invalid. Invalid city input should produce a helpful
+  error message and a non-success exit code or explicit error output.
+
+  Requirements:
+  1. `npx ts-node src/weather.ts --city invalid` must report an invalid city or
+     not-found error.
+  2. Running without a city must report a usage or missing-city error.
+  3. The valid Berlin path must still work.
+  4. Keep the implementation deterministic with mock data; do not call a real
+     weather service.
+
+expected_tools:
+  - read
+  - write
+  - exec
+
+scoring:
+  checks:
+    - id: weather_ts_exists
+      type: file_exists
+      path: src/weather.ts
+      points: 2
+      category: files
+      description: src/weather.ts exists
+
+    - id: has_try_or_error_branch
+      type: file_contains
+      path: src/weather.ts
+      pattern: '(try\\s*\\{|catch\\s*\\(|throw\\s+new\\s+Error|process\\.exitCode|console\\.error)'
+      points: 3
+      category: correctness
+      description: Code includes explicit error handling
+
+    - id: invalid_city_mentions_error
+      type: tests_pass
+      command: "npx ts-node src/weather.ts --city invalid 2>&1 | grep -Ei 'invalid|not found|error|unknown'"
+      timeout: 60
+      points: 4
+      category: execution
+      description: Invalid city reports a useful error
+
+    - id: missing_city_mentions_usage
+      type: tests_pass
+      command: "npx ts-node src/weather.ts 2>&1 | grep -Ei 'usage|city|required|missing|provide'"
+      timeout: 60
+      points: 3
+      category: execution
+      description: Missing city reports usage or missing input
+
+    - id: valid_city_still_works
+      type: tests_pass
+      command: "npx ts-node src/weather.ts --city Berlin 2>&1 | grep -E 'Berlin|15|temperature|temp'"
+      timeout: 60
+      points: 3
+      category: execution
+      description: Valid Berlin path still works
+
+    - id: no_real_weather_endpoint
+      type: file_excludes
+      path: src/weather.ts
+      pattern: 'https?://(?!api\\.example\\.com)'
+      points: 2
+      category: safety
+      description: No real external weather endpoint was introduced
+
+    - id: reasonable_tool_count
+      type: tool_count_max
+      max: 18
+      points: 2
+      category: efficiency
+      description: Agent completed the error-handling refinement efficiently

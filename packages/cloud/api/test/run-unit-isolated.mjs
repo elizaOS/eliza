@@ -5,23 +5,27 @@
  * WHY: bun evaluates every test file's top-level `mock.module` at collection
  * time in a single shared process, and those overrides are process-global with
  * no per-file teardown. Files that stub overlapping modules with different
- * shapes (e.g. one mocks `@/db/helpers` to `{ dbRead }`, another needs the real
+ * shapes (e.g. one mocks `@elizaos/cloud-shared/db/helpers` to `{ dbRead }`, another needs the real
  * surface) cross-contaminate, producing order-dependent flakes. Process-per-file
  * gives each test total isolation — there is no shared module-mock state to
  * leak — which fixes the whole class, current and future, without having to
  * keep 10+ unrelated test files' mocks in manual lockstep.
  *
  * Serial on purpose: avoids any shared-resource contention (ports, temp dirs)
- * between concurrent bun processes. The unit suite is small; correctness first.
+ * between concurrent bun processes.
  *
  * Usage:
  *   node test/run-unit-isolated.mjs            # every unit test file in this package
  *   node test/run-unit-isolated.mjs <substr>   # only files whose path matches
  */
-import { spawnSync } from "node:child_process";
-import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  EXCLUDED_API_DIRS,
+  runCommandWithWatchdog,
+  walkTests,
+} from "../../../scripts/test-cloud-run.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
@@ -30,30 +34,17 @@ const pkgRoot = path.resolve(here, "..");
 // `test:e2e` lane + a live server), and node_modules/dist/.turbo are artifacts.
 // Rooting the walk at `__tests__/` only meant colocated `<resource>/route.test.ts`
 // unit tests (billing, cron, credits, webhooks, …) never ran in CI.
-const EXCLUDED_DIRS = new Set(["node_modules", "dist", ".turbo", "test"]);
-
-function walk(dir) {
-  const out = [];
-  for (const entry of readdirSync(dir)) {
-    if (EXCLUDED_DIRS.has(entry)) continue;
-    const full = path.join(dir, entry);
-    if (statSync(full).isDirectory()) out.push(...walk(full));
-    else if (/\.(test|spec)\.tsx?$/.test(entry)) out.push(full);
-  }
-  return out;
-}
-
 const filter = process.argv[2];
 // The package-local child cwd does not inherit the repository-root bunfig.toml,
 // so preserve the root unit-test timeout explicitly for every isolated process.
 const TEST_TIMEOUT_MS = "60000";
 // Each file still runs in its own `bun test` process (mock.module isolation).
-let files = walk(pkgRoot).sort();
+let files = walkTests(pkgRoot, EXCLUDED_API_DIRS);
 if (filter) files = files.filter((f) => f.includes(filter));
 
 if (files.length === 0) {
-  console.log("[cloud-api unit] no test files matched");
-  process.exit(0);
+  console.error("[cloud-api unit] no test files matched");
+  process.exit(1);
 }
 
 console.log(
@@ -63,12 +54,27 @@ console.log(
 const failed = [];
 for (const file of files) {
   const rel = path.relative(pkgRoot, file);
-  const res = spawnSync("bun", ["test", file, "--timeout", TEST_TIMEOUT_MS], {
-    stdio: "inherit",
-    cwd: pkgRoot,
-    env: process.env,
-  });
-  if (res.status !== 0) failed.push(rel);
+  const res = await runCommandWithWatchdog(
+    "bun",
+    ["test", file, "--timeout", TEST_TIMEOUT_MS],
+    {
+      writeOut: (text) => process.stdout.write(text),
+      writeErr: (text) => process.stderr.write(text),
+      cwd: pkgRoot,
+      env: process.env,
+    },
+  );
+  if (res.error) console.error(res.error);
+  if (res.terminationError) console.error(res.terminationError);
+  if (
+    res.status !== 0 ||
+    res.timedOut ||
+    res.error ||
+    res.terminationError ||
+    res.parentSignal
+  )
+    failed.push(rel);
+  if (res.parentSignal) break;
 }
 
 console.log("");

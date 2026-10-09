@@ -6,13 +6,13 @@
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { LifeOpsConnectorGrant } from "@elizaos/contracts";
 import {
   type ConnectorAccount,
   ConnectorAccountManager,
   type IAgentRuntime,
   InMemoryConnectorAccountStorage,
 } from "@elizaos/core";
-import type { LifeOpsConnectorGrant } from "@elizaos/shared";
 import {
   afterAll,
   beforeAll,

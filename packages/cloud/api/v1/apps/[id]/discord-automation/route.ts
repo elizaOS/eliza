@@ -1,8 +1,8 @@
 // Handles v1 cloud API v1 apps id discord automation route traffic with route-local auth expectations.
-import { Hono } from "hono";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * App Discord Automation API
@@ -12,11 +12,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * DELETE - Disable automation for an app
  */
 
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import { discordAppAutomationService } from "@elizaos/cloud-shared/lib/services/discord-automation/app-automation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { z } from "zod";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { discordAppAutomationService } from "@/lib/services/discord-automation/app-automation";
-import { logger } from "@/lib/utils/logger";
 
 const automationConfigSchema = z.object({
   enabled: z.boolean().optional(),

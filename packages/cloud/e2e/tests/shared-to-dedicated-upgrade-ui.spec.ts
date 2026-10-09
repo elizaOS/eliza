@@ -47,21 +47,30 @@ test.describe("upgrade to dedicated via dashboard UI", () => {
     // session in localStorage; the test-session cookie fixture bypasses
     // steward, so seed the API key as the stored token (the cloud API accepts
     // both) before the app boots.
-    await page.addInitScript((apiKey: string) => {
-      window.localStorage.setItem("steward_session_token", apiKey);
-    }, seededUser.apiKey);
+    await page.addInitScript(
+      ({ apiKey, apiUrl }) => {
+        window.localStorage.setItem("steward_session_token", apiKey);
+        window.localStorage.setItem(
+          "steward_session_token_scope",
+          `origin:${new URL(apiUrl).origin}`,
+        );
+      },
+      { apiKey: seededUser.apiKey, apiUrl: stack.urls.api },
+    );
 
-    await page.goto(`${stack.urls.frontend}/dashboard/agents/${sharedAgentId}`);
-    const upgradeButton = page.getByTestId("agent-upgrade-tier-button");
-    await expect(upgradeButton).toBeVisible({ timeout: 30_000 });
-
-    // ── Billing-transparency dialog: burn/day + runway minimum + continuity ──
+    // The detail page preloads its quote. Observe that request before navigation
+    // so a cached quote can open the dialog without a second network fetch.
     const quoteResponsePromise = page.waitForResponse(
       (response) =>
         new URL(response.url()).pathname ===
           `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier` &&
         response.request().method() === "GET",
     );
+    await page.goto(`${stack.urls.frontend}/dashboard/agents/${sharedAgentId}`);
+    const upgradeButton = page.getByTestId("agent-upgrade-tier-button");
+    await expect(upgradeButton).toBeVisible({ timeout: 30_000 });
+
+    // ── Billing-transparency dialog: burn/day + runway minimum + continuity ──
     await upgradeButton.click();
     const quoteResponse = await quoteResponsePromise;
     expect(quoteResponse.status()).toBe(200);
@@ -71,6 +80,7 @@ test.describe("upgrade to dedicated via dashboard UI", () => {
         hourlyRateUsd?: number;
         dailyRateUsd?: number;
         minimumBalanceUsd?: number;
+        minimumActivationChargeUsd?: number;
         minimumRunwayDays?: number;
         balanceUsd?: number;
       };
@@ -79,7 +89,7 @@ test.describe("upgrade to dedicated via dashboard UI", () => {
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText(
-      `$${quote.data?.dailyRateUsd?.toFixed(2)}/day`,
+      `$${quote.data?.dailyRateUsd?.toFixed(2)} per day`,
     );
     await expect(dialog).toContainText(
       `$${quote.data?.minimumBalanceUsd?.toFixed(2)}`,
@@ -88,7 +98,12 @@ test.describe("upgrade to dedicated via dashboard UI", () => {
     await expect(dialog).toContainText(
       `Current balance: $${quote.data?.balanceUsd?.toFixed(2)}`,
     );
-    await expect(dialog).toContainText("Shared keeps working");
+    await expect(dialog).toContainText(
+      "shared agent is removed only after the move is confirmed",
+    );
+    await expect(dialog).toContainText(
+      `Minimum charge per successful start: $${quote.data?.minimumActivationChargeUsd?.toFixed(2)}`,
+    );
     await page.screenshot({
       path: test.info().outputPath("upgrade-confirm-dialog.png"),
       fullPage: true,
@@ -117,11 +132,21 @@ test.describe("upgrade to dedicated via dashboard UI", () => {
           `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier` &&
         response.request().method() === "POST",
     );
+    const handoffProbePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.origin === new URL(stack.urls.api).origin &&
+        /^\/api\/v1\/eliza\/agents\/[^/]+$/.test(url.pathname) &&
+        url.pathname !== `/api/v1/eliza/agents/${sharedAgentId}` &&
+        response.request().method() === "GET"
+      );
+    });
     await page.getByTestId("agent-upgrade-tier-confirm").click();
     const upgradeResponse = await upgradeResponsePromise;
     expect(upgradeResponse.status()).toBe(202);
     expect(upgradeResponse.request().postDataJSON()).toEqual({
       action: "activate_dedicated",
+      minimumActivationChargeUsd: quote.data?.minimumActivationChargeUsd,
       quoteId: quote.data?.quoteId,
     });
     const upgradeBody = (await upgradeResponse.json()) as {
@@ -130,6 +155,11 @@ test.describe("upgrade to dedicated via dashboard UI", () => {
     const dedicatedAgentId = upgradeBody.data?.dedicatedAgentId;
     expect(dedicatedAgentId, "the UI's POST minted a target").toBeTruthy();
     if (!dedicatedAgentId) throw new Error("no dedicated agent id");
+    const handoffProbe = await handoffProbePromise;
+    expect(handoffProbe.status()).toBe(200);
+    expect(new URL(handoffProbe.url()).pathname).toBe(
+      `/api/v1/eliza/agents/${dedicatedAgentId}`,
+    );
 
     // The whole-span progress line is up while the provision + move runs.
     await expect(page.getByTestId("agent-upgrade-progress")).toBeVisible({

@@ -79,6 +79,10 @@ export interface PdfCompleteDocument {
 }
 
 export interface PdfCompleteExtractionOptions {
+  /** Stop subsequent work and discard late results; forwarded to the model provider for cooperative cancellation. */
+  signal?: AbortSignal;
+  /** Recheck host ownership/authorization before external work and result publication. */
+  assertActive?: () => void | Promise<void>;
   /** Called after each page reaches a terminal successful state. */
   onPageComplete?: (page: PdfCompletePage) => void | Promise<void>;
   /** Optional extra context appended to the strict transcription prompt. */

@@ -16,6 +16,7 @@
  */
 
 import crypto from "node:crypto";
+import { hostname } from "node:os";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { ClassifyContext } from "./classifier.ts";
@@ -67,6 +68,9 @@ export interface DefaultRuntimeOperationManagerOptions {
 }
 
 const DEFAULT_CLASSIFIER: IntentClassifier = () => "cold";
+
+/** Tiers ordered by cost ascending; see `ReloadTier`. */
+const TIER_UPGRADE_ORDER: readonly ReloadTier[] = ["hot", "warm", "cold"];
 
 function strategyErrorCode(err: unknown): OperationErrorCode {
   const code = (err as { code?: unknown } | null)?.code;
@@ -145,10 +149,13 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
     const prepareResult = req.prepare ? await req.prepare() : undefined;
     const preparedIntent =
       prepareResult === undefined ? req.intent : prepareResult;
-    const tier = this.classifier(preparedIntent, ctxBeforePrepare);
+    const tier = this.resolveExecutableTier(
+      this.classifier(preparedIntent, ctxBeforePrepare),
+    );
     const now = Date.now();
     const op: RuntimeOperation = {
       id: crypto.randomUUID(),
+      processOwner: { hostname: hostname(), pid: process.pid },
       kind: preparedIntent.kind,
       intent: preparedIntent,
       tier,
@@ -182,6 +189,28 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
     return this.repository.findActive();
   }
 
+  /**
+   * Upgrade a classified tier to the cheapest registered strategy at or above
+   * it. Tiers only ever upgrade (hot → warm → cold); a lighter tier is never
+   * substituted for a heavier one. When nothing at or above the classified
+   * tier is registered, the classified tier is kept and execution fails with
+   * `no-strategy-for-tier`.
+   */
+  private resolveExecutableTier(classified: ReloadTier): ReloadTier {
+    const start = TIER_UPGRADE_ORDER.indexOf(classified);
+    for (const tier of TIER_UPGRADE_ORDER.slice(start)) {
+      if (this.strategies[tier]) {
+        if (tier !== classified) {
+          logger.info(
+            `[runtime-ops] No strategy for tier=${classified}; upgrading to tier=${tier}`,
+          );
+        }
+        return tier;
+      }
+    }
+    return classified;
+  }
+
   private scheduleExecution(id: string): void {
     this.executionChain = this.executionChain.then(() =>
       this.executeOperation(id).catch((err) => {
@@ -192,7 +221,24 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
     );
   }
 
+  /**
+   * Runs the op and guarantees it settles: any throw after acceptance marks
+   * the op failed so the repo's active-op slot (the single-flight gate) is
+   * released instead of leaving every later op `rejected-busy`.
+   */
   private async executeOperation(id: string): Promise<void> {
+    try {
+      await this.runOperation(id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(
+        `[runtime-ops] Operation ${id} threw during execution: ${err instanceof Error ? err.stack : message}`,
+      );
+      await this.failOperation(id, { message, code: "execution-failed" });
+    }
+  }
+
+  private async runOperation(id: string): Promise<void> {
     const op = await this.repository.get(id);
     if (!op) {
       logger.warn(`[runtime-ops] executeOperation: op ${id} not found`);
@@ -298,13 +344,41 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
     id: string,
     error: OperationError,
   ): Promise<void> {
+    const finishedAt = Date.now();
+    await this.closeRunningPhase(id, finishedAt);
     await this.repository.update(id, {
       status: "failed",
-      finishedAt: Date.now(),
+      finishedAt,
       error,
     });
     logger.warn(
       `[runtime-ops] Operation ${id} failed: ${error.code ?? "unknown"} — ${error.message}`,
     );
+  }
+
+  /**
+   * A failure can interrupt a phase that was appended as `running` (the
+   * health-check gate, or a strategy-reported phase). Close it as failed so
+   * the persisted phase log never shows a running phase on a settled op.
+   * Best-effort: a phase-write failure is logged and must not stop the op
+   * itself from settling (which releases the single-flight gate).
+   */
+  private async closeRunningPhase(
+    id: string,
+    finishedAt: number,
+  ): Promise<void> {
+    try {
+      const op = await this.repository.get(id);
+      const last = op?.phases[op.phases.length - 1];
+      if (last?.status !== "running") return;
+      await this.repository.updateLastPhase(id, {
+        status: "failed",
+        finishedAt,
+      });
+    } catch (err) {
+      logger.error(
+        `[runtime-ops] Failed to close running phase for op ${id}: ${err instanceof Error ? err.stack : String(err)}`,
+      );
+    }
   }
 }

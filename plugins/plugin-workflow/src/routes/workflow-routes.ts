@@ -9,6 +9,8 @@ import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   type EmbeddedWorkflowService,
 } from '../services/embedded-workflow-service';
+import { digestId, digestKeys, digestRecord, digestText } from '../services/hosted-digest';
+import { hostedNativeSourcesAvailable } from '../services/hosted-native-source';
 import { MAX_WORKFLOW_JSON_BYTES } from '../services/workflow-json';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
 import type { WorkflowDefinition } from '../types/index';
@@ -25,17 +27,9 @@ export interface WorkflowRouteContext {
   json: (res: http.ServerResponse, body: unknown, status?: number) => void;
 }
 
-export interface WorkflowStatusResponse {
-  mode: 'cloud' | 'disabled';
-  host: string | null;
-  status: 'ready' | 'error';
-  cloudConnected: boolean;
-  localEnabled: boolean;
-  platform: 'cloud';
-  cloudHealth: 'healthy' | 'unknown';
-  engine: 'smthrs';
-  errorMessage?: string | null;
-}
+export type { WorkflowStatusResponse } from '../services/workflow-status';
+
+import { workflowRuntimeStatus } from '../services/workflow-status';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -143,16 +137,210 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
   try {
     const service = serviceFor(ctx);
     const owner = ownerFor(ctx);
+    if (path.startsWith('/hosted/')) {
+      const embedded = embeddedFor(ctx),
+        url = new URL(ctx.req.url ?? ctx.pathname, 'http://localhost');
+      if (ctx.method === 'POST' && path === '/hosted/live-calendars') {
+        ctx.json(
+          ctx.res,
+          await embedded.listDigestLiveCalendars(owner, await readBody(ctx.req, 2000))
+        );
+        return;
+      }
+      if (ctx.method === 'GET' && path === '/hosted/live-accounts') {
+        ctx.json(ctx.res, await embedded.listDigestLiveAccounts(owner));
+        return;
+      }
+      if (ctx.method === 'GET' && path === '/hosted/sources') {
+        ctx.json(ctx.res, { sources: await embedded.listDigestSources(owner) });
+        return;
+      }
+      if (ctx.method === 'POST' && path === '/hosted/sources') {
+        ctx.json(ctx.res, {
+          source: await embedded.saveDigestSource(owner, await readBody(ctx.req, 20000)),
+        });
+        return;
+      }
+      if (ctx.method === 'POST' && path === '/hosted/sources/revoke') {
+        const body = await readBody(ctx.req);
+        digestKeys(body, ['id', 'confirmed']);
+        if (body.confirmed !== true) throw new WorkflowApiError('Confirm source revocation', 400);
+        ctx.json(ctx.res, await embedded.revokeDigestSource(owner, digestId(body.id)));
+        return;
+      }
+      if (ctx.method === 'GET' && path === '/hosted/loops') {
+        ctx.json(ctx.res, { loops: await embedded.listHostedDigests(owner) });
+        return;
+      }
+      if (ctx.method === 'POST' && path === '/hosted/dossier') {
+        const body = await readBody(ctx.req, 2000);
+        digestKeys(body, ['sourceId', 'sourceRevision', 'mutationId', 'confirmed']);
+        if (body.confirmed !== true)
+          throw new WorkflowApiError('Confirm this on-demand model execution', 400);
+        ctx.json(ctx.res, {
+          execution: await embedded.runHostedDossier(
+            owner,
+            digestId(body.sourceId),
+            digestText(body.sourceRevision, 64),
+            digestId(body.mutationId)
+          ),
+        });
+        return;
+      }
+      if (ctx.method === 'POST' && path === '/hosted/loops') {
+        const body = await readBody(ctx.req);
+        digestKeys(body, ['spec', 'id', 'expectedVersionId', 'mutationId', 'confirmed']);
+        if (body.confirmed !== true)
+          throw new WorkflowApiError('Review and confirm recurring model execution', 400);
+        ctx.json(ctx.res, {
+          receipt: await embedded.saveHostedDigest(
+            owner,
+            digestId(body.mutationId),
+            body.spec,
+            body.id === undefined ? undefined : digestId(body.id),
+            body.expectedVersionId === undefined ? undefined : digestId(body.expectedVersionId)
+          ),
+        });
+        return;
+      }
+      if (ctx.method === 'GET' && path === '/hosted/results') {
+        ctx.json(
+          ctx.res,
+          await embedded.digestResults(owner, digestId(url.searchParams.get('clientId')))
+        );
+        return;
+      }
+      if (ctx.method === 'POST' && path === '/hosted/results/ack') {
+        const body = digestRecord(await readBody(ctx.req));
+        digestKeys(body, ['clientId', 'cursor', 'runId']);
+        ctx.json(
+          ctx.res,
+          await embedded.acknowledgeDigest(
+            owner,
+            digestId(body.clientId),
+            typeof body.cursor === 'number' ? body.cursor : NaN,
+            digestId(body.runId)
+          )
+        );
+        return;
+      }
+      throw new WorkflowApiError('Hosted digest route not found', 404);
+    }
     if (ctx.method === 'GET' && path === '/status') {
       ctx.json(ctx.res, {
-        mode: 'cloud',
-        host: 'eliza-cloud',
-        status: 'ready',
-        cloudConnected: true,
-        localEnabled: false,
-        platform: 'cloud',
-        cloudHealth: 'healthy',
-        engine: 'smthrs',
+        ...workflowRuntimeStatus(
+          true,
+          Boolean(ctx.runtime?.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE))
+        ),
+        manualSubmissionProtocol: 1,
+        approvalReceiptProtocol: 1,
+        approvalPresentationProtocol: 1,
+        metadataMutationProtocol: 1,
+        lifecycleMutationProtocol: 1,
+        typedAuthoringProtocol: 1,
+        hostedDigestProtocol: 1,
+        ...(hostedNativeSourcesAvailable() ? { hostedNativeSourceProtocol: 1 } : {}),
+      });
+      return;
+    }
+
+    if (ctx.method === 'GET' && path === '/phone/catalog') {
+      ctx.json(ctx.res, service.phoneCatalog());
+      return;
+    }
+    if (ctx.method === 'POST' && path === '/phone/generate') {
+      const body = await readBody(ctx.req, 75000);
+      if (Buffer.byteLength(JSON.stringify(body), 'utf8') > 75000)
+        throw new WorkflowApiError('Generation request is too large', 413);
+      if (
+        Object.keys(body).some(
+          (key) =>
+            ![
+              'prompt',
+              'operations',
+              'device',
+              'existing',
+              'catalogRevision',
+              'compilerRevision',
+            ].includes(key)
+        )
+      )
+        throw new WorkflowApiError('Unsupported generation field', 400);
+      const { catalogRevision, compilerRevision, ...input } = body;
+      ctx.json(
+        ctx.res,
+        await service.generatePhoneDraft(input, catalogRevision, compilerRevision, owner)
+      );
+      return;
+    }
+    const typedReceipt = /^\/phone\/mutations\/([0-9a-f-]+)$/.exec(path);
+    const typedEdit = /^\/workflows\/([^/]+)\/phone-spec$/.exec(path);
+    const validMutation = (value: unknown): value is string =>
+      typeof value === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
+    if (ctx.method === 'GET' && typedReceipt) {
+      if (!validMutation(typedReceipt[1]))
+        throw new WorkflowApiError('Invalid typed mutation identity', 400);
+      ctx.json(ctx.res, {
+        mutationId: typedReceipt[1],
+        receipt: await service.phoneMutationReceipt(owner, typedReceipt[1]),
+      });
+      return;
+    }
+    if (
+      ctx.method === 'POST' &&
+      (path === '/phone/validate' || path === '/phone/workflows' || typedEdit)
+    ) {
+      const body = await readBody(ctx.req, 70000);
+      const allowed =
+        path === '/phone/validate'
+          ? ['spec', 'catalogRevision', 'compilerRevision']
+          : [
+              'spec',
+              'catalogRevision',
+              'compilerRevision',
+              'mutationId',
+              ...(typedEdit ? ['expectedVersionId'] : []),
+            ];
+      if (Object.keys(body).some((key) => !allowed.includes(key)))
+        throw new WorkflowApiError('Unsupported typed authoring field', 400);
+      if (path === '/phone/validate') {
+        ctx.json(
+          ctx.res,
+          await service.validatePhoneDraft(
+            body.spec,
+            body.catalogRevision,
+            body.compilerRevision,
+            owner
+          )
+        );
+        return;
+      }
+      if (!validMutation(body.mutationId))
+        throw new WorkflowApiError('Invalid typed mutation identity', 400);
+      if (
+        typedEdit &&
+        (typeof body.expectedVersionId !== 'string' ||
+          !body.expectedVersionId ||
+          body.expectedVersionId.length > 100)
+      )
+        throw new WorkflowApiError('Expected workflow version is required', 400);
+      ctx.json(ctx.res, {
+        receipt: await service.savePhoneDraft(
+          owner,
+          body.mutationId,
+          body.spec,
+          body.catalogRevision,
+          body.compilerRevision,
+          typedEdit ? decodePathSegment(typedEdit[1]) : undefined,
+          typeof body.expectedVersionId === 'string' ? body.expectedVersionId : undefined
+        ),
+      });
+      return;
+    }
+    if (ctx.method === 'GET' && path === '/removed-workflows') {
+      ctx.json(ctx.res, {
+        workflows: await service.listWorkflows(owner, true),
       });
       return;
     }
@@ -164,7 +352,9 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
       const body = await readBody(ctx.req);
       if (typeof body.prompt !== 'string' || !body.prompt.trim())
         throw new WorkflowApiError('prompt is required', 400);
-      const workflow = await service.generateWorkflowDraft(body.prompt, { userId: owner });
+      const workflow = await service.generateWorkflowDraft(body.prompt, {
+        userId: owner,
+      });
       ctx.json(ctx.res, { workflow }, 200);
       return;
     }
@@ -174,6 +364,11 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
         activate: typeof body.activate === 'boolean' ? body.activate : undefined,
       });
       ctx.json(ctx.res, await service.getWorkflow(created.id, owner), 201);
+      return;
+    }
+    const phoneReview = /^\/executions\/([^/]+)\/phone-review$/.exec(path);
+    if (ctx.method === 'GET' && phoneReview) {
+      ctx.json(ctx.res, await service.phoneRunReview(decodePathSegment(phoneReview[1]), owner));
       return;
     }
     const executionMatch = /^\/executions\/([^/]+)(?:\/(events|cancel))?$/.exec(path);
@@ -186,15 +381,51 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
         return;
       }
       if (ctx.method === 'GET' && !operation) {
-        ctx.json(ctx.res, { execution: await service.getExecutionDetail(runId, owner) });
+        ctx.json(ctx.res, {
+          execution: await service.getExecutionDetail(runId, owner),
+        });
         return;
       }
+    }
+    const approvalList = /^\/executions\/([^/]+)\/approvals$/.exec(path);
+    if (ctx.method === 'GET' && approvalList) {
+      ctx.json(ctx.res, await service.approvalReceipts(decodePathSegment(approvalList[1]), owner));
+      return;
     }
     const approvalMatch = /^\/executions\/([^/]+)\/approvals\/([^/]+)\/(\d+)$/.exec(path);
     if (ctx.method === 'POST' && approvalMatch) {
       const body = await readBody(ctx.req);
       if (body.approved !== true && body.approved !== false) {
         throw new WorkflowApiError('approved must be a boolean', 400);
+      }
+      if ('requestDigest' in body || 'expectedVersionId' in body) {
+        const iteration = Number(approvalMatch[3]);
+        if (
+          typeof body.requestDigest !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(body.requestDigest) ||
+          typeof body.expectedVersionId !== 'string' ||
+          !body.expectedVersionId ||
+          body.expectedVersionId.length > 200 ||
+          !Number.isSafeInteger(iteration) ||
+          iteration < 0 ||
+          'decision' in body ||
+          'note' in body
+        )
+          throw new WorkflowApiError('Exact reviewed approval identity required', 400);
+        ctx.json(
+          ctx.res,
+          await service.decideReviewedApproval(
+            decodePathSegment(approvalMatch[1]),
+            decodePathSegment(approvalMatch[2]),
+            iteration,
+            body.approved,
+            body.expectedVersionId,
+            body.requestDigest,
+            owner
+          ),
+          202
+        );
+        return;
       }
       ctx.json(
         ctx.res,
@@ -238,6 +469,91 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
       ctx.json(ctx.res, await service.getWorkflow(match.id, owner));
       return;
     }
+    if (ctx.method === 'POST' && match.suffix === '/lifecycle') {
+      const body = await readBody(ctx.req);
+      if (
+        Object.keys(body).some(
+          (key) => !['mutationId', 'expectedVersionId', 'operation'].includes(key)
+        ) ||
+        typeof body.mutationId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+          body.mutationId
+        ) ||
+        typeof body.expectedVersionId !== 'string' ||
+        !body.expectedVersionId ||
+        body.expectedVersionId.length > 200 ||
+        (body.operation !== 'remove' && body.operation !== 'restore')
+      )
+        throw new WorkflowApiError('Invalid reviewed lifecycle mutation', 400);
+      ctx.json(
+        ctx.res,
+        await service.changeLifecycle(
+          match.id,
+          body.mutationId,
+          body.expectedVersionId,
+          body.operation,
+          owner
+        )
+      );
+      return;
+    }
+    const lifecycle = /^\/lifecycle-mutations\/([0-9a-f-]+)$/.exec(match.suffix);
+    if (ctx.method === 'GET' && lifecycle) {
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(lifecycle[1])
+      )
+        throw new WorkflowApiError('Invalid mutation identity', 400);
+      ctx.json(ctx.res, await service.lifecycleReceipt(match.id, lifecycle[1], owner));
+      return;
+    }
+    if (ctx.method === 'POST' && match.suffix === '/metadata') {
+      const body = await readBody(ctx.req);
+      if (
+        Object.keys(body).some(
+          (key) => !['mutationId', 'expectedVersionId', 'name', 'description'].includes(key)
+        ) ||
+        typeof body.mutationId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+          body.mutationId
+        ) ||
+        typeof body.expectedVersionId !== 'string' ||
+        !body.expectedVersionId ||
+        body.expectedVersionId.length > 200 ||
+        typeof body.name !== 'string' ||
+        !body.name.trim() ||
+        body.name.length > 200 ||
+        typeof body.description !== 'string' ||
+        body.description.length > 4000
+      )
+        throw new WorkflowApiError('Invalid metadata-only mutation', 400);
+      ctx.json(
+        ctx.res,
+        {
+          receipt: await service.changeMetadata(
+            match.id,
+            body.mutationId,
+            body.expectedVersionId,
+            body.name.trim(),
+            body.description,
+            owner
+          ),
+        },
+        200
+      );
+      return;
+    }
+    const metadata = /^\/metadata-mutations\/([0-9a-f-]+)$/.exec(match.suffix);
+    if (ctx.method === 'GET' && metadata) {
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(metadata[1])
+      )
+        throw new WorkflowApiError('Invalid mutation identity', 400);
+      ctx.json(ctx.res, {
+        mutationId: metadata[1],
+        receipt: await service.metadataReceipt(match.id, metadata[1], owner),
+      });
+      return;
+    }
     if (ctx.method === 'PUT' && match.suffix === '') {
       const body = await readBody(ctx.req);
       ctx.json(ctx.res, await service.updateWorkflow(match.id, workflowFrom(body), owner));
@@ -256,8 +572,45 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
       ctx.json(ctx.res, workflow);
       return;
     }
+    const submission = /^\/submissions\/([0-9a-f-]+)$/.exec(match.suffix);
+    if (ctx.method === 'GET' && submission) {
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(submission[1])
+      )
+        throw new WorkflowApiError('Invalid submission id', 400);
+      ctx.json(ctx.res, {
+        submissionId: submission[1],
+        execution: await service.getManualSubmission(match.id, submission[1], owner),
+      });
+      return;
+    }
     if (ctx.method === 'POST' && match.suffix === '/run') {
       const body = await readBody(ctx.req);
+      if ('submissionId' in body || 'expectedVersionId' in body) {
+        if (
+          typeof body.submissionId !== 'string' ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+            body.submissionId
+          ) ||
+          typeof body.expectedVersionId !== 'string' ||
+          !body.expectedVersionId ||
+          body.expectedVersionId.length > 200 ||
+          !isRecord(body.input)
+        )
+          throw new WorkflowApiError(
+            'Reviewed submission requires UUID, expectedVersionId and input object',
+            400
+          );
+        const execution = await service.startReviewedWorkflow(
+          match.id,
+          body.submissionId,
+          body.expectedVersionId,
+          body.input,
+          owner
+        );
+        ctx.json(ctx.res, { submissionId: body.submissionId, execution }, 202);
+        return;
+      }
       const execution = await service.startWorkflow(
         match.id,
         {
@@ -270,7 +623,9 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
       return;
     }
     if (ctx.method === 'GET' && match.suffix === '/executions') {
-      ctx.json(ctx.res, { executions: await service.getWorkflowExecutions(match.id, 50, owner) });
+      ctx.json(ctx.res, {
+        executions: await service.getWorkflowExecutions(match.id, 50, owner),
+      });
       return;
     }
     if (ctx.method === 'GET' && match.suffix === '/revisions') {
@@ -297,6 +652,34 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
   } catch (error) {
     // error-policy:J1 HTTP boundary translates typed workflow failures.
     const status = error instanceof WorkflowApiError ? error.statusCode : 500;
-    ctx.json(ctx.res, { error: error instanceof Error ? error.message : String(error) }, status);
+    const refusal =
+      error instanceof WorkflowApiError &&
+      isRecord(error.response) &&
+      [
+        'HOSTED_SOURCE_NOT_SAVED',
+        'WORKFLOW_VERSION_NOT_ADMITTED',
+        'WORKFLOW_METADATA_NOT_APPLIED',
+        'WORKFLOW_TYPED_NOT_APPLIED',
+        'WORKFLOW_LIFECYCLE_NOT_APPLIED',
+      ].includes(String(error.response.code)) &&
+      (status === 409 || (status === 400 && error.response.code === 'HOSTED_SOURCE_NOT_SAVED'))
+        ? error.response
+        : undefined;
+    ctx.json(
+      ctx.res,
+      {
+        error: error instanceof Error ? error.message : String(error),
+        ...(refusal
+          ? {
+              code: refusal.code,
+              workflowId: refusal.workflowId,
+              ...(refusal.submissionId ? { submissionId: refusal.submissionId } : {}),
+              ...(refusal.mutationId ? { mutationId: refusal.mutationId } : {}),
+              expectedVersionId: refusal.expectedVersionId,
+            }
+          : {}),
+      },
+      status
+    );
   }
 }

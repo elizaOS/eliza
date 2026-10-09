@@ -1906,6 +1906,27 @@ function classifyArgv(
       if (verdict.destructive) return verdict;
     }
   }
+  if (bin === "rsync") {
+    if (rest.some((word) => word.dynamic)) {
+      return unproved("dynamic rsync expression");
+    }
+    // rsync 3.4.1 rejects `--dele`-style abbreviations ("unknown option") and
+    // parses `-delete` as a short cluster, so only the exact `--delete`,
+    // `--delete-*` variant, and `--del` alias spellings make the receiver
+    // delete files; every other spelling is verified not to delete.
+    if (rest.some((word) => /^--del(?:ete)?(?:$|-)/.test(word.value))) {
+      return {
+        destructive: true,
+        reason: "bulk rsync delete",
+        // Deletion happens on the destination, which is rsync's last
+        // non-option argument.
+        targets: rest
+          .filter((word) => !word.value.startsWith("-"))
+          .slice(-1)
+          .map((word) => word.value),
+      };
+    }
+  }
   if (bin === "dd") {
     const output = rest.find((word) => /^of=\/dev\//.test(word.value));
     if (output) {

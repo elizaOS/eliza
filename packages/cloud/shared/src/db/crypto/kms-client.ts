@@ -1,7 +1,7 @@
 /**
  * Singleton accessor for the KMS client used by cloud-shared crypto helpers.
  *
- * Resolves the backend through `createKmsClient()` from `@elizaos/core/security/kms`
+ * Resolves the backend through `createKmsClient()` from `@elizaos/auth/kms`
  * (memory in tests, local in cloud production with `ELIZA_LOCAL_ROOT_KEY`,
  * steward when explicitly configured).
  *
@@ -13,8 +13,8 @@
  * `resetKmsClientForTests()` between cases to re-resolve the backend.
  */
 
+import { createKmsClient, type KmsClient, resolveKmsBackend } from "@elizaos/auth/kms";
 import { ElizaError } from "@elizaos/core";
-import { createKmsClient, type KmsClient, resolveKmsBackend } from "@elizaos/core/security/kms";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 
 let _kms: KmsClient | null = null;
@@ -46,7 +46,7 @@ export function setKmsClient(client: KmsClient): void {
  *    which is precisely the misconfig class this guards against.
  *
  * Exported for tests. Keep in sync with `assertKmsBackendDurable` in
- * `packages/cloud/scripts/admin/daemons/provisioning-worker.ts`, which applies
+ * `packages/cloud/services/provisioning-worker/src/index.ts`, which applies
  * the same policy at daemon preflight (before any job is claimed).
  */
 export function isEphemeralKmsAllowed(env: NodeJS.ProcessEnv): boolean {

@@ -188,7 +188,7 @@ export function generateProjections(
     combined.push({
       timestamp: futureDate,
       totalRequests: Math.round(requestsVariance),
-      totalCost: Math.round(costVariance),
+      totalCost: costVariance,
       inputTokens: Math.round(inputTokensVariance),
       outputTokens: Math.round(outputTokensVariance),
       successRate: projectedSuccessRate,
@@ -267,7 +267,7 @@ export function generateProjectionAlerts(
     alerts.push({
       type: "warning",
       title: "High Projected Spending",
-      message: `Projected spending for the period: ${(totalProjectedCost / 100).toFixed(2)} credits`,
+      message: `Projected spending for the period: ${totalProjectedCost.toFixed(2)} credits`,
       projectedValue: totalProjectedCost,
     });
   }

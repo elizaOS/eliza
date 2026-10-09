@@ -6,13 +6,17 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
+import { protectedKeyReleaseClient } from "../security/protected-profile.ts";
 import { teeBootGateBlocksSecrets } from "./tee-boot-gate-state.ts";
 import type { TeeMeasurementName } from "./tee-evidence.ts";
 import type {
   TeeKeyReleaseClient,
   TeeKeyReleaseResult,
 } from "./tee-key-release.ts";
-import type { TeeEvidencePolicy } from "./tee-policy.ts";
+import {
+  policyAdmitsOnlyDstackTdx,
+  type TeeEvidencePolicy,
+} from "./tee-policy.ts";
 
 /**
  * Attestation-bound sealed state-volume key manager (plan §2.3 / Phase C item
@@ -38,10 +42,10 @@ import type { TeeEvidencePolicy } from "./tee-policy.ts";
  * attestation→key binding here is, and it is the part that matters for the
  * security property.
  *
- * HARDWARE BOUNDARY (fail-closed): real TDX/CoVE quote-signature verification
- * is BLOCKED on hardware (plan Phase B2/C1). This path verifies a normalized
- * evidence document + measurement match via the key-release client only; it
- * must not be presented as hardware-verified trust until B2/C1 land.
+ * TRUST SOURCE: the key-release client appraises its own freshly collected
+ * evidence against the policy before any key is used. Under the dstack TDX
+ * profile that evidence comes from the pinned dstack verifier plus in-repo raw
+ * quote checks; other evidence providers are only as strong as their appraisal.
  */
 
 /**
@@ -61,13 +65,30 @@ export const STATE_VOLUME_KEY_ID = "state-volume" as const;
 export const STATE_VOLUME_REQUIRED_MEASUREMENTS: readonly TeeMeasurementName[] =
   ["agent", "policy", "device"] as const;
 
+/**
+ * State-volume gate for dstack-appraised Intel TDX CVMs: the verifier-bound
+ * application id, compose hash and OS image hash. A different app, compose or
+ * image fails appraisal and no key is released.
+ */
+export const DSTACK_TDX_STATE_VOLUME_REQUIRED_MEASUREMENTS: readonly TeeMeasurementName[] =
+  ["app", "compose", "os"] as const;
+
+/** Default measurement gate for the evidence family the policy admits. */
+export function stateVolumeRequiredMeasurements(
+  policy: TeeEvidencePolicy,
+): readonly TeeMeasurementName[] {
+  return policyAdmitsOnlyDstackTdx(policy)
+    ? DSTACK_TDX_STATE_VOLUME_REQUIRED_MEASUREMENTS
+    : STATE_VOLUME_REQUIRED_MEASUREMENTS;
+}
+
 export type UnsealStateVolumeKeyConfig = {
   keyReleaseClient: TeeKeyReleaseClient;
   policy: TeeEvidencePolicy;
   /**
    * Measurements the policy MUST gate before release. Defaults to
-   * {@link STATE_VOLUME_REQUIRED_MEASUREMENTS}. A caller may add more (e.g.
-   * `os`, `boot`) for a stricter mount.
+   * {@link stateVolumeRequiredMeasurements} for the policy. A caller may add
+   * more (e.g. `boot`, `mrtd`) for a stricter mount.
    */
   requiredMeasurements?: readonly TeeMeasurementName[];
   /** Optional KDF context forwarded to the key-release client. */
@@ -104,10 +125,15 @@ export async function unsealStateVolumeKey(
   }
 
   const required =
-    config.requiredMeasurements ?? STATE_VOLUME_REQUIRED_MEASUREMENTS;
+    config.requiredMeasurements ??
+    stateVolumeRequiredMeasurements(config.policy);
   assertPolicyGatesRequiredMeasurements(config.policy, required);
 
-  const release = await config.keyReleaseClient.releaseKey({
+  const keyReleaseClient = protectedKeyReleaseClient(
+    config.keyReleaseClient,
+    "state-volume",
+  );
+  const release = await keyReleaseClient.releaseKey({
     keyId: STATE_VOLUME_KEY_ID,
     ...(config.context === undefined ? {} : { context: config.context }),
     policy: config.policy,

@@ -425,9 +425,11 @@ export async function pollAction(
       );
     }
 
-    // Still in progress. Stop if the next interval would breach the deadline.
+    // Still in progress. Stop if the next interval would pass the deadline.
+    // Sleeping exactly onto the deadline is allowed so the budget's final
+    // poll still runs; only a sleep that would overshoot is skipped.
     const remaining = deadline - clock.now();
-    if (remaining <= 0 || intervalMs >= remaining) {
+    if (remaining <= 0 || intervalMs > remaining) {
       throw new PollActionError(
         `Action ${actionId} did not reach a terminal state within ${timeoutMs}ms (last status: ${action.status})`,
         "timeout",

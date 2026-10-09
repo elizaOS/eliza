@@ -10,9 +10,7 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SandboxService } from "../services/sandbox-service.js";
-import { SessionCwdService } from "../services/session-cwd-service.js";
-import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
+import { setupEnv, type TestEnv } from "./__tests__/helpers.js";
 import {
   globHandler,
   globToRegExp,
@@ -22,40 +20,9 @@ import {
 
 let testContainer: string;
 let tmpRoot: string;
+let env: TestEnv;
 let blockedPath: string;
 let outsideRoot: string;
-
-interface RuntimeBundle {
-  runtime: IAgentRuntime;
-  message: Memory;
-}
-
-async function buildRuntime(): Promise<RuntimeBundle> {
-  const settings: Record<string, unknown> = {
-    CODING_TOOLS_BLOCKED_PATHS: blockedPath,
-    CODING_TOOLS_WORKSPACE_ROOTS: tmpRoot,
-  };
-  const runtimeSeed = {
-    getSetting: (key: string) => settings[key],
-    getService: <T>(_type: string): T | null => null,
-  } as IAgentRuntime;
-
-  const sandbox = await SandboxService.start(runtimeSeed);
-  const session = await SessionCwdService.start(runtimeSeed);
-  session.setCwd("test-room", tmpRoot);
-
-  const runtime = {
-    getSetting: (key: string) => settings[key],
-    getService: <T>(serviceType: string): T | null => {
-      if (serviceType === SANDBOX_SERVICE) return sandbox as T;
-      if (serviceType === SESSION_CWD_SERVICE) return session as T;
-      return null;
-    },
-  } as IAgentRuntime;
-
-  const message = { roomId: "test-room" } as Memory;
-  return { runtime, message };
-}
 
 beforeEach(async () => {
   testContainer = await fs.mkdtemp(path.join(os.tmpdir(), "ct-glob-"));
@@ -64,7 +31,11 @@ beforeEach(async () => {
   await fs.mkdir(tmpRoot);
   await fs.mkdir(outsideRoot);
   blockedPath = path.join(tmpRoot, "_blocked");
-  await fs.mkdir(blockedPath, { recursive: true });
+  env = await setupEnv("ct-glob", {
+    rootsPath: tmpRoot,
+    extraSettings: { CODING_TOOLS_WORKSPACE_ROOTS: tmpRoot },
+  });
+  env.sessionCwd.setCwd("test-room", tmpRoot);
   const fooDir = path.join(tmpRoot, "foo");
   const subDir = path.join(fooDir, "sub");
   await fs.mkdir(subDir, { recursive: true });
@@ -82,14 +53,18 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await fs.rm(testContainer, { recursive: true, force: true });
+  try {
+    await env.cleanup();
+  } finally {
+    await fs.rm(testContainer, { recursive: true, force: true });
+  }
 });
 
 const state: State | undefined = undefined;
 
 describe("GLOB", () => {
   it("matches **/*.ts and returns expected count", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     const result = await globHandler(runtime, message, state, {
       parameters: { pattern: "**/*.ts" },
     });
@@ -108,7 +83,7 @@ describe("GLOB", () => {
   });
 
   it("keeps glob plugin-owned until fs.glob parity exists", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     const guardedRuntime = {
       ...runtime,
       getService: <T>(serviceType: string): T | null => {
@@ -128,7 +103,7 @@ describe("GLOB", () => {
   });
 
   it("resolves a relative path against the session cwd", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     const result = await globHandler(runtime, message, state, {
       parameters: { pattern: "**/*.ts", path: "./foo" },
     });
@@ -140,7 +115,7 @@ describe("GLOB", () => {
   });
 
   it("rejects a path under the blocklist", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     const result = await globHandler(runtime, message, state, {
       parameters: { pattern: "**/*", path: blockedPath },
     });
@@ -151,7 +126,7 @@ describe("GLOB", () => {
   it.each(["../outside/*.txt", "{../outside,foo}/*.txt"])(
     "rejects a traversing pattern %s",
     async (pattern) => {
-      const { runtime, message } = await buildRuntime();
+      const { runtime, message } = env;
       const result = await globHandler(runtime, message, state, {
         parameters: { pattern },
       });
@@ -165,7 +140,7 @@ describe("GLOB", () => {
   it.each(["/tmp/*.txt", "C:\\outside\\*.txt"])(
     "rejects an absolute pattern %s",
     async (pattern) => {
-      const { runtime, message } = await buildRuntime();
+      const { runtime, message } = env;
       const result = await globHandler(runtime, message, state, {
         parameters: { pattern },
       });
@@ -177,7 +152,7 @@ describe("GLOB", () => {
   );
 
   it("does not follow a directory symlink outside the workspace", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     await fs.writeFile(path.join(outsideRoot, "secret.txt"), "outside\n");
     await fs.symlink(outsideRoot, path.join(tmpRoot, "escape"), "dir");
 
@@ -190,7 +165,7 @@ describe("GLOB", () => {
   });
 
   it("returns an in-root file symlink without traversing it as a directory", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     const link = path.join(tmpRoot, "linked.ts");
     await fs.symlink(path.join(tmpRoot, "foo", "a.ts"), link, "file");
 
@@ -205,7 +180,7 @@ describe("GLOB", () => {
   });
 
   it("rejects a matching file symlink whose target is outside the workspace", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     const outsideFile = path.join(outsideRoot, "secret.txt");
     await fs.writeFile(outsideFile, "outside\n");
     await fs.symlink(
@@ -269,7 +244,7 @@ describe("GLOB", () => {
   );
 
   it("preserves brace and recursive glob semantics inside the root", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     const result = await globHandler(runtime, message, state, {
       parameters: { pattern: "{foo,missing}/**/{a,b,c}.ts" },
     });
@@ -290,7 +265,7 @@ describe("GLOB", () => {
   ])(
     "excludes implicit dot segments for $pattern",
     async ({ pattern, excluded }) => {
-      const { runtime, message } = await buildRuntime();
+      const { runtime, message } = env;
       const result = await globHandler(runtime, message, state, {
         parameters: { pattern },
       });
@@ -307,7 +282,7 @@ describe("GLOB", () => {
   ])(
     "includes explicitly requested dot segments for $pattern",
     async ({ pattern, included }) => {
-      const { runtime, message } = await buildRuntime();
+      const { runtime, message } = env;
       const result = await globHandler(runtime, message, state, {
         parameters: { pattern },
       });
@@ -323,7 +298,7 @@ describe("GLOB", () => {
   ])(
     "treats leading control syntax literally for $pattern",
     async ({ pattern, included }) => {
-      const { runtime, message } = await buildRuntime();
+      const { runtime, message } = env;
       if (pattern.startsWith("!")) {
         await fs.mkdir(path.join(tmpRoot, "!foo"));
         await fs.writeFile(
@@ -345,7 +320,7 @@ describe("GLOB", () => {
   );
 
   it("fails when roomId is missing", async () => {
-    const { runtime } = await buildRuntime();
+    const { runtime } = env;
     const result = await globHandler(runtime, {} as Memory, state, {
       parameters: { pattern: "**/*.ts" },
     });
@@ -354,7 +329,7 @@ describe("GLOB", () => {
   });
 
   it("fails when pattern is missing", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     const result = await globHandler(runtime, message, state, {
       parameters: {},
     });
@@ -405,7 +380,7 @@ describe("globHandler — read-only query stays silent", () => {
   // the ActionResult and the user via the planner's final message. Posting each
   // exploratory call's dump spammed chat (#16589) — the callback must never fire.
   it("does not invoke the visible chat callback", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     const callback = vi.fn();
     const result = await globHandler(
       runtime,
@@ -421,7 +396,7 @@ describe("globHandler — read-only query stays silent", () => {
 
 describe("globHandler — result ordering", () => {
   it("returns newest first and breaks equal-mtime ties by path", async () => {
-    const { runtime, message } = await buildRuntime();
+    const { runtime, message } = env;
     const orderDir = path.join(tmpRoot, "order");
     await fs.mkdir(orderDir, { recursive: true });
 

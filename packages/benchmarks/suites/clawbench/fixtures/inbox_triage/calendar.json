@@ -1,0 +1,31 @@
+[
+  {
+    "id": "evt_101",
+    "title": "Team Standup",
+    "start": "2026-02-06T09:00:00-08:00",
+    "end": "2026-02-06T09:30:00-08:00",
+    "location": "Zoom"
+  },
+  {
+    "id": "evt_102",
+    "title": "1:1 with Manager",
+    "start": "2026-02-06T10:00:00-08:00",
+    "end": "2026-02-06T10:30:00-08:00",
+    "location": "Manager's office"
+  },
+  {
+    "id": "evt_103",
+    "title": "Focus Time",
+    "start": "2026-02-06T14:00:00-08:00",
+    "end": "2026-02-06T16:00:00-08:00",
+    "location": ""
+  },
+  {
+    "id": "evt_104",
+    "title": "Client Call — BigCorp",
+    "start": "2026-02-07T11:00:00-08:00",
+    "end": "2026-02-07T12:00:00-08:00",
+    "location": "Zoom",
+    "notes": "Project timeline discussion"
+  }
+]

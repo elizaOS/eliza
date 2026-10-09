@@ -4,6 +4,25 @@
  * Central export point for all database table schemas.
  */
 
+export {
+  agentTable,
+  cacheTable,
+  channelParticipantsTable,
+  channelTable,
+  componentTable,
+  embeddingTable,
+  entityTable,
+  logTable,
+  memoryTable,
+  messageServerAgentsTable,
+  messageServerTable,
+  messageTable,
+  participantTable,
+  relationshipTable,
+  roomTable,
+  taskTable,
+  worldTable,
+} from "@elizaos/plugin-sql/schema";
 export * from "./account-deletion-exports";
 export * from "./account-deletion-phase-receipts";
 export * from "./account-deletion-requests";
@@ -23,8 +42,11 @@ export * from "./agent-backup-catalog";
 export * from "./agent-backup-restore-history";
 export * from "./agent-backup-restore-v3-candidates";
 export * from "./agent-budgets";
+export * from "./agent-compute-funding";
 export * from "./agent-compute-stop-intents";
+export * from "./agent-compute-subjects";
 export * from "./agent-events";
+export * from "./agent-funding-retentions";
 export * from "./agent-identities";
 export * from "./agent-node-incarnation-histories";
 export * from "./agent-pairing-tokens";
@@ -40,10 +62,22 @@ export * from "./alb-priorities";
 export * from "./analytics-alert-events";
 export * from "./anonymous-sessions";
 export * from "./api-keys";
+export * from "./app-billing";
 export * from "./app-billing-accounts";
+export * from "./app-billing-application-slots";
+export * from "./app-billing-completion-validations";
+export * from "./app-billing-customer-closures";
+export * from "./app-billing-deletion-dispositions";
+export * from "./app-billing-delivery";
+export * from "./app-billing-memberships";
+export * from "./app-billing-quotes";
+export * from "./app-billing-refund-observations";
+export * from "./app-billing-seat-mutations";
+export * from "./app-billing-verifications";
 export * from "./app-config";
 export * from "./app-credit-balances";
 export * from "./app-databases";
+export * from "./app-delegations";
 export * from "./app-domains";
 export * from "./app-earnings";
 export * from "./app-frontend-deployments";
@@ -56,6 +90,8 @@ export * from "./auth-events";
 export * from "./auto-top-up-attempts";
 export * from "./billing-cancel-commands";
 export * from "./billing-funding-reservations";
+export * from "./billing-identities";
+export * from "./billing-owner-subjects";
 export * from "./billing-subscriptions";
 export * from "./cli-auth-sessions";
 export * from "./cloud-files";
@@ -65,6 +101,7 @@ export * from "./compute-stop-intents";
 export * from "./container-billing-legacy-ledger-bindings";
 export * from "./containers";
 export * from "./conversations";
+export * from "./creator-earnings-retirement-statements";
 export * from "./credit-packs";
 export * from "./credit-transactions";
 export * from "./crypto-payments";
@@ -76,7 +113,6 @@ export * from "./discord-connections";
 export * from "./discord-guilds";
 export * from "./docker-nodes";
 export * from "./domain-purchase-idempotency";
-export * from "./eliza";
 export * from "./eliza-room-characters";
 export * from "./entity-settings";
 export * from "./generations";
@@ -103,13 +139,19 @@ export * from "./organization-config";
 export * from "./organization-encryption-keys";
 export * from "./organization-entitlements";
 export * from "./organization-invites";
+export * from "./organization-payment-reversal-holds";
+export * from "./organization-plan-change-quotes";
 export * from "./organization-policy-audit";
+export * from "./organization-schedule-effects";
+export * from "./organization-schedule-quote-terms";
+export * from "./organization-upgrade-historical-targets";
+export * from "./organization-upgrade-invoice-origins";
 export * from "./organizations";
-export * from "./outreachr-delegations";
 export * from "./payment-request-receipts";
 export * from "./payment-requests";
 export * from "./personal-account-convergences";
 export * from "./personal-dedicated-adoption-selections";
+export * from "./personal-dedicated-fallbacks";
 export * from "./personal-dedicated-upgrade-authorities";
 export * from "./personal-shared-groups";
 export * from "./personal-shared-inbound-media";
@@ -139,6 +181,8 @@ export * from "./stripe-checkout-orders";
 export * from "./stripe-checkout-orders";
 export * from "./stripe-connect-accounts";
 export * from "./stripe-customer-attempts";
+export * from "./subscription-adjustment-observations";
+export * from "./subscription-adjustment-recovery";
 export * from "./subscription-allowance-periods";
 export * from "./subscription-allowance-transactions";
 export * from "./subscription-billing-operations";
@@ -154,6 +198,7 @@ export * from "./twilio-inbound-calls";
 export * from "./twilio-outbound-calls";
 export * from "./usage-records";
 export * from "./user-characters";
+export * from "./user-consents";
 export * from "./user-identities";
 export * from "./user-mcps";
 export * from "./user-preferences";

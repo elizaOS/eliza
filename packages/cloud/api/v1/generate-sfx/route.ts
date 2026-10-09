@@ -8,6 +8,35 @@
  * influence, no lyrics) and their own pricing family ("sfx").
  */
 
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getAudioProvider } from "@elizaos/cloud-shared/lib/providers/audio/registry";
+import {
+  type BillingContext,
+  billFlatUsage,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import { calculateSfxGenerationCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import {
+  getSupportedSfxModelDefinition,
+  SUPPORTED_SFX_MODEL_IDS,
+} from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
+import { contentSafetyService } from "@elizaos/cloud-shared/lib/services/content-safety";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
+import {
+  assertGeneratedMediaStorageHeadroom,
+  discardGeneratedMediaObject,
+  storeGeneratedAudio,
+} from "@elizaos/cloud-shared/lib/storage/generated-media-storage";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppEnv,
+  Bindings,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -17,23 +46,6 @@ import {
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { getAudioProvider } from "@/lib/providers/audio/registry";
-import type { GeneratedAudio } from "@/lib/providers/audio/types";
-import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
-import { calculateSfxGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
-import {
-  getSupportedSfxModelDefinition,
-  SUPPORTED_SFX_MODEL_IDS,
-} from "@/lib/services/ai-pricing-definitions";
-import { contentSafetyService } from "@/lib/services/content-safety";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { generationsService } from "@/lib/services/generations";
-import { putPublicObject } from "@/lib/storage/r2-public-object";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
 
 const DEFAULT_SFX_MODEL = "elevenlabs/sound_effects_v1";
 const MAX_PROMPT_LENGTH = 500;
@@ -60,58 +72,6 @@ function providerConfigured(env: Bindings, provider: string): boolean {
     return Boolean(envString(env, "FAL_KEY") ?? envString(env, "FAL_API_KEY"));
   }
   return Boolean(envString(env, "ELEVENLABS_API_KEY"));
-}
-
-function extensionForContentType(contentType: string): string {
-  if (contentType.includes("wav")) return "wav";
-  if (contentType.includes("L16") || contentType.includes("pcm")) return "pcm";
-  if (contentType.includes("basic")) return "ulaw";
-  return "mp3";
-}
-
-interface StoredAudio {
-  url: string;
-  file_name?: string;
-  file_size?: number;
-  content_type?: string;
-}
-
-async function storeGeneratedSfx(
-  env: Bindings,
-  generated: GeneratedAudio,
-  keyPrefix: string,
-  customMetadata: Record<string, string>,
-): Promise<StoredAudio> {
-  if (generated.source === "hosted") {
-    return {
-      url: generated.url,
-      file_name: generated.fileName,
-      file_size: generated.fileSize,
-      content_type: generated.contentType,
-    };
-  }
-
-  if (!env.BLOB) {
-    throw new Error("R2 storage is not configured");
-  }
-  const ext = extensionForContentType(generated.contentType);
-  const key = `${keyPrefix}/${crypto.randomUUID()}.${ext}`;
-  const body = generated.bytes.buffer.slice(
-    generated.bytes.byteOffset,
-    generated.bytes.byteOffset + generated.bytes.byteLength,
-  ) as ArrayBuffer;
-  const stored = await putPublicObject(env, {
-    key,
-    body,
-    contentType: generated.contentType,
-    customMetadata,
-  });
-  return {
-    url: stored.url,
-    file_name: key.split("/").at(-1),
-    file_size: generated.bytes.byteLength,
-    content_type: generated.contentType,
-  };
 }
 
 app.post("/", async (c) => {
@@ -240,6 +200,11 @@ app.post("/", async (c) => {
       billingSource: definition.billingSource,
     };
 
+    // A full storage quota is refused before admission, so it is never charged.
+    if (getAudioProvider(definition.billingSource).storesOutputInCloud) {
+      await assertGeneratedMediaStorageHeadroom(user.organization_id);
+    }
+
     try {
       admission = await admitFlatGenerativeOperation({
         c,
@@ -290,8 +255,9 @@ app.post("/", async (c) => {
       },
     });
 
-    const audio = await storeGeneratedSfx(
+    const { stored: audio, storage } = await storeGeneratedAudio(
       c.env,
+      user.organization_id,
       generated,
       `generations/sfx/${user.organization_id}/${user.id}`,
       {
@@ -304,37 +270,51 @@ app.post("/", async (c) => {
 
     const requestId = generated.requestId;
     const generationId = crypto.randomUUID();
-    await generationsService.create({
-      id: generationId,
-      organization_id: user.organization_id,
-      user_id: user.id,
-      type: "sfx",
-      model: request.model,
-      provider: definition.provider,
-      prompt: request.prompt,
-      result: {
-        requestId,
-        billingSource: definition.billingSource,
-        raw: generated.raw,
-      },
-      status: "completed",
-      storage_url: audio.url,
-      thumbnail_url: null,
-      file_size: audio.file_size ? BigInt(audio.file_size) : undefined,
-      mime_type: audio.content_type ?? "audio/mpeg",
-      parameters: {
-        durationSeconds,
-        promptInfluence: request.promptInfluence,
-        outputFormat: request.outputFormat,
-      },
-      dimensions: {
-        duration: durationSeconds,
-      },
-      cost: String(cost.totalCost),
-      credits: String(cost.totalCost),
-      job_id: requestId,
-      completed_at: new Date(),
-    });
+    try {
+      await generationsService.create({
+        id: generationId,
+        organization_id: user.organization_id,
+        user_id: user.id,
+        type: "sfx",
+        model: request.model,
+        provider: definition.provider,
+        prompt: request.prompt,
+        result: {
+          requestId,
+          billingSource: definition.billingSource,
+          ...(storage ? { storageQuotaBytes: storage.storageQuotaBytes } : {}),
+          raw: generated.raw,
+        },
+        status: "completed",
+        storage_url: audio.url,
+        thumbnail_url: null,
+        file_size: audio.file_size ? BigInt(audio.file_size) : undefined,
+        mime_type: audio.content_type ?? "audio/mpeg",
+        parameters: {
+          durationSeconds,
+          promptInfluence: request.promptInfluence,
+          outputFormat: request.outputFormat,
+        },
+        dimensions: {
+          duration: durationSeconds,
+        },
+        cost: String(cost.totalCost),
+        credits: String(cost.totalCost),
+        job_id: requestId,
+        completed_at: new Date(),
+      });
+    } catch (error) {
+      // error-policy:J6 a stored object without its history row is removed and
+      // its storage released before the causal failure is rethrown.
+      if (storage) {
+        await discardGeneratedMediaObject(c.env, {
+          organizationId: user.organization_id,
+          key: storage.key,
+          storageQuotaBytes: storage.storageQuotaBytes,
+        });
+      }
+      throw error;
+    }
 
     const settlementTask = billFlatUsage(
       billingContext,

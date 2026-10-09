@@ -5,23 +5,23 @@
  * For bot OAuth (scope=bot), Discord returns guild_id directly in URL params.
  */
 
-import { Hono } from "hono";
 import {
   assertAllowedAbsoluteRedirectUrl,
   getDefaultPlatformRedirectOrigins,
   resolveSafeRedirectTarget,
   sanitizeRelativeRedirectPath,
-} from "@/lib/security/redirect-validation";
-import { managedAgentDiscordService } from "@/lib/services/agent-managed-discord";
-import { discordAutomationService } from "@/lib/services/discord-automation";
-import type { OAuthState } from "@/lib/services/discord-automation/types";
+} from "@elizaos/cloud-shared/lib/security/redirect-validation";
+import { managedAgentDiscordService } from "@elizaos/cloud-shared/lib/services/agent-managed-discord";
+import { discordAutomationService } from "@elizaos/cloud-shared/lib/services/discord-automation";
+import type { OAuthState } from "@elizaos/cloud-shared/lib/services/discord-automation/types";
 import {
   clearOAuthSuccessParams,
   isOAuthSuccessLandingPath,
   mintOAuthSuccessProof,
-} from "@/lib/services/oauth/success-proof";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/oauth/success-proof";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 
@@ -48,9 +48,7 @@ function resolveOAuthReturnTarget(
   returnUrl: string | undefined,
   managedFlow: boolean,
 ): URL {
-  const fallbackPath = managedFlow
-    ? "/cloud/settings?tab=agents"
-    : "/cloud/settings?tab=connections";
+  const fallbackPath = managedFlow ? "/cloud/agents" : "/cloud/connectors";
 
   if (managedFlow && returnUrl) {
     if (returnUrl.startsWith("/")) {

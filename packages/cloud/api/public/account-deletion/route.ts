@@ -1,12 +1,12 @@
 /** Public account-deletion capability recovery, activation, status, and undo boundary. */
 
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { checkElizaMutatingRequestOrigin } from "@/lib/auth/browser-origin-policy";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { checkElizaMutatingRequestOrigin } from "@elizaos/cloud-shared/lib/auth/browser-origin-policy";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   AccountDeletionRecoveryError,
   AccountDeletionConflictError,
@@ -14,9 +14,9 @@ import {
   cancelAccountDeletion,
   getAccountDeletionStatusByCredential,
   recoverAccountDeletionAdmission,
-} from "@/lib/services/account-deletion";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/account-deletion";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 app.use(

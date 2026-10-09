@@ -12,13 +12,12 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.net.DatagramPacket
-import java.net.DatagramSocket
+import android.system.Os
+import android.system.OsConstants
+import android.system.StructPollfd
+import android.util.Log
 import java.net.Inet4Address
 import java.net.InetAddress
-import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicBoolean
 
 class WebsiteBlockerVpnService : VpnService() {
@@ -38,7 +37,11 @@ class WebsiteBlockerVpnService : VpnService() {
         fun isRunning(): Boolean = activeInstance != null
     }
 
+    @Volatile
     private var vpnInterface: ParcelFileDescriptor? = null
+    private val tunnelWriteLock = Any()
+    @Volatile
+    private var dnsForwarder: DnsForwarder? = null
     private var tunnelThread: Thread? = null
     private val tunnelRunning = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -62,8 +65,7 @@ class WebsiteBlockerVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action ?: ACTION_START
         if (action == ACTION_STOP) {
-            shouldClearStateOnStop = true
-            stopSelf()
+            stopBlocking()
             return START_NOT_STICKY
         }
 
@@ -74,8 +76,7 @@ class WebsiteBlockerVpnService : VpnService() {
             ?: persisted?.requestedWebsites
             ?: emptyList()
         if (websites.isEmpty()) {
-            shouldClearStateOnStop = true
-            stopSelf()
+            stopBlocking()
             return START_NOT_STICKY
         }
 
@@ -89,8 +90,7 @@ class WebsiteBlockerVpnService : VpnService() {
 
         val savedBlock = WebsiteBlockerStateStore.save(this, websites, endsAt)
             ?: run {
-                shouldClearStateOnStop = true
-                stopSelf()
+                stopBlocking()
                 return START_NOT_STICKY
             }
         activePolicy = savedBlock
@@ -116,9 +116,8 @@ class WebsiteBlockerVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        shouldClearStateOnStop = true
+        stopBlocking()
         super.onRevoke()
-        stopSelf()
     }
 
     private fun establishVpn() {
@@ -128,7 +127,7 @@ class WebsiteBlockerVpnService : VpnService() {
 
         val builder = Builder()
             .setSession("Eliza Website Blocker")
-            .setBlocking(true)
+            .setBlocking(false)
             .setMtu(1500)
             .addAddress(VPN_ADDRESS, 32)
             .addRoute(DNS_ADDRESS, 32)
@@ -147,41 +146,48 @@ class WebsiteBlockerVpnService : VpnService() {
         }
 
         val descriptor = vpnInterface ?: return
-        val policy = activePolicy ?: WebsiteBlockerStateStore.load(this) ?: return
+        val forwarder = DnsForwarder(::resolveUpstreamDnsServers) { protect(it) }
+        dnsForwarder = forwarder
         tunnelRunning.set(true)
         tunnelThread = Thread {
             val dnsAddress = InetAddress.getByName(DNS_ADDRESS) as Inet4Address
-            FileInputStream(descriptor.fileDescriptor).use { input ->
-                FileOutputStream(descriptor.fileDescriptor).use { output ->
-                    val packetBuffer = ByteArray(32_767)
-                    while (tunnelRunning.get()) {
-                        val length = try {
-                            input.read(packetBuffer)
-                        } catch (_: Exception) {
-                            break
-                        }
-                        if (length <= 0) {
-                            continue
-                        }
-
-                        val query = DnsPacketCodec.parseUdpDnsQuery(packetBuffer, length, dnsAddress)
-                            ?: continue
-                        val responsePayload = if (
-                            WebsiteBlockerStateStore.isBlockedHostname(policy, query.queryName)
-                        ) {
-                            DnsPacketCodec.buildBlockedDnsResponse(query.dnsPayload)
-                        } else {
-                            forwardDnsQuery(query.dnsPayload)
-                                ?: DnsPacketCodec.buildServerFailureDnsResponse(query.dnsPayload)
-                        }
-
-                        val responsePacket = DnsPacketCodec.buildUdpDnsResponse(query, responsePayload)
-                        try {
-                            output.write(responsePacket)
-                        } catch (_: Exception) {
-                            break
+            val packetBuffer = ByteArray(32_767)
+            val poll = StructPollfd().apply {
+                fd = descriptor.fileDescriptor
+                events = OsConstants.POLLIN.toShort()
+            }
+            while (tunnelRunning.get() && !Thread.currentThread().isInterrupted) {
+                try {
+                    // Closing a descriptor does not cancel a blocking TUN read.
+                    // Bounded polling lets stop release the interface even when idle.
+                    if (Os.poll(arrayOf(poll), 250) == 0) continue
+                    if (!tunnelRunning.get() || Thread.currentThread().isInterrupted) break
+                    val length = Os.read(descriptor.fileDescriptor, packetBuffer, 0, packetBuffer.size)
+                    if (length <= 0) continue
+                    val query = DnsPacketCodec.parseUdpDnsQuery(packetBuffer, length, dnsAddress)
+                        ?: continue
+                    // The service can receive another START while the tunnel stays up.
+                    // Take one coherent policy snapshot for each incoming query.
+                    val policy = activePolicy ?: continue
+                    if (WebsiteBlockerStateStore.isBlockedHostname(policy, query.queryName)) {
+                        sendDnsResponse(descriptor, forwarder, query,
+                            DnsPacketCodec.buildBlockedDnsResponse(query.dnsPayload))
+                    } else {
+                        forwarder.submit(query.dnsPayload) { response ->
+                            try {
+                                sendDnsResponse(descriptor, forwarder, query,
+                                    response ?: DnsPacketCodec.buildServerFailureDnsResponse(query.dnsPayload))
+                            } catch (error: Exception) {
+                                failTunnel(descriptor, error)
+                            }
                         }
                     }
+                } catch (error: Exception) {
+                    // error-policy:J1 Shutdown closes the descriptor; other I/O failures stop enforcement.
+                    if (tunnelRunning.get() && !Thread.currentThread().isInterrupted) {
+                        failTunnel(descriptor, error)
+                    }
+                    break
                 }
             }
         }.apply {
@@ -191,35 +197,46 @@ class WebsiteBlockerVpnService : VpnService() {
         }
     }
 
-    private fun stopTunnelLoop() {
-        tunnelRunning.set(false)
-        tunnelThread?.interrupt()
-        tunnelThread = null
-        try {
-            vpnInterface?.close()
-        } catch (_: Exception) {
-        }
-        vpnInterface = null
-    }
-
-    private fun forwardDnsQuery(queryPayload: ByteArray): ByteArray? {
-        val upstreamServers = resolveUpstreamDnsServers()
-        for (server in upstreamServers) {
-            try {
-                DatagramSocket().use { socket ->
-                    protect(socket)
-                    socket.soTimeout = 3_000
-                    socket.connect(InetSocketAddress(server, 53))
-                    socket.send(DatagramPacket(queryPayload, queryPayload.size))
-                    val responseBuffer = ByteArray(4_096)
-                    val responsePacket = DatagramPacket(responseBuffer, responseBuffer.size)
-                    socket.receive(responsePacket)
-                    return responseBuffer.copyOf(responsePacket.length)
-                }
-            } catch (_: Exception) {
+    private fun sendDnsResponse(descriptor: ParcelFileDescriptor, forwarder: DnsForwarder,
+        query: DnsQueryPacket, payload: ByteArray) {
+        val response = DnsPacketCodec.buildUdpDnsResponse(query, payload)
+        synchronized(tunnelWriteLock) {
+            // Responses from an expired/stopped tunnel cannot write into its replacement.
+            if (dnsForwarder !== forwarder || vpnInterface !== descriptor || !tunnelRunning.get()) return
+            check(Os.write(descriptor.fileDescriptor, response, 0, response.size) == response.size) {
+                "Incomplete DNS tunnel response"
             }
         }
-        return null
+    }
+
+    private fun failTunnel(descriptor: ParcelFileDescriptor, error: Exception) {
+        if (vpnInterface !== descriptor) return
+        Log.e("WebsiteBlockerVpn", "DNS tunnel failed", error)
+        mainHandler.post {
+            if (vpnInterface === descriptor) {
+                stopTunnelLoop()
+                stopSelf()
+            }
+        }
+    }
+
+    private fun stopTunnelLoop() {
+        val stopped = synchronized(tunnelWriteLock) {
+            tunnelRunning.set(false)
+            val previous = dnsForwarder
+            dnsForwarder = null
+            tunnelThread?.interrupt()
+            tunnelThread = null
+            try {
+                vpnInterface?.close()
+            } catch (error: Exception) {
+                Log.w("WebsiteBlockerVpn", "Failed to close DNS tunnel", error)
+            }
+            vpnInterface = null
+            previous
+        }
+        // Close owned sockets and cancel queued work; reads use bounded waits.
+        stopped?.close()
     }
 
     private fun resolveUpstreamDnsServers(): List<InetAddress> {
@@ -240,6 +257,14 @@ class WebsiteBlockerVpnService : VpnService() {
         )
     }
 
+    private fun stopBlocking() {
+        shouldClearStateOnStop = true
+        cancelScheduledStop()
+        stopTunnelLoop()
+        WebsiteBlockerStateStore.clear(this)
+        stopSelf()
+    }
+
     private fun scheduleStop(endsAtEpochMs: Long?) {
         cancelScheduledStop()
         if (endsAtEpochMs == null) {
@@ -248,14 +273,12 @@ class WebsiteBlockerVpnService : VpnService() {
 
         val delayMs = endsAtEpochMs - System.currentTimeMillis()
         if (delayMs <= 0) {
-            shouldClearStateOnStop = true
-            stopSelf()
+            stopBlocking()
             return
         }
 
         val stopRunnable = Runnable {
-            shouldClearStateOnStop = true
-            stopSelf()
+            stopBlocking()
         }
         scheduledStop = stopRunnable
         mainHandler.postDelayed(stopRunnable, delayMs)

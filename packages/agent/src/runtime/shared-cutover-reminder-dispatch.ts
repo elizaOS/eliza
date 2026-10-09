@@ -5,15 +5,13 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import { resolveDevCloudAuthorityEnvValue } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import {
   type DispatchFailureReason,
   registerScheduledTaskChannelDispatcher,
   SHARED_CUTOVER_GATEWAY_CHANNEL,
 } from "@elizaos/plugin-scheduling";
-import {
-  resolveCloudApiBaseUrl,
-  resolveDevCloudAuthorityEnvValue,
-} from "@elizaos/shared";
 
 const DISPATCH_FAILURE_REASONS = new Set<DispatchFailureReason>([
   "disconnected",

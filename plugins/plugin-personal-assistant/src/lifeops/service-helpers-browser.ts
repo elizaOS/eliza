@@ -5,18 +5,18 @@
  */
 import crypto from "node:crypto";
 import type {
+  LifeOpsBrowserSession,
+  LifeOpsCalendarEvent,
+  LifeOpsOccurrenceView,
+  LifeOpsWorkflowRun,
+} from "@elizaos/contracts";
+import type {
   BrowserBridgeAction,
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
   BrowserBridgeSettings,
   BrowserBridgeTabSummary,
 } from "@elizaos/plugin-browser";
-import type {
-  LifeOpsBrowserSession,
-  LifeOpsCalendarEvent,
-  LifeOpsOccurrenceView,
-  LifeOpsWorkflowRun,
-} from "../contracts/index.js";
 import type { LifeOpsWebsiteAccessGrant } from "./repository.js";
 import {
   fail,

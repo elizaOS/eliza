@@ -2,6 +2,7 @@
 import { ElizaError } from "@elizaos/core";
 import { eq, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
+import { dbWrite } from "../helpers";
 import { organizationSubscriptionAuthorities } from "../schemas/billing-subscriptions";
 import { organizationPolicyAudit } from "../schemas/organization-policy-audit";
 import { organizations } from "../schemas/organizations";
@@ -61,4 +62,20 @@ export async function advanceOrganizationPolicyGeneration(
     change: input.change,
   });
   return authority.generation;
+}
+
+/**
+ * Reads the durable policy generation without locking. Cache readers compare it
+ * with a cached stamp: every subscription change advances the generation, so an
+ * observation cache is invalidated without a writer-side hook.
+ */
+export async function readOrganizationPolicyGeneration(
+  organizationId: string,
+): Promise<string | null> {
+  const [authority] = await dbWrite
+    .select({ generation: organizationSubscriptionAuthorities.policy_generation })
+    .from(organizationSubscriptionAuthorities)
+    .where(eq(organizationSubscriptionAuthorities.organization_id, organizationId))
+    .limit(1);
+  return authority ? authority.generation.toString() : null;
 }

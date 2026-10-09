@@ -1,94 +1,19 @@
 /**
- * Chat command utilities — slash command parsing, saved command management,
- * and the typed command registry.
+ * Shared chat display and command-palette utilities.
  */
 
+import type { EnabledViewKinds } from "@elizaos/core";
 import {
-  type EnabledViewKinds,
   isViewVisible,
   MESSAGE_SOURCE_CODING_AGENT,
-} from "@elizaos/core";
+} from "@elizaos/core/protocol";
 import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
-import { shellLocalStorage } from "../surface-realm-channel";
-import type {
-  DesktopClickAuditItem,
-  DesktopWorkspaceSurface,
-} from "../utils/desktop-workspace";
+import type { DesktopWorkspaceSurface } from "../utils/desktop-workspace";
 import { DESKTOP_WORKSPACE_SURFACES } from "../utils/desktop-workspace";
 
 const ROUTINE_CODING_AGENT_RE =
   /^\[.+?\] (?:Approved:|Responded:|Sent keys:|Turn done, continuing:|Idle for \d+[smh])/;
-
-// ── Saved custom commands ────────────────────────────────────────────────
-
-export const CUSTOM_COMMANDS_STORAGE_KEY = "eliza:custom-commands";
-
-export interface SavedCustomCommand {
-  name: string;
-  text: string;
-  createdAt: number;
-}
-
-function isSavedCustomCommand(value: unknown): value is SavedCustomCommand {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.name === "string" &&
-    typeof candidate.text === "string" &&
-    typeof candidate.createdAt === "number"
-  );
-}
-
-export function loadSavedCustomCommands(): SavedCustomCommand[] {
-  try {
-    const raw = localStorage.getItem(CUSTOM_COMMANDS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isSavedCustomCommand);
-  } catch {
-    // error-policy:J3 the saved custom-commands blob is untrusted persisted
-    // input (localStorage read / JSON.parse); a corrupt store must not wedge the
-    // command palette — start clean. An absent key already returns [] above, so
-    // "corrupt" and "none" render the same empty palette by design.
-    return [];
-  }
-}
-
-export function saveSavedCustomCommands(commands: SavedCustomCommand[]): void {
-  shellLocalStorage.setItem(
-    CUSTOM_COMMANDS_STORAGE_KEY,
-    JSON.stringify(commands),
-  );
-}
-
-export function appendSavedCustomCommand(command: SavedCustomCommand): void {
-  const existing = loadSavedCustomCommands();
-  existing.push(command);
-  saveSavedCustomCommands(existing);
-}
-
-export function normalizeSlashCommandName(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  const withoutSlash = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
-  return withoutSlash.trim().toLowerCase();
-}
-
-export function expandSavedCustomCommand(
-  template: string,
-  argsRaw: string,
-): string {
-  const args = argsRaw.trim();
-  if (!args) {
-    return template;
-  }
-  if (template.includes("{{args}}")) {
-    return template.replaceAll("{{args}}", args);
-  }
-  return `${template}\n${args}`;
-}
 
 export function splitCommandArgs(raw: string): string[] {
   const tokens: string[] = [];
@@ -146,7 +71,7 @@ export const NAV_COMMANDS: readonly { id: string; label: string; tab: Tab }[] =
     // Views + Apps consolidated into the single Launcher (#9143).
     { id: "nav-launcher", label: "Open Launcher", tab: "views" },
     { id: "nav-character", label: "Open Character", tab: "character" },
-    { id: "nav-triggers", label: "Open Triggers", tab: "triggers" },
+    { id: "nav-automations", label: "Open Automations", tab: "automations" },
     { id: "nav-inventory", label: "Open Wallet", tab: "inventory" },
     { id: "nav-documents", label: "Open Knowledge", tab: "documents" },
     { id: "nav-tasks", label: "Open Projects", tab: "tasks" },
@@ -225,44 +150,6 @@ export interface BuildCommandsArgs {
     options?: { browse?: string },
   ) => void;
 }
-
-export const DESKTOP_COMMAND_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
-  {
-    id: "desktop-open-workspace",
-    entryPoint: "command-palette",
-    label: "Open Desktop Workspace",
-    expectedAction: "Open the complete Eliza shell in a managed app window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-open-voice-controls",
-    entryPoint: "command-palette",
-    label: "Open Voice Controls",
-    expectedAction:
-      "Open a detached settings window focused on the voice section.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-focus-main-window",
-    entryPoint: "command-palette",
-    label: "Focus Main Window",
-    expectedAction: "Focus the main desktop window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  ...DESKTOP_WORKSPACE_SURFACES.map(
-    (surface): DesktopClickAuditItem => ({
-      id: `desktop-command-${surface.id}`,
-      entryPoint: "command-palette",
-      label: `Open ${surface.label}`,
-      expectedAction: `Open the detached ${surface.id} surface from the command palette.`,
-      runtimeRequirement: "desktop",
-      coverage: "automated",
-    }),
-  ),
-] as const;
 
 export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
   const {

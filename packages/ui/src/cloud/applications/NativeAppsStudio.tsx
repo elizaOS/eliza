@@ -30,7 +30,6 @@
  * pages via `CloudRouterShell`, never this file).
  */
 
-import { logger } from "@elizaos/logger";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, Suspense, useEffect, useMemo, useState } from "react";
 import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
@@ -38,8 +37,9 @@ import {
   cloudTokenSecsRemaining,
   refreshCloudStewardSession,
 } from "../../api/client-cloud";
-import { PageHeaderProvider } from "../../cloud-ui/components/layout";
-import { getBootConfig } from "../../config/boot-config";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
+import { getBootConfig } from "../../config/boot-config-store";
+import { logger } from "../../logger.ts";
 import { decodeJwtPayload } from "../lib/jwt";
 import { queryClient } from "../lib/query-client";
 import {

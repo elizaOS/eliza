@@ -5,16 +5,19 @@
  * it pulls together components, memory, model, and database types into the single
  * object the whole framework passes around.
  */
+
 import type { ReportedError } from "../errors";
 import type { Logger } from "../logger";
-import type { ConnectorInteractionCapabilityProfile } from "../messaging/interactions/profiles";
+import type { FetchLike } from "../media/fetch";
+import type { ConnectorInteractionCapabilityProfile } from "../messaging/interaction-profiles";
 import type { ContextRegistry } from "../runtime/context-registry";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
-import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
-import type { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import type {
+	ResponseHandlerFieldEvaluator,
+	ResponseHandlerFieldRegistry,
+} from "../runtime/response-handler-fields";
 import type { RoomHandlerQueue } from "../runtime/room-handler-queue";
 import type { TurnControllerRegistry } from "../runtime/turn-controller";
-import type { PromptBatcher } from "../utils/prompt-batcher";
 import type { Agent, Character } from "./agent";
 import type {
 	ChatPreHandler,
@@ -68,7 +71,6 @@ import type {
 	PluginOwnership,
 	RemotePluginInstallOptions,
 	RemotePluginInstanceHandle,
-	Route,
 	RuntimeEventStorage,
 	ServiceClass,
 } from "./plugin";
@@ -79,10 +81,13 @@ import type {
 	SearchCategoryRegistration,
 } from "./search";
 import type { Service, ServiceTypeName } from "./service";
-import type { ShortcutDefinition } from "./shortcut";
 import type { State } from "./state";
-import type { Task, TaskWorker } from "./task";
-import type { ToolPolicyConfig, ToolProfileId } from "./tools";
+import type {
+	Task,
+	TaskMetadataPatch,
+	TaskMetadataPatchOutcome,
+	TaskWorker,
+} from "./task";
 
 export {
 	type SearchCategoryEnumerationOptions,
@@ -149,6 +154,11 @@ export type PostConnectorCapability =
 
 /** Options for bounded runtime shutdown. */
 export interface RuntimeStopOptions {
+	/** Wait for original service starts, teardown and plugin registration even after
+	 * a prior bounded stop. Teardown failures reject persistently. An outer deadline
+	 * may stop waiting, but cannot cancel this drain or authorize resource reuse.
+	 */
+	requireQuiescence?: boolean;
 	/**
 	 * Skip waiting for unresolved service starts and cap service teardown. Intended
 	 * for signal handlers, reset/restart paths, and development shutdown.
@@ -218,7 +228,7 @@ export interface ConnectorAccountRef {
 	accountId?: string;
 	purpose?: ConnectorAccountPurpose | ConnectorAccountPurpose[];
 	role?: ConnectorAccountRole;
-	/** Legacy display-name alias kept for connector registrations that have not migrated to label yet. */
+	/** Connector display name when label is absent. */
 	name?: string;
 	label?: string;
 	authMethod?: ConnectorAuthMethod;
@@ -641,9 +651,39 @@ type RuntimeDatabaseAdapterSurface = Omit<
 	| "replaceDocumentRevision"
 	| "deleteDocumentWithSnapshot"
 	| "compareAndSwapWorldMetadata"
+	// The runtime exposes patchTaskMetadata with a typed outcome instead of the
+	// adapter's optional boolean, so the adapter member is excluded here.
+	| "patchTaskMetadata"
 >;
 
+/** Owner-private diagnostic projection from the canonical executor, never model proposals. */
+export interface OwnerToolExecutionObservation {
+	phase: "gate" | "started" | "settled" | "omitted";
+	gate:
+		| "lookup"
+		| "role-context"
+		| "disclosure"
+		| "schema"
+		| "action-validation"
+		| "connector-account"
+		| "execution";
+	gateOutcome: "passed" | "denied" | "failed" | "executed" | "unknown";
+	actionName: string;
+	executionId?: string;
+	toolCallId?: string;
+	args?: unknown;
+	result?: unknown;
+	redactedFields: number;
+	redactedStrings: number;
+	omittedFields: number;
+}
 export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
+	/** Positively attests the canonical executor observation contract. Absent on older Core. */
+	readonly ownerToolExecutionObserverVersion?: 1;
+	/** Server-installed owner capture only. Synchronous, immutable, isolated and default absent. */
+	ownerToolExecutionObserver?: (
+		observation: Readonly<OwnerToolExecutionObservation>,
+	) => void;
 	// Properties
 	/** Database adapter. Set in constructor; required. */
 	adapter: IDatabaseAdapter;
@@ -679,7 +719,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * schema, instructs the LLM to populate them in ONE call, then
 	 * dispatches each parsed slice to its owner's handler.
 	 *
-	 * See `runtime/response-handler-field-evaluator.ts` for the contract.
+	 * See `runtime/response-handler-fields.ts` for the contract.
 	 */
 	responseHandlerFieldEvaluators: ResponseHandlerFieldEvaluator[];
 	/**
@@ -703,8 +743,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	plugins: Plugin[];
 	services: Map<ServiceTypeName, Service[]>;
 	events: RuntimeEventStorage;
-	fetch?: typeof fetch | null;
-	routes: Route[];
+	fetch?: FetchLike | null;
 	logger: Logger;
 	stateCache: Map<string, State>;
 	/**
@@ -713,12 +752,9 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * `runtime.contexts.tryRegister(...)`.
 	 */
 	contexts: ContextRegistry;
-	promptBatcher?: PromptBatcher;
-	/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. */
-	companionUrl?: string;
 
 	// Methods
-	registerPlugin(plugin: Plugin): Promise<void>;
+	registerPlugin<T extends Plugin>(plugin: T): Promise<void>;
 	unloadPlugin(pluginName: string): Promise<PluginOwnership | null>;
 	reloadPlugin(plugin: Plugin): Promise<void>;
 
@@ -728,18 +764,18 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * object and asks the runtime to materialise it) and for
 	 * user-installed third-party remote plugins shipped as a tarball.
 	 *
-	 * @param plugin   The Plugin object. Must have mode === "remote" and
-	 *                 a valid `remote` config block. Permission requests
-	 *                 in `plugin.remote.permissions` are *ceilings*; the
-	 *                 host narrows them against `runtime.grantedPermissions`
-	 *                 and inline-source defaults at install time.
-	 * @param options  `source` controls where the worker code comes from.
-	 *                 `lifetime` controls cleanup ("session" default for
-	 *                 agent-generated; "persistent" persists across boots).
-	 *                 `attestation` is required for third-party tarballs.
-	 * @returns        A handle to the installation; call `uninstall()` to
-	 *                 tear down (worker stops, plugin unregisters,
-	 *                 store dir cleans up if `lifetime: "session"`).
+	 * @param plugin The Plugin object. Must have mode === "remote" and
+	 * a valid `remote` config block. Permission requests
+	 * in `plugin.remote.permissions` are *ceilings*; the
+	 * host narrows them against `runtime.grantedPermissions`
+	 * and inline-source defaults at install time.
+	 * @param options `source` controls where the worker code comes from.
+	 * `lifetime` controls cleanup ("session" default for
+	 * agent-generated; "persistent" persists across boots).
+	 * `attestation` is required for third-party tarballs.
+	 * @returns A handle to the installation; call `uninstall()` to
+	 * tear down (worker stops, plugin unregisters,
+	 * store dir cleans up if `lifetime: "session"`).
 	 */
 	installRemotePlugin(
 		plugin: Plugin,
@@ -751,15 +787,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	): Promise<boolean>;
 	getPluginOwnership(pluginName: string): PluginOwnership | null;
 	getAllPluginOwnership(): PluginOwnership[];
-	enableDocuments(): Promise<void>;
-	disableDocuments(): Promise<void>;
-	isDocumentsEnabled(): boolean;
-	enableRelationships(): Promise<void>;
-	disableRelationships(): Promise<void>;
-	isRelationshipsEnabled(): boolean;
-	enableTrajectories(): Promise<void>;
-	disableTrajectories(): Promise<void>;
-	isTrajectoriesEnabled(): boolean;
 
 	initialize(options?: { skipMigrations?: boolean }): Promise<void>;
 
@@ -868,9 +895,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 
 	registerAction(action: Action): void;
 	unregisterAction(name: string): boolean;
-	registerShortcut(shortcut: ShortcutDefinition): void;
-	registerShortcuts(shortcuts: readonly ShortcutDefinition[]): void;
-	unregisterShortcut(id: string): void;
 	registerChatPreHandler(handler: ChatPreHandler): void;
 	registerChatPreHandlers(handlers: readonly ChatPreHandler[]): void;
 	unregisterChatPreHandler(id: string): void;
@@ -895,42 +919,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * Get all registered actions.
 	 */
 	getAllActions(): Action[];
-
-	/**
-	 * Get actions filtered by tool policy.
-	 *
-	 * @param context - Optional policy context for filtering
-	 * @returns Filtered actions based on policy
-	 */
-	getFilteredActions(context?: {
-		profile?: ToolProfileId;
-		characterPolicy?: ToolPolicyConfig;
-		channelPolicy?: ToolPolicyConfig;
-		providerPolicy?: ToolPolicyConfig;
-		worldPolicy?: ToolPolicyConfig;
-		roomPolicy?: ToolPolicyConfig;
-	}): Action[] | Promise<Action[]>;
-
-	/**
-	 * Check if a specific action is allowed by tool policy.
-	 *
-	 * @param actionName - The action name to check
-	 * @param context - Optional policy context
-	 * @returns Whether the action is allowed
-	 */
-	isActionAllowed(
-		actionName: string,
-		context?: {
-			profile?: ToolProfileId;
-			characterPolicy?: ToolPolicyConfig;
-			channelPolicy?: ToolPolicyConfig;
-			providerPolicy?: ToolPolicyConfig;
-			worldPolicy?: ToolPolicyConfig;
-			roomPolicy?: ToolPolicyConfig;
-		},
-	):
-		| { allowed: boolean; reason: string }
-		| Promise<{ allowed: boolean; reason: string }>;
 
 	ensureConnections(
 		entities: Entity[],
@@ -1025,7 +1013,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * observe `useModel`'s internal resolution (e.g. the messageHandler /
 	 * factsAndRelationships trajectory stage recorders) can record the REAL
 	 * provider that answered instead of fabricating a `"default"` literal
-	 * (#13623). Returns `undefined` — never a fabricated value — when unknown.
+	 *. Returns `undefined` — never a fabricated value — when unknown.
 	 */
 	getLastResolvedModelProvider?(
 		modelType: TextGenerationModelType | string,
@@ -1119,7 +1107,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * `"error"` stream when registered, and records it in the in-memory ring the
 	 * RECENT_ERRORS provider and the owner-escalation threshold read.
 	 *
-	 * This is the diagnostic boundary (#12263): it never throws. Its own
+	 * This is the diagnostic boundary: it never throws. Its own
 	 * failures — and failures inside `ERROR_REPORTED` handlers — are warn-only
 	 * and never re-enter `reportError`.
 	 */
@@ -1149,32 +1137,18 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 */
 	unregisterTaskWorker(name: string): boolean;
 
+	/** Plugin-supplied execution; an empty kernel has no prompt policy. */
+	structuredPromptExecutor?: IAgentRuntime["dynamicPromptExecFromState"];
+	/** Record generic model/provider trace data for later enrichment. */
+	recordPromptTrace(
+		trace: import("../prompt-optimization").ExecutionTrace,
+	): void;
+	purgePromptTraces(): void;
+
 	/**
-	 * Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
-	 *
-	 * WHY THIS EXISTS:
-	 * LLMs are powerful but unreliable for structured outputs. They can:
-	 * - Silently truncate output when hitting token limits
-	 * - Skip fields or produce malformed structures
-	 * - Hallucinate or ignore parts of the prompt
-	 *
-	 * This method addresses these issues by:
-	 * 1. Validation codes: Injects UUID codes the LLM must echo back. If codes match,
-	 *    we know the LLM actually read and followed the prompt.
-	 * 2. Streaming with safety: Enables streaming while detecting truncation.
-	 * 3. Performance tracking: Tracks success/failure rates per model+schema.
-	 *
-	 * VALIDATION LEVELS:
-	 * - Level 0 (Trusted): No codes. Maximum speed. Use for reliable models.
-	 * - Level 1 (Progressive): Per-field codes. Balance of safety + speed.
-	 * - Level 2: Buffered validation. Optional checkpoint codes can validate the prompt envelope.
-	 * - Level 3: Strict buffered validation. Optional checkpoint codes validate both ends.
-	 *
-	 * @param state - State object to inject into the prompt template
-	 * @param params - LLM parameters with a prompt template
-	 * @param schema - Array of field definitions for structured output
-	 * @param options - Configuration (modelSize/modelType, validation level, streaming callbacks, etc.)
-	 * @returns Parsed structured response object, or null on failure
+	 * Delegate structured parsing and streaming to the explicitly registered executor.
+	 * Rejects when no executor is installed. Schema validation and optional checkpoint
+	 * markers detect structural failures; they do not prove semantic correctness.
 	 */
 	dynamicPromptExecFromState(args: {
 		state?: State;
@@ -1220,18 +1194,18 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 */
 	enrichTrace(
 		runId: string,
-		signal: import("./prompt-optimization-trace").ScoreSignal,
+		signal: import("../prompt-optimization").ScoreSignal,
 	): void;
 
 	/** Retrieve the most recent in-flight optimization trace for a runId. */
 	getActiveTrace(
 		runId: string,
-	): import("./prompt-optimization-trace").ExecutionTrace | undefined;
+	): import("../prompt-optimization").ExecutionTrace | undefined;
 
 	/** Retrieve all in-flight optimization traces for a runId (multiple DPE calls per run). */
 	getActiveTracesForRun?(
 		runId: string,
-	): import("./prompt-optimization-trace").ExecutionTrace[];
+	): import("../prompt-optimization").ExecutionTrace[];
 
 	/** Remove all in-flight optimization traces for a runId after finalization. */
 	deleteActiveTrace(runId: string): void;
@@ -1245,12 +1219,12 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 */
 	registerPromptOptimizationHooks(
 		hooks:
-			| import("./prompt-optimization-hooks").PromptOptimizationRuntimeHooks
+			| import("../prompt-optimization").PromptOptimizationRuntimeHooks
 			| null,
 	): void;
 
 	getPromptOptimizationHooks():
-		| import("./prompt-optimization-hooks").PromptOptimizationRuntimeHooks
+		| import("../prompt-optimization").PromptOptimizationRuntimeHooks
 		| null;
 
 	/** Resolved `OPTIMIZATION_DIR` (see `getOptimizationRootDir`). */
@@ -1358,30 +1332,8 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		fragments: readonly import("../security/fragment-redaction").SecretFragment[],
 	): import("../security/fragment-redaction").SecretFragmentTaintProfile;
 
-	// ========================================================================
-	// Single-item convenience wrappers
-	//
-	// WHY these exist: IAgentRuntime extends IDatabaseAdapter, so it inherits
-	// all batch methods. But most call sites in plugins, event handlers, and
-	// actions naturally deal with one item at a time -- one message to store,
-	// one entity to look up, one task to create. Forcing every caller to
-	// wrap in arrays ([item]) and unwrap ([0]) adds noise without value.
-	//
-	// These wrappers keep the common single-item case clean. They are NOT
-	// deprecated -- they are the preferred API for single-item operations.
-	// Use batch methods (createMemories, getAgentsByIds, etc.) when you
-	// have multiple items or want to minimize round-trips.
-	//
-	// Implementation note: AgentRuntime implements these by delegating to
-	// the corresponding batch adapter method. For example:
-	//   getAgent(id) → (await this.adapter.getAgentsByIds([id]))[0] ?? null
-	//   createMemory(mem, table) → this.adapter.createMemories([{mem, table}])
-	//
-	// The createMemory() wrapper is special: it also performs secret
-	// redaction before delegating to the adapter. This is why runtime.ts
-	// preserves createMemory() calls internally instead of going directly
-	// to the adapter in security-sensitive paths.
-	// ========================================================================
+	// Single-item wrappers delegate to batch adapter methods. createMemory also redacts secrets;
+	// security-sensitive callers must retain that boundary.
 
 	getEntityById(entityId: UUID): Promise<Entity | null>;
 	getEntitiesForRoom(
@@ -1426,6 +1378,15 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	createTask(task: Task): Promise<UUID>;
 	getTask(id: UUID): Promise<Task | null>;
 	updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean>;
+	/**
+	 * Applies a key-level metadata patch through the adapter's atomic merge.
+	 * Resolves `unsupported` when the adapter cannot patch atomically, so the
+	 * caller can fall back to `updateTask` with a merged object.
+	 */
+	patchTaskMetadata(
+		id: UUID,
+		patch: TaskMetadataPatch,
+	): Promise<TaskMetadataPatchOutcome>;
 	updateTask(id: UUID, task: Partial<Task>): Promise<void>;
 	deleteTask(id: UUID): Promise<void>;
 
@@ -1440,6 +1401,15 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	getCache<T>(key: string): Promise<T | undefined>;
 	setCache<T>(key: string, value: T): Promise<boolean>;
 	deleteCache(key: string): Promise<boolean>;
+	/** Atomically insert when expected is undefined, otherwise replace only an
+	 * equal JSON value. Null is a stored value, not absence. False means conflict;
+	 * storage failures throw and must never be retried as ordinary conflicts.
+	 */
+	compareAndSetCache<T>(
+		key: string,
+		expected: unknown,
+		replacement: T,
+	): Promise<boolean>;
 
 	updateEntity(entity: Entity): Promise<void>;
 
@@ -1505,8 +1475,14 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		tableName: string,
 		unique?: boolean,
 	): Promise<UUID>;
+	/** Atomic manifest-last storage for oversized native MESSAGE/ATTACHMENT text. */
+	createMessageMemory?(memory: Memory, unique?: boolean): Promise<UUID>;
+	replaceMessageMemoryContent?(id: UUID, content: Content): Promise<void>;
 	updateMemory(
 		memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
+	): Promise<boolean>;
+	updateMemoryEmbedding(
+		update: import("./database").MemoryEmbeddingUpdate,
 	): Promise<boolean>;
 	deleteMemory(memoryId: UUID): Promise<void>;
 

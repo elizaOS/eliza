@@ -1,12 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Shared plugin build driver (issue #9626, TL;DR #2). The model-provider and
- * connector plugins each hand-rolled the same Bun.build + tsc-d.ts + d.ts-alias
- * algorithm with minor per-package variation (which targets, minify, whether a
- * dist clean runs, and the exact declaration-alias shims). This collapses that
- * orchestration to one place; each plugin's `build.ts` becomes a small,
- * declarative `buildPlugin({...})` call that lists only what it actually differs
- * on. The emitted `dist/` is byte-identical to the previous hand-rolled build.
+ * Orchestrates plugin bundles and required publication artifacts from declarative package build files.
+ * Every configured move, declaration, shim, and copy is part of the published package contract, so a
+ * failed or missing step aborts instead of reporting success with an incomplete `dist/` tree.
  */
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, rename, writeFile } from "node:fs/promises";
@@ -22,6 +18,8 @@ export interface BuildTarget {
   label: string;
   /** Entrypoint(s) relative to the package root. */
   entry: string | string[];
+  /** Explicit source root for stable entry paths when code splitting is enabled. */
+  root?: string;
   /** Output subdirectory under `dist/` (e.g. "node", "browser", "cjs"). */
   outSubdir: string;
   target: "node" | "browser" | "bun";
@@ -32,8 +30,12 @@ export interface BuildTarget {
   sourcemap?: "external" | "inline" | "none" | "linked";
   /** Default: false (Bun's default). */
   splitting?: boolean;
+  /** Resolve CJS import.meta.url from the deployed bundle instead of a build-host source path. */
+  runtimeImportMetaUrl?: boolean;
   /** Passed through to Bun.build (e.g. `{ entry: "index.node.js" }`). */
   naming?: { entry?: string; chunk?: string; asset?: string };
+  /** Bun bundler plugins for this target (e.g. module-identity externals). */
+  plugins?: Bun.BunPlugin[];
   /**
    * Rename emitted files after the build, e.g.
    * `[["index.node.js", "index.node.cjs"]]` or both the bundle and its map.
@@ -73,12 +75,6 @@ export interface BuildPluginConfig {
    * re-exports would otherwise stay bare and fail to resolve for NodeNext
    * consumers. Default: false. */
   rewriteDistImports?: boolean;
-  /**
-   * Tolerate a failed `tsc` declaration emit (warn + continue with JS-only
-   * outputs) instead of aborting. Mirrors the per-package fallback some plugins
-   * carried; default false (fail loud).
-   */
-  dtsTolerant?: boolean;
   /** Declaration-alias shim files to write after tsc. */
   dtsShims?: readonly DtsShim[];
   /**
@@ -113,7 +109,7 @@ const RM_RECURSIVE = resolve(
   "..",
   "packages",
   "scripts",
-  "rm-path-recursive.mjs",
+  "rm-path-recursive.ts",
 );
 
 const REWRITE_DIST_IMPORTS = resolve(
@@ -121,7 +117,7 @@ const REWRITE_DIST_IMPORTS = resolve(
   "..",
   "packages",
   "scripts",
-  "rewrite-dist-relative-imports-node-esm.mjs",
+  "rewrite-dist-relative-imports-node-esm.ts",
 );
 
 /**
@@ -189,6 +185,7 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
     console.log(`🔨 Building ${config.name} (${t.label})…`);
     const result = await Bun.build({
       entrypoints: Array.isArray(t.entry) ? t.entry : [t.entry],
+      ...(t.root ? { root: t.root } : {}),
       outdir: join(distDir, t.outSubdir),
       target: t.target,
       format: t.format,
@@ -196,21 +193,25 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
       minify: t.minify ?? false,
       splitting: t.splitting ?? false,
       external,
+      ...(t.format === "cjs" && t.runtimeImportMetaUrl
+        ? {
+            define: { "import.meta.url": "__elizaPluginBundleUrl" },
+            banner:
+              'var __elizaPluginBundleUrl = require("node:url").pathToFileURL(__filename).href;',
+          }
+        : {}),
       ...(t.naming ? { naming: t.naming } : {}),
+      ...(t.plugins ? { plugins: t.plugins } : {}),
     });
     if (!result.success) {
       console.error(`${t.label} build failed:`, result.logs);
       throw new Error(`${t.label} build failed`);
     }
     for (const [from, to] of t.renames ?? []) {
-      try {
-        await rename(
-          join(distDir, t.outSubdir, from),
-          join(distDir, t.outSubdir, to),
-        );
-      } catch (e) {
-        console.warn(`${t.label} rename step warning:`, e);
-      }
+      await rename(
+        join(distDir, t.outSubdir, from),
+        join(distDir, t.outSubdir, to),
+      );
     }
     console.log(
       `✅ ${t.label} complete in ${((Date.now() - start) / 1000).toFixed(2)}s`,
@@ -219,7 +220,6 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
 
   for (const f of config.flatten ?? []) {
     const fromDir = join(distDir, f.from);
-    if (!existsSync(fromDir)) continue;
     const toDir = join(distDir, f.to ?? ".");
     console.log(`📂 Flattening dist/${f.from} → dist/${f.to ?? "."}…`);
     await moveTreeContents(fromDir, toDir);
@@ -230,20 +230,10 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
     console.log("📝 Generating TypeScript declarations…");
     const project = config.dtsProject;
     const emitDeclOnly = config.dtsEmitDeclarationOnly ?? false;
-    const run = emitDeclOnly
-      ? () =>
-          Bun.$`node ${TSC_BIN} --project ${project} --emitDeclarationOnly --noCheck`
-      : () => Bun.$`node ${TSC_BIN} --project ${project} --noCheck`;
-    if (config.dtsTolerant) {
-      try {
-        await run();
-      } catch {
-        console.warn(
-          "Warning: TypeScript declaration generation failed; continuing with bundled JS outputs only.",
-        );
-      }
+    if (emitDeclOnly) {
+      await Bun.$`node ${TSC_BIN} --project ${project} --emitDeclarationOnly --noCheck`;
     } else {
-      await run();
+      await Bun.$`node ${TSC_BIN} --project ${project} --noCheck`;
     }
   }
 

@@ -4,6 +4,15 @@
  * and adapts the google workspace service methods LifeOps' Gmail/Drive/Google
  * domains call. Keeps Google API specifics out of the LifeOps domains.
  */
+
+import type {
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsGmailMessageSummary,
+  LifeOpsGoogleCapability,
+  LifeOpsGoogleConnectorStatus,
+} from "@elizaos/contracts";
 import {
   type ConnectorAccount,
   getConnectorAccountManager,
@@ -18,14 +27,6 @@ import type {
   GoogleSendEmailInput,
   IGoogleWorkspaceService,
 } from "@elizaos/plugin-google-workspace";
-import type {
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsGmailMessageSummary,
-  LifeOpsGoogleCapability,
-  LifeOpsGoogleConnectorStatus,
-} from "../contracts/index.js";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import { fail } from "./service-normalize.js";
 import { normalizeGrantCapabilities } from "./service-normalize-connector.js";
@@ -179,9 +180,6 @@ export function googleCapabilitiesForAccount(
   }
   if (normalized.has("google.calendar.write")) {
     normalized.add("google.calendar.read");
-  }
-  if (normalized.has("google.gmail.send")) {
-    normalized.add("google.gmail.triage");
   }
   if (normalized.has("google.gmail.manage")) {
     normalized.add("google.gmail.triage");

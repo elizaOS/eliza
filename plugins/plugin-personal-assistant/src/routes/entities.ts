@@ -10,8 +10,12 @@
  *   GET    /api/lifeops/entities/resolve?q=&platform=&handle=&connectorAccountId=
  */
 
-import { type EntityStore, resolveKnowledgeGraphService } from "@elizaos/agent";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, ElizaError } from "@elizaos/core";
+import {
+  type EntityStore,
+  resolveKnowledgeGraphService,
+} from "@elizaos/plugin-relationships";
+import { reviewLegacyOwnerGraph } from "../lifeops/entities/legacy-owner-graph.js";
 import type {
   Entity,
   EntityFilter,
@@ -34,11 +38,9 @@ function makeStore(ctx: LifeOpsRouteContext): EntityStore | null {
     ctx.error(ctx.res, "Knowledge graph service is not available", 503);
     return null;
   }
-  return knowledgeGraph.getEntityStore(
-    ctx.state.adminEntityId
-      ? String(ctx.state.adminEntityId)
-      : defaultAgentId(ctx.state.runtime),
-  );
+  // The authenticated actor authorizes this request; graph records belong to
+  // the agent partition shared by chat, principal binding, and family workflows.
+  return knowledgeGraph.getEntityStore(defaultAgentId(ctx.state.runtime));
 }
 
 function parseEntityLimit(
@@ -114,6 +116,45 @@ export async function handleEntityRoutes(
 
   if (!pathname.startsWith("/api/lifeops/entities")) {
     return false;
+  }
+
+  if (
+    pathname === "/api/lifeops/entities/legacy-owner-graph" &&
+    (method === "GET" || method === "POST")
+  ) {
+    if (!ctx.state.runtime) {
+      ctx.error(res, "Agent runtime is not available", 503);
+      return true;
+    }
+    let confirmation: string | undefined;
+    if (method === "POST") {
+      const body = await readJsonBody<{ reviewSha256?: unknown }>(req, res);
+      if (!body) return true;
+      if (
+        typeof body.reviewSha256 !== "string" ||
+        !/^[a-f0-9]{64}$/.test(body.reviewSha256)
+      ) {
+        ctx.error(
+          res,
+          "reviewSha256 from a complete legacy graph review is required",
+          400,
+        );
+        return true;
+      }
+      confirmation = body.reviewSha256;
+    }
+    try {
+      json(res, await reviewLegacyOwnerGraph(ctx.state.runtime, confirmation));
+    } catch (error) {
+      // error-policy:J1 A stale or conflicting review is an explicit HTTP conflict.
+      if (
+        !(error instanceof ElizaError) ||
+        error.code !== "LEGACY_OWNER_GRAPH_REVIEW_REQUIRED"
+      )
+        throw error;
+      ctx.error(res, error.message, 409);
+    }
+    return true;
   }
 
   // GET /api/lifeops/entities/resolve
@@ -274,14 +315,12 @@ export async function handleEntityRoutes(
     }
     const store = makeStore(ctx);
     if (!store) return true;
-    const existing = await store.get(entityId);
-    if (!existing) {
-      ctx.error(res, "entity not found", 404);
-      return true;
-    }
+    // The body is read before the entity, and the merge runs inside one store
+    // operation: a stale copy written back after a slow request body would
+    // erase identities and interaction state recorded in the meantime.
     const body = await readJsonBody<Partial<Entity>>(req, res);
     if (!body) return true;
-    const merged: Omit<Entity, "createdAt" | "updatedAt"> = {
+    const updated = await store.patch(entityId, (existing) => ({
       ...existing,
       ...(body.type ? { type: body.type } : {}),
       ...(body.preferredName ? { preferredName: body.preferredName } : {}),
@@ -291,8 +330,11 @@ export async function handleEntityRoutes(
       ...(body.identities ? { identities: body.identities } : {}),
       ...(body.attributes ? { attributes: body.attributes } : {}),
       ...(body.state ? { state: { ...existing.state, ...body.state } } : {}),
-    };
-    const updated = await store.upsert(merged);
+    }));
+    if (!updated) {
+      ctx.error(res, "entity not found", 404);
+      return true;
+    }
     json(res, { entity: updated });
     return true;
   }

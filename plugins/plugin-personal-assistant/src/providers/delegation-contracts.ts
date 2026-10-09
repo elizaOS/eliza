@@ -6,7 +6,6 @@
  * holding-reply draft.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -14,6 +13,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/core";
 import {
   type LifeOpsDelegationContractRecord,
   renderDelegationContractsProviderText,
@@ -46,7 +46,7 @@ export const delegationContractsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return EMPTY;
     }
 

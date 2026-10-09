@@ -11,10 +11,11 @@
 import { worldMetadataValueEquals } from "./database/world-metadata-cas";
 import { ElizaError } from "./errors";
 import { logger } from "./logger";
-import type { Entity, JsonValue, Metadata, Room, UUID, World } from "./types";
-import { ChannelType } from "./types";
 import type { IDatabaseAdapter } from "./types/database";
-import { stringToUuid } from "./utils";
+import type { Entity, Room, World } from "./types/environment.js";
+import type { JsonValue, Metadata, UUID } from "./types/primitives.js";
+import { ChannelType } from "./types/primitives.js";
+import { stringToUuid } from "./utils/string-to-uuid.js";
 
 /** Re-read + re-merge attempts for a world upsert that hits a stale revision. */
 const WORLD_UPSERT_STALE_ATTEMPTS = 3;
@@ -60,13 +61,7 @@ export interface EnsureConnectionsResult {
 	createdRoomParticipants: number;
 }
 
-/**
- * One-level-deep merge for entity metadata keyed by connection source. A
- * top-level replace is how an owner-aliased author's fields used to overwrite
- * the canonical owner entity's identity record: each per-source object must
- * merge field-by-field, not swap wholesale, so a connection that omits a field
- * preserves what a previous connection wrote.
- */
+/** Merges entity metadata one level per connection source. Omitted fields preserve the canonical entity identity. */
 function mergeEntitySourceMetadata(
 	existing: Metadata,
 	incoming: Record<string, unknown>,

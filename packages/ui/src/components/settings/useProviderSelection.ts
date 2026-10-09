@@ -6,27 +6,24 @@
  * them. A configured-but-unsigned-in cloud-proxy session defaults the open
  * panel to Local so first paint matches the provider actually serving.
  */
-import {
-  asRecord,
-  normalizeSubscriptionProviderSelectionId,
-  resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { client } from "../../api";
-import { useBranding } from "../../config/branding";
-import { isElizaCloudRuntimeLocked } from "../../first-run/mobile-runtime-mode";
+
+import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
+import type { SubscriptionProviderSelectionId } from "@elizaos/host/protocol";
 import {
   getFirstRunProviderOption,
+  isLocalOnlyInferenceInConfig,
   isSubscriptionProviderSelectionId,
-  type SubscriptionProviderSelectionId,
-} from "../../providers";
-import { useAppSelectorShallow } from "../../state";
+  normalizeSubscriptionProviderSelectionId,
+  resolveServiceRoutingInConfig,
+} from "@elizaos/host/protocol";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { client } from "../../api/client";
+import { useBranding } from "../../config/branding-react.hooks";
+import { isElizaCloudRuntimeLocked } from "../../first-run/mobile-runtime-mode";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { shellHistory, shellLocalStorage } from "../../surface-realm-channel";
-
 export type ProviderPanelId = "__cloud__" | "__local__" | string;
-
 const PROVIDER_PANEL_STORAGE_KEY = "eliza.settings.ai-model.panel";
-
 function readRememberedProviderPanel(
   elizaCloudConnected: boolean,
 ): ProviderPanelId | null {
@@ -44,7 +41,6 @@ function readRememberedProviderPanel(
     return null;
   }
 }
-
 /**
  * Which intelligence panel should be open when the user has not picked one
  * this session. A configured-but-unsigned-in cloud-proxy session serves
@@ -69,7 +65,6 @@ export function resolveDefaultIntelligencePanelId({
   if (cloudRuntimeLocked) return "__cloud__";
   return resolvedSelectedId ?? "__cloud__";
 }
-
 function rememberProviderPanel(panelId: ProviderPanelId): void {
   if (typeof window === "undefined") return;
   try {
@@ -82,18 +77,15 @@ function rememberProviderPanel(panelId: ProviderPanelId): void {
     return;
   }
 }
-
 interface AiProviderLike {
   id: string;
 }
-
 function normalizeAiProviderPluginId(value: string): string {
   return value
     .toLowerCase()
     .replace(/^@[^/]+\//, "")
     .replace(/^plugin-/, "");
 }
-
 function readSubscriptionProvider(
   cfg: Record<string, unknown>,
 ): SubscriptionProviderSelectionId | null {
@@ -103,7 +95,6 @@ function readSubscriptionProvider(
     defaults?.subscriptionProvider,
   );
 }
-
 export interface ProviderSelection {
   cloudCallsDisabled: boolean;
   /**
@@ -128,7 +119,6 @@ export interface ProviderSelection {
   handleSelectLocalOnly: () => Promise<void>;
   handleProviderPanelSelect: (panelId: string) => void;
 }
-
 export function useProviderSelection(
   availableProviderIds: Set<string>,
   notifySelectionFailure: (prefix: string, err: unknown) => void,
@@ -154,48 +144,23 @@ export function useProviderSelection(
     useState<ProviderPanelId | null>(() =>
       readRememberedProviderPanel(elizaCloudConnected),
     );
-
-  const readCloudCallsDisabled = useCallback(
-    (cfg: Record<string, unknown>): boolean => {
-      const llmText = resolveServiceRoutingInConfig(cfg)?.llmText;
-      if (
-        llmText?.transport === "cloud-proxy" ||
-        llmText?.transport === "direct" ||
-        llmText?.transport === "remote"
-      ) {
-        return false;
-      }
-      const cloud = asRecord(cfg.cloud);
-      const services = asRecord(cloud?.services);
-      return Boolean(
-        cloud?.inferenceMode === "local" || services?.inference === false,
-      );
-    },
-    [],
-  );
-
-  const initializeFromConfig = useCallback(
-    (cfg: Record<string, unknown>) => {
-      const llmText = resolveServiceRoutingInConfig(cfg)?.llmText;
-      const providerId = getFirstRunProviderOption(llmText?.backend)?.id;
-      const savedSubscriptionProvider = readSubscriptionProvider(cfg);
-      const nextSelectedId =
-        llmText?.transport === "cloud-proxy" && providerId === "elizacloud"
-          ? "__cloud__"
-          : llmText?.transport === "direct"
-            ? (providerId ?? null)
-            : llmText?.transport === "remote" && providerId
-              ? providerId
-              : savedSubscriptionProvider;
-
-      if (!hasManualSelection.current) {
-        setSelectedProviderId(nextSelectedId);
-      }
-      setCloudCallsDisabled(readCloudCallsDisabled(cfg));
-    },
-    [readCloudCallsDisabled],
-  );
-
+  const initializeFromConfig = useCallback((cfg: Record<string, unknown>) => {
+    const llmText = resolveServiceRoutingInConfig(cfg)?.llmText;
+    const providerId = getFirstRunProviderOption(llmText?.backend)?.id;
+    const savedSubscriptionProvider = readSubscriptionProvider(cfg);
+    const nextSelectedId =
+      llmText?.transport === "cloud-proxy" && providerId === "elizacloud"
+        ? "__cloud__"
+        : llmText?.transport === "direct"
+          ? (providerId ?? null)
+          : llmText?.transport === "remote" && providerId
+            ? providerId
+            : savedSubscriptionProvider;
+    if (!hasManualSelection.current) {
+      setSelectedProviderId(nextSelectedId);
+    }
+    setCloudCallsDisabled(isLocalOnlyInferenceInConfig(cfg));
+  }, []);
   const resolvedSelectedId = useMemo(
     () =>
       selectedProviderId === "__cloud__"
@@ -207,7 +172,6 @@ export function useProviderSelection(
           : null,
     [availableProviderIds, selectedProviderId],
   );
-
   const restoreSelection = useCallback(
     (previousSelectedId: string | null, previousManualSelection: boolean) => {
       hasManualSelection.current = previousManualSelection;
@@ -215,7 +179,6 @@ export function useProviderSelection(
     },
     [],
   );
-
   const handleSwitchProvider = useCallback(
     async (newId: string, providerId: string) => {
       const previousSelectedId = resolvedSelectedId;
@@ -239,7 +202,6 @@ export function useProviderSelection(
       restoreSelection,
     ],
   );
-
   const handleSelectSubscription = useCallback(
     async (
       providerId: SubscriptionProviderSelectionId,
@@ -268,7 +230,6 @@ export function useProviderSelection(
       restoreSelection,
     ],
   );
-
   const handleSelectCloud = useCallback(async () => {
     if (!cloudCallsDisabled && resolvedSelectedId === "__cloud__") return;
     const previousSelectedId = resolvedSelectedId;
@@ -293,7 +254,6 @@ export function useProviderSelection(
     resolvedSelectedId,
     restoreSelection,
   ]);
-
   const handleSelectLocalOnly = useCallback(async () => {
     if (cloudRuntimeLocked) {
       setActionNotice?.(
@@ -330,7 +290,6 @@ export function useProviderSelection(
     resolvedSelectedId,
     restoreSelection,
   ]);
-
   // Config intent: the routing entry names Cloud. This stays true when the
   // account is signed out, because that is what the config says (#20045 U1).
   const isCloudConfigured =
@@ -373,7 +332,6 @@ export function useProviderSelection(
           !hasClickedProviderPanel
         ? "__local__"
         : (selectedProviderPanelId ?? activeProviderPanelId);
-
   const handleProviderPanelSelect = useCallback(
     (panelId: string) => {
       if (
@@ -389,7 +347,6 @@ export function useProviderSelection(
     },
     [cloudRuntimeLocked, elizaCloudConnected],
   );
-
   return {
     cloudCallsDisabled: effectiveCloudCallsDisabled,
     cloudRuntimeLocked,
@@ -406,7 +363,6 @@ export function useProviderSelection(
     handleProviderPanelSelect,
   };
 }
-
 /**
  * Compute the canonical provider id to send to client.switchProvider() given
  * a panel id. Mirrors the existing normalize-and-look-up flow.

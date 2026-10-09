@@ -45,4 +45,5 @@ export {
   GoalsCheckinService,
   getGoalsCheckinService,
 } from "./services/checkin.ts";
+export { migrateGoalTables } from "./services/migration.ts";
 export * from "./types.ts";

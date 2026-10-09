@@ -1,0 +1,412 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.save",
+      "description": "Save document to current location",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.write_text",
+      "description": "Write text at cursor position",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Text to write"
+          },
+          "bold": {
+            "type": "boolean",
+            "description": "Apply bold formatting"
+          },
+          "italic": {
+            "type": "boolean",
+            "description": "Apply italic formatting"
+          },
+          "size": {
+            "type": "number",
+            "description": "Font size"
+          }
+        },
+        "required": ["text"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_color",
+      "description": "Change text color using regex pattern",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Regex pattern to match"
+          },
+          "color": {
+            "type": "number",
+            "description": "Hex color code (e.g., 0x000000)"
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Target paragraph indices (0-based). Applies to all if omitted"
+          }
+        },
+        "required": ["pattern", "color"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.find_and_replace",
+      "description": "Find and replace text using regex",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Regex pattern to find"
+          },
+          "replacement": {
+            "type": "string",
+            "description": "Replacement text"
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Target paragraph indices (0-based). Applies to all if omitted"
+          }
+        },
+        "required": ["pattern", "replacement"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_font",
+      "description": "Change font family",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "font_name": {
+            "type": "string",
+            "description": "Font name (e.g., 'Arial', 'Times New Roman')"
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Target paragraph indices (0-based). Applies to all if omitted"
+          }
+        },
+        "required": ["font_name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_line_spacing",
+      "description": "Set line spacing",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "spacing_value": {
+            "type": "number",
+            "description": "Spacing value (1.0=single, 2.0=double)"
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Target paragraph indices (0-based). Applies to all if omitted"
+          }
+        },
+        "required": ["spacing_value"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.remove_highlighting",
+      "description": "Remove text highlighting",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Target paragraph indices (0-based). Applies to all if omitted"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.find_highlighted_text",
+      "description": "Find text with specific highlight color",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "highlight_color": {
+            "type": "string",
+            "description": "Color name (e.g., 'yellow') or hex code"
+          }
+        },
+        "required": ["highlight_color"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.insert_formula_at_cursor",
+      "description": "Insert formula at cursor",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "formula": {
+            "type": "string",
+            "description": "Formula to insert"
+          }
+        },
+        "required": ["formula"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.insert_image_at_cursor",
+      "description": "Insert image at cursor",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "image_path": {
+            "type": "string",
+            "description": "Full path to image file"
+          },
+          "width": {
+            "type": "integer",
+            "description": "Display width in pixels"
+          },
+          "height": {
+            "type": "integer",
+            "description": "Display height in pixels"
+          }
+        },
+        "required": ["image_path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_strikethrough",
+      "description": "Apply strikethrough formatting",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Regex pattern to match"
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Target paragraph indices (0-based). Applies to all if omitted"
+          }
+        },
+        "required": ["pattern"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_font_size",
+      "description": "Change font size",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "font_size": {
+            "type": "number",
+            "description": "Font size in points"
+          },
+          "pattern": {
+            "type": "string",
+            "description": "Regex pattern to match"
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Target paragraph indices (0-based). Applies to all if omitted"
+          }
+        },
+        "required": ["font_size", "pattern"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.export_to_pdf",
+      "description": "Export document to PDF",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "output_path": {
+            "type": "string",
+            "description": "PDF save path"
+          },
+          "output_filename": {
+            "type": "string",
+            "description": "PDF filename"
+          },
+          "include_comments": {
+            "type": "boolean",
+            "description": "Include comments in PDF"
+          },
+          "quality": {
+            "type": "string",
+            "description": "Export quality ('standard', 'high', 'print')"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_paragraph_alignment",
+      "description": "Set paragraph alignment",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "alignment": {
+            "type": "string",
+            "description": "Alignment type ('left', 'center', 'right', 'justify')"
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Target paragraph indices (0-based). Applies to all if omitted"
+          }
+        },
+        "required": ["alignment"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.capitalize_words",
+      "description": "Capitalize first letter of each word",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Target paragraph indices (0-based). Applies to all if omitted"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_default_font",
+      "description": "Set default font for new text",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "font_name": {
+            "type": "string",
+            "description": "Default font name"
+          },
+          "font_size": {
+            "type": "number",
+            "description": "Default font size in points"
+          }
+        },
+        "required": ["font_name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.add_page_numbers",
+      "description": "Add page numbers",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "type": "string",
+            "description": "Position ('bottom_left', 'bottom_center', 'bottom_right', 'top_left', 'top_center', 'top_right')"
+          },
+          "start_number": {
+            "type": "integer",
+            "description": "Starting page number"
+          },
+          "format": {
+            "type": "string",
+            "description": "Number format (e.g., '1', 'Page 1', '1 of N')"
+          }
+        },
+        "required": ["position"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.insert_page_break",
+      "description": "Insert page break",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "type": "string",
+            "description": "Insert location ('at_cursor', 'end_of_document')"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.change_text_case",
+      "description": "Change text case",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "case_type": {
+            "type": "string",
+            "description": "Case type ('lowercase', 'uppercase')"
+          },
+          "pattern": {
+            "type": "string",
+            "description": "Regex pattern to match"
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Target paragraph indices (0-based). Applies to all if omitted"
+          }
+        },
+        "required": ["case_type", "pattern"]
+      }
+    }
+  }
+]

@@ -1,11 +1,12 @@
 /** Owns social cache persistence for LifeOps. Keeps domain mutations and existing transaction or claim boundaries together. */
-import type { IAgentRuntime } from "@elizaos/core";
+
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
   LifeOpsXSyncState,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
   sqlBoolean,
@@ -61,7 +62,12 @@ export class SocialCacheRepository {
 
   async listXDms(
     agentId: string,
-    opts: { conversationId?: string; limit?: number } = {},
+    opts: {
+      conversationId?: string;
+      limit?: number;
+      inbound?: boolean;
+      ids?: string[];
+    } = {},
   ): Promise<LifeOpsXDm[]> {
     const limitClause =
       opts.limit !== undefined && Number.isFinite(opts.limit)
@@ -70,12 +76,27 @@ export class SocialCacheRepository {
     const conversationClause = opts.conversationId
       ? `AND conversation_id = ${sqlQuote(opts.conversationId)}`
       : "";
+    // Direction is filtered before LIMIT: the cache also holds the account's
+    // own outbound DMs, which would otherwise fill an inbound-only window.
+    const directionClause =
+      opts.inbound === undefined
+        ? ""
+        : `AND is_inbound = ${opts.inbound ? "TRUE" : "FALSE"}`;
+    // Exact row ids are matched in SQL, never through a recency window: the
+    // cache retains the full history, so a requested id can be arbitrarily
+    // older than the newest rows a LIMIT clause would return.
+    const idClause =
+      opts.ids && opts.ids.length > 0
+        ? `AND id IN (${opts.ids.map((id) => sqlQuote(id)).join(", ")})`
+        : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
          FROM app_lifeops.life_x_dms
         WHERE agent_id = ${sqlQuote(agentId)}
           ${conversationClause}
+          ${directionClause}
+          ${idClause}
         ORDER BY received_at DESC
         ${limitClause}`,
     );

@@ -1,0 +1,8 @@
+# GENERATED from linux/confidential/policy/confidential-policy.json
+# by scripts/generate-confidential-artifacts.ts — do not hand-edit.
+# masked-units.txt: enforcement form of the confidential policy (plan §3-§4).
+# Consistency with the policy is asserted by check-confidential-artifacts.ts.
+swap.target
+hibernate.target
+hybrid-sleep.target
+kdump.service

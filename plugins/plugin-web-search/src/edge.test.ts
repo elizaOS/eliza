@@ -1,6 +1,6 @@
 /** Exercises the genuine edge plugin at its deterministic network boundary. */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core/edge";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     createWebSearchEdgePlugin,
@@ -282,7 +282,9 @@ describe("webSearchEdgePlugin", () => {
                 query: "Tessera architecture",
             },
         });
-        expect(callback).toHaveBeenCalledWith({ text: "Web search is temporarily unavailable." });
+        expect(callback).toHaveBeenCalledWith({
+            text: "Web search is temporarily unavailable.",
+        });
     });
 
     it("rejects oversized queries before the public network boundary", async () => {
@@ -309,25 +311,34 @@ describe("webSearchEdgePlugin", () => {
             callback
         );
         expect(callback).toHaveBeenCalledOnce();
-        expect(callback).toHaveBeenCalledWith({ text: "Web search is temporarily unavailable." });
+        expect(callback).toHaveBeenCalledWith({
+            text: "Web search is temporarily unavailable.",
+        });
     });
 
     it("reports injected runner failures through the channel callback", async () => {
         const callback = vi.fn();
+        const controller = new AbortController();
         const [action] =
-            createWebSearchEdgePlugin(async (query) => ({
-                success: false,
-                text: "The authorized public read is unavailable.",
-                error: "The authorized public read is unavailable.",
-                data: { actionName: "WEB_SEARCH", query },
-            })).actions ?? [];
+            createWebSearchEdgePlugin(async (query, options) => {
+                expect(options?.signal).toBe(controller.signal);
+                return {
+                    success: false,
+                    text: "The authorized public read is unavailable.",
+                    error: "The authorized public read is unavailable.",
+                    data: { actionName: "WEB_SEARCH", query },
+                };
+            }).actions ?? [];
         if (!action) throw new Error("Expected the injected WEB_SEARCH action");
 
         await action.handler(
             {} as IAgentRuntime,
             {} as Memory,
             undefined,
-            { parameters: { query: "current public result" } },
+            {
+                parameters: { query: "current public result" },
+                abortSignal: controller.signal,
+            },
             callback
         );
 
@@ -336,4 +347,39 @@ describe("webSearchEdgePlugin", () => {
             text: "The authorized public read is unavailable.",
         });
     });
+});
+
+it("direct edge runner distinguishes typed outage from successful zero hits and preserves caller abort", async () => {
+    globalThis.fetch = vi.fn(
+        async () => new Response("not logged", { status: 429 })
+    ) as typeof fetch;
+    await expect(runWebSearchEdge("public query")).resolves.toMatchObject({
+        success: false,
+        data: {
+            actionName: "WEB_SEARCH",
+            unavailable: true,
+            provider: "parallel",
+            reason: "rate_limited",
+            status: 429,
+        },
+    });
+    globalThis.fetch = vi.fn(async () =>
+        Response.json({
+            jsonrpc: "2.0",
+            id: 1,
+            result: { content: [{ type: "text", text: "" }] },
+        })
+    ) as typeof fetch;
+    await expect(runWebSearchEdge("empty query")).resolves.toMatchObject({
+        success: false,
+        text: "Web search returned no results.",
+    });
+    const controller = new AbortController();
+    controller.abort();
+    const fetchImpl = vi.fn();
+    globalThis.fetch = fetchImpl as typeof fetch;
+    await expect(
+        runWebSearchEdge("aborted query", { signal: controller.signal })
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchImpl).not.toHaveBeenCalled();
 });

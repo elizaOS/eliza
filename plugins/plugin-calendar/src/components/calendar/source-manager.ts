@@ -10,7 +10,7 @@ import type {
   LifeOpsCalendarProvider,
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSummary,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import { toCalendarSourceHealthRows } from "./source-health.js";
 
 export type CalendarSourceManagerStatus =

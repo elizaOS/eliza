@@ -93,7 +93,7 @@ export interface TtsBenchRun {
 
 /** Structural seam — any object that satisfies this can be driven by the
  *  harness. The real `KokoroTtsBackend` and `FfiOmniVoiceBackend` both
- *  satisfy it; the bench package itself does NOT import `@elizaos/app-core`
+ *  satisfy it; the bench package itself does NOT import `@elizaos/app`
  *  so the bench can be built and packaged independently. */
 export interface BenchableStreamingBackend {
   readonly id: string;

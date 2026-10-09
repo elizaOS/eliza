@@ -1,5 +1,24 @@
 /** Navigates an authenticated hosted-browser session. */
 
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  nextStyleParams,
+  type RouteContext,
+} from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  logHostedBrowserFailure,
+  navigateHostedBrowserSession,
+} from "@elizaos/cloud-shared/lib/services/browser-tools";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -7,22 +26,6 @@ import {
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import {
-  nextStyleParams,
-  type RouteContext,
-} from "@/lib/api/hono-next-style-params";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
-  logHostedBrowserFailure,
-  navigateHostedBrowserSession,
-} from "@/lib/services/browser-tools";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const navigateSchema = z.object({
   url: z.string().trim().url().max(2_000),

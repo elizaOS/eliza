@@ -22,11 +22,11 @@
  * @module @elizaos/plugin-computeruse
  */
 
-import type { Plugin, Route } from "@elizaos/core";
 import {
   promoteSubactionsToActions,
   registerDirectActionRoutingRule,
 } from "@elizaos/core";
+import type { HttpPlugin as Plugin, Route } from "@elizaos/host/protocol";
 import { clipboardAction } from "./actions/clipboard.js";
 import { useComputerAction } from "./actions/use-computer.js";
 import { computerUseAgentAction } from "./actions/use-computer-agent.js";
@@ -125,30 +125,25 @@ const computerUseRoutes: Route[] = [
     handler: computerUseRouteHandler(),
   },
 ];
-
 export const computerUsePlugin: Plugin = {
   name: "@elizaos/plugin-computeruse",
   description:
     "Desktop automation — take screenshots, control mouse and keyboard, " +
     "automate web browsers via CDP, and manage desktop windows. " +
     "Ported from open-computer-use (Apache 2.0).",
-
   services: [ComputerUseService, VisionContextProvider],
-
   init: async (_pluginConfig, runtime) => {
     registerDirectActionRoutingRule(
       runtime,
       createComputerUseDirectRoutingRule(),
     );
   },
-
   async dispose(runtime) {
     const svc = runtime.getService<ComputerUseService>(
       ComputerUseService.serviceType,
     );
     await svc?.stop();
   },
-
   // COMPUTER_USE (canonical desktop interaction: screenshot/click/key/etc.)
   // and WINDOW (window management: list/focus/switch/arrange/move/...) stay
   // registered as distinct top-level actions — they cover different surfaces.
@@ -163,11 +158,8 @@ export const computerUsePlugin: Plugin = {
     ...promoteSubactionsToActions(clipboardAction),
     computerUseAgentAction,
   ],
-
   providers: [computerStateProvider, sceneProvider],
-
   routes: computerUseRoutes,
-
   views: [
     {
       id: "computer-use-sessions",
@@ -189,16 +181,12 @@ export const computerUsePlugin: Plugin = {
       desktopTabEnabled: true,
     },
   ],
-
   autoEnable: {
     envKeys: ["COMPUTER_USE_ENABLED"],
   },
 };
-
 export const computerusePlugin = computerUsePlugin;
-
 export default computerUsePlugin;
-
 export {
   type ComputerUseAgentParams,
   type ComputerUseAgentReport,
@@ -211,6 +199,12 @@ export * from "./app-control/coordinator.js";
 export * from "./app-control/types.js";
 // iOS computer-use surface. See `docs/IOS_CONSTRAINTS.md` for the honest scope.
 export * from "./mobile/index.js";
+export { captureAllDisplays, captureDisplay } from "./platform/capture.js";
+export {
+  isHeadless,
+  listDisplays,
+  NoDisplayError,
+} from "./platform/displays.js";
 export {
   listProcesses,
   type ProcessInfo,

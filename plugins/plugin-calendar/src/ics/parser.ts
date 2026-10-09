@@ -427,10 +427,14 @@ function parseDateProperty(
       property.params.get("TZID")?.[0] ?? calendarTimezone ?? "UTC",
       field,
     );
+    // An all-day date is a civil date, not an instant: it is stored at UTC
+    // midnight like Google all-day events, because calendar views place
+    // all-day events by the date part of startAt/endAt. Local midnight east
+    // of UTC would land on the previous date.
     const instant = normalizeCalendarDateTimeInTimeZone(
       `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T00:00:00`,
       field,
-      timezone,
+      "UTC",
     );
     if (!instant) throw new Error(`${field} is required.`);
     return { instant, isDate: true, timezone, localDate };
@@ -525,7 +529,7 @@ function addOneLocalDay(
   const instant = normalizeCalendarDateTimeInTimeZone(
     `${String(next.year).padStart(4, "0")}-${String(next.month).padStart(2, "0")}-${String(next.day).padStart(2, "0")}T00:00:00`,
     field,
-    start.timezone,
+    "UTC",
   );
   if (!instant) throw new Error(`${field} could not be resolved.`);
   return {

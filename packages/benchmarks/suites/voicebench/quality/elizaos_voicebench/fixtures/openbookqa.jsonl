@@ -1,0 +1,3 @@
+{"id": "obqa_smoke_1", "prompt": "Which of the following is a renewable energy source?", "output": "B", "choices": ["A) Coal", "B) Solar", "C) Petroleum", "D) Natural gas"]}
+{"id": "obqa_smoke_2", "prompt": "Which animal is a mammal?", "output": "C", "choices": ["A) Trout", "B) Snake", "C) Whale", "D) Eagle"]}
+{"id": "obqa_smoke_3", "prompt": "Plants make food primarily through which process?", "output": "A", "choices": ["A) Photosynthesis", "B) Respiration", "C) Digestion", "D) Combustion"]}

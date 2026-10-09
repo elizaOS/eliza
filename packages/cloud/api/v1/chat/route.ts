@@ -6,42 +6,35 @@
  * anonymous counter mirrors run under `waitUntil`.
  */
 
-import { assertModelOutputComplete } from "@elizaos/core";
-import { convertToModelMessages, streamText, type UIMessage } from "ai";
-import { Hono } from "hono";
-import {
-  resolveInferenceAuthStandingDenial,
-  resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
-import type { AnonymousSession } from "@/db/repositories/anonymous-sessions";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
+import { getCurrentUser } from "@elizaos/cloud-shared/auth";
+import type { AnonymousSession } from "@elizaos/cloud-shared/db/repositories/anonymous-sessions";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   getAnonymousUser,
   reserveAnonymousMessageSlot,
-} from "@/lib/auth-anonymous";
+} from "@elizaos/cloud-shared/lib/auth-anonymous";
 import {
   enforceOrgRateLimit,
   OrgRateLimitCacheNotReadyError,
-} from "@/lib/middleware/rate-limit";
-import { resolveModel } from "@/lib/models";
-import { estimateTokens } from "@/lib/pricing";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit";
+import { resolveModel } from "@elizaos/cloud-shared/lib/models";
+import { estimateTokens } from "@elizaos/cloud-shared/lib/pricing";
 import {
   mergeAnthropicCotProviderOptions,
   resolveAnthropicThinkingBudgetTokens,
-} from "@/lib/providers/anthropic-thinking";
+} from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
 import {
   getAiProviderConfigurationError,
   getLanguageModel,
   hasLanguageModelProviderConfigured,
   isProviderConfigurationError,
   resolveAiProviderSource,
-} from "@/lib/providers/language-model";
-import { billUsage } from "@/lib/services/ai-billing";
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import { billUsage } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import {
   AiPricingCacheUnavailableError,
   AiPricingCacheWarmingError,
-} from "@/lib/services/ai-pricing/cache";
+} from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import {
   type AnonymousChatGateCredential,
   type AnonymousChatGateLease,
@@ -51,36 +44,46 @@ import {
   refundAnonymousChatSlot,
   reserveAnonymousChatSlot,
   resolveAnonymousChatContext,
-} from "@/lib/services/anonymous-chat-admission";
-import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { contentModerationService } from "@/lib/services/content-moderation";
-import { conversationsService } from "@/lib/services/conversations";
+} from "@elizaos/cloud-shared/lib/services/anonymous-chat-admission";
+import { anonymousSessionsService } from "@elizaos/cloud-shared/lib/services/anonymous-sessions";
+import { contentModerationService } from "@elizaos/cloud-shared/lib/services/content-moderation";
+import { conversationsService } from "@elizaos/cloud-shared/lib/services/conversations";
 import {
   type CreditReconciliationResult,
   type CreditReservation,
   creditsService,
   DEFAULT_OUTPUT_TOKENS,
   InsufficientCreditsError,
-} from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { generationsService } from "@/lib/services/generations";
-import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
-import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
-import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
-import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
+} from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
+import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
+import { resolveInferenceAuthContext } from "@elizaos/cloud-shared/lib/services/inference-auth-context";
+import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
-} from "@/lib/services/organization-inference-admission";
-import { usageService } from "@/lib/services/usage";
-import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
-import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
+import { createCreditReservationSettler } from "@elizaos/cloud-shared/lib/utils/credit-reservation";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { getRouteTimeoutMs } from "@elizaos/cloud-shared/lib/utils/request-timeout";
+import { settleOffResponsePath } from "@elizaos/cloud-shared/lib/utils/settle-off-response-path";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { assertModelOutputComplete } from "@elizaos/core";
+import { convertToModelMessages, streamText, type UIMessage } from "ai";
+import { Hono } from "hono";
+import {
+  resolveInferenceAuthStandingDenial,
+  resolveInferenceCredentialAdmissionDenial,
+} from "@/api-app/lib/generative-route-auth";
 
 const ROUTE_MAX_DURATION = 800;
 const DEFAULT_MIN_OUTPUT_TOKENS = 4096;
@@ -156,7 +159,9 @@ async function getRequestApiKey(
   const elizaBearer = bearer?.startsWith("eliza_") ? bearer : null;
   const apiKey = apiKeyHeader || elizaBearer;
   if (!apiKey) return undefined;
-  const { apiKeysService } = await import("@/lib/services/api-keys");
+  const { apiKeysService } = await import(
+    "@elizaos/cloud-shared/lib/services/api-keys"
+  );
   const validated = await apiKeysService.validateApiKey(apiKey);
   return validated ? { id: validated.id } : undefined;
 }
@@ -408,6 +413,7 @@ app.post("/", async (c) => {
             cacheOnly: Boolean(executionCtx),
             executionCtx,
             config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+            apiKeyId: apiKey?.id,
           },
         );
       } catch (error) {
@@ -704,11 +710,6 @@ app.post("/", async (c) => {
         cotBudget ?? undefined,
       ),
       onFinish: async ({ text, usage, finishReason }) => {
-        assertModelOutputComplete({
-          finishReason,
-          provider,
-          model: selectedModel,
-        });
         await settleOffResponsePath(executionCtx, async () => {
           if (!usage) {
             await settleUnknownReservation?.();
@@ -841,6 +842,11 @@ app.post("/", async (c) => {
               error: error instanceof Error ? error.message : String(error),
             });
           }
+        });
+        assertModelOutputComplete({
+          finishReason,
+          provider,
+          model: selectedModel,
         });
       },
       onAbort: async () => {

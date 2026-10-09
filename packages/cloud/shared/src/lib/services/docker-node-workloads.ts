@@ -276,6 +276,7 @@ export async function loadSandboxStatusesByIdsWithDatabase(
       nodeId: agentSandboxes.node_id,
       replacementNodeId: agentSandboxes.replacement_cleanup_node_id,
       replacementContainerName: agentSandboxes.replacement_cleanup_container_name,
+      retainedRuntime: agentSandboxes.retained_runtime,
     })
     .from(agentSandboxes)
     .where(
@@ -316,6 +317,19 @@ export async function loadSandboxStatusesByIdsWithDatabase(
           nodeId: row.replacementNodeId,
         },
         row.replacementContainerName,
+      );
+    }
+    if (row.retainedRuntime) {
+      // A stopped status is terminal to the reaper, but a runtime retained in
+      // place is the only copy of unbacked state (#30746). Protect it on its
+      // exact node until resume or authorized deletion clears the marker.
+      appendPlacement(
+        {
+          key: row.key,
+          status: "retained_runtime_owned",
+          nodeId: row.retainedRuntime.runtime.nodeId,
+        },
+        row.retainedRuntime.runtime.containerName,
       );
     }
     return placements;
@@ -404,11 +418,14 @@ export async function countRetainedWorkloadsOnNodeWithDatabase(
         WHERE ${containers.node_id} = ${nodeId}
           AND ${containers.status} not in ('failed','deleted')
       )`,
+    // A stopped row that retained its exact runtime in place still owns
+    // node-local state no backup covers (#30746); it blocks deprovisioning.
     agentCount: sql<number>`(
         SELECT count(*)::int
         FROM ${agentSandboxes}
         WHERE ${agentSandboxes.node_id} = ${nodeId}
-          AND ${agentSandboxes.status} not in ('stopped','error')
+          AND (${agentSandboxes.status} not in ('stopped','error')
+            OR ${agentSandboxes.retained_runtime} IS NOT NULL)
           AND (${agentSandboxes.pool_status} is null
             OR ${agentSandboxes.pool_status} <> 'unclaimed')
       )`,

@@ -22,9 +22,9 @@ import {
   negotiateInteractionDelivery,
   type PreparedMessageInteraction,
   type PrepareMessageInteractionRequest,
+  resolveStateDir,
   Service,
 } from "@elizaos/core";
-import { resolveStateDir } from "../config/paths.ts";
 import { FileMessageInteractionSessionStore } from "./message-interaction-session-store.ts";
 
 export interface MessageInteractionHostServiceOptions {

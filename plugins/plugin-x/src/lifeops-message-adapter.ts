@@ -6,17 +6,19 @@
  * LifeOps can import it without the full plugin runtime.
  */
 import {
+  type IAgentRuntime,
+  type Memory,
+  toWellFormedUnicode,
+} from "@elizaos/core";
+import {
   BaseMessageAdapter,
   type DraftRequest,
-  type IAgentRuntime,
   type ListOptions,
-  type Memory,
   type MessageAdapterCapabilities,
   type MessageRef,
   type MessageSource,
   NotYetImplementedError,
-  toWellFormedUnicode,
-} from "@elizaos/core/node";
+} from "@elizaos/plugin-assistant";
 
 type XRuntimeServiceLike = {
   sendDirectMessageForAccount?: (
@@ -100,10 +102,12 @@ function memoryToMessageRef(memory: Memory): MessageRef {
   };
 }
 
-function normalizeListLimit(limit: number | undefined): number {
-  if (limit === undefined) return 25;
-  if (!Number.isFinite(limit)) return 25;
-  return Math.min(100, Math.max(1, Math.floor(limit)));
+function normalizeListLimit(limit: number | undefined): number | undefined {
+  if (limit === undefined) return undefined;
+  if (!Number.isSafeInteger(limit) || limit <= 0) {
+    throw new Error("X triage limit must be a positive safe integer");
+  }
+  return limit;
 }
 
 function parseDraftId(draftId: string): {

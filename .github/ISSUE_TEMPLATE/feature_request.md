@@ -9,7 +9,7 @@ assignees: ""
 > [!IMPORTANT]
 > **Human submission only:** Write the title and body yourself and submit on
 > the GitHub website. Agents must not draft or create issues.
-> **Required:** Follow the [contribution rules](https://github.com/elizaOS/eliza/blob/main/CONTRIBUTING.md).
+> **Required:** Follow the [contribution rules](https://github.com/elizaOS/eliza/blob/develop/CONTRIBUTING.md).
 > Report a real bug or missing approved MVP requirement. Do not add scope,
 > unnecessary tests, defensive code, validation, or truncation. Maintainers will
 > close unnecessary work and apply contributor penalties. Write in ASD-STE100

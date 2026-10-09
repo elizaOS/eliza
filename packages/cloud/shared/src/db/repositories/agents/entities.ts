@@ -5,10 +5,10 @@
  */
 
 import type { Entity, UUID } from "@elizaos/core";
+import { entityTable } from "@elizaos/plugin-sql";
 import { eq, inArray, sql } from "drizzle-orm";
 import { sqlRows } from "../../execute-helpers";
 import { dbRead, dbWrite } from "../../helpers";
-import { entityTable } from "../../schemas/eliza";
 import { escapeLikePattern } from "../../utils/like-pattern";
 
 /**

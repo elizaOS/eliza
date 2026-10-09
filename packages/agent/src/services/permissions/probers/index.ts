@@ -14,7 +14,7 @@
  * osascript shellouts are loaded lazily on first `check()`/`request()`.
  */
 
-import type { PermissionId, Prober } from "../contracts.js";
+import type { IPermissionsRegistry, PermissionId, Prober } from "@elizaos/core";
 import { accessibilityProber } from "./accessibility.js";
 import { automationProber } from "./automation.js";
 import { calendarProber } from "./calendar.js";
@@ -72,3 +72,7 @@ export {
   screentimeProber,
   shellProber,
 };
+
+export function registerAllProbers(registry: IPermissionsRegistry): void {
+  for (const prober of ALL_PROBERS) registry.registerProber(prober);
+}

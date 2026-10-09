@@ -1,0 +1,10 @@
+[Unit]
+Description=elizaOS user session
+Documentation=https://elizaos.ai/
+Requires=elizaos-agent.service
+Wants=elizaos-desktop.service
+After=graphical-session-pre.target
+PartOf=graphical-session.target
+
+[Install]
+WantedBy=graphical-session.target

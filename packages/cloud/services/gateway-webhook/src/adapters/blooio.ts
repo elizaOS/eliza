@@ -3,6 +3,11 @@
  * and participant identities across one-to-one and group deliveries.
  */
 import crypto from "node:crypto";
+import { performance } from "node:perf_hooks";
+import {
+  blooioRecipientIsolationViolation,
+  classifyBlooioEnvironment,
+} from "@elizaos/cloud-services-common/blooio-environment";
 import { z } from "zod";
 import { logger } from "../logger";
 import { boundedGatewayFetch } from "./bounded-fetch";
@@ -127,6 +132,18 @@ const BlooioV4WebhookEnvelopeSchema = z.object({
 
 type BlooioWebhookEvent = z.infer<typeof BlooioV2WebhookEventSchema>;
 
+/**
+ * The deployment this gateway serves, for Blooio environment isolation
+ * (#22787). An explicit ELIZA_APP_BLOOIO_ENVIRONMENT wins; Railway's injected
+ * environment name is the default.
+ */
+export function gatewayBlooioEnvironment() {
+  return classifyBlooioEnvironment(
+    process.env.ELIZA_APP_BLOOIO_ENVIRONMENT ??
+      process.env.RAILWAY_ENVIRONMENT_NAME,
+  );
+}
+
 function normalizedIdentifier(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -154,14 +171,21 @@ function parseWebhookEvent(data: unknown): BlooioWebhookEvent | null {
 
   const message = v4.data.data;
   const sender = message.sender ?? message.contact?.identifier ?? null;
+  const receivingNumber =
+    normalizedIdentifier(message.recipient) ??
+    normalizedIdentifier(message.channel_address);
   return {
     event: v4.data.type,
     message_id: message.message_id ?? message.id,
     external_id: sender,
-    internal_id: message.recipient ?? message.channel_address,
+    internal_id: receivingNumber,
     sender,
     chat_id: message.chat_id,
-    channel_id: message.channel_id,
+    // Like v2's internal_id fallback, the number that received the message is
+    // the sender identity for the reply. Falling through to the configured
+    // project number would answer a multi-number account from a different
+    // line than the one the user wrote to.
+    channel_id: normalizedIdentifier(message.channel_id) ?? receivingNumber,
     channel_type: message.channel_type,
     text: message.text,
     reply_to_message_id: message.reply_to_message_id,
@@ -273,63 +297,120 @@ async function sendBlooioMessage(
     if (from) body.from = from;
   }
 
-  const response = await blooioFetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new BlooioApiResponseError(
-      response.status,
-      `Blooio rejected delivery (${response.status})`,
-    );
-  }
-  if (!responseText) {
-    throw new PlatformDeliveryError(
-      "Blooio accepted delivery without a provider receipt",
-      "uncertain",
-      "DELIVERY_RECEIPT_INVALID",
-      false,
-    );
-  }
-  let result: unknown;
+  let fetchStartedAt: number | undefined;
+  let headersAt: number | undefined;
+  let bufferedAt: number | undefined;
+  let outcome:
+    | "headers_failed"
+    | "body_failed"
+    | "receipt_failed"
+    | "accepted" = "headers_failed";
+  const timedFetch = Object.assign(
+    async (...args: Parameters<typeof fetch>) => {
+      fetchStartedAt = performance.now();
+      const response = await fetch(...args);
+      headersAt = performance.now();
+      outcome = "body_failed";
+      return response;
+    },
+    fetch,
+  );
   try {
-    result = JSON.parse(responseText);
-  } catch {
-    // error-policy:J3 accepted provider responses must still expose a durable
-    // message receipt before the scheduler records the occurrence as fired.
-    throw new PlatformDeliveryError(
-      "Blooio accepted delivery without a valid JSON receipt",
-      "uncertain",
-      "DELIVERY_RECEIPT_INVALID",
-      false,
+    const response = await boundedGatewayFetch(
+      timedFetch,
+      url,
+      { method: "POST", headers, body: JSON.stringify(body) },
+      BLOOIO_REQUEST_TIMEOUT_MS,
+      BLOOIO_RESPONSE_MAX_BYTES,
     );
+    bufferedAt = performance.now();
+    outcome = "receipt_failed";
+    const responseText = await response.text();
+    if (!response.ok) {
+      throw new BlooioApiResponseError(
+        response.status,
+        `Blooio rejected delivery (${response.status})`,
+      );
+    }
+    if (!responseText) {
+      throw new PlatformDeliveryError(
+        "Blooio accepted delivery without a provider receipt",
+        "uncertain",
+        "DELIVERY_RECEIPT_INVALID",
+        false,
+      );
+    }
+    let result: unknown;
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      // error-policy:J3 accepted provider responses must still expose a durable
+      // message receipt before the scheduler records the occurrence as fired.
+      throw new PlatformDeliveryError(
+        "Blooio accepted delivery without a valid JSON receipt",
+        "uncertain",
+        "DELIVERY_RECEIPT_INVALID",
+        false,
+      );
+    }
+    if (!result || typeof result !== "object") {
+      throw new PlatformDeliveryError(
+        "Blooio accepted delivery without a provider receipt",
+        "uncertain",
+        "DELIVERY_RECEIPT_INVALID",
+        false,
+      );
+    }
+    const record = result as Record<string, unknown>;
+    const id =
+      typeof record.id === "string"
+        ? record.id
+        : typeof record.message_id === "string"
+          ? record.message_id
+          : undefined;
+    if (!id?.trim()) {
+      throw new PlatformDeliveryError(
+        "Blooio accepted delivery without a provider receipt",
+        "uncertain",
+        "DELIVERY_RECEIPT_INVALID",
+        false,
+      );
+    }
+    outcome = "accepted";
+    return [id.trim()];
+  } finally {
+    if (fetchStartedAt !== undefined) {
+      const completedAt = performance.now();
+      const milliseconds = (duration: number) =>
+        Math.min(60_000, Math.max(0, Math.round(duration)));
+      try {
+        logger.info("Blooio send timing", {
+          messageId: /^[A-Za-z0-9_-]{1,64}$/.test(event.messageId)
+            ? event.messageId
+            : null,
+          traceId:
+            event.traceId &&
+            /^(?:[0-9a-f]{32}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/.test(
+              event.traceId,
+            )
+              ? event.traceId
+              : null,
+          headersMs: milliseconds((headersAt ?? completedAt) - fetchStartedAt),
+          bodyMs:
+            headersAt === undefined
+              ? null
+              : milliseconds((bufferedAt ?? completedAt) - headersAt),
+          receiptMs:
+            bufferedAt === undefined
+              ? null
+              : milliseconds(completedAt - bufferedAt),
+          outcome,
+        });
+      } catch {
+        // error-policy:J6 Optional timing must not replace a send receipt or failure.
+      }
+    }
   }
-  if (!result || typeof result !== "object") {
-    throw new PlatformDeliveryError(
-      "Blooio accepted delivery without a provider receipt",
-      "uncertain",
-      "DELIVERY_RECEIPT_INVALID",
-      false,
-    );
-  }
-  const record = result as Record<string, unknown>;
-  const id =
-    typeof record.id === "string"
-      ? record.id
-      : typeof record.message_id === "string"
-        ? record.message_id
-        : undefined;
-  if (!id?.trim()) {
-    throw new PlatformDeliveryError(
-      "Blooio accepted delivery without a provider receipt",
-      "uncertain",
-      "DELIVERY_RECEIPT_INVALID",
-      false,
-    );
-  }
-  return [id.trim()];
 }
 
 // Blooio's documented verification contract rejects deliveries older than
@@ -461,6 +542,21 @@ export const blooioAdapter: PlatformAdapter = {
     if (!event.sender) {
       logger.warn("Blooio event missing sender; skipping", {
         messageId: event.message_id,
+      });
+      return null;
+    }
+
+    // A non-production gateway never processes a message addressed to a
+    // production line, even if a shared account or copied subscription
+    // delivers one here (#22787).
+    const isolationViolation = blooioRecipientIsolationViolation({
+      environment: gatewayBlooioEnvironment(),
+      recipientNumber: event.internal_id ?? event.channel_id,
+    });
+    if (isolationViolation) {
+      logger.error("Blooio event addressed to another environment; skipping", {
+        messageId: event.message_id,
+        violation: isolationViolation,
       });
       return null;
     }

@@ -13,9 +13,8 @@
   "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/esm/index.d.ts",
-      "bun": "./src/index.ts",
-      "development": "./src/index.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/plugin.cjs.js"
     },
@@ -38,10 +37,9 @@
     "url": "https://github.com/elizaOS/eliza"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-camera -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-camera -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
-    "test": "vitest run --config vitest.config.ts",
     "watch": "tsc6 --watch",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -53,11 +51,11 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@rollup/plugin-node-resolve": "^16.0.0",
-    "fast-check": "^4.8.0",
-    "rollup": "^4.62.4",
+    "fast-check": "^4.10.2",
+    "rollup": "^4.64.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.3"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

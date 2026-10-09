@@ -357,7 +357,14 @@ export class NativeAcpClient {
         ? "bypassPermissions"
         : this.opts.approvalPreset === "readonly"
           ? "plan"
-          : "dontAsk";
+          : this.opts.approvalPreset === "verifier"
+            ? // Prefer a permission-requesting mode so direct writes surface as
+              // permission requests the verifier gate denies; agents that
+              // advertise neither keep the prior "dontAsk" selection.
+              (["read-only", "default"].find((mode) =>
+                availableModes.includes(mode),
+              ) ?? "dontAsk")
+            : "dontAsk";
     if (availableModes.includes(requestedMode)) {
       await this.request("session/set_mode", {
         sessionId,
@@ -836,10 +843,12 @@ export class NativeAcpClient {
     const content = await readFile(filePath, "utf8");
     const line = numberValue(params?.line);
     const limit = numberValue(params?.limit);
-    if (!line && !limit) return { content };
+    // An omitted line and limit is the whole file. An explicit limit, including
+    // 0, is a window — `!limit` treated 0 as "no window" and returned every line.
+    if (line === undefined && limit === undefined) return { content };
     const lines = content.split(/\r?\n/u);
     const start = Math.max((line ?? 1) - 1, 0);
-    const end = limit ? start + limit : undefined;
+    const end = limit === undefined ? undefined : start + Math.max(0, limit);
     return { content: lines.slice(start, end).join("\n") };
   }
 

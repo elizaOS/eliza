@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import scripts.build_eliza1_smoke_corpus as corpus_builder
-from scripts.build_eliza1_smoke_corpus import (
+import eliza_training.build_eliza1_smoke_corpus as corpus_builder
+from eliza_training.build_eliza1_smoke_corpus import (
     FORMATTER_PATH,
     GENERATOR_REVISION,
     MANIFEST_SCHEMA,
@@ -23,7 +23,7 @@ from scripts.build_eliza1_smoke_corpus import (
     build_artifacts,
     write_artifacts,
 )
-from scripts.format_for_training import format_record
+from eliza_training.format_for_training import format_record
 
 
 def _write_source(

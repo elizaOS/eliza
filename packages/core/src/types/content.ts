@@ -16,6 +16,15 @@ export const CONTENT_REFERENCE_KINDS = [
 
 export type ContentReferenceKind = (typeof CONTENT_REFERENCE_KINDS)[number];
 
+export const CONTENT_REFERENCE_RESUMABILITY_VALUES = [
+	"restart-safe",
+	"session-safe",
+	"non-resumable",
+] as const;
+
+export type ContentReferenceResumability =
+	(typeof CONTENT_REFERENCE_RESUMABILITY_VALUES)[number];
+
 export const READ_RANGE_UNITS = ["line", "fragment", "byte"] as const;
 
 export type ReadRangeUnit = (typeof READ_RANGE_UNITS)[number];
@@ -33,6 +42,14 @@ export interface ContentReference {
 	kind: ContentReferenceKind;
 	ref: string;
 	revision?: string;
+	/**
+	 * Declares whether the owning action can resolve this opaque token after a
+	 * process restart. Durable continuity persists only restart-safe references;
+	 * omitted values remain wire-compatible but are intentionally ineligible.
+	 */
+	resumability?: ContentReferenceResumability;
+	/** UTC expiry for a restart-safe resolver backed by retained private state. */
+	expiresAt?: string;
 }
 
 export interface ReadRange {
@@ -71,11 +88,20 @@ export interface BuildReadSliceInput {
 }
 
 const CONTENT_REFERENCE_KIND_SET = new Set<string>(CONTENT_REFERENCE_KINDS);
+const CONTENT_REFERENCE_RESUMABILITY_SET = new Set<string>(
+	CONTENT_REFERENCE_RESUMABILITY_VALUES,
+);
 const READ_RANGE_UNIT_SET = new Set<string>(READ_RANGE_UNITS);
 const READ_COMPLETENESS_SET = new Set<string>(READ_COMPLETENESS_VALUES);
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const OPAQUE_REFERENCE_PATTERN = /^[A-Za-z0-9._:~-]{1,256}$/u;
-const CONTENT_REFERENCE_KEYS = new Set(["kind", "ref", "revision"]);
+const CONTENT_REFERENCE_KEYS = new Set([
+	"kind",
+	"ref",
+	"revision",
+	"resumability",
+	"expiresAt",
+]);
 const READ_RANGE_KEYS = new Set(["unit", "start", "end", "total"]);
 const READ_SLICE_KEYS = new Set([
 	"range",
@@ -137,6 +163,20 @@ function sha256(value: unknown, label: string): string {
 	return value;
 }
 
+function optionalTimestamp(value: unknown, label: string): string | undefined {
+	if (value === undefined) return undefined;
+	const text = optionalNonEmptyString(value, label);
+	const epoch = text === undefined ? Number.NaN : Date.parse(text);
+	if (
+		text === undefined ||
+		!Number.isFinite(epoch) ||
+		new Date(epoch).toISOString() !== text
+	) {
+		return fail(`${label} must be an ISO-8601 UTC timestamp when present`);
+	}
+	return text;
+}
+
 export function validateContentReference(value: unknown): ContentReference {
 	const input = record(value, "reference");
 	rejectUnknownKeys(input, CONTENT_REFERENCE_KEYS, "reference");
@@ -154,12 +194,30 @@ export function validateContentReference(value: unknown): ContentReference {
 			"reference.ref must be an opaque token without paths, addresses, or whitespace",
 		);
 	}
+	const resumability = optionalNonEmptyString(
+		input.resumability,
+		"reference.resumability",
+	);
+	if (
+		resumability !== undefined &&
+		!CONTENT_REFERENCE_RESUMABILITY_SET.has(resumability)
+	) {
+		return fail("reference.resumability is unsupported");
+	}
+	const expiresAt = optionalTimestamp(input.expiresAt, "reference.expiresAt");
+	if (expiresAt !== undefined && resumability !== "restart-safe") {
+		return fail("reference.expiresAt requires resumability=restart-safe");
+	}
 	return {
 		kind: input.kind as ContentReferenceKind,
 		ref: input.ref,
 		...(optionalNonEmptyString(input.revision, "reference.revision")
 			? { revision: input.revision as string }
 			: {}),
+		...(resumability === undefined
+			? {}
+			: { resumability: resumability as ContentReferenceResumability }),
+		...(expiresAt === undefined ? {} : { expiresAt }),
 	};
 }
 

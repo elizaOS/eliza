@@ -8,9 +8,7 @@
     "app-browser",
     "appBrowser",
     "eliza-browser",
-    "elizaBrowser",
-    "browser-bridge",
-    "browserBridge"
+    "elizaBrowser"
   ],
   "version": "2.0.0-beta.0",
   "source": "bundled",

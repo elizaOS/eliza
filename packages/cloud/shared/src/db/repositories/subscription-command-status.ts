@@ -1,9 +1,12 @@
 /** Reads paginated pending schedule commands and their current-source relationship from one primary snapshot, without claiming provider completion. */
 import { Buffer } from "node:buffer";
+import type {
+  PendingOrganizationPlanChangeCommandsDto,
+  PendingSubscriptionCommandsDto,
+} from "@elizaos/cloud-shared/types";
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import type { PendingSubscriptionCommandsDto } from "../../lib/types/cloud-api";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
 import {
@@ -22,12 +25,17 @@ const cursorSchema = z
     id: z.string().uuid(),
   })
   .strict();
+type CommandFamily = "schedule" | "plan_change";
+type PageInput = { organizationId: string; actorId: string; limit: number; cursor?: string };
+const planCursorSchema = cursorSchema
+  .extend({ version: z.literal(2), family: z.literal("plan_change"), actorId: z.string().uuid() })
+  .strict();
 function invalidCursor(): never {
   throw new ElizaError("Use the next cursor returned for this organization", {
     code: "SUBSCRIPTION_COMMAND_CURSOR_INVALID",
   });
 }
-function decodeCursor(value: string | undefined, organizationId: string) {
+function decodeCursor(value: string | undefined, input: PageInput, family: CommandFamily) {
   if (value === undefined) return null;
   if (value.length > 1024 || !/^[A-Za-z0-9_-]+$/.test(value)) invalidCursor();
   let parsed: unknown;
@@ -42,26 +50,31 @@ function decodeCursor(value: string | undefined, organizationId: string) {
       cause: error,
     });
   }
-  const result = cursorSchema.safeParse(parsed);
-  if (!result.success || result.data.organizationId !== organizationId) invalidCursor();
+  const result =
+    family === "schedule" ? cursorSchema.safeParse(parsed) : planCursorSchema.safeParse(parsed);
+  if (
+    !result.success ||
+    result.data.organizationId !== input.organizationId ||
+    (family === "plan_change" &&
+      (!("actorId" in result.data) || result.data.actorId !== input.actorId))
+  )
+    invalidCursor();
   return result.data;
 }
-function forbidden(): never {
+function forbidden(family: CommandFamily): never {
   throw new ElizaError("Current organization billing manager access is required", {
-    code: "SUBSCRIPTION_CANCELLATION_FORBIDDEN",
+    code:
+      family === "schedule"
+        ? "SUBSCRIPTION_CANCELLATION_FORBIDDEN"
+        : "SUBSCRIPTION_PLAN_CHANGE_FORBIDDEN",
   });
 }
-export async function readPendingSubscriptionCommands(input: {
-  organizationId: string;
-  actorId: string;
-  limit: number;
-  cursor?: string;
-}): Promise<PendingSubscriptionCommandsDto> {
+async function readPendingCommandPage(input: PageInput, family: CommandFamily) {
   if (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 100)
     throw new ElizaError("Page limit must be an integer from 1 to 100", {
       code: "SUBSCRIPTION_COMMAND_PAGE_INVALID",
     });
-  const cursor = decodeCursor(input.cursor, input.organizationId);
+  const cursor = decodeCursor(input.cursor, input, family);
   return dbWrite.transaction(
     async (tx) => {
       const [clock] = await sqlRows<{ observed_at: string }>(
@@ -106,7 +119,7 @@ export async function readPendingSubscriptionCommands(input: {
         actor.expired ||
         (actor.role !== "owner" && actor.role !== "admin")
       )
-        forbidden();
+        forbidden(family);
       const [authority] = await tx
         .select()
         .from(organizationSubscriptionAuthorities)
@@ -121,6 +134,7 @@ export async function readPendingSubscriptionCommands(input: {
               .from(billingSubscriptions)
               .where(
                 and(
+                  isNull(billingSubscriptions.billing_scope_id),
                   eq(billingSubscriptions.organization_id, input.organizationId),
                   eq(billingSubscriptions.id, authority.subscription_id),
                 ),
@@ -131,6 +145,7 @@ export async function readPendingSubscriptionCommands(input: {
           id: commands.id,
           subscriptionId: commands.subscription_id,
           kind: commands.kind,
+          targetPlanKey: commands.target_plan_key,
           status: commands.status,
           expectedRevision: sql<string | null>`${commands.expected_subscription_revision}::text`,
           createdAt: sql<string>`to_char(${commands.created_at} AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
@@ -141,8 +156,15 @@ export async function readPendingSubscriptionCommands(input: {
         .from(commands)
         .where(
           and(
+            isNull(commands.billing_scope_id),
+            isNull(commands.app_id),
             eq(commands.organization_id, input.organizationId),
-            inArray(commands.kind, ["cancel", "resume"]),
+            inArray(
+              commands.kind,
+              family === "schedule" ? ["cancel", "resume"] : ["upgrade", "downgrade"],
+            ),
+            family === "plan_change" ? eq(commands.requested_by_user_id, input.actorId) : undefined,
+            family === "plan_change" ? eq(commands.merchant_key, "platform") : undefined,
             inArray(commands.status, ["PREPARED", "OUTCOME_UNKNOWN"]),
             cursor
               ? sql`(${commands.created_at},${commands.id}) < (${cursor.createdAt}::timestamptz,${cursor.id}::uuid)`
@@ -156,7 +178,6 @@ export async function readPendingSubscriptionCommands(input: {
         if (
           row.subscriptionId === null ||
           row.expectedRevision === null ||
-          (row.kind !== "cancel" && row.kind !== "resume") ||
           (row.status !== "PREPARED" && row.status !== "OUTCOME_UNKNOWN")
         )
           throw new ElizaError("Pending command authority is invalid", {
@@ -166,6 +187,7 @@ export async function readPendingSubscriptionCommands(input: {
           commandId: row.id,
           subscriptionId: row.subscriptionId,
           kind: row.kind,
+          targetPlanKey: row.targetPlanKey,
           status: row.status,
           expectedSubscriptionRevision: row.expectedRevision,
           createdAt: row.createdAt,
@@ -187,7 +209,8 @@ export async function readPendingSubscriptionCommands(input: {
         rows.length > input.limit && last
           ? Buffer.from(
               JSON.stringify({
-                version: 1,
+                version: family === "schedule" ? 1 : 2,
+                ...(family === "plan_change" ? { family, actorId: input.actorId } : {}),
                 organizationId: input.organizationId,
                 createdAt: last.createdAt,
                 id: last.id,
@@ -198,4 +221,37 @@ export async function readPendingSubscriptionCommands(input: {
     },
     { isolationLevel: "repeatable read", accessMode: "read only" },
   );
+}
+
+function invalidState(): never {
+  throw new ElizaError("Pending command authority is invalid", {
+    code: "SUBSCRIPTION_COMMAND_STATE_UNAVAILABLE",
+  });
+}
+/** Existing cancel/resume contract remains separate from actor-owned plan changes. */
+export async function readPendingSubscriptionCommands(
+  input: PageInput,
+): Promise<PendingSubscriptionCommandsDto> {
+  const page = await readPendingCommandPage(input, "schedule");
+  return {
+    ...page,
+    items: page.items.map(({ targetPlanKey: _target, ...row }) => {
+      if (row.kind !== "cancel" && row.kind !== "resume") invalidState();
+      return { ...row, kind: row.kind };
+    }),
+  };
+}
+/** Original actor and current manager authority are both required; this never claims a lease or contacts a provider. */
+export async function readPendingOrganizationPlanChangeCommands(
+  input: PageInput,
+): Promise<PendingOrganizationPlanChangeCommandsDto> {
+  const page = await readPendingCommandPage(input, "plan_change");
+  return {
+    ...page,
+    items: page.items.map((row) => {
+      if ((row.kind !== "upgrade" && row.kind !== "downgrade") || !row.targetPlanKey)
+        invalidState();
+      return { ...row, kind: row.kind, targetPlanKey: row.targetPlanKey };
+    }),
+  };
 }

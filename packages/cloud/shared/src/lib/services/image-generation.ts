@@ -11,6 +11,13 @@ import { getImageProvider } from "../providers/image/registry";
 import type { ImageProvider } from "../providers/image/types";
 import { getAiProviderConfigurationError } from "../providers/language-model";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import {
+  assertGeneratedMediaStorageHeadroom,
+  discardGeneratedMediaObject,
+  type GeneratedMediaStorageQuota,
+  organizationStorageQuota,
+  putGeneratedMediaObject,
+} from "../storage/generated-media-storage";
 import { type PublicObjectBindings, putPublicObject } from "../storage/r2-public-object";
 import { logger } from "../utils/logger";
 import { type BillingContext, billFlatUsage, type FlatBillingCost } from "./ai-billing";
@@ -124,6 +131,8 @@ export interface ImageGenerationDependencies {
   ): Promise<FlatOperationCost>;
   assertSafe(input: SafetyInput): Promise<unknown>;
   putObject: typeof putPublicObject;
+  /** Generated images count toward the organization storage quota (#20956). */
+  storageQuota: GeneratedMediaStorageQuota;
   createGeneration(input: GenerationCreateInput): Promise<{ id: string }>;
   deleteGeneration(id: string): Promise<void>;
   billFlat(
@@ -140,6 +149,7 @@ const productionDependencies: ImageGenerationDependencies = {
   calculateCost: calculateImageGenerationCostFromCatalog,
   assertSafe: (input) => contentSafetyService.assertSafeForPublicUse(input),
   putObject: putPublicObject,
+  storageQuota: organizationStorageQuota,
   createGeneration: (input) => generationsService.create(input),
   deleteGeneration: (id) => generationsService.delete(id),
   billFlat: (context, cost, reservation) => billFlatUsage(context, cost, reservation),
@@ -154,6 +164,7 @@ interface StoredImage {
   text: string;
   mimeType: string;
   sizeBytes: number;
+  storageQuotaBytes: string;
 }
 
 function extensionForMimeType(mimeType: string): string {
@@ -211,11 +222,19 @@ export function isImageGenerationConfigured(
 async function cleanupFailedGeneration(
   deps: ImageGenerationDependencies,
   bindings: PublicObjectBindings,
+  organizationId: string,
   storedImages: StoredImage[],
   generationIds: string[],
 ): Promise<void> {
   const results = await Promise.allSettled([
-    ...storedImages.map((image) => bindings.BLOB.delete(image.key)),
+    // Releases each reservation only once its object is confirmed deleted.
+    ...storedImages.map((image) =>
+      discardGeneratedMediaObject(
+        bindings,
+        { organizationId, key: image.key, storageQuotaBytes: image.storageQuotaBytes },
+        deps.storageQuota,
+      ),
+    ),
     ...generationIds.map((id) => deps.deleteGeneration(id)),
   ]);
   for (const result of results) {
@@ -311,6 +330,8 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
         ...(input.identity.metadata ?? {}),
       },
     } satisfies ImageGenerationBillingInput["context"];
+    // A full storage quota is refused before admission, so it is never charged.
+    await assertGeneratedMediaStorageHeadroom(input.actor.organizationId, deps.storageQuota);
     const admitted = await input.admit({ context: billingContext, cost });
     const admission = admitted.kind === "platform" ? undefined : admitted.admission;
 
@@ -325,24 +346,31 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
         providerDispatchStarted = true;
         const generated = await generateProviderImage(request, input.providerKeys, provider);
         const key = `generations/images/${input.actor.organizationId}/${input.actor.userId}/${deps.randomUuid()}.${extensionForMimeType(generated.mimeType)}`;
-        const stored = await deps.putObject(input.bindings, {
-          key,
-          body: generated.bytes,
-          contentType: generated.mimeType,
-          customMetadata: {
-            userId: input.actor.userId,
+        const stored = await putGeneratedMediaObject(
+          input.bindings,
+          {
             organizationId: input.actor.organizationId,
-            model: request.model,
-            source: input.identity.source,
+            key,
+            body: generated.bytes,
+            contentType: generated.mimeType,
+            customMetadata: {
+              userId: input.actor.userId,
+              organizationId: input.actor.organizationId,
+              model: request.model,
+              source: input.identity.source,
+            },
           },
-        });
+          deps.storageQuota,
+          deps.putObject,
+        );
         const image: StoredImage = {
           image: generated.dataUrl,
           url: stored.url,
           key: stored.key,
           text: generated.text,
           mimeType: generated.mimeType,
-          sizeBytes: generated.bytes.byteLength,
+          sizeBytes: stored.sizeBytes,
+          storageQuotaBytes: stored.storageQuotaBytes,
         };
         storedImages.push(image);
         await deps.assertSafe({
@@ -366,6 +394,7 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
           result: {
             text: image.text,
             r2Key: image.key,
+            storageQuotaBytes: image.storageQuotaBytes,
             billingSource: definition.billingSource,
             source: input.identity.source,
           },
@@ -444,7 +473,13 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
       // error-policy:J6 rejected transactions remove partial artifacts while
       // preserving the causal provider, safety, storage, or history failure.
       if (!billingUncertain) {
-        await cleanupFailedGeneration(deps, input.bindings, storedImages, generationIds);
+        await cleanupFailedGeneration(
+          deps,
+          input.bindings,
+          input.actor.organizationId,
+          storedImages,
+          generationIds,
+        );
         try {
           if (providerDispatchStarted) {
             logger.error(

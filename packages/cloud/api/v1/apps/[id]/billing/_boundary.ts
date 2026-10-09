@@ -1,13 +1,17 @@
 /** Resolves interactive owners or source-app buyer credentials without treating infrastructure keys as subscriber authority. */
-import { z } from "zod";
-import type { AppBillingPrincipal } from "@/db/repositories/app-billing-accounts";
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getPresentedMobileApiKeySecret } from "@/lib/auth/mobile-api-key";
+
 import {
   requireApiKeyCredential,
   requireSessionUserWithOrg,
-} from "@/lib/auth/workers-hono-auth";
-import type { AppContext } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/auth";
+import type { AppBillingPrincipal } from "@elizaos/cloud-shared/db/repositories/app-billing-accounts";
+import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getPresentedMobileApiKeySecret } from "@elizaos/cloud-shared/lib/auth/mobile-api-key";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { z } from "zod";
 export const appBillingEnvironment = z.enum(["test", "live"]);
 export const appBillingId = z.string().uuid();
 export async function appBillingPrincipal(

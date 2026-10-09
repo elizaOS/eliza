@@ -8,7 +8,7 @@
  *
  * Status (2026-05-12): the XCFramework currently ships without streaming-LLM
  * support. The Swift implementation against
- * `libelizainference.dylib` (built by `build-llama-cpp-mtp.mjs` with
+ * `libelizainference.dylib` (built by `build-llama-cpp-mtp.ts` with
  * the `darwin-arm64-metal-fused` target) is the gating item; until then
  * `loadIosStreamingLlmBinding` returns `null` and the runtime falls
  * back to the cloud route.
@@ -204,7 +204,7 @@ export async function loadIosStreamingLlmBinding(): Promise<IosStreamingLlmBindi
  *
  * Unavailable adapter body. Until the Swift bridge reports streaming support,
  * this code path is unreachable because the loader returns null first. The
- * shape is here so app-core wiring compiles against the platform contract.
+ * shape is here so app wiring compiles against the platform contract.
  */
 function buildIosBinding(
 	_plugin: CapacitorLlamaStreamingPlugin,

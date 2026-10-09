@@ -9,11 +9,11 @@
  *   POST   /api/lifeops/relationships/:id/retire
  */
 
+import type { AgentRuntime } from "@elizaos/core";
 import {
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
-import type { AgentRuntime } from "@elizaos/core";
+} from "@elizaos/plugin-relationships";
 import type {
   Relationship,
   RelationshipFilter,
@@ -35,11 +35,8 @@ function makeStore(ctx: LifeOpsRouteContext): RelationshipStore | null {
     ctx.error(ctx.res, "Knowledge graph service is not available", 503);
     return null;
   }
-  return knowledgeGraph.getRelationshipStore(
-    ctx.state.adminEntityId
-      ? String(ctx.state.adminEntityId)
-      : defaultAgentId(ctx.state.runtime),
-  );
+  // Edges share the agent partition of their entities and household consumers.
+  return knowledgeGraph.getRelationshipStore(defaultAgentId(ctx.state.runtime));
 }
 
 function parseRelationshipFilter(url: URL): RelationshipFilter {
@@ -180,14 +177,12 @@ export async function handleRelationshipRoutes(
     }
     const store = makeStore(ctx);
     if (!store) return true;
-    const existing = await store.get(relationshipId);
-    if (!existing) {
-      ctx.error(res, "relationship not found", 404);
-      return true;
-    }
+    // The body is read before the edge, and the merge runs under the edge's
+    // serialization: a stale copy written back after a slow request body would
+    // undo interactions observed or a retirement made in the meantime.
     const body = await readJsonBody<Partial<Relationship>>(req, res);
     if (!body) return true;
-    const updated = await store.upsert({
+    const updated = await store.patch(relationshipId, (existing) => ({
       ...existing,
       relationshipId: existing.relationshipId,
       ...(body.fromEntityId ? { fromEntityId: body.fromEntityId } : {}),
@@ -202,7 +197,11 @@ export async function handleRelationshipRoutes(
         ? { confidence: body.confidence }
         : {}),
       ...(body.source ? { source: body.source } : {}),
-    });
+    }));
+    if (!updated) {
+      ctx.error(res, "relationship not found", 404);
+      return true;
+    }
     json(res, { relationship: updated });
     return true;
   }

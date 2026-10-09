@@ -41,8 +41,8 @@ interface DetectedGpuLite {
   totalMemoryMiB?: number;
 }
 
-/** Probe `nvidia-smi`. Mirrors `gpu-detect.ts` in app-core but stays
- *  in this package so the bench harness has no app-core dep. */
+/** Probe `nvidia-smi`. Mirrors `gpu-detect.ts` in app but stays
+ *  in this package so the bench harness has no app dep. */
 function probeNvidiaSmi(): DetectedGpuLite {
   const r = spawnSync(
     "nvidia-smi",
@@ -93,7 +93,7 @@ async function gpuSubcommand(argv: string[]): Promise<void> {
 
   // Load the matching JSON config from `packages/inference/configs/gpu/`
   // by name pattern. We do the matching inline so this CLI has no
-  // @elizaos/app-core dep.
+  // @elizaos/app dep.
   const name = (gpu.name ?? "").toLowerCase();
   let configFile: string | null = null;
   if (name.includes("h200")) configFile = "h200.json";
@@ -123,7 +123,7 @@ async function gpuSubcommand(argv: string[]): Promise<void> {
     bundle: args.bundle ?? null,
     note: configFile
       ? undefined
-      : "GPU detected but no exact-match profile. Run gpu-autotune.selectGpuConfig() from app-core for VRAM-bucket fallback.",
+      : "GPU detected but no exact-match profile. Run gpu-autotune.selectGpuConfig() from app for VRAM-bucket fallback.",
   };
   process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
 }

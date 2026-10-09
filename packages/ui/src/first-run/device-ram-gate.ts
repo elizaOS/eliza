@@ -20,9 +20,9 @@
  * `peek` at decision time.
  */
 
-import { logger } from "@elizaos/logger";
+import { getDeviceResourceSnapshot } from "../bridge/resource-snapshot";
+import { logger } from "../logger.ts";
 import { isAndroid, isIOS } from "../platform/init";
-import { getDeviceResourceSnapshot } from "../services/local-inference/resource-snapshot-bridge";
 import {
   classifyDeviceRamTier,
   type DeviceRamTierAssessment,
@@ -55,12 +55,6 @@ function readSyncDeviceTotalRamMb(): number | null {
 
 let cachedAssessment: DeviceRamTierAssessment | null = null;
 let resolveInFlight: Promise<DeviceRamTierAssessment> | null = null;
-
-/** Test seam: drop the session cache. */
-export function resetDeviceRamGateForTests(): void {
-  cachedAssessment = null;
-  resolveInFlight = null;
-}
 
 /**
  * The already-known assessment, resolving the synchronous Android bridge on

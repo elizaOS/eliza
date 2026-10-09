@@ -5,48 +5,49 @@
  * POST — create a new Agent cloud agent (gated on a minimum credit balance).
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { userCharactersRepository } from "@/db/repositories/characters";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
 import {
   ApiError,
   NotFoundError,
   ValidationError,
-} from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { containersEnv } from "@/lib/config/containers-env";
-import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
-import { getConfiguredElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
+import { getMaxNonTerminalAgentsForOrg } from "@elizaos/cloud-shared/lib/constants/agent-sandbox-quota";
+import { getConfiguredElizaAgentPublicWebUiUrl } from "@elizaos/cloud-shared/lib/eliza-agent-web-ui";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
+import { requireDedicatedComputePriceAcceptance } from "@elizaos/cloud-shared/lib/services/dedicated-compute-price-acceptance";
 import {
   stripReservedElizaConfigKeys,
   withReusedElizaCharacterOwnership,
-} from "@/lib/services/eliza-agent-config";
-import { prepareManagedElizaEnvironment } from "@/lib/services/eliza-managed-launch";
+} from "@elizaos/cloud-shared/lib/services/eliza-agent-config";
+import { prepareManagedElizaEnvironment } from "@elizaos/cloud-shared/lib/services/eliza-managed-launch";
 import {
   AgentImageNotAllowedError,
   AgentQuotaExceededError,
   elizaSandboxService,
-} from "@/lib/services/eliza-sandbox";
-import { publicJobErrorSummary } from "@/lib/services/job-error-text";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+} from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { publicJobErrorSummary } from "@elizaos/cloud-shared/lib/services/job-error-text";
 import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
-} from "@/lib/services/provisioning-worker-health";
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
 import {
   getAgentTier,
   tierProvisionsEagerly,
-} from "@/lib/services/shared-runtime/agent-tier";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/agent-tier";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type {
   AgentActiveJobDto,
   AgentListItemDto,
   AgentsResponse,
-} from "@/lib/types/cloud-api";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/types";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { projectProductAgentList } from "./product-agent-list";
 
 const app = new Hono<AppEnv>();
@@ -418,6 +419,8 @@ app.post("/", async (c) => {
   let orgBalanceForQuota: number | undefined;
 
   if (shouldProvisionEagerly) {
+    const priceError = requireDedicatedComputePriceAcceptance(c.req.raw);
+    if (priceError) return priceError;
     const creditCheck = await checkAgentCreditGate(user.organization_id);
     orgBalanceForQuota = creditCheck.balance;
     if (!creditCheck.allowed) {
@@ -576,16 +579,17 @@ app.post("/", async (c) => {
       }
       if (createExecutionCtx) {
         createExecutionCtx.waitUntil(
-          import("@/lib/services/shared-runtime/prewarm-shared-agent").then(
-            ({ prewarmSharedAgentTurnCaches }) =>
-              prewarmSharedAgentTurnCaches(agent, {
-                namespace: c.env?.SHARED_RUNTIME_CONVERSATIONS,
-                // The creating request's credential is the one the immediate
-                // first message presents; it lets the prewarm seed the exact
-                // credential-scoped authorization entry that message consults.
-                requestContext: c,
-                stewardUserId: user.steward_id ?? undefined,
-              }),
+          import(
+            "@elizaos/cloud-shared/lib/services/shared-runtime/prewarm-shared-agent"
+          ).then(({ prewarmSharedAgentTurnCaches }) =>
+            prewarmSharedAgentTurnCaches(agent, {
+              namespace: c.env?.SHARED_RUNTIME_CONVERSATIONS,
+              // The creating request's credential is the one the immediate
+              // first message presents; it lets the prewarm seed the exact
+              // credential-scoped authorization entry that message consults.
+              requestContext: c,
+              stewardUserId: user.steward_id ?? undefined,
+            }),
           ),
         );
       }

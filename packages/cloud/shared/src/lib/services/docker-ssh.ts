@@ -22,6 +22,7 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts (executeSSH)
  */
 
+import { ElizaError } from "@elizaos/core";
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as os from "os";
@@ -764,13 +765,27 @@ export class DockerSSHClient {
    * Use a dedicated `DockerSSHClient` for this operation: the fail-closed
    * fallback deliberately destroys the SSH session and would interrupt other
    * commands sharing a pooled client.
+   *
+   * Passing an expected receipt keeps stdin open as a liveness channel for
+   * framed restore workers. Success then requires exactly that lowercase
+   * SHA-256 on stdout, no stderr, and exit zero. Remote bytes are compared
+   * without retaining or converting potentially reflected plaintext.
    */
   async execStdinAbortable(
     command: string,
     input: Buffer,
     signal: AbortSignal,
     timeoutMs?: number,
+    expectedReceiptSha256?: string,
   ): Promise<void> {
+    if (
+      expectedReceiptSha256 !== undefined &&
+      (expectedReceiptSha256.length !== 64 || !/^[0-9a-f]{64}$/.test(expectedReceiptSha256))
+    ) {
+      throw new ElizaError("Invalid expected SSH restore receipt", {
+        code: "DOCKER_SSH_RECEIPT_INVALID",
+      });
+    }
     if (signal.aborted) {
       throw getDockerSshAbortReason(signal, this.hostname);
     }
@@ -787,6 +802,7 @@ export class DockerSSHClient {
 
     return new Promise<void>((resolve, reject) => {
       let outputBytes = 0;
+      let receiptBytes = 0;
       let settled = false;
       let terminalError: unknown;
       let hasTerminalError = false;
@@ -893,9 +909,31 @@ export class DockerSSHClient {
 
         stream = openedStream;
 
-        const observeBoundedOutput = (data: Buffer) => {
+        const observeBoundedOutput = (data: Buffer, stderr: boolean) => {
           try {
             if (hasTerminalError || settled) return;
+            if (expectedReceiptSha256 !== undefined) {
+              let invalid = stderr && data.byteLength > 0;
+              for (const byte of data) {
+                if (
+                  stderr ||
+                  receiptBytes >= 64 ||
+                  byte !== expectedReceiptSha256.charCodeAt(receiptBytes)
+                ) {
+                  invalid = true;
+                  break;
+                }
+                receiptBytes += 1;
+              }
+              if (invalid) {
+                cancel(
+                  new ElizaError("SSH restore receipt was not proven", {
+                    code: "DOCKER_SSH_RECEIPT_UNPROVEN",
+                  }),
+                );
+              }
+              return;
+            }
             outputBytes += data.byteLength;
             if (outputBytes > ABORTABLE_STDIN_MAX_OUTPUT_BYTES) {
               cancel(
@@ -913,10 +951,10 @@ export class DockerSSHClient {
         };
 
         stream.on("data", (data: Buffer) => {
-          observeBoundedOutput(data);
+          observeBoundedOutput(data, false);
         });
         stream.stderr.on("data", (data: Buffer) => {
-          observeBoundedOutput(data);
+          observeBoundedOutput(data, true);
         });
         stream.on("close", (code: number) => {
           if (hasTerminalError) {
@@ -928,6 +966,12 @@ export class DockerSSHClient {
             // must not reflect secret stdin into immutable strings or errors.
             finish(
               new Error(`[docker-ssh] stdin command exited with code ${code} on ${this.hostname}`),
+            );
+          } else if (expectedReceiptSha256 !== undefined && receiptBytes !== 64) {
+            finish(
+              new ElizaError("SSH restore receipt was not proven", {
+                code: "DOCKER_SSH_RECEIPT_UNPROVEN",
+              }),
             );
           } else {
             finish();
@@ -943,9 +987,123 @@ export class DockerSSHClient {
           return;
         }
         try {
-          stream.end(input);
+          if (expectedReceiptSha256 === undefined) stream.end(input);
+          else stream.write(input);
         } catch {
           // error-policy:J1 translate a synchronous SSH writable failure after teardown starts.
+          cancel(new Error(`[docker-ssh] stdin write failed on ${this.hostname}`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Hand one private request to a remote one-shot worker whose stdin EOF means
+   * cancellation, and return its bounded stdout response. Stdin stays open
+   * until the remote process exits; stderr is discarded (never reflected).
+   * Timeout or abort closes the channel, which cancels the remote worker.
+   */
+  async execStdinForResponse(
+    command: string,
+    input: Buffer,
+    signal: AbortSignal,
+    timeoutMs: number,
+    maxOutputBytes: number,
+  ): Promise<string> {
+    signal.throwIfAborted();
+    if (!this.connected || !this.client) {
+      await this.connect(signal);
+    }
+    signal.throwIfAborted();
+    this.lastActivityMs = Date.now();
+    const client = this.client!;
+    return new Promise<string>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      let outputBytes = 0;
+      let settled = false;
+      let stream: ClientChannel | undefined;
+      const finish = (error: unknown, output?: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal.removeEventListener("abort", onAbort);
+        if (error !== undefined) reject(error);
+        else resolve(output ?? "");
+      };
+      const cancel = (error: unknown) => {
+        try {
+          stream?.close();
+          stream?.destroy();
+        } catch {
+          // error-policy:J6 session teardown below is authoritative.
+        }
+        try {
+          client.destroy();
+        } catch {
+          // error-policy:J6 the session may already be closed.
+        }
+        if (this.client === client) {
+          this.client = null;
+          this.connected = false;
+        }
+        finish(error);
+      };
+      const onAbort = () => cancel(getDockerSshAbortReason(signal, this.hostname));
+      const timer = setTimeout(
+        () =>
+          cancel(
+            new Error(
+              `[docker-ssh] stdin command timed out after ${timeoutMs}ms on ${this.hostname}`,
+            ),
+          ),
+        timeoutMs,
+      );
+      signal.addEventListener("abort", onAbort, { once: true });
+      client.exec(command, (err, openedStream) => {
+        if (settled) {
+          try {
+            openedStream?.destroy();
+          } catch {
+            // error-policy:J6 late channel after cancellation.
+          }
+          return;
+        }
+        if (err) {
+          finish(new Error(`[docker-ssh] stdin exec channel failed on ${this.hostname}`));
+          return;
+        }
+        stream = openedStream;
+        stream.on("data", (data: Buffer) => {
+          outputBytes += data.byteLength;
+          if (outputBytes > maxOutputBytes) {
+            cancel(
+              new Error(
+                `[docker-ssh] stdin command output exceeded ${maxOutputBytes} bytes on ${this.hostname}`,
+              ),
+            );
+            return;
+          }
+          chunks.push(Buffer.from(data));
+        });
+        stream.stderr.on("data", (data: Buffer) => {
+          data.fill(0);
+        });
+        stream.on("close", (code: number) => {
+          if (code !== 0) {
+            finish(
+              new Error(`[docker-ssh] stdin command exited with code ${code} on ${this.hostname}`),
+            );
+            return;
+          }
+          finish(undefined, Buffer.concat(chunks).toString("utf8"));
+        });
+        stream.on("error", () => {
+          cancel(new Error(`[docker-ssh] stdin channel failed on ${this.hostname}`));
+        });
+        try {
+          stream.write(input);
+        } catch {
+          // error-policy:J1 translate a synchronous SSH writable failure.
           cancel(new Error(`[docker-ssh] stdin write failed on ${this.hostname}`));
         }
       });

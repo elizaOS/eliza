@@ -8,8 +8,10 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError, type Memory, type MemoryMetadata, type UUID } from "@elizaos/core";
 import { and, cosineDistance, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { embeddingSpaceCondition } from "../embedding-space";
 import { serializeJsonb } from "../sanitize-json";
-import { embeddingTable, memoryTable } from "../schema/index";
+import { embeddingTable } from "../schema/embedding";
+import { memoryTable } from "../schema/memory";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
 
@@ -37,6 +39,8 @@ export class MemoryStore implements Store {
     const tableName = params.tableName;
     // Honor either `limit` (canonical) or `count` (legacy) so callers that pass
     // only `limit` still get a LIMIT clause applied (see IDatabaseAdapter.getMemories).
+    // `0` is an explicit empty page. A truthy check skipped LIMIT and returned
+    // every matching row.
     const effectiveLimit = params.limit ?? params.count;
 
     if (offset !== undefined && offset < 0) {
@@ -73,14 +77,20 @@ export class MemoryStore implements Store {
           embedding: embeddingTable[this.ctx.getEmbeddingDimension()],
         })
         .from(memoryTable)
-        .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+        .leftJoin(
+          embeddingTable,
+          and(
+            eq(embeddingTable.memoryId, memoryTable.id),
+            embeddingSpaceCondition(this.ctx.getEmbeddingSpace())
+          )
+        )
         .where(and(...conditions))
         .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
 
       const rows = await (async () => {
-        if (effectiveLimit && offset !== undefined && offset > 0) {
+        if (effectiveLimit !== undefined && offset !== undefined && offset > 0) {
           return baseQuery.limit(effectiveLimit).offset(offset);
-        } else if (effectiveLimit) {
+        } else if (effectiveLimit !== undefined) {
           return baseQuery.limit(effectiveLimit);
         } else if (offset !== undefined && offset > 0) {
           return baseQuery.offset(offset);
@@ -137,7 +147,7 @@ export class MemoryStore implements Store {
         .where(and(...conditions))
         .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
 
-      const rows = params.limit ? await query.limit(params.limit) : await query;
+      const rows = params.limit !== undefined ? await query.limit(params.limit) : await query;
 
       return rows.map((row) => ({
         id: row.id as UUID,
@@ -172,7 +182,12 @@ export class MemoryStore implements Store {
       const embeddingResult = await this.db
         .select({ embedding: embeddingTable[embeddingCol] })
         .from(embeddingTable)
-        .where(eq(embeddingTable.memoryId, id))
+        .where(
+          and(
+            eq(embeddingTable.memoryId, id),
+            embeddingSpaceCondition(this.ctx.getEmbeddingSpace())
+          )
+        )
         .limit(1);
 
       const embedding: number[] | undefined = embeddingResult[0]?.embedding ?? undefined;
@@ -204,7 +219,13 @@ export class MemoryStore implements Store {
           embedding: embeddingTable[this.ctx.getEmbeddingDimension()],
         })
         .from(memoryTable)
-        .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+        .leftJoin(
+          embeddingTable,
+          and(
+            eq(embeddingTable.memoryId, memoryTable.id),
+            embeddingSpaceCondition(this.ctx.getEmbeddingSpace())
+          )
+        )
         .where(and(...conditions))
         .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
 
@@ -247,6 +268,7 @@ export class MemoryStore implements Store {
       )})`;
 
       const conditions = [
+        embeddingSpaceCondition(this.ctx.getEmbeddingSpace()),
         eq(memoryTable.type, tableName),
         eq(memoryTable.agentId, this.ctx.agentId),
       ];
@@ -309,7 +331,7 @@ export class MemoryStore implements Store {
       }
     }
 
-    const contentToInsert = serializeJsonb(memory.content);
+    const contentToInsert = serializeJsonb(memory.content, { memoryContent: true });
 
     const metadataToInsert = serializeJsonb(memory.metadata ?? {});
 
@@ -348,7 +370,7 @@ export class MemoryStore implements Store {
       try {
         await this.db.transaction(async (tx) => {
           if (memory.content) {
-            const contentToUpdate = serializeJsonb(memory.content);
+            const contentToUpdate = serializeJsonb(memory.content, { memoryContent: true });
 
             const metadataToUpdate = serializeJsonb(memory.metadata ?? {});
 
@@ -479,14 +501,22 @@ export class MemoryStore implements Store {
       .limit(1);
 
     if (existingEmbedding.length > 0) {
-      const updateValues: Record<string, unknown> = {};
+      const updateValues: Record<string, unknown> = {
+        spaceId: this.ctx.getEmbeddingSpace(),
+        writeNonce: this.ctx.getEmbeddingSpace() === null ? null : randomUUID(),
+      };
       updateValues[this.ctx.getEmbeddingDimension()] = cleanVector;
       await tx
         .update(embeddingTable)
         .set(updateValues)
         .where(eq(embeddingTable.memoryId, memoryId));
     } else {
-      const embeddingValues: Record<string, unknown> = { id: randomUUID(), memoryId };
+      const embeddingValues: Record<string, unknown> = {
+        id: randomUUID(),
+        memoryId,
+        spaceId: this.ctx.getEmbeddingSpace(),
+        writeNonce: this.ctx.getEmbeddingSpace() === null ? null : randomUUID(),
+      };
       embeddingValues[this.ctx.getEmbeddingDimension()] = cleanVector;
       await tx.insert(embeddingTable).values([embeddingValues]);
     }

@@ -84,6 +84,22 @@ beforeAll(async () => {
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
       )`,
+      `CREATE TABLE organization_payment_reversal_holds (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id uuid NOT NULL,
+        reason text NOT NULL,
+        stripe_dispute_id text,
+        clawback_transaction_id uuid UNIQUE,
+        shortfall_usd numeric(16,6),
+        outstanding_usd numeric(16,6),
+        stripe_charge_id text,
+        stripe_payment_intent_id text,
+        amount_cents bigint,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        released_at timestamptz,
+        released_by text,
+        release_reason text
+      )`,
     ];
     for (const statement of ddl) {
       await dbWrite.execute(statement);
@@ -186,6 +202,30 @@ describe("ContainersRepository project intent", () => {
     TIMEOUT,
   );
 });
+
+test(
+  "an active payment-reversal hold refuses a new container, but not an existing project intent",
+  async () => {
+    expect(ready).toBe(true);
+    const { BillingHoldActiveError } = await import("../../../lib/services/billing-hold");
+    await dbWrite.execute("DELETE FROM containers");
+    const existing = await repository.createWithProjectIntentAndQuotaCheck(candidate("kept"));
+    await dbWrite.execute(`INSERT INTO organization_payment_reversal_holds
+      (organization_id, reason, clawback_transaction_id, shortfall_usd, outstanding_usd)
+      VALUES ('${ORG_ID}', 'reversal_shortfall', gen_random_uuid(), 12, 12)`);
+    try {
+      await expect(repository.createWithQuotaCheck(candidate("blocked"))).rejects.toBeInstanceOf(
+        BillingHoldActiveError,
+      );
+      const replay = await repository.createWithProjectIntentAndQuotaCheck(candidate("kept"));
+      expect(replay).toMatchObject({ created: false, container: { id: existing.container.id } });
+      expect(await countRows()).toBe(1);
+    } finally {
+      await dbWrite.execute("DELETE FROM organization_payment_reversal_holds");
+    }
+  },
+  TIMEOUT,
+);
 
 test("PGlite schema applied — never a silent skip", () => {
   expect(ready).toBe(true);

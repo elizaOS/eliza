@@ -4,12 +4,12 @@
  * Return an authenticated user's agent details.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { assertOrgMembership } from "@/api-app/middleware/org-membership";
-import { userCharactersRepository } from "@/db/repositories/characters";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

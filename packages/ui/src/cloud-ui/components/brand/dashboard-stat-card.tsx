@@ -4,7 +4,7 @@
 import type { ReactNode } from "react";
 import { Badge, type BadgeProps } from "../../../components/ui/badge";
 import { Card } from "../../../components/ui/card";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 type DashboardStatAccent =
   | "orange"
@@ -64,7 +64,7 @@ export function DashboardStatCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-2">
-          <p className="text-xs-tight uppercase tracking-[0.24em] text-muted-foreground">
+          <p className="text-xs-tight uppercase tracking-[0.24em] text-muted-strong">
             {label}
           </p>
           <p
@@ -87,9 +87,7 @@ export function DashboardStatCard({
           </Badge>
         ) : null}
       </div>
-      {helper ? (
-        <p className="text-xs text-muted-foreground">{helper}</p>
-      ) : null}
+      {helper ? <p className="text-xs text-muted-strong">{helper}</p> : null}
     </Card>
   );
 }

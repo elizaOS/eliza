@@ -4,10 +4,9 @@
  * points at a shared workflow backend that is not the embedded store.
  */
 import {
-  deterministicOwnerEntityId,
   type IAgentRuntime,
   type Memory,
-  resolveCanonicalOwnerId,
+  resolveOwnerEntityIdOrDefault,
   type State,
   type UUID,
 } from '@elizaos/core';
@@ -19,14 +18,7 @@ import {
  * principal explicitly at its boundary.
  */
 export function getLocalOwnerEntityId(runtime: IAgentRuntime): string {
-  const canonicalOwnerId = resolveCanonicalOwnerId(runtime);
-  if (typeof canonicalOwnerId === 'string' && canonicalOwnerId.trim()) {
-    return canonicalOwnerId.trim();
-  }
-
-  // Unconfigured rigs: core's agent-id seed, the same fallback client chat
-  // resolves, so workflow ownership tags match the chat owner.
-  return deterministicOwnerEntityId(runtime.agentId);
+  return resolveOwnerEntityIdOrDefault(runtime);
 }
 
 export function buildConversationContext(message: Memory, state: State | undefined): string {

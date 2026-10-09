@@ -7,7 +7,7 @@
  * swapped (constructor option or `setCredentialResolver`) for tests.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, Service } from "@elizaos/core";
+import { ElizaError, isLoopbackHost, logger, Service } from "@elizaos/core";
 import { getGoogleOAuthProviderConfig, getGoogleOAuthProviderMetadata } from "./auth.js";
 import { GoogleCalendarClient } from "./calendar.js";
 import { GoogleApiClientFactory } from "./client-factory.js";
@@ -40,6 +40,7 @@ import {
   type GoogleDriveCreateFileInput,
   type GoogleDriveFile,
   type GoogleDriveFileList,
+  type GoogleGmailAttachmentContent,
   type GoogleGmailBulkOperation,
   type GoogleGmailDraftResult,
   type GoogleGmailFilterCreateResult,
@@ -84,6 +85,36 @@ import {
 
 export interface GoogleWorkspaceServiceOptions {
   credentialResolver?: GoogleCredentialResolver;
+  /** Host-owned API endpoint; credentials remain account-scoped. */
+  apiRootUrl?: string;
+}
+
+function runtimeMockRoot(runtime?: IAgentRuntime): string | undefined {
+  const value = runtime?.getSetting("ELIZA_MOCK_GOOGLE_BASE");
+  if (value == null || value === "") return undefined;
+  const raw = String(value).trim();
+  // A process environment override is host-owned. Character/runtime settings
+  // may only select a local fixture endpoint; remote overrides require options.
+  if (raw === process.env.ELIZA_MOCK_GOOGLE_BASE?.trim()) return raw;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch (cause) {
+    throw new ElizaError("Invalid Google mock endpoint", {
+      code: "GOOGLE_MOCK_ENDPOINT_INVALID",
+      cause,
+    });
+  }
+  if (
+    !isLoopbackHost(url.hostname) ||
+    !["http:", "https:"].includes(url.protocol) ||
+    url.username ||
+    url.password
+  )
+    throw new ElizaError("Runtime Google mock endpoints must be credential-free loopback URLs", {
+      code: "GOOGLE_MOCK_ENDPOINT_INVALID",
+    });
+  return raw;
 }
 
 export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceService {
@@ -102,7 +133,8 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
   constructor(runtime?: IAgentRuntime, options: GoogleWorkspaceServiceOptions = {}) {
     super(runtime);
     this.clientFactory = new GoogleApiClientFactory(
-      options.credentialResolver ?? new DefaultGoogleCredentialResolver({ runtime })
+      options.credentialResolver ?? new DefaultGoogleCredentialResolver({ runtime }),
+      options.apiRootUrl ?? runtimeMockRoot(runtime)
     );
     this.gmailClient = new GoogleGmailClient(this.clientFactory);
     this.calendarClient = new GoogleCalendarClient(this.clientFactory);
@@ -175,6 +207,7 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
       selfEmail?: string | null;
       maxResults?: number;
       includeSpamTrash?: boolean;
+      labelIds?: string[];
     }
   ): Promise<GoogleGmailMessageSummary[]> {
     return this.gmailClient.searchGmailMessages(params);
@@ -204,6 +237,18 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     return this.gmailClient.getGmailMessageDetail(params);
   }
 
+  getGmailAttachment(
+    params: GoogleAccountRef & { messageId: string; partId: string; maxBytes: number }
+  ): Promise<GoogleGmailAttachmentContent> {
+    return this.gmailClient.getGmailAttachment(params);
+  }
+
+  getGmailMessageRevision(
+    params: GoogleAccountRef & { messageId: string }
+  ): Promise<string | null> {
+    return this.gmailClient.getGmailMessageRevision(params);
+  }
+
   listGmailUnrespondedThreads(
     params: GoogleAccountRef & {
       selfEmail?: string | null;
@@ -231,6 +276,7 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
       cc?: string[];
       subject: string;
       bodyText: string;
+      threadId: string;
       inReplyTo?: string | null;
       references?: string | null;
     }
@@ -337,6 +383,12 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     params: GoogleAccountRef & { calendarId?: string; eventId: string; timeZone?: string }
   ): Promise<GoogleCalendarEvent> {
     return this.calendarClient.getEvent(params);
+  }
+
+  findEventByIdempotencyKey(
+    params: GoogleAccountRef & { calendarId: string; idempotencyKey: string; timeZone?: string }
+  ): Promise<GoogleCalendarEvent | null> {
+    return this.calendarClient.findEventByIdempotencyKey(params);
   }
 
   createEvent(params: GoogleCalendarEventInput): Promise<GoogleCalendarEvent> {

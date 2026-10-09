@@ -1,3 +1,7 @@
+import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
+
+export { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
+
 /**
  * Discovers installable plugins and apps from the local filesystem and merges
  * them into the registry map that backs `GET /api/apps`. Scans monorepo
@@ -9,12 +13,13 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { logger } from "@elizaos/core";
-import { readJsonFile } from "@elizaos/core/atomic-json";
-import { packageNameToAppDisplayName } from "@elizaos/shared";
-import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
-import { resolveStateDir } from "../config/paths.ts";
+import {
+  logger,
+  packageNameToAppDisplayName,
+  readJsonFile,
+  resolveStateDir,
+} from "@elizaos/core";
+
 import {
   mergeAppMeta,
   resolveAppOverride,
@@ -47,13 +52,13 @@ interface LocalPackageAppMeta {
   uiExtension?: AppUiExtensionConfig;
   viewer?: RegistryAppViewerMeta;
   session?: RegistryAppSessionMeta;
-  developerOnly?: boolean;
+  viewKind?: import("@elizaos/core").ViewKind;
   visibleInAppStore?: boolean;
   /**
    * If true, this app declares itself as the default landing tab for the
    * shell. Exactly one installed app should set this; if multiple do, the
    * shell picks the first one alphabetically by package name and logs a
-   * warning. Used by `getMainTabApp()` in app-core to compute the
+   * warning. Used by `getMainTabApp()` in app to compute the
    * landing tab at boot.
    */
   mainTab?: boolean;
@@ -66,8 +71,6 @@ interface LocalPackageAppMeta {
 interface LocalPackageElizaConfig {
   kind?: string;
   app?: LocalPackageAppMeta;
-  viewer?: RegistryAppViewerMeta;
-  session?: RegistryAppSessionMeta;
 }
 
 interface LocalPackageJson {
@@ -96,8 +99,6 @@ interface LocalPluginManifest {
   repository?: string | { type?: string; url?: string };
   kind?: string;
   app?: LocalPackageAppMeta;
-  viewer?: RegistryAppViewerMeta;
-  session?: RegistryAppSessionMeta;
 }
 
 const LOCAL_PLUGIN_TAG_STOPWORDS = new Set([
@@ -110,63 +111,6 @@ const LOCAL_PLUGIN_TAG_STOPWORDS = new Set([
   "elizaos-plugins",
   "feature",
 ]);
-
-function uniquePaths(paths: string[]): string[] {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  for (const p of paths) {
-    const resolved = path.resolve(p);
-    if (!seen.has(resolved)) {
-      seen.add(resolved);
-      ordered.push(resolved);
-    }
-  }
-  return ordered;
-}
-
-export function resolveWorkspaceRootsForDiscovery(options: {
-  readonly moduleDir: string;
-  readonly cwd: string;
-  readonly envRoot?: string;
-}): string[] {
-  const envRoot = options.envRoot?.trim();
-  if (envRoot) return uniquePaths([envRoot]);
-  const packageRoot = path.resolve(options.moduleDir, "..", "..");
-  const cwd = options.cwd;
-  const roots = [
-    packageRoot,
-    cwd,
-    path.resolve(cwd, ".."),
-    path.resolve(cwd, "..", ".."),
-  ].filter((candidate): candidate is string => Boolean(candidate));
-
-  // Monorepos (e.g. Eliza) hoist `@elizaos/*` under the repo root, while this
-  // module lives in `packages/agent`. When the process cwd is deep (`apps/...`,
-  // Electrobun bundle, etc.), cwd-based roots never reach that `node_modules`.
-  // Walk up from the agent package so `getPluginInfo` can resolve vendored
-  // workspace plugins for install.
-  let walk = path.resolve(packageRoot);
-  for (let depth = 0; depth < 8; depth += 1) {
-    roots.push(walk);
-    const parent = path.dirname(walk);
-    if (parent === walk) break;
-    walk = parent;
-  }
-
-  const anchors = new Set([path.resolve(packageRoot), path.resolve(cwd)]);
-  return uniquePaths(roots).filter(
-    (candidate) =>
-      anchors.has(candidate) || !path.basename(candidate).startsWith("."),
-  );
-}
-
-function resolveWorkspaceRoots(): string[] {
-  return resolveWorkspaceRootsForDiscovery({
-    moduleDir: path.dirname(fileURLToPath(import.meta.url)),
-    cwd: process.cwd(),
-    envRoot: process.env.ELIZA_WORKSPACE_ROOT,
-  });
-}
 
 function isMissingPathError(err: unknown): err is NodeJS.ErrnoException {
   return (
@@ -296,36 +240,30 @@ async function resolveLocalPackagePath(packageDir: string): Promise<string> {
 function toLocalAppMeta(
   app: LocalPackageAppMeta | undefined,
   fallbackDisplayName: string,
-  legacy?: {
-    viewer?: RegistryAppViewerMeta;
-    session?: RegistryAppSessionMeta;
-  },
 ): RegistryAppMeta | undefined {
-  if (!app && !legacy?.viewer && !legacy?.session) return undefined;
-  const launchType =
-    app?.launchType ?? (legacy?.viewer || legacy?.session ? "connect" : "url");
+  if (!app) return undefined;
   return {
-    displayName: app?.displayName ?? fallbackDisplayName,
-    category: app?.category ?? "game",
-    launchType,
-    launchUrl: app?.launchUrl ?? null,
-    icon: app?.icon ?? null,
-    heroImage: app?.heroImage ?? null,
-    capabilities: app?.capabilities ?? [],
-    minPlayers: app?.minPlayers ?? null,
-    maxPlayers: app?.maxPlayers ?? null,
-    runtimePlugin: app?.runtimePlugin,
-    bridgeExport: app?.bridgeExport,
-    uiExtension: app?.uiExtension,
-    viewer: app?.viewer ?? legacy?.viewer,
-    session: app?.session ?? legacy?.session,
-    developerOnly: app?.developerOnly,
-    visibleInAppStore: app?.visibleInAppStore,
-    mainTab: app?.mainTab,
-    catalogSection: app?.catalogSection,
-    featured: app?.featured,
-    defaultHidden: app?.defaultHidden,
-    scope: app?.scope,
+    displayName: app.displayName ?? fallbackDisplayName,
+    category: app.category ?? "game",
+    launchType: app.launchType ?? "url",
+    launchUrl: app.launchUrl ?? null,
+    icon: app.icon ?? null,
+    heroImage: app.heroImage ?? null,
+    capabilities: app.capabilities ?? [],
+    minPlayers: app.minPlayers ?? null,
+    maxPlayers: app.maxPlayers ?? null,
+    runtimePlugin: app.runtimePlugin,
+    bridgeExport: app.bridgeExport,
+    uiExtension: app.uiExtension,
+    viewer: app.viewer,
+    session: app.session,
+    viewKind: app.viewKind,
+    visibleInAppStore: app.visibleInAppStore,
+    mainTab: app.mainTab,
+    catalogSection: app.catalogSection,
+    featured: app.featured,
+    defaultHidden: app.defaultHidden,
+    scope: app.scope,
   };
 }
 
@@ -343,11 +281,7 @@ function isDiscoverableAppPackage(
     packageJson.elizaos?.kind === "app" ||
       manifest?.kind === "app" ||
       packageJson.elizaos?.app ||
-      packageJson.elizaos?.viewer ||
-      packageJson.elizaos?.session ||
       manifest?.app ||
-      manifest?.viewer ||
-      manifest?.session ||
       resolveAppOverride(packageJson.name, undefined),
   );
 }
@@ -421,18 +355,10 @@ function buildDiscoveredEntry(
   const packageAppMeta = toLocalAppMeta(
     packageJson.elizaos?.app,
     toDisplayNameFromDirName(dirName),
-    {
-      viewer: packageJson.elizaos?.viewer,
-      session: packageJson.elizaos?.session,
-    },
   );
   const manifestAppMeta = toLocalAppMeta(
     manifest?.app,
     toDisplayNameFromDirName(dirName),
-    {
-      viewer: manifest?.viewer,
-      session: manifest?.session,
-    },
   );
   const mergedMeta = mergeAppMeta(manifestAppMeta, packageAppMeta);
   const overriddenMeta = resolveAppOverride(packageJson.name, mergedMeta);
@@ -495,7 +421,7 @@ async function discoverLocalWorkspaceApps(): Promise<
     { packageDir: string; dirName: string }
   >();
 
-  for (const workspaceRoot of resolveWorkspaceRoots()) {
+  for (const workspaceRoot of resolveWorkspaceRootsForDiscovery()) {
     const discoveredRoots = new Map<string, boolean>();
     const addDiscoveredRoot = (
       root: string,
@@ -512,12 +438,6 @@ async function discoverLocalWorkspaceApps(): Promise<
     addDiscoveredRoot(path.join(workspaceRoot, "packages"), false);
     addDiscoveredRoot(path.join(workspaceRoot, "eliza", "packages"), false);
     addDiscoveredRoot(path.join(workspaceRoot, "eliza", "plugins"), true);
-    if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
-      // Opt-in for older external workspaces that still keep app plugins
-      // under apps/app-*. The current repo discovers plugins/app-* by default.
-      addDiscoveredRoot(path.join(workspaceRoot, "apps"), false);
-      addDiscoveredRoot(path.join(workspaceRoot, "eliza", "apps"), false);
-    }
 
     const workspaceEntries = await readDirectoryEntries(
       workspaceRoot,
@@ -533,10 +453,6 @@ async function discoverLocalWorkspaceApps(): Promise<
       addDiscoveredRoot(path.join(repoRoot, "packages"), false);
       addDiscoveredRoot(path.join(repoRoot, "eliza", "packages"), false);
       addDiscoveredRoot(path.join(repoRoot, "eliza", "plugins"), true);
-      if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
-        addDiscoveredRoot(path.join(repoRoot, "apps"), false);
-        addDiscoveredRoot(path.join(repoRoot, "eliza", "apps"), false);
-      }
     }
 
     for (const [root, includeTypescriptChild] of discoveredRoots) {
@@ -653,7 +569,7 @@ async function discoverNodeModulePlugins(): Promise<
 > {
   const discovered = new Map<string, RegistryPluginInfo>();
 
-  for (const workspaceRoot of resolveWorkspaceRoots()) {
+  for (const workspaceRoot of resolveWorkspaceRootsForDiscovery()) {
     const elizaosDir = path.join(workspaceRoot, "node_modules", "@elizaos");
     const entries = await readDirectoryEntries(elizaosDir, "@elizaos dir", {
       suppressMissing: true,
@@ -716,7 +632,7 @@ async function discoverPackagesFolderPlugins(): Promise<
 > {
   const discovered = new Map<string, RegistryPluginInfo>();
 
-  for (const workspaceRoot of resolveWorkspaceRoots()) {
+  for (const workspaceRoot of resolveWorkspaceRootsForDiscovery()) {
     const packagesDir = path.join(workspaceRoot, "packages");
     const entries = await readDirectoryEntries(packagesDir, "packages dir", {
       suppressMissing: true,

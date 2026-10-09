@@ -146,11 +146,17 @@ describe("Oura connector — recorded real API contract", () => {
     );
     expect(sleepHours?.value).toBe(27360 / 3600);
     expect(sleepHours?.unit).toBe("h");
+    // Overnight sleep starts on 2026-04-30 UTC; Oura's `day` (and the episode)
+    // is the wake date 2026-05-01. Daily summaries group by sample.localDate.
+    expect(sleepHours?.startAt).toBe("2026-04-30T22:48:00.000Z");
+    expect(sleepHours?.localDate).toBe("2026-05-01");
     const sleepScore = payload.samples.find(
       (s) => s.sourceExternalId === "slp-2026-05-01:sleep_score",
     );
     expect(sleepScore?.value).toBe(86);
     expect(sleepScore?.unit).toBe("score");
+    expect(sleepScore?.startAt).toBe("2026-04-30T22:48:00.000Z");
+    expect(sleepScore?.localDate).toBe("2026-05-01");
 
     // daily_activity -> steps/calories/distance samples.
     const steps = payload.samples.find((s) => s.metric === "steps");
@@ -202,7 +208,11 @@ describe("Oura connector — recorded real API contract", () => {
       expect(typeof s.value).toBe("number");
       expect(Number.isFinite(s.value)).toBe(true);
       expect(typeof s.startAt).toBe("string");
-      expect(s.localDate).toBe(s.startAt.slice(0, 10));
+      if (s.metric === "sleep_hours" || s.metric === "sleep_score") {
+        expect(s.localDate).toBe("2026-05-01");
+      } else {
+        expect(s.localDate).toBe(s.startAt.slice(0, 10));
+      }
     }
   });
 

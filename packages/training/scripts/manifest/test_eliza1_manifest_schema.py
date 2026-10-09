@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.manifest.eliza1_manifest import (
+from eliza_training.manifest.eliza1_manifest import (
     ELIZA_1_MANIFEST_SCHEMA_URL,
     validate_manifest,
 )

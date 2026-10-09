@@ -1,6 +1,6 @@
 /** Storybook + story-gate visual states for ConnectorAccountPicker. */
 import type { Meta, StoryObj } from "@storybook/react";
-import type { ConnectorAccountRecord } from "../../api/client-agent";
+import type { ConnectorAccountRecord } from "../../api/client-agent-connector-accounts";
 import { ConnectorAccountPicker } from "./ConnectorAccountPicker";
 
 const accounts: ConnectorAccountRecord[] = [

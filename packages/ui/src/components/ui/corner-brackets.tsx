@@ -8,7 +8,7 @@
  * @param props.hoverColor - Optional hover color
  * @param props.hoverScale - Whether to scale on hover
  */
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 
 interface CornerBracketsProps {
   className?: string;

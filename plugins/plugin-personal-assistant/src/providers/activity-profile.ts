@@ -8,7 +8,7 @@
  * Gated to the owner role and to the screen_time / tasks / health contexts.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
+import type { LifeOpsActivitySignal } from "@elizaos/contracts";
 import type {
   IAgentRuntime,
   Memory,
@@ -16,7 +16,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { hasRoleAccess, logger } from "@elizaos/core";
 import {
   type ActivityAppBreakdown,
   type ActivityForegroundApp,
@@ -27,7 +27,6 @@ import {
 import { resolveCurrentBucket } from "../activity-profile/analyzer.js";
 import { PROACTIVE_TASK_TAGS } from "../activity-profile/proactive-worker.js";
 import { readProfileFromMetadata } from "../activity-profile/service.js";
-import type { LifeOpsActivitySignal } from "../contracts/index.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
@@ -222,7 +221,7 @@ export const activityProfileProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return { text: "", values: {}, data: {} };
     }
 

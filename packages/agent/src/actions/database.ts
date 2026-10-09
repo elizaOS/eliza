@@ -15,17 +15,28 @@
  * for the agent's own tool surface.
  */
 
-import type {
-  Action,
-  ActionResult,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  SearchCategoryRegistration,
+import {
+  type Action,
+  type ActionResult,
+  type ColumnInfo,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  ModelType,
+  type SearchCategoryRegistration,
+  type TableInfo,
+  toWellFormedUnicode,
 } from "@elizaos/core";
-import { logger, ModelType, toWellFormedUnicode } from "@elizaos/core";
-import type { ColumnInfo, TableInfo } from "@elizaos/shared";
+
 import { checkReadOnly } from "../security/sql-readonly-guard.ts";
+
+import {
+  parseRequestedSchema,
+  qualifiedTable,
+  quoteIdent,
+  resolveTableSchema,
+} from "../shared/database-table.ts";
 
 // ---------------------------------------------------------------------------
 // Op dispatch
@@ -48,6 +59,7 @@ interface DatabaseParams {
   includeEmpty?: boolean;
   // get_table
   tableName?: string;
+  schema?: string;
   limit?: number;
   offset?: number;
   sortBy?: string;
@@ -127,10 +139,6 @@ async function executeRawSql(
     result.fields?.map((f) => f.name) ??
     (rows.length > 0 ? Object.keys(rows[0]) : []);
   return { rows, columns };
-}
-
-function quoteIdent(name: string): string {
-  return `"${name.replace(/"/g, '""')}"`;
 }
 
 function parseOptionalPositiveInteger(
@@ -264,7 +272,7 @@ async function opListTables(
 
   const columnsByTable = new Map<string, ColumnInfo[]>();
   for (const row of columnsResult.rows) {
-    const key = `${String(row.schema)}.${String(row.table_name)}`;
+    const key = JSON.stringify([row.schema, row.table_name]);
     const cols = columnsByTable.get(key) ?? [];
     cols.push({
       name: String(row.name),
@@ -278,7 +286,7 @@ async function opListTables(
   }
 
   const allTables: TableInfo[] = tablesResult.rows.map((row) => {
-    const key = `${String(row.schema)}.${String(row.name)}`;
+    const key = JSON.stringify([row.schema, row.name]);
     return {
       name: String(row.name),
       schema: String(row.schema),
@@ -290,20 +298,24 @@ async function opListTables(
   const filter = params.filter?.trim().toLowerCase() ?? "";
   const includeEmpty = params.includeEmpty ?? true;
   const tables = allTables.filter((table) => {
-    if (filter && !table.name.toLowerCase().includes(filter)) return false;
+    if (filter) {
+      const qualified = `${table.schema}.${table.name}`.toLowerCase();
+      if (!qualified.includes(filter)) return false;
+    }
     if (!includeEmpty && table.rowCount === 0) return false;
     return true;
   });
 
   const lines = tables.map(
-    (t) => `- ${t.name} (${t.columns.length} cols, ${t.rowCount} rows)`,
+    (t) =>
+      `- ${t.schema}.${t.name} (${t.columns.length} cols, ${t.rowCount} rows)`,
   );
 
   // Both branches used to hide the narrowing above: "No tables found." read as
   // an empty database and "Found 7 table(s)" read as the whole schema while
   // `allTables` held the real count. Name what narrowed it and how to widen.
   const narrowings: string[] = [];
-  if (filter) narrowings.push(`name contains "${filter}"`);
+  if (filter) narrowings.push(`schema or name contains "${filter}"`);
   if (!includeEmpty)
     narrowings.push("includeEmpty:false (zero-row tables dropped)");
   const widen = includeEmpty
@@ -333,12 +345,51 @@ async function opListTables(
   };
 }
 
+async function resolveGetTableSchema(
+  runtime: IAgentRuntime,
+  tableName: string,
+  requestedSchema: string | undefined,
+): Promise<
+  | { ok: true; schema: string; tableName: string }
+  | { ok: false; text: string; reason: string }
+> {
+  const parsed = parseRequestedSchema(requestedSchema);
+  if (!parsed.ok)
+    return {
+      ok: false,
+      text: "schema must name a non-system database schema.",
+      reason: "INVALID_SCHEMA",
+    };
+  const execute = (query: string) => executeRawSql(runtime, query);
+  const schema = await resolveTableSchema(execute, tableName, parsed.schema);
+  if (schema !== null) return { ok: true, schema, tableName };
+  // Preserve a visible literal dotted name before accepting a simple copied schema.table.
+  const qualified =
+    parsed.schema === null
+      ? /^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/.exec(tableName)
+      : null;
+  if (qualified) {
+    const namedSchema = await resolveTableSchema(
+      execute,
+      qualified[2],
+      qualified[1],
+    );
+    if (namedSchema !== null)
+      return { ok: true, schema: namedSchema, tableName: qualified[2] };
+  }
+  return {
+    ok: false,
+    text: `Table "${parsed.schema === null ? tableName : `${parsed.schema}.${tableName}`}" not found.`,
+    reason: "TABLE_NOT_FOUND",
+  };
+}
+
 async function opGetTable(
   runtime: IAgentRuntime,
   params: DatabaseParams,
 ): Promise<ActionResult> {
-  const tableName = params.tableName?.trim();
-  if (!tableName) {
+  const requestedName = params.tableName;
+  if (!requestedName) {
     return {
       success: false,
       text: "tableName is required for op:get_table.",
@@ -346,22 +397,25 @@ async function opGetTable(
     };
   }
 
-  const safe = tableName.replace(/'/g, "''");
-  const exists = await executeRawSql(
+  const resolved = await resolveGetTableSchema(
     runtime,
-    `SELECT 1 FROM information_schema.tables
-     WHERE table_name = '${safe}'
-       AND table_schema NOT IN ('pg_catalog', 'information_schema')
-       AND table_type = 'BASE TABLE'
-     LIMIT 1`,
+    requestedName,
+    params.schema,
   );
-  if (exists.rows.length === 0) {
+  if (!resolved.ok) {
     return {
       success: false,
-      text: `Table "${tableName}" not found.`,
-      values: { error: "DATABASE_GET_TABLE_FAILED", reason: "TABLE_NOT_FOUND" },
+      text: resolved.text,
+      values: {
+        error: "DATABASE_GET_TABLE_FAILED",
+        reason: resolved.reason,
+      },
     };
   }
+  const tableName = resolved.tableName;
+  const safe = tableName.replace(/'/g, "''");
+  const safeSchema = resolved.schema.replace(/'/g, "''");
+  const relation = qualifiedTable(resolved.schema, tableName);
 
   const limit = parseOptionalPositiveInteger(params.limit, "limit");
   const offset = parseOptionalNonNegativeInteger(params.offset, "offset") ?? 0;
@@ -373,35 +427,65 @@ async function opGetTable(
       runtime,
       `SELECT column_name FROM information_schema.columns
        WHERE table_name = '${safe}'
-         AND table_schema NOT IN ('pg_catalog', 'information_schema')`,
+         AND table_schema = '${safeSchema}'`,
     );
     if (cols.rows.some((r) => String(r.column_name) === params.sortBy)) {
       validSort = params.sortBy;
     }
   }
-  const orderClause = validSort
-    ? `ORDER BY ${quoteIdent(validSort)} ${sortDir}`
-    : "";
+  // OFFSET pages are separate queries. A sort column with ties, or no sort,
+  // lets rows trade places between pages. The primary key makes the order
+  // total. The probe uses the same relation an unqualified FROM resolves: a
+  // same-named table in another schema would otherwise add columns this read
+  // does not have. A table with no primary key falls back to its physical row id.
+  const pkResult = await executeRawSql(
+    runtime,
+    `SELECT kcu.column_name
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.key_column_usage kcu
+       ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+      AND tc.table_name = kcu.table_name
+     WHERE tc.constraint_type = 'PRIMARY KEY'
+       AND tc.table_name = '${safe}'
+       AND tc.table_schema = '${safeSchema}'
+     ORDER BY kcu.ordinal_position`,
+  );
+  const primaryKey: string[] = [];
+  for (const row of pkResult.rows) {
+    const name = String(row.column_name ?? "");
+    if (name.length > 0 && !primaryKey.includes(name)) primaryKey.push(name);
+  }
+  const tieBreak = primaryKey.length
+    ? primaryKey.map((column) => quoteIdent(column))
+    : ["tableoid", "ctid"];
+  const orderTerms = [
+    ...(validSort ? [quoteIdent(validSort)] : []),
+    ...tieBreak.filter((term) => !validSort || term !== quoteIdent(validSort)),
+  ].map((term) => `${term} ${sortDir}`);
+  const orderClause = `ORDER BY ${orderTerms.join(", ")}`;
 
   const countResult = await executeRawSql(
     runtime,
-    `SELECT count(*) AS total FROM ${quoteIdent(tableName)}`,
+    `SELECT count(*) AS total FROM ${relation}`,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
 
   const result = await executeRawSql(
     runtime,
-    `SELECT * FROM ${quoteIdent(tableName)} ${orderClause}${limit === undefined ? "" : ` LIMIT ${limit}`}${offset === 0 ? "" : ` OFFSET ${offset}`}`,
+    `SELECT * FROM ${relation} ${orderClause}${limit === undefined ? "" : ` LIMIT ${limit}`}${offset === 0 ? "" : ` OFFSET ${offset}`}`,
   );
 
+  const qualifiedName = `${resolved.schema}.${tableName}`;
   return {
     success: true,
-    text: `Returned ${result.rows.length} row(s) from "${tableName}" (total: ${total}).`,
+    text: `Returned ${result.rows.length} row(s) from "${qualifiedName}" (total: ${total}).`,
     values: { rowCount: result.rows.length, total },
     data: {
       actionName: "DATABASE",
       op: "get_table",
       tableName,
+      schema: resolved.schema,
       rows: result.rows,
       columns: result.columns,
       total,
@@ -677,7 +761,8 @@ export const databaseAction: Action = {
     },
     {
       name: "filter",
-      description: "list_tables: case-insensitive substring on table name.",
+      description:
+        "list_tables: case-insensitive substring on schema.table or the table name.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -689,7 +774,15 @@ export const databaseAction: Action = {
     },
     {
       name: "tableName",
-      description: "get_table: table name to read.",
+      description:
+        "get_table: table name, or schema.table copied from list_tables.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "schema",
+      description:
+        "get_table: schema that owns the table. Required when the same name exists in more than one schema. Plugin tables such as todos.todos are outside search_path.",
       required: false,
       schema: { type: "string" as const },
     },

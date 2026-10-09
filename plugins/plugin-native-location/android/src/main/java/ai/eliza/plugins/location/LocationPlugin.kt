@@ -1,7 +1,13 @@
+/**
+ * Exposes foreground Android framework location reads and watches to Capacitor.
+ * Each native request owns cancellation, permission errors and its completion;
+ * all lifecycle state is confined to the main looper.
+ */
 package ai.eliza.plugins.location
 
 import android.Manifest
 import android.location.Location
+import android.os.Handler
 import android.os.Looper
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -10,194 +16,125 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
-import com.google.android.gms.location.*
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 
-/**
- * ElizaLocation Capacitor Plugin
- *
- * Provides location services using Google Play Services FusedLocationProviderClient.
- * Supports foreground one-shot position, continuous watching, and maxAge caching.
- */
 @CapacitorPlugin(
     name = "ElizaLocation",
-    permissions = [
-        Permission(alias = "location", strings = [
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        ])
-    ]
+    permissions = [Permission(alias = "location", strings = [
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION,
+    ])],
 )
 class LocationPlugin : Plugin() {
-
-    private var fusedLocationClient: FusedLocationProviderClient? = null
-    private val watches = ConcurrentHashMap<String, LocationCallback>()
-    private val pendingActions = ConcurrentHashMap<String, String>()
-
-    // Cache the last known location for maxAge support
-    private var lastKnownLocation: Location? = null
-
-    // The fused current-location fetch (priority map + request build + getCurrentLocation)
-    // lives in LocationFixReader so it is exercisable by an instrumented androidTest
-    // without an Activity/Bridge (issue #9967). The watch path keeps its own client.
     private val reader by lazy { LocationFixReader(context) }
-
-    override fun load() {
-        super.load()
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(activity)
-    }
-
-    // ── getCurrentPosition ──────────────────────────────────────────────
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val watches = mutableMapOf<String, LocationFixReader.RequestHandle>()
+    private val requests = mutableMapOf<String, Pair<PluginCall, LocationFixReader.RequestHandle>>()
+    private val pendingActions = mutableMapOf<String, Pair<String, PluginCall>>()
+    private var destroyed = false
 
     @PluginMethod
-    fun getCurrentPosition(call: PluginCall) {
+    fun getCurrentPosition(call: PluginCall) = runLocationCall(call) {
         if (!hasRequiredPermissions()) {
-            pendingActions[call.callbackId] = "getCurrentPosition"
+            pendingActions[call.callbackId] = "getCurrentPosition" to call
             requestPermissionForAlias("location", call, "handlePermissionResult")
-            return
+            return@runLocationCall
         }
         getCurrentPositionInternal(call)
     }
 
-    private fun getCurrentPositionInternal(call: PluginCall) {
-        val accuracy = call.getString("accuracy") ?: "high"
-        val timeout = call.getDouble("timeout") ?: 10000.0
-        val maxAge = call.getDouble("maxAge") ?: 0.0
-        val priority = mapAccuracyToPriority(accuracy)
-
-        // maxAge > 0: try returning cached location if fresh enough (mirrors classic bestLastKnown)
-        if (maxAge > 0) {
-            try {
-                fusedLocationClient?.lastLocation?.addOnSuccessListener { cached ->
-                    if (cached != null) {
-                        val age = System.currentTimeMillis() - cached.time
-                        if (age <= maxAge.toLong()) {
-                            lastKnownLocation = cached
-                            call.resolve(buildLocationResult(cached, cached = true))
-                            return@addOnSuccessListener
-                        }
-                    }
-                    // Cache miss — fall through to a fresh fix
-                    requestFreshLocation(call, priority, timeout, maxAge)
-                }?.addOnFailureListener {
-                    requestFreshLocation(call, priority, timeout, maxAge)
-                }
-                return
-            } catch (_: SecurityException) {
-                // Permission lost between check and call — fall through
-            }
-        }
-
-        requestFreshLocation(call, priority, timeout, maxAge)
+    private fun getCurrentPositionInternal(call: PluginCall) = runLocationCall(call) {
+        val timeout = duration(call, "timeout", 10000.0, positive = true)
+        val maxAge = duration(call, "maxAge", 0.0)
+        var completed = false
+        val request = reader.getCurrentPosition(call.getString("accuracy") ?: "high", timeout, maxAge,
+            { location, cached ->
+                completed = true
+                requests.remove(call.callbackId)
+                call.resolve(buildLocationResult(location, cached))
+            },
+            { code, message ->
+                completed = true
+                requests.remove(call.callbackId)
+                rejectLocation(call, code, message)
+            },
+        )
+        if (!completed) requests[call.callbackId] = call to request
     }
-
-    /** Request a fresh location using CurrentLocationRequest. */
-    private fun requestFreshLocation(call: PluginCall, priority: Int, timeout: Double, maxAge: Double) {
-        val request = reader.buildCurrentLocationRequest(priority, timeout.toLong(), maxAge.toLong())
-
-        try {
-            reader.getCurrentLocation(request)
-                .addOnSuccessListener { location ->
-                    if (location != null) {
-                        lastKnownLocation = location
-                        call.resolve(buildLocationResult(location, cached = false))
-                    } else {
-                        val err = buildErrorEvent("POSITION_UNAVAILABLE", "Unable to get location")
-                        notifyListeners("error", err)
-                        call.reject("Unable to get location")
-                    }
-                }
-                .addOnFailureListener { e ->
-                    val code = if (e is SecurityException) "PERMISSION_DENIED" else "POSITION_UNAVAILABLE"
-                    val err = buildErrorEvent(code, "Location error: ${e.message}")
-                    notifyListeners("error", err)
-                    call.reject("Location error: ${e.message}")
-                }
-        } catch (e: SecurityException) {
-            val err = buildErrorEvent("PERMISSION_DENIED", "Location permission required")
-            notifyListeners("error", err)
-            call.reject("Location permission required")
-        }
-    }
-
-    // ── watchPosition ───────────────────────────────────────────────────
 
     @PluginMethod
-    fun watchPosition(call: PluginCall) {
+    fun watchPosition(call: PluginCall) = runLocationCall(call) {
         if (!hasRequiredPermissions()) {
-            pendingActions[call.callbackId] = "watchPosition"
+            pendingActions[call.callbackId] = "watchPosition" to call
             requestPermissionForAlias("location", call, "handlePermissionResult")
-            return
+            return@runLocationCall
         }
         watchPositionInternal(call)
     }
 
-    private fun watchPositionInternal(call: PluginCall) {
-        val accuracy = call.getString("accuracy") ?: "high"
-        val minInterval = call.getDouble("minInterval") ?: 0.0
-        val minDistance = call.getDouble("minDistance") ?: 0.0
-        val priority = mapAccuracyToPriority(accuracy)
-
+    private fun watchPositionInternal(call: PluginCall) = runLocationCall(call) {
+        val interval = duration(call, "minInterval", 0.0)
+        val distance = number(call, "minDistance", 0.0)
+        require(distance.isFinite() && distance >= 0 && distance <= Float.MAX_VALUE) {
+            "minDistance must be non-negative and finite"
+        }
         val watchId = UUID.randomUUID().toString()
-
-        val request = LocationRequest.Builder(priority, minInterval.toLong())
-            .setMinUpdateDistanceMeters(minDistance.toFloat())
-            .build()
-
-        val callback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                for (location in result.locations) {
-                    lastKnownLocation = location
-                    notifyListeners("locationChange", buildLocationResult(location, cached = false))
-                }
-            }
-
-            override fun onLocationAvailability(availability: LocationAvailability) {
-                if (!availability.isLocationAvailable) {
-                    notifyListeners("error", buildErrorEvent(
-                        "POSITION_UNAVAILABLE",
-                        "Location services became unavailable"
-                    ))
-                }
-            }
-        }
-
-        try {
-            fusedLocationClient?.requestLocationUpdates(
-                request,
-                callback,
-                Looper.getMainLooper()
-            )
-
-            watches[watchId] = callback
-            call.resolve(JSObject().apply {
-                put("watchId", watchId)
-            })
-        } catch (e: SecurityException) {
-            notifyListeners("error", buildErrorEvent("PERMISSION_DENIED", "Location permission required"))
-            call.reject("Location permission required")
-        }
+        val request = reader.watchPosition(call.getString("accuracy") ?: "high", interval, distance.toFloat(),
+            { location -> notifyListeners("locationChange", buildLocationResult(location, false)) },
+            { message -> notifyListeners("error", buildErrorEvent("POSITION_UNAVAILABLE", message)) },
+        )
+        watches[watchId] = request
+        call.resolve(JSObject().apply { put("watchId", watchId) })
     }
 
-    // ── clearWatch ──────────────────────────────────────────────────────
-
     @PluginMethod
-    fun clearWatch(call: PluginCall) {
+    fun clearWatch(call: PluginCall) = runLocationCall(call) {
         val watchId = call.getString("watchId")
-        if (watchId == null) {
-            call.reject("Missing watchId")
-            return
-        }
-
-        val callback = watches.remove(watchId)
-        if (callback != null) {
-            fusedLocationClient?.removeLocationUpdates(callback)
-        }
+        require(!watchId.isNullOrBlank()) { "Missing watchId" }
+        watches.remove(watchId)?.cancel()
         call.resolve()
     }
 
-    // ── Permissions ─────────────────────────────────────────────────────
+    private fun number(call: PluginCall, name: String, default: Double): Double {
+        if (!call.data.has(name)) return default
+        val value = call.data.opt(name)
+        require(value is Number) { "$name must be a number" }
+        return value.toDouble()
+    }
+
+    private fun duration(call: PluginCall, name: String, default: Double, positive: Boolean = false): Long {
+        val value = number(call, name, default)
+        require(value.isFinite() && value >= (if (positive) 1.0 else 0.0) && value < Long.MAX_VALUE.toDouble()) {
+            "$name must be ${if (positive) "positive" else "non-negative"} finite milliseconds"
+        }
+        return value.toLong()
+    }
+
+    private fun runLocationCall(call: PluginCall, operation: () -> Unit) {
+        mainHandler.post {
+            if (destroyed) {
+                call.reject("Location plugin was destroyed", "CANCELLED")
+                return@post
+            }
+            try {
+                operation()
+            } catch (error: SecurityException) {
+                // error-policy:J1 Permission may be revoked between admission and framework access.
+                rejectLocation(call, "PERMISSION_DENIED", "Location permission required")
+            } catch (error: IllegalArgumentException) {
+                // error-policy:J3 Malformed options reject without fabricating a location.
+                call.reject(error.message, "INVALID_ARGUMENT", error)
+            } catch (error: IllegalStateException) {
+                // error-policy:J1 Missing or disabled framework providers become an explicit bridge error.
+                rejectLocation(call, "POSITION_UNAVAILABLE", error.message ?: "Location service unavailable")
+            }
+        }
+    }
+
+    private fun rejectLocation(call: PluginCall, code: String, message: String) {
+        notifyListeners("error", buildErrorEvent(code, message))
+        call.reject(message, code)
+    }
 
     @PluginMethod
     override fun checkPermissions(call: PluginCall) {
@@ -205,18 +142,18 @@ class LocationPlugin : Plugin() {
     }
 
     @PluginMethod
-    override fun requestPermissions(call: PluginCall) {
+    override fun requestPermissions(call: PluginCall) = runLocationCall(call) {
         if (hasRequiredPermissions()) {
             call.resolve(buildPermissionResult())
-            return
+            return@runLocationCall
         }
-        pendingActions[call.callbackId] = "requestPermissions"
+        pendingActions[call.callbackId] = "requestPermissions" to call
         requestPermissionForAlias("location", call, "handlePermissionResult")
     }
 
     @PermissionCallback
     private fun handlePermissionResult(call: PluginCall) {
-        val pendingAction = pendingActions.remove(call.callbackId)
+        val pendingAction = pendingActions.remove(call.callbackId)?.first ?: return
         if (hasRequiredPermissions()) {
             when (pendingAction) {
                 "getCurrentPosition" -> {
@@ -239,16 +176,11 @@ class LocationPlugin : Plugin() {
         }
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────
-
     override fun hasRequiredPermissions(): Boolean {
         // Android's approximate-location choice grants COARSE while denying
         // FINE. Either grant is sufficient for every foreground read path.
         return reader.hasForegroundPermission()
     }
-
-    /** Map accuracy string from JS to Play Services Priority constant. */
-    private fun mapAccuracyToPriority(accuracy: String): Int = reader.mapAccuracyToPriority(accuracy)
 
     private fun buildPermissionResult(): JSObject {
         val locationStatus = if (reader.hasForegroundPermission()) {
@@ -309,13 +241,17 @@ class LocationPlugin : Plugin() {
         }
     }
 
-    // ── Lifecycle ───────────────────────────────────────────────────────
-
     override fun handleOnDestroy() {
-        super.handleOnDestroy()
-        for ((_, callback) in watches) {
-            fusedLocationClient?.removeLocationUpdates(callback)
+        destroyed = true
+        for ((call, request) in requests.values) {
+            request.cancel()
+            call.reject("Location request cancelled because the plugin was destroyed", "CANCELLED")
         }
+        requests.clear()
+        for (request in watches.values) request.cancel()
         watches.clear()
+        pendingActions.values.forEach { (_, call) -> call.reject("Location plugin was destroyed", "CANCELLED") }
+        pendingActions.clear()
+        super.handleOnDestroy()
     }
 }

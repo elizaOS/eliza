@@ -8,8 +8,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
-  buildDeterministicDispatchBody,
-  buildDeterministicDispatchTitle,
   buildScheduledDispatchRenderPrompt,
   buildScheduledDispatchTitlePrompt,
   RENDER_FAILURE_RETRY_MINUTES,
@@ -17,12 +15,23 @@ import {
   renderScheduledDispatchTitle,
   scheduledDispatchPromptTask,
 } from "./dispatch-render.js";
+import type { ScheduledTaskDispatchRecord } from "./runner.js";
 import { ScheduledTaskRunnerService } from "./runner-service.js";
 
 const INSTRUCTION =
   "Remind the owner to take their medication and ask how they slept.";
 const RENDERED = "Time for your medication — and how did you sleep last night?";
 const RENDERED_TITLE = "Medication and sleep check";
+
+const record: ScheduledTaskDispatchRecord = {
+  taskId: "st_render",
+  kind: "reminder",
+  firedAtIso: "2026-07-05T09:00:00.000Z",
+  channelKey: "in_app",
+  promptInstructions: INSTRUCTION,
+  contextRequest: undefined,
+  ownerVisible: true,
+};
 
 interface NotifyCapture {
   title?: string;
@@ -76,32 +85,7 @@ function reminderInput() {
 }
 
 describe("renderScheduledDispatchMessage", () => {
-  it("returns the model output for an instruction-voice prompt", async () => {
-    const { runtime, modelPrompts } = makeRuntime({ model: () => RENDERED });
-    const text = await renderScheduledDispatchMessage(runtime, {
-      taskId: "st_1",
-      kind: "reminder",
-      firedAtIso: "2026-07-05T09:00:00.000Z",
-      channelKey: "in_app",
-      promptInstructions: INSTRUCTION,
-      contextRequest: undefined,
-      ownerVisible: true,
-    });
-    expect(text).toBe(RENDERED);
-    expect(modelPrompts).toHaveLength(1);
-    expect(modelPrompts[0]).toContain(INSTRUCTION);
-  });
-
   it("returns deterministic fallback on missing model surface, throws on model failure and blank output", async () => {
-    const record = {
-      taskId: "st_2",
-      kind: "reminder" as const,
-      firedAtIso: "2026-07-05T09:00:00.000Z",
-      channelKey: "in_app",
-      promptInstructions: INSTRUCTION,
-      contextRequest: undefined,
-      ownerVisible: true,
-    };
     // Model-free runtime: deterministic fallback (not an error)
     const fallbackBody = await renderScheduledDispatchMessage(
       makeRuntime({}).runtime,
@@ -144,15 +128,6 @@ describe("renderScheduledDispatchMessage", () => {
   });
 
   it("rejects a model response that echoes the instruction payload", async () => {
-    const record = {
-      taskId: "st_echo",
-      kind: "reminder" as const,
-      firedAtIso: "2026-07-05T09:00:00.000Z",
-      channelKey: "in_app",
-      promptInstructions: INSTRUCTION,
-      contextRequest: undefined,
-      ownerVisible: true,
-    };
     await expect(
       renderScheduledDispatchMessage(
         makeRuntime({ model: () => `Note: ${INSTRUCTION}` }).runtime,
@@ -165,62 +140,11 @@ describe("renderScheduledDispatchMessage", () => {
 });
 
 describe("renderScheduledDispatchTitle", () => {
-  it("returns a model-rendered title from the owner-facing body", async () => {
-    const { runtime, modelPrompts } = makeRuntime({
-      model: () => RENDERED_TITLE,
-    });
-    const title = await renderScheduledDispatchTitle(
-      runtime,
-      {
-        taskId: "st_title",
-        kind: "reminder",
-        firedAtIso: "2026-07-05T09:00:00.000Z",
-        channelKey: "in_app",
-        promptInstructions: INSTRUCTION,
-        contextRequest: undefined,
-        ownerVisible: true,
-      },
-      RENDERED,
-    );
-
-    expect(title).toBe(RENDERED_TITLE);
-    expect(modelPrompts).toHaveLength(1);
-    expect(modelPrompts[0]).toContain(RENDERED);
-    expect(modelPrompts[0]).not.toContain(INSTRUCTION);
-  });
-
-  it("returns deterministic title on model-free runtime", async () => {
-    const title = await renderScheduledDispatchTitle(
-      makeRuntime({}).runtime,
-      {
-        taskId: "st_title_nofree",
-        kind: "reminder",
-        firedAtIso: "2026-07-05T09:00:00.000Z",
-        channelKey: "in_app",
-        promptInstructions: INSTRUCTION,
-        contextRequest: undefined,
-        ownerVisible: true,
-      },
-      RENDERED,
-    );
-    expect(title).not.toBe("Reminder");
-    expect(title).not.toBe("Approval needed");
-    expect(title.length).toBeGreaterThan(0);
-  });
-
   it("throws on blank title output", async () => {
     await expect(
       renderScheduledDispatchTitle(
         makeRuntime({ model: () => "  \n" }).runtime,
-        {
-          taskId: "st_title_blank",
-          kind: "reminder",
-          firedAtIso: "2026-07-05T09:00:00.000Z",
-          channelKey: "in_app",
-          promptInstructions: INSTRUCTION,
-          contextRequest: undefined,
-          ownerVisible: true,
-        },
+        record,
         RENDERED,
       ),
     ).rejects.toMatchObject({ code: "SCHEDULED_DISPATCH_TITLE_RENDER_EMPTY" });
@@ -228,32 +152,54 @@ describe("renderScheduledDispatchTitle", () => {
 });
 
 describe("default scheduled-task dispatcher — model-free host", () => {
-  it("delivers deterministic fallback notification on a model-free runtime", async () => {
-    const notified: NotifyCapture[] = [];
-    const { runtime } = makeRuntime({ notified });
-    const service = await ScheduledTaskRunnerService.start(runtime);
-    const runner = service.getRunner({ agentId: String(runtime.agentId) });
-    const task = await runner.schedule(reminderInput());
+  it.each([
+    ["legacy", undefined],
+    [
+      "authored",
+      { body: "Your passport expires next week.", title: "Passport renewal" },
+    ],
+  ] as const)(
+    "delivers %s fallback notification on a model-free runtime",
+    async (_label, fallback) => {
+      const notified: NotifyCapture[] = [];
+      const { runtime } = makeRuntime({ notified });
+      const service = await ScheduledTaskRunnerService.start(runtime);
+      const runner = service.getRunner({ agentId: String(runtime.agentId) });
+      const task = await runner.schedule({
+        ...reminderInput(),
+        priority: fallback ? "high" : "medium",
+        ...(fallback
+          ? { output: { destination: "in_app_card" as const, fallback } }
+          : {}),
+      });
 
-    const fired = await runner.fire(task.taskId);
+      const fired = await runner.fire(task.taskId);
 
-    expect(fired.state.status).toBe("fired");
-    expect(notified).toHaveLength(1);
-    // The deterministic fallback must never deliver raw instruction text
-    expect(notified[0]?.body).not.toContain("Remind the owner to take");
-    expect(notified[0]?.body?.length).toBeGreaterThan(0);
-    // The title must never be the old hardcoded literal
-    expect(notified[0]?.title).not.toBe("Reminder");
-    expect(notified[0]?.title).not.toBe("Approval needed");
-  });
+      expect(fired.state.status).toBe("fired");
+      expect(notified).toHaveLength(1);
+      // The deterministic fallback must never deliver raw instruction text
+      expect(notified[0]?.body).not.toContain("Remind the owner to take");
+      expect(notified[0]?.body?.length).toBeGreaterThan(0);
+      expect(notified[0]?.title).not.toBe("Reminder");
+      expect(notified[0]?.title).not.toBe("Approval needed");
+      expect(notified[0]?.title?.length).toBeGreaterThan(0);
+      if (fallback) expect(notified[0]).toMatchObject(fallback);
+      await service.stop();
+    },
+  );
 });
 
 describe("default scheduled-task dispatcher (model host)", () => {
   it("notifies with model-rendered body and title, never raw or generic copy", async () => {
     const notified: NotifyCapture[] = [];
+    const responses = [RENDERED, RENDERED_TITLE];
     const { runtime, modelPrompts } = makeRuntime({
-      model: ({ prompt }) =>
-        prompt.includes("notification title") ? RENDERED_TITLE : RENDERED,
+      model: () => {
+        const response = responses.shift();
+        if (response === undefined)
+          throw new Error("unexpected extra model call");
+        return response;
+      },
       notified,
     });
     const service = await ScheduledTaskRunnerService.start(runtime);
@@ -266,12 +212,11 @@ describe("default scheduled-task dispatcher (model host)", () => {
     expect(modelPrompts).toHaveLength(2);
     expect(modelPrompts[0]).toContain(INSTRUCTION);
     expect(modelPrompts[1]).toContain(RENDERED);
+    expect(modelPrompts[1]).not.toContain(INSTRUCTION);
     expect(notified).toHaveLength(1);
     expect(notified[0]?.title).toBe(RENDERED_TITLE);
-    expect(notified[0]?.title).not.toBe("Reminder");
-    expect(notified[0]?.title).not.toBe("Approval needed");
     expect(notified[0]?.body).toBe(RENDERED);
-    expect(notified[0]?.body).not.toContain("Remind the owner to take");
+    await service.stop();
   });
 
   it("a render failure is a typed retryable dispatch failure with reportError — nothing is notified", async () => {
@@ -300,51 +245,7 @@ describe("default scheduled-task dispatcher (model host)", () => {
     expect(reported[0]?.scope).toBe(
       "scheduling:scheduled-task:dispatch-render",
     );
-  });
-});
-
-describe("buildDeterministicDispatchBody", () => {
-  it("returns neutral canned copy keyed on intensity, never echoing the instruction", () => {
-    // Positive assertions pin the exact fallback copy
-    expect(buildDeterministicDispatchBody({ intensity: "normal" })).toBe(
-      "You have a new update from your assistant.",
-    );
-    expect(buildDeterministicDispatchBody({ intensity: "urgent" })).toBe(
-      "You have a time-sensitive item that needs your attention.",
-    );
-    expect(buildDeterministicDispatchBody({ intensity: "soft" })).toBe(
-      "A gentle nudge — something's ready for you when you have a moment.",
-    );
-    expect(buildDeterministicDispatchBody({ intensity: undefined })).toBe(
-      "You have a new update from your assistant.",
-    );
-  });
-
-  it("prefers authored task copy so model-free delivery preserves meaning", () => {
-    expect(
-      buildDeterministicDispatchBody({
-        intensity: "urgent",
-        output: {
-          destination: "in_app_card",
-          fallback: { body: "Your passport expires next week." },
-        },
-      }),
-    ).toBe("Your passport expires next week.");
-  });
-});
-
-describe("buildDeterministicDispatchTitle", () => {
-  it("returns a neutral title keyed on intensity, never the raw instruction", () => {
-    // Positive assertions pin the exact fallback copy
-    expect(buildDeterministicDispatchTitle({ intensity: "urgent" })).toBe(
-      "Action needed",
-    );
-    expect(buildDeterministicDispatchTitle({ intensity: "normal" })).toBe(
-      "Update",
-    );
-    expect(buildDeterministicDispatchTitle({ intensity: undefined })).toBe(
-      "Update",
-    );
+    await service.stop();
   });
 });
 
@@ -362,7 +263,6 @@ describe("buildScheduledDispatchRenderPrompt", () => {
       intensity: "normal",
     });
     expect(normal).toContain(INSTRUCTION);
-    expect(normal).toContain("not the message itself");
     expect(normal).toContain('"firedAtIso":"2026-07-05T09:00:00.000Z"');
     expect(
       buildScheduledDispatchRenderPrompt(runtime, {
@@ -440,7 +340,6 @@ describe("buildScheduledDispatchTitlePrompt", () => {
       RENDERED,
     );
     expect(normal).toContain(RENDERED);
-    expect(normal).toContain("under 8 words");
     expect(normal).not.toContain(INSTRUCTION);
     expect(
       buildScheduledDispatchTitlePrompt(

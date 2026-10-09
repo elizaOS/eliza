@@ -20,19 +20,15 @@
  * is exactly how the Phase 2 integration test exercises it.
  */
 
-import {
-  FUSED_WAKE_EVENT,
-  type FusedWakeEventDetail,
-} from "@elizaos/shared/events";
-
+import type { FusedWakeEventDetail } from "@elizaos/core/protocol";
+import { FUSED_WAKE_EVENT } from "@elizaos/core/protocol";
 /**
  * A single fused-wake stage forwarded from the native runtime to the UI. This
- * is the canonical {@link FusedWakeEventDetail} contract from `@elizaos/shared`
+ * is the canonical {@link FusedWakeEventDetail} contract from `@elizaos/core`
  * — the same type the producer (`@elizaos/plugin-local-inference`) emits, so the
  * two halves can never drift.
  */
 export type FusedWakeEvent = FusedWakeEventDetail;
-
 declare global {
   interface Window {
     /** Set by the native host when the fused on-device wake runtime is live. */
@@ -41,7 +37,6 @@ declare global {
 }
 
 export { FUSED_WAKE_EVENT };
-
 /**
  * Whether the fused on-device wake runtime is available to the renderer. Only
  * used to seed the default capability set; emission still drives detection.
@@ -49,7 +44,6 @@ export { FUSED_WAKE_EVENT };
 export function probeFusedWake(): boolean {
   return typeof window !== "undefined" && window.__ELIZA_FUSED_WAKE__ === true;
 }
-
 /** Forward a fused wake stage to the UI (native host / WS handler / test). */
 export function emitFusedWake(event: FusedWakeEvent): void {
   if (typeof window === "undefined") return;
@@ -57,7 +51,6 @@ export function emitFusedWake(event: FusedWakeEvent): void {
     new CustomEvent<FusedWakeEvent>(FUSED_WAKE_EVENT, { detail: event }),
   );
 }
-
 /**
  * Subscribe to fused wake stages. Returns an unsubscribe fn. No-ops (returns a
  * no-op cleanup) when there is no `window` (SSR / Node tests without jsdom).

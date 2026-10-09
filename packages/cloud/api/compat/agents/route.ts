@@ -10,34 +10,40 @@
  * AgentClient and the dashboard. CORS handled globally.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   envelope,
   errorEnvelope,
   toCompatAgent,
   toCompatCreateResult,
-} from "@/lib/api/compat-envelope";
-import { validateServiceKey } from "@/lib/auth/service-key-hono-worker";
-import { authenticateWaifuBridge } from "@/lib/auth/waifu-bridge";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { stripReservedElizaConfigKeys } from "@/lib/services/eliza-agent-config";
+} from "@elizaos/cloud-shared/lib/api/compat-envelope";
+import { validateServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key-hono-worker";
+import { authenticateWaifuBridge } from "@elizaos/cloud-shared/lib/auth/waifu-bridge";
+import { getMaxNonTerminalAgentsForOrg } from "@elizaos/cloud-shared/lib/constants/agent-sandbox-quota";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { stripReservedElizaConfigKeys } from "@elizaos/cloud-shared/lib/services/eliza-agent-config";
 import {
   AgentImageNotAllowedError,
   AgentQuotaExceededError,
   elizaSandboxService,
-} from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+} from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
-} from "@/lib/services/provisioning-worker-health";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 interface CompatAuthResult {
   user: {

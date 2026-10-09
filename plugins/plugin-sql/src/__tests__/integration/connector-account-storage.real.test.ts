@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseMigrationService } from "../../migration-service";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import * as schema from "../../schema";
+import { schema } from "../../schema";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
@@ -320,6 +320,41 @@ describe("Connector account storage", () => {
     expect((audit.metadata.nested as Record<string, unknown>).refresh_token).toBe("[REDACTED]");
     expect((audit.metadata.nested as Record<string, unknown>).safe).toBe("visible");
     expect(audit.metadata.attempts).toBe(1);
+  });
+
+  it("drops undefined metadata fields instead of rejecting the write", async () => {
+    const runtime = {
+      adapter,
+      getService: () => null,
+    } as unknown as IAgentRuntime;
+    const manager = getConnectorAccountManager(runtime);
+
+    // GitHub OAuth apps and Slack apps without token rotation return no
+    // expires_in, so OAuth completion writes `expiresAt: undefined`.
+    const account = await manager.upsertAccount(
+      "github",
+      {
+        provider: "github",
+        role: "AGENT",
+        purpose: ["messaging"],
+        accessGate: "open",
+        status: "pending",
+        externalId: "github-user-42",
+        metadata: { authMethod: "oauth", expiresAt: undefined },
+      },
+      "acct_github_no_expiry"
+    );
+
+    expect(account.metadata).toEqual({ authMethod: "oauth" });
+    const [stored] = await adapter.listConnectorAccounts({ provider: "github" });
+    expect(stored?.metadata).toEqual({ authMethod: "oauth" });
+
+    const audit = await adapter.appendConnectorAccountAuditEvent({
+      accountId: account.id,
+      action: "account.connected",
+      metadata: { note: "visible", reason: undefined },
+    });
+    expect(audit.metadata).toEqual({ note: "visible" });
   });
 
   it("consumes OAuth flow state once and ignores expired state", async () => {

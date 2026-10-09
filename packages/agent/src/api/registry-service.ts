@@ -9,8 +9,8 @@
  */
 
 import { logger } from "@elizaos/core";
+import type { TxService } from "@elizaos/plugin-wallet/transactions";
 import * as ethers from "ethers";
-import type { TxService } from "./tx-service.ts";
 
 // ── ABI ──────────────────────────────────────────────────────────────────
 // Matches ElizaAgentRegistry.sol. Feed-compatible core interface plus

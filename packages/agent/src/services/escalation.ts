@@ -9,14 +9,24 @@
  * per channel. `registerEscalationChannel` appends newly paired channels to the
  * escalation order in eliza.json.
  */
-import type { IAgentRuntime, UUID } from "@elizaos/core";
 import {
+  createSerialise,
   ElizaError,
+  type IAgentRuntime,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  readSystemNotice,
   requireConfirmedSendHandlerDelivery,
+  resolveOwnerEntityId,
+  type SystemNotice,
+  systemNoticeText,
+  type UUID,
 } from "@elizaos/core";
-import { createSerialise } from "@elizaos/shared";
+import type {
+  EscalationConfig,
+  OwnerContactEntry,
+  OwnerContactsConfig,
+} from "@elizaos/host/protocol";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   loadOwnerContactRoutingHints,
@@ -24,12 +34,7 @@ import {
   resolveOwnerContactWithFallback,
   resolveScopedSendSource,
 } from "../config/owner-contacts.ts";
-import type {
-  EscalationConfig,
-  OwnerContactEntry,
-  OwnerContactsConfig,
-} from "../config/types.agent-defaults.ts";
-import { resolveOwnerEntityId } from "../runtime/owner-entity.ts";
+import { projectLegacySystemNotice } from "../runtime/legacy-system-notice.ts";
 import {
   hasRuntimeSendHandler,
   logMissingSendHandlerOnce,
@@ -39,6 +44,9 @@ export interface EscalationState {
   id: string;
   reason: string;
   text: string;
+  systemNotice?: SystemNotice;
+  /** Kept separately so typed system copy never consumes an ordinary alert. */
+  ordinaryText?: string;
   currentStep: number;
   channelsSent: string[];
   startedAt: number;
@@ -60,6 +68,8 @@ const activeEscalations = new Map<
     states: Map<string, EscalationState>;
   }
 >();
+const stoppedRuntimes = new WeakSet<IAgentRuntime>();
+
 const pendingTimers = new Map<
   string,
   Map<string, ReturnType<typeof setTimeout>>
@@ -188,10 +198,36 @@ async function loadActiveFromCache(
   runtime: IAgentRuntime,
 ): Promise<EscalationState | null> {
   try {
-    return (
-      (await runtime.getCache<EscalationState>(escalationCacheKey(runtime))) ??
-      null
+    const state = await runtime.getCache<EscalationState>(
+      escalationCacheKey(runtime),
     );
+    if (!state) return null;
+    const notice = readSystemNotice(state.systemNotice);
+    if (notice) {
+      const ordinaryText =
+        typeof state.ordinaryText === "string" ? state.ordinaryText : undefined;
+      return {
+        ...state,
+        systemNotice: notice,
+        ordinaryText,
+        text: [systemNoticeText(notice), ordinaryText]
+          .filter((part) => part !== undefined)
+          .join("\n---\n"),
+      };
+    }
+    const legacy = state.reason
+      .split("; ")
+      .some((reason) => reason.startsWith("Systemic failure "))
+      ? projectLegacySystemNotice(state.text)
+      : undefined;
+    return legacy
+      ? {
+          ...state,
+          text: legacy.text,
+          systemNotice: legacy.escalationNotice,
+          ordinaryText: legacy.ordinaryText,
+        }
+      : state;
   } catch (cause) {
     // error-policy:J2 An unavailable cache is not evidence of no active escalation.
     throw new ElizaError("Escalation state could not be loaded", {
@@ -344,6 +380,8 @@ async function sendToChannel(
   ownerContacts: OwnerContactsConfig,
   routingHints: Record<string, OwnerContactRoutingHint>,
   ownerEntityId: string | null,
+  systemNotice?: SystemNotice,
+  ordinaryText?: string,
 ): Promise<boolean> {
   const hint = routingHints[channel] ?? null;
   const resolvedContact =
@@ -392,30 +430,38 @@ async function sendToChannel(
       return false;
     }
 
-    requireConfirmedSendHandlerDelivery(
-      await runtime.sendMessageToTarget(
-        {
-          source: targetSource,
-          entityId: contact.entityId as UUID | undefined,
-          channelId: contact.channelId,
-          roomId: contact.roomId as UUID | undefined,
-        } as Parameters<typeof runtime.sendMessageToTarget>[0],
-        {
-          text,
-          source: targetSource,
-          metadata: {
-            urgency: "urgent",
-            escalation: true,
-            routeSource: targetSource,
-            routeResolution: hint?.resolvedFrom,
-            routeEndpoint:
-              contact.channelId ?? contact.roomId ?? contact.entityId ?? null,
-            routeLastResponseAt: hint?.lastResponseAt ?? null,
-            routeLastResponseChannel: hint?.lastResponseChannel ?? null,
+    const messages = systemNotice
+      ? [
+          { text: systemNoticeText(systemNotice), systemNotice },
+          ...(ordinaryText !== undefined ? [{ text: ordinaryText }] : []),
+        ]
+      : [{ text }];
+    for (const message of messages) {
+      requireConfirmedSendHandlerDelivery(
+        await runtime.sendMessageToTarget(
+          {
+            source: targetSource,
+            entityId: contact.entityId as UUID | undefined,
+            channelId: contact.channelId,
+            roomId: contact.roomId as UUID | undefined,
+          } as Parameters<typeof runtime.sendMessageToTarget>[0],
+          {
+            ...message,
+            source: targetSource,
+            metadata: {
+              urgency: "urgent",
+              escalation: true,
+              routeSource: targetSource,
+              routeResolution: hint?.resolvedFrom,
+              routeEndpoint:
+                contact.channelId ?? contact.roomId ?? contact.entityId ?? null,
+              routeLastResponseAt: hint?.lastResponseAt ?? null,
+              routeLastResponseChannel: hint?.lastResponseChannel ?? null,
+            },
           },
-        },
-      ),
-    );
+        ),
+      );
+    }
     return true;
   } catch (err) {
     // error-policy:J1 escalation delivery boundary returns an explicit false
@@ -474,6 +520,7 @@ function scheduleCheck(
   escalationId: string,
   delayMs: number,
 ): void {
+  if (stoppedRuntimes.has(runtime)) return;
   const agentId = agentIdOf(runtime);
   releaseTimer(agentId, escalationId);
 
@@ -508,9 +555,10 @@ export class EscalationService {
     runtime: IAgentRuntime,
     reason: string,
     text: string,
+    systemNotice?: SystemNotice,
   ): Promise<EscalationState> {
     return transition(agentIdOf(runtime), () =>
-      EscalationService.start(runtime, reason, text),
+      EscalationService.start(runtime, reason, text, systemNotice),
     );
   }
 
@@ -518,7 +566,14 @@ export class EscalationService {
     runtime: IAgentRuntime,
     reason: string,
     text: string,
+    systemNotice?: SystemNotice,
   ): Promise<EscalationState> {
+    if (stoppedRuntimes.has(runtime)) {
+      throw new ElizaError("Cannot start escalation after runtime shutdown", {
+        code: "ESCALATION_RUNTIME_STOPPED",
+        severity: "ephemeral",
+      });
+    }
     const existing = await EscalationService.getActiveEscalation(runtime);
     if (existing) {
       const resumeWaitMs = pendingTimers
@@ -526,10 +581,32 @@ export class EscalationService {
         ?.has(existing.id)
         ? undefined
         : resolveWaitMs(loadEscalationSettings().config);
+      const combinedNotice =
+        systemNotice !== undefined && existing.systemNotice !== undefined
+          ? existing.systemNotice === systemNotice
+            ? systemNotice
+            : ("model-and-runtime-error" as const)
+          : (systemNotice ?? existing.systemNotice);
+      const ordinaryText = [
+        existing.systemNotice ? existing.ordinaryText : existing.text,
+        systemNotice ? undefined : text,
+      ]
+        .filter((part): part is string => part !== undefined)
+        .join("\n---\n");
       const updated = {
         ...existing,
-        reason: `${existing.reason}; ${reason}`,
-        text: `${existing.text}\n---\n${text}`,
+        reason:
+          existing.reason === reason
+            ? existing.reason
+            : `${existing.reason}; ${reason}`,
+        text: combinedNotice
+          ? [
+              systemNoticeText(combinedNotice),
+              ...(ordinaryText ? [ordinaryText] : []),
+            ].join("\n---\n")
+          : ordinaryText,
+        systemNotice: combinedNotice,
+        ordinaryText: combinedNotice && ordinaryText ? ordinaryText : undefined,
       };
       await persistState(runtime, updated);
       Object.assign(existing, updated);
@@ -564,7 +641,8 @@ export class EscalationService {
     const state: EscalationState = {
       id: escalationId,
       reason,
-      text,
+      text: systemNotice ? systemNoticeText(systemNotice) : text,
+      ...(systemNotice ? { systemNotice } : {}),
       currentStep: 0,
       channelsSent: [],
       startedAt: now,
@@ -583,10 +661,12 @@ export class EscalationService {
       const sent = await sendToChannel(
         runtime,
         channel,
-        text,
+        state.text,
         ownerContacts,
         routingHints,
         ownerEntityId,
+        state.systemNotice,
+        state.ordinaryText,
       );
       if (sent) {
         state.channelsSent.push(channel);
@@ -620,6 +700,7 @@ export class EscalationService {
     runtime: IAgentRuntime,
     escalationId: string,
   ): Promise<void> {
+    if (stoppedRuntimes.has(runtime)) return;
     // Read-only: escalationsFor() would allocate an empty bucket for an
     // unknown escalation id.
     const state = activeEscalations
@@ -676,6 +757,8 @@ export class EscalationService {
         ownerContacts,
         routingHints,
         ownerEntityId,
+        state.systemNotice,
+        state.ordinaryText,
       );
       if (sent) {
         state.channelsSent.push(nextChannel);
@@ -761,6 +844,28 @@ export class EscalationService {
         `[escalation] Rehydrated unresolved escalation ${persisted.id} from cache`,
       );
     }
+  }
+
+  /** Drain this runtime's writes and release timers without resolving durable state. */
+  static async stop(runtime: IAgentRuntime): Promise<void> {
+    stoppedRuntimes.add(runtime);
+    const agentId = agentIdOf(runtime);
+    const cancelTimers = () => {
+      const bucket = activeEscalations.get(agentId);
+      if (bucket && bucket.runtime !== runtime) return;
+      for (const timer of pendingTimers.get(agentId)?.values() ?? []) {
+        clearTimeout(timer);
+      }
+      pendingTimers.delete(agentId);
+    };
+    cancelTimers();
+    // Queue behind admitted start/check/resolve operations before closing the DB.
+    await transition(agentId, async () => {
+      cancelTimers();
+      if (activeEscalations.get(agentId)?.runtime === runtime) {
+        activeEscalations.delete(agentId);
+      }
+    });
   }
 
   static _reset(): void {

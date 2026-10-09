@@ -7,7 +7,7 @@
  * sustained number of samples it logs a structured `[MemoryWatchdog]` warning and
  * requests a CLEAN restart through the existing {@link requestRestart} seam — the
  * host's registered handler exits with `RESTART_EXIT_CODE` (75) and the
- * `run-node.mjs` supervisor relaunches. It never calls `process.exit` itself and
+ * `run-node.ts` supervisor relaunches. It never calls `process.exit` itself and
  * never introduces a second restart mechanism.
  *
  * Opt-in and thresholds are env-configured (documented in
@@ -29,7 +29,7 @@
 import process from "node:process";
 
 import { logger } from "@elizaos/core";
-import { requestRestart } from "@elizaos/shared";
+import { requestRestart } from "@elizaos/host/protocol";
 
 const BYTES_PER_MB = 1024 * 1024;
 

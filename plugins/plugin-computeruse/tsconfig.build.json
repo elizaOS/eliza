@@ -1,14 +1,15 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "customConditions": [],
+    "paths": {},
     "outDir": "./dist",
     "rootDir": "./src",
     "sourceMap": true,
     "inlineSources": true,
     "declaration": true,
     "incremental": false,
-    "noEmit": false,
-    "types": ["node", "bun-types"]
+    "noEmit": false
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]

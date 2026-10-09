@@ -1,0 +1,15 @@
+// Generated external host. Identity and native policy belong to the consumer.
+buildscript {
+ def profile = new groovy.json.JsonSlurper().parse(rootProject.file('.eliza-consumer-profile.json'))
+ repositories { google(); mavenCentral() }
+ dependencies {
+  classpath "com.android.tools.build:gradle:${profile.toolchain.androidGradlePlugin}"
+  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${profile.toolchain.kotlin}"
+ }
+}
+def profile = new groovy.json.JsonSlurper().parse(file('.eliza-consumer-profile.json'))
+profile.toolchain.versions.each { name, value -> ext.set(name, value) }
+ext.minSdkVersion = profile.sdk.min
+ext.compileSdkVersion = profile.sdk.compile
+ext.targetSdkVersion = profile.sdk.target
+allprojects { repositories { google(); mavenCentral() } }

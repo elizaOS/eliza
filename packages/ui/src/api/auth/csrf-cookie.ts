@@ -1,7 +1,7 @@
 /** Reads the browser session's readable CSRF companion cookie. */
 
+import { CSRF_COOKIE_NAME } from "@elizaos/auth";
 import { shellLocalStorage } from "../../surface-realm-channel";
-import { CSRF_COOKIE_NAME } from "./sessions";
 
 const CSRF_TOKEN_BY_ORIGIN_STORAGE_KEY = "eliza_csrf_token_by_origin_v1";
 

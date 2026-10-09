@@ -1,18 +1,19 @@
+import {
+  CloudRouterShell,
+  ErrorBoundary,
+  loadManagedCloudPage,
+} from "@elizaos/ui";
+import { registerPublicCloudSurfaces } from "./renderer/cloud-registration";
 /**
- * Mounts only the Cloud public, account-management, and marketing route shell
- * for a cold hosted public URL. The full application graph stays out of
- * anonymous `/login`, then loads into the same document when client-side
- * navigation leaves that route table so successful authentication does not
- * reboot the browser page. Account management uses only the Cloud session and
- * never starts an agent.
+ * Mounts the Cloud public, account-management, and marketing shell for a cold hosted
+ * public URL. The full application graph stays out of anonymous `/login`, then
+ * loads into the same document when client-side navigation leaves that route
+ * table. Account management uses only the Cloud session and never starts an agent.
  */
 
 import "@elizaos/ui/styles";
 import "./renderer-build-stamp";
 
-import { ErrorBoundary } from "@elizaos/ui";
-import { registerPublicCloudSurfaces } from "@elizaos/ui/cloud/register-public";
-import { CloudRouterShell } from "@elizaos/ui/cloud/shell/CloudRouterShell";
 import * as React from "react";
 import { lazy, Suspense, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -20,13 +21,7 @@ import { renderBootFailure } from "./boot-failure";
 import { seedPublicWebBootConfig } from "./public-web-boot-config";
 import { registerViewServiceWorker } from "./sw-registration";
 
-const ManagedCloudPage = lazy(
-  () => import("@elizaos/ui/cloud/shell/ManagedCloudPage"),
-);
-const MarketingHomePage = lazy(() => import("@homepage/embedded-home"));
-const MarketingDownloadsPage = lazy(
-  () => import("@homepage/embedded-downloads"),
-);
+const ManagedCloudPage = lazy(() => loadManagedCloudPage());
 
 let publicRoot: Root | null = null;
 let fullAppHandoffStarted = false;
@@ -79,10 +74,8 @@ function mountPublicWebEntry(): void {
       <React.StrictMode>
         <Suspense fallback={null}>
           <CloudRouterShell
-            cloudManagementElement={<ManagedCloudPage />}
-            marketingHomeElement={<MarketingHomePage />}
-            downloadsElement={<MarketingDownloadsPage />}
             appElement={<FullAppHandoff />}
+            cloudManagementElement={<ManagedCloudPage />}
           />
         </Suspense>
       </React.StrictMode>

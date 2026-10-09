@@ -5,18 +5,18 @@
  * Bearer eliza-app session token.
  */
 
-import { Hono } from "hono";
-import { organizationsRepository } from "@/db/repositories/organizations";
+import { organizationsRepository } from "@elizaos/cloud-shared/db/repositories/organizations";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   elizaAppSessionService,
   elizaAppUserService,
-} from "@/lib/services/eliza-app";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/eliza-app";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

@@ -3,9 +3,6 @@
 The elizaOS team takes the security of our software seriously. This document
 describes how to report vulnerabilities and our remediation commitments.
 
-For security architecture, hardening measures, and implementation notes, see
-[`packages/docs/security.md`](packages/docs/security.md).
-
 ## Reporting a Vulnerability
 
 **Do not open public GitHub issues for security bugs.**

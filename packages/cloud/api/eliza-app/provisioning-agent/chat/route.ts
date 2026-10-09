@@ -5,18 +5,18 @@
  * Auth: eliza-app session Bearer token.
  */
 
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { elizaAppSessionService } from "@elizaos/cloud-shared/lib/services/eliza-app";
+import { provisioningAgentChat } from "@elizaos/cloud-shared/lib/services/provisioning-agent-chat";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
   getGenerativeOperationContext,
   requireGenerativeKnownIdentity,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { elizaAppSessionService } from "@/lib/services/eliza-app";
-import { provisioningAgentChat } from "@/lib/services/provisioning-agent-chat";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

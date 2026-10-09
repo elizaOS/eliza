@@ -133,5 +133,6 @@ export async function generateElevenLabsAudio(request: AudioGenRequest): Promise
 
 export const elevenLabsAudioProvider: AudioProvider = {
   billingSource: "elevenlabs",
+  storesOutputInCloud: true,
   generate: generateElevenLabsAudio,
 };

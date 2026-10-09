@@ -4,7 +4,6 @@
  * sensitivity/cache scopes, and the `RoleGate` / `ContextGate` shapes that decide
  * which contexts and providers apply to a given turn.
  */
-import type { Role } from "./environment";
 import type { JsonValue } from "./primitives";
 
 export type FirstPartyAgentContext =
@@ -72,29 +71,18 @@ export type CacheScope =
 	| (string & {});
 
 /**
- * Canonical role tiers for gate declarations (#9948). Spans both historical
- * vocabularies — the environment `Role` (OWNER/ADMIN/MEMBER/GUEST/NONE) plus the
- * `USER` alias of MEMBER. `normalizeGateRole` folds USER→MEMBER and uppercases at
- * runtime. The previous `(string & {})` escape — which let a gate name ANY
- * string and silently rank it 0 — is removed: a gate must name a real tier.
+ * Role tiers for context gates. MEMBER and USER share a rank; unknown values resolve to
+ * NONE.
  */
-export type RoleGateRole = Role | "USER";
+export type {
+	RoleGate,
+	RoleGateRole,
+} from "../access-control/role-primitives.js";
 
-export interface RoleGate {
-	/** Any one of these roles may pass. */
-	roles?: RoleGateRole[];
-	/** Alias for roles, useful for declarative gate objects. */
-	anyOf?: RoleGateRole[];
-	/** All listed roles must be present. */
-	allOf?: RoleGateRole[];
-	/** Any listed role denies access. */
-	noneOf?: RoleGateRole[];
-	/** Caller must have at least this role by rank. */
-	minRole?: RoleGateRole;
-}
+import type { RoleGate } from "../access-control/role-primitives.js";
 
 export interface ContextGate {
-	/** Backward-compatible shorthand: any listed context may pass. */
+	/** Any listed context may satisfy the gate. */
 	contexts?: AgentContext[];
 	/** Any one of these contexts may pass. */
 	anyOf?: AgentContext[];

@@ -3,22 +3,22 @@
  * Idempotent on the authenticated organization's client_address + chain_type.
  */
 
+import { requireUserOrApiKey } from "@elizaos/cloud-shared/auth";
+import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import { agentServerWallets } from "@elizaos/cloud-shared/db/schemas/agent-server-wallets";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { provisionServerWallet } from "@elizaos/cloud-shared/lib/services/server-wallets";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { isAddress } from "viem";
 import { z } from "zod";
-import { dbWrite } from "@/db/helpers";
-import { agentServerWallets } from "@/db/schemas/agent-server-wallets";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { provisionServerWallet } from "@/lib/services/server-wallets";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 // `clientAddress` is always the agent's local EVM key — the same address is
 // registered for both evm and solana wallets and is what signs RPC + the

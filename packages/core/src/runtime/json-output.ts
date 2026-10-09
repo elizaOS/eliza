@@ -5,8 +5,8 @@
  * the runtime must salvage structure from a weak model's not-quite-valid JSON.
  */
 
-import { unwrapWholeCodeFence } from "../utils/code-fence.ts";
-import { formatError } from "../utils/format-error.ts";
+import { unwrapWholeCodeFence } from "../markdown/code.ts";
+import { formatError } from "../utils/errors.ts";
 
 export function parseJsonObject<T extends object>(raw: string): T | null {
 	const trimmed = raw.trim();
@@ -230,15 +230,25 @@ export function stringifyForModel(value: unknown): string {
 /** Serialize diagnostic context without allowing hostile or cyclic values to mask the original event. */
 export function stringifyForDiagnostics(value: unknown): string {
 	if (typeof value === "string") return value;
-	const seen = new WeakSet<object>();
+	// Track only the CURRENT path's ancestors, not every object ever visited. A
+	// single never-pruned WeakSet rendered a shared (non-cyclic) sub-object — a
+	// DAG, e.g. the same tool result referenced from two keys — as "[Circular]",
+	// silently dropping the second reference from recorded trajectories and
+	// evaluator diagnostics. `this` is the holder of the key being
+	// visited and JSON.stringify walks depth-first, so pruning the stack back to
+	// `this` keeps exactly the ancestor chain while still collapsing true cycles.
+	const ancestors: object[] = [];
 	try {
 		const serialized = JSON.stringify(
 			value,
-			(_key, nestedValue: unknown) => {
+			function (_key, nestedValue: unknown) {
 				if (typeof nestedValue === "bigint") return `${nestedValue}n`;
 				if (nestedValue && typeof nestedValue === "object") {
-					if (seen.has(nestedValue)) return "[Circular]";
-					seen.add(nestedValue);
+					while (ancestors.length && ancestors.at(-1) !== this) {
+						ancestors.pop();
+					}
+					if (ancestors.includes(nestedValue)) return "[Circular]";
+					ancestors.push(nestedValue);
 				}
 				return nestedValue;
 			},
@@ -324,12 +334,12 @@ export function parsePseudoTagToolInvocations(
  * Clean a model-produced reply field before it reaches the user. Removes
  * structural junk that weak models emit as plain text but which is never
  * user-facing content:
- *   1. the model's NATIVE tool-call serialization emitted as text instead of a
- *      structured call, e.g.
- *      `<tool_call>WEB_FETCH<arg_key>url</arg_key><arg_value>...</arg_value></tool_call>`
- *      (observed on cerebras gpt-oss / zai; eliza routes real tool calls
- *      structurally, and this markup never appears in eliza's own format), and
- *   2. a reply that is ONLY JSON punctuation (braces/brackets/quotes/commas).
+ * 1. the model's NATIVE tool-call serialization emitted as text instead of a
+ * structured call, e.g.
+ * `<tool_call>WEB_FETCH<arg_key>url</arg_key><arg_value>...</arg_value></tool_call>`
+ * (observed on cerebras gpt-oss / zai; eliza routes real tool calls
+ * structurally, and this markup never appears in eliza's own format), and
+ * 2. a reply that is ONLY JSON punctuation (braces/brackets/quotes/commas).
  *
  * Structural artifact removal - the sibling of the existing `[tool output:]`
  * markup stripping - not semantic-content matching. The truncated-open branch is

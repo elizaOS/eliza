@@ -6,7 +6,6 @@
  * message receipts make webhook redelivery and crash recovery idempotent.
  */
 import { randomUUID } from "node:crypto";
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import {
   ElizaError,
   getConnectorIdentityMetadataMapping,
@@ -15,6 +14,7 @@ import {
   type MessagePayload,
   normalizeConnectorSource,
 } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {
   ApprovalRequest,

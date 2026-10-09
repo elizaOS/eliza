@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import baseConfig from "../../packages/scripts/vitest/default.config";
+import { compoundVitestEvidence } from "../scripts/lib/compound-test-evidence.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -18,8 +19,6 @@ const unitExcludes = [
   "**/*.e2e.test.{ts,tsx}",
   "**/*.e2e.spec.{ts,tsx}",
   "**/*.spec.{ts,tsx}",
-  "test/ui-smoke/**",
-  "test/electrobun-packaged/**",
   // Script-level tests use Bun or Node test APIs and run through the package's
   // dedicated `bun test` phase, outside Vitest's jsdom transform.
   "scripts/**/*.test.{ts,tsx,mjs}",
@@ -49,48 +48,12 @@ export default defineConfig({
     ...baseConfig.resolve,
     alias: [
       {
-        // The renderer imports the public marketing entrypoints through the
-        // same source boundary as the Vite build. Keep unit entrypoint tests
-        // independent of a separately built homepage package.
-        find: /^@homepage\//,
-        replacement: `${path.resolve(here, "../homepage/src")}/`,
-      },
-      {
-        // Entrypoint tests exercise the shipped iOS bridge import in source mode;
-        // the changed-test lane intentionally builds core only, so they cannot
-        // depend on a pre-existing app-core dist directory.
-        find: /^@elizaos\/app-core\/api\/ios-local-agent-transport$/,
-        replacement: path.join(
-          here,
-          "../app-core/src/api/ios-local-agent-transport.ts",
-        ),
-      },
-      {
-        // Same source-mode rule for the desktop-shell subpath the entrypoint
-        // tests import (runIosFullBunSmokeIfRequested): the export maps to
-        // app-core's dist, which the changed-test lane never builds.
-        find: /^@elizaos\/app-core\/desktop-shell$/,
-        replacement: path.join(here, "../app-core/src/desktop-shell.ts"),
-      },
-      {
         // main.tsx imports "@elizaos/ui/styles"; the ui package otherwise
         // resolves to its built dist, whose externalized styles.js makes Node
         // load raw .css. Aliasing to source keeps the stylesheet inside vite's
         // pipeline, where the test css handling stubs it.
         find: /^@elizaos\/ui\/styles$/,
         replacement: path.join(here, "../ui/src/styles.ts"),
-      },
-      {
-        // Dev-gated ui platform helpers (e.g. onboarding-replay) read
-        // `import.meta.env.DEV`, which only exists when the module runs through
-        // vite's pipeline. Resolve ui subpath imports from source so the suite
-        // exercises the same dev semantics the renderer build ships.
-        find: /^@elizaos\/ui\/api$/,
-        replacement: path.join(here, "../ui/src/api/index.ts"),
-      },
-      {
-        find: /^@elizaos\/ui\/(.+)$/,
-        replacement: path.join(here, "../ui/src/$1"),
       },
       {
         find: /^@elizaos\/ui$/,
@@ -100,10 +63,10 @@ export default defineConfig({
         // Entrypoint tests import the device-bridge types/loader from source;
         // the package's published exports point at a dist directory this lane
         // never builds.
-        find: /^@elizaos\/capacitor-llama$/,
+        find: /^@elizaos\/plugin-native-inference\/llama$/,
         replacement: path.join(
           here,
-          "../../plugins/plugin-native-llama/src/index.ts",
+          "../../plugins/plugin-native-inference/src/llama/index.ts",
         ),
       },
       {
@@ -125,10 +88,10 @@ export default defineConfig({
         replacement: path.join(here, "../cloud-ui/src/$1"),
       },
       {
-        find: /^@elizaos\/plugin-task-coordinator\/register$/,
+        find: /^@elizaos\/plugin-agent-orchestrator\/ui\/register$/,
         replacement: path.join(
           here,
-          "../../plugins/plugin-task-coordinator/src/register.ts",
+          "../../plugins/plugin-agent-orchestrator/src/ui/register.ts",
         ),
       },
       {
@@ -145,9 +108,32 @@ export default defineConfig({
   },
   test: {
     ...baseConfig.test,
+    ...compoundVitestEvidence(),
     environment: "jsdom",
     setupFiles: [path.join(here, "test/setup.ts")],
-    include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
+    include: [
+      "src/types/**/*.test.{ts,tsx,mjs}",
+      "src/renderer/**/*.test.{ts,tsx,mjs}",
+      "src/dev/**/*.test.{ts,tsx,mjs}",
+      "src/*.test.{ts,tsx,mjs}",
+      "src/__tests__/**/*.test.{ts,tsx,mjs}",
+      "src/shims/**/*.test.{ts,tsx,mjs}",
+      "test/vite-source-resolution.test.ts",
+      "test/android-browser/**/*.test.{ts,tsx,mjs}",
+      "test/hmr/**/*.test.{ts,tsx,mjs}",
+      "test/utils/**/*.test.{ts,tsx,mjs}",
+      "test/ui-smoke/**/*.test.{ts,tsx,mjs}",
+      "test/view-screenshots/**/*.test.{ts,tsx,mjs}",
+      "test/electrobun-packaged/**/*.test.{ts,tsx,mjs}",
+      "test/audit/**/*.test.{ts,tsx,mjs}",
+      "test/android/**/*.test.{ts,tsx,mjs}",
+      "test/main-bootstrap.test.tsx",
+      "test/fixtures/**/*.test.{ts,tsx,mjs}",
+      "test/dev-auth/**/*.test.{ts,tsx,mjs}",
+      "test/design-review/**/*.test.{ts,tsx,mjs}",
+      "test/pages-middleware-serving.test.ts",
+      "test/dev-http-proxy.test.ts",
+    ],
     exclude: unitExcludes,
     coverage: {
       ...baseConfig.test?.coverage,

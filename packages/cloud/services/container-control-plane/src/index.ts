@@ -2,6 +2,7 @@
  * Owns container-control-plane index mutations that Cloudflare Workers cannot run.
  */
 import { timingSafeEqual } from "node:crypto";
+import { resolveJobTypesForLanes } from "@elizaos/cloud-shared/agent-contracts";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
 import {
@@ -40,10 +41,10 @@ import {
   type BridgeRequest,
   elizaSandboxService,
 } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
-import { resolveJobTypesForLanes } from "@elizaos/cloud-shared/lib/services/provisioning-job-types";
-import { provisioningJobService } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
+import { resolvePersonalDedicatedTrafficAccess } from "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback";
 import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { provisioningJobService } from "@elizaos/cloud-shared/node";
 import { type Context, Hono } from "hono";
 
 let cachedWarmPoolManager: WarmPoolManager | null = null;
@@ -736,7 +737,7 @@ app.post("/api/v1/cron/deployment-monitor", deploymentMonitorResponse);
 function agentHotPoolResponse(c: Context) {
   return handleInternal(c, async () => {
     // Node health checks moved to the provisioning-worker daemon — see
-    // `packages/cloud/scripts/admin/daemons/provisioning-worker.ts:processNodeHealthCheckCycle`.
+    // `packages/cloud/services/provisioning-worker/src/index.ts:processNodeHealthCheckCycle`.
     // The orchestrator host runs them now because it's the one with a valid
     // CONTAINERS_SSH_KEY against the cores; leaving the call here too would
     // race with the daemon and flip status every 5 min depending on which
@@ -1227,6 +1228,36 @@ app.delete("/api/compat/agents/:id", (c) =>
   }),
 );
 
+/**
+ * A cut-over personal Dedicated whose owner's access is withdrawn is not
+ * reachable through the bridge (#25146); its memory stays sealed until the
+ * owner's recovery hands the same agent id back.
+ */
+async function withdrawnPersonalDedicatedResponse(
+  agentId: string,
+  organizationId: string,
+): Promise<Response | null> {
+  const access = await resolvePersonalDedicatedTrafficAccess({
+    dedicatedAgentId: agentId,
+    organizationId,
+  });
+  if (access.access === "dedicated") return null;
+  return Response.json(
+    {
+      success: false,
+      error: access.error,
+      code: access.code,
+      retryable: access.retryable,
+    },
+    {
+      status: access.status,
+      ...(access.retryAfterSeconds
+        ? { headers: { "Retry-After": String(access.retryAfterSeconds) } }
+        : {}),
+    },
+  );
+}
+
 app.post("/api/v1/eliza/agents/:id/bridge", (c) =>
   handle(c, async (auth) => {
     const agentId = c.req.param("id");
@@ -1246,6 +1277,11 @@ app.post("/api/v1/eliza/agents/:id/bridge", (c) =>
       );
     }
 
+    const withdrawn = await withdrawnPersonalDedicatedResponse(
+      agentId,
+      auth.organizationId,
+    );
+    if (withdrawn) return withdrawn;
     const response = await elizaSandboxService.bridge(
       agentId,
       auth.organizationId,
@@ -1278,6 +1314,11 @@ app.post("/api/v1/eliza/agents/:id/stream", (c) =>
       );
     }
 
+    const withdrawn = await withdrawnPersonalDedicatedResponse(
+      agentId,
+      auth.organizationId,
+    );
+    if (withdrawn) return withdrawn;
     const response = await elizaSandboxService.bridgeStream(
       agentId,
       auth.organizationId,

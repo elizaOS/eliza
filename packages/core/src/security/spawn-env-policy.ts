@@ -77,7 +77,7 @@ export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
 	"PS4",
 	"GLOBIGNORE",
 	"IFS",
-	// ZDOTDIR redirects where zsh looks for .zshenv, which zsh sources on
+	// ZDOTDIR redirects where zsh looks for.zshenv, which zsh sources on
 	// EVERY invocation — including non-interactive ones — so it is the zsh
 	// equivalent of BASH_ENV.
 	"ZDOTDIR",
@@ -108,7 +108,7 @@ export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
 	// needs no indexed pairs.
 	// GIT_EDITOR and GIT_SEQUENCE_EDITOR are spawned verbatim by commit and by
 	// rebase -i; GIT_PAGER is spawned whenever output is paged; GIT_TEMPLATE_DIR
-	// seeds .git/hooks at init time, so an attacker-supplied template directory
+	// seeds.git/hooks at init time, so an attacker-supplied template directory
 	// plants a pre-commit hook that runs on the next commit.
 	// Bare GIT_CONFIG is deliberately absent: it does not resolve aliases and is
 	// not an execution primitive. VISUAL is absent because git does not consult

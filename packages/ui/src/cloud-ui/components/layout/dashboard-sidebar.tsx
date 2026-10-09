@@ -1,13 +1,13 @@
 "use client";
 
+import type { AdminRole } from "@elizaos/cloud-sdk";
 /**
  * The cloud dashboard sidebar: nav sections plus the mobile drawer dismiss.
  */
 import { X } from "lucide-react";
 import { memo, type ReactNode, useCallback } from "react";
 import { Button } from "../../../components/ui/button";
-import { cn } from "../../lib/utils";
-import type { AdminRole } from "../../types/cloud-api";
+import { cn } from "../../../utils/cn";
 import { DashboardSidebarNavigationSection } from "./dashboard-sidebar-section";
 import type {
   DashboardSidebarItem,

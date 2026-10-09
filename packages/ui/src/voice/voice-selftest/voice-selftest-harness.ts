@@ -1,3 +1,4 @@
+import { measureBufferLevel } from "./audio-buffer";
 /**
  * Self-driving voice round-trip verifier — NO human, NO mocks.
  *
@@ -16,10 +17,10 @@
  * false-greens.
  */
 
-import { wordErrorRate } from "@elizaos/shared/voice-wer";
+import { wordErrorRate } from "@elizaos/voice";
 import type { ElizaClient } from "../../api/client-base";
 import { fetchWithCsrf } from "../../api/csrf-client";
-import { resolveApiUrl } from "../../utils";
+import { resolveApiUrl } from "../../utils/asset-url";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { startLocalAsrRecorder } from "../local-asr-capture";
 import {
@@ -29,16 +30,14 @@ import {
 import { classifyErrorFallbackReply } from "./error-fallback-reply";
 import { now, sleep } from "./timing";
 
-/** Re-exported from the single source of truth (`@elizaos/shared/voice-wer`). */
+/** Re-exported from the single source of truth (`@elizaos/voice`). */
 export { wordErrorRate };
-
 export type StageStatus = "pass" | "fail" | "skipped";
 export type VoiceSelfTestMode =
   | "wav-direct"
   | "mic-capture"
   | "inject-transcript";
 export type VoiceSelfTestPlatform = "web" | "android" | "desktop" | "ios";
-
 export interface VoiceSelfTestStage {
   stage: "asr" | "send" | "tts";
   status: StageStatus;
@@ -46,7 +45,6 @@ export interface VoiceSelfTestStage {
   detail: Record<string, string | number | boolean>;
   error?: string;
 }
-
 export interface VoiceSelfTestReport {
   schemaVersion: 1;
   overall: "pass" | "fail" | "skipped";
@@ -66,7 +64,6 @@ export interface VoiceSelfTestReport {
   finishedAt: string;
   stages: VoiceSelfTestStage[];
 }
-
 export interface VoiceSelfTestOptions {
   platform: VoiceSelfTestPlatform;
   /** Default `wav-direct`: fetch the bundled WAV and transcribe it directly. */
@@ -96,7 +93,6 @@ export interface VoiceSelfTestOptions {
   audioCtx: AudioContext;
   signal?: AbortSignal;
 }
-
 /**
  * Real getUserMedia capture. Hardware lanes deliberately play the known phrase
  * through the selected output while this recorder is live; fake-device browser
@@ -149,30 +145,11 @@ async function captureMicWav(opts: VoiceSelfTestOptions): Promise<{
     throw error;
   }
 }
-
 /**
  * Peak + RMS amplitude across every channel of a decoded buffer. A buffer of
  * pure silence decodes fine and reports a positive `duration`, so duration
  * alone never proves the TTS produced audible sound — these levels do.
  */
-function measureBufferLevel(buffer: AudioBuffer): {
-  peak: number;
-  rms: number;
-} {
-  let peak = 0;
-  let sumSquares = 0;
-  let count = 0;
-  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
-    const data = buffer.getChannelData(channel);
-    for (let i = 0; i < data.length; i += 1) {
-      const v = Math.abs(data[i] ?? 0);
-      if (v > peak) peak = v;
-      sumSquares += v * v;
-      count += 1;
-    }
-  }
-  return { peak, rms: count > 0 ? Math.sqrt(sumSquares / count) : 0 };
-}
 
 /**
  * Push the decoded buffer through a real source → analyser → destination graph
@@ -242,7 +219,7 @@ async function playThroughDestination(
     const ended = new Promise<void>((resolve, reject) => {
       const timeout = window.setTimeout(
         () => reject(new Error("audio output did not finish")),
-        Math.min(30_000, Math.ceil(buffer.duration * 1_000) + 2_000),
+        Math.min(30000, Math.ceil(buffer.duration * 1000) + 2000),
       );
       activeSource.addEventListener(
         "ended",
@@ -255,7 +232,6 @@ async function playThroughDestination(
     });
     startedAt = new Date().toISOString();
     activeSource.start();
-
     let outputObserved = false;
     const probe = new Float32Array(activeAnalyser.fftSize);
     const deadline = now() + 500;
@@ -298,7 +274,6 @@ async function playThroughDestination(
     };
   }
 }
-
 export async function runVoiceSelfTest(
   opts: VoiceSelfTestOptions,
 ): Promise<VoiceSelfTestReport> {
@@ -309,7 +284,6 @@ export async function runVoiceSelfTest(
   let transcript = "";
   let reply = "";
   let sendBackend: string | undefined;
-
   // ---- Stage ASR: known audio phrase -> transcript ------------------------
   {
     const t0 = now();
@@ -383,9 +357,7 @@ export async function runVoiceSelfTest(
       });
     }
   }
-
   const asrUsable = stages[0].status === "pass" && transcript.trim().length > 0;
-
   // ---- Stage SEND: transcript -> agent reply over real SSE ----------------
   if (asrUsable) {
     const t0 = now();
@@ -466,7 +438,6 @@ export async function runVoiceSelfTest(
       detail: { reason: "ASR did not produce a usable transcript" },
     });
   }
-
   // ---- Stage TTS: reply text -> decodable audio ---------------------------
   if (reply.length > 0) {
     const t0 = now();
@@ -540,7 +511,6 @@ export async function runVoiceSelfTest(
       detail: { reason: "no reply text to synthesize" },
     });
   }
-
   const hasFail = stages.some((s) => s.status === "fail");
   const allSkipped = stages.every((s) => s.status === "skipped");
   const overall: VoiceSelfTestReport["overall"] = hasFail
@@ -548,7 +518,6 @@ export async function runVoiceSelfTest(
     : allSkipped
       ? "skipped"
       : "pass";
-
   return {
     schemaVersion: 1,
     overall,

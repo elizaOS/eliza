@@ -9,8 +9,13 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import type { MeetingBillingState, MeetingEndReason } from "@elizaos/shared";
-import { type CreditReservation, creditsService, InsufficientCreditsError } from "./credits";
+import { type MeetingBillingState, type MeetingEndReason } from "@elizaos/core/protocol";
+import { reserveAllowanceEligibleCredits } from "./allowance-first-credits";
+import {
+  type CreditReservation,
+  InsufficientCreditsError,
+  RESERVATION_SWEEP_GRACE_MS,
+} from "./credits";
 
 export type MeetingCloudBillingErrorCode = "insufficient_credits" | "billing_failed";
 
@@ -173,11 +178,15 @@ export class MeetingCreditBillingSession {
   private async reserveWindow(windowMs: number): Promise<void> {
     if (windowMs <= 0) return;
     try {
-      const reservation = await creditsService.reserve({
+      const reservation = await reserveAllowanceEligibleCredits("voice", {
         organizationId: this.organizationId,
         userId: this.userId,
         amount: dollarsForMs(windowMs, this.usdPerMinute),
         description: `Meeting transcription ${this.sessionId}`,
+        // Like the credit lane, every window is its own hold. It outlives the
+        // whole meeting cap before the stale-funding sweep may release it.
+        operationKey: { prefix: "voice:", identity: crypto.randomUUID() },
+        reservationTtlMs: this.maxDurationMs + RESERVATION_SWEEP_GRACE_MS,
       });
       this.holds.push({ reservation, reservedMs: windowMs });
       this.state.reservedMs += windowMs;

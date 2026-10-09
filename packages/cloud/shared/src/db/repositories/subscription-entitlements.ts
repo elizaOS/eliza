@@ -4,8 +4,11 @@
  * subscription authority, preserving the billing-domain lock order.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, eq } from "drizzle-orm";
-import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
+import { and, eq, isNull } from "drizzle-orm";
+import {
+  FREE_RESOURCE_CEILINGS,
+  resolveSubscriptionPlanDefinition,
+} from "../../lib/services/subscription-catalog";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
 import {
@@ -34,16 +37,17 @@ type RebuildValues = Omit<
   "organization_id" | "created_at" | "updated_at" | "rebuilt_at" | "projection_revision"
 >;
 
-const FREE_ENTITLEMENT_VALUES = {
+/** Free-tier projection values, also served for a lapsed paid projection. */
+export const SUBSCRIPTION_FREE_ENTITLEMENT_VALUES = {
   completions_rpm: 60,
   embeddings_rpm: 100,
   standard_rpm: 30,
   strict_rpm: 5,
-  cloud_characters_ceiling: 5,
-  agent_sandboxes_ceiling: 5,
-  containers_ceiling: 1,
-  storage_gib_ceiling: 5,
-  apps_ceiling: 25,
+  cloud_characters_ceiling: FREE_RESOURCE_CEILINGS.cloudCharacters,
+  agent_sandboxes_ceiling: FREE_RESOURCE_CEILINGS.agentSandboxes,
+  containers_ceiling: FREE_RESOURCE_CEILINGS.containers,
+  storage_gib_ceiling: FREE_RESOURCE_CEILINGS.storageGiB,
+  apps_ceiling: FREE_RESOURCE_CEILINGS.apps,
   plan_key: "free",
   state: "free",
   entitlement_effective: true,
@@ -83,9 +87,13 @@ function sameEntitlementValue(stored: unknown, requested: unknown): boolean {
 export function deriveSubscriptionEntitlementValues(
   revision: BillingSubscriptionRevision,
 ): RebuildValues {
+  if (revision.billing_scope_id)
+    entitlementConflict("App entitlements require the scoped atomic finalizer", {
+      subscriptionId: revision.subscription_id,
+    });
   if (revision.status === "canceled" || revision.status === "incomplete_expired") {
     return {
-      ...FREE_ENTITLEMENT_VALUES,
+      ...SUBSCRIPTION_FREE_ENTITLEMENT_VALUES,
       effective_from: revision.ended_at ?? revision.canceled_at ?? revision.recorded_at,
       source_digest: revision.provider_object_digest,
       source_subscription_id: revision.subscription_id,
@@ -120,17 +128,21 @@ export function deriveSubscriptionEntitlementValues(
       context: { subscriptionId: revision.subscription_id, status: revision.status },
     });
   }
+  if (revision.plan_key !== "plus_monthly" && revision.plan_key !== "pro_monthly")
+    entitlementConflict("Infrastructure entitlement plan is not supported", {
+      subscriptionId: revision.subscription_id,
+    });
   const plan = resolveSubscriptionPlanDefinition(revision.plan_key, revision.catalog_version);
   return {
     completions_rpm: plan.rateLimits.completionsRpm,
     embeddings_rpm: plan.rateLimits.embeddingsRpm,
     standard_rpm: plan.rateLimits.standardRpm,
     strict_rpm: plan.rateLimits.strictRpm,
-    cloud_characters_ceiling: null,
-    agent_sandboxes_ceiling: null,
-    containers_ceiling: null,
-    storage_gib_ceiling: null,
-    apps_ceiling: null,
+    cloud_characters_ceiling: plan.resourceCeilings.cloudCharacters,
+    agent_sandboxes_ceiling: plan.resourceCeilings.agentSandboxes,
+    containers_ceiling: plan.resourceCeilings.containers,
+    storage_gib_ceiling: plan.resourceCeilings.storageGiB,
+    apps_ceiling: plan.resourceCeilings.apps,
     plan_key: revision.plan_key,
     state: revision.status,
     entitlement_effective: revision.status === "active" || revision.status === "grace",
@@ -148,7 +160,12 @@ export class SubscriptionEntitlementsRepository {
     const [row] = await dbWrite
       .select()
       .from(organizationEntitlements)
-      .where(eq(organizationEntitlements.organization_id, organizationId))
+      .where(
+        and(
+          eq(organizationEntitlements.organization_id, organizationId),
+          isNull(organizationEntitlements.billing_scope_id),
+        ),
+      )
       .limit(1);
     return row;
   }
@@ -193,6 +210,7 @@ export class SubscriptionEntitlementsRepository {
           and(
             eq(billingSubscriptions.organization_id, input.organizationId),
             eq(billingSubscriptions.id, input.sourceSubscriptionId),
+            isNull(billingSubscriptions.billing_scope_id),
           ),
         )
         .limit(1)
@@ -235,6 +253,7 @@ export class SubscriptionEntitlementsRepository {
             eq(billingSubscriptionRevisions.organization_id, input.organizationId),
             eq(billingSubscriptionRevisions.subscription_id, input.sourceSubscriptionId),
             eq(billingSubscriptionRevisions.revision, input.sourceSubscriptionRevision),
+            isNull(billingSubscriptionRevisions.billing_scope_id),
           ),
         )
         .limit(1);
@@ -272,7 +291,12 @@ export class SubscriptionEntitlementsRepository {
     const [current] = await tx
       .select()
       .from(organizationEntitlements)
-      .where(eq(organizationEntitlements.organization_id, input.organizationId))
+      .where(
+        and(
+          eq(organizationEntitlements.organization_id, input.organizationId),
+          isNull(organizationEntitlements.billing_scope_id),
+        ),
+      )
       .limit(1)
       .for("update");
     if (
@@ -334,6 +358,7 @@ export class SubscriptionEntitlementsRepository {
         and(
           eq(organizationEntitlements.organization_id, input.organizationId),
           eq(organizationEntitlements.projection_revision, input.expectedProjectionRevision!),
+          isNull(organizationEntitlements.billing_scope_id),
         ),
       )
       .returning();

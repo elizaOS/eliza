@@ -1,0 +1,630 @@
+[
+  {
+    "id": "code-001",
+    "type": "coding",
+    "prompt": "Build a TypeScript CLI tool called `csv2json` that reads a CSV file from stdin or a file path argument and outputs JSON to stdout. Requirements: (1) Support both piped stdin and `csv2json <file.csv>` invocation. (2) Handle quoted fields containing commas and newlines. (3) First row is headers, used as JSON keys. (4) Add a `--pretty` flag for indented output (default is compact). (5) Add a `--array-of-arrays` flag that outputs arrays instead of objects. (6) Exit with code 1 and a stderr message on malformed input. No external CSV parsing libraries allowed.",
+    "context": {
+      "language": "typescript",
+      "difficulty": "intermediate",
+      "category": "cli",
+      "workspace": {
+        "files": {
+          "package.json": "{ \"name\": \"csv2json\", \"type\": \"module\", \"scripts\": { \"build\": \"tsc\", \"test\": \"bun test\" }, \"devDependencies\": { \"typescript\": \"^5.4\" } }",
+          "tsconfig.json": "{ \"compilerOptions\": { \"target\": \"ES2022\", \"module\": \"ESNext\", \"moduleResolution\": \"bundler\", \"strict\": true, \"outDir\": \"dist\", \"rootDir\": \"src\" }, \"include\": [\"src\"] }",
+          "test/fixtures/simple.csv": "name,age,city\nAlice,30,Portland\nBob,25,Seattle\n",
+          "test/fixtures/quoted.csv": "name,bio,city\n\"Smith, John\",\"Likes \"\"coding\"\" and commas, too\",Denver\nJane,\"Multi\nline\nbio\",Austin\n",
+          "test/fixtures/malformed.csv": "name,age\nAlice,30,extra\n"
+        }
+      }
+    },
+    "evaluation": {
+      "must_produce_files": ["src/csv2json.ts"],
+      "test_commands": [
+        "bun build src/csv2json.ts --outdir dist --target node",
+        "echo 'name,age\nAlice,30' | bun src/csv2json.ts",
+        "bun src/csv2json.ts test/fixtures/simple.csv --pretty",
+        "bun src/csv2json.ts test/fixtures/quoted.csv"
+      ],
+      "test_assertions": [
+        {
+          "type": "file_exists",
+          "target": "src/csv2json.ts",
+          "expected": true
+        },
+        {
+          "type": "command_output",
+          "target": "echo 'name,age\nAlice,30' | bun src/csv2json.ts",
+          "expected": "[{\"name\":\"Alice\",\"age\":\"30\"}]"
+        },
+        {
+          "type": "command_output",
+          "target": "bun src/csv2json.ts test/fixtures/simple.csv",
+          "expected": "[{\"name\":\"Alice\",\"age\":\"30\",\"city\":\"Portland\"},{\"name\":\"Bob\",\"age\":\"25\",\"city\":\"Seattle\"}]"
+        },
+        {
+          "type": "command_output",
+          "target": "bun src/csv2json.ts test/fixtures/quoted.csv | bun -e \"const d=JSON.parse(await Bun.stdin.text()); console.log(d[0].name)\"",
+          "expected": "Smith, John"
+        },
+        {
+          "type": "command_output",
+          "target": "bun src/csv2json.ts test/fixtures/malformed.csv 2>&1; echo EXIT:$?",
+          "expected": "EXIT:1"
+        }
+      ],
+      "quality_criteria": {
+        "correctness": "Correctly parses standard CSV with quoted fields, embedded commas, embedded newlines, and escaped quotes",
+        "code_quality": "Typed, no any, proper error handling with descriptive messages, clean argument parsing",
+        "completeness": "All five requirements met: stdin, file arg, --pretty, --array-of-arrays, error exit"
+      },
+      "scoring": {
+        "max_score": 10,
+        "rubric": {
+          "0-2": "File created but does not run or parse CSV at all",
+          "3-4": "Basic CSV parsing works for simple cases but fails on quoted fields or flags",
+          "5-6": "Handles simple and quoted CSV correctly, but missing flags or error handling",
+          "7-8": "All parsing correct, flags work, minor issues (e.g., no stdin support or imprecise error messages)",
+          "9-10": "All requirements met, handles edge cases, clean typed code with proper error handling"
+        }
+      }
+    }
+  },
+  {
+    "id": "code-002",
+    "type": "coding",
+    "prompt": "Create a TypeScript REST API endpoint module using Hono that manages a simple in-memory task list. Requirements: (1) GET /tasks - list all tasks, supports ?status=pending|done query filter. (2) POST /tasks - create a task with { title: string, description?: string }, returns 201 with the created task including an auto-generated id and status='pending'. (3) PATCH /tasks/:id - update task fields (title, description, status), returns 200. Return 404 if not found. (4) DELETE /tasks/:id - remove task, returns 204. Return 404 if not found. (5) Input validation: title must be non-empty string, status must be 'pending' or 'done'. Return 400 with { error: string } on validation failure. (6) Export the Hono app instance for testing. Write the implementation in src/tasks.ts and tests in test/tasks.test.ts using bun:test.",
+    "context": {
+      "language": "typescript",
+      "difficulty": "intermediate",
+      "category": "api",
+      "workspace": {
+        "files": {
+          "package.json": "{ \"name\": \"task-api\", \"type\": \"module\", \"scripts\": { \"test\": \"bun test\", \"dev\": \"bun --hot src/index.ts\" }, \"dependencies\": { \"hono\": \"^4.4\" }, \"devDependencies\": { \"typescript\": \"^5.4\", \"@types/bun\": \"latest\" } }",
+          "tsconfig.json": "{ \"compilerOptions\": { \"target\": \"ES2022\", \"module\": \"ESNext\", \"moduleResolution\": \"bundler\", \"strict\": true, \"types\": [\"bun-types\"] }, \"include\": [\"src\", \"test\"] }",
+          "src/index.ts": "import { app } from './tasks';\n\nexport default { port: 3000, fetch: app.fetch };\n"
+        }
+      }
+    },
+    "evaluation": {
+      "must_produce_files": ["src/tasks.ts", "test/tasks.test.ts"],
+      "test_commands": ["bun test"],
+      "test_assertions": [
+        {
+          "type": "file_exists",
+          "target": "src/tasks.ts",
+          "expected": true
+        },
+        {
+          "type": "file_exists",
+          "target": "test/tasks.test.ts",
+          "expected": true
+        },
+        {
+          "type": "file_contains",
+          "target": "src/tasks.ts",
+          "expected": "export.*app"
+        },
+        {
+          "type": "file_contains",
+          "target": "src/tasks.ts",
+          "expected": "Hono"
+        },
+        {
+          "type": "test_passes",
+          "target": "bun test",
+          "expected": "pass"
+        }
+      ],
+      "quality_criteria": {
+        "correctness": "All CRUD operations work correctly, status filtering returns correct subsets, proper HTTP status codes",
+        "code_quality": "Typed request/response bodies, validation separated from route handlers, no any types",
+        "completeness": "All 6 requirements met including comprehensive test coverage of happy paths and error cases"
+      },
+      "scoring": {
+        "max_score": 10,
+        "rubric": {
+          "0-2": "Files created but routes do not work or tests fail to run",
+          "3-4": "Basic GET/POST works but validation, error codes, or tests are missing",
+          "5-6": "All CRUD routes work but validation is incomplete or tests cover only happy paths",
+          "7-8": "Full CRUD with validation, proper status codes, tests cover most cases",
+          "9-10": "Complete implementation with thorough validation, all status codes correct, comprehensive tests including edge cases"
+        }
+      }
+    }
+  },
+  {
+    "id": "code-003",
+    "type": "coding",
+    "prompt": "Implement a TypeScript module that provides a Trie (prefix tree) data structure with the following API: (1) insert(word: string): void - insert a word. (2) search(word: string): boolean - return true if the exact word exists. (3) startsWith(prefix: string): boolean - return true if any inserted word starts with prefix. (4) autocomplete(prefix: string, limit?: number): string[] - return up to `limit` (default 10) words matching the prefix, sorted alphabetically. (5) delete(word: string): boolean - remove a word, return true if it existed. (6) size(): number - return count of distinct words. The implementation must be case-insensitive (store lowercase internally). Write the Trie class in src/trie.ts and comprehensive tests in test/trie.test.ts.",
+    "context": {
+      "language": "typescript",
+      "difficulty": "intermediate",
+      "category": "algorithm",
+      "workspace": {
+        "files": {
+          "package.json": "{ \"name\": \"trie-impl\", \"type\": \"module\", \"scripts\": { \"test\": \"bun test\" }, \"devDependencies\": { \"typescript\": \"^5.4\", \"@types/bun\": \"latest\" } }",
+          "tsconfig.json": "{ \"compilerOptions\": { \"target\": \"ES2022\", \"module\": \"ESNext\", \"moduleResolution\": \"bundler\", \"strict\": true }, \"include\": [\"src\", \"test\"] }"
+        }
+      }
+    },
+    "evaluation": {
+      "must_produce_files": ["src/trie.ts", "test/trie.test.ts"],
+      "test_commands": ["bun test"],
+      "test_assertions": [
+        {
+          "type": "file_exists",
+          "target": "src/trie.ts",
+          "expected": true
+        },
+        {
+          "type": "file_contains",
+          "target": "src/trie.ts",
+          "expected": "class Trie"
+        },
+        {
+          "type": "file_contains",
+          "target": "src/trie.ts",
+          "expected": "autocomplete"
+        },
+        {
+          "type": "file_contains",
+          "target": "src/trie.ts",
+          "expected": "delete"
+        },
+        {
+          "type": "test_passes",
+          "target": "bun test",
+          "expected": "pass"
+        }
+      ],
+      "quality_criteria": {
+        "correctness": "All six methods work correctly including edge cases (empty string, non-existent words, delete of prefix that is also a word)",
+        "code_quality": "Proper TypeScript types for TrieNode, no any, efficient traversal, clean recursion or iteration",
+        "completeness": "All 6 methods implemented with case-insensitivity, tests cover insert/search/startsWith/autocomplete/delete/size"
+      },
+      "scoring": {
+        "max_score": 10,
+        "rubric": {
+          "0-2": "Trie class exists but core operations (insert/search) do not work",
+          "3-4": "Insert and search work but autocomplete or delete are broken",
+          "5-6": "Core operations work, autocomplete returns results but delete has edge case bugs or size is wrong",
+          "7-8": "All methods work correctly, case-insensitivity applied, tests cover main scenarios",
+          "9-10": "Complete correct implementation with edge case handling, efficient traversal, comprehensive tests"
+        }
+      }
+    }
+  },
+  {
+    "id": "code-004",
+    "type": "coding",
+    "prompt": "Write a TypeScript module in src/transform.ts that converts a flat array of records with parent-child relationships into a nested tree structure, and vice versa. Each record has the shape { id: string, parentId: string | null, name: string, [key: string]: unknown }. Requirements: (1) toTree(records): TreeNode[] - converts flat array to nested tree. Root nodes have parentId=null. Each TreeNode extends the record with a `children: TreeNode[]` field. (2) toFlat(tree): Record[] - converts nested tree back to flat array (depth-first order). (3) findNode(tree, id): TreeNode | null - find a node by id in the tree. (4) moveNode(tree, nodeId, newParentId): TreeNode[] - move a node (and its subtree) under a new parent. Return the updated tree. Moving to null makes it a root. Prevent circular moves (moving a node under its own descendant). (5) getPath(tree, id): string[] - return array of node names from root to the target node. Handle orphan records (parentId references non-existent parent) by placing them at the root level. Write tests in test/transform.test.ts.",
+    "context": {
+      "language": "typescript",
+      "difficulty": "intermediate",
+      "category": "data",
+      "workspace": {
+        "files": {
+          "package.json": "{ \"name\": \"tree-transform\", \"type\": \"module\", \"scripts\": { \"test\": \"bun test\" }, \"devDependencies\": { \"typescript\": \"^5.4\", \"@types/bun\": \"latest\" } }",
+          "tsconfig.json": "{ \"compilerOptions\": { \"target\": \"ES2022\", \"module\": \"ESNext\", \"moduleResolution\": \"bundler\", \"strict\": true }, \"include\": [\"src\", \"test\"] }",
+          "test/fixtures/org-chart.json": "[\n  { \"id\": \"1\", \"parentId\": null, \"name\": \"CEO\" },\n  { \"id\": \"2\", \"parentId\": \"1\", \"name\": \"CTO\" },\n  { \"id\": \"3\", \"parentId\": \"1\", \"name\": \"CFO\" },\n  { \"id\": \"4\", \"parentId\": \"2\", \"name\": \"Lead Engineer\" },\n  { \"id\": \"5\", \"parentId\": \"2\", \"name\": \"Lead Designer\" },\n  { \"id\": \"6\", \"parentId\": \"4\", \"name\": \"Senior Dev\" },\n  { \"id\": \"7\", \"parentId\": \"99\", \"name\": \"Orphan Node\" }\n]"
+        }
+      }
+    },
+    "evaluation": {
+      "must_produce_files": ["src/transform.ts", "test/transform.test.ts"],
+      "test_commands": ["bun test"],
+      "test_assertions": [
+        {
+          "type": "file_exists",
+          "target": "src/transform.ts",
+          "expected": true
+        },
+        {
+          "type": "file_contains",
+          "target": "src/transform.ts",
+          "expected": "toTree"
+        },
+        {
+          "type": "file_contains",
+          "target": "src/transform.ts",
+          "expected": "moveNode"
+        },
+        {
+          "type": "file_contains",
+          "target": "src/transform.ts",
+          "expected": "getPath"
+        },
+        {
+          "type": "test_passes",
+          "target": "bun test",
+          "expected": "pass"
+        }
+      ],
+      "quality_criteria": {
+        "correctness": "Tree construction handles orphans, round-trip toTree/toFlat preserves data, moveNode prevents cycles, getPath returns correct ancestry",
+        "code_quality": "Proper generic types for TreeNode, no any, handles edge cases like empty arrays and single-node trees",
+        "completeness": "All 5 functions implemented with orphan handling and circular move prevention"
+      },
+      "scoring": {
+        "max_score": 10,
+        "rubric": {
+          "0-2": "Files created but toTree does not produce correct nesting",
+          "3-4": "toTree works for simple cases but orphans are lost or toFlat is missing",
+          "5-6": "toTree and toFlat work, but moveNode has cycle bugs or getPath is incomplete",
+          "7-8": "All functions work correctly, orphan handling present, tests cover main scenarios",
+          "9-10": "Complete implementation with cycle prevention, orphan handling, round-trip fidelity, comprehensive edge case tests"
+        }
+      }
+    }
+  },
+  {
+    "id": "code-005",
+    "type": "coding",
+    "prompt": "The following TypeScript module implements a rate limiter, but it has several bugs. Find and fix all the bugs so the tests pass. Do NOT modify the test file - only fix src/rate-limiter.ts. The bugs include: off-by-one errors, incorrect time window logic, a race condition in the async path, and a missing edge case.",
+    "context": {
+      "language": "typescript",
+      "difficulty": "intermediate",
+      "category": "debug",
+      "workspace": {
+        "files": {
+          "package.json": "{ \"name\": \"rate-limiter\", \"type\": \"module\", \"scripts\": { \"test\": \"bun test\" }, \"devDependencies\": { \"typescript\": \"^5.4\", \"@types/bun\": \"latest\" } }",
+          "tsconfig.json": "{ \"compilerOptions\": { \"target\": \"ES2022\", \"module\": \"ESNext\", \"moduleResolution\": \"bundler\", \"strict\": true }, \"include\": [\"src\", \"test\"] }",
+          "src/rate-limiter.ts": "/**\n * Sliding-window rate limiter.\n *\n * Tracks request timestamps per key and enforces a maximum number\n * of requests within a rolling time window.\n */\nexport class RateLimiter {\n  private windows: Map<string, number[]> = new Map();\n  private maxRequests: number;\n  private windowMs: number;\n\n  constructor(maxRequests: number, windowMs: number) {\n    this.maxRequests = maxRequests;\n    this.windowMs = windowMs;\n  }\n\n  /**\n   * Check if a request is allowed for the given key.\n   * Returns true if allowed, false if rate limited.\n   */\n  isAllowed(key: string): boolean {\n    const now = Date.now();\n    const timestamps = this.windows.get(key) || [];\n\n    // BUG 1: Should filter timestamps OUTSIDE the window, not inside\n    const recent = timestamps.filter((t) => t > now + this.windowMs);\n\n    // BUG 2: Off-by-one — should be >= maxRequests (allow exactly max)\n    if (recent.length > this.maxRequests) {\n      return false;\n    }\n\n    recent.push(now);\n    this.windows.set(key, recent);\n    return true;\n  }\n\n  /**\n   * Async version that waits until a slot is available.\n   * Returns the wait time in ms (0 if immediately allowed).\n   */\n  async waitForSlot(key: string, timeoutMs: number = 5000): Promise<number> {\n    const start = Date.now();\n\n    // BUG 3: Missing check — should return 0 immediately if allowed\n\n    while (Date.now() - start < timeoutMs) {\n      await new Promise((resolve) => setTimeout(resolve, 50));\n      if (this.isAllowed(key)) {\n        return Date.now() - start;\n      }\n    }\n\n    throw new Error(`Rate limit timeout after ${timeoutMs}ms for key: ${key}`);\n  }\n\n  /**\n   * Get remaining requests for a key in the current window.\n   */\n  remaining(key: string): number {\n    const now = Date.now();\n    const timestamps = this.windows.get(key) || [];\n    // BUG 4: Uses same broken filter logic as isAllowed\n    const recent = timestamps.filter((t) => t > now + this.windowMs);\n    return this.maxRequests - recent.length;\n  }\n\n  /**\n   * Reset rate limit state for a key.\n   */\n  reset(key: string): void {\n    this.windows.delete(key);\n  }\n\n  /**\n   * Reset all rate limit state.\n   */\n  resetAll(): void {\n    this.windows.clear();\n  }\n}\n",
+          "test/rate-limiter.test.ts": "import { describe, it, expect, beforeEach } from 'bun:test';\nimport { RateLimiter } from '../src/rate-limiter';\n\ndescribe('RateLimiter', () => {\n  let limiter: RateLimiter;\n\n  beforeEach(() => {\n    limiter = new RateLimiter(3, 1000); // 3 requests per 1 second\n  });\n\n  it('allows requests up to the limit', () => {\n    expect(limiter.isAllowed('user1')).toBe(true);\n    expect(limiter.isAllowed('user1')).toBe(true);\n    expect(limiter.isAllowed('user1')).toBe(true);\n  });\n\n  it('blocks requests over the limit', () => {\n    expect(limiter.isAllowed('user1')).toBe(true);\n    expect(limiter.isAllowed('user1')).toBe(true);\n    expect(limiter.isAllowed('user1')).toBe(true);\n    expect(limiter.isAllowed('user1')).toBe(false);\n  });\n\n  it('tracks keys independently', () => {\n    for (let i = 0; i < 3; i++) limiter.isAllowed('user1');\n    expect(limiter.isAllowed('user1')).toBe(false);\n    expect(limiter.isAllowed('user2')).toBe(true);\n  });\n\n  it('allows requests after the window expires', async () => {\n    for (let i = 0; i < 3; i++) limiter.isAllowed('user1');\n    expect(limiter.isAllowed('user1')).toBe(false);\n\n    // Wait for window to expire\n    await new Promise((r) => setTimeout(r, 1100));\n    expect(limiter.isAllowed('user1')).toBe(true);\n  });\n\n  it('reports correct remaining count', () => {\n    expect(limiter.remaining('user1')).toBe(3);\n    limiter.isAllowed('user1');\n    expect(limiter.remaining('user1')).toBe(2);\n    limiter.isAllowed('user1');\n    limiter.isAllowed('user1');\n    expect(limiter.remaining('user1')).toBe(0);\n  });\n\n  it('reset clears the key state', () => {\n    for (let i = 0; i < 3; i++) limiter.isAllowed('user1');\n    expect(limiter.isAllowed('user1')).toBe(false);\n    limiter.reset('user1');\n    expect(limiter.isAllowed('user1')).toBe(true);\n  });\n\n  it('waitForSlot returns 0 when immediately allowed', async () => {\n    const waited = await limiter.waitForSlot('user1');\n    expect(waited).toBe(0);\n  });\n\n  it('waitForSlot waits until a slot opens', async () => {\n    const fast = new RateLimiter(1, 200); // 1 req per 200ms\n    fast.isAllowed('user1');\n    const waited = await fast.waitForSlot('user1', 2000);\n    expect(waited).toBeGreaterThan(100);\n    expect(waited).toBeLessThan(2000);\n  });\n\n  it('waitForSlot throws on timeout', async () => {\n    for (let i = 0; i < 3; i++) limiter.isAllowed('user1');\n    await expect(limiter.waitForSlot('user1', 100)).rejects.toThrow('Rate limit timeout');\n  });\n});\n"
+        }
+      }
+    },
+    "evaluation": {
+      "must_produce_files": ["src/rate-limiter.ts"],
+      "test_commands": ["bun test"],
+      "test_assertions": [
+        {
+          "type": "file_exists",
+          "target": "src/rate-limiter.ts",
+          "expected": true
+        },
+        {
+          "type": "file_contains",
+          "target": "src/rate-limiter.ts",
+          "expected": "now - this.windowMs"
+        },
+        {
+          "type": "test_passes",
+          "target": "bun test",
+          "expected": "pass"
+        }
+      ],
+      "quality_criteria": {
+        "correctness": "All 4 bugs fixed: filter direction, off-by-one, missing immediate check in waitForSlot, consistent filter in remaining()",
+        "code_quality": "Fixes are minimal and targeted, do not restructure working code, maintain existing style",
+        "completeness": "All 9 tests pass without modification to the test file"
+      },
+      "scoring": {
+        "max_score": 10,
+        "rubric": {
+          "0-2": "File modified but tests still fail or new bugs introduced",
+          "3-4": "1-2 bugs fixed, some tests pass",
+          "5-6": "3 of 4 bugs fixed, most tests pass",
+          "7-8": "All bugs fixed, all tests pass, but unnecessary code changes made",
+          "9-10": "All bugs fixed with minimal targeted changes, all tests pass, code unchanged beyond fixes"
+        }
+      }
+    }
+  },
+  {
+    "id": "code-006",
+    "type": "coding",
+    "prompt": "Build a React component called <SearchableList /> that implements a filterable, keyboard-navigable list. Requirements: (1) Props: items: Array<{ id: string, label: string, description?: string }>, onSelect: (id: string) => void, placeholder?: string. (2) A text input at the top filters items in real-time (case-insensitive substring match on label and description). (3) Arrow keys (Up/Down) navigate the highlighted item in the filtered list, Enter selects it, Escape clears the search input. (4) The currently highlighted item should have a data-active='true' attribute. (5) Debounce the filter by 150ms to avoid excessive re-renders on fast typing. (6) Show 'No results found' when the filter matches nothing. (7) The component must be accessible: input has aria-label, list uses role='listbox', items use role='option' with aria-selected. Write the component in src/SearchableList.tsx and tests in test/SearchableList.test.tsx using @testing-library/react with bun:test.",
+    "context": {
+      "language": "typescript",
+      "difficulty": "intermediate",
+      "category": "web",
+      "workspace": {
+        "files": {
+          "package.json": "{ \"name\": \"searchable-list\", \"type\": \"module\", \"scripts\": { \"test\": \"bun test\" }, \"dependencies\": { \"react\": \"^18.3\", \"react-dom\": \"^18.3\" }, \"devDependencies\": { \"typescript\": \"^5.4\", \"@types/react\": \"^18\", \"@types/react-dom\": \"^18\", \"@types/bun\": \"latest\", \"@testing-library/react\": \"^16\", \"@testing-library/user-event\": \"^14\", \"@testing-library/jest-dom\": \"^6\", \"happy-dom\": \"^14\" } }",
+          "tsconfig.json": "{ \"compilerOptions\": { \"target\": \"ES2022\", \"module\": \"ESNext\", \"moduleResolution\": \"bundler\", \"strict\": true, \"jsx\": \"react-jsx\", \"types\": [\"bun-types\"] }, \"include\": [\"src\", \"test\"] }",
+          "bunfig.toml": "[test]\npreload = [\"happy-dom\"]"
+        }
+      }
+    },
+    "evaluation": {
+      "must_produce_files": [
+        "src/SearchableList.tsx",
+        "test/SearchableList.test.tsx"
+      ],
+      "test_commands": ["bun test"],
+      "test_assertions": [
+        {
+          "type": "file_exists",
+          "target": "src/SearchableList.tsx",
+          "expected": true
+        },
+        {
+          "type": "file_contains",
+          "target": "src/SearchableList.tsx",
+          "expected": "role=\"listbox\""
+        },
+        {
+          "type": "file_contains",
+          "target": "src/SearchableList.tsx",
+          "expected": "aria-selected"
+        },
+        {
+          "type": "file_contains",
+          "target": "src/SearchableList.tsx",
+          "expected": "data-active"
+        },
+        {
+          "type": "test_passes",
+          "target": "bun test",
+          "expected": "pass"
+        }
+      ],
+      "quality_criteria": {
+        "correctness": "Filtering, keyboard navigation, selection, and accessibility attributes all work correctly",
+        "code_quality": "Proper React hooks usage, typed props interface, debounce implemented correctly (not just setTimeout), no any types",
+        "completeness": "All 7 requirements met including debounce, aria attributes, and empty state"
+      },
+      "scoring": {
+        "max_score": 10,
+        "rubric": {
+          "0-2": "Component renders but filtering or keyboard navigation is broken",
+          "3-4": "Filtering works but keyboard nav is incomplete or accessibility attributes missing",
+          "5-6": "Core functionality works but debounce, empty state, or some aria attributes missing",
+          "7-8": "All features work, tests pass, minor accessibility gaps or debounce timing issues",
+          "9-10": "Full implementation with correct debounce, complete accessibility, comprehensive tests for all interactions"
+        }
+      }
+    }
+  },
+  {
+    "id": "code-007",
+    "type": "coding",
+    "prompt": "Write a TypeScript module in src/query-builder.ts that implements a type-safe SQL query builder for SELECT statements (no actual database needed - it builds SQL strings). Requirements: (1) Chainable API: select(...columns).from(table).where(conditions).orderBy(column, direction).limit(n).offset(n).build() returns { sql: string, params: unknown[] }. (2) Where conditions use parameterized queries ($1, $2, etc.) to prevent SQL injection. Support: .where('age', '>', 30) and .where('name', '=', 'Alice') and .andWhere(...) and .orWhere(...). (3) Support .join('table', 'left.id', '=', 'right.foreign_id') and .leftJoin(...) with the same signature. (4) Support .groupBy(...columns).having(column, op, value). (5) .build() returns the final SQL string and the ordered params array. (6) Calling .build() multiple times returns the same result (immutable). (7) Throw descriptive errors for invalid usage (e.g., where without from, negative limit). Write tests in test/query-builder.test.ts.",
+    "context": {
+      "language": "typescript",
+      "difficulty": "advanced",
+      "category": "data",
+      "workspace": {
+        "files": {
+          "package.json": "{ \"name\": \"query-builder\", \"type\": \"module\", \"scripts\": { \"test\": \"bun test\" }, \"devDependencies\": { \"typescript\": \"^5.4\", \"@types/bun\": \"latest\" } }",
+          "tsconfig.json": "{ \"compilerOptions\": { \"target\": \"ES2022\", \"module\": \"ESNext\", \"moduleResolution\": \"bundler\", \"strict\": true }, \"include\": [\"src\", \"test\"] }"
+        }
+      }
+    },
+    "evaluation": {
+      "must_produce_files": [
+        "src/query-builder.ts",
+        "test/query-builder.test.ts"
+      ],
+      "test_commands": ["bun test"],
+      "test_assertions": [
+        {
+          "type": "file_exists",
+          "target": "src/query-builder.ts",
+          "expected": true
+        },
+        {
+          "type": "file_contains",
+          "target": "src/query-builder.ts",
+          "expected": "build()"
+        },
+        {
+          "type": "file_contains",
+          "target": "src/query-builder.ts",
+          "expected": "params"
+        },
+        {
+          "type": "test_passes",
+          "target": "bun test",
+          "expected": "pass"
+        }
+      ],
+      "quality_criteria": {
+        "correctness": "Generated SQL is syntactically valid, params are correctly ordered, parameterized queries prevent injection",
+        "code_quality": "Fluent chainable API with proper TypeScript return types, immutable build, no string concatenation of user values",
+        "completeness": "All 7 requirements met including joins, groupBy/having, error handling for invalid usage"
+      },
+      "scoring": {
+        "max_score": 10,
+        "rubric": {
+          "0-2": "Module exists but chainable API or build() does not work",
+          "3-4": "Basic select/from/where works but joins, groupBy, or parameterization broken",
+          "5-6": "Most query features work, parameterization correct, but missing joins or having or error validation",
+          "7-8": "All features work, parameterized queries correct, tests cover main paths, minor edge case gaps",
+          "9-10": "Complete type-safe builder with all clauses, proper parameterization, immutable build, comprehensive tests and error handling"
+        }
+      }
+    }
+  },
+  {
+    "id": "code-008",
+    "type": "coding",
+    "prompt": "Write a comprehensive test suite for the following EventEmitter class. The test suite should achieve >95% line coverage and >90% branch coverage. Test edge cases thoroughly: double-subscribe, listener removal during emission, max listeners, wildcard events, once listeners removing themselves, errors in listeners, and async listeners. Write tests in test/event-emitter.test.ts using bun:test. Do NOT modify the source file.",
+    "context": {
+      "language": "typescript",
+      "difficulty": "intermediate",
+      "category": "testing",
+      "workspace": {
+        "files": {
+          "package.json": "{ \"name\": \"event-emitter-tests\", \"type\": \"module\", \"scripts\": { \"test\": \"bun test\", \"test:coverage\": \"bun test --coverage\" }, \"devDependencies\": { \"typescript\": \"^5.4\", \"@types/bun\": \"latest\" } }",
+          "tsconfig.json": "{ \"compilerOptions\": { \"target\": \"ES2022\", \"module\": \"ESNext\", \"moduleResolution\": \"bundler\", \"strict\": true }, \"include\": [\"src\", \"test\"] }",
+          "src/event-emitter.ts": "type Listener = (...args: unknown[]) => void | Promise<void>;\n\nexport class EventEmitter {\n  private listeners: Map<string, Set<Listener>> = new Map();\n  private onceListeners: WeakSet<Listener> = new WeakSet();\n  private maxListeners: number = 10;\n\n  /**\n   * Set the maximum number of listeners per event.\n   * 0 means unlimited.\n   */\n  setMaxListeners(n: number): this {\n    if (n < 0) throw new RangeError('Max listeners must be non-negative');\n    this.maxListeners = n;\n    return this;\n  }\n\n  getMaxListeners(): number {\n    return this.maxListeners;\n  }\n\n  /**\n   * Register a listener for an event.\n   * Supports wildcard '*' to listen to all events.\n   */\n  on(event: string, listener: Listener): this {\n    if (!this.listeners.has(event)) {\n      this.listeners.set(event, new Set());\n    }\n    const set = this.listeners.get(event)!;\n    if (this.maxListeners > 0 && set.size >= this.maxListeners) {\n      console.warn(\n        `MaxListenersExceededWarning: ${set.size + 1} ${event} listeners added. Max is ${this.maxListeners}.`\n      );\n    }\n    set.add(listener);\n    return this;\n  }\n\n  /**\n   * Register a one-time listener.\n   */\n  once(event: string, listener: Listener): this {\n    this.onceListeners.add(listener);\n    return this.on(event, listener);\n  }\n\n  /**\n   * Remove a listener for an event.\n   */\n  off(event: string, listener: Listener): this {\n    const set = this.listeners.get(event);\n    if (set) {\n      set.delete(listener);\n      if (set.size === 0) this.listeners.delete(event);\n    }\n    return this;\n  }\n\n  /**\n   * Remove all listeners, optionally for a specific event.\n   */\n  removeAllListeners(event?: string): this {\n    if (event) {\n      this.listeners.delete(event);\n    } else {\n      this.listeners.clear();\n    }\n    return this;\n  }\n\n  /**\n   * Emit an event. Calls all listeners synchronously.\n   * If a listener is a once-listener, it is removed after invocation.\n   * If a listener throws, emission continues and the error is collected.\n   * Returns { fired: number, errors: Error[] }.\n   */\n  emit(event: string, ...args: unknown[]): { fired: number; errors: Error[] } {\n    const errors: Error[] = [];\n    let fired = 0;\n\n    const invoke = (set: Set<Listener> | undefined) => {\n      if (!set) return;\n      for (const listener of [...set]) {\n        try {\n          listener(...args);\n          fired++;\n          if (this.onceListeners.has(listener)) {\n            set.delete(listener);\n            this.onceListeners.delete(listener);\n          }\n        } catch (err) {\n          errors.push(err instanceof Error ? err : new Error(String(err)));\n          fired++;\n          if (this.onceListeners.has(listener)) {\n            set.delete(listener);\n            this.onceListeners.delete(listener);\n          }\n        }\n      }\n    };\n\n    invoke(this.listeners.get(event));\n    if (event !== '*') invoke(this.listeners.get('*'));\n\n    return { fired, errors };\n  }\n\n  /**\n   * Async emit - awaits each listener sequentially.\n   */\n  async emitAsync(event: string, ...args: unknown[]): Promise<{ fired: number; errors: Error[] }> {\n    const errors: Error[] = [];\n    let fired = 0;\n\n    const invoke = async (set: Set<Listener> | undefined) => {\n      if (!set) return;\n      for (const listener of [...set]) {\n        try {\n          await listener(...args);\n          fired++;\n          if (this.onceListeners.has(listener)) {\n            set.delete(listener);\n            this.onceListeners.delete(listener);\n          }\n        } catch (err) {\n          errors.push(err instanceof Error ? err : new Error(String(err)));\n          fired++;\n          if (this.onceListeners.has(listener)) {\n            set.delete(listener);\n            this.onceListeners.delete(listener);\n          }\n        }\n      }\n    };\n\n    await invoke(this.listeners.get(event));\n    if (event !== '*') await invoke(this.listeners.get('*'));\n\n    return { fired, errors };\n  }\n\n  /**\n   * Return event names that have listeners.\n   */\n  eventNames(): string[] {\n    return [...this.listeners.keys()];\n  }\n\n  /**\n   * Return the number of listeners for an event.\n   */\n  listenerCount(event: string): number {\n    return this.listeners.get(event)?.size ?? 0;\n  }\n}\n"
+        }
+      }
+    },
+    "evaluation": {
+      "must_produce_files": ["test/event-emitter.test.ts"],
+      "test_commands": ["bun test", "bun test --coverage"],
+      "test_assertions": [
+        {
+          "type": "file_exists",
+          "target": "test/event-emitter.test.ts",
+          "expected": true
+        },
+        {
+          "type": "file_contains",
+          "target": "test/event-emitter.test.ts",
+          "expected": "describe"
+        },
+        {
+          "type": "test_passes",
+          "target": "bun test",
+          "expected": "pass"
+        },
+        {
+          "type": "command_output",
+          "target": "bun test --coverage 2>&1 | grep event-emitter.ts",
+          "expected": "9[0-9]"
+        }
+      ],
+      "quality_criteria": {
+        "correctness": "All tests pass and accurately verify the behavior described in the EventEmitter source",
+        "code_quality": "Tests are well-organized with describe blocks, use clear assertion messages, avoid testing implementation details",
+        "completeness": ">95% line coverage, >90% branch coverage, edge cases covered (double-subscribe, remove during emit, once, async, errors, wildcard)"
+      },
+      "scoring": {
+        "max_score": 10,
+        "rubric": {
+          "0-2": "Test file created but most tests fail or only trivial tests written",
+          "3-4": "Basic tests pass (on/emit/off) but edge cases and coverage targets not met",
+          "5-6": "Good coverage of basic operations, some edge cases, ~80% line coverage",
+          "7-8": "Thorough tests including once, wildcard, errors, async; ~90% line coverage",
+          "9-10": ">95% line, >90% branch coverage with edge cases: remove during emit, maxListeners warning, once self-removal, error collection"
+        }
+      }
+    }
+  },
+  {
+    "id": "code-009",
+    "type": "coding",
+    "prompt": "Refactor the following ConfigManager module to improve code quality WITHOUT changing its public API or behavior. The current implementation works but has problems: god-class with too many responsibilities, mutation of shared state, poor error handling (swallows errors silently), string-based type checking, duplicated validation logic, and no separation of concerns. Refactor into well-structured modules while keeping the same public interface (ConfigManager class with the same method signatures). All existing tests must continue to pass.\n\nHere is the current implementation to refactor:\n\n```typescript\n// src/config-manager.ts\n\n/**\n * ConfigManager - manages application configuration with validation,\n * environment variable overrides, and persistence.\n *\n * This code WORKS but is poorly structured. Refactor it.\n */\n\ntype ConfigValue = string | number | boolean | null;\n\ninterface ConfigSchema {\n  [key: string]: {\n    type: string;\n    required?: boolean;\n    default?: ConfigValue;\n    validate?: (value: ConfigValue) => boolean;\n    envVar?: string;\n  };\n}\n\nexport class ConfigManager {\n  private config: Record<string, ConfigValue> = {};\n  private schema: ConfigSchema = {};\n  private listeners: Array<(key: string, value: ConfigValue) => void> = [];\n  private dirty = false;\n  private filePath: string | null = null;\n\n  constructor(schema?: ConfigSchema) {\n    if (schema) this.schema = schema;\n  }\n\n  setSchema(schema: ConfigSchema): void {\n    this.schema = schema;\n    // Re-validate all existing config\n    for (const key of Object.keys(this.config)) {\n      if (this.schema[key]) {\n        // Duplicated validation logic (same as in set())\n        const def = this.schema[key];\n        const val = this.config[key];\n        if (def.type === 'string' && typeof val !== 'string' && val !== null) {\n          delete this.config[key];\n        }\n        if (def.type === 'number' && typeof val !== 'number' && val !== null) {\n          delete this.config[key];\n        }\n        if (def.type === 'boolean' && typeof val !== 'boolean' && val !== null) {\n          delete this.config[key];\n        }\n        if (def.validate && val !== null && !def.validate(val)) {\n          delete this.config[key];\n        }\n      }\n    }\n  }\n\n  get(key: string): ConfigValue {\n    // Check env var override\n    if (this.schema[key]?.envVar) {\n      const envVal = process.env[this.schema[key].envVar!];\n      if (envVal !== undefined) {\n        // Duplicated type coercion logic\n        if (this.schema[key].type === 'number') return Number(envVal);\n        if (this.schema[key].type === 'boolean') return envVal === 'true' || envVal === '1';\n        return envVal;\n      }\n    }\n\n    if (key in this.config) return this.config[key];\n\n    // Default\n    if (this.schema[key]?.default !== undefined) {\n      return this.schema[key].default!;\n    }\n\n    return null;\n  }\n\n  set(key: string, value: ConfigValue): void {\n    if (this.schema[key]) {\n      const def = this.schema[key];\n      // Duplicated validation (same as setSchema)\n      if (def.type === 'string' && typeof value !== 'string' && value !== null) {\n        return; // Silently fails\n      }\n      if (def.type === 'number' && typeof value !== 'number' && value !== null) {\n        return; // Silently fails\n      }\n      if (def.type === 'boolean' && typeof value !== 'boolean' && value !== null) {\n        return; // Silently fails\n      }\n      if (def.validate && value !== null && !def.validate(value)) {\n        return; // Silently fails\n      }\n    }\n    this.config[key] = value;\n    this.dirty = true;\n    // Notify listeners\n    for (const listener of this.listeners) {\n      try {\n        listener(key, value);\n      } catch (e) {\n        // Swallowed\n      }\n    }\n  }\n\n  has(key: string): boolean {\n    return key in this.config || (this.schema[key]?.default !== undefined) ||\n      (this.schema[key]?.envVar !== undefined && process.env[this.schema[key].envVar!] !== undefined);\n  }\n\n  delete(key: string): void {\n    delete this.config[key];\n    this.dirty = true;\n  }\n\n  getAll(): Record<string, ConfigValue> {\n    const result: Record<string, ConfigValue> = {};\n    // Get defaults\n    for (const [key, def] of Object.entries(this.schema)) {\n      if (def.default !== undefined) result[key] = def.default;\n    }\n    // Override with set values\n    Object.assign(result, this.config);\n    // Override with env vars\n    for (const [key, def] of Object.entries(this.schema)) {\n      if (def.envVar && process.env[def.envVar] !== undefined) {\n        const envVal = process.env[def.envVar]!;\n        // Duplicated coercion AGAIN\n        if (def.type === 'number') result[key] = Number(envVal);\n        else if (def.type === 'boolean') result[key] = envVal === 'true' || envVal === '1';\n        else result[key] = envVal;\n      }\n    }\n    return result;\n  }\n\n  getRequired(): string[] {\n    return Object.entries(this.schema)\n      .filter(([, def]) => def.required)\n      .map(([key]) => key);\n  }\n\n  validate(): { valid: boolean; errors: string[] } {\n    const errors: string[] = [];\n    for (const [key, def] of Object.entries(this.schema)) {\n      if (def.required && !this.has(key)) {\n        errors.push(`Missing required config: ${key}`);\n      }\n    }\n    return { valid: errors.length === 0, errors };\n  }\n\n  onChange(listener: (key: string, value: ConfigValue) => void): () => void {\n    this.listeners.push(listener);\n    return () => {\n      const idx = this.listeners.indexOf(listener);\n      if (idx >= 0) this.listeners.splice(idx, 1);\n    };\n  }\n\n  isDirty(): boolean {\n    return this.dirty;\n  }\n\n  markClean(): void {\n    this.dirty = false;\n  }\n\n  toJSON(): string {\n    return JSON.stringify(this.config, null, 2);\n  }\n\n  fromJSON(json: string): void {\n    try {\n      const parsed = JSON.parse(json);\n      for (const [key, value] of Object.entries(parsed)) {\n        this.set(key, value as ConfigValue);\n      }\n    } catch {\n      // Silently fails on invalid JSON\n    }\n  }\n}\n```\n\nAnd here are the existing tests that must continue to pass:\n\n```typescript\n// test/config-manager.test.ts\n\nimport { describe, it, expect, beforeEach, afterEach } from 'bun:test';\nimport { ConfigManager } from '../src/config-manager';\n\ndescribe('ConfigManager', () => {\n  let cm: ConfigManager;\n\n  beforeEach(() => {\n    cm = new ConfigManager({\n      appName: { type: 'string', required: true, default: 'MyApp' },\n      port: { type: 'number', required: true, default: 3000, envVar: 'APP_PORT' },\n      debug: { type: 'boolean', default: false, envVar: 'APP_DEBUG' },\n      maxRetries: {\n        type: 'number',\n        default: 3,\n        validate: (v) => typeof v === 'number' && v >= 0 && v <= 10,\n      },\n    });\n  });\n\n  afterEach(() => {\n    delete process.env.APP_PORT;\n    delete process.env.APP_DEBUG;\n  });\n\n  it('returns defaults for unset keys', () => {\n    expect(cm.get('appName')).toBe('MyApp');\n    expect(cm.get('port')).toBe(3000);\n    expect(cm.get('debug')).toBe(false);\n  });\n\n  it('sets and gets values', () => {\n    cm.set('appName', 'TestApp');\n    expect(cm.get('appName')).toBe('TestApp');\n  });\n\n  it('rejects invalid types silently', () => {\n    cm.set('port', 'not-a-number');\n    expect(cm.get('port')).toBe(3000); // default\n  });\n\n  it('rejects values failing custom validation', () => {\n    cm.set('maxRetries', 99);\n    expect(cm.get('maxRetries')).toBe(3); // default, 99 rejected\n  });\n\n  it('allows null values', () => {\n    cm.set('appName', null);\n    expect(cm.get('appName')).toBe(null);\n  });\n\n  it('env var overrides take priority', () => {\n    process.env.APP_PORT = '8080';\n    expect(cm.get('port')).toBe(8080);\n    cm.set('port', 9090);\n    expect(cm.get('port')).toBe(8080); // env still wins\n  });\n\n  it('env var boolean coercion', () => {\n    process.env.APP_DEBUG = 'true';\n    expect(cm.get('debug')).toBe(true);\n    process.env.APP_DEBUG = '1';\n    expect(cm.get('debug')).toBe(true);\n    process.env.APP_DEBUG = 'false';\n    expect(cm.get('debug')).toBe(false);\n  });\n\n  it('has() checks all sources', () => {\n    expect(cm.has('appName')).toBe(true); // default\n    expect(cm.has('unknownKey')).toBe(false);\n    cm.set('customKey', 'val');\n    expect(cm.has('customKey')).toBe(true);\n    process.env.APP_PORT = '8080';\n    expect(cm.has('port')).toBe(true);\n  });\n\n  it('delete removes a key', () => {\n    cm.set('appName', 'X');\n    cm.delete('appName');\n    expect(cm.get('appName')).toBe('MyApp'); // falls back to default\n  });\n\n  it('getAll merges defaults, set values, and env vars', () => {\n    cm.set('appName', 'Hello');\n    process.env.APP_PORT = '4000';\n    const all = cm.getAll();\n    expect(all.appName).toBe('Hello');\n    expect(all.port).toBe(4000);\n    expect(all.debug).toBe(false);\n  });\n\n  it('validate reports missing required fields', () => {\n    const bare = new ConfigManager({ required_key: { type: 'string', required: true } });\n    const result = bare.validate();\n    expect(result.valid).toBe(false);\n    expect(result.errors.length).toBe(1);\n  });\n\n  it('onChange listener fires on set', () => {\n    const calls: [string, unknown][] = [];\n    cm.onChange((k, v) => calls.push([k, v]));\n    cm.set('appName', 'Z');\n    expect(calls).toEqual([['appName', 'Z']]);\n  });\n\n  it('onChange returns unsubscribe function', () => {\n    const calls: string[] = [];\n    const unsub = cm.onChange((k) => calls.push(k));\n    cm.set('appName', 'A');\n    unsub();\n    cm.set('appName', 'B');\n    expect(calls).toEqual(['appName']);\n  });\n\n  it('dirty tracking', () => {\n    expect(cm.isDirty()).toBe(false);\n    cm.set('appName', 'Dirty');\n    expect(cm.isDirty()).toBe(true);\n    cm.markClean();\n    expect(cm.isDirty()).toBe(false);\n  });\n\n  it('toJSON and fromJSON round-trip', () => {\n    cm.set('appName', 'Serialized');\n    cm.set('port', 5000);\n    const json = cm.toJSON();\n    const cm2 = new ConfigManager({\n      appName: { type: 'string' },\n      port: { type: 'number' },\n    });\n    cm2.fromJSON(json);\n    expect(cm2.get('appName')).toBe('Serialized');\n    expect(cm2.get('port')).toBe(5000);\n  });\n\n  it('fromJSON ignores invalid JSON', () => {\n    cm.fromJSON('not valid json{{{');\n    expect(cm.get('appName')).toBe('MyApp'); // unchanged\n  });\n\n  it('setSchema re-validates existing config', () => {\n    cm.set('port', 3000);\n    cm.setSchema({\n      port: { type: 'string', required: true },\n    });\n    // port was number, schema now says string - should be removed\n    expect(cm.get('port')).toBe(null);\n  });\n});\n```",
+    "context": {
+      "language": "typescript",
+      "difficulty": "advanced",
+      "category": "refactor",
+      "workspace": {
+        "files": {
+          "package.json": "{ \"name\": \"config-manager\", \"type\": \"module\", \"scripts\": { \"test\": \"bun test\" }, \"devDependencies\": { \"typescript\": \"^5.4\", \"@types/bun\": \"latest\" } }",
+          "tsconfig.json": "{ \"compilerOptions\": { \"target\": \"ES2022\", \"module\": \"ESNext\", \"moduleResolution\": \"bundler\", \"strict\": true }, \"include\": [\"src\", \"test\"] }",
+          "src/config-manager.ts": "/**\n * ConfigManager - manages application configuration with validation,\n * environment variable overrides, and persistence.\n *\n * This code WORKS but is poorly structured. Refactor it.\n */\n\ntype ConfigValue = string | number | boolean | null;\n\ninterface ConfigSchema {\n  [key: string]: {\n    type: string;\n    required?: boolean;\n    default?: ConfigValue;\n    validate?: (value: ConfigValue) => boolean;\n    envVar?: string;\n  };\n}\n\nexport class ConfigManager {\n  private config: Record<string, ConfigValue> = {};\n  private schema: ConfigSchema = {};\n  private listeners: Array<(key: string, value: ConfigValue) => void> = [];\n  private dirty = false;\n  private filePath: string | null = null;\n\n  constructor(schema?: ConfigSchema) {\n    if (schema) this.schema = schema;\n  }\n\n  setSchema(schema: ConfigSchema): void {\n    this.schema = schema;\n    // Re-validate all existing config\n    for (const key of Object.keys(this.config)) {\n      if (this.schema[key]) {\n        // Duplicated validation logic (same as in set())\n        const def = this.schema[key];\n        const val = this.config[key];\n        if (def.type === 'string' && typeof val !== 'string' && val !== null) {\n          delete this.config[key];\n        }\n        if (def.type === 'number' && typeof val !== 'number' && val !== null) {\n          delete this.config[key];\n        }\n        if (def.type === 'boolean' && typeof val !== 'boolean' && val !== null) {\n          delete this.config[key];\n        }\n        if (def.validate && val !== null && !def.validate(val)) {\n          delete this.config[key];\n        }\n      }\n    }\n  }\n\n  get(key: string): ConfigValue {\n    // Check env var override\n    if (this.schema[key]?.envVar) {\n      const envVal = process.env[this.schema[key].envVar!];\n      if (envVal !== undefined) {\n        // Duplicated type coercion logic\n        if (this.schema[key].type === 'number') return Number(envVal);\n        if (this.schema[key].type === 'boolean') return envVal === 'true' || envVal === '1';\n        return envVal;\n      }\n    }\n\n    if (key in this.config) return this.config[key];\n\n    // Default\n    if (this.schema[key]?.default !== undefined) {\n      return this.schema[key].default!;\n    }\n\n    return null;\n  }\n\n  set(key: string, value: ConfigValue): void {\n    if (this.schema[key]) {\n      const def = this.schema[key];\n      // Duplicated validation (same as setSchema)\n      if (def.type === 'string' && typeof value !== 'string' && value !== null) {\n        return; // Silently fails\n      }\n      if (def.type === 'number' && typeof value !== 'number' && value !== null) {\n        return; // Silently fails\n      }\n      if (def.type === 'boolean' && typeof value !== 'boolean' && value !== null) {\n        return; // Silently fails\n      }\n      if (def.validate && value !== null && !def.validate(value)) {\n        return; // Silently fails\n      }\n    }\n    this.config[key] = value;\n    this.dirty = true;\n    // Notify listeners\n    for (const listener of this.listeners) {\n      try {\n        listener(key, value);\n      } catch (e) {\n        // Swallowed\n      }\n    }\n  }\n\n  has(key: string): boolean {\n    return key in this.config || (this.schema[key]?.default !== undefined) ||\n      (this.schema[key]?.envVar !== undefined && process.env[this.schema[key].envVar!] !== undefined);\n  }\n\n  delete(key: string): void {\n    delete this.config[key];\n    this.dirty = true;\n  }\n\n  getAll(): Record<string, ConfigValue> {\n    const result: Record<string, ConfigValue> = {};\n    // Get defaults\n    for (const [key, def] of Object.entries(this.schema)) {\n      if (def.default !== undefined) result[key] = def.default;\n    }\n    // Override with set values\n    Object.assign(result, this.config);\n    // Override with env vars\n    for (const [key, def] of Object.entries(this.schema)) {\n      if (def.envVar && process.env[def.envVar] !== undefined) {\n        const envVal = process.env[def.envVar]!;\n        // Duplicated coercion AGAIN\n        if (def.type === 'number') result[key] = Number(envVal);\n        else if (def.type === 'boolean') result[key] = envVal === 'true' || envVal === '1';\n        else result[key] = envVal;\n      }\n    }\n    return result;\n  }\n\n  getRequired(): string[] {\n    return Object.entries(this.schema)\n      .filter(([, def]) => def.required)\n      .map(([key]) => key);\n  }\n\n  validate(): { valid: boolean; errors: string[] } {\n    const errors: string[] = [];\n    for (const [key, def] of Object.entries(this.schema)) {\n      if (def.required && !this.has(key)) {\n        errors.push(`Missing required config: ${key}`);\n      }\n    }\n    return { valid: errors.length === 0, errors };\n  }\n\n  onChange(listener: (key: string, value: ConfigValue) => void): () => void {\n    this.listeners.push(listener);\n    return () => {\n      const idx = this.listeners.indexOf(listener);\n      if (idx >= 0) this.listeners.splice(idx, 1);\n    };\n  }\n\n  isDirty(): boolean {\n    return this.dirty;\n  }\n\n  markClean(): void {\n    this.dirty = false;\n  }\n\n  toJSON(): string {\n    return JSON.stringify(this.config, null, 2);\n  }\n\n  fromJSON(json: string): void {\n    try {\n      const parsed = JSON.parse(json);\n      for (const [key, value] of Object.entries(parsed)) {\n        this.set(key, value as ConfigValue);\n      }\n    } catch {\n      // Silently fails on invalid JSON\n    }\n  }\n}\n",
+          "test/config-manager.test.ts": "import { describe, it, expect, beforeEach, afterEach } from 'bun:test';\nimport { ConfigManager } from '../src/config-manager';\n\ndescribe('ConfigManager', () => {\n  let cm: ConfigManager;\n\n  beforeEach(() => {\n    cm = new ConfigManager({\n      appName: { type: 'string', required: true, default: 'MyApp' },\n      port: { type: 'number', required: true, default: 3000, envVar: 'APP_PORT' },\n      debug: { type: 'boolean', default: false, envVar: 'APP_DEBUG' },\n      maxRetries: {\n        type: 'number',\n        default: 3,\n        validate: (v) => typeof v === 'number' && v >= 0 && v <= 10,\n      },\n    });\n  });\n\n  afterEach(() => {\n    delete process.env.APP_PORT;\n    delete process.env.APP_DEBUG;\n  });\n\n  it('returns defaults for unset keys', () => {\n    expect(cm.get('appName')).toBe('MyApp');\n    expect(cm.get('port')).toBe(3000);\n    expect(cm.get('debug')).toBe(false);\n  });\n\n  it('sets and gets values', () => {\n    cm.set('appName', 'TestApp');\n    expect(cm.get('appName')).toBe('TestApp');\n  });\n\n  it('rejects invalid types silently', () => {\n    cm.set('port', 'not-a-number');\n    expect(cm.get('port')).toBe(3000); // default\n  });\n\n  it('rejects values failing custom validation', () => {\n    cm.set('maxRetries', 99);\n    expect(cm.get('maxRetries')).toBe(3); // default, 99 rejected\n  });\n\n  it('allows null values', () => {\n    cm.set('appName', null);\n    expect(cm.get('appName')).toBe(null);\n  });\n\n  it('env var overrides take priority', () => {\n    process.env.APP_PORT = '8080';\n    expect(cm.get('port')).toBe(8080);\n    cm.set('port', 9090);\n    expect(cm.get('port')).toBe(8080); // env still wins\n  });\n\n  it('env var boolean coercion', () => {\n    process.env.APP_DEBUG = 'true';\n    expect(cm.get('debug')).toBe(true);\n    process.env.APP_DEBUG = '1';\n    expect(cm.get('debug')).toBe(true);\n    process.env.APP_DEBUG = 'false';\n    expect(cm.get('debug')).toBe(false);\n  });\n\n  it('has() checks all sources', () => {\n    expect(cm.has('appName')).toBe(true); // default\n    expect(cm.has('unknownKey')).toBe(false);\n    cm.set('customKey', 'val');\n    expect(cm.has('customKey')).toBe(true);\n    process.env.APP_PORT = '8080';\n    expect(cm.has('port')).toBe(true);\n  });\n\n  it('delete removes a key', () => {\n    cm.set('appName', 'X');\n    cm.delete('appName');\n    expect(cm.get('appName')).toBe('MyApp'); // falls back to default\n  });\n\n  it('getAll merges defaults, set values, and env vars', () => {\n    cm.set('appName', 'Hello');\n    process.env.APP_PORT = '4000';\n    const all = cm.getAll();\n    expect(all.appName).toBe('Hello');\n    expect(all.port).toBe(4000);\n    expect(all.debug).toBe(false);\n  });\n\n  it('validate reports missing required fields', () => {\n    const bare = new ConfigManager({ required_key: { type: 'string', required: true } });\n    const result = bare.validate();\n    expect(result.valid).toBe(false);\n    expect(result.errors.length).toBe(1);\n  });\n\n  it('onChange listener fires on set', () => {\n    const calls: [string, unknown][] = [];\n    cm.onChange((k, v) => calls.push([k, v]));\n    cm.set('appName', 'Z');\n    expect(calls).toEqual([['appName', 'Z']]);\n  });\n\n  it('onChange returns unsubscribe function', () => {\n    const calls: string[] = [];\n    const unsub = cm.onChange((k) => calls.push(k));\n    cm.set('appName', 'A');\n    unsub();\n    cm.set('appName', 'B');\n    expect(calls).toEqual(['appName']);\n  });\n\n  it('dirty tracking', () => {\n    expect(cm.isDirty()).toBe(false);\n    cm.set('appName', 'Dirty');\n    expect(cm.isDirty()).toBe(true);\n    cm.markClean();\n    expect(cm.isDirty()).toBe(false);\n  });\n\n  it('toJSON and fromJSON round-trip', () => {\n    cm.set('appName', 'Serialized');\n    cm.set('port', 5000);\n    const json = cm.toJSON();\n    const cm2 = new ConfigManager({\n      appName: { type: 'string' },\n      port: { type: 'number' },\n    });\n    cm2.fromJSON(json);\n    expect(cm2.get('appName')).toBe('Serialized');\n    expect(cm2.get('port')).toBe(5000);\n  });\n\n  it('fromJSON ignores invalid JSON', () => {\n    cm.fromJSON('not valid json{{{');\n    expect(cm.get('appName')).toBe('MyApp'); // unchanged\n  });\n\n  it('setSchema re-validates existing config', () => {\n    cm.set('port', 3000);\n    cm.setSchema({\n      port: { type: 'string', required: true },\n    });\n    // port was number, schema now says string - should be removed\n    expect(cm.get('port')).toBe(null);\n  });\n});\n"
+        }
+      }
+    },
+    "evaluation": {
+      "must_produce_files": ["src/config-manager.ts"],
+      "test_commands": ["bun test"],
+      "test_assertions": [
+        {
+          "type": "file_exists",
+          "target": "src/config-manager.ts",
+          "expected": true
+        },
+        {
+          "type": "file_contains",
+          "target": "src/config-manager.ts",
+          "expected": "export class ConfigManager"
+        },
+        {
+          "type": "test_passes",
+          "target": "bun test",
+          "expected": "pass"
+        }
+      ],
+      "quality_criteria": {
+        "correctness": "All existing tests pass without modification, public API unchanged",
+        "code_quality": "Validation logic extracted and deduplicated, type coercion centralized, error handling improved (not swallowed), concerns separated into focused helpers or classes",
+        "completeness": "All identified problems addressed: god-class split, validation deduplication, type coercion centralized, error handling explicit, no string-based type checking"
+      },
+      "scoring": {
+        "max_score": 10,
+        "rubric": {
+          "0-2": "Refactored code but tests fail or public API changed",
+          "3-4": "Tests pass but only cosmetic changes made, core problems remain",
+          "5-6": "Some duplication removed but still a god-class or errors still swallowed",
+          "7-8": "Good separation, validation deduplicated, most problems addressed, all tests pass",
+          "9-10": "Clean architecture with extracted validators, coercers, event system; all problems solved; tests pass; code is significantly more maintainable"
+        }
+      }
+    }
+  },
+  {
+    "id": "code-010",
+    "type": "coding",
+    "prompt": "Build a full-stack feature: a real-time markdown notepad with live preview. Backend: A Hono API with (1) POST /notes - create a note { title: string, content: string }, returns { id, title, content, createdAt, updatedAt }. (2) GET /notes/:id - fetch a note. (3) PUT /notes/:id - update content, returns updated note with new updatedAt. (4) GET /notes - list all notes (title, id, updatedAt only). Store notes in-memory. Frontend: A React component <NoteEditor /> that (5) renders a split-pane editor: left side is a textarea for markdown input, right side shows rendered HTML preview (use a simple markdown-to-HTML converter - handle headers, bold, italic, code blocks, links, lists). (6) Auto-saves to the API with 500ms debounce after typing stops. (7) Shows a 'Saving...' / 'Saved' status indicator. Write the API in src/api.ts, the React component in src/NoteEditor.tsx, a simple markdown parser in src/markdown.ts, and tests for the markdown parser in test/markdown.test.ts.",
+    "context": {
+      "language": "typescript",
+      "difficulty": "advanced",
+      "category": "fullstack",
+      "workspace": {
+        "files": {
+          "package.json": "{ \"name\": \"markdown-notepad\", \"type\": \"module\", \"scripts\": { \"test\": \"bun test\", \"dev\": \"bun --hot src/server.ts\" }, \"dependencies\": { \"hono\": \"^4.4\", \"react\": \"^18.3\", \"react-dom\": \"^18.3\" }, \"devDependencies\": { \"typescript\": \"^5.4\", \"@types/react\": \"^18\", \"@types/react-dom\": \"^18\", \"@types/bun\": \"latest\" } }",
+          "tsconfig.json": "{ \"compilerOptions\": { \"target\": \"ES2022\", \"module\": \"ESNext\", \"moduleResolution\": \"bundler\", \"strict\": true, \"jsx\": \"react-jsx\", \"types\": [\"bun-types\"] }, \"include\": [\"src\", \"test\"] }",
+          "src/server.ts": "import { app } from './api';\n\nexport default { port: 3000, fetch: app.fetch };\n"
+        }
+      }
+    },
+    "evaluation": {
+      "must_produce_files": [
+        "src/api.ts",
+        "src/NoteEditor.tsx",
+        "src/markdown.ts",
+        "test/markdown.test.ts"
+      ],
+      "test_commands": ["bun test"],
+      "test_assertions": [
+        {
+          "type": "file_exists",
+          "target": "src/api.ts",
+          "expected": true
+        },
+        {
+          "type": "file_exists",
+          "target": "src/NoteEditor.tsx",
+          "expected": true
+        },
+        {
+          "type": "file_exists",
+          "target": "src/markdown.ts",
+          "expected": true
+        },
+        {
+          "type": "file_contains",
+          "target": "src/api.ts",
+          "expected": "Hono"
+        },
+        {
+          "type": "file_contains",
+          "target": "src/NoteEditor.tsx",
+          "expected": "Sav"
+        },
+        {
+          "type": "file_contains",
+          "target": "src/markdown.ts",
+          "expected": "export"
+        },
+        {
+          "type": "test_passes",
+          "target": "bun test",
+          "expected": "pass"
+        }
+      ],
+      "quality_criteria": {
+        "correctness": "API CRUD operations work, markdown parser handles specified syntax, component renders split pane with live preview",
+        "code_quality": "Typed interfaces for Note, clean separation between API/component/parser, proper React hooks, no any types",
+        "completeness": "All 7 requirements met: 4 API routes, split-pane editor, auto-save with debounce, save status indicator, markdown parser with tests"
+      },
+      "scoring": {
+        "max_score": 10,
+        "rubric": {
+          "0-2": "Files created but API or component does not work",
+          "3-4": "API works for basic CRUD, but markdown parser or component is incomplete",
+          "5-6": "API and parser work, component renders but auto-save or live preview is broken",
+          "7-8": "All features functional, tests pass, minor issues in markdown edge cases or save indicator UX",
+          "9-10": "Complete polished implementation: full API, working component with debounced auto-save and status, comprehensive markdown parsing, thorough tests"
+        }
+      }
+    }
+  }
+]

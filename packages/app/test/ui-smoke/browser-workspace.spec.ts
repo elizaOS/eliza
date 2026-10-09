@@ -6,6 +6,7 @@
  */
 import { type APIRequestContext, expect, test } from "@playwright/test";
 import {
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -126,7 +127,7 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
     await expect(newTabButton).toBeHidden();
     await expect(closeAllButton).toBeHidden();
   } else {
-    await expect(goButton).toBeVisible();
+    await expect(goButton).toBeVisible({ timeout: 120_000 });
     await expect(newTabButton).toBeVisible({ timeout: 120_000 });
     await expect(closeAllButton).toBeVisible({ timeout: 120_000 });
   }
@@ -320,6 +321,43 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await resetBrowserWorkspaceTabs(request);
+  // Focusing an empty composer deliberately stays collapsed. This geometry
+  // case needs a restored thread to exercise the expanded overlay.
+  const conversation = {
+    id: "browser-geometry-thread",
+    roomId: "browser-geometry-room",
+    title: "Browser review",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const threadText = "The browser review is ready to continue.";
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({ json: { conversations: [conversation] } });
+  });
+  await page.route(`**/api/conversations/${conversation.id}`, async (route) => {
+    if (!["GET", "PATCH"].includes(route.request().method()))
+      return route.fallback();
+    await route.fulfill({ json: { conversation } });
+  });
+  await page.route(
+    `**/api/conversations/${conversation.id}/messages**`,
+    async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({
+        json: {
+          messages: [
+            {
+              id: "browser-review-message",
+              role: "assistant",
+              text: threadText,
+              timestamp: Date.now(),
+            },
+          ],
+        },
+      });
+    },
+  );
   await openAppPath(page, "/browser");
   const browserWorkspaceView = page.getByTestId("browser-workspace-view");
   await expect(browserWorkspaceView).toBeVisible({ timeout: 60_000 });
@@ -481,22 +519,37 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
       shellBottomGap: 84,
     });
 
+  // The synthetic inset phase precedes a viewport resize. Wait for the real
+  // resting composer publisher before comparing the closed and open layouts.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const sheet = document.querySelector<HTMLElement>(
+          '[data-testid="chat-sheet"]',
+        );
+        if (!sheet || sheet.dataset.detent !== "collapsed") return false;
+        const clearance = Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--eliza-chat-clearance",
+          ),
+        );
+        // Routed content reserves the resting composer and its 8px gap.
+        const restingFootprint = sheet.getBoundingClientRect().height + 8;
+        return Math.abs(clearance - restingFootprint) < 1;
+      }),
+    )
+    .toBe(true);
+
   const surfaceBeforeChatOpen = await pageSurface.boundingBox();
   const surfaceBeforeChatOpenBottom =
     (surfaceBeforeChatOpen?.y ?? 0) + (surfaceBeforeChatOpen?.height ?? 0);
 
-  const composer = page.getByRole("combobox", { name: "message" });
-  // The shell does not reveal an empty history on focus. Send through the
-  // controlled local API fixture so the geometry check measures a real thread.
-  await composer.fill("Browser overlay geometry proof");
-  await composer.press("Enter");
+  const composer = page.getByRole("textbox", { name: "message" });
+  await composer.focus();
   const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
   await expect(
-    page
-      .getByTestId("thread-line")
-      .filter({ hasText: "Browser overlay geometry proof" })
-      .first(),
+    chatOverlay.getByText(threadText, { exact: true }),
   ).toBeVisible();
   const expandedGeometry = await page.evaluate(() => {
     const surface = document.querySelector<HTMLElement>(
@@ -770,7 +823,7 @@ test("browser iframe focus handoff survives delayed autofocus without stealing d
   if (!isBrowserWorkspaceSmokeSnapshot(snapshot) || !snapshot.tabs[0]) return;
   const tabId = snapshot.tabs[0].id;
 
-  const composer = page.getByRole("combobox", { name: "message" });
+  const composer = page.getByRole("textbox", { name: "message" });
   // The page may remain under a stationary pointer while the user types in
   // chat. Hover alone must not authorize a later page autofocus.
   await iframe.hover();
@@ -838,3 +891,316 @@ test("browser iframe focus handoff survives delayed autofocus without stealing d
     .poll(() => page.evaluate(() => document.activeElement?.tagName ?? null))
     .toBe("IFRAME");
 });
+
+test("mobile browser menu keeps its gesture when a loading iframe takes focus", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await resetBrowserWorkspaceTabs(request);
+  await openAppPath(page, "/browser");
+  const fixtureOrigin = `http://localhost:${new URL(page.url()).port}`;
+  const fixtureUrl = `${fixtureOrigin}/__browser-menu-focus`;
+  let releaseLoad = () => {};
+  const loadRelease = new Promise<void>((resolve) => {
+    releaseLoad = resolve;
+  });
+  await page.route(`${fixtureOrigin}/__browser-menu-*`, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/__browser-menu-load.svg") {
+      await loadRelease;
+      await route.fulfill({
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>',
+      });
+      return;
+    }
+    await route.fulfill({
+      contentType: "text/html",
+      body: `<!doctype html><html><body>
+        <input aria-label="Embedded page input" />
+        ${url.searchParams.has("held") ? '<img src="/__browser-menu-load.svg" alt="delayed" />' : ""}
+      </body></html>`,
+    });
+  });
+  try {
+    const workspace = page.getByTestId("browser-workspace-view");
+    const address = workspace.getByTestId("browser-workspace-address-input");
+    const more = workspace.getByTestId("browser-workspace-mobile-more");
+    const menu = page.getByRole("menu");
+    const close = page.getByRole("menuitem", {
+      name: "Close all tabs",
+      exact: true,
+    });
+    const iframe = workspace.locator("iframe");
+    const embeddedInput = page
+      .frameLocator("iframe")
+      .getByRole("textbox", { name: "Embedded page input" });
+    const closeRequests: string[] = [];
+    page.on("request", (outgoing) => {
+      if (
+        outgoing.method() === "DELETE" &&
+        outgoing.url().includes("/api/browser-workspace/tabs/")
+      ) {
+        closeRequests.push(outgoing.url());
+      }
+    });
+    await address.fill(fixtureUrl);
+    await address.press("Enter");
+    await expect(embeddedInput).toBeVisible();
+
+    // Keyboard selection still runs the menu action through its normal path.
+    await more.press("ArrowDown");
+    await expect(
+      page.getByRole("menuitem", { name: "New tab", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(
+      page.getByRole("menuitem", { name: "Refresh", exact: true }),
+    ).toBeFocused();
+    await Promise.all([
+      page.waitForRequest(
+        (outgoing) =>
+          outgoing.isNavigationRequest() && outgoing.url() === fixtureUrl,
+      ),
+      page.keyboard.press("Enter"),
+    ]);
+    await expect(menu).toBeHidden();
+    await expect(embeddedInput).toBeVisible();
+
+    await more.click();
+    await expect(close).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await embeddedInput.click();
+    await expect(embeddedInput).toBeFocused();
+
+    const addressBounds = await address.boundingBox();
+    if (!addressBounds)
+      throw new Error("Browser address control has no bounds");
+    const outside = {
+      x: addressBounds.x + addressBounds.width / 2,
+      y: addressBounds.y + addressBounds.height / 2,
+    };
+    await more.click();
+    await expect(close).toBeVisible();
+    await page.mouse.click(outside.x, outside.y);
+    await expect(menu).toBeHidden();
+    await embeddedInput.click();
+    await expect(embeddedInput).toBeFocused();
+
+    // A press dragged away from Close all tabs must not perform that mutation.
+    await more.click();
+    await close.hover();
+    const cancelBounds = await close.boundingBox();
+    if (!cancelBounds) throw new Error("Close menu item has no bounds");
+    await page.mouse.move(
+      cancelBounds.x + cancelBounds.width / 2,
+      cancelBounds.y + cancelBounds.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(outside.x, outside.y);
+    await page.mouse.up();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    expect(closeRequests).toEqual([]);
+
+    const heldUrl = `${fixtureUrl}?held=1`;
+    await address.fill(heldUrl);
+    await address.press("Enter");
+    await expect(iframe).toHaveAttribute("src", heldUrl, { timeout: 10_000 });
+    await more.click();
+    await close.hover();
+    const bounds = await close.boundingBox();
+    if (!bounds) throw new Error("Close menu item has no bounds");
+    await page.mouse.move(
+      bounds.x + bounds.width / 2,
+      bounds.y + bounds.height / 2,
+    );
+    await page.mouse.down();
+    releaseLoad();
+    const frame = page
+      .frames()
+      .find((candidate) => candidate.url() === heldUrl);
+    if (!frame) throw new Error("Controlled loading frame is missing");
+    await frame.waitForLoadState("load");
+    await frame
+      .getByRole("textbox", { name: "Embedded page input" })
+      .evaluate((element) => {
+        if (!(element instanceof HTMLInputElement))
+          throw new Error("Fixture input missing");
+        element.focus();
+      });
+    await page.mouse.up();
+    await expect(menu).toBeHidden();
+    await expect.poll(() => closeRequests.length).toBe(1);
+    await more.click();
+    await expect(close).toBeDisabled();
+    await page.keyboard.press("Escape");
+  } finally {
+    releaseLoad();
+  }
+});
+
+// Real renderer consent flow. Native child transport and financial endpoints are synthetic.
+for (const viewport of [
+  { name: "desktop", width: 1280, height: 900 },
+  { name: "mobile", width: 393, height: 852 },
+])
+  test(`wallet consent ${viewport.name}`, async ({ page }, info) => {
+    await page.setViewportSize(viewport);
+    await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
+    await installDefaultAppRoutes(page);
+    await page.addInitScript(() => {
+      const replies: Array<{ id: number; payload: { error?: string } }> = [];
+      Reflect.set(window, "__walletReplies", replies);
+      class NativeTab extends HTMLElement {
+        on(name: string, handler: EventListener) {
+          this.addEventListener(name, handler);
+        }
+        off(name: string, handler: EventListener) {
+          this.removeEventListener(name, handler);
+        }
+        executeJavascript(js: string) {
+          const prefix = "window.__elizaWalletReply(";
+          if (!js.startsWith(prefix)) return;
+          const [id, payload] = JSON.parse(
+            `[${js.slice(prefix.length, js.lastIndexOf(")"))}]`,
+          );
+          replies.push({ id, payload });
+        }
+        syncDimensions() {}
+        toggleHidden() {}
+        togglePassthrough() {}
+        loadURL() {}
+        reload() {}
+      }
+      customElements.define("electrobun-webview", NativeTab);
+    });
+    const json = (body: unknown) => ({
+      contentType: "application/json",
+      body: JSON.stringify(body),
+    });
+    const address = "0x1234567890abcdef1234567890abcdef12345678";
+    await page.route("**/api/browser-workspace", (route) =>
+      route.fulfill(
+        json({
+          mode: "desktop",
+          tabs: [
+            {
+              id: "review-tab",
+              title: "Wallet review",
+              url: "https://wallet-review.invalid",
+              partition: "user",
+              visible: true,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              lastFocusedAt: new Date().toISOString(),
+            },
+          ],
+        }),
+      ),
+    );
+    await page.route("**/api/wallet/config", (route) =>
+      route.fulfill(
+        json({
+          configured: true,
+          evmConfigured: true,
+          evmAddress: address,
+          evmSigningCapability: "local",
+          executionReady: true,
+          wallets: [{ chain: "evm", source: "local", address }],
+          primary: { evm: "local" },
+          warnings: [],
+        }),
+      ),
+    );
+    await page.route("**/api/wallet/steward-status", (route) =>
+      route.fulfill(
+        json({ available: false, configured: false, connected: false }),
+      ),
+    );
+    const effects: unknown[] = [];
+    await page.route("**/api/wallet/browser-transaction", (route) => {
+      effects.push(route.request().postDataJSON());
+      return route.fulfill(json({ txHash: "synthetic-receipt" }));
+    });
+    await page.route("**/api/wallet/browser-sign-message", (route) => {
+      effects.push(route.request().postDataJSON());
+      return route.fulfill(json({ signature: "synthetic-signature" }));
+    });
+    await openAppPath(page, "/browser");
+    await hideChatOverlay(page);
+    const tab = page.locator("electrobun-webview");
+    await expect(tab).toHaveCount(1);
+    const send = async (id: number, method: string, params: unknown) =>
+      tab.evaluate(
+        (el, arg) =>
+          el.dispatchEvent(
+            new CustomEvent("host-message", {
+              detail: {
+                type: "__elizaWalletRequest",
+                requestId: arg.id,
+                protocol: "evm",
+                method: arg.method,
+                params: arg.params,
+                hostname: "wallet-review.invalid",
+              },
+            }),
+          ),
+        { id, method, params },
+      );
+    await send(1, "eth_sendTransaction", [
+      { to: address, value: "1", chainId: "0x1" },
+    ]);
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Value: 0.000000000000000001 ETH");
+    await page.screenshot({
+      path: info.outputPath(`${viewport.name}-amount.png`),
+    });
+    await dialog.getByRole("button", { name: "Reject", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    expect(effects).toEqual([]);
+    await send(2, "personal_sign", [" \t0X4869\n", address]);
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Hi");
+    await page.screenshot({
+      path: info.outputPath(`${viewport.name}-message.png`),
+    });
+    await dialog.getByRole("button", { name: "Reject", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    expect(effects).toEqual([]);
+    await send(3, "eth_sendTransaction", [
+      { to: address, value: "1", chainId: "0x1g" },
+    ]);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              Reflect.get(window, "__walletReplies") as Array<{
+                id: number;
+                payload: { error?: string };
+              }>
+            ).find((r) => r.id === 3)?.payload.error,
+        ),
+      )
+      .toMatch(/valid chainId/);
+    await expect(dialog).toBeHidden();
+    expect(effects).toEqual([]);
+    await send(4, "eth_sendTransaction", [
+      { to: address, value: "1", chainId: "0x1" },
+    ]);
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => effects.length).toBe(1);
+    expect(effects[0]).toMatchObject({ to: address, value: "1", chainId: 1 });
+    await expect(dialog).toBeHidden();
+    await send(5, "personal_sign", [" \t0X4869\n", address]);
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Sign", exact: true }).click();
+    await expect.poll(() => effects.length).toBe(2);
+    expect(effects[1]).toEqual({ message: " \t0X4869\n" });
+    await expect(dialog).toBeHidden();
+  });

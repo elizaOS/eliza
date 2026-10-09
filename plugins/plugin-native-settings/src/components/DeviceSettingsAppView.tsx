@@ -7,8 +7,8 @@ import {
   type SystemVolumeStatus,
   type SystemVolumeStream,
 } from "@elizaos/capacitor-system";
-import type { OverlayAppContext } from "@elizaos/shared";
-import { Button, Input } from "@elizaos/ui";
+import { Button, Input, type OverlayAppContext } from "@elizaos/ui";
+
 import {
   ArrowLeft,
   Bell,
@@ -22,7 +22,13 @@ import {
   Volume2,
   Wifi,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 const ROLE_LABELS: Record<AndroidRoleName, string> = {
   home: "Home",
@@ -330,7 +336,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 min={0}
                 max={100}
                 value={percent(brightness)}
-                onChange={(event) =>
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
                   setBrightness(clampUnit(Number(event.target.value) / 100))
                 }
                 className="w-full"
@@ -470,7 +476,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                         min={0}
                         max={volume.max}
                         value={value}
-                        onChange={(event) =>
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
                           setVolumes((current) => ({
                             ...current,
                             [volume.stream]: clampVolumeValue(

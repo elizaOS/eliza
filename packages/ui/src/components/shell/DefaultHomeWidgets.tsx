@@ -18,8 +18,8 @@ import {
   useWeather,
   type WeatherKind,
 } from "../../hooks/useWeather";
-import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
@@ -103,9 +103,14 @@ function WeatherTile(): React.JSX.Element {
           type="button"
           variant="weatherPrompt"
           size="content"
+          className="max-w-full whitespace-normal"
           data-testid="home-weather-enable"
           onClick={() => weather.requestLocation()}
-          aria-label="Enable location to show weather"
+          aria-label={
+            weather.failure
+              ? "Retry weather"
+              : "Enable location to show weather"
+          }
         >
           <Cloud
             className={cn("size-7", WALLPAPER_TEXT.secondary)}
@@ -120,7 +125,15 @@ function WeatherTile(): React.JSX.Element {
               WALLPAPER_TEXT.muted,
             )}
           >
-            Tap to enable location
+            {weather.failure === "location-timeout"
+              ? "Location timed out. Tap to retry."
+              : weather.failure === "location-denied"
+                ? "Location blocked. Check browser settings, then retry."
+                : weather.failure === "location-unavailable"
+                  ? "Location unavailable. Tap to retry."
+                  : weather.failure === "weather-unavailable"
+                    ? "Weather unavailable. Tap to retry."
+                    : "Tap to enable location"}
           </div>
         </Button>
       ) : (

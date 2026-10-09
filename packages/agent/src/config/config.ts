@@ -9,21 +9,32 @@
  * keystore is enabled — wallet private keys, then writes atomically via a temp
  * file + rename with 0600 permissions.
  */
-import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
-import type { ElizaConfig } from "@elizaos/shared";
 import {
+  ElizaError,
+  getElizaNamespace,
+  logger,
+  resolveStateDir,
+  resolveUserPath,
+} from "@elizaos/core";
+import {
+  type ElizaConfig,
   isElizaSettingsDebugEnabled,
   migrateLegacyRuntimeConfig,
+  migrateRetiredSubscriptionChatRoute,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/shared";
+} from "@elizaos/host/protocol";
+import {
+  readConfigEnvSync,
+  resolveConfigEnvPath,
+} from "@elizaos/plugin-elizacloud/lib/config-env";
 import JSON5 from "json5";
-import { readConfigEnvSync, resolveConfigEnvPath } from "../api/config-env.ts";
-import { syncSolanaPublicKeyEnv } from "../api/wallet-env-sync.ts";
+import { syncSolanaPublicKeyEnv } from "../api/wallet-keygen.ts";
 import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
+import { writeFileAtomically } from "../utils/atomic-file.ts";
+import { isProcessOnlyEnvKey } from "./blocked-env-keys.ts";
 import {
   captureDevCloudEnvAuthority,
   createDevCloudConfigAuthorityView,
@@ -35,14 +46,8 @@ import {
 import { collectConfigEnvVars, collectConnectorEnvVars } from "./env-vars.ts";
 import { resolveConfigIncludes } from "./includes.ts";
 import { normalizeModelMetadataInConfig } from "./model-metadata.ts";
-import {
-  getElizaNamespace,
-  resolveConfigPath,
-  resolveStateDir,
-  resolveUserPath,
-} from "./paths.ts";
-
-export type { ElizaConfig } from "@elizaos/shared";
+import { resolveConfigPath } from "./paths.ts";
+import { assertNoRetiredToolRestrictions } from "./retired-tool-policy.ts";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -77,6 +82,11 @@ function migrateRetiredPluginConfig(config: ElizaConfig): void {
 }
 
 function migrateConfig(config: ElizaConfig): void {
+  if (migrateRetiredSubscriptionChatRoute(config as Record<string, unknown>)) {
+    logger.warn(
+      "[eliza] The ChatGPT/Codex subscription no longer powers chat; removed its chat route. It stays linked for coding agents. Choose a chat provider in Settings.",
+    );
+  }
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   migrateRetiredPluginConfig(config);
 }
@@ -118,6 +128,9 @@ function applyConfigEnvToProcessEnv(entries: Record<string, string>): void {
   for (const [key, value] of Object.entries(entries)) {
     if (isDevCloudInternalEnvKey(key)) continue;
     if (devCloudAuthority && isDevCloudEnvOwnedKey(key)) continue;
+    // TEE / protected-profile keys come from the process environment only; a
+    // persisted config.env line must not relax them.
+    if (isProcessOnlyEnvKey(key)) continue;
     // Skip unresolved vault sentinels. The boot-time vault hydration
     // (resolveConfigEnvForProcess + applyCloudConfigToEnv) writes the resolved
     // plaintext to process.env once at startup. Many services call
@@ -214,6 +227,7 @@ export function loadElizaConfig(onReadFile?: ConfigReadObserver): ElizaConfig {
       : { logging: { level: "error" } })) as ElizaConfig;
   migrateConfig(resolved);
   normalizeModelMetadataInConfig(resolved);
+  assertNoRetiredToolRestrictions(resolved);
 
   const skillsJsonPath = path.join(stateDir, "skills.json");
 
@@ -406,29 +420,6 @@ export function loadEffectiveElizaConfigSnapshot(): EffectiveElizaConfigSnapshot
   return snapshot;
 }
 
-function syncDirectory(dir: string): void {
-  let fd: number | undefined;
-  try {
-    fd = fs.openSync(dir, "r");
-    fs.fsyncSync(fd);
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    // Directory fsync is unsupported on Windows and on a small set of
-    // filesystems. Real I/O failures must remain observable to the caller.
-    if (
-      process.platform !== "win32" &&
-      code !== "EINVAL" &&
-      code !== "ENOTSUP" &&
-      code !== "EOPNOTSUPP" &&
-      code !== "EISDIR"
-    ) {
-      throw error;
-    }
-  } finally {
-    if (fd !== undefined) fs.closeSync(fd);
-  }
-}
-
 type RenameSync = (from: fs.PathLike, to: fs.PathLike) => void;
 
 let renameConfigFile: RenameSync = fs.renameSync.bind(fs);
@@ -438,36 +429,6 @@ export function __setConfigRenameSyncForTests(
   renameSync: RenameSync | null,
 ): void {
   renameConfigFile = renameSync ?? fs.renameSync.bind(fs);
-}
-
-function writeFileAtomically(targetPath: string, content: string): void {
-  const dir = path.dirname(targetPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-  const tmpPath = `${targetPath}.tmp.${process.pid}.${randomUUID()}`;
-  let fd: number | undefined;
-  try {
-    fd = fs.openSync(
-      tmpPath,
-      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
-      0o600,
-    );
-    fs.writeFileSync(fd, content, "utf-8");
-    fs.fsyncSync(fd);
-    fs.closeSync(fd);
-    fd = undefined;
-    renameConfigFile(tmpPath, targetPath);
-    syncDirectory(dir);
-  } catch (error) {
-    if (fd !== undefined) fs.closeSync(fd);
-    try {
-      fs.unlinkSync(tmpPath);
-    } catch {
-      // Preserve the original write error. A stale uniquely named temp is safe.
-    }
-    throw error;
-  }
 }
 
 function stripIncludeDirectives(value: unknown): unknown {
@@ -483,7 +444,7 @@ function stripIncludeDirectives(value: unknown): unknown {
   return result;
 }
 
-function isWalletOsStoreEnabledInConfig(config: ElizaConfig): boolean {
+export function isWalletOsStoreEnabledInConfig(config: ElizaConfig): boolean {
   const envConfig = config.env;
   if (!envConfig || typeof envConfig !== "object" || Array.isArray(envConfig)) {
     return false;
@@ -525,6 +486,7 @@ function stripWalletPrivateKeysFromConfig(config: ElizaConfig): void {
 }
 
 export function saveElizaConfig(config: ElizaConfig): void {
+  assertNoRetiredToolRestrictions(config);
   if (isDevCloudConfigAuthorityView(config)) {
     throw new Error(
       "[eliza-config] Refusing to persist an ephemeral dev Cloud authority view",
@@ -554,7 +516,36 @@ export function saveElizaConfig(config: ElizaConfig): void {
     stripWalletPrivateKeysFromConfig(sanitized as ElizaConfig);
   }
 
-  const content = `${JSON.stringify(sanitized, null, 2)}\n`;
+  // Host-managed credentials may be hydrated in memory, but stay outside disk config.
+  const externalNames = process.env.ELIZA_CONFIG_EXTERNAL_SECRET_ENV_VARS;
+  const names =
+    externalNames === undefined || externalNames === ""
+      ? []
+      : externalNames.split(",");
+  if (
+    names.length > 32 ||
+    names.some((name) => !/^[A-Z][A-Z0-9_]{0,127}$/.test(name))
+  ) {
+    throw new ElizaError("Invalid external config secret policy", {
+      code: "CONFIG_EXTERNAL_SECRET_POLICY_INVALID",
+    });
+  }
+  const externalSecrets = new Set(
+    names
+      .map((name) => process.env[name])
+      .filter(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      ),
+  );
+  const content = `${JSON.stringify(
+    sanitized,
+    (_key, value) =>
+      typeof value === "string" && externalSecrets.has(value)
+        ? undefined
+        : value,
+    2,
+  )}\n`;
 
   // Atomic write: write to a temp file then rename. If the process crashes
   // during writeFileSync, only the temp file is corrupted — the original
@@ -576,16 +567,16 @@ export function saveElizaConfig(config: ElizaConfig): void {
   // every subsequent boot. Keep using an existing overlay so stale state can
   // never override a later write to the read-only base file.
   if (mayUseBindMountOverlay && fs.existsSync(bindMountOverlayPath)) {
-    writeFileAtomically(bindMountOverlayPath, content);
+    writeFileAtomically(bindMountOverlayPath, content, renameConfigFile);
     writtenPath = bindMountOverlayPath;
   } else {
     try {
-      writeFileAtomically(realConfigPath, content);
+      writeFileAtomically(realConfigPath, content, renameConfigFile);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "EBUSY" || !mayUseBindMountOverlay) throw error;
       try {
-        writeFileAtomically(bindMountOverlayPath, content);
+        writeFileAtomically(bindMountOverlayPath, content, renameConfigFile);
         writtenPath = bindMountOverlayPath;
         logger.warn(
           `[eliza-config] ${realConfigPath} is not replaceable (EBUSY); persisted config atomically to ${bindMountOverlayPath}`,

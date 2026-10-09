@@ -14,7 +14,6 @@ entry point.
 
 from __future__ import annotations
 
-import sys
 import wave
 from pathlib import Path
 
@@ -24,8 +23,6 @@ import pytest
 # `from _config import load_config` only works when scripts/kokoro/ is on
 # sys.path).
 SCRIPTS_DIR = Path(__file__).resolve().parents[1]
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
 
 
 def _write_silence_wav(path: Path, *, sample_rate: int, duration_s: float) -> None:

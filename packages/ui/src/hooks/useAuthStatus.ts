@@ -19,7 +19,7 @@
 import {
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AuthAccessInfo,
@@ -33,6 +33,8 @@ import { scrubRejectedActiveServerCredential } from "../state/active-server-cred
 import { scrubPersistedAgentProfileTokens } from "../state/agent-profiles";
 import { loadPersistedActiveServer } from "../state/persistence";
 import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
+import { createStartupRecoveryLoop } from "../state/startup-recovery-loop";
+import { STARTUP_TIMING_POLICY } from "../state/startup-timing-policy";
 import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
 
 export type AuthStatusState =
@@ -433,6 +435,7 @@ export function useAuthStatus(options: UseAuthStatusOptions = {}): {
   } = options;
   const [state, setState] = useState<AuthStatusState>(authStatusSnapshot);
   const mountedRef = useRef(true);
+  const serverUnavailable = state.phase === "server_unavailable";
 
   const fetch = useCallback(async () => {
     if (!mountedRef.current) return;
@@ -446,6 +449,30 @@ export function useAuthStatus(options: UseAuthStatusOptions = {}): {
     if (!mountedRef.current) return;
     await ensureAuthStatusProbe();
   }, []);
+
+  useEffect(() => {
+    if (skip || observeOnly || pollIntervalMs === 0 || !serverUnavailable)
+      return;
+    // Reuse startup's capped backoff for an outage after the shell was ready.
+    // Probes retain the same base/session; only an actual auth response can
+    // recover the shell or require reauthentication.
+    const loop = createStartupRecoveryLoop({
+      probe: async () => {
+        await fetch();
+        return (
+          authStatusSnapshot.phase !== "server_unavailable" &&
+          authStatusSnapshot.phase !== "loading"
+        );
+      },
+      policy: STARTUP_TIMING_POLICY,
+    });
+    window.addEventListener("online", loop.notifySignIn);
+    loop.start();
+    return () => {
+      loop.stop();
+      window.removeEventListener("online", loop.notifySignIn);
+    };
+  }, [skip, observeOnly, pollIntervalMs, serverUnavailable, fetch]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -502,6 +529,7 @@ export function useAuthStatus(options: UseAuthStatusOptions = {}): {
             reason: "remote_auth_required",
             access: {
               mode: "remote",
+              role: "GUEST",
               passwordConfigured: false,
               ownerConfigured: true,
             },
@@ -536,7 +564,7 @@ export function useAuthStatus(options: UseAuthStatusOptions = {}): {
     window.addEventListener("steward-token-sync", stewardTokenSyncHandler);
 
     const id =
-      pollIntervalMs === 0
+      pollIntervalMs === 0 || serverUnavailable
         ? null
         : setInterval(() => {
             if (
@@ -570,7 +598,7 @@ export function useAuthStatus(options: UseAuthStatusOptions = {}): {
         document.removeEventListener("visibilitychange", visibilityHandler);
       }
     };
-  }, [skip, observeOnly, pollIntervalMs, fetch]);
+  }, [skip, observeOnly, pollIntervalMs, serverUnavailable, fetch]);
 
   return {
     state:

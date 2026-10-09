@@ -11,7 +11,7 @@
  * and that write no-ops via PLANNER_SHOULDACT_FALSE, so the corresponding
  * store read-back returns "RelationshipStore returned none".
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { relationshipEdgePersisted } from "./_helpers/kg-live-capture.ts";
 
 export default scenario({

@@ -1,63 +1,16 @@
 /** Validates the pinned platform Stripe observation for an existing organization period-end cancellation. Provider drift remains explicit uncertainty; scheduling does not end current access. */
+
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
+import { assertOrganizationSubscription } from "./organization-subscription-source";
+import { organizationSubscriptionObservationSchema as observationSchema } from "./stripe-organization-subscription-observation";
 import {
   resolveSubscriptionPlanDefinition,
   resolveSubscriptionProviderBinding,
 } from "./subscription-catalog";
 
-const seconds = z.number().int().nonnegative().safe();
-const observationSchema = z.object({
-  id: z.string(),
-  object: z.literal("subscription"),
-  livemode: z.boolean(),
-  customer: z.string(),
-  status: z.literal("active"),
-  current_period_start: seconds,
-  current_period_end: seconds,
-  cancel_at_period_end: z.boolean(),
-  cancel_at: seconds.nullable(),
-  canceled_at: seconds.nullable(),
-  ended_at: z.null(),
-  trial_start: seconds.nullable(),
-  trial_end: seconds.nullable(),
-  on_behalf_of: z.null(),
-  transfer_data: z.null(),
-  application_fee_percent: z.null(),
-  schedule: z.null(),
-  pending_update: z.null(),
-  pause_collection: z.null(),
-  items: z.object({
-    has_more: z.literal(false),
-    data: z
-      .array(
-        z.object({
-          id: z.string(),
-          object: z.literal("subscription_item"),
-          quantity: z.literal(1),
-          price: z.object({
-            id: z.string(),
-            product: z.string(),
-            livemode: z.boolean(),
-            currency: z.literal("usd"),
-            unit_amount: z.number().int(),
-            type: z.literal("recurring"),
-            billing_scheme: z.literal("per_unit"),
-            transform_quantity: z.null(),
-            recurring: z.object({
-              interval: z.literal("month"),
-              interval_count: z.literal(1),
-              usage_type: z.literal("licensed"),
-              trial_period_days: z.null(),
-            }),
-          }),
-        }),
-      )
-      .length(1),
-  }),
-});
 export const SUBSCRIPTION_CANCELLATION_REOBSERVE = "SUBSCRIPTION_CANCELLATION_REOBSERVE";
 export function cancellationReobserve(reason: string): never {
   throw new ElizaError("Subscription cancellation requires a fresh authoritative observation", {
@@ -77,6 +30,7 @@ export function validatePeriodEndCancellationObservation(input: {
   allowRetainedCanceledAt?: Date | null;
 }) {
   const { source } = input;
+  assertOrganizationSubscription(source);
   if (
     source.status !== "active" ||
     source.provider !== "stripe" ||
@@ -142,6 +96,7 @@ export function validateCancellationCustomer(input: {
   organizationCustomerId: string | null;
   environment: Record<string, string | undefined>;
 }) {
+  assertOrganizationSubscription(input.source);
   const parsed = z
     .object({
       id: z.string(),

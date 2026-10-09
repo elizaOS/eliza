@@ -9,7 +9,6 @@
  * `AnchorRegistry` / `EventKindRegistry` / `FamilyRegistry`.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   CreateLifeOpsBrowserSessionRequest,
   CreateLifeOpsDefinitionRequest,
@@ -24,7 +23,8 @@ import type {
   LifeOpsGmailUnrespondedFeed,
   LifeOpsHealthSummaryResponse,
   LifeOpsWorkflowDefinition,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import type { z } from "zod";
 
 /**

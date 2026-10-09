@@ -5,14 +5,14 @@
  * to their supported coding surfaces.
  */
 
-import type {
-  LinkedAccountConfig,
-  LinkedAccountProviderId,
-} from "@elizaos/shared";
 import {
   codingProviderSubscriptionAuthMode,
   isCodingSubscriptionProvider,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type {
+  LinkedAccountConfig,
+  LinkedAccountProviderId,
+} from "@elizaos/host/protocol";
 import {
   type FormEvent,
   useCallback,
@@ -20,12 +20,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { useAppSelector } from "../../state/app-store";
-import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { openEventSource } from "../../utils/event-source";
 import { isSafeNavigationUrl } from "../../utils/navigation-url";
+import {
+  navigatePreOpenedWindow,
+  preOpenWindow,
+} from "../../utils/openExternalUrl";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -42,6 +45,7 @@ import { Label } from "../ui/label";
 import { SemanticForm } from "../ui/semantic-form";
 import { Spinner } from "../ui/spinner";
 import { TextLink } from "../ui/text-link";
+import { accountProviderDisplayName } from "./account-provider-options";
 import { ProviderPicker } from "./ProviderPicker";
 import { subscriptionOAuthModeForHostname } from "./subscription-oauth-mode";
 import {
@@ -62,7 +66,6 @@ interface AddAccountDialogProps {
   onClose: () => void;
   onCreated: (account: LinkedAccountConfig) => void;
 }
-
 type DialogStep =
   | "provider-select"
   | "choose"
@@ -73,13 +76,11 @@ type DialogStep =
   | "apikey-submitting"
   | "unavailable"
   | "error";
-
 interface SseFlowState {
   status: "pending" | "success" | "error" | "cancelled" | "timeout";
   account?: LinkedAccountConfig;
   error?: string;
 }
-
 type SubscriptionAddMode =
   | "oauth"
   | "coding-plan-key"
@@ -87,23 +88,12 @@ type SubscriptionAddMode =
   | "unavailable"
   | "none";
 
-// The static provider catalog + its types now live in their own module so
-// presentational pieces can import them without a circular dependency on this
-// dialog. Re-exported here for backward compatibility.
-export {
-  ACCOUNT_PROVIDER_OPTIONS,
-  type AccountProviderCategory,
-  type AccountProviderOption,
-  getAccountProviderOption,
-} from "./account-provider-options";
-
 function getSubscriptionAddMode(
   providerId: LinkedAccountProviderId,
 ): SubscriptionAddMode {
   if (!isCodingSubscriptionProvider(providerId)) return "none";
   return codingProviderSubscriptionAuthMode(providerId);
 }
-
 function initialStepForProvider(
   providerId: LinkedAccountProviderId,
 ): DialogStep {
@@ -112,7 +102,6 @@ function initialStepForProvider(
   if (mode === "external-cli" || mode === "unavailable") return "unavailable";
   return "apikey";
 }
-
 function defaultOAuthLabel(providerId: LinkedAccountProviderId): string {
   if (providerId === "anthropic-subscription") return "Claude account";
   if (providerId === "openai-codex") return "Codex account";
@@ -121,73 +110,6 @@ function defaultOAuthLabel(providerId: LinkedAccountProviderId): string {
   }
   return "API account";
 }
-
-function providerDisplayName(
-  providerId: LinkedAccountProviderId,
-  t: (k: string, v?: Record<string, unknown>) => string,
-): string {
-  switch (providerId) {
-    case "anthropic-subscription":
-      return t("accounts.provider.anthropicSubscription", {
-        defaultValue: "Anthropic Claude subscription",
-      });
-    case "openai-codex":
-      return t("accounts.provider.openaiCodex", {
-        defaultValue: "OpenAI Codex subscription",
-      });
-    case "gemini-cli":
-      return t("accounts.provider.geminiCli", {
-        defaultValue: "Gemini CLI subscription",
-      });
-    case "zai-coding":
-      return t("accounts.provider.zaiCoding", {
-        defaultValue: "z.ai Coding Plan",
-      });
-    case "kimi-coding":
-      return t("accounts.provider.kimiCoding", {
-        defaultValue: "Kimi Coding Endpoint Key",
-      });
-    case "deepseek-coding":
-      return t("accounts.provider.deepseekCoding", {
-        defaultValue: "DeepSeek coding subscription",
-      });
-    case "anthropic-api":
-      return t("accounts.provider.anthropicApi", {
-        defaultValue: "Anthropic API",
-      });
-    case "openai-api":
-      return t("accounts.provider.openaiApi", {
-        defaultValue: "OpenAI API",
-      });
-    case "deepseek-api":
-      return t("accounts.provider.deepseekApi", {
-        defaultValue: "DeepSeek API",
-      });
-    case "zai-api":
-      return t("accounts.provider.zaiApi", {
-        defaultValue: "z.ai API",
-      });
-    case "moonshot-api":
-      return t("accounts.provider.moonshotApi", {
-        defaultValue: "Kimi / Moonshot API",
-      });
-    case "cerebras-api":
-      return t("accounts.provider.cerebrasApi", {
-        defaultValue: "Cerebras API",
-      });
-    case "openrouter-api":
-      return t("accounts.provider.openrouterApi", {
-        defaultValue: "OpenRouter credits / BYOK",
-      });
-    case "xai-api":
-      return t("accounts.provider.xaiApi", {
-        defaultValue: "xAI API (metered)",
-      });
-    default:
-      return providerId;
-  }
-}
-
 export function AddAccountDialog({
   open,
   providerId,
@@ -202,7 +124,6 @@ export function AddAccountDialog({
   const subscriptionAddMode = activeProviderId
     ? getSubscriptionAddMode(activeProviderId)
     : "none";
-
   const [step, setStep] = useState<DialogStep>(
     activeProviderId
       ? initialStepForProvider(activeProviderId)
@@ -224,7 +145,6 @@ export function AddAccountDialog({
   // localhost-callback flow auto-opens a window; every other flow shows this
   // link so the user opens it wherever they want (a second device / browser).
   const [oauthUrl, setOauthUrl] = useState<string | null>(null);
-
   const eventSourceRef = useRef<EventSource | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const restoredSessionRef = useRef<string | null>(null);
@@ -234,7 +154,6 @@ export function AddAccountDialog({
       eventSourceRef.current = null;
     }
   }, []);
-
   const cancelInflightFlow = useCallback(async () => {
     closeEventSource();
     const id = sessionIdRef.current;
@@ -247,7 +166,6 @@ export function AddAccountDialog({
       }
     }
   }, [closeEventSource, activeProviderId]);
-
   const reset = useCallback(() => {
     closeEventSource();
     sessionIdRef.current = null;
@@ -277,7 +195,6 @@ export function AddAccountDialog({
     credentialRepairAccount?.id,
     credentialRepairAccount?.label,
   ]);
-
   const copyDeviceCode = useCallback(async (code: string) => {
     try {
       await copyTextToClipboard(code);
@@ -287,19 +204,16 @@ export function AddAccountDialog({
       setDeviceCodeCopied(false);
     }
   }, []);
-
   useEffect(() => {
     if (!deviceCode) return;
     setDeviceCodeCopied(false);
     void copyDeviceCode(deviceCode);
   }, [copyDeviceCode, deviceCode]);
-
   useEffect(() => {
     return () => {
       closeEventSource();
     };
   }, [closeEventSource]);
-
   const subscribeToFlow = useCallback(
     (newSessionId: string) => {
       if (!activeProviderId) return;
@@ -318,7 +232,6 @@ export function AddAccountDialog({
         setStep("error");
         return;
       }
-
       // EventSource auto-reconnects on transient network blips, which
       // is fine. But persistent failures (server gone, route 404) just
       // toggle readyState=2 forever and the user is stuck on "Waiting
@@ -332,12 +245,10 @@ export function AddAccountDialog({
           persistentErrorTimer = null;
         }
       };
-
       source.onopen = () => {
         connectedOnce = true;
         cancelPersistentErrorTimer();
       };
-
       source.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data) as SseFlowState;
@@ -374,7 +285,6 @@ export function AddAccountDialog({
           // error-policy:J3 Invalid status events cannot advance the OAuth state machine.
         }
       };
-
       source.onerror = () => {
         // EventSource readyState: 0=connecting, 1=open, 2=closed.
         // If we're at 2 and never got an `onopen`, the route is
@@ -397,12 +307,11 @@ export function AddAccountDialog({
             );
             setStep("error");
           }
-        }, 5_000);
+        }, 5000);
       };
     },
     [closeEventSource, onClose, onCreated, activeProviderId, t],
   );
-
   useEffect(() => {
     if (!open || !activeProviderId) return;
     const pending = readSubscriptionOAuth(activeProviderId);
@@ -433,7 +342,6 @@ export function AddAccountDialog({
     );
     subscribeToFlow(pending.sessionId);
   }, [open, activeProviderId, subscribeToFlow, t]);
-
   const startOAuth = useCallback(
     async (mode: "localhost" | "device") => {
       if (!activeProviderId) {
@@ -446,7 +354,6 @@ export function AddAccountDialog({
       }
       setErrorMessage(null);
       setStep("oauth-starting");
-
       // Auto-open a real browser window ONLY for the Codex localhost-callback
       // flow, where the :1455 listener catches the redirect and completes login
       // hands-free. Every other flow — Codex device code, and Anthropic's
@@ -552,7 +459,6 @@ export function AddAccountDialog({
       t,
     ],
   );
-
   const submitOAuthCode = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
@@ -585,7 +491,6 @@ export function AddAccountDialog({
     },
     [oauthCode, activeProviderId, t],
   );
-
   const submitApiKey = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
@@ -628,14 +533,12 @@ export function AddAccountDialog({
       t,
     ],
   );
-
   const handleClose = useCallback(() => {
     if (activeProviderId) clearSubscriptionOAuth(activeProviderId);
     void cancelInflightFlow();
     reset();
     onClose();
   }, [cancelInflightFlow, onClose, activeProviderId, reset]);
-
   const chooseProvider = useCallback(
     (nextProviderId: LinkedAccountProviderId) => {
       setSelectedProviderId(nextProviderId);
@@ -650,7 +553,6 @@ export function AddAccountDialog({
     },
     [],
   );
-
   useEffect(() => {
     if (!open) return;
     setSelectedProviderId(providerId ?? null);
@@ -683,7 +585,6 @@ export function AddAccountDialog({
     credentialRepairAccount?.id,
     credentialRepairAccount?.label,
   ]);
-
   const dialogDescription = credentialRepairAccount
     ? credentialRepairAccount.source === "oauth"
       ? t("accounts.reauthenticate.description", {
@@ -723,17 +624,14 @@ export function AddAccountDialog({
                   defaultValue:
                     "Paste your API key. It's stored locally and only used to call the provider.",
                 });
-
   const apiKeyLabel =
     subscriptionAddMode === "coding-plan-key"
       ? t("accounts.add.codingPlanKey", {
           defaultValue: "Coding-plan key",
         })
       : t("accounts.add.apiKey", { defaultValue: "API key" });
-
   const apiKeyPlaceholder =
     activeProviderId === "zai-coding" ? "zai-..." : "sk-...";
-
   const unavailableCopy =
     activeProviderId === "gemini-cli"
       ? t("accounts.add.geminiCliHint", {
@@ -749,7 +647,6 @@ export function AddAccountDialog({
             defaultValue:
               "This provider cannot be linked through this dialog right now.",
           });
-
   const labelInput = (
     <div className="grid gap-1.5">
       <Label htmlFor="add-account-label">
@@ -767,7 +664,6 @@ export function AddAccountDialog({
       />
     </div>
   );
-
   return (
     <Dialog
       open={open}
@@ -802,8 +698,8 @@ export function AddAccountDialog({
                       account: credentialRepairAccount.label,
                     })
                 : t("accounts.add.title", {
-                    defaultValue: `Add ${providerDisplayName(activeProviderId, t)} account`,
-                    provider: providerDisplayName(activeProviderId, t),
+                    defaultValue: `Add ${accountProviderDisplayName(activeProviderId, t)} account`,
+                    provider: accountProviderDisplayName(activeProviderId, t),
                   })
               : t("accounts.add.chooseTitle", {
                   defaultValue: "Add a provider account",

@@ -1,13 +1,7 @@
-/**
- * Registers the Eliza Cloud dashboard as a signed app-shell page. Runtime
- * Cloud services remain in the plugin's normal runtime entry; this module only
- * contributes the renderer surface for hosts that cannot load remote bundles.
- */
+import { listAppShellPages, registerAppShellPage } from "@elizaos/ui";
 
-import {
-  listAppShellPages,
-  registerAppShellPage,
-} from "@elizaos/ui/app-shell-registry";
+export function registerApp(): void {
+
 
 // The web host owns the authenticated /cloud/* account route family. Its
 // registration can finish before this deferred plugin module loads; replacing
@@ -31,4 +25,5 @@ if (!listAppShellPages().some((page) => page.id === "cloud")) {
         default: module.CloudPage,
       })),
   });
+}
 }

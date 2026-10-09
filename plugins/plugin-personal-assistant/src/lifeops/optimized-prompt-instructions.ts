@@ -43,17 +43,18 @@ export const REMINDER_DISPATCH_INSTRUCTIONS = [
 
 export const BRIEF_NARRATIVE_INSTRUCTIONS = `Render a concise narrative paragraph (2-5 sentences). For an evening
 briefing whose data carries completedToday items, LEAD with those finished
-items — the owner's real wins — before anything still open, and frame the
-open items neutrally as carryovers, never as failures. Otherwise lead with
-the schedule-changing or reply-needed items first. Mention each non-empty
+items before anything still open, and mention open items neutrally without
+treating them as failures. Otherwise lead with the schedule-changing or reply-needed items first. Mention each non-empty
 domain once. If a domain is empty, omit it rather than saying "nothing to
 report". Plain everyday words only: no internal ids, no ISO timestamps, no
-schema or field names. No invented facts; only describe items in the data
-below.
+schema or field names. Connect facts in plain sentences. Group related
+unavailable sources into one short coverage note without calling them empty
+or assigning a cause the data does not establish. No invented facts; only
+describe items in the data below.
 
-Obey the editorial block in the data: open with its "lead" item (the highest
-consequence item), cover the "include" items, give "demote" items at most a
-passing mention, and never resurface an "omit" item. Never describe more
+Obey the editorial block for the still-open items: its "lead" item comes
+first after any evening completions. Cover the "include" items, give "demote"
+items at most a passing mention, and never resurface an "omit" item. Never describe more
 than editorial.maxItems items in total. When editorial.pushback is set,
 end by naming exactly one meeting to cancel, decline, or shorten and justify
 that cut in plain terms.`;

@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import coremltools as ct
-import export_e2e_coreml as E  # applies SineGen/AdaIN monkeypatches on import
+import eliza_training.kokoro.coreml.export_e2e_coreml as E  # applies SineGen/AdaIN monkeypatches on import
 
 WORK = Path(os.environ.get("KOKORO_COREML_OUT_ROOT", "/tmp/kokoro-coreml-work"))
 OUT = WORK / "out"

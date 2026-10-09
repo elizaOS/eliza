@@ -195,7 +195,7 @@ export function startupReducer(
               phase: "error",
               reason: "backend-unreachable",
               message:
-                "Previously configured backend is unreachable. Check your connection or reset.",
+                "Previously configured backend is unreachable. Check your connection and retry.",
               timedOut: false,
             };
           }
@@ -442,7 +442,7 @@ export function createWebPolicy(): PlatformPolicy {
 
 export function createMobilePolicy(): PlatformPolicy {
   // iOS Capacitor apps that bundle an on-device agent (white-label forks,
-  // etc.) hit this path — Android goes to createAndroidPolicy() first at
+  // etc.) hit this path — Android goes to createNativeLocalRuntimePolicy() first at
   // the routing layer. iOS local-agent builds need the same 180s/300s budget
   // as AOSP: cold-boot on an A-class chip still takes ~60–120s for PGlite
   // migration + GGUF mmap before /api/status binds. supportsLocalRuntime:true
@@ -458,28 +458,12 @@ export function createMobilePolicy(): PlatformPolicy {
 }
 
 /**
- * Stock iOS builds are cloud-first, but the local/full-Bun path
+ * Stock iOS and Android builds are cloud-first, but the local/full-Bun path
  * starts an embedded backend in-process. Give restored local sessions the same
  * cold-start budget as desktop/ElizaOS so first-run PGlite setup is not treated
  * as a backend failure.
  */
-export function createIosPolicy(): PlatformPolicy {
-  return {
-    supportsLocalRuntime: true,
-    backendTimeoutMs: 180_000,
-    agentReadyTimeoutMs: 300_000,
-    probeForExistingInstall: false,
-    defaultTarget: "cloud-managed",
-    nativeConsecutiveFailureBudgetMs: 90_000,
-  };
-}
-
-/**
- * Stock Android APKs can also host the bundled on-device agent when the user
- * picks Local. Keep fresh installs cloud-first, but
- * give restored local-agent sessions the same cold-start budget as ElizaOS.
- */
-export function createAndroidPolicy(): PlatformPolicy {
+export function createNativeLocalRuntimePolicy(): PlatformPolicy {
   return {
     supportsLocalRuntime: true,
     backendTimeoutMs: 180_000,
@@ -516,20 +500,6 @@ export function createElizaOSPolicy(): PlatformPolicy {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-/** Map a restored runtime hint to a RuntimeTarget. */
-export function connectionModeToTarget(
-  runMode: string | undefined,
-): RuntimeTarget {
-  switch (runMode) {
-    case "cloud":
-      return "cloud-managed";
-    case "remote":
-      return "remote-backend";
-    default:
-      return "embedded-local";
-  }
-}
 
 /** True when the coordinator is in a phase where the UI should show loading. */
 export function isStartupLoading(state: StartupState): boolean {

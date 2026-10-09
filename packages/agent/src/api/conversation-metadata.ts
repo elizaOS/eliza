@@ -9,13 +9,18 @@
  * out (optionally pinned to a conversation id), and classify a scope as
  * automation- or page-scoped.
  */
-import type { JsonValue, Room } from "@elizaos/core";
-import { asNonEmptyString, asRecord } from "@elizaos/shared";
+
 import type {
-  ConversationMeta,
   ConversationMetadata,
   ConversationScope,
-} from "./server-types.ts";
+} from "@elizaos/contracts";
+import {
+  asNonEmptyString,
+  asObjectRecord as asRecord,
+  type JsonValue,
+  type Room,
+} from "@elizaos/core";
+import type { ConversationMeta } from "./server-types.ts";
 
 type RoomMetadataRecord = Record<string, JsonValue>;
 

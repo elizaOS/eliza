@@ -1,360 +1,71 @@
+import "./artifact-share-role-resolver.ts";
+import "./waifu-chat-role-resolver.ts";
 /**
  * REST API server for the Eliza Control UI.
  *
  * Exposes HTTP endpoints that the UI frontend expects, backed by the
  * elizaOS AgentRuntime. Default port: 2138. In dev mode, the Vite UI
- * dev server proxies /api and /ws here (see eliza/packages/app-core/scripts/dev-ui.mjs).
+ * dev server proxies /api and /ws here (see eliza/packages/app/scripts/dev-ui.ts).
  */
-
-import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
-import { createRequire } from "node:module";
-import { registerInProcessApi } from "./in-process-api.ts";
-
-function tokenMatches(expected: string, provided: string): boolean {
-  const expectedBuf = Buffer.from(expected);
-  const providedBuf = Buffer.from(provided);
-  return (
-    expectedBuf.length === providedBuf.length &&
-    crypto.timingSafeEqual(expectedBuf, providedBuf)
-  );
-}
-
-function isBrowserCompanionOwnerMutation(
-  method: string,
-  pathname: string,
-): boolean {
-  return (
-    method === "POST" &&
-    (pathname === "/api/browser-bridge/companions/pair" ||
-      /^\/api\/browser-bridge\/companions\/[^/]+\/(?:revoke|reset-revocation)$/.test(
-        pathname,
-      ))
-  );
-}
-
-function hasBrowserCompanionOwnerSessionCookie(
-  req: http.IncomingMessage,
-): boolean {
-  const cookie =
-    typeof req.headers.cookie === "string" ? req.headers.cookie : "";
-  return /(?:^|;\s*)eliza_session=[^;]+/.test(cookie);
-}
-
-function hasBrowserCompanionCsrfHeader(req: http.IncomingMessage): boolean {
-  const csrf = req.headers["x-eliza-csrf"];
-  return typeof csrf === "string" && csrf.trim().length > 0;
-}
-
-const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
-/**
- * Restore's request-body cap IS the v1 restorable ceiling: anything retained
- * above it can never be restored here (#17172). Shared with the retain side so
- * the two cannot drift.
- */
-const MAX_BACKUP_BODY_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
-const BACKUP_BODY_TOO_LARGE = "Agent backup request body is too large";
-
-import path from "node:path";
 import {
+  type AgentAutomationMode,
   type AgentRuntime,
+  type AgentStartupDiagnostics,
+  createIntegrationTelemetrySpan,
   ElizaError,
   EventType,
+  formatError,
   type IAgentRuntime,
+  type AgentLogEntry as LogEntry,
   logger,
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   NotificationService,
-  readJsonBody as parseJsonBody,
-  type ReadJsonBodyOptions,
-  type Route,
-  readRequestBody,
+  normalizeCharacterLanguage,
+  resolveOwnerEntityIdOrDefault,
+  resolveStateDir,
   ServiceType,
+} from "@elizaos/core";
+import {
+  readJsonBody as parseJsonBody,
+  readRequestBody,
   sendJson,
   sendJsonError,
-  tryHandleTrajectoryReadRoutes,
   writeJsonError,
   writeJsonResponse,
-} from "@elizaos/core";
-import type {
-  AppManagerLike,
-  AppsRouteActorRole,
-  FavoriteAppsStore,
-} from "@elizaos/plugin-app-manager";
-import { formatError, readAliasedEnv } from "@elizaos/shared";
-import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
+} from "@elizaos/host";
 import {
+  type ElizaConfig,
+  getHttpRuntime,
   getStylePresets,
-  normalizeCharacterLanguage,
-} from "@elizaos/shared/character-presets";
-import {
   isMobilePlatform,
+  type ReadJsonBodyOptions,
+  type Route,
+  readAliasedEnv,
   resolveApiBindHost,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
-} from "@elizaos/shared/runtime-env";
-import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
-import { type WebSocket, WebSocketServer } from "ws";
-import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
+  toWorkbenchTodo,
+} from "@elizaos/host/protocol";
+import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
+import { persistConfigEnv } from "@elizaos/plugin-elizacloud/lib/config-env";
 import {
-  AgentBackupClientDisconnectedError,
-  writeAgentBackupJsonResponse,
-} from "./backup-json-response.ts";
-import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.ts";
-import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
-import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
-import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
-
-// `@elizaos/plugin-browser` and `@elizaos/plugin-x402` load lazily: X402 only
-// when runtime routes need validation, browser on the first browser route hit,
-// so neither gates the API bind. A module-scope top-level await here would load
-// both plugins (and their transitive native deps) whenever anything imported
-// `@elizaos/agent`, which blocks container boot in cloud sandboxes.
-type BrowserPluginModule = typeof import("@elizaos/plugin-browser");
-
-let browserPluginModule: BrowserPluginModule | null = null;
-let x402PluginModule: X402PluginModule | null = null;
-let browserPluginModulePromise: Promise<BrowserPluginModule> | null = null;
-let x402PluginModulePromise: Promise<X402PluginModule | null> | null = null;
-
-// Vite 7's import-analysis eagerly resolves string-literal dynamic imports even
-// when a `@vite-ignore` comment is present, throwing "Failed to resolve entry"
-// for the optional plugins below whose dist isn't built in the unit Plugin
-// Tests lane (any spec that transitively transforms this file then fails to
-// collect). Funnel optional plugin loads through a variable specifier so the
-// analyzer leaves them as pure runtime imports — the host resolves them from
-// node_modules on demand. Mirrors the variable-specifier bundle loader further
-// down this file.
-function importOptionalPlugin<T = unknown>(specifier: string): Promise<T> {
-  return import(/* @vite-ignore */ specifier) as Promise<T>;
-}
-
-async function getBrowserPlugin(): Promise<BrowserPluginModule> {
-  if (browserPluginModule) return browserPluginModule;
-  browserPluginModulePromise ??= importOptionalPlugin<BrowserPluginModule>(
-    "@elizaos/plugin-browser",
-  ).then((browser) => {
-    browserPluginModule = browser;
-    return browser;
-  });
-  return browserPluginModulePromise;
-}
-
-// On mobile the agent bundle aliases `@elizaos/plugin-browser` to a null-stub
-// (scripts/mobile-stubs/null-plugin.cjs): the module imports fine but its
-// workspace functions are absent, so calling one throws an uncaught TypeError
-// that surfaces as a 500 (and a raw "X is not a function" in the /browser view).
-// The browser workspace is desktop-only, so resolve the plugin only when it
-// really implements the requested method and let callers serve an empty payload
-// otherwise.
-async function resolveDesktopBrowserPlugin(
-  method: keyof BrowserPluginModule,
-): Promise<BrowserPluginModule | null> {
-  if (isMobilePlatform()) return null;
-  const browserPlugin = await getBrowserPlugin();
-  if ((browserPlugin as { __mobileStub?: boolean }).__mobileStub) return null;
-  return typeof browserPlugin[method] === "function" ? browserPlugin : null;
-}
-
-function getBrowserWorkspacePlugin(): Promise<BrowserPluginModule | null> {
-  return resolveDesktopBrowserPlugin("getBrowserWorkspaceSnapshot");
-}
-
-function getBrowserBridgePlugin(): Promise<BrowserPluginModule | null> {
-  return resolveDesktopBrowserPlugin("getBrowserBridgeCompanionPackageStatus");
-}
-
-const EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS = {
-  extensionPath: null,
-  chromeBuildPath: null,
-  chromePackagePath: null,
-  firefoxBuildPath: null,
-  firefoxPackagePath: null,
-  safariWebExtensionPath: null,
-  safariAppPath: null,
-  safariPackagePath: null,
-  releaseManifest: null,
-} satisfies ReturnType<
-  BrowserPluginModule["getBrowserBridgeCompanionPackageStatus"]
->;
-
-async function getX402Plugin(): Promise<X402PluginModule | null> {
-  if (x402PluginModule) return x402PluginModule;
-  // x402 is desktop/cloud-only; on mobile it is not in the agent bundle, so the
-  // "optional" dynamic import REJECTS (no node_modules). Treat a missing module
-  // as "no x402" instead of letting the rejection crash API-server startup —
-  // `importOptionalPlugin` is named optional but does not itself swallow.
-  x402PluginModulePromise ??= importOptionalPlugin<X402PluginModule>(
-    "@elizaos/plugin-x402",
-  )
-    .then((x402) => {
-      x402PluginModule = x402;
-      return x402;
-    })
-    .catch(() => null);
-  return x402PluginModulePromise;
-}
-
-// Package specifier per optional-plugin key. Kept alongside the import table so
-// the unavailable-plugin fallback can key its "is this the plugin package itself
-// that's absent (benign) vs a broken transitive import (drift)" decision on the
-// real specifier rather than the short key. See optional-plugin-fallback.ts.
-const optionalPluginSpecifiers = {
-  capacitor: "@elizaos/plugin-capacitor-bridge",
-  computerUse: "@elizaos/plugin-computeruse",
-  cloud: "@elizaos/plugin-elizacloud",
-  imessage: "@elizaos/plugin-imessage",
-  mcp: "@elizaos/plugin-mcp",
-  whatsapp: "@elizaos/plugin-whatsapp",
-  workflow: "@elizaos/plugin-workflow",
-} as const;
-
-const optionalPluginImports = {
-  capacitor: () => importOptionalPlugin(optionalPluginSpecifiers.capacitor),
-  computerUse: () => importOptionalPlugin(optionalPluginSpecifiers.computerUse),
-  cloud: () => importOptionalPlugin(optionalPluginSpecifiers.cloud),
-  imessage: () => importOptionalPlugin(optionalPluginSpecifiers.imessage),
-  mcp: () => importOptionalPlugin(optionalPluginSpecifiers.mcp),
-  whatsapp: () => importOptionalPlugin(optionalPluginSpecifiers.whatsapp),
-  workflow: () => importOptionalPlugin(optionalPluginSpecifiers.workflow),
-};
-
-type LocalInferenceServerApi = LocalInferenceRouteApi &
-  LocalInferenceVoiceRouteApi;
-
-/**
- * Combine the route + voice surfaces from the single subpath-owning loader
- * (`./local-inference-server-api.ts`). The loaders there own the stub/subpath
- * knowledge and each clear their memo on reject, so a cold-boot import failure
- * surfaces here and retries on the next request — the same semantics as before,
- * without this file knowing the plugin's stub layout.
- */
-async function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
-  const [routeApi, voiceApi] = await Promise.all([
-    loadLocalInferenceRouteApi(),
-    loadLocalInferenceVoiceRouteApi(),
-  ]);
-  return { ...routeApi, ...voiceApi };
-}
-
-async function getOptionalPluginApi<T>(
-  key: keyof typeof optionalPluginImports,
-): Promise<T> {
-  try {
-    return (await optionalPluginImports[key]()) as T;
-  } catch (err) {
-    // The plugin is optional and (on mobile) many desktop/cloud plugins — cloud,
-    // whatsapp, wallet-adjacent, mcp, streaming, … — are excluded, so their
-    // dynamic import REJECTS with a module-resolution error. Without this catch
-    // that rejection propagates to the top-level request handler as a 500 on
-    // EVERY renderer poll of the plugin's routes. We fall back to a no-op API so
-    // route-dispatch blocks (`if (await handleX(...)) return;`) fall through to
-    // the normal 404 instead of erroring.
-    //
-    // resolveOptionalPluginImportFailure distinguishes the EXPECTED
-    // module-absent case (quiet debug + fallthrough) from a present-but-broken
-    // plugin (a package that resolved but threw at init, or whose accessed
-    // export was renamed/removed). The latter is a drift regression the old
-    // silent Proxy hid — it now warns so a broken/renamed handler is observable
-    // instead of silently 404ing forever. See optional-plugin-fallback.ts.
-    return resolveOptionalPluginImportFailure<T>(
-      String(key),
-      err,
-      optionalPluginSpecifiers[key],
-    );
-  }
-}
-type BrowserBridgeKind = BrowserPluginModule["BROWSER_BRIDGE_KINDS"][number];
-type BrowserBridgePackagePathTarget =
-  BrowserPluginModule["BROWSER_BRIDGE_PACKAGE_PATH_TARGETS"][number];
-type BrowserWorkspaceCommand = Parameters<
-  BrowserPluginModule["executeBrowserWorkspaceCommand"]
->[0];
-type BrowserWorkspaceTabKind = NonNullable<
-  Parameters<BrowserPluginModule["openBrowserWorkspaceTab"]>[0]["kind"]
->;
-
-let agentSkillsApiPromise:
-  | Promise<typeof import("@elizaos/plugin-agent-skills")>
-  | undefined;
-function getAgentSkillsApi(): Promise<
-  typeof import("@elizaos/plugin-agent-skills")
-> {
-  agentSkillsApiPromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-agent-skills"
-  );
-  return agentSkillsApiPromise;
-}
-
-let appManagerApiPromise:
-  | Promise<typeof import("@elizaos/plugin-app-manager")>
-  | undefined;
-function getAppManagerApi(): Promise<
-  typeof import("@elizaos/plugin-app-manager")
-> {
-  appManagerApiPromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-app-manager"
-  );
-  return appManagerApiPromise;
-}
-
-let walletApiPromise:
-  | Promise<typeof import("@elizaos/plugin-wallet")>
-  | undefined;
-function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
-  walletApiPromise ??= importOptionalPlugin<
-    typeof import("@elizaos/plugin-wallet")
-  >("@elizaos/plugin-wallet").catch((err) => {
-    // plugin-wallet is desktop/cloud-only; on mobile it is not in the bundle so
-    // this import REJECTS. Cache a no-op fallback so /api/wallet/* falls through
-    // to 404 instead of 500ing on every renderer poll. Desktop imports succeed,
-    // so this branch never runs there. resolveOptionalPluginImportFailure keeps
-    // the benign module-absent case quiet while surfacing a present-but-broken
-    // plugin-wallet load (drift) as an observable warning.
-    return resolveOptionalPluginImportFailure<
-      typeof import("@elizaos/plugin-wallet")
-    >("@elizaos/plugin-wallet", err, "@elizaos/plugin-wallet");
-  });
-  return walletApiPromise;
-}
-
-let coreWalletApiPromise: Promise<typeof import("./wallet.ts")> | undefined;
-function getCoreWalletApi(): Promise<typeof import("./wallet.ts")> {
-  coreWalletApiPromise ??= import("./wallet.ts");
-  return coreWalletApiPromise;
-}
-
-let pluginRegistryApiPromise:
-  | Promise<typeof import("@elizaos/plugin-registry/api/plugin-routes")>
-  | undefined;
-
-function getPluginRegistryApi(): Promise<
-  typeof import("@elizaos/plugin-registry/api/plugin-routes")
-> {
-  pluginRegistryApiPromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-registry/api/plugin-routes"
-  );
-  return pluginRegistryApiPromise;
-}
-
-import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";
-import {
-  type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "../config/config.ts";
+  canUseLocalTradeExecution,
+  resolveTradePermissionMode,
+} from "@elizaos/plugin-wallet/transactions";
+import { WebSocket, WebSocketServer } from "ws";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   createDevCloudConfigAuthorityView,
   materializeDevCloudConfigAuthorityView,
   mergeDevCloudConfigAuthorityMutation,
 } from "../config/dev-cloud-env-authority.ts";
 import { isCloudWalletEnabled } from "../config/feature-flags.ts";
-import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.ts";
+import { resolveModelsCacheDir } from "../config/paths.ts";
 import { CharacterSchema } from "../config/zod-schema.ts";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
-import {
-  type AgentEventServiceLike,
-  getAgentEventService,
-} from "../runtime/agent-event-service.ts";
+import { getAgentEventService } from "../runtime/agent-event-service.ts";
+import { pickRandomNames } from "../runtime/first-run-names.ts";
 import {
   type AgentHttpRequestAuthorization,
   getAgentHostBridge,
@@ -365,15 +76,20 @@ import {
 } from "../runtime/model-resolution.ts";
 import {
   type ClassifyContext,
-  createColdStrategy,
-  createHotStrategy,
-  DefaultRuntimeOperationManager,
   defaultClassifier,
-  getDefaultHealthChecker,
-  getDefaultRepository,
-  type RuntimeOperationManager,
-} from "../runtime/operations/index.ts";
+} from "../runtime/operations/classifier.ts";
+import { createColdStrategy } from "../runtime/operations/cold-strategy.ts";
+import { getDefaultHealthChecker } from "../runtime/operations/health.ts";
+import { DefaultRuntimeOperationManager } from "../runtime/operations/manager.ts";
+import { createHotStrategy } from "../runtime/operations/reload-hot.ts";
+import { getDefaultRepository } from "../runtime/operations/repository.ts";
+import type { RuntimeOperationManager } from "../runtime/operations/types.ts";
 import { classifyRegistryPluginRelease } from "../runtime/release-plugin-policy.ts";
+import {
+  getViewClientScope,
+  runWithViewClient,
+  type ViewClientScope,
+} from "../runtime/view-client-context.ts";
 import {
   AUDIT_EVENT_TYPES,
   AUDIT_SEVERITIES,
@@ -381,8 +97,10 @@ import {
   queryAuditFeed,
   subscribeAuditFeed,
 } from "../security/audit-log.ts";
+import { ensureProtectedProfileAdmission } from "../security/protected-profile.ts";
 import {
   type AgentBackupStateData,
+  AgentSnapshotBudgetExceededError,
   createAgentSnapshot,
   createLocalAgentBackup,
   listLocalAgentBackups,
@@ -401,8 +119,6 @@ import { registerClientChatSendHandler } from "../services/client-chat-sender.ts
 import { createConfigPluginManager } from "../services/config-plugin-manager.ts";
 import type { ConnectorSetupServiceInstance } from "../services/connector-setup-service.ts";
 import {
-  type CoreManagerLike,
-  isCoreManagerLike,
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
@@ -430,39 +146,164 @@ import {
   DISABLED_TRIGGER_INTERVAL_MS,
   normalizeTriggerDraft,
 } from "../triggers/scheduling.ts";
-import { resolveAbsentPluginRouteStub } from "./absent-plugin-route-stubs.ts";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
-import { persistConfigEnv } from "./config-env.ts";
+import type { AwarenessRegistryLike } from "./agent-status-routes.ts";
+import {
+  AgentBackupClientDisconnectedError,
+  writeAgentBackupJsonResponse,
+} from "./backup-json-response.ts";
+import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.ts";
+import {
+  cloneWithoutBlockedObjectKeys,
+  hasBlockedObjectKeyDeep,
+} from "./blocked-object-keys.ts";
+import { resolveRegisteredTokenRoleAccess } from "./boundary-role-resolver.ts";
+import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
+import { replaceConfigInPlace } from "./config-state.ts";
+import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
+import { handleContextInspectorRoute } from "./context-inspector-routes.ts";
 import { restoreConversationsFromDb as restoreConversationsFromDbImpl } from "./conversation-restore.ts";
+import { resolvePromptDeliveryRoom } from "./conversation-routes.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
-import { computeCanRespond } from "./health-routes.ts";
+import {
+  handleDeviceActionRoutes,
+  requiresDeviceIdentity,
+} from "./device-action-routes.ts";
+import { flushEarlyLogs, listenForUiLogs } from "./early-logs.ts";
+import {
+  createApiEventHub,
+  createEventSocketBackpressureGuard,
+  createEventSocketLivenessSweep,
+} from "./event-hub.ts";
+import {
+  type ApiStatusComposer,
+  responseReadinessFields,
+} from "./health-routes.ts";
+import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
+import { resolveHttpAccessContext } from "./http-access-context.ts";
+import { listenHttpServer } from "./http-listener.ts";
+import { registerInProcessApi } from "./in-process-api.ts";
+import { getAuthenticatedInProcessAuthorization } from "./in-process-request.ts";
+import { resolveInboxRequestAuthorization } from "./inbox-request-authorization.ts";
 import {
   type LocalInferenceRouteApi,
   type LocalInferenceVoiceRouteApi,
   loadLocalInferenceRouteApi,
   loadLocalInferenceVoiceRouteApi,
 } from "./local-inference-server-api.ts";
-import { resolveOptionalPluginImportFailure } from "./optional-plugin-fallback.ts";
+import { isMediaAuthRequired, serveMediaFile } from "./media-store.ts";
 import {
-  buildPluginDiagnosticEntry,
-  resolveWalletDiagnosticStatus,
-} from "./plugin-diagnostic.ts";
+  getModelOptions,
+  getOrFetchAllProviders,
+  getOrFetchProvider,
+  providerCachePath,
+} from "./model-provider-helpers.ts";
+import { resolveOptionalPluginImportFailure } from "./optional-plugin-fallback.ts";
+import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
+import {
+  AGENT_EVENT_ALLOWED_STREAMS,
+  CONFIG_WRITE_ALLOWED_TOP_KEYS,
+  discoverPluginsFromManifest,
+  getReleaseBundledPluginIds,
+  isBlockedEnvKey,
+} from "./plugin-discovery-helpers.ts";
+import {
+  getPluginInventory,
+  handlePluginInventoryRoutes,
+} from "./plugin-inventory-routes.ts";
+import { handlePluginManagementRoutes } from "./plugin-management-routes.ts";
+import {
+  attachPtySessionWsBridge,
+  cancelPendingPtySessionStop,
+  MAX_PTY_INPUT_MESSAGE_LENGTH,
+  resolvePtyDisconnectGraceMs,
+  schedulePtySessionStopAfterGrace,
+} from "./pty-ws-bridge.ts";
 import { maybeCapRequestStorm } from "./request-storm-cap.ts";
+import { createRouteKernel } from "./route-kernel.ts";
 import { handleRuntimeManagementRoutes } from "./runtime-management-routes.ts";
 import {
   handleRuntimeModePreDispatch,
   handleRuntimeModeRemoteForward,
 } from "./runtime-mode/pre-dispatch.ts";
+import {
+  type RuntimeModeSnapshot,
+  resolveRuntimeMode,
+} from "./runtime-mode/runtime-mode.ts";
+import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";
 import { handleRuntimeSwitchRoutes } from "./runtime-switch-routes.ts";
 import {
-  cloneWithoutBlockedObjectKeys,
+  isLifeOpsCloudPluginRoute,
+  maybeRouteAutonomyEventToConversation,
+} from "./server-autonomy-helpers.ts";
+import {
   decodePathComponent,
-  hasBlockedObjectKeyDeep,
   hasPersistedFirstRunState,
   isUuidLike,
   patchTouchesProviderSelection,
+  readDeletedConversationIdsFromState,
 } from "./server-helpers.ts";
-import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
+
+import {
+  applyCors,
+  clearPairing,
+  ensureApiTokenForBindHost,
+  ensurePairingCode,
+  extractWebSocketHandshakeToken,
+  getConfiguredApiToken,
+  getPairingExpiresAt,
+  getPairingInstanceId,
+  isAllowedHost,
+  isAuthorized,
+  isBoundaryRoleAuthorized,
+  isCredentialedCorsOrigin,
+  isServerTokenAuthorized,
+  isSharedTerminalClientId,
+  isTrustedLocalRequest,
+  isWebSocketAuthorized,
+  isWebSocketSessionTokenAuthorized,
+  isWebSocketUpgradeSessionAuthorized,
+  markWebSocketUpgradeSessionAuthorized,
+  normalizePairingCode,
+  normalizeWsClientId,
+  pairingEnabled,
+  rateLimitPairing,
+  rejectWebSocketUpgrade,
+  releasePendingWebSocket,
+  resolveTerminalRunClientId,
+  resolveTerminalRunRejection,
+  resolveWebSocketUpgradeRejection,
+  tokenMatches,
+  tryAcquirePendingWebSocket,
+  WS_AUTH_GRACE_TIMEOUT_MS,
+} from "./server-helpers-auth.ts";
+import {
+  applyFirstRunVoicePreset,
+  ensureWalletKeysInEnvAndConfig,
+  getCloudProviderOptions,
+  getProviderOptions,
+  isBlockedObjectKey as isBlockedObjectKeyFromConfig,
+  readUiLanguageHeader,
+  redactConfigSecrets,
+  redactDeep,
+  resolveConfiguredCharacterLanguage,
+  resolveDefaultAgentName,
+  stripRedactedPlaceholderValuesDeep,
+} from "./server-helpers-config.ts";
+import {
+  resolveMcpServersRejection,
+  resolveMcpTerminalAuthorizationRejection,
+} from "./server-helpers-mcp.ts";
+import {
+  getPtyConsoleBridge,
+  getPtyService,
+  routeAutonomyTextToUser as routeProactiveText,
+  wireCodingAgentChatBridge,
+  wireCodingAgentSwarmSynthesis,
+  wireCodingAgentWsBridge,
+  wireCoordinatorEventRouting,
+} from "./server-helpers-swarm.ts";
+import { resolveWalletExportRejection } from "./server-helpers-wallet.ts";
 import {
   createConnectorHealthMonitor,
   handleAccountsRoutes,
@@ -470,14 +311,12 @@ import {
   handleAgentLifecycleRoutes,
   handleAgentStatusRoutes,
   handleAgentTransferRoutes,
-  handleAppPackageRoutes,
   handleAuthRoutes,
   handleAvatarRoutes,
   handleBackgroundTasksRoute,
   handleBugReportRoutes,
   handleCharacterRoutes,
   handleCloudAndCoreRouteGroup,
-  handleCommandsRoutes,
   handleConfigRoutes,
   handleConnectorRoutes,
   handleConversationRouteGroup,
@@ -485,12 +324,12 @@ import {
   handleDiagnosticsRoutes,
   handleFirstRunRoutes,
   handleHealthRoutes,
+  handleHostSettingsRoutes,
   handleInboxAndCloudRelayRouteGroup,
   handleInteractionsRoutes,
   handleLifeOpsRuntimePluginRoute,
   handleMemoryRoutes,
   handleMiscRoutes,
-  handleMobileOptionalRoutes,
   handleModelConfigRoutes,
   handleModelsRoutes,
   handlePermissionRoutes,
@@ -511,136 +350,339 @@ import {
   tryHandleLifeOpsInboxFallbackLazy,
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
+import { createServerResources } from "./server-resources.ts";
+import { createServerState } from "./server-state.ts";
+import type { ServerState } from "./server-types.ts";
+import { isAuthProtectedRoute, serveStaticUi } from "./static-file-server.ts";
+import { isTrajectoryOwnerRequest } from "./trajectory-request-authorization.ts";
 import {
-  EVM_PLUGIN_PACKAGE,
+  bindViewRequestHost,
+  closeViewInteractionHost,
+} from "./view-interaction-host.ts";
+import { registerBuiltinViews as registerRuntimeBuiltinViews } from "./views-registry.ts";
+import {
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.ts";
+import { persistWalletPrivateKeys } from "./wallet-key-store.ts";
 import {
   applyWalletRpcConfigUpdate,
+  getInventoryProviderOptions,
   getStoredWalletRpcSelections,
   resolveWalletNetworkMode,
   resolveWalletRpcReadiness,
 } from "./wallet-rpc.ts";
+
 import {
   DEFAULT_REPLAY_LIMIT,
   parseEventCursor,
   selectReplayEvents,
 } from "./ws-event-replay.ts";
+import type { X402PluginModule } from "./x402-contract.ts";
 import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
 
-export {
-  isClientVisibleNoResponse,
-  isNoResponsePlaceholder,
-  stripAssistantStageDirections,
-} from "./chat-text-helpers.ts";
-
-export {
-  cloneWithoutBlockedObjectKeys,
-  decodePathComponent,
-  findOwnPackageRoot,
-  getErrorMessage,
-  isUuidLike,
-  persistConversationRoomTitle,
-} from "./server-helpers.ts";
-
-import {
-  getInventoryProviderOptions,
-  getModelOptions,
-  getOrFetchAllProviders,
-  getOrFetchProvider,
-  paramKeyToCategory,
-  providerCachePath,
-  readProviderCache,
-} from "./model-provider-helpers.ts";
-import {
-  AGENT_EVENT_ALLOWED_STREAMS,
-  aggregateSecrets,
-  CONFIG_WRITE_ALLOWED_TOP_KEYS,
-  discoverInstalledPlugins,
-  discoverPluginsFromManifest,
-  getReleaseBundledPluginIds,
-  isBlockedEnvKey,
-  maskValue,
-  type PluginEntry,
-} from "./plugin-discovery-helpers.ts";
-
-const _nodeRequire = createRequire(import.meta.url);
-
-// Re-export for downstream consumers (e.g. @elizaos/app-core)
-export {
-  AGENT_EVENT_ALLOWED_STREAMS,
-  CONFIG_WRITE_ALLOWED_TOP_KEYS,
-  discoverInstalledPlugins,
-  discoverPluginsFromManifest,
-  findPrimaryEnvKey,
-  readBundledPluginPackageMetadata,
-} from "./plugin-discovery-helpers.ts";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-function getAgentEventSvc(
-  runtime: AgentRuntime | null,
-): AgentEventServiceLike | null {
-  return getAgentEventService(runtime);
-}
-
-function requirePluginManager(runtime: AgentRuntime | null): PluginManagerLike {
-  const service = runtime?.getService("plugin_manager");
-  if (!isPluginManagerLike(service)) {
-    throw new Error("Plugin manager service not found");
-  }
-  return wrapPluginManagerWithLocalFallback(service);
-}
-
+const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 /**
- * The runtime plugin manager's registry client only fetches from GitHub and
- * scans a `plugins/` dir for `elizaos.plugin.json`. Workspace-vendored plugins
- * (under `packages/plugin-*`) are invisible to it. Wrap `installPlugin` so that
- * when it returns "not found in the registry" we retry using our own
- * registry-client (which discovers workspace packages and node_modules symlinks).
+ * Restore's request-body cap IS the v1 restorable ceiling: anything retained
+ * above it can never be restored here (#17172). Shared with the retain side so
+ * the two cannot drift.
  */
-function wrapPluginManagerWithLocalFallback(
-  pm: PluginManagerLike,
-): PluginManagerLike {
-  const originalInstall = pm.installPlugin.bind(pm);
-  const wrapped: PluginManagerLike = Object.create(pm);
+const MAX_BACKUP_BODY_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
+const BACKUP_BODY_TOO_LARGE = "Agent backup request body is too large";
 
-  wrapped.installPlugin = async (pluginName, onProgress) => {
-    const result = await originalInstall(pluginName, onProgress);
-    if (
-      result.success ||
-      !result.error?.includes("not found in the registry")
-    ) {
-      return result;
-    }
+import path from "node:path";
 
-    // Upstream registry missed it — check Eliza's own local discovery.
-    const { getPluginInfo } = await import("../services/registry-client.ts");
-    const localInfo = await getPluginInfo(pluginName);
-    if (!localInfo?.localPath) {
-      return result;
-    }
-
-    // The plugin is a workspace package — just return success pointing at it.
-    // The runtime already resolves it via NODE_PATH / bun workspace links so
-    // there is nothing to download; the caller only needs to enable it in
-    // config and restart.
-    return {
-      success: true,
-      pluginName: localInfo.name,
-      version:
-        localInfo.npm.v2Version ?? localInfo.npm.v1Version ?? "workspace",
-      installPath: localInfo.localPath,
-      requiresRestart: true,
-    };
-  };
-
-  return wrapped;
+// `@elizaos/plugin-browser` and `@elizaos/plugin-x402` load lazily: X402 only
+// when runtime routes need validation, browser on the first browser route hit,
+// so neither gates the API bind. A module-scope top-level await here would load
+// both plugins (and their transitive native deps) whenever anything imported
+// `@elizaos/agent`, which blocks container boot in cloud sandboxes.
+type BrowserPluginModule = typeof import("@elizaos/plugin-browser");
+let browserPluginModule: BrowserPluginModule | null = null;
+let x402PluginModule: X402PluginModule | null = null;
+let browserPluginModulePromise: Promise<BrowserPluginModule> | null = null;
+let x402PluginModulePromise: Promise<X402PluginModule | null> | null = null;
+// Vite 7's import-analysis eagerly resolves string-literal dynamic imports even
+// when a `@vite-ignore` comment is present, throwing "Failed to resolve entry"
+// for the optional plugins below whose dist isn't built in the unit Plugin
+// Tests lane (any spec that transitively transforms this file then fails to
+// collect). Funnel optional plugin loads through a variable specifier so the
+// analyzer leaves them as pure runtime imports — the host resolves them from
+// node_modules on demand. Mirrors the variable-specifier bundle loader further
+// down this file.
+function importOptionalPlugin<T = unknown>(specifier: string): Promise<T> {
+  return import(/* @vite-ignore */ specifier) as Promise<T>;
 }
-
+async function getBrowserPlugin(): Promise<BrowserPluginModule> {
+  if (browserPluginModule) return browserPluginModule;
+  browserPluginModulePromise ??= importOptionalPlugin<BrowserPluginModule>(
+    "@elizaos/plugin-browser",
+  ).then((browser) => {
+    browserPluginModule = browser;
+    return browser;
+  });
+  return browserPluginModulePromise;
+}
+/** Bind the live runtime service, not a separately imported plugin module copy. */
+const nativeReaderWiredRuntimes = new WeakSet<AgentRuntime>();
+function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
+  if (!runtime || nativeReaderWiredRuntimes.has(runtime)) return;
+  nativeReaderWiredRuntimes.add(runtime);
+  const requestingHost = (clientId: string): object => {
+    const scope = getViewClientScope();
+    if (!scope || scope.clientId !== clientId) {
+      throw new ElizaError(
+        "Native browser requires the requesting view client",
+        { code: "VIEW_CLIENT_REQUIRED" },
+      );
+    }
+    return scope.hostKey;
+  };
+  // Context activation can register the plugin long after API startup. Bind
+  // each actual service instance when it starts, without eagerly loading it.
+  const bindReader = () => {
+    const browser = runtime.getService("browser") as InstanceType<
+      BrowserPluginModule["BrowserService"]
+    > | null;
+    if (!browser || typeof browser.setNativeClientTransport !== "function")
+      return;
+    browser.setNativeClientTransport({
+      executeCommand: async (clientId, command) => {
+        const hostKey = requestingHost(clientId);
+        const [
+          { dispatchViewInteract, getViewsBroadcastWsToClientId },
+          { getView },
+        ] = await Promise.all([
+          import("./views-routes.ts"),
+          import("./views-registry.ts"),
+        ]);
+        const entry = getView(runtime, "browser", { viewType: "gui" });
+        const sendToClient = getViewsBroadcastWsToClientId(hostKey);
+        if (!entry || !sendToClient)
+          throw new Error("Native browser control transport is unavailable.");
+        const reply = await dispatchViewInteract(
+          entry,
+          "browser",
+          "browser-command",
+          { command },
+          {
+            clientId,
+            hostKey,
+            broadcastWsToClientId: sendToClient,
+            runtime,
+          },
+        );
+        if (!reply.success)
+          throw new Error(reply.error ?? "Native browser control failed.");
+        return (await getBrowserPlugin()).decodeNativeBrowserCommandResult(
+          command,
+          reply.result,
+        );
+      },
+      navigate: async (clientId, url) => {
+        const hostKey = requestingHost(clientId);
+        const [
+          { getViewsBroadcastWsToClientId },
+          { createShellNavigateViewWsFrame },
+        ] = await Promise.all([
+          import("./views-routes.ts"),
+          import("@elizaos/core"),
+        ]);
+        const send = getViewsBroadcastWsToClientId(hostKey);
+        if (
+          !send ||
+          send(
+            clientId,
+            createShellNavigateViewWsFrame({
+              viewId: "browser",
+              viewType: "gui",
+              viewLabel: "Browser",
+              source: "agent",
+              viewPath: url
+                ? `/browser?browse=${encodeURIComponent(url)}`
+                : "/browser",
+            }),
+          ) <= 0
+        )
+          throw new Error(
+            "The requesting native Browser client is not connected.",
+          );
+      },
+      readPage: async (clientId, selector) => {
+        const hostKey = requestingHost(clientId);
+        const [
+          { dispatchViewInteract, getViewsBroadcastWsToClientId },
+          { getView },
+        ] = await Promise.all([
+          import("./views-routes.ts"),
+          import("./views-registry.ts"),
+        ]);
+        const entry = getView(runtime, "browser", { viewType: "gui" });
+        const sendToClient = getViewsBroadcastWsToClientId(hostKey);
+        if (!entry || !sendToClient)
+          throw new Error(
+            "Native Browser interaction transport is unavailable.",
+          );
+        const reply = await dispatchViewInteract(
+          entry,
+          "browser",
+          "get-text",
+          {
+            nativeOnly: true,
+            ...(selector === undefined ? {} : { selector }),
+          },
+          {
+            clientId,
+            hostKey,
+            broadcastWsToClientId: sendToClient,
+            runtime,
+          },
+        );
+        if (!reply.success)
+          throw new Error(reply.error ?? "Native Browser page read failed.");
+        return reply.result;
+      },
+    });
+  };
+  runtime.registerEvent(EventType.SERVICE_STARTED, async ({ serviceType }) => {
+    if (serviceType === "browser") bindReader();
+  });
+  bindReader();
+}
+// On mobile the agent bundle aliases `@elizaos/plugin-browser` to a null-stub
+// (scripts/mobile-stubs/null-plugin.ts): the module imports fine but its
+// workspace functions are absent, so calling one throws an uncaught TypeError
+// that surfaces as a 500 (and a raw "X is not a function" in the /browser view).
+// The browser workspace is desktop-only, so resolve the plugin only when it
+// really implements the requested method and let callers serve an empty payload
+// otherwise.
+async function resolveDesktopBrowserPlugin(
+  method: keyof BrowserPluginModule,
+): Promise<BrowserPluginModule | null> {
+  if (isMobilePlatform()) return null;
+  const browserPlugin = await getBrowserPlugin();
+  if (
+    (
+      browserPlugin as {
+        __mobileStub?: boolean;
+      }
+    ).__mobileStub
+  )
+    return null;
+  return typeof browserPlugin[method] === "function" ? browserPlugin : null;
+}
+function getBrowserWorkspacePlugin(): Promise<BrowserPluginModule | null> {
+  return resolveDesktopBrowserPlugin("getBrowserWorkspaceSnapshot");
+}
+async function getX402Plugin(): Promise<X402PluginModule | null> {
+  if (x402PluginModule) return x402PluginModule;
+  // x402 is desktop/cloud-only; on mobile it is not in the agent bundle, so the
+  // "optional" dynamic import REJECTS (no node_modules). Treat a missing module
+  // as "no x402" instead of letting the rejection crash API-server startup —
+  // `importOptionalPlugin` is named optional but does not itself swallow.
+  x402PluginModulePromise ??= importOptionalPlugin<X402PluginModule>(
+    "@elizaos/plugin-x402",
+  )
+    .then((x402) => {
+      x402PluginModule = x402;
+      return x402;
+    })
+    .catch(() => null);
+  return x402PluginModulePromise;
+}
+// Package specifier per optional-plugin key. Kept alongside the import table so
+// the unavailable-plugin fallback can key its "is this the plugin package itself
+// that's absent (benign) vs a broken transitive import (drift)" decision on the
+// real specifier rather than the short key. See optional-plugin-fallback.ts.
+const optionalPluginSpecifiers = {
+  capacitor: "@elizaos/plugin-native-inference/host-bridge",
+  computerUse: "@elizaos/plugin-computeruse",
+  cloud: "@elizaos/plugin-elizacloud",
+  imessage: "@elizaos/plugin-imessage",
+  mcp: "@elizaos/plugin-mcp",
+  workflow: "@elizaos/plugin-workflow/trigger-routes",
+} as const;
+const optionalPluginImports = {
+  capacitor: () => importOptionalPlugin(optionalPluginSpecifiers.capacitor),
+  computerUse: () => importOptionalPlugin(optionalPluginSpecifiers.computerUse),
+  cloud: () => importOptionalPlugin(optionalPluginSpecifiers.cloud),
+  imessage: () => importOptionalPlugin(optionalPluginSpecifiers.imessage),
+  mcp: () => importOptionalPlugin(optionalPluginSpecifiers.mcp),
+  workflow: () => importOptionalPlugin(optionalPluginSpecifiers.workflow),
+};
+type LocalInferenceServerApi = LocalInferenceRouteApi &
+  LocalInferenceVoiceRouteApi;
+/**
+ * Combine the route + voice surfaces from the single subpath-owning loader
+ * (`./local-inference-server-api.ts`). The loaders there own the stub/subpath
+ * knowledge and each clear their memo on reject, so a cold-boot import failure
+ * surfaces here and retries on the next request — the same semantics as before,
+ * without this file knowing the plugin's stub layout.
+ */
+async function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
+  const [routeApi, voiceApi] = await Promise.all([
+    loadLocalInferenceRouteApi(),
+    loadLocalInferenceVoiceRouteApi(),
+  ]);
+  return { ...routeApi, ...voiceApi };
+}
+async function getOptionalPluginApi<T>(
+  key: keyof typeof optionalPluginImports,
+): Promise<T> {
+  try {
+    return (await optionalPluginImports[key]()) as T;
+  } catch (err) {
+    // The plugin is optional and (on mobile) many desktop/cloud plugins — cloud,
+    // whatsapp, wallet-adjacent, mcp, streaming, … — are excluded, so their
+    // dynamic import REJECTS with a module-resolution error. Without this catch
+    // that rejection propagates to the top-level request handler as a 500 on
+    // EVERY renderer poll of the plugin's routes. We fall back to a no-op API so
+    // route-dispatch blocks (`if (await handleX(...)) return;`) fall through to
+    // the normal 404 instead of erroring.
+    //
+    // resolveOptionalPluginImportFailure distinguishes the EXPECTED
+    // module-absent case (quiet debug + fallthrough) from a present-but-broken
+    // plugin (a package that resolved but threw at init, or whose accessed
+    // export was renamed/removed). The latter is a drift regression the old
+    // silent Proxy hid — it now warns so a broken/renamed handler is observable
+    // instead of silently 404ing forever. See optional-plugin-fallback.ts.
+    return resolveOptionalPluginImportFailure<T>(
+      String(key),
+      err,
+      optionalPluginSpecifiers[key],
+    );
+  }
+}
+type BrowserWorkspaceCommand = Parameters<
+  BrowserPluginModule["executeBrowserWorkspaceCommand"]
+>[0];
+type BrowserWorkspaceTabKind = NonNullable<
+  Parameters<BrowserPluginModule["openBrowserWorkspaceTab"]>[0]["kind"]
+>;
+let walletApiPromise:
+  | Promise<typeof import("@elizaos/plugin-wallet")>
+  | undefined;
+function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
+  walletApiPromise ??= importOptionalPlugin<
+    typeof import("@elizaos/plugin-wallet")
+  >("@elizaos/plugin-wallet").catch((err) => {
+    // plugin-wallet is desktop/cloud-only; on mobile it is not in the bundle so
+    // this import REJECTS. Cache a no-op fallback so /api/wallet/* falls through
+    // to 404 instead of 500ing on every renderer poll. Desktop imports succeed,
+    // so this branch never runs there. resolveOptionalPluginImportFailure keeps
+    // the benign module-absent case quiet while surfacing a present-but-broken
+    // plugin-wallet load (drift) as an observable warning.
+    return resolveOptionalPluginImportFailure<
+      typeof import("@elizaos/plugin-wallet")
+    >("@elizaos/plugin-wallet", err, "@elizaos/plugin-wallet");
+  });
+  return walletApiPromise;
+}
+let coreWalletApiPromise: Promise<typeof import("./wallet.ts")> | undefined;
+function getCoreWalletApi(): Promise<typeof import("./wallet.ts")> {
+  coreWalletApiPromise ??= import("./wallet.ts");
+  return coreWalletApiPromise;
+}
 function getPluginManagerForState(state: ServerState): PluginManagerLike {
   const service = state.runtime?.getService("plugin_manager");
   if (isPluginManagerLike(service)) {
@@ -648,99 +690,6 @@ function getPluginManagerForState(state: ServerState): PluginManagerLike {
   }
   return createConfigPluginManager(() => state.config);
 }
-
-function requireCoreManager(runtime: AgentRuntime | null): CoreManagerLike {
-  const service = runtime?.getService("core_manager");
-  if (!isCoreManagerLike(service)) {
-    throw new Error("Core manager service not found");
-  }
-  return service;
-}
-
-const DELETED_CONVERSATIONS_FILENAME = "deleted-conversations.v1.json";
-const MAX_DELETED_CONVERSATION_IDS = 5000;
-
-interface DeletedConversationsStateFile {
-  version: 1;
-  updatedAt: string;
-  ids: string[];
-}
-
-function readDeletedConversationIdsFromState(): Set<string> {
-  const filePath = path.join(resolveStateDir(), DELETED_CONVERSATIONS_FILENAME);
-  if (!fs.existsSync(filePath)) return new Set();
-  try {
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<DeletedConversationsStateFile>;
-    const ids = Array.isArray(parsed.ids) ? parsed.ids : [];
-    return new Set(
-      ids
-        .map((id) => (typeof id === "string" ? id.trim() : ""))
-        .filter((id) => id.length > 0),
-    );
-  } catch (err) {
-    logger.warn(
-      `[eliza-api] Failed to read deleted conversations state: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return new Set();
-  }
-}
-
-function _persistDeletedConversationIdsToState(ids: Set<string>): void {
-  const dir = resolveStateDir();
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-
-  const normalized = Array.from(ids)
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0)
-    .slice(-MAX_DELETED_CONVERSATION_IDS);
-
-  const filePath = path.join(dir, DELETED_CONVERSATIONS_FILENAME);
-  const tmpFilePath = `${filePath}.${process.pid}.tmp`;
-  const payload: DeletedConversationsStateFile = {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    ids: normalized,
-  };
-
-  fs.writeFileSync(tmpFilePath, `${JSON.stringify(payload, null, 2)}\n`, {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
-  fs.renameSync(tmpFilePath, filePath);
-}
-
-export type {
-  AgentStartupDiagnostics,
-  ConversationMeta,
-  LogEntry,
-  ServerState,
-  ShareIngestItem,
-  SkillEntry,
-  StreamEventEnvelope,
-  StreamEventType,
-} from "./server-types.ts";
-
-import type { AwarenessRegistryLike } from "./agent-status-routes.ts";
-import { createApiEventHub } from "./event-hub.ts";
-import { listenHttpServer } from "./http-listener.ts";
-import { createRouteKernel } from "./route-kernel.ts";
-import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";
-import { createServerResources } from "./server-resources.ts";
-import { createServerState } from "./server-state.ts";
-import type {
-  AgentStartupDiagnostics,
-  LogEntry,
-  ServerState,
-} from "./server-types.ts";
-import type { X402PluginModule } from "./x402-contract.ts";
-
-export {
-  fetchWithTimeoutGuard,
-  streamResponseBodyWithByteLimit,
-} from "./server-helpers-fetch.ts";
 
 /**
  * Read and parse a JSON request body with size limits and error handling.
@@ -756,16 +705,9 @@ async function readJsonBody<T = Record<string, unknown>>(
     ...options,
   });
 }
-
-const readBody = (req: http.IncomingMessage): Promise<string> =>
-  readRequestBody(req, { maxBytes: MAX_BODY_BYTES }).then(
-    (value) => value ?? "",
-  );
-
 function isJsonRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
 function isAgentBackupStateData(value: unknown): value is AgentBackupStateData {
   if (!isJsonRecord(value)) return false;
   return (
@@ -775,7 +717,6 @@ function isAgentBackupStateData(value: unknown): value is AgentBackupStateData {
     isJsonRecord(value.manifest)
   );
 }
-
 async function readBackupJsonBody(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -800,46 +741,21 @@ async function readBackupJsonBody(
     return null;
   }
 }
-
 let activeTerminalRunCount = 0;
 const terminalRunIdReservations = new Map<string, number>();
 const TERMINAL_RUN_ID_RESERVATION_TTL_MS = 24 * 60 * 60 * 1000;
-const MAX_TERMINAL_RUN_ID_RESERVATIONS = 65_536;
-const TERMINAL_RUN_ID_SWEEP_INTERVAL_MS = 60_000;
+const MAX_TERMINAL_RUN_ID_RESERVATIONS = 65536;
+const TERMINAL_RUN_ID_SWEEP_INTERVAL_MS = 60000;
 let lastTerminalRunIdSweepAt = 0;
-
+function formatBackupMegabytes(bytes: number): string {
+  return (bytes / (1024 * 1024)).toFixed(1);
+}
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   sendJson(res, data, status);
 }
-
 function error(res: http.ServerResponse, message: string, status = 400): void {
   sendJsonError(res, message, status);
 }
-
-function parseBrowserBridgeKind(
-  browserPlugin: BrowserPluginModule,
-  value: string | undefined,
-): BrowserBridgeKind | null {
-  if (!value) return null;
-  return (browserPlugin.BROWSER_BRIDGE_KINDS as readonly string[]).includes(
-    value,
-  )
-    ? (value as BrowserBridgeKind)
-    : null;
-}
-
-function parseBrowserBridgePackageTarget(
-  browserPlugin: BrowserPluginModule,
-  value: unknown,
-): BrowserBridgePackagePathTarget | null {
-  return typeof value === "string" &&
-    (
-      browserPlugin.BROWSER_BRIDGE_PACKAGE_PATH_TARGETS as readonly string[]
-    ).includes(value)
-    ? (value as BrowserBridgePackagePathTarget)
-    : null;
-}
-
 async function handleBuiltinOptionalRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -864,116 +780,6 @@ async function handleBuiltinOptionalRoutes(
     });
     return true;
   }
-
-  // Pure-fabrication "capability unavailable" stubs are declared once in the
-  // absent-plugin route stub registry (see absent-plugin-route-stubs.ts /
-  // arch-audit #12089 item 12). Anything that reads live runtime state, such as
-  // wallet addresses, is handled above and is intentionally NOT in the registry,
-  // because those responses are not fabrications.
-  const absentPluginStub = resolveAbsentPluginRouteStub(method, pathname);
-  if (absentPluginStub) {
-    // POST stubs still drain the request body so the socket is not left with a
-    // pending payload (matches the pre-registry behavior for activity-signals).
-    if (method === "POST") {
-      await readBody(req).catch(() => undefined);
-    }
-    json(
-      res,
-      absentPluginStub.buildBody(req),
-      absentPluginStub.statusCode ?? 200,
-    );
-    return true;
-  }
-
-  if (method === "GET" && pathname === "/api/browser-bridge/packages") {
-    const browserPlugin = await getBrowserBridgePlugin();
-    json(res, {
-      status: browserPlugin
-        ? browserPlugin.getBrowserBridgeCompanionPackageStatus()
-        : EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS,
-    });
-    return true;
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/browser-bridge/packages/open-path"
-  ) {
-    const body =
-      (await readJsonBody<{ target?: unknown; revealOnly?: unknown }>(
-        req,
-        res,
-      )) ?? null;
-    if (!body) return true;
-    const browserPlugin = await getBrowserBridgePlugin();
-    if (!browserPlugin) {
-      error(res, "Browser bridge is not available on this platform", 503);
-      return true;
-    }
-    const target = parseBrowserBridgePackageTarget(browserPlugin, body.target);
-    if (!target) {
-      error(res, "Invalid browser bridge package target", 400);
-      return true;
-    }
-    json(
-      res,
-      await browserPlugin.openBrowserBridgeCompanionPackagePath(target, {
-        revealOnly: body.revealOnly === true,
-      }),
-    );
-    return true;
-  }
-
-  const packageBuildMatch = pathname.match(
-    /^\/api\/browser-bridge\/packages\/([^/]+)\/build$/,
-  );
-  if (method === "POST" && packageBuildMatch) {
-    const decodedBrowser = decodePathComponent(
-      packageBuildMatch[1],
-      res,
-      "browser bridge package browser",
-    );
-    if (decodedBrowser === null) return true;
-    const browserPlugin = await getBrowserBridgePlugin();
-    if (!browserPlugin) {
-      error(res, "Browser bridge is not available on this platform", 503);
-      return true;
-    }
-    const browser = parseBrowserBridgeKind(browserPlugin, decodedBrowser);
-    if (!browser) {
-      error(res, "Invalid browser bridge package browser", 400);
-      return true;
-    }
-    json(res, {
-      status: await browserPlugin.buildBrowserBridgeCompanionPackage(browser),
-    });
-    return true;
-  }
-
-  const packageManagerMatch = pathname.match(
-    /^\/api\/browser-bridge\/packages\/([^/]+)\/open-manager$/,
-  );
-  if (method === "POST" && packageManagerMatch) {
-    const decodedBrowser = decodePathComponent(
-      packageManagerMatch[1],
-      res,
-      "browser bridge package browser",
-    );
-    if (decodedBrowser === null) return true;
-    const browserPlugin = await getBrowserBridgePlugin();
-    if (!browserPlugin) {
-      error(res, "Browser bridge is not available on this platform", 503);
-      return true;
-    }
-    const browser = parseBrowserBridgeKind(browserPlugin, decodedBrowser);
-    if (!browser) {
-      error(res, "Invalid browser bridge package browser", 400);
-      return true;
-    }
-    json(res, await browserPlugin.openBrowserBridgeCompanionManager(browser));
-    return true;
-  }
-
   if (pathname === "/api/browser-workspace" && method === "GET") {
     const browserPlugin = await getBrowserWorkspacePlugin();
     if (!browserPlugin) {
@@ -983,7 +789,6 @@ async function handleBuiltinOptionalRoutes(
     json(res, await browserPlugin.getBrowserWorkspaceSnapshot());
     return true;
   }
-
   if (pathname === "/api/browser-workspace/command" && method === "POST") {
     const browserPlugin = await getBrowserWorkspacePlugin();
     const body =
@@ -999,7 +804,6 @@ async function handleBuiltinOptionalRoutes(
     json(res, await browserPlugin.executeBrowserWorkspaceCommand(body));
     return true;
   }
-
   if (pathname === "/api/browser-workspace/tabs" && method === "GET") {
     const browserPlugin = await getBrowserWorkspacePlugin();
     if (!browserPlugin) {
@@ -1009,7 +813,6 @@ async function handleBuiltinOptionalRoutes(
     json(res, { tabs: await browserPlugin.listBrowserWorkspaceTabs() });
     return true;
   }
-
   if (pathname === "/api/browser-workspace/tabs" && method === "POST") {
     const browserPlugin = await getBrowserWorkspacePlugin();
     if (!browserPlugin) {
@@ -1027,14 +830,12 @@ async function handleBuiltinOptionalRoutes(
     json(res, { tab: await browserPlugin.openBrowserWorkspaceTab(body) });
     return true;
   }
-
   const tabMatch = pathname.match(
     /^\/api\/browser-workspace\/tabs\/([^/]+)(?:\/(navigate|eval|show|hide|snapshot))?$/,
   );
   if (!tabMatch) {
     return false;
   }
-
   const decodedTabId = decodePathComponent(
     tabMatch[1],
     res,
@@ -1047,38 +848,34 @@ async function handleBuiltinOptionalRoutes(
     return true;
   }
   const action = tabMatch[2] ?? null;
-
   const browserPlugin = await getBrowserWorkspacePlugin();
   if (!browserPlugin) {
     error(res, "Browser workspace is not available on this platform", 503);
     return true;
   }
-
   if (!action && method === "DELETE") {
     const closed = await browserPlugin.closeBrowserWorkspaceTab(tabId);
     json(res, { closed }, closed ? 200 : 404);
     return true;
   }
-
   if (action === "show" && method === "POST") {
     json(res, { tab: await browserPlugin.showBrowserWorkspaceTab(tabId) });
     return true;
   }
-
   if (action === "hide" && method === "POST") {
     json(res, { tab: await browserPlugin.hideBrowserWorkspaceTab(tabId) });
     return true;
   }
-
   if (action === "snapshot" && method === "GET") {
     json(res, await browserPlugin.snapshotBrowserWorkspaceTab(tabId));
     return true;
   }
-
   if (action === "navigate" && method === "POST") {
     const body =
-      (await readJsonBody<{ url?: string; partition?: string }>(req, res)) ??
-      null;
+      (await readJsonBody<{
+        url?: string;
+        partition?: string;
+      }>(req, res)) ?? null;
     if (!body?.url) {
       error(res, "url is required", 400);
       return true;
@@ -1091,11 +888,12 @@ async function handleBuiltinOptionalRoutes(
     });
     return true;
   }
-
   if (action === "eval" && method === "POST") {
     const body =
-      (await readJsonBody<{ script?: string; partition?: string }>(req, res)) ??
-      null;
+      (await readJsonBody<{
+        script?: string;
+        partition?: string;
+      }>(req, res)) ?? null;
     if (!body?.script) {
       error(res, "script is required", 400);
       return true;
@@ -1108,143 +906,13 @@ async function handleBuiltinOptionalRoutes(
     });
     return true;
   }
-
   return false;
 }
-
-// ---------------------------------------------------------------------------
-import { serveMediaFile } from "./media-store.ts";
-import {
-  injectApiBaseIntoHtml,
-  isAuthProtectedRoute,
-  serveStaticUi,
-} from "./static-file-server.ts";
-
-export type { ChatAttachmentWithData } from "./server-types.ts";
-export { injectApiBaseIntoHtml };
-
-function parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
-  return parseClampedInteger(rawLimit, {
-    min: 1,
-    max: 50,
-    fallback,
-  });
-}
-
-function sanitizeFavoriteAppList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  const apps: string[] = [];
-  for (const item of value) {
-    if (typeof item !== "string") continue;
-    const trimmed = item.trim();
-    if (!trimmed || seen.has(trimmed)) continue;
-    seen.add(trimmed);
-    apps.push(trimmed);
-  }
-  return apps;
-}
-
-function readFavoriteAppsFromConfig(config: ElizaConfig): string[] {
-  const ui = (config.ui ?? {}) as Record<string, unknown>;
-  return sanitizeFavoriteAppList(ui.favoriteApps);
-}
-
-function writeFavoriteAppsToConfig(
-  config: ElizaConfig,
-  apps: string[],
-): string[] {
-  const sanitized = sanitizeFavoriteAppList(apps);
-  const ui = (config.ui ?? {}) as Record<string, unknown>;
-  ui.favoriteApps = sanitized;
-  config.ui = ui as ElizaConfig["ui"];
-  saveElizaConfig(config);
-  return sanitized;
-}
-
 const isBlockedObjectKey = isBlockedObjectKeyFromConfig;
-
-import {
-  resolveMcpServersRejection as _resolveMcpServersRejection,
-  resolveMcpTerminalAuthorizationRejection as _resolveMcpTerminalAuthorizationRejection,
-} from "./server-helpers-mcp.ts";
-
-export {
-  resolveMcpServersRejection,
-  resolveMcpTerminalAuthorizationRejection,
-} from "./server-helpers-mcp.ts";
-
-const resolveMcpServersRejection = _resolveMcpServersRejection;
-
-import { pickRandomNames } from "../runtime/first-run-names.ts";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
-import {
-  applyFirstRunVoicePreset,
-  ensureWalletKeysInEnvAndConfig,
-  getCloudProviderOptions,
-  getProviderOptions,
-  isBlockedObjectKey as isBlockedObjectKeyFromConfig,
-  readUiLanguageHeader,
-  redactConfigSecrets,
-  redactDeep,
-  resolveConfiguredCharacterLanguage,
-  resolveDefaultAgentName,
-  stripRedactedPlaceholderValuesDeep,
-} from "./server-helpers-config.ts";
-
-export { isSafeResetStateDir } from "./server-helpers-config.ts";
-
-// ---------------------------------------------------------------------------
-// Trade permission helpers (exported for use by awareness contributors)
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve the active trade permission mode from config.
- * Falls back to "user-sign-only" when not configured.
- */
-export function resolveTradePermissionMode(
-  config: ElizaConfig,
-): TradePermissionMode {
-  const raw = (config.features as Record<string, unknown> | undefined)
-    ?.tradePermissionMode;
-  if (
-    raw === "user-sign-only" ||
-    raw === "manual-local-key" ||
-    raw === "agent-auto"
-  ) {
-    return raw;
-  }
-  return "user-sign-only";
-}
-
-/**
- * Maximum number of autonomous agent trades allowed per calendar day.
- * Acts as a safety rail when `agent-auto` mode is enabled.
- */
-// Trade safety utilities (defined in trade-safety.ts for testability)
-import {
-  canUseLocalTradeExecution,
-  type TradePermissionMode,
-} from "./trade-safety.ts";
-
-export {
-  AGENT_AUTO_MAX_DAILY_TRADES,
-  agentAutoDailyTrades,
-  assertQuoteFresh,
-  canUseLocalTradeExecution,
-  getAgentAutoTradeDate,
-  QUOTE_MAX_AGE_MS,
-  recordAgentAutoTrade,
-  type TradePermissionMode,
-} from "./trade-safety.ts";
 
 // ---------------------------------------------------------------------------
 // Automation & agent permission helpers
 // ---------------------------------------------------------------------------
-
-import type { AgentAutomationMode } from "./server-types.ts";
-
-const AGENT_AUTOMATION_HEADER = "x-eliza-agent-action";
 const AGENT_AUTOMATION_MODES = new Set<AgentAutomationMode>([
   "connectors-only",
   "full",
@@ -1257,13 +925,6 @@ function parseAgentAutomationMode(value: unknown): AgentAutomationMode | null {
   }
   return normalized as AgentAutomationMode;
 }
-
-function _isAgentAutomationRequest(req: http.IncomingMessage): boolean {
-  const raw = req.headers[AGENT_AUTOMATION_HEADER];
-  if (typeof raw !== "string") return false;
-  return /^(1|true|yes|agent)$/i.test(raw.trim());
-}
-
 function persistAgentAutomationMode(
   state: Pick<ServerState, "config" | "agentAutomationMode">,
   mode: AgentAutomationMode,
@@ -1272,71 +933,40 @@ function persistAgentAutomationMode(
   if (!state.config.features) {
     state.config.features = {};
   }
-
   const features = state.config.features as Record<
     string,
-    boolean | { enabled?: boolean; [k: string]: unknown }
+    | boolean
+    | {
+        enabled?: boolean;
+        [k: string]: unknown;
+      }
   >;
   const current = features.agentAutomation;
   const currentObject =
     current && typeof current === "object" && !Array.isArray(current)
       ? (current as Record<string, unknown>)
       : {};
-
   features.agentAutomation = {
     ...currentObject,
     enabled: true,
     mode,
   };
 }
-
-/**
- * Build the EVM wallet diagnostic card from the plugin-owned static descriptor
- * (identity, config keys, tags, prerequisite labels) merged with the
- * host-resolved runtime status. No plugin-specific literals live in the host.
- */
-function buildPluginEvmDiagnosticEntry(
-  state: Pick<ServerState, "config" | "runtime">,
-): PluginEntry {
-  return buildPluginDiagnosticEntry(
-    walletDiagnosticDescriptor,
-    resolveWalletDiagnosticStatus(walletDiagnosticDescriptor, state),
-  );
-}
-
-import { resolveWalletExportRejection as _resolveWalletExportRejection } from "./server-helpers-wallet.ts";
-
-export {
-  resolveWalletExportRejection,
-  type WalletExportRejection,
-} from "./server-helpers-wallet.ts";
-
-const resolveWalletExportRejection = _resolveWalletExportRejection;
-
-import { resolvePluginConfigMutationRejections as _resolvePluginConfigMutationRejections } from "./server-helpers-plugin.ts";
-
-export {
-  type PluginConfigMutationRejection,
-  resolvePluginConfigMutationRejections,
-  resolvePluginConfigReply,
-} from "./server-helpers-plugin.ts";
-
-const resolvePluginConfigMutationRejections =
-  _resolvePluginConfigMutationRejections;
-
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
-
 export interface RuntimeRestartOptions {
   /**
-   * The active adapter has already been closed to replace its on-disk data.
-   * The host must fully dispose that runtime before opening the replacement.
+   * The host must fully dispose the active runtime before opening the replacement.
+   * Restore may already have closed its adapter, or the replacement may require
+   * exclusive access to the same committed physical store.
    */
   disposeCurrentBeforeBuild?: boolean;
 }
-
 interface RequestContext {
+  composeStatus?: ApiStatusComposer;
+  hostRuntimeMode?: RuntimeModeSnapshot;
+  restartRequiresRuntimeDisposal?: boolean;
   onRestart:
     | ((options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>)
     | null;
@@ -1345,102 +975,7 @@ interface RequestContext {
     previousRuntime: AgentRuntime | null,
     activeRuntime: AgentRuntime,
   ) => void | Promise<void>;
-  getAppManager?: () => Promise<AppManagerLike>;
 }
-
-const resolveMcpTerminalAuthorizationRejection =
-  _resolveMcpTerminalAuthorizationRejection;
-
-import {
-  applyCors as _applyCors,
-  clearPairing as _clearPairing,
-  ensureApiTokenForBindHost as _ensureApiTokenForBindHost,
-  ensurePairingCode as _ensurePairingCode,
-  extractWebSocketHandshakeToken as _extractWebSocketHandshakeToken,
-  getConfiguredApiToken as _getConfiguredApiToken,
-  getPairingExpiresAt as _getPairingExpiresAt,
-  isAllowedHost as _isAllowedHost,
-  isAuthorized as _isAuthorized,
-  isBoundaryRoleAuthorized as _isBoundaryRoleAuthorized,
-  isCredentialedCorsOrigin as _isCredentialedCorsOrigin,
-  isServerTokenAuthorized as _isServerTokenAuthorized,
-  isSharedTerminalClientId as _isSharedTerminalClientId,
-  isTrustedLocalRequest as _isTrustedLocalRequest,
-  isWebSocketAuthorized as _isWebSocketAuthorized,
-  isWebSocketSessionTokenAuthorized as _isWebSocketSessionTokenAuthorized,
-  isWebSocketUpgradeSessionAuthorized as _isWebSocketUpgradeSessionAuthorized,
-  markWebSocketUpgradeSessionAuthorized as _markWebSocketUpgradeSessionAuthorized,
-  normalizePairingCode as _normalizePairingCode,
-  normalizeWsClientId as _normalizeWsClientId,
-  pairingEnabled as _pairingEnabled,
-  rateLimitPairing as _rateLimitPairing,
-  rejectWebSocketUpgrade as _rejectWebSocketUpgrade,
-  releasePendingWebSocket as _releasePendingWebSocket,
-  resolveBoundaryRole as _resolveBoundaryRole,
-  resolveTerminalRunClientId as _resolveTerminalRunClientId,
-  resolveTerminalRunRejection as _resolveTerminalRunRejection,
-  resolveWebSocketUpgradeRejection as _resolveWebSocketUpgradeRejection,
-  tryAcquirePendingWebSocket as _tryAcquirePendingWebSocket,
-  WS_AUTH_GRACE_TIMEOUT_MS,
-} from "./server-helpers-auth.ts";
-
-// Importing the artifact share-viewer scheme self-registers its resolver with
-// the trunk boundary-role registry (#14781) — same pattern as WaifuChat above.
-export { issueArtifactShareViewerToken } from "./artifact-share-role-resolver.ts";
-export {
-  ensureApiTokenForBindHost,
-  extractAuthToken,
-  isAllowedHost,
-  isAuthorized,
-  normalizeWsClientId,
-  resolveCorsOrigin,
-  resolveTerminalRunClientId,
-  resolveTerminalRunRejection,
-  resolveWebSocketUpgradeRejection,
-  type TerminalRunRejection,
-  type WebSocketUpgradeRejection,
-} from "./server-helpers-auth.ts";
-// Back-compat re-export: the WaifuChat scheme now lives in its own resolver
-// module. Importing it here also self-registers the resolver with the trunk
-// boundary-role registry (#12087 item 12).
-export { isWaifuChatAuthorized } from "./waifu-chat-role-resolver.ts";
-
-import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
-import { resolveHttpAccessContext } from "./http-access-context.ts";
-import { resolveInboxRequestAuthorization } from "./inbox-request-authorization.ts";
-
-const isAllowedHost = _isAllowedHost;
-const applyCors = _applyCors;
-const isAuthorized = _isAuthorized;
-const resolveBoundaryRole = _resolveBoundaryRole;
-const isTrustedLocalRequest = _isTrustedLocalRequest;
-const isBoundaryRoleAuthorized = _isBoundaryRoleAuthorized;
-const isCredentialedCorsOrigin = _isCredentialedCorsOrigin;
-const isServerTokenAuthorized = _isServerTokenAuthorized;
-const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
-const normalizeWsClientId = _normalizeWsClientId;
-const resolveTerminalRunClientId = _resolveTerminalRunClientId;
-const isSharedTerminalClientId = _isSharedTerminalClientId;
-const resolveTerminalRunRejection = _resolveTerminalRunRejection;
-const resolveWebSocketUpgradeRejection = _resolveWebSocketUpgradeRejection;
-const rejectWebSocketUpgrade = _rejectWebSocketUpgrade;
-const isWebSocketAuthorized = _isWebSocketAuthorized;
-const extractWebSocketHandshakeToken = _extractWebSocketHandshakeToken;
-const isWebSocketSessionTokenAuthorized = _isWebSocketSessionTokenAuthorized;
-const isWebSocketUpgradeSessionAuthorized =
-  _isWebSocketUpgradeSessionAuthorized;
-const markWebSocketUpgradeSessionAuthorized =
-  _markWebSocketUpgradeSessionAuthorized;
-const tryAcquirePendingWebSocket = _tryAcquirePendingWebSocket;
-const releasePendingWebSocket = _releasePendingWebSocket;
-const getConfiguredApiToken = _getConfiguredApiToken;
-const pairingEnabled = _pairingEnabled;
-
-const ensurePairingCode = _ensurePairingCode;
-const normalizePairingCode = _normalizePairingCode;
-const rateLimitPairing = _rateLimitPairing;
-const getPairingExpiresAt = _getPairingExpiresAt;
-const clearPairing = _clearPairing;
 
 /**
  * Lazy per-process runtime operation manager. Constructed on first
@@ -1449,14 +984,11 @@ const clearPairing = _clearPairing;
  * active-op slot and execution chain.
  */
 let cachedRuntimeOperationManager: RuntimeOperationManager | null = null;
-
 function getOrCreateRuntimeOperationManager(
   state: ServerState,
   restartRuntime: (reason: string) => Promise<boolean>,
 ): RuntimeOperationManager {
-  if (cachedRuntimeOperationManager) {
-    return cachedRuntimeOperationManager;
-  }
+  if (cachedRuntimeOperationManager) return cachedRuntimeOperationManager;
   const repository = getDefaultRepository();
   const healthChecker = getDefaultHealthChecker();
   const coldStrategy = createColdStrategy({
@@ -1482,44 +1014,9 @@ function getOrCreateRuntimeOperationManager(
   return cachedRuntimeOperationManager;
 }
 
-import {
-  attachPtySessionWsBridge,
-  cancelPendingPtySessionStop,
-  MAX_PTY_INPUT_MESSAGE_LENGTH,
-  resolvePtyDisconnectGraceMs,
-  schedulePtySessionStopAfterGrace,
-} from "./pty-ws-bridge.ts";
-import {
-  isLifeOpsCloudPluginRoute,
-  maybeRouteAutonomyEventToConversation,
-} from "./server-autonomy-helpers.ts";
-import {
-  getPtyConsoleBridge,
-  getPtyService,
-  wireCodingAgentChatBridge,
-  wireCodingAgentSwarmSynthesis,
-  wireCodingAgentWsBridge,
-  wireCoordinatorEventRouting,
-} from "./server-helpers-swarm.ts";
-
-import {
-  asObject,
-  normalizeTags,
-  parseNullableNumber,
-  readTaskCompleted,
-  readTaskMetadata,
-  toWorkbenchTodo,
-} from "./workbench-helpers.ts";
-
-export {
-  handleSwarmSynthesis,
-  routeAutonomyTextToUser,
-} from "./server-helpers-swarm.ts";
-
 // One process-wide governance gate shared across runtime (re)registrations, so a
 // restart doesn't reset the proactive-comment cooldowns/caps (#8792).
 const proactiveInteractionGate = new ProactiveInteractionGate();
-
 function proactiveNotificationGroupKey(offer: ProactiveOffer): string {
   if (offer.groupKey) return offer.groupKey;
   const basis = (offer.deepLink || offer.title || offer.text)
@@ -1529,7 +1026,6 @@ function proactiveNotificationGroupKey(offer: ProactiveOffer): string {
     .slice(0, 72);
   return `proactive-interaction:${basis || "general"}`;
 }
-
 async function notifyProactiveInteraction(
   rt: IAgentRuntime,
   offer: ProactiveOffer,
@@ -1541,7 +1037,6 @@ async function notifyProactiveInteraction(
     );
     return;
   }
-
   const title = offer.title?.trim() || offer.text;
   await service.notify({
     title,
@@ -1554,7 +1049,6 @@ async function notifyProactiveInteraction(
     data: { kind: "proactive-interaction" },
   });
 }
-
 /**
  * Wire the proactive-interaction decider (#8792): subscribe to VIEW_SWITCHED and
  * route an admitted, model-judged offer into chat suggestions or low-priority
@@ -1572,13 +1066,163 @@ function wireProactiveInteractionDecider(
     shouldSuppress: () => state.activeChatTurnCount > 0,
   });
 }
-
+async function applyRuntimeRestart(
+  state: ServerState,
+  ctx: RequestContext | undefined,
+  reason: string,
+  options?: RuntimeRestartOptions,
+): Promise<boolean> {
+  if (ctx?.restartRequiresRuntimeDisposal) {
+    options = { ...options, disposeCurrentBeforeBuild: true };
+  }
+  if (!ctx?.onRestart) {
+    return false;
+  }
+  if (state.agentState === "restarting") {
+    return false;
+  }
+  const previousState = state.agentState;
+  logger.info(`[eliza-api] Applying runtime reload: ${reason}`);
+  state.agentState = "restarting";
+  state.startup = { ...state.startup, phase: "restarting" };
+  state.broadcastStatus?.();
+  try {
+    const previousRuntime = state.runtime;
+    const newRuntime = await ctx.onRestart(options);
+    if (!newRuntime) {
+      if (ctx.restartRequiresRuntimeDisposal) state.runtime = null;
+      state.agentState = options?.disposeCurrentBeforeBuild
+        ? "error"
+        : previousState;
+      if (options?.disposeCurrentBeforeBuild) {
+        state.startup = {
+          ...state.startup,
+          phase: "error",
+          lastError:
+            "Runtime replacement failed after the current runtime was disposed",
+          lastErrorAt: Date.now(),
+        };
+      }
+      state.broadcastStatus?.();
+      return false;
+    }
+    registerRuntimeBuiltinViews(newRuntime);
+    await quiesceRuntimeBeforeReplacement(previousRuntime, newRuntime);
+    state.runtime = newRuntime;
+    state.chatConnectionReady = null;
+    state.chatConnectionPromise = null;
+    state.agentState = "running";
+    state.agentName =
+      newRuntime.character.name ?? resolveDefaultAgentName(state.config);
+    state.model = detectRuntimeModel(newRuntime, state.config);
+    state.startedAt = Date.now();
+    state.pendingRestartReasons = [];
+    ctx.onRuntimeSwapped?.();
+    try {
+      await ctx.onRuntimeActivated?.(previousRuntime, newRuntime);
+    } catch (err) {
+      // error-policy:J6 the replacement is already active; host cleanup must
+      // be observable without reverting a healthy runtime.
+      newRuntime.reportError("api.restart.activateRuntime", err);
+      logger.warn(
+        `[eliza-api] Post-swap runtime cleanup failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    state.broadcastStatus?.();
+    return true;
+  } catch (err) {
+    // error-policy:J1 the runtime operation records a failed restart receipt.
+    logger.warn(
+      `[eliza-api] Runtime reload failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    // A failed replacement is an unavailable host, never a live disposed runtime.
+    if (ctx.restartRequiresRuntimeDisposal) state.runtime = null;
+    state.agentState = options?.disposeCurrentBeforeBuild
+      ? "error"
+      : previousState;
+    if (options?.disposeCurrentBeforeBuild) {
+      state.startup = {
+        ...state.startup,
+        phase: "error",
+        lastError:
+          "Runtime replacement failed after the current runtime was disposed",
+        lastErrorAt: Date.now(),
+      };
+    }
+    state.broadcastStatus?.();
+    return false;
+  }
+}
+// Wallet imports/generation share process environment and the host vault.
+// Keep rollback inside the same ownership interval as durable config loading.
+let walletKeyMutationTail = Promise.resolve();
+async function acquireWalletKeyMutation(): Promise<() => void> {
+  const previous = walletKeyMutationTail;
+  let release!: () => void;
+  walletKeyMutationTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  return release;
+}
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   state: ServerState,
   ctx?: RequestContext,
 ): Promise<void> {
+  // Admission and host middleware may await after the dispatcher selects us.
+  // Revalidate the original owner before creating a scope for the current runtime.
+  const parentScope = getViewClientScope();
+  if (
+    getAuthenticatedInProcessAuthorization(req) &&
+    (parentScope?.hostKey !== state ||
+      !parentScope.request ||
+      parentScope.request.signal.aborted ||
+      parentScope.request.runtime !== state.runtime)
+  ) {
+    error(res, "Original authenticated request is no longer active", 403);
+    return;
+  }
+  const rawClientId =
+    req.headers["x-elizaos-client-id"] ?? req.headers["x-eliza-client-id"];
+  const clientId = normalizeWsClientId(
+    Array.isArray(rawClientId) ? rawClientId[0] : rawClientId,
+  );
+  const requestController = new AbortController();
+  const request: NonNullable<ViewClientScope["request"]> = {
+    runtime: state.runtime,
+    signal: requestController.signal,
+  };
+  const scope: ViewClientScope = {
+    hostKey: state,
+    ...(clientId ? { clientId } : {}),
+    request,
+  };
+  const retire = () => {
+    requestController.abort(
+      new DOMException("The originating HTTP request closed", "AbortError"),
+    );
+  };
+  req.once("aborted", retire);
+  res.once("close", retire);
+  return runWithViewClient(scope, async () => {
+    try {
+      await handleRequestForViewClient(req, res, state, ctx);
+    } finally {
+      retire();
+      req.removeListener("aborted", retire);
+      res.removeListener("close", retire);
+    }
+  });
+}
+async function handleRequestForViewClient(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  state: ServerState,
+  ctx?: RequestContext,
+): Promise<void> {
+  bindViewRequestHost(req, state);
   const method = req.method ?? "GET";
   let url: URL;
   try {
@@ -1617,9 +1261,9 @@ async function handleRequest(
     method === "GET" &&
     pathname === "/api/first-run/status" &&
     isCloudProvisioned;
-  // app-core authenticates the session-tier dashboard reads
+  // app authenticates the session-tier dashboard reads
   // (/api/cloud/status, /api/cloud/credits) before forwarding into the agent
-  // server. They need no dedicated exemption here: app-core's forwarded
+  // server. They need no dedicated exemption here: app's forwarded
   // requests arrive over trusted loopback and already pass `isAuthorized`,
   // while exempting the paths let ANY unauthenticated caller who could reach
   // the port (LAN/wildcard bind) read the owner's cloud userId, organizationId,
@@ -1632,10 +1276,6 @@ async function handleRequest(
   // CORS trust set; arbitrary reflected origins remain bearer-only.
   const allowHostCookieAuth =
     requestOrigin === undefined || isCredentialedCorsOrigin(requestOrigin);
-  const requireBrowserCompanionOwnerSession = isBrowserCompanionOwnerMutation(
-    method,
-    pathname,
-  );
   let hostSessionAuthorization: AgentHttpRequestAuthorization = {
     ok: false,
     role: "NONE",
@@ -1647,36 +1287,73 @@ async function handleRequest(
       hostSessionAuthorizationAttempted = true;
       const bridge = getAgentHostBridge();
       const resolveAuthorization = bridge.resolveHttpRequestAuthorization;
-      if (typeof resolveAuthorization === "function") {
+      const inherited = getAuthenticatedInProcessAuthorization(req);
+      if (inherited) hostSessionAuthorization = inherited;
+      else if (typeof resolveAuthorization === "function") {
         hostSessionAuthorization = await resolveAuthorization(
           req,
           state.runtime,
           {
             allowCookieAuth: allowHostCookieAuth,
-            allowTrustedLocalBypass: !requireBrowserCompanionOwnerSession,
-            allowBearerAuth: !requireBrowserCompanionOwnerSession,
+            allowTrustedLocalBypass: !requiresDeviceIdentity(req, pathname),
+            allowBearerAuth: true,
           },
         );
-        return hostSessionAuthorization;
+      } else {
+        const authorize = bridge.isHttpRequestAuthorized;
+        // A legacy boolean-only bridge cannot separate cookie from bearer
+        // authority. Do not consult it for an explicitly untrusted origin;
+        // standalone bearer schemes are evaluated by the normal server gates.
+        const authorized =
+          allowHostCookieAuth && typeof authorize === "function"
+            ? await authorize(req, state.runtime)
+            : false;
+        // Legacy boolean-only hosts can still pass the coarse request gate, but
+        // cannot claim OWNER authority for a sensitive account-selection action.
+        hostSessionAuthorization = {
+          ok: authorized,
+          role: authorized ? "USER" : "NONE",
+        };
       }
-      const authorize = bridge.isHttpRequestAuthorized;
-      // A legacy boolean-only bridge cannot separate cookie from bearer
-      // authority. Do not consult it for an explicitly untrusted origin;
-      // standalone bearer schemes are evaluated by the normal server gates.
-      const authorized =
-        allowHostCookieAuth && typeof authorize === "function"
-          ? await authorize(req, state.runtime)
-          : false;
-      // Legacy boolean-only hosts can still pass the coarse request gate, but
-      // cannot claim OWNER authority for a sensitive account-selection action.
-      hostSessionAuthorization = {
-        ok: authorized,
-        role: authorized ? "USER" : "NONE",
-      };
+      const scope = getViewClientScope();
+      if (
+        scope?.hostKey === state &&
+        scope.request &&
+        !scope.request.signal.aborted &&
+        scope.request.runtime === state.runtime
+      ) {
+        // Keep the same verified caller used by inbox and view routes, including
+        // standalone root tokens when no embedding host installs an auth bridge.
+        const requestAuthorization = resolveInboxRequestAuthorization(
+          req,
+          method,
+          pathname,
+          hostSessionAuthorization,
+        );
+        scope.request.authorization = Object.freeze({
+          ...requestAuthorization,
+          ...(requestAuthorization.externalIdentity
+            ? {
+                externalIdentity: Object.freeze({
+                  ...requestAuthorization.externalIdentity,
+                }),
+              }
+            : {}),
+        });
+      }
       return hostSessionAuthorization;
     };
   const isHostSessionAuthorized = async (): Promise<boolean> =>
     (await resolveHostSessionAuthorization()).ok;
+  // A presented gateway proof is an exclusive authentication mode. A valid
+  // container bearer must never rescue an invalid/unsupported owner proof.
+  if (req.headers["x-eliza-cloud-owner-proof"] !== undefined) {
+    const verified = await resolveHostSessionAuthorization();
+    if (!verified.ok || !verified.externalIdentity || !verified.identityId) {
+      json(res, { error: "Verified Cloud owner session required" }, 401);
+      return;
+    }
+  }
 
   const canonicalizeRestartReason = (reason: string): string => {
     if (
@@ -1688,7 +1365,6 @@ async function handleRequest(
     }
     return reason;
   };
-
   const scheduleRuntimeRestart = (reason: string): void => {
     const canonicalReason = canonicalizeRestartReason(reason);
     if (state.pendingRestartReasons.length >= 50) {
@@ -1709,88 +1385,10 @@ async function handleRequest(
       reasons: [...state.pendingRestartReasons],
     });
   };
-
-  const restartRuntime = async (
+  const restartRuntime = (
     reason: string,
     options?: RuntimeRestartOptions,
-  ): Promise<boolean> => {
-    if (!ctx?.onRestart) {
-      return false;
-    }
-    if (state.agentState === "restarting") {
-      return false;
-    }
-
-    const previousState = state.agentState;
-    logger.info(`[eliza-api] Applying runtime reload: ${reason}`);
-    state.agentState = "restarting";
-    state.startup = { ...state.startup, phase: "restarting" };
-    state.broadcastStatus?.();
-
-    try {
-      const previousRuntime = state.runtime;
-      const newRuntime = await ctx.onRestart(options);
-      if (!newRuntime) {
-        state.agentState = options?.disposeCurrentBeforeBuild
-          ? "error"
-          : previousState;
-        if (options?.disposeCurrentBeforeBuild) {
-          state.startup = {
-            ...state.startup,
-            phase: "error",
-            lastError:
-              "Runtime replacement failed after the current runtime was disposed",
-            lastErrorAt: Date.now(),
-          };
-        }
-        state.broadcastStatus?.();
-        return false;
-      }
-
-      await quiesceRuntimeBeforeReplacement(previousRuntime, newRuntime);
-      state.runtime = newRuntime;
-      state.chatConnectionReady = null;
-      state.chatConnectionPromise = null;
-      state.agentState = "running";
-      state.agentName =
-        newRuntime.character.name ?? resolveDefaultAgentName(state.config);
-      state.model = detectRuntimeModel(newRuntime, state.config);
-      state.startedAt = Date.now();
-      state.pendingRestartReasons = [];
-      ctx.onRuntimeSwapped?.();
-      try {
-        await ctx.onRuntimeActivated?.(previousRuntime, newRuntime);
-      } catch (err) {
-        // error-policy:J6 the replacement is already active; host cleanup must
-        // be observable without reverting a healthy runtime.
-        newRuntime.reportError("api.restart.activateRuntime", err);
-        logger.warn(
-          `[eliza-api] Post-swap runtime cleanup failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-      state.broadcastStatus?.();
-      return true;
-    } catch (err) {
-      logger.warn(
-        `[eliza-api] Runtime reload failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      state.agentState = options?.disposeCurrentBeforeBuild
-        ? "error"
-        : previousState;
-      if (options?.disposeCurrentBeforeBuild) {
-        state.startup = {
-          ...state.startup,
-          phase: "error",
-          lastError:
-            "Runtime replacement failed after the current runtime was disposed",
-          lastErrorAt: Date.now(),
-        };
-      }
-      state.broadcastStatus?.();
-      return false;
-    }
-  };
-
+  ): Promise<boolean> => applyRuntimeRestart(state, ctx, reason, options);
   // ── DNS rebinding protection ──────────────────────────────────────────
   // Reject requests whose Host header doesn't match a known loopback
   // hostname.  Without this check an attacker can rebind their domain's
@@ -1809,19 +1407,17 @@ async function handleRequest(
     );
     return;
   }
-
   if (!applyCors(req, res, pathname)) {
     json(res, { error: "Origin not allowed" }, 403);
     return;
   }
-
   // Cloud SSO popup handoff: GET /pair?token=X must short-circuit BEFORE the
   // static-UI catch-all, otherwise the SPA index.html is served and the user
   // ends up on the password screen.
   //
-  // The cloud-SSO handoff route is owned by the app-core host and injected
+  // The cloud-SSO handoff route is owned by the app host and injected
   // downward through the agent host bridge (see ../runtime/host-bridge.ts) so
-  // agent never imports `@elizaos/app-core`. A local on-device agent never
+  // agent never imports `@elizaos/app`. A local on-device agent never
   // legitimately serves it, so the bridge omits the handler and the request
   // falls through to the normal pipeline.
   const handleCloudPairRoute = getAgentHostBridge().handleCloudPairRoute;
@@ -1832,8 +1428,7 @@ async function handleRequest(
   ) {
     return;
   }
-
-  // The packaged desktop runs the agent listener directly, but app-core owns
+  // The packaged desktop runs the agent listener directly, but app owns
   // its browser-session store. The host consumes the one-shot local socket
   // proof here; its handler enforces loopback peer+Host, originlessness,
   // socket ownership, and socket mode before minting anything.
@@ -1845,7 +1440,12 @@ async function handleRequest(
   ) {
     return;
   }
-
+  const handleHostAuthRoutes = getAgentHostBridge().handleAuthRoutes;
+  if (
+    handleHostAuthRoutes &&
+    (await handleHostAuthRoutes(req, res, state.runtime))
+  )
+    return;
   // Serve dashboard static assets before the auth gates. serveStaticUi already
   // refuses /api/, /v1/, and /ws paths, so API endpoints remain protected
   // while steward-managed containers can still reach the built-in dashboard.
@@ -1853,23 +1453,27 @@ async function handleRequest(
     if (serveStaticUi(req, res, pathname)) return;
     // Chat media (uploaded + generated). Content-addressed sha256 filenames act
     // as unguessable capabilities, so media loads from <img>/<audio> without an
-    // auth header — same rationale as static assets above.
-    if (serveMediaFile(req, res, pathname)) return;
+    // auth header — same rationale as static assets above. The protected
+    // profile serves media only after the auth gate below.
+    if (!isMediaAuthRequired() && serveMediaFile(req, res, pathname)) return;
   }
-
   // ── Runtime-mode visibility gate ────────────────────────────────────────
   // Enforced here, in the server every host shares, so the bare agent
-  // (`bun run start`) honors the same mode contract as the app-core wrapper:
+  // (`bun run start`) honors the same mode contract as the app wrapper:
   // routes outside the active runtime mode return 404 before auth runs
   // (hidden, not probeable). OPTIONS is exempt so CORS preflight keeps its
   // unconditional 204 below.
   if (
     method !== "OPTIONS" &&
-    (await handleRuntimeModePreDispatch(req, res, state.runtime))
+    (await handleRuntimeModePreDispatch(
+      req,
+      res,
+      state.runtime,
+      ctx?.hostRuntimeMode,
+    ))
   ) {
     return;
   }
-
   // ── Per-session request-storm cap ───────────────────────────────────────
   // Before auth resolution and route handlers: a bearer session sustaining
   // more than its polling budget gets 429 + Retry-After (see
@@ -1877,27 +1481,6 @@ async function handleRequest(
   if (maybeCapRequestStorm(req, res, pathname)) {
     return;
   }
-
-  if (requireBrowserCompanionOwnerSession) {
-    if (!hasBrowserCompanionOwnerSessionCookie(req)) {
-      json(res, { error: "Owner session required" }, 401);
-      return;
-    }
-    if (!hasBrowserCompanionCsrfHeader(req)) {
-      json(res, { error: "CSRF token required" }, 403);
-      return;
-    }
-    const ownerAuthorization = await resolveHostSessionAuthorization();
-    if (!ownerAuthorization.ok) {
-      json(res, { error: "Invalid owner session or CSRF token" }, 401);
-      return;
-    }
-    if (ownerAuthorization.role !== "OWNER") {
-      json(res, { error: "Owner role required" }, 403);
-      return;
-    }
-  }
-
   if (
     method !== "OPTIONS" &&
     isAuthProtectedPath &&
@@ -1916,25 +1499,108 @@ async function handleRequest(
     json(res, { error: "Unauthorized" }, 401);
     return;
   }
-
+  // Protected profile: authenticated media (same-origin <img>/<audio> GETs
+  // carry the session cookie, which the gate above accepts without CSRF).
+  if (
+    (method === "GET" || method === "HEAD") &&
+    isMediaAuthRequired() &&
+    serveMediaFile(req, res, pathname)
+  ) {
+    return;
+  }
+  // Complete trajectory inputs and outputs belong to the owner's developer
+  // surface. Enforce this before forwarding or any plugin route can dispatch.
+  if (
+    method !== "OPTIONS" &&
+    (pathname === "/api/trajectories" ||
+      pathname.startsWith("/api/trajectories/")) &&
+    !isTrajectoryOwnerRequest(
+      req,
+      method,
+      pathname,
+      await resolveHostSessionAuthorization(),
+    )
+  ) {
+    json(res, { error: "Owner role required" }, 403);
+    return;
+  }
+  let automationOwnerEntityId: string | undefined;
+  // Trigger definitions and the unified automation feed contain owner-private
+  // prompts. Resolve a presented credential without ambient loopback promotion:
+  // a paired USER bearer stays USER even when the request arrives locally.
+  if (
+    method !== "OPTIONS" &&
+    (pathname.startsWith("/api/triggers") || pathname === "/api/automations")
+  ) {
+    const cookie = req.headers.cookie;
+    const registeredAccess = resolveRegisteredTokenRoleAccess(req);
+    const hasPresentedCredential =
+      [
+        "authorization",
+        "x-eliza-token",
+        "x-elizaos-token",
+        "x-waifu-chat-access-token",
+        "x-api-key",
+        "x-api-token",
+        "x-server-token",
+      ].some((name) => Object.hasOwn(req.headers, name)) ||
+      (typeof cookie === "string" && /(?:^|;\s*)eliza_session=/.test(cookie)) ||
+      registeredAccess !== null;
+    const strictResolver = getAgentHostBridge().resolveHttpRequestAuthorization;
+    const ownerAuthorization = hasPresentedCredential
+      ? strictResolver
+        ? await strictResolver(req, state.runtime, {
+            allowCookieAuth: allowHostCookieAuth,
+            allowTrustedLocalBypass: false,
+            allowBearerAuth: true,
+          })
+        : ({ ok: false, role: "NONE" } as const)
+      : await resolveHostSessionAuthorization();
+    if (
+      !isTrajectoryOwnerRequest(
+        req,
+        method,
+        pathname,
+        ownerAuthorization,
+        !hasPresentedCredential,
+      )
+    ) {
+      json(res, { error: "Owner role required" }, 403);
+      return;
+    }
+    if (state.runtime) {
+      const localOwnerEntityId = resolveOwnerEntityIdOrDefault(state.runtime);
+      const trustedAccess = ownerAuthorization.ok
+        ? resolveHostSessionAccessContext(ownerAuthorization, state.runtime)
+        : resolveHttpAccessContext(req);
+      const requesterEntityId =
+        trustedAccess?.requesterEntityId ?? localOwnerEntityId;
+      // Legacy Node plugin routes cannot carry a distinct requester principal.
+      // Keep this owner-only local surface closed to such principals rather than
+      // silently reading or mutating the canonical local owner's records.
+      if (requesterEntityId !== localOwnerEntityId) {
+        json(res, { error: "Owner role required" }, 403);
+        return;
+      }
+      automationOwnerEntityId = requesterEntityId;
+    }
+  }
   // Remote-mode cloud mutations are forwarded only after the request passes
   // the normal API auth gate; the forwarder attaches the controller's target
   // token, so pre-auth forwarding would let an unauthenticated caller mutate
   // the controlled target.
   if (
     method !== "OPTIONS" &&
-    (await handleRuntimeModeRemoteForward(req, res))
+    (await handleRuntimeModeRemoteForward(req, res, ctx?.hostRuntimeMode))
   ) {
     return;
   }
-
   // CORS preflight
   if (method === "OPTIONS") {
     res.statusCode = 204;
     res.end();
     return;
   }
-
   if (method === "GET" && pathname === "/api/backups") {
     if (!state.runtime) {
       error(res, "Runtime not ready", 503);
@@ -1951,7 +1617,6 @@ async function handleRequest(
     }
     return;
   }
-
   if (method === "POST" && pathname === "/api/backups") {
     if (!state.runtime) {
       error(res, "Runtime not ready", 503);
@@ -1961,6 +1626,38 @@ async function handleRequest(
       const backup = await createLocalAgentBackup(state.runtime, state.config);
       json(res, { backup });
     } catch (err) {
+      if (err instanceof AgentSnapshotBudgetExceededError) {
+        // error-policy:J1 a deterministic size refusal is actionable: retrying
+        // the same state cannot succeed, so answer 413 with the typed budget
+        // figures (no paths or database diagnostics) instead of a generic 500.
+        logger.warn(
+          { err },
+          "[agent-backup] Local backup refused: agent state exceeds the backup size limit",
+        );
+        const unit = err.stage === "file count" ? "files" : "bytes";
+        const postgres = err.streamedBackupUnsupported === "postgres";
+        const base =
+          unit === "files"
+            ? `Agent state has too many files for a local backup (${err.observedBytes} files; the limit is ${err.limitBytes}).`
+            : `Agent state is too large for a local backup (${formatBackupMegabytes(err.observedBytes)} MB; the limit is ${formatBackupMegabytes(err.limitBytes)} MB).`;
+        json(
+          res,
+          {
+            error: postgres
+              ? `${base} The streamed (v2) local backup that handles larger agents supports PGlite databases only, and this agent uses Postgres. Retrying will not help; back up the Postgres database with its own tooling.`
+              : `${base} Retrying will not help until ${unit === "files" ? "files are removed from the agent's state" : "the agent's state is smaller"}.`,
+            ...(postgres ? { streamedBackupSupported: false } : {}),
+            code: err.code,
+            stage: err.stage,
+            unit,
+            observed: err.observedBytes,
+            limit: err.limitBytes,
+            retryable: false,
+          },
+          413,
+        );
+        return;
+      }
       // error-policy:J1 backup adapters can include filesystem and database
       // diagnostics in exceptions; keep the original in the redacting logger.
       logger.error({ err }, "[agent-backup] Local backup failed");
@@ -1968,7 +1665,6 @@ async function handleRequest(
     }
     return;
   }
-
   if (method === "POST" && pathname === "/api/backups/restore") {
     if (!state.runtime) {
       error(res, "Runtime not ready", 503);
@@ -1994,7 +1690,6 @@ async function handleRequest(
     }
     return;
   }
-
   if (method === "POST" && pathname === "/api/snapshot") {
     if (!state.runtime) {
       error(res, "Runtime not ready", 503);
@@ -2050,7 +1745,6 @@ async function handleRequest(
     }
     return;
   }
-
   if (method === "POST" && pathname === "/api/snapshot/v2") {
     if (!state.runtime) {
       error(res, "Runtime not ready", 503);
@@ -2062,7 +1756,6 @@ async function handleRequest(
     });
     return;
   }
-
   if (method === "POST" && pathname === "/api/restore") {
     if (!state.runtime) {
       error(res, "Runtime not ready", 503);
@@ -2096,7 +1789,6 @@ async function handleRequest(
     }
     return;
   }
-
   if (
     (pathname.startsWith("/api/local-inference") ||
       pathname.startsWith("/api/tts/local-inference") ||
@@ -2144,7 +1836,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     await handleBackgroundTasksRoute({
       req,
@@ -2157,12 +1848,6 @@ async function handleRequest(
   ) {
     return;
   }
-  // Computer-use is a desktop/cloud-only plugin; on mobile it is not in the
-  // agent bundle, so importing it here would REJECT (`Cannot find module
-  // '@elizaos/plugin-computeruse'`) and surface as a 500 on every renderer poll
-  // of /api/computer-use/approvals. Skip the import path on mobile and let the
-  // request fall through to handleMobileOptionalRoutes, which serves the inert
-  // {mode:"off",…} approval snapshot.
   if (!isMobilePlatform() && pathname.startsWith("/api/computer-use/")) {
     const { handleComputerUseRoutes } = await getOptionalPluginApi<{
       handleComputerUseRoutes: (
@@ -2174,27 +1859,6 @@ async function handleRequest(
     }>("computerUse");
     if (await handleComputerUseRoutes(req, res, pathname, method)) return;
   }
-
-  // ── Provider inference helpers ────────────────────────────────────────
-  const _disableCloudInference = (): void => {
-    delete process.env.ANTHROPIC_BASE_URL;
-    delete process.env.OPENAI_BASE_URL;
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-  };
-
-  const _enableCloudInference = (
-    cloudApiKey: string,
-    baseUrl: string,
-  ): void => {
-    // Configure coding agent CLIs to proxy through ElizaCloud /api/v1
-    process.env.ANTHROPIC_BASE_URL = `${baseUrl}/api/v1`;
-    process.env.ANTHROPIC_API_KEY = cloudApiKey;
-    process.env.OPENAI_BASE_URL = `${baseUrl}/api/v1`;
-    process.env.OPENAI_API_KEY = cloudApiKey;
-    // Gemini CLI and Aider — no proxy support via ElizaCloud inference
-  };
-
   if (method === "POST" && pathname === "/api/provider/switch") {
     if (
       await handleProviderSwitchRoutes({
@@ -2217,7 +1881,6 @@ async function handleRequest(
       return;
     }
   }
-
   if (
     await handleAuthRoutes({
       req,
@@ -2232,12 +1895,12 @@ async function handleRequest(
       normalizePairingCode,
       rateLimitPairing,
       getPairingExpiresAt,
+      getPairingInstanceId,
       clearPairing,
     })
   ) {
     return;
   }
-
   if (
     await handleSubscriptionRoutes({
       req,
@@ -2250,12 +1913,11 @@ async function handleRequest(
       error,
       saveConfig: saveElizaConfig,
       loadSubscriptionAuth: async () =>
-        (await import("@elizaos/auth")) as never,
+        (await import("@elizaos/auth/auth")) as never,
     } as never)
   ) {
     return;
   }
-
   if (
     await handleAccountsRoutes({
       req,
@@ -2271,9 +1933,9 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     await handleHealthRoutes({
+      composeStatus: ctx?.composeStatus,
       req,
       res,
       method,
@@ -2286,50 +1948,55 @@ async function handleRequest(
   ) {
     return;
   }
-
   const firstRunGetWalletAddresses =
     pathname === "/api/wallet/keys"
       ? (await getCoreWalletApi()).getWalletAddresses
       : null;
-
-  if (
-    await handleFirstRunRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      state,
-      json,
-      error,
-      readJsonBody,
-      isCloudProvisionedContainer,
-      hasPersistedFirstRunState,
-      ensureWalletKeysInEnvAndConfig,
-      getWalletAddresses: firstRunGetWalletAddresses
-        ? () => firstRunGetWalletAddresses(state.runtime?.agentId)
-        : () => ({
-            evmAddress: null,
-            solanaAddress: null,
-          }),
-      pickRandomNames,
-      getStylePresets,
-      getProviderOptions,
-      getCloudProviderOptions,
-      getModelOptions,
-      getInventoryProviderOptions,
-      resolveConfiguredCharacterLanguage,
-      normalizeCharacterLanguage,
-      readUiLanguageHeader,
-      applyFirstRunVoicePreset,
-      saveElizaConfig,
-    })
-  ) {
-    return;
+  const releaseFirstRunWalletKeys =
+    (method === "GET" && pathname === "/api/wallet/keys") ||
+    (method === "POST" && pathname === "/api/first-run")
+      ? await acquireWalletKeyMutation()
+      : undefined;
+  try {
+    if (
+      await handleFirstRunRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        state,
+        json,
+        error,
+        readJsonBody,
+        isCloudProvisionedContainer,
+        hasPersistedFirstRunState,
+        ensureWalletKeysInEnvAndConfig,
+        getWalletAddresses: firstRunGetWalletAddresses
+          ? () => firstRunGetWalletAddresses(state.runtime?.agentId)
+          : () => ({
+              evmAddress: null,
+              solanaAddress: null,
+            }),
+        pickRandomNames,
+        getStylePresets,
+        getProviderOptions,
+        getCloudProviderOptions,
+        getModelOptions,
+        getInventoryProviderOptions,
+        resolveConfiguredCharacterLanguage,
+        normalizeCharacterLanguage,
+        readUiLanguageHeader,
+        applyFirstRunVoicePreset,
+        saveElizaConfig,
+      })
+    ) {
+      return;
+    }
+  } finally {
+    releaseFirstRunWalletKeys?.();
   }
-
   // POST /api/first-run is now handled by first-run-routes.ts above.
-
   if (
     await handleAgentLifecycleRoutes({
       req,
@@ -2350,7 +2017,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (pathname.startsWith("/api/triggers")) {
     const { handleTriggerRoutes } = await getOptionalPluginApi<{
       handleTriggerRoutes: (args: unknown) => Promise<boolean>;
@@ -2361,6 +2027,12 @@ async function handleRequest(
       method,
       pathname,
       runtime: state.runtime,
+      ownerEntityId: automationOwnerEntityId,
+      resolvePromptDeliveryRoom: (runtime: IAgentRuntime) =>
+        resolvePromptDeliveryRoom(state, runtime),
+      localOwnerEntityId: state.runtime
+        ? resolveOwnerEntityIdOrDefault(state.runtime)
+        : undefined,
       readJsonBody,
       json,
       error,
@@ -2383,10 +2055,8 @@ async function handleRequest(
       return;
     }
   }
-
   // Knowledge routes (/api/knowledge/*) are now provided by the
   // @elizaos/app-knowledge plugin via the runtime route registry.
-
   if (
     pathname.startsWith("/api/memory") ||
     pathname.startsWith("/api/memories") ||
@@ -2406,7 +2076,6 @@ async function handleRequest(
     });
     if (memoryHandled) return;
   }
-
   if (
     await handleAgentAdminRoutes({
       req,
@@ -2414,6 +2083,7 @@ async function handleRequest(
       method,
       pathname,
       state,
+      restartRequiresRuntimeDisposal: ctx?.restartRequiresRuntimeDisposal,
       onRestart: ctx?.onRestart ?? undefined,
       onRuntimeSwapped: ctx?.onRuntimeSwapped,
       onRuntimeActivated: ctx?.onRuntimeActivated,
@@ -2429,7 +2099,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     await handleAgentTransferRoutes({
       req,
@@ -2448,7 +2117,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     await handleCharacterRoutes({
       req,
@@ -2466,7 +2134,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   // Compatibility route used by legacy health probes and desktop name lookup.
   if (method === "GET" && pathname === "/api/agents") {
     const runtimeAgentId =
@@ -2483,7 +2150,6 @@ async function handleRequest(
       state.runtime?.character.name?.trim() ||
       state.agentName.trim() ||
       "Eliza";
-
     json(res, {
       agents: [
         {
@@ -2498,7 +2164,6 @@ async function handleRequest(
     });
     return;
   }
-
   if (
     await handleModelsRoutes({
       req,
@@ -2519,7 +2184,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   // Gate on the exact path before building the context so the runtime
   // operation manager is not instantiated on unrelated requests.
   if (pathname === "/api/models/config") {
@@ -2542,7 +2206,6 @@ async function handleRequest(
       return;
     }
   }
-
   if (
     await handleRegistryRoutes({
       req,
@@ -2561,7 +2224,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     await handleRemoteCapabilityRoutes({
       req,
@@ -2579,7 +2241,32 @@ async function handleRequest(
   ) {
     return;
   }
-
+  if (handlePluginInventoryRoutes({ method, pathname, res, state, json })) {
+    return;
+  }
+  if (
+    (pathname === "/api/secrets" || pathname.startsWith("/api/plugins/")) &&
+    (await handlePluginManagementRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      readJsonBody,
+      json,
+      error,
+      getPlugins: async () => getPluginInventory(state),
+      isOwner: isTrajectoryOwnerRequest(
+        req,
+        method,
+        pathname,
+        await resolveHostSessionAuthorization(),
+      ),
+      scheduleRuntimeRestart,
+      restartRuntime,
+    }))
+  )
+    return;
   // Live-load a plugin from an on-disk directory into the running runtime. This
   // is what makes a freshly scaffolded/edited local plugin (VIEWS/APP create)
   // actually appear without an agent restart — its views register via
@@ -2598,7 +2285,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   // Unload a plugin previously live-loaded from a directory (the symmetric
   // counterpart to load-from-directory). Directly-registered plugins are not
   // known to the plugin-manager, so /api/plugins/uninstall can't remove them —
@@ -2608,7 +2294,9 @@ async function handleRequest(
       error(res, "Agent runtime is not available", 503);
       return;
     }
-    const body = await readJsonBody<{ pluginName?: unknown }>(req, res);
+    const body = await readJsonBody<{
+      pluginName?: unknown;
+    }>(req, res);
     if (body === null) return;
     const pluginName =
       typeof body.pluginName === "string" ? body.pluginName.trim() : "";
@@ -2635,89 +2323,6 @@ async function handleRequest(
     }
     return;
   }
-
-  if (
-    pathname === "/api/plugins" ||
-    pathname.startsWith("/api/plugins/") ||
-    pathname === "/api/secrets" ||
-    pathname === "/api/core/status"
-  ) {
-    const { handlePluginRoutes } = await getPluginRegistryApi();
-    if (
-      await handlePluginRoutes({
-        req,
-        res,
-        method,
-        pathname,
-        url,
-        state,
-        json,
-        error,
-        readJsonBody,
-        scheduleRuntimeRestart,
-        restartRuntime,
-        isBlockedEnvKey,
-        discoverInstalledPlugins,
-        maskValue,
-        aggregateSecrets,
-        readProviderCache,
-        paramKeyToCategory,
-        buildPluginEvmDiagnosticEntry,
-        EVM_PLUGIN_PACKAGE,
-        applyWhatsAppQrOverride: (
-          await getOptionalPluginApi<{
-            applyWhatsAppQrOverride: (...args: unknown[]) => void;
-          }>("whatsapp")
-        ).applyWhatsAppQrOverride,
-        resolvePluginConfigMutationRejections,
-        requirePluginManager,
-        requireCoreManager,
-      })
-    ) {
-      return;
-    }
-  }
-
-  // Curated-skills routes must be dispatched before generic skills routes
-  // (which reject "/" in skill IDs).
-  if (pathname.startsWith("/api/skills/curated")) {
-    const { handleCuratedSkillsRoutes } = await getAgentSkillsApi();
-    if (
-      await handleCuratedSkillsRoutes({
-        req,
-        res,
-        method,
-        pathname,
-        url,
-        json,
-        error,
-        readJsonBody,
-      })
-    ) {
-      return;
-    }
-  }
-  if (pathname.startsWith("/api/skills")) {
-    const { discoverSkills, handleSkillsRoutes } = await getAgentSkillsApi();
-    if (
-      await handleSkillsRoutes({
-        req,
-        res,
-        method,
-        pathname,
-        url,
-        state,
-        json,
-        error,
-        readJsonBody,
-        readBody,
-        discoverSkills,
-      })
-    ) {
-      return;
-    }
-  }
-
   if (
     await handleDiagnosticsRoutes({
       req,
@@ -2764,7 +2369,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   // ═══════════════════════════════════════════════════════════════════════
   // Bug report routes
   // ═══════════════════════════════════════════════════════════════════════
@@ -2781,7 +2385,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   // ═══════════════════════════════════════════════════════════════════════
   // Project registry routes (#13776 item 5): list + switch the active project
   // that backs the UI project switcher.
@@ -2799,7 +2402,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   // ═══════════════════════════════════════════════════════════════════════
   // Wallet core routes (addresses, balances, generate, config, export)
   // Prefer the local wallet implementation during desktop startup. The
@@ -2822,75 +2424,85 @@ async function handleRequest(
       setSolanaWalletEnv,
       validatePrivateKey,
     } = await getCoreWalletApi();
-    const durableWalletConfig = loadElizaConfig();
-    const walletUsesCloudNetwork =
-      method === "GET" || pathname === "/api/wallet/refresh-cloud";
-    const walletAuthorityView = walletUsesCloudNetwork
-      ? createDevCloudConfigAuthorityView(durableWalletConfig)
-      : durableWalletConfig;
-    const walletConfig =
-      materializeDevCloudConfigAuthorityView(walletAuthorityView);
-    const saveWalletConfig = (nextConfig: ElizaConfig): void => {
-      const persistable = mergeDevCloudConfigAuthorityMutation(
-        durableWalletConfig,
-        walletAuthorityView,
-        nextConfig,
-      );
-      saveElizaConfig(persistable);
-    };
-    if (
-      await handleWalletRoutes({
-        req,
-        res,
-        method,
-        pathname,
-        config: walletConfig,
-        saveConfig: saveWalletConfig,
-        ensureWalletKeysInEnvAndConfig,
-        resolveWalletExportRejection,
-        restartRuntime,
-        scheduleRuntimeRestart,
-        readJsonBody,
-        json,
-        error,
-        deps: {
-          fetchEvmBalances,
-          fetchSolanaBalances,
-          fetchSolanaNativeBalanceViaRpc,
-          getWalletAddresses: () =>
-            getCoreWalletAddresses(state.runtime?.agentId),
-          validatePrivateKey,
-          importWallet,
-          generateWalletForChain,
-          deriveSolanaAddress,
-          setSolanaWalletEnv,
-          resolveWalletRpcReadiness,
-          resolveWalletNetworkMode,
-          getStoredWalletRpcSelections,
-          applyWalletRpcConfigUpdate,
-          resolveWalletCapabilityStatus: (args) => ({
-            ...resolveWalletCapabilityStatus({
-              config: args.config,
-              runtime: args.runtime,
-              getWalletAddresses: () =>
-                getCoreWalletAddresses(args.runtime?.agentId),
+    const releaseWalletKeys =
+      method === "POST" &&
+      (pathname === "/api/wallet/import" || pathname === "/api/wallet/generate")
+        ? await acquireWalletKeyMutation()
+        : undefined;
+    try {
+      const durableWalletConfig = loadElizaConfig();
+      const walletUsesCloudNetwork =
+        method === "GET" || pathname === "/api/wallet/refresh-cloud";
+      const walletAuthorityView = walletUsesCloudNetwork
+        ? createDevCloudConfigAuthorityView(durableWalletConfig)
+        : durableWalletConfig;
+      const walletConfig =
+        materializeDevCloudConfigAuthorityView(walletAuthorityView);
+      const saveWalletConfig = (nextConfig: ElizaConfig): void => {
+        const persistable = mergeDevCloudConfigAuthorityMutation(
+          durableWalletConfig,
+          walletAuthorityView,
+          nextConfig,
+        );
+        saveElizaConfig(persistable);
+      };
+      if (
+        await handleWalletRoutes({
+          req,
+          res,
+          method,
+          pathname,
+          config: walletConfig,
+          saveConfig: saveWalletConfig,
+          ensureWalletKeysInEnvAndConfig,
+          resolveWalletExportRejection,
+          restartRuntime,
+          scheduleRuntimeRestart,
+          readJsonBody,
+          json,
+          error,
+          deps: {
+            fetchEvmBalances,
+            fetchSolanaBalances,
+            fetchSolanaNativeBalanceViaRpc,
+            getWalletAddresses: () =>
+              getCoreWalletAddresses(state.runtime?.agentId),
+            validatePrivateKey,
+            importWallet,
+            generateWalletForChain,
+            deriveSolanaAddress,
+            setSolanaWalletEnv,
+            resolveWalletRpcReadiness,
+            resolveWalletNetworkMode,
+            getStoredWalletRpcSelections,
+            applyWalletRpcConfigUpdate,
+            resolveWalletCapabilityStatus: (args) => ({
+              ...resolveWalletCapabilityStatus({
+                config: args.config,
+                runtime: args.runtime,
+                getWalletAddresses: () =>
+                  getCoreWalletAddresses(args.runtime?.agentId),
+              }),
             }),
-          }),
-          isCloudWalletEnabled,
-          persistConfigEnv,
-          createIntegrationTelemetrySpan: (args) =>
-            createIntegrationTelemetrySpan({
-              boundary: "wallet",
-              operation: args.operation,
-            }),
-        },
-        runtime: state.runtime ?? null,
-      })
-    ) {
-      return;
+            isCloudWalletEnabled,
+            persistConfigEnv,
+            persistWalletPrivateKeys: (config, keys) =>
+              persistWalletPrivateKeys(config, keys, "wallet-routes"),
+            createIntegrationTelemetrySpan: (args) =>
+              createIntegrationTelemetrySpan({
+                boundary: "wallet",
+                operation: args.operation,
+              }),
+          },
+          runtime: state.runtime ?? null,
+        })
+      ) {
+        return;
+      }
+    } finally {
+      releaseWalletKeys?.();
     }
   }
-
   // ═══════════════════════════════════════════════════════════════════════
   //  ERC-8004 Registry, Agent self-status, Privy — delegated to agent-status-routes.ts
   // ═══════════════════════════════════════════════════════════════════════
@@ -2932,8 +2544,11 @@ async function handleRequest(
           getAwarenessRegistry: (): AwarenessRegistryLike | null => {
             const service = state.runtime?.getService("AWARENESS_REGISTRY");
             if (!service || typeof service !== "object") return null;
-            const composeSummary = (service as { composeSummary?: unknown })
-              .composeSummary;
+            const composeSummary = (
+              service as {
+                composeSummary?: unknown;
+              }
+            ).composeSummary;
             if (typeof composeSummary !== "function") return null;
             return {
               composeSummary: (activeRuntime) =>
@@ -2947,7 +2562,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     await handleUpdateRoutes({
       req,
@@ -2964,7 +2578,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     await handleConnectorRoutes({
       req,
@@ -2984,9 +2597,22 @@ async function handleRequest(
   ) {
     return;
   }
-
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
-  // Moved to @elizaos/plugin-whatsapp setup-routes.ts (registered via Plugin.routes).
+
+  if (pathname.startsWith("/api/client-devices")) {
+    await handleDeviceActionRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime ?? null,
+      authorization: await resolveHostSessionAuthorization(),
+      json,
+      error,
+      readJsonBody,
+    });
+    return;
+  }
 
   // ── Notification + inbox routes (/api/notifications/*, /api/inbox/*) ──
   // Notifications: the unified notification center backed by the runtime
@@ -3019,7 +2645,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     await handleAvatarRoutes({
       req,
@@ -3032,7 +2657,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     pathname === "/api/config" ||
     pathname === "/api/config/schema" ||
@@ -3063,7 +2687,6 @@ async function handleRequest(
       return;
     }
   }
-
   if (
     await handlePermissionsExtraRoutes({
       req,
@@ -3083,7 +2706,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     await handlePermissionRoutes({
       req,
@@ -3102,7 +2724,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     await handleRelationshipsRoutes({
       req,
@@ -3117,18 +2738,14 @@ async function handleRequest(
   ) {
     return;
   }
-
   // Browser workspace routes (/api/browser-workspace/*) are served by the
   // @elizaos/app-browser plugin via Plugin.routes.
-
   // Agent self-status, Privy, and ERC-8004 registry routes are now handled
   // by handleAgentStatusRoutes above.
-
   // ═══════════════════════════════════════════════════════════════════════
   // BSC trade routes and wallet trade execute are handled by registered wallet
   // plugin routes when the relevant backend is installed.
   // ═══════════════════════════════════════════════════════════════════════
-
   if (
     isLifeOpsCloudPluginRoute(pathname) &&
     (await handleLifeOpsRuntimePluginRoute({
@@ -3143,7 +2760,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     await handleCloudAndCoreRouteGroup({
       req,
@@ -3157,11 +2773,9 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (await handleSandboxRouteGroup({ req, res, method, pathname, state })) {
     return;
   }
-
   if (
     await handleConversationRouteGroup({
       req,
@@ -3184,33 +2798,17 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (await handleDatabaseRouteGroup({ req, res, pathname, state })) {
     return;
   }
-
-  // Coding Agent API routes (/api/coding-agents/*, /api/workspace/*,
-  // /api/issues/*) are now provided by the @elizaos/plugin-agent-orchestrator
-  // plugin via the runtime route registry. Most of those paths genuinely need
-  // the runtime, so a pre-runtime 503 is correct. The GET capability probes
-  // below are the exception: they have graceful builtin probe handlers
-  // (handleBuiltinOptionalRoutes → { available: false } / "unavailable"). The
-  // dashboard polls /preflight the instant agentStatus flips to "running", which
-  // can race ahead of state.runtime being assigned during a restart; serve those
-  // from the builtin probe handler instead of a 503 the browser logs as a red console error.
-  const isCodingAgentBuiltinProbe =
-    pathname === "/api/coding-agents/preflight" ||
-    pathname === "/api/coding-agents/coordinator/status";
   if (
     !state.runtime &&
     method === "GET" &&
-    pathname.startsWith("/api/coding-agents") &&
-    !isCodingAgentBuiltinProbe
+    pathname.startsWith("/api/coding-agents")
   ) {
     error(res, "Coding agent runtime unavailable", 503);
     return;
   }
-
   if (
     await handleCloudStatusRoutes({
       req,
@@ -3224,138 +2822,6 @@ async function handleRequest(
   ) {
     return;
   }
-
-  // ── App routes (/api/apps/*) ──────────────────────────────────────────
-  if (pathname.startsWith("/api/apps")) {
-    const { handleAppsRoutes } = await getAppManagerApi();
-    const appManager = ctx?.getAppManager
-      ? await ctx.getAppManager()
-      : (state.appManager as AppManagerLike);
-    const installPluginForApp = async (
-      ...args: Parameters<typeof installPluginDirect>
-    ) => {
-      const result = await installPluginDirect(...args);
-      if (result.success) {
-        // The direct installer persists plugins.installs to eliza.json. Keep
-        // this server's in-memory config aligned so the immediately-following
-        // GET /api/apps/installed reflects a clean first install without
-        // waiting for a process restart.
-        state.config = loadElizaConfig();
-      }
-      return result;
-    };
-    // #12087 Item 13: single boundary-role collapse (no inline OWNER/GUEST ternary).
-    const appActorRole: AppsRouteActorRole = resolveBoundaryRole(req);
-    if (
-      await handleAppsRoutes({
-        req,
-        res,
-        method,
-        pathname,
-        url,
-        appManager: {
-          listAvailable: (pluginManager) =>
-            appManager.listAvailable(pluginManager),
-          search: (pluginManager, query, limit) =>
-            appManager.search(pluginManager, query, limit),
-          listInstalled: (pluginManager) =>
-            appManager.listInstalled(pluginManager),
-          listRuns: (runtime) =>
-            appManager.listRuns(
-              runtime && typeof runtime === "object"
-                ? (runtime as IAgentRuntime)
-                : null,
-            ),
-          getRun: (runId, runtime) =>
-            appManager.getRun(
-              runId,
-              runtime && typeof runtime === "object"
-                ? (runtime as IAgentRuntime)
-                : null,
-            ),
-          attachRun: (runId, runtime) =>
-            appManager.attachRun(
-              runId,
-              runtime && typeof runtime === "object"
-                ? (runtime as IAgentRuntime)
-                : null,
-            ),
-          detachRun: (runId) => appManager.detachRun(runId),
-          launch: (pluginManager, name, onProgress, runtime) =>
-            appManager.launch(
-              pluginManager,
-              name,
-              onProgress,
-              runtime && typeof runtime === "object"
-                ? (runtime as IAgentRuntime)
-                : null,
-              installPluginForApp,
-            ),
-          stop: (pluginManager, name, runId, runtime) =>
-            appManager.stop(
-              pluginManager,
-              name,
-              runId,
-              runtime && typeof runtime === "object"
-                ? (runtime as IAgentRuntime)
-                : null,
-            ),
-          recordHeartbeat: (runId) => appManager.recordHeartbeat(runId),
-          startStaleRunSweeper: (getRuntime) =>
-            appManager.startStaleRunSweeper(getRuntime),
-          getInfo: (pluginManager, name) =>
-            appManager.getInfo(pluginManager, name),
-        } satisfies AppManagerLike,
-        getPluginManager: () => getPluginManagerForState(state),
-        parseBoundedLimit,
-        readJsonBody,
-        json,
-        error,
-        runtime: state.runtime,
-        actorRole: appActorRole,
-        favoriteApps: {
-          read: () => readFavoriteAppsFromConfig(state.config),
-          write: (apps) => writeFavoriteAppsToConfig(state.config, apps),
-        } satisfies FavoriteAppsStore,
-        installPluginDirect: installPluginForApp,
-      })
-    ) {
-      return;
-    }
-
-    if (
-      await handleAppPackageRoutes({
-        req,
-        res,
-        method,
-        pathname,
-        url,
-        readJsonBody,
-        json,
-        error,
-        runtime: state.runtime,
-      })
-    ) {
-      return;
-    }
-  }
-
-  // ── Slash-command catalog (/api/commands) ─────────────────────────────────
-  if (
-    await handleCommandsRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      json,
-      error,
-      runtime: state.runtime,
-    })
-  ) {
-    return;
-  }
-
   // ── Interaction reporting (/api/interactions/shortcut) ────────────────────
   if (
     await handleInteractionsRoutes({
@@ -3370,7 +2836,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   // ── View routes (/api/views/*) ────────────────────────────────────────────
   const viewsCallerAuthorization = resolveInboxRequestAuthorization(
     req,
@@ -3380,6 +2845,7 @@ async function handleRequest(
   );
   if (
     await handleViewsRoutes({
+      hostKey: state,
       req,
       res,
       method,
@@ -3395,7 +2861,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   // ── Runtime switch routes (/api/runtime/model-switch, /agent-switch) ──────
   const runtimeManagementCallerAuthorization = resolveInboxRequestAuthorization(
     req,
@@ -3418,7 +2883,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     await handleRuntimeSwitchRoutes({
       req,
@@ -3432,7 +2896,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (pathname.startsWith("/api/workbench")) {
     if (
       await handleWorkbenchRoutes({
@@ -3446,11 +2909,6 @@ async function handleRequest(
         error,
         readJsonBody,
         toWorkbenchTodo,
-        normalizeTags,
-        readTaskMetadata,
-        readTaskCompleted,
-        parseNullableNumber,
-        asObject,
         decodePathComponent,
         taskToTriggerSummary,
         listTriggerTasks,
@@ -3459,12 +2917,10 @@ async function handleRequest(
       return;
     }
   }
-
   // ═══════════════════════════════════════════════════════════════════════
   // Life-ops routes: now served via lifeopsPlugin.routes (rawPath) on the
   // runtime plugin route system. See app-lifeops/src/routes/plugin.ts.
   // ═══════════════════════════════════════════════════════════════════════
-
   if (pathname.startsWith("/api/mcp")) {
     const { handleMcpRoutes } = await getOptionalPluginApi<{
       handleMcpRoutes: (args: unknown) => Promise<boolean>;
@@ -3506,7 +2962,6 @@ async function handleRequest(
       return;
     }
   }
-
   if (
     await handleMiscRoutes({
       req,
@@ -3573,10 +3028,7 @@ async function handleRequest(
   ) {
     return;
   }
-
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
-  // Extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
-
   // ── elizaOS plugin HTTP routes (runtime.routes, e.g. /music-player/*) ───
   const runtimeRouteConfig = pathname.startsWith("/api/cloud/")
     ? materializeDevCloudConfigAuthorityView(
@@ -3605,7 +3057,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   if (
     await handleBuiltinOptionalRoutes(
       req,
@@ -3617,17 +3068,48 @@ async function handleRequest(
   ) {
     return;
   }
-
   // ── Connector plugin routes (dynamically registered) ────────────────────
   for (const handler of state.connectorRouteHandlers) {
     const handled = await handler(req, res, pathname, method);
     if (handled) return;
   }
-
-  if (await handleMobileOptionalRoutes(req, res, pathname, method)) {
+  if (await handleHostSettingsRoutes(req, res, pathname, method)) {
     return;
   }
-
+  // The context inspector owns a stricter boundary than the general trajectory
+  // viewer: resolve the host principal again for this request and project only
+  // allowlisted content metadata. Direct API-token callers are the standalone
+  // owner's equivalent authority; scoped boundary-role tokens are deliberately
+  // not promoted to inspector access.
+  if (pathname === "/api/context-inspector") {
+    const hostAuthorization = await resolveHostSessionAuthorization();
+    const inspectorAuthorization = hostAuthorization.ok
+      ? hostAuthorization
+      : isAuthorized(req)
+        ? ({ ok: true, role: "OWNER" } as const)
+        : ({ ok: false, role: "NONE" } as const);
+    if (
+      await handleContextInspectorRoute({
+        req,
+        res,
+        pathname,
+        method,
+        url,
+        runtime: state.runtime,
+        authorization: inspectorAuthorization,
+        resolveConversationRoomId: async (conversationId) => {
+          let conversation = state.conversations.get(conversationId);
+          if (!conversation && state.conversationRestorePromise) {
+            await state.conversationRestorePromise;
+            conversation = state.conversations.get(conversationId);
+          }
+          return conversation?.roomId ?? null;
+        },
+      })
+    ) {
+      return;
+    }
+  }
   // ── LifeOps inbox compatibility fallback ────────────────────────────────
   // The inbox view is bundled independently from the PA-owned inbox cache
   // route. When PA is absent, serve an empty wire payload instead of a 404 loop.
@@ -3641,7 +3123,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   // ── Trajectory read routes (owned by core TrajectoriesService) ──────────
   // Serves GET /api/trajectories[/:id|/stats] from the core TrajectoriesService
   // so the realtime trajectory viewer works from the core service on every
@@ -3657,7 +3138,6 @@ async function handleRequest(
   ) {
     return;
   }
-
   // ── Hono adapter for runtime.routes with `routeHandler` (new shape) ─────
   // Covers any plugin route registered via the new return-shape RouteHandler
   // contract. Legacy Express-shaped `handler` routes are still served by
@@ -3686,59 +3166,66 @@ async function handleRequest(
           );
         }
         if (isTrustedLocalRequest(req)) return undefined;
-        return resolveHttpAccessContext(req);
+        const boundaryAccess = resolveHttpAccessContext(req);
+        if (boundaryAccess) return boundaryAccess;
+        // Direct owner API credentials retain their principal at plugin routes.
+        // Gateway admission alone never grants owner document access.
+        if (
+          state.runtime &&
+          isAuthorized(req) &&
+          !isServerTokenAuthorized(req)
+        ) {
+          return {
+            requesterEntityId: resolveOwnerEntityIdOrDefault(state.runtime),
+            role: "OWNER",
+            isOwner: true,
+            source: "owner-api-token",
+          };
+        }
+        return undefined;
       },
     })
   ) {
     return;
   }
-
   // ── Fallback ────────────────────────────────────────────────────────────
   error(res, "Not found", 404);
 }
-
-// ---------------------------------------------------------------------------
-// Early log capture — re-exported from the standalone module so existing
-// callers that `import { captureEarlyLogs } from "../../../../src/api/server"` keep
-// working.  The implementation lives in `./early-logs.ts` to avoid pulling
-// the entire server dependency graph into lightweight consumers (e.g. the
-// headless `startEliza()` path).
-// ---------------------------------------------------------------------------
-import {
-  type captureEarlyLogs,
-  flushEarlyLogs,
-  listenForUiLogs,
-} from "./early-logs.ts";
-
-export type { captureEarlyLogs };
-
 // ---------------------------------------------------------------------------
 // Server start
 // ---------------------------------------------------------------------------
-
 export type ApiRequestMiddleware = (
   req: http.IncomingMessage,
   res: http.ServerResponse,
   next: () => Promise<void>,
 ) => Promise<void>;
-
 export type ApiServerConfigurator = (
   server: http.Server,
 ) => void | Promise<void>;
-
+/** Mandatory host policy precedes built-in authentication; true grants no identity. */
+export type ApiHostAdmission = (
+  request: http.IncomingMessage,
+  boundary: "request" | "upgrade" | "websocket-send" | "websocket-message",
+) => boolean | Promise<boolean>;
 export type WebSocketAuthorizer = (
   request: http.IncomingMessage,
   url: URL,
 ) => boolean | Promise<boolean>;
-
 function strictPortBindingEnabled(): boolean {
   const value = process.env.ELIZA_API_STRICT_PORT?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
 }
-
 export async function startApiServer(opts?: {
+  /** Compose product status fields before serialization; does not intercept transport. */
+  composeStatus?: ApiStatusComposer;
   port?: number;
   runtime?: AgentRuntime;
+  /**
+   * Trusted host configuration copied at construction instead of reading disk.
+   * Disables reloadConfigFromDisk; hosts must separately restrict mutable
+   * configuration and management routes through hostAdmission.
+   */
+  hostConfig?: ElizaConfig;
   skipDeferredStartupWork?: boolean;
   /**
    * Skip binding a TCP listener. The HTTP `server` object, all routes, and the
@@ -3757,6 +3244,8 @@ export async function startApiServer(opts?: {
    * If omitted the endpoint returns 501 (not supported in this mode).
    */
   onRestart?: (options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>;
+  /** A replacement shares the exact physical store and cannot overlap its predecessor. */
+  restartRequiresRuntimeDisposal?: boolean;
   /** Runs after the server atomically publishes the replacement runtime. */
   onRuntimeActivated?: (
     previousRuntime: AgentRuntime | null,
@@ -3773,17 +3262,36 @@ export async function startApiServer(opts?: {
    * intended for protocol extensions such as WebSocket upgrade handlers.
    */
   configureServer?: ApiServerConfigurator;
+  /** Handle a host-owned protocol after mandatory host admission. Return true
+   * only after taking ownership of the socket; the host owns protocol auth. */
+  handleProtocolUpgrade?: (
+    request: http.IncomingMessage,
+    socket: import("node:stream").Duplex,
+    head: Buffer,
+  ) => boolean | Promise<boolean>;
   /**
    * Lets a host recognize credentials it owns before the dashboard WebSocket
    * is admitted. The agent server still owns origin/path checks, pending-socket
    * limits, and its static-token fallback; this hook only adds an authenticated
-   * principal such as app-core's revocable machine session.
+   * principal such as app's revocable machine session.
    */
   authorizeWebSocket?: WebSocketAuthorizer;
+  /**
+   * Required admission for HTTP, in-process requests, upgrades and each built-in
+   * WebSocket application send/message. Queued sends recheck before delivery.
+   * Denial cannot fall back to local trust, static tokens or host sessions.
+   * Supplying it disables the separately attached mobile device bridge. Trusted
+   * configureServer callbacks must not attach independent request/upgrade handlers.
+   */
+  hostAdmission?: ApiHostAdmission;
 }): Promise<{
   port: number;
   close: () => Promise<void>;
   updateRuntime: (rt: AgentRuntime) => void;
+  /** The existing serialized lifecycle authority for authenticated host routes. */
+  runtimeOperations: Pick<RuntimeOperationManager, "start" | "get">;
+  /** Refresh host config after an in-process durable transaction rollback. */
+  reloadConfigFromDisk: () => void;
   updateStartup: (
     update: Partial<AgentStartupDiagnostics> & {
       phase?: string;
@@ -3792,7 +3300,30 @@ export async function startApiServer(opts?: {
     },
   ) => void;
 }> {
+  // Hosts that listen before startEliza must still pass protected admission.
+  await ensureProtectedProfileAdmission();
+  // Publish a complete navigation catalog before accepting the first tool turn.
+  // Hosts may attach their runtime later; updateRuntime keeps the same fence.
+  if (opts?.runtime) registerRuntimeBuiltinViews(opts.runtime);
   const apiStartTime = Date.now();
+  const hostAdmission = opts?.hostAdmission;
+  const hostConfig =
+    opts?.hostConfig === undefined
+      ? undefined
+      : structuredClone(opts.hostConfig);
+  async function admitHostRequest(
+    request: http.IncomingMessage,
+    boundary: "request" | "upgrade" | "websocket-send" | "websocket-message",
+  ): Promise<403 | 503 | null> {
+    if (!hostAdmission) return null;
+    try {
+      return (await hostAdmission(request, boundary)) === true ? null : 403;
+    } catch {
+      // error-policy:J1 Admission failure denies access without exposing policy or credentials.
+      logger.warn("[eliza-api] Required host admission unavailable");
+      return 503;
+    }
+  }
   // Gated boot profiler (off unless ELIZA_BOOT_PROFILE=1) to time the API-bind
   // critical path. Stderr, since the structured logger level may suppress it.
   const apiLap = (label: string): void => {
@@ -3803,7 +3334,6 @@ export async function startApiServer(opts?: {
     }
   };
   logger.debug(`[eliza-api] startApiServer called`);
-
   // Honor ELIZA_API_PORT first (set by the desktop launcher → 31337) so
   // the renderer's hardcoded API base reaches this server. CLI-mode
   // (no ELIZA_API_PORT) keeps the legacy `resolveServerOnlyPort` default
@@ -3822,10 +3352,9 @@ export async function startApiServer(opts?: {
     process.env.CONNECTOR_HEALTH_INTERVAL_MS,
   );
   logger.debug(`[eliza-api] Token check done (${Date.now() - apiStartTime}ms)`);
-
   let config: ElizaConfig;
   try {
-    config = loadElizaConfig();
+    config = hostConfig ?? loadElizaConfig();
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       // error-policy:J2 only a genuinely absent config is first-run state;
@@ -3840,7 +3369,6 @@ export async function startApiServer(opts?: {
     config = {} as ElizaConfig;
   }
   logger.debug(`[eliza-api] Config loaded (${Date.now() - apiStartTime}ms)`);
-
   // Wallet/inventory routes read from process.env at request-time.
   // Hydrate persisted config.env values so addresses remain visible after restarts.
   const persistedEnv = config.env as Record<string, string> | undefined;
@@ -3861,7 +3389,6 @@ export async function startApiServer(opts?: {
       process.env[key] = value.trim();
     }
   }
-
   // Optional auto-provision mode for legacy environments. Disabled by default
   // so startup does not silently create new wallets when keys are missing.
   const walletAutoProvisionRaw =
@@ -3871,16 +3398,32 @@ export async function startApiServer(opts?: {
     walletAutoProvisionRaw === "true" ||
     walletAutoProvisionRaw === "on" ||
     walletAutoProvisionRaw === "yes";
-  if (walletAutoProvisionEnabled && ensureWalletKeysInEnvAndConfig(config)) {
+  if (walletAutoProvisionEnabled) {
+    const releaseWalletKeys = await acquireWalletKeyMutation();
+    const walletEnvBefore = Object.fromEntries(
+      [
+        "EVM_PRIVATE_KEY",
+        "SOLANA_PRIVATE_KEY",
+        "SOLANA_PUBLIC_KEY",
+        "WALLET_PUBLIC_KEY",
+      ].map((name) => [name, process.env[name]]),
+    );
     try {
-      saveElizaConfig(config);
+      if (await ensureWalletKeysInEnvAndConfig(config)) {
+        saveElizaConfig(config);
+      }
     } catch (err) {
-      logger.warn(
+      for (const [name, value] of Object.entries(walletEnvBefore)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      logger.error(
         `[eliza-api] Failed to persist generated wallet keys: ${err instanceof Error ? err.message : err}`,
       );
+    } finally {
+      releaseWalletKeys();
     }
   }
-
   const blockOnStewardWalletCache =
     process.env.ELIZA_STEWARD_WALLET_CACHE_BLOCKING?.trim() === "1";
   if (blockOnStewardWalletCache) {
@@ -3889,7 +3432,6 @@ export async function startApiServer(opts?: {
     const { initStewardWalletCache } = await getCoreWalletApi();
     await initStewardWalletCache();
   }
-
   // Warn when wallet private keys live in plaintext config and the OS secure
   // store is not enabled.  This nudges operators toward ELIZA_WALLET_OS_STORE=1.
   {
@@ -3911,14 +3453,10 @@ export async function startApiServer(opts?: {
       );
     }
   }
-
   const plugins = discoverPluginsFromManifest();
   logger.debug(
     `[eliza-api] Plugins discovered (${Date.now() - apiStartTime}ms)`,
   );
-  const workspaceDir =
-    config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
-
   const state = createServerState({
     config,
     runtime: opts?.runtime,
@@ -3930,15 +3468,6 @@ export async function startApiServer(opts?: {
     resolveAgentAutomationMode: resolveAgentAutomationModeFromConfig,
     resolveTradePermissionMode,
   });
-  const ensureAppManager = async (): Promise<AppManagerLike> => {
-    if (state.appManager) {
-      return state.appManager as AppManagerLike;
-    }
-    const { AppManager } = await getAppManagerApi();
-    const appManager = new AppManager();
-    state.appManager = appManager;
-    return appManager as AppManagerLike;
-  };
   const configuredAdminEntityId = config.agents?.defaults?.adminEntityId;
   if (configuredAdminEntityId && isUuidLike(configuredAdminEntityId)) {
     state.adminEntityId = configuredAdminEntityId;
@@ -3948,7 +3477,6 @@ export async function startApiServer(opts?: {
       `[eliza-api] Ignoring invalid agents.defaults.adminEntityId "${configuredAdminEntityId}"`,
     );
   }
-
   const addLog = (
     level: string,
     message: string,
@@ -3979,50 +3507,80 @@ export async function startApiServer(opts?: {
       tags: resolvedTags,
     });
   };
-
-  addLog(
-    "info",
-    `Discovered ${plugins.length} plugins, loading skills in background`,
+  addLog("info", `Discovered ${plugins.length} plugins`, "system", [
     "system",
-    ["system", "plugins"],
-  );
-
+    "plugins",
+  ]);
   let providerCacheWarmupPromise: Promise<void> | null = null;
-
   let detachApiLogListener: (() => void) | null = null;
   const captureStructuredLog = (entry: LogEntry): void => {
     addLog(entry.level, entry.message, entry.source, entry.tags);
   };
-
   // Store the restart callback on the state so the route handler can access it.
   const onRestart = opts?.onRestart ?? null;
+  const restartRequiresRuntimeDisposal =
+    opts?.restartRequiresRuntimeDisposal === true;
   const onRuntimeActivated = opts?.onRuntimeActivated;
-
   logger.debug(
     `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,
   );
   apiLap("pre-createServer (route imports + middleware setup done)");
+  const requestContext: RequestContext = {
+    composeStatus: opts?.composeStatus,
+    hostRuntimeMode:
+      hostConfig === undefined ? undefined : resolveRuntimeMode(hostConfig),
+    onRestart,
+    restartRequiresRuntimeDisposal,
+    onRuntimeActivated,
+    onRuntimeSwapped: () => {
+      bindInProcessApi();
+      bindRuntimeStreams(state.runtime);
+      wireModelRegistrationBroadcast(state.runtime);
+      wireNativeBrowserPageReader(state.runtime);
+      void wireCoordinatorBridgesWhenReady(state, {
+        wireChatBridge: wireCodingAgentChatBridge,
+        wireWsBridge: wireCodingAgentWsBridge,
+        wireEventRouting: wireCoordinatorEventRouting,
+        wireSwarmSynthesis: wireCodingAgentSwarmSynthesis,
+        context: "restart",
+        logger,
+      });
+    },
+  };
+  const reloadConfigFromDisk = (): void => {
+    if (hostConfig !== undefined) {
+      throw new ElizaError("API configuration is owned by the host", {
+        code: "API_HOST_CONFIG_RELOAD_DENIED",
+      });
+    }
+    // Config routes clone this durable graph before writing. Operational
+    // consumers apply their existing launcher-authority views at read time.
+    replaceConfigInPlace(state.config, loadElizaConfig());
+  };
+  const runtimeOperations: Pick<RuntimeOperationManager, "start" | "get"> = {
+    start: async (request) => {
+      if (request.intent.kind === "restart" && !onRestart) {
+        throw new ElizaError("Runtime restart is not supported by this host", {
+          code: "RUNTIME_RESTART_UNAVAILABLE",
+        });
+      }
+      return getOrCreateRuntimeOperationManager(state, (reason) =>
+        applyRuntimeRestart(state, requestContext, reason),
+      ).start(request);
+    },
+    get: (id) =>
+      getOrCreateRuntimeOperationManager(state, (reason) =>
+        applyRuntimeRestart(state, requestContext, reason),
+      ).get(id),
+  };
   const routeKernel = createRouteKernel({
     dispatch: async (req, res) => {
-      const dispatch = () =>
-        handleRequest(req, res, state, {
-          onRestart,
-          onRuntimeActivated,
-          onRuntimeSwapped: () => {
-            bindInProcessApi();
-            bindRuntimeStreams(state.runtime);
-            wireModelRegistrationBroadcast(state.runtime);
-            void wireCoordinatorBridgesWhenReady(state, {
-              wireChatBridge: wireCodingAgentChatBridge,
-              wireWsBridge: wireCodingAgentWsBridge,
-              wireEventRouting: wireCoordinatorEventRouting,
-              wireSwarmSynthesis: wireCodingAgentSwarmSynthesis,
-              context: "restart",
-              logger,
-            });
-          },
-          getAppManager: ensureAppManager,
-        });
+      const rejection = await admitHostRequest(req, "request");
+      if (rejection !== null) {
+        error(res, "Host admission denied", rejection);
+        return;
+      }
+      const dispatch = () => handleRequest(req, res, state, requestContext);
       if (opts?.requestMiddleware) {
         await opts.requestMiddleware(req, res, dispatch);
       } else {
@@ -4039,10 +3597,20 @@ export async function startApiServer(opts?: {
   let unregisterInProcessApi: (() => void) | undefined;
   const bindInProcessApi = () => {
     unregisterInProcessApi?.();
-    unregisterInProcessApi =
-      opts?.skipListen && state.runtime
+    if (state.runtime) {
+      const unregisterHost = registerInProcessApi(
+        state.runtime,
+        routeKernel,
+        state,
+      );
+      const unregisterDefault = opts?.skipListen
         ? registerInProcessApi(state.runtime, routeKernel)
         : undefined;
+      unregisterInProcessApi = () => {
+        unregisterHost();
+        unregisterDefault?.();
+      };
+    } else unregisterInProcessApi = undefined;
   };
   bindInProcessApi();
   const server = http.createServer((req, res) => routeKernel.handle(req, res));
@@ -4056,7 +3624,7 @@ export async function startApiServer(opts?: {
   // listening. Use the bridge's explicit attachment result; listener counts
   // are process-global observations and can be changed by unrelated features.
   let deviceBridgeUpgradeHandlerAttached = false;
-  let deviceBridgeAttachAllowed = !opts?.skipListen;
+  let deviceBridgeAttachAllowed = !opts?.skipListen && !hostAdmission;
   server.once("close", () => {
     // The optional plugin import is deliberately deferred beyond bind. If the
     // server closes before it resolves, do not attach the process-global bridge
@@ -4069,7 +3637,7 @@ export async function startApiServer(opts?: {
     (isMobilePlatform() ||
       process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1")
   ) {
-    // Defer to a macrotask: resolving @elizaos/plugin-capacitor-bridge (and its
+    // Defer to a macrotask: resolving @elizaos/plugin-native-inference (and its
     // device-bridge attach) measured ~15s of blocking on the mobile bundle and
     // — because it sat on the synchronous pre-`server.listen` path — held the
     // whole API bind (and the boot screen) hostage for that entire time (#11903).
@@ -4099,36 +3667,163 @@ export async function startApiServer(opts?: {
     });
   }
   logger.debug(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
-
   // requestTimeout bounds receipt of the request body; Node does not apply it
   // to time spent generating the response. Keep that slow-upload protection
   // while leaving the idle socket deadline disabled for long model turns.
   // Generation itself is cancelled by the request owner's AbortSignal.
-  server.requestTimeout = 300_000;
-  server.headersTimeout = 60_000;
-  server.keepAliveTimeout = 60_000;
+  server.requestTimeout = 300000;
+  server.headersTimeout = 60000;
+  server.keepAliveTimeout = 60000;
   server.timeout = 0;
   logger.debug(
     "[eliza-api] Server lifecycle: requestTimeout=300000ms, idleTimeout=disabled, headersTimeout=60000ms, keepAliveTimeout=60000ms",
   );
-
   const wsClients = new Set<WebSocket>();
   const wsClientIds = new WeakMap<WebSocket, string>();
   const wsActiveConversations = new WeakMap<WebSocket, string>();
+  const wsRequests = new WeakMap<WebSocket, http.IncomingMessage>();
+  const wsSendQueues = new WeakMap<WebSocket, Promise<void>>();
+  const wsQueuedSendBytes = new WeakMap<WebSocket, number>();
+  const reportWebSocketSendError = (err: unknown): void => {
+    logger.error(
+      `[eliza-api] WebSocket send error: ${err instanceof Error ? err.message : err}`,
+    );
+  };
+  const wsBackpressure = createEventSocketBackpressureGuard({
+    clients: wsClients,
+    clientIds: wsClientIds,
+    reportSendError: reportWebSocketSendError,
+    getBufferedAmount: (ws) =>
+      ws.bufferedAmount + (wsQueuedSendBytes.get(ws) ?? 0),
+  });
+  const wsSessions = new Map<
+    WebSocket,
+    {
+      token: string;
+      checkedAt: number;
+      pending?: Promise<boolean>;
+      revoked: boolean;
+      generation: number;
+    }
+  >();
+  const invalidateSessionSocket = (
+    ws: WebSocket,
+    reason = "session_invalid",
+  ) => {
+    const session = wsSessions.get(ws);
+    if (session) session.revoked = true;
+    wsClients.delete(ws);
+    ws.close(1008, reason);
+  };
+  const validateSessionSocket = async (ws: WebSocket): Promise<boolean> => {
+    const session = wsSessions.get(ws);
+    if (!session) return true;
+    if (session.revoked) return false;
+    if (session.pending) return session.pending;
+    if (Date.now() - session.checkedAt < 5_000) return true;
+    session.pending = (async () => {
+      for (;;) {
+        const generation = session.generation;
+        const authorized = await isWebSocketSessionTokenAuthorized(
+          session.token,
+          state.runtime,
+        );
+        if (
+          !authorized ||
+          session.revoked ||
+          ws.readyState !== WebSocket.OPEN
+        ) {
+          invalidateSessionSocket(ws);
+          return false;
+        }
+        // A bulk revoke can commit while this read is in flight. Re-read
+        // before releasing queued frames; the excepted session stays usable.
+        if (generation !== session.generation) continue;
+        session.checkedAt = Date.now();
+        return true;
+      }
+    })().finally(() => {
+      delete session.pending;
+    });
+    return session.pending;
+  };
+  const unsubscribeSessionRevocations =
+    getAgentHostBridge().subscribeSessionRevocations?.((sessionId) => {
+      for (const [ws, session] of wsSessions) {
+        if (sessionId === session.token)
+          invalidateSessionSocket(ws, "session_revoked");
+        else if (sessionId === null) {
+          // Bulk revoke preserves the excepted session: re-resolve each bearer.
+          session.checkedAt = 0;
+          session.generation += 1;
+          void validateSessionSocket(ws);
+        }
+      }
+    });
+  const admitWebSocket = async (
+    ws: WebSocket,
+    request: http.IncomingMessage,
+    boundary: "websocket-send" | "websocket-message",
+  ): Promise<boolean> => {
+    if (ws.readyState !== WebSocket.OPEN) return false;
+    if (!(await validateSessionSocket(ws))) return false;
+    const rejection = await admitHostRequest(request, boundary);
+    if (rejection !== null) {
+      ws.close(rejection === 403 ? 1008 : 1011, "Host admission rejected");
+      return false;
+    }
+    return ws.readyState === WebSocket.OPEN;
+  };
+  const sendWebSocket = (ws: WebSocket, message: string): boolean => {
+    if (ws.readyState !== WebSocket.OPEN || !wsBackpressure.admit(ws)) {
+      return false;
+    }
+    if (!hostAdmission && !wsSessions.has(ws)) {
+      ws.send(message);
+      return true;
+    }
+    const request = wsRequests.get(ws);
+    if (!request) {
+      ws.close(1008, "Host admission rejected");
+      return false;
+    }
+    // Reappraise at delivery, preserving ordering across status, replay, targeted
+    // events and PTY output. Queued frames cannot inherit an earlier approval;
+    // their bytes remain visible to the same backpressure guard as ws's native
+    // transport buffer until the admission decision completes.
+    const messageBytes = Buffer.byteLength(message);
+    wsQueuedSendBytes.set(ws, (wsQueuedSendBytes.get(ws) ?? 0) + messageBytes);
+    const previous = wsSendQueues.get(ws) ?? Promise.resolve();
+    const pending = previous
+      .then(async () => {
+        try {
+          if (await admitWebSocket(ws, request, "websocket-send")) {
+            ws.send(message);
+          }
+        } finally {
+          const remaining = (wsQueuedSendBytes.get(ws) ?? 0) - messageBytes;
+          if (remaining > 0) wsQueuedSendBytes.set(ws, remaining);
+          else wsQueuedSendBytes.delete(ws);
+        }
+      })
+      .catch(() => {
+        // error-policy:J1 Close this transport without exposing frame or policy data.
+        logger.warn("[eliza-api] Required host WebSocket delivery failed");
+        ws.close(1011, "Host admission unavailable");
+      });
+    wsSendQueues.set(ws, pending);
+    return true;
+  };
   const eventHub = createApiEventHub({
     state,
     clients: wsClients,
     clientIds: wsClientIds,
     activeConversations: wsActiveConversations,
-    reportSendError: (err) => {
-      logger.error(
-        `[eliza-api] WebSocket send error: ${err instanceof Error ? err.message : err}`,
-      );
-    },
+    sendMessage: sendWebSocket,
+    reportSendError: reportWebSocketSendError,
   });
   const broadcastWs = eventHub.broadcast;
   const pushEvent = eventHub.publish;
-
   let detachRuntimeStreams: (() => void) | null = null;
   const bindRuntimeStreams = (runtime: AgentRuntime | null) => {
     if (detachRuntimeStreams) {
@@ -4141,7 +3836,6 @@ export async function startApiServer(opts?: {
       active = false;
       for (const detach of unsubscribe) detach();
     };
-
     // Registration is lazy: a synchronous lookup can miss the service at
     // startup. Bind each runtime once it loads, and detach on swap or close.
     if (runtime?.hasService("connector-setup")) {
@@ -4155,7 +3849,7 @@ export async function startApiServer(opts?: {
         })
         .catch((error) => runtime.reportError("api.connectorBroadcast", error));
     }
-    const svc = getAgentEventSvc(runtime);
+    const svc = getAgentEventService(runtime);
     if (!svc) {
       if (runtime) {
         logger.warn(
@@ -4164,7 +3858,6 @@ export async function startApiServer(opts?: {
       }
       return;
     }
-
     const unsubAgentEvents = svc.subscribe((event) => {
       pushEvent({
         type: "agent_event",
@@ -4177,14 +3870,12 @@ export async function startApiServer(opts?: {
         roomId: event.roomId,
         payload: event.data,
       });
-
       void maybeRouteAutonomyEventToConversation(state, event).catch((err) => {
         logger.warn(
           `[autonomy-route] Failed to route proactive event: ${err instanceof Error ? err.message : String(err)}`,
         );
       });
     });
-
     const unsubHeartbeat = svc.subscribeHeartbeat((event) => {
       pushEvent({
         type: "heartbeat_event",
@@ -4192,10 +3883,8 @@ export async function startApiServer(opts?: {
         payload: event,
       });
     });
-
     unsubscribe.push(unsubAgentEvents, unsubHeartbeat);
   };
-
   // ── Deferred startup work (non-blocking) ────────────────────────────────
   // Keep API startup fast: listen first, then warm optional subsystems.
   const startDeferredStartupWork = async (): Promise<void> => {
@@ -4207,62 +3896,20 @@ export async function startApiServer(opts?: {
         if (opts?.runtime)
           opts.runtime.reportError("api.providerCacheWarmup", err);
       });
-
     void registerBuiltinViews(state.runtime).catch((err) => {
       logger.warn(
-        `[eliza-api] Built-in view registration failed after listen: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `[eliza-api] Built-in view registration failed after listen: ${err instanceof Error ? err.message : String(err)}`,
       );
     });
-
-    void ensureAppManager()
-      .then((appManager) => {
-        // Stop app runs whose UI heartbeat has gone silent.
-        appManager.startStaleRunSweeper(() => state.runtime);
-      })
-      .catch((err) => {
-        logger.warn(
-          `[eliza-api] App manager startup work failed after listen: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      });
-
     if (!blockOnStewardWalletCache) {
       void getCoreWalletApi()
         .then(({ initStewardWalletCache }) => initStewardWalletCache())
         .catch((err) => {
           logger.debug(
-            `[eliza-api] Steward wallet cache init failed after listen: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
+            `[eliza-api] Steward wallet cache init failed after listen: ${err instanceof Error ? err.message : String(err)}`,
           );
         });
     }
-
-    void (async () => {
-      try {
-        const { discoverSkills } = await getAgentSkillsApi();
-        const discoveredSkills = await discoverSkills(
-          workspaceDir,
-          state.config,
-          state.runtime,
-        );
-        state.skills = discoveredSkills;
-        addLog(
-          "info",
-          `Discovered ${discoveredSkills.length} skills`,
-          "system",
-          ["system", "plugins"],
-        );
-      } catch (err) {
-        logger.warn(
-          `[eliza-api] Skill discovery failed during startup: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    })();
-
     // ── Connector health monitoring ──────────────────────────────────────────
     if (state.runtime && state.config.connectors) {
       try {
@@ -4275,14 +3922,11 @@ export async function startApiServer(opts?: {
         state.connectorHealthMonitor.start();
       } catch (err) {
         logger.warn(
-          `[eliza-api] Connector health monitor failed after listen: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+          `[eliza-api] Connector health monitor failed after listen: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
   };
-
   // ── WebSocket Server ─────────────────────────────────────────────────────
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   // A server-level 'error' with no listener crashes the process. Abrupt client
@@ -4291,6 +3935,13 @@ export async function startApiServer(opts?: {
     logger.warn(
       `[eliza-api] WebSocketServer error: ${err instanceof Error ? err.message : err}`,
     );
+  });
+  // Server-side ping/pong: a peer whose TCP window froze (backgrounded app,
+  // suspended laptop) never sends a close frame, so without this sweep its
+  // socket and everything the hub queues for it would live until the OS
+  // gives up on the connection.
+  const wsLiveness = createEventSocketLivenessSweep<WebSocket>({
+    clientIds: wsClientIds,
   });
   /**
    * Per-connection active conversation. Each browser window/client owns its own
@@ -4322,7 +3973,7 @@ export async function startApiServer(opts?: {
    * dropped if seen within the TTL. Entries expire so the map stays bounded.
    */
   const wsSeenMessageIds = new Map<string, number>();
-  const WS_DEDUPE_TTL_MS = 30_000;
+  const WS_DEDUPE_TTL_MS = 30000;
   let wsSeenLastSweepAt = 0;
   const isDuplicateWsMessage = (
     clientId: string | undefined,
@@ -4350,7 +4001,6 @@ export async function startApiServer(opts?: {
     return false;
   };
   bindRuntimeStreams(opts?.runtime ?? null);
-
   // Wire coding-agent bridges at initial boot (event-driven via getServiceLoadPromise)
   if (opts?.runtime) {
     void wireCoordinatorBridgesWhenReady(state, {
@@ -4362,7 +4012,6 @@ export async function startApiServer(opts?: {
       logger,
     });
   }
-
   // The device-bridge WebSocket endpoint delegates authentication to the
   // capacitor bridge's own upgrade handler (a pairing-token check that closes
   // unauthorized sockets with 4001). That delegation is only valid when the
@@ -4383,18 +4032,16 @@ export async function startApiServer(opts?: {
       return false;
     }
     // Mirrors the pairing-token env contract enforced by
-    // @elizaos/plugin-capacitor-bridge's attachMobileDeviceBridgeToServer.
+    // @elizaos/plugin-native-inference/host-bridge's attachMobileDeviceBridgeToServer.
     return Boolean(
       process.env.ELIZA_DEVICE_PAIRING_TOKEN?.trim() ||
         process.env.ELIZA_DEVICE_BRIDGE_TOKEN?.trim(),
     );
   };
-
   // Requests authenticated by the host hook must remain authenticated when
   // `ws` emits its later connection event. IncomingMessage identity is stable
   // across handleUpgrade, and WeakSet avoids retaining completed requests.
   const hostAuthorizedWebSocketRequests = new WeakSet<http.IncomingMessage>();
-
   // Handle upgrade requests for WebSocket
   // Async: the handshake-bearer session lookup below awaits the host's
   // session store. Every throw lands inside the try/catch, so the listener's
@@ -4415,6 +4062,12 @@ export async function startApiServer(opts?: {
       }
     });
     try {
+      const hostRejection = await admitHostRequest(request, "upgrade");
+      if (hostRejection !== null) {
+        rejectWebSocketUpgrade(socket, hostRejection, "Host admission denied");
+        return;
+      }
+      if (await opts?.handleProtocolUpgrade?.(request, socket, head)) return;
       const wsUrl = new URL(
         request.url ?? "/",
         `http://${request.headers.host ?? "localhost"}`,
@@ -4497,9 +4150,7 @@ export async function startApiServer(opts?: {
           // fail closed for that credential and retain the bounded post-open
           // static-token flow instead of crashing the server.
           logger.error(
-            `[eliza-api] host WebSocket authorization failed: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            `[eliza-api] host WebSocket authorization failed: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       }
@@ -4548,9 +4199,10 @@ export async function startApiServer(opts?: {
       rejectWebSocketUpgrade(socket, 404, "Not found");
     }
   });
-
   // Handle WebSocket connections
   wss.on("connection", (ws: WebSocket, request: http.IncomingMessage) => {
+    wsRequests.set(ws, request);
+    wsLiveness.track(ws);
     let wsClientId: string | null = null;
     let wsUrl: URL;
     try {
@@ -4567,16 +4219,24 @@ export async function startApiServer(opts?: {
       // Ignore malformed WS URL metadata; auth/path were already validated.
       wsUrl = new URL("ws://localhost/ws");
     }
-
     const hostAuthorized = hostAuthorizedWebSocketRequests.delete(request);
     let isAuthenticated =
       hostAuthorized ||
       isWebSocketAuthorized(request, wsUrl) ||
       isWebSocketUpgradeSessionAuthorized(request);
+    if (isWebSocketUpgradeSessionAuthorized(request)) {
+      const token = extractWebSocketHandshakeToken(request, wsUrl);
+      if (token)
+        wsSessions.set(ws, {
+          token,
+          checkedAt: 0,
+          revoked: false,
+          generation: 0,
+        });
+    }
     // Serializes in-band machine-session lookups for this socket (see the
     // auth branch of the message handler).
     let inBandSessionLookupInFlight = false;
-
     // W5-015: the upgrade handler reserved a pre-auth slot for this socket's
     // peer. It releases on post-open authentication or on close — whichever
     // comes first — and a socket that never authenticates is closed when the
@@ -4608,7 +4268,6 @@ export async function startApiServer(opts?: {
       // A stuck pre-auth socket must not hold the process open on shutdown.
       authGraceTimer.unref?.();
     }
-
     // Optional reconnect cursor: a client that tracks the highest buffered
     // event sequence it has applied can pass it back as `?lastEventId=` so the
     // server replays only the envelopes it is missing instead of re-flooding
@@ -4618,7 +4277,6 @@ export async function startApiServer(opts?: {
     const replayCursor = parseEventCursor(
       wsUrl.searchParams.get("lastEventId") ?? wsUrl.searchParams.get("since"),
     );
-
     const activateAuthenticatedConnection = () => {
       wsClients.add(ws);
       if (
@@ -4633,32 +4291,49 @@ export async function startApiServer(opts?: {
         "server",
         "websocket",
       ]);
-
+      const sendInitialStatus = async () => {
+        try {
+          const runtime = state.runtime;
+          const agentState = state.agentState;
+          const readiness = await responseReadinessFields(runtime, agentState);
+          if (!wsClients.has(ws) || !isAuthenticated) return;
+          if (runtime === state.runtime && agentState === state.agentState)
+            sendWebSocket(
+              ws,
+              JSON.stringify({
+                type: "status",
+                state: state.agentState,
+                agentName: state.agentName,
+                model: state.model,
+                // Same server-authoritative readiness signal as broadcastStatus and
+                // /api/status. Without it on the initial-connect status, every WS
+                // (re)connect delivers canRespond: undefined and re-gates the chat
+                // composer back to "waking up" until the next 5s broadcast.
+                ...readiness,
+                startedAt: state.startedAt,
+                startup: state.startup,
+                pendingRestart: state.pendingRestartReasons.length > 0,
+                pendingRestartReasons: state.pendingRestartReasons,
+              }),
+            );
+        } catch (error) {
+          logger.warn(
+            { error, src: "eliza-api" },
+            "Initial WebSocket status unavailable",
+          );
+        }
+      };
+      void sendInitialStatus();
+      // Replay stays synchronous so newer live events cannot overtake history
+      // while the optional model-readiness probe reads the local registry.
       try {
-        ws.send(
-          JSON.stringify({
-            type: "status",
-            state: state.agentState,
-            agentName: state.agentName,
-            model: state.model,
-            // Same server-authoritative readiness signal as broadcastStatus and
-            // /api/status. Without it on the initial-connect status, every WS
-            // (re)connect delivers canRespond: undefined and re-gates the chat
-            // composer back to "waking up" until the next 5s broadcast.
-            canRespond: computeCanRespond(state.runtime, state.agentState),
-            startedAt: state.startedAt,
-            startup: state.startup,
-            pendingRestart: state.pendingRestartReasons.length > 0,
-            pendingRestartReasons: state.pendingRestartReasons,
-          }),
-        );
         const replay = selectReplayEvents(
           state.eventBuffer,
           replayCursor,
           DEFAULT_REPLAY_LIMIT,
         );
         for (const event of replay) {
-          ws.send(JSON.stringify(event));
+          sendWebSocket(ws, JSON.stringify(event));
         }
       } catch (err) {
         logger.error(
@@ -4666,11 +4341,9 @@ export async function startApiServer(opts?: {
         );
       }
     };
-
     if (isAuthenticated) {
       activateAuthenticatedConnection();
     }
-
     const currentClientOwnsPtySession = (sessionId: string): boolean => {
       const service = getPtyService(state);
       const session = service
@@ -4679,7 +4352,6 @@ export async function startApiServer(opts?: {
       if (!session?.ownerClientId) return true;
       return Boolean(wsClientId && session.ownerClientId === wsClientId);
     };
-
     const stopOwnedPtySessions = (reason: string): void => {
       if (!wsClientId) return;
       const service = getPtyService(state);
@@ -4695,7 +4367,6 @@ export async function startApiServer(opts?: {
         });
       }
     };
-
     /**
      * Reap this client's PTY sessions only after the disconnect grace window,
      * and only if no other live authenticated socket carries the same
@@ -4724,9 +4395,13 @@ export async function startApiServer(opts?: {
         stopOwnedSessions: () => stopOwnedPtySessions(reason),
       });
     };
-
     ws.on("message", async (data: unknown) => {
       try {
+        if (
+          (hostAdmission || wsSessions.has(ws)) &&
+          !(await admitWebSocket(ws, request, "websocket-message"))
+        )
+          return;
         const msg = JSON.parse(String(data));
         if (!isAuthenticated) {
           const expected = getConfiguredApiToken();
@@ -4756,6 +4431,13 @@ export async function startApiServer(opts?: {
                 providedToken,
                 state.runtime,
               );
+              if (authorized)
+                wsSessions.set(ws, {
+                  token: providedToken,
+                  checkedAt: 0,
+                  revoked: false,
+                  generation: 0,
+                });
             } finally {
               inBandSessionLookupInFlight = false;
             }
@@ -4769,7 +4451,7 @@ export async function startApiServer(opts?: {
             isAuthenticated = true;
             clearAuthGraceTimer();
             releasePendingSlot();
-            ws.send(JSON.stringify({ type: "auth-ok" }));
+            sendWebSocket(ws, JSON.stringify({ type: "auth-ok" }));
             activateAuthenticatedConnection();
           } else {
             logger.warn("[eliza-api] WebSocket message rejected before auth");
@@ -4781,7 +4463,7 @@ export async function startApiServer(opts?: {
           return;
         }
         if (msg.type === "ping") {
-          ws.send(JSON.stringify({ type: "pong" }));
+          sendWebSocket(ws, JSON.stringify({ type: "pong" }));
         } else if (msg.type === "active-conversation") {
           // Per-connection: only this client's active conversation changes.
           const conversationId =
@@ -4822,7 +4504,7 @@ export async function startApiServer(opts?: {
                 sessionId: targetId,
                 send: (frame) => {
                   if (ws.readyState === 1) {
-                    ws.send(JSON.stringify(frame));
+                    sendWebSocket(ws, JSON.stringify(frame));
                   }
                 },
               });
@@ -4862,7 +4544,8 @@ export async function startApiServer(opts?: {
               `[eliza-api] pty-input rejected: payload too large (${msg.data.length} chars) for session ${msg.sessionId}`,
             );
             if (ws.readyState === 1) {
-              ws.send(
+              sendWebSocket(
+                ws,
                 JSON.stringify({
                   type: "pty-error",
                   sessionId: msg.sessionId,
@@ -4922,8 +4605,18 @@ export async function startApiServer(opts?: {
         ) {
           void import("./views-routes.ts")
             .then(({ resolveViewInteractResult }) => {
-              resolveViewInteractResult({
+              if (!state.runtime || !wsClientId) return;
+              resolveViewInteractResult(state.runtime, state, wsClientId, {
                 requestId: msg.requestId,
+                viewId: typeof msg.viewId === "string" ? msg.viewId : undefined,
+                viewType:
+                  typeof msg.viewType === "string" ? msg.viewType : undefined,
+                installationId:
+                  typeof msg.installationId === "string"
+                    ? msg.installationId
+                    : undefined,
+                claimId:
+                  typeof msg.claimId === "string" ? msg.claimId : undefined,
                 success: msg.success === true,
                 result: msg.result,
                 error: typeof msg.error === "string" ? msg.error : undefined,
@@ -4941,11 +4634,11 @@ export async function startApiServer(opts?: {
         );
       }
     });
-
     ws.on("close", () => {
       clearAuthGraceTimer();
       releasePendingSlot();
       wsClients.delete(ws);
+      wsSessions.delete(ws);
       wsActiveConversations.delete(ws);
       // Clean up any PTY output subscriptions for this client
       const subs = wsClientPtySubscriptions.get(ws);
@@ -4959,7 +4652,6 @@ export async function startApiServer(opts?: {
         "websocket",
       ]);
     });
-
     ws.on("error", (err: unknown) => {
       logger.error(
         `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
@@ -4977,9 +4669,12 @@ export async function startApiServer(opts?: {
       scheduleStopOwnedPtySessions("websocket error");
     });
   });
-
   // Broadcast status to all connected WebSocket clients (flattened — PR #36 fix)
-  const broadcastStatus = () => {
+  let statusReadinessSequence = 0;
+  const broadcastStatus = async () => {
+    // The existing five-second status cadence detects revocations/expiry from
+    // other processes. One coalesced lookup gates all queued frames per socket.
+    for (const session of wsSessions.values()) session.checkedAt = 0;
     // Skip the payload build + computeCanRespond() when no dashboard is
     // connected. This fires every 5s (statusInterval) plus on every state
     // change for the whole process lifetime; a headless / background agent
@@ -4990,6 +4685,16 @@ export async function startApiServer(opts?: {
     if (wsClients.size === 0) {
       return;
     }
+    const sequence = ++statusReadinessSequence;
+    const runtime = state.runtime;
+    const agentState = state.agentState;
+    const readiness = await responseReadinessFields(runtime, agentState);
+    if (
+      sequence !== statusReadinessSequence ||
+      runtime !== state.runtime ||
+      agentState !== state.agentState
+    )
+      return;
     broadcastWs({
       type: "status",
       state: state.agentState,
@@ -4999,17 +4704,15 @@ export async function startApiServer(opts?: {
       // returns. Without it, every 5s WS status broadcast resets the client's
       // `agentStatus.canRespond` to undefined, re-gating the chat composer back
       // to "waking up" even though the agent is fully ready and replying.
-      canRespond: computeCanRespond(state.runtime, state.agentState),
+      ...readiness,
       startedAt: state.startedAt,
       startup: state.startup,
       pendingRestart: state.pendingRestartReasons.length > 0,
       pendingRestartReasons: state.pendingRestartReasons,
     });
   };
-
   // Make broadcastStatus accessible to route handlers via state
   state.broadcastStatus = broadcastStatus;
-
   // Flip the WS status lane the moment a model handler registers instead of
   // waiting for the next 5s statusInterval tick: `canRespond` turns true when a
   // late-registering provider (deferred wave, first-run configure, runtime
@@ -5031,16 +4734,16 @@ export async function startApiServer(opts?: {
     });
   };
   wireModelRegistrationBroadcast(state.runtime);
-
+  wireNativeBrowserPageReader(state.runtime);
   state.broadcastWs = (data: object) => eventHub.broadcast(data);
   state.broadcastWsToClientId = (clientId: string, data: object) =>
     eventHub.sendToClient(clientId, data);
-
   // View interactions originate outside HTTP requests and share the same event
   // hub as route and runtime events.
   void import("./views-routes.ts")
     .then(({ setViewsBroadcastWs }) => {
       setViewsBroadcastWs(
+        state,
         state.broadcastWs ?? null,
         state.broadcastWsToClientId ?? null,
       );
@@ -5050,13 +4753,10 @@ export async function startApiServer(opts?: {
         `[eliza-api] failed to wire views broadcaster: ${err instanceof Error ? err.message : err}`,
       );
     });
-
   state.broadcastWsToConversation = (conversationId: string, data: object) =>
     eventHub.sendToConversation(conversationId, data);
-
   // Broadcast status every 5 seconds
   const statusInterval = setInterval(broadcastStatus, 5000);
-
   /**
    * Restore the in-memory conversation list from the database. The scan/rebuild
    * logic lives in `./conversation-restore.ts` so the relaunch round-trip can be
@@ -5072,7 +4772,6 @@ export async function startApiServer(opts?: {
       log: (message) => addLog("info", message, "system", ["system"]),
     });
   };
-
   const beginConversationRestore = (rt: AgentRuntime): Promise<void> => {
     const restorePromise = restoreConversationsFromDb(rt).finally(() => {
       if (state.conversationRestorePromise === restorePromise) {
@@ -5082,7 +4781,6 @@ export async function startApiServer(opts?: {
     state.conversationRestorePromise = restorePromise;
     return restorePromise;
   };
-
   /**
    * Load the agent's DB-persisted character data and overlay onto the
    * in-memory runtime.character.  This ensures Character Editor edits
@@ -5102,7 +4800,6 @@ export async function startApiServer(opts?: {
         | Record<string, unknown>
         | undefined;
       if (!saved || typeof saved !== "object") return;
-
       const c = rt.character;
       // Only overlay fields that were explicitly saved (non-empty)
       if (typeof saved.name === "string" && saved.name) c.name = saved.name;
@@ -5116,7 +4813,11 @@ export async function startApiServer(opts?: {
         c.adjectives = saved.adjectives as string[];
       }
       if (Array.isArray(saved.topics)) {
-        (c as { topics?: string[] }).topics = saved.topics as string[];
+        (
+          c as {
+            topics?: string[];
+          }
+        ).topics = saved.topics as string[];
       }
       if (saved.style && typeof saved.style === "object") {
         c.style = saved.style as NonNullable<typeof c.style>;
@@ -5140,7 +4841,6 @@ export async function startApiServer(opts?: {
       );
     }
   };
-
   // Restore conversations from DB at initial boot (if runtime was passed in)
   if (opts?.runtime) {
     void beginConversationRestore(opts.runtime).catch((err) => {
@@ -5152,11 +4852,11 @@ export async function startApiServer(opts?: {
     registerClientChatSendHandler(opts.runtime, state);
     wireProactiveInteractionDecider(opts.runtime, state);
   }
-
   const assertX402RoutesValid = async (
     rt: AgentRuntime | null | undefined,
   ): Promise<void> => {
-    if (!rt || !runtimeRoutesNeedX402Validation(rt.routes)) return;
+    if (!rt || !runtimeRoutesNeedX402Validation(getHttpRuntime(rt).routes))
+      return;
     const agentId =
       rt.agentId != null && String(rt.agentId).length > 0
         ? String(rt.agentId)
@@ -5165,9 +4865,13 @@ export async function startApiServer(opts?: {
     if (!x402) return; // x402 module unavailable (e.g. mobile bundle) — nothing to validate
     const { validateX402Startup } = x402;
     if (!validateX402Startup) return;
-    const result = validateX402Startup(rt.routes as Route[], rt.character, {
-      agentId,
-    });
+    const result = validateX402Startup(
+      getHttpRuntime(rt).routes as Route[],
+      rt.character,
+      {
+        agentId,
+      },
+    );
     if (!result || typeof result !== "object") {
       logger.warn(
         "[x402] startup validator returned no result; skipping x402 route validation",
@@ -5183,14 +4887,12 @@ export async function startApiServer(opts?: {
       logger.warn(`[x402] ${w}`);
     }
   };
-
   /** Hot-swap the runtime reference (used after an in-process restart). */
   const updateRuntime = (rt: AgentRuntime): void => {
+    registerRuntimeBuiltinViews(rt);
     void assertX402RoutesValid(rt).catch((err) => {
       logger.error(
-        `[x402] runtime route validation failed after update: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `[x402] runtime route validation failed after update: ${err instanceof Error ? err.message : String(err)}`,
       );
     });
     state.runtime = rt;
@@ -5199,6 +4901,7 @@ export async function startApiServer(opts?: {
     state.chatConnectionPromise = null;
     bindRuntimeStreams(rt);
     wireModelRegistrationBroadcast(rt);
+    wireNativeBrowserPageReader(rt);
     // AppManager doesn't need a runtime reference
     state.agentState = "running";
     state.agentName =
@@ -5213,24 +4916,19 @@ export async function startApiServer(opts?: {
       "system",
       "agent",
     ]);
-
     // Restore conversations from DB so they survive restarts
     void beginConversationRestore(rt).catch((err) => {
       logger.warn("[api] Conversation restore failed on restart:", err);
     });
-
     // Overlay DB-persisted character data (from Character Editor saves)
     void overlayDbCharacter(rt, state).catch((err) => {
       logger.warn("[api] Character overlay restore failed on restart:", err);
     });
-
     // Broadcast status update immediately after restart
     broadcastStatus();
-
     // Re-register client_chat send handler on the new runtime
     registerClientChatSendHandler(rt, state);
     wireProactiveInteractionDecider(rt, state);
-
     // Wire coding-agent bridges (event-driven via getServiceLoadPromise)
     void wireCoordinatorBridgesWhenReady(state, {
       wireChatBridge: wireCodingAgentChatBridge,
@@ -5241,7 +4939,6 @@ export async function startApiServer(opts?: {
       logger,
     });
   };
-
   const updateStartup = (
     update: Partial<AgentStartupDiagnostics> & {
       phase?: string;
@@ -5267,7 +4964,6 @@ export async function startApiServer(opts?: {
     }
     broadcastStatus();
   };
-
   logger.debug(
     `[eliza-api] Calling server.listen (${Date.now() - apiStartTime}ms)`,
   );
@@ -5280,7 +4976,6 @@ export async function startApiServer(opts?: {
   } finally {
     earlyEntries = flushEarlyLogs();
   }
-
   if (earlyEntries.length > 0) {
     for (const entry of earlyEntries) {
       state.logBuffer.push(entry);
@@ -5298,13 +4993,16 @@ export async function startApiServer(opts?: {
     "system",
     ["system", "agent"],
   );
-
   const serverResources = createServerResources((resource, error) => {
     // error-policy:J6 every teardown is attempted and awaited; one failure is
     // reported without abandoning the remaining resources.
     logger.warn({ error, resource }, `[eliza-api] Failed to close ${resource}`);
   });
   for (const resource of [
+    {
+      name: "session revocation listener",
+      dispose: () => unsubscribeSessionRevocations?.(),
+    },
     {
       name: "status interval",
       dispose: () => clearInterval(statusInterval),
@@ -5339,6 +5037,7 @@ export async function startApiServer(opts?: {
     {
       name: "WebSocket clients",
       dispose: () => {
+        wsLiveness.stop();
         for (const ws of wsClients) {
           if (ws.readyState !== 1 && ws.readyState !== 0) continue;
           if ("terminate" in ws && typeof ws.terminate === "function") {
@@ -5383,6 +5082,7 @@ export async function startApiServer(opts?: {
     serverResources.add(resource);
   }
   const stopServerSideResources = (): Promise<void> => {
+    closeViewInteractionHost(state);
     unregisterInProcessApi?.();
     return serverResources.close();
   };
@@ -5408,10 +5108,11 @@ export async function startApiServer(opts?: {
       port,
       close: stopServerSideResources,
       updateRuntime,
+      runtimeOperations,
+      reloadConfigFromDisk,
       updateStartup,
     };
   }
-
   const listener = await listenHttpServer({
     server,
     host,
@@ -5470,6 +5171,8 @@ export async function startApiServer(opts?: {
     port: listener.port,
     close: listener.close,
     updateRuntime,
+    runtimeOperations,
+    reloadConfigFromDisk,
     updateStartup,
   };
 }

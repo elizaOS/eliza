@@ -4,13 +4,18 @@
  * parameter and result envelopes. Consumed by planner-loop, the evaluator, and
  * the message handler that drives them.
  */
+
 import type {
 	ActionFailureKind,
 	ActionFailureProvenance,
 } from "../types/action-failure";
 import type { ActionReplyFailure } from "../types/action-reply";
-import type { EvaluationResult } from "../types/components";
-import type { ContextObject } from "../types/context-object";
+import type {
+	ActionResult,
+	CompletionContextSelection,
+	EvaluationResult,
+	ReplyEffectStatus,
+} from "../types/components";
 import type { EffectReceipt } from "../types/effects";
 import type {
 	ChatMessage,
@@ -23,15 +28,18 @@ import type {
 	ToolDefinition,
 } from "../types/model";
 import type { State } from "../types/state";
+import type { ContextObject } from "./context-object";
 import type { ChainingLoopConfig } from "./limits";
 import type { TrajectoryRecorder } from "./trajectory-recorder";
 
-export type { ContextObject } from "../types/context-object";
+export type { ContextObject } from "./context-object";
 
 export interface PlannerToolCall {
 	id?: string;
 	name: string;
 	params?: Record<string, unknown>;
+	/** Whole-turn source review from the planner; null explicitly retains full context after invalid metadata. */
+	completionContext?: CompletionContextSelection | null;
 }
 
 export type EvaluatorRoute = EvaluationResult["decision"];
@@ -41,6 +49,8 @@ export type EvaluatorModelResult =
 	| (Partial<GenerateTextResult> & { object?: unknown });
 
 export interface EvaluatorRuntime {
+	/** Same fresh provider read used by the planner restoration protocol. */
+	restoreProviderContext?(context: ContextObject): Promise<ContextObject>;
 	/** True when useModel invokes prepareModelAttempt before every provider handler. */
 	supportsModelAttemptPreparation?: boolean;
 	/** Optional model registry access used to resolve evaluator context ceilings. */
@@ -58,6 +68,7 @@ export interface EvaluatorRuntime {
 		modelType: TextGenerationModelType,
 		params: {
 			messages: ChatMessage[];
+			model?: string;
 			maxTokens?: number;
 			responseSchema?: unknown;
 			promptSegments?: PromptSegment[];
@@ -80,15 +91,29 @@ export interface EvaluatorRuntime {
 }
 
 export interface EvaluatorEffects {
-	copyToClipboard?: (
-		clipboard: NonNullable<EvaluationResult["copyToClipboard"]>,
-	) => Promise<void> | void;
+	/** False explicitly disables this effect; omission preserves standalone output. */
+	copyToClipboard?:
+		| false
+		| ((
+				clipboard: NonNullable<EvaluationResult["copyToClipboard"]>,
+		  ) => Promise<void> | void);
 	messageToUser?: (message: string) => Promise<void> | void;
 }
 
 export type EvaluatorOutput = EvaluationResult & {
+	/** Auditable semantic coverage judgment, never independent execution proof. */
+	requestFullyCovered?: boolean;
+	outcomeCoverage?: readonly {
+		intentId: string;
+		status: "completed" | "blocked" | "pending";
+		evidenceStepIds: readonly string[];
+	}[];
+	/** Semantic classification from the same evaluation, independent of reply language. */
+	replyEffectStatus?: Exclude<ReplyEffectStatus, "pending">;
 	/** Model-selected proof for messageToUser; egress resolves these against this turn's results. */
 	effectReceiptIds?: readonly string[];
+	/** Captured final REPLY text and its own model-selected proof during missing-reply recovery. */
+	plannerReply?: { text: string; effectReceiptIds: readonly string[] };
 	nextTool?: PlannerToolCall;
 	/** The model response violated the evaluator protocol. */
 	protocolFailure?: true;
@@ -98,6 +123,11 @@ export type EvaluatorOutput = EvaluationResult & {
 
 export interface PlannerRuntime {
 	getService?(service: string): unknown;
+	/** Model metadata forwarded to completion evaluation by host facades. */
+	getModelRegistrations?(): ModelRegistrationInfo[];
+	supportsModelAttemptPreparation?: boolean;
+	/** Reauthorize deferred provider reads before restoring model context. */
+	restoreProviderContext?(context: ContextObject): Promise<ContextObject>;
 	/** Optional per-agent setting lookup used by guarded runtime features. */
 	getSetting?(key: string): string | boolean | number | null;
 	reportError?(
@@ -131,8 +161,24 @@ export interface PlannerRuntime {
 	};
 }
 
+/**
+ * Executor-owned evidence of a registered child's pinned discriminator,
+ * whether the model named the child directly or the umbrella's inferSubaction
+ * selected it. The recorded call keeps its original arguments. Retry matching
+ * can use this pin without guessing an operation from the tool's name.
+ */
+export interface InferredSubactionDispatch {
+	/** Promoted child the arguments resolved to, e.g. `MEMORY_CREATE`. */
+	child: string;
+	/** Umbrella discriminator parameter that was pinned, e.g. `action`. */
+	discriminator: string;
+	/** Pinned discriminator value, e.g. `create`. */
+	value: string;
+}
+
 export interface PlannerToolResult {
 	success: boolean;
+	verification?: ActionResult["verification"];
 	/**
 	 * Verdict the sub-planner's own evaluator reached over this umbrella
 	 * action's recorded child results (same planner context, same declared
@@ -144,6 +190,10 @@ export interface PlannerToolResult {
 		success: boolean;
 		messageToUser?: string;
 	};
+	/** Set when an umbrella call was dispatched through `inferSubaction`. */
+	inferredSubaction?: InferredSubactionDispatch;
+	/** Named child's executor-verified dispatch pin; runtime-only retry metadata. */
+	registeredSubaction?: InferredSubactionDispatch;
 	/**
 	 * Diagnostic / log-shaped projection of the tool's output. Goes into
 	 * the trajectory and the planner's tool-result message. Used by the
@@ -206,6 +256,8 @@ export interface PlannerToolResult {
 	data?: Record<string, unknown>;
 	/** Model-bound projection of `data`; complete data remains on the result. */
 	promptData?: Record<string, unknown>;
+	/** Producer-declared complete model projection; absent preserves both fields. */
+	promptDataMode?: "replace-data";
 	error?: unknown;
 	/** Typed boundary provenance retained through planner retry exhaustion. */
 	failureProvenance?: ActionFailureProvenance;
@@ -226,11 +278,7 @@ export interface PlannerToolResult {
 	modelReplyRequired?: boolean;
 	/** Vetted action-owned fallback for a failed required model synthesis. */
 	modelReplyFallback?: string;
-	/**
-	 * Explicit chain-control override. `false` unconditionally aborts the
-	 * remaining planner queue, including for legacy failure and fire-and-forget
-	 * results. It is distinct from the conservative `turnComplete` fast path.
-	 */
+	/** An explicit false aborts the remaining planner queue, including failed and fire-and-forget results. This differs from the conservative turnComplete fast path. */
 	continueChain?: boolean;
 }
 
@@ -244,6 +292,8 @@ export interface PlannerStep {
 }
 
 export interface PlannerTrajectory {
+	/** Original declared outcomes retain their source order across authorized resumptions. */
+	outcomeIntents?: readonly string[];
 	context: ContextObject;
 	/** Immutable turn context used as the byte-stable model prefix. */
 	modelBaseContext?: ContextObject;
@@ -259,6 +309,9 @@ export interface PlannerTrajectory {
 
 export interface PlannerTerminalFailure {
 	kind:
+		| "context_overflow"
+		| "resource_limit"
+		| "planner_timeout"
 		| "coding_mutation_unverified"
 		| "coding_verification_failed"
 		| "coding_tool_failure"
@@ -271,6 +324,8 @@ export interface PlannerTerminalFailure {
 }
 
 export interface PlannerLoopResult {
+	/** Caller must finish receipt-bound delivery; no planner narration was generated. */
+	replyRecoveryRequired?: true;
 	status: "finished" | "continued";
 	trajectory: PlannerTrajectory;
 	evaluator?: EvaluatorOutput;
@@ -306,6 +361,8 @@ export interface PlannerLoopResult {
 }
 
 export interface PlannerLoopParams {
+	/** Host owns receipt-bound recovery of missing replies after evaluated internal effects. */
+	deferInternalReplyRecoveryToCaller?: boolean;
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	/**
@@ -316,6 +373,19 @@ export interface PlannerLoopParams {
 	postToolReplySeed?: {
 		toolCall: PlannerToolCall;
 		result: PlannerToolResult;
+	};
+	/** Host persists resumed execution before dispatch and after settled results. */
+	onCheckpoint?: (
+		state: {
+			trajectory: PlannerTrajectory;
+			modelUsage: NonNullable<PlannerLoopResult["modelUsage"]>;
+		},
+		phase: "before_tool" | "after_tool",
+	) => Promise<void>;
+	/** Trusted host checkpoint; current tools/context must be freshly authorized. */
+	resumeState?: {
+		trajectory: PlannerTrajectory;
+		modelUsage: NonNullable<PlannerLoopResult["modelUsage"]>;
 	};
 	/** Trusted per-turn coding-loop mode; never used as an authorization signal. */
 	codingMode?: boolean;
@@ -392,7 +462,7 @@ export interface PlannerLoopParams {
 	 * marker and keep the full corrective budget. Inferred evidence is weaker —
 	 * when the planner re-commits to the
 	 * IDENTICAL terminal answer on consecutive misses, the loop accepts it
-	 * (mirroring the widget-identity early-finish, #15230) instead of
+	 * instead of
 	 * burning the full miss budget on the heuristic's guess. Omitted (the
 	 * model named the tool itself) keeps the full corrective budget.
 	 */
@@ -411,10 +481,14 @@ export interface PlannerLoopParams {
 }
 
 export interface RunEvaluatorParams {
+	/** Runtime failure authority; does not prevent continuation or recovery. */
+	hasUnresolvedToolFailure?: boolean;
 	runtime: EvaluatorRuntime;
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
 	modelType?: TextGenerationModelType;
+	/** Opt-in provider model for evaluation only; adapters may ignore per-call selection. */
+	model?: string;
 	effects?: EvaluatorEffects;
 	provider?: string;
 	recorder?: TrajectoryRecorder;

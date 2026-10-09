@@ -1,0 +1,13 @@
+node_modules
+.env
+.DS_Store
+dist
+build
+tmp
+*.log
+__pycache__
+.vscode
+.idea
+.opencode/
+coverage
+opencode-bin

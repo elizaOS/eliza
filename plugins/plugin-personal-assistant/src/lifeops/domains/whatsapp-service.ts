@@ -3,8 +3,9 @@
  * through the runtime-service delegates and projects connector status into
  * assistant DTOs. Transport is owned by `@elizaos/plugin-whatsapp`.
  */
+
+import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/contracts";
 import type { Memory } from "@elizaos/core";
-import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   fetchWhatsAppMessagesWithRuntimeService,

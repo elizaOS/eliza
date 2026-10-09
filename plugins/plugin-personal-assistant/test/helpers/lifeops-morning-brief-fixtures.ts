@@ -5,15 +5,23 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { extractPlugin, type PluginModuleShape } from "@elizaos/agent";
 import {
-  extractPlugin,
-  type PluginModuleShape,
+  type AgentRuntime,
+  ChannelType,
+  createMessageMemory,
+  logger,
+  type Memory,
+  type Plugin,
   resolveOAuthDir,
-} from "@elizaos/agent";
-import type { AgentRuntime, Memory, Plugin, UUID } from "@elizaos/core";
-import { ChannelType, createMessageMemory, logger } from "@elizaos/core";
-import { InboxTriageRepository } from "../../src/inbox/repository.js";
-import type { DeferredInboxDraft } from "../../src/inbox/types.js";
+  type UUID,
+} from "@elizaos/core";
+
+import {
+  type DeferredInboxDraft,
+  InboxRepository as InboxTriageRepository,
+} from "@elizaos/plugin-inbox";
+
 import { createApprovalQueue } from "../../src/lifeops/approval-queue.js";
 import {
   createLifeOpsConnectorGrant,

@@ -2,35 +2,40 @@
  * Reads tenant billing settings and admits session-only manager changes.
  * The service rechecks current authority after validation and persists the
  * auto-top-up and earnings changes together before invalidating billing caches.
+ * Responses carry `autoTopUp.chargePreview`: the credited base, affiliate
+ * markup, platform fee and total card charge computed on the server (#23020).
+ * GET `?previewAmount=` quotes an unsaved amount so the UI can disclose the
+ * charge before the customer saves.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { organizationsRepository } from "@/db/repositories";
+import {
+  requireCurrentBillingManagerSession,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
+import { organizationsRepository } from "@elizaos/cloud-shared/db/repositories";
 import {
   ApiError,
   ForbiddenError,
   failureResponse,
-} from "@/lib/api/cloud-worker-errors";
-import {
-  requireCurrentBillingManagerSession,
-  requireUserOrApiKeyWithOrg,
-} from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   AUTO_TOP_UP_LIMITS,
   AutoTopUpSettingsPolicyError,
   AutoTopUpSettingsUnavailableError,
   AutoTopUpSettingsValidationError,
   autoTopUpService,
-} from "@/lib/services/auto-top-up";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/auto-top-up";
+import { CreatorMonetizationRetiredError } from "@elizaos/cloud-shared/lib/services/creator-monetization-retirement";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const UpdateSettingsSchema = z.object({
   autoTopUp: z
@@ -51,16 +56,54 @@ const UpdateSettingsSchema = z.object({
   payAsYouGoFromEarnings: z.boolean().optional(),
 });
 
+/**
+ * Server-computed auto top-up charge lines (#23020) for the configured amount,
+ * so the billing UI can disclose any affiliate surcharge before the customer
+ * saves. `null` when no amount is configured.
+ */
+async function previewAutoTopUpCharge(
+  organizationId: string,
+  amount: number | null,
+) {
+  if (amount === null) return null;
+  return await autoTopUpService.previewCharge(organizationId, amount);
+}
+
 const app = new Hono<AppEnv>();
+
+const PreviewAmountSchema = z.coerce
+  .number()
+  .min(AUTO_TOP_UP_LIMITS.MIN_AMOUNT)
+  .max(AUTO_TOP_UP_LIMITS.MAX_AMOUNT);
 
 app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    const rawPreviewAmount = c.req.query("previewAmount");
+    let previewAmount: number | null = null;
+    if (rawPreviewAmount !== undefined) {
+      const parsed = PreviewAmountSchema.safeParse(rawPreviewAmount);
+      if (!parsed.success) {
+        return c.json(
+          {
+            success: false,
+            error: "previewAmount must be a valid auto top-up amount",
+            code: "validation_error",
+          },
+          400,
+        );
+      }
+      previewAmount = parsed.data;
+    }
 
     const [autoTopUpSettings, org] = await Promise.all([
       autoTopUpService.getSettings(user.organization_id),
       organizationsRepository.findById(user.organization_id),
     ]);
+    const chargePreview = await previewAutoTopUpCharge(
+      user.organization_id,
+      previewAmount ?? autoTopUpSettings.amount,
+    );
 
     if (!org) {
       throw new ApiError(
@@ -78,6 +121,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
           amount: autoTopUpSettings.amount,
           threshold: autoTopUpSettings.threshold,
           hasPaymentMethod: autoTopUpSettings.hasPaymentMethod,
+          chargePreview,
         },
         payAsYouGoFromEarnings: org.pay_as_you_go_from_earnings,
         limits: {
@@ -156,6 +200,10 @@ app.put("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
       autoTopUpService.getSettings(user.organization_id),
       organizationsRepository.findById(user.organization_id),
     ]);
+    const updatedChargePreview = await previewAutoTopUpCharge(
+      user.organization_id,
+      updatedSettings.amount,
+    );
 
     if (!org) {
       throw new ApiError(
@@ -174,6 +222,7 @@ app.put("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
           amount: updatedSettings.amount,
           threshold: updatedSettings.threshold,
           hasPaymentMethod: updatedSettings.hasPaymentMethod,
+          chargePreview: updatedChargePreview,
         },
         payAsYouGoFromEarnings: org.pay_as_you_go_from_earnings,
       },
@@ -206,6 +255,9 @@ app.put("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
           "Billing settings are unavailable",
         ),
       );
+    }
+    if (error instanceof CreatorMonetizationRetiredError) {
+      return failureResponse(c, error);
     }
     logger.error("[Billing Settings API] Error updating settings:", error);
     return failureResponse(c, error);

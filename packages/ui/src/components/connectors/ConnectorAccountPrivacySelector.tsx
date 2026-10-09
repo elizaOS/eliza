@@ -6,7 +6,7 @@
  */
 
 import { useId, useMemo, useState } from "react";
-import type { ConnectorAccountPrivacy } from "../../api/client-agent";
+import type { ConnectorAccountPrivacy } from "../../api/client-agent-connector-accounts";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

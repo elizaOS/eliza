@@ -16,7 +16,7 @@ export default defineConfig({
       "**/*.live.e2e.test.*",
       // #9310 §E: the OCR *.real.test.ts suites (platform-probed, self-skip
       // off-host) are invocable only in the post-merge lane, where
-      // run-all-tests.mjs prints a named skip accounting.
+      // run-all-tests.ts prints a named skip accounting.
       ...(process.env.VITEST_LANE === "post-merge" ? [] : ["**/*.real.test.*"]),
       "**/*.real.e2e.test.*",
     ],

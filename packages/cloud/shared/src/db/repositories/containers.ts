@@ -20,6 +20,9 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { fundAllowanceEligibleChargeInTransaction } from "../../lib/services/allowance-first-credits";
+import { billingHoldService } from "../../lib/services/billing-hold";
+import { creditsService } from "../../lib/services/credits";
 import {
   readOrganizationQuotaPolicyInTransaction,
   requireOrganizationResourceLimit,
@@ -38,6 +41,7 @@ import { users } from "../schemas/users";
 import { settleComputeRateSegments } from "./compute-billing-segments";
 import {
   containerBillingRepository,
+  readContainerComputeAllowanceInTransaction,
   unreconciledContainerStopProviderEffectExistsSql,
 } from "./container-billing";
 import { parseOrganizationCreditBalance } from "./organizations-credit-balance-numeric";
@@ -857,6 +861,10 @@ export class ContainersRepository {
         }
       }
 
+      // A new container is new paid admission: fail closed while an
+      // underfunding payment reversal holds the organization (#22930).
+      await billingHoldService.assertNoHold(data.organization_id, tx);
+
       // 2. Count active containers (excluding deleting/deleted status)
       const [{ count }] = await tx
         .select({ count: sql<number>`count(*)::int` })
@@ -932,7 +940,32 @@ export class ContainersRepository {
     containerData: NewContainer,
     userId: string,
     deploymentCost: number,
-  ): Promise<{ container: Container; newBalance: number }> {
+  ): Promise<{ container: Container; newBalance: number; fundingReservationId?: string }> {
+    const result = await this.createContainerWithCreditDeductionInTransaction(
+      containerData,
+      userId,
+      deploymentCost,
+    );
+    if (result.creditCachesStale) {
+      await creditsService.invalidateCreditCaches(containerData.organization_id);
+    }
+    return {
+      container: result.container,
+      newBalance: result.newBalance,
+      ...(result.fundingReservationId ? { fundingReservationId: result.fundingReservationId } : {}),
+    };
+  }
+
+  private async createContainerWithCreditDeductionInTransaction(
+    containerData: NewContainer,
+    userId: string,
+    deploymentCost: number,
+  ): Promise<{
+    container: Container;
+    newBalance: number;
+    fundingReservationId?: string;
+    creditCachesStale?: boolean;
+  }> {
     return await dbWrite.transaction(async (tx) => {
       // Create container with quota check
       const container = await this.createWithQuotaCheck(containerData, tx);
@@ -955,6 +988,54 @@ export class ContainersRepository {
       // rolls the whole deploy+debit back atomically instead of authorizing an
       // unbacked deployment against an unreadable balance.
       const currentBalance = parseOrganizationCreditBalance(org.credit_balance, "credit_balance");
+
+      // Allowance-first subscribers fund the deployment from their current
+      // allowance period before purchased credits. The container row inserted
+      // above is the workload identity; funding then takes the organization
+      // lock this transaction already holds from the quota check.
+      const allowanceAvailable = await readContainerComputeAllowanceInTransaction(
+        tx,
+        containerData.organization_id,
+      );
+      if (allowanceAvailable !== null && deploymentCost > 0) {
+        const cost = new Decimal(deploymentCost).toDecimalPlaces(6, Decimal.ROUND_HALF_UP);
+        if (!cost.isFinite() || cost.isNegative()) {
+          throw new Error("Container deployment cost must be finite and non-negative");
+        }
+        const fundingAvailable = new Decimal(org.credit_balance).plus(allowanceAvailable);
+        if (fundingAvailable.lt(cost)) {
+          throw new Error(
+            `Insufficient balance. Required: $${cost.toFixed(2)}, Available: $${fundingAvailable.toFixed(2)} (credits $${currentBalance.toFixed(2)} + allowance $${allowanceAvailable.toFixed(2)})`,
+          );
+        }
+        const funded = await fundAllowanceEligibleChargeInTransaction(tx, {
+          organizationId: containerData.organization_id,
+          operation: "container_compute",
+          logicalOperationId: `container-deploy.${container.id}`,
+          amount: cost.toFixed(6),
+          description: `Container deployment: ${containerData.name}`,
+          occurredAt: container.created_at,
+          metadata: {
+            container_id: container.id,
+            container_name: containerData.name,
+            billing_type: "container_deployment",
+            user_id: userId,
+          },
+        });
+        const [fundedOrg] = await tx
+          .select({ credit_balance: organizations.credit_balance })
+          .from(organizations)
+          .where(eq(organizations.id, containerData.organization_id));
+        return {
+          container,
+          newBalance: parseOrganizationCreditBalance(
+            fundedOrg?.credit_balance ?? null,
+            "credit_balance",
+          ),
+          fundingReservationId: funded.reservation.id,
+          creditCachesStale: funded.purchasedCreditDebited,
+        };
+      }
 
       if (currentBalance < deploymentCost) {
         throw new Error(

@@ -13,11 +13,12 @@
  * `admin.action` with `result: "denied"`.
  */
 
+import { ForbiddenError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getRequestIp } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { Context } from "hono";
 import type { AuditAction } from "@/api-app/services/audit";
-import { ForbiddenError } from "@/lib/api/cloud-worker-errors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
 
 export interface ActorContext {
@@ -33,14 +34,6 @@ const RESOURCE_TYPE_TO_ACTION: Record<string, AuditAction> = {
   secret: "secret.access",
   workflow: "agent.config.update",
 };
-
-function clientIp(c: Context<AppEnv>): string | undefined {
-  return (
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    c.req.header("x-real-ip") ||
-    undefined
-  );
-}
 
 function userAgent(c: Context<AppEnv>): string | undefined {
   return c.req.header("user-agent") ?? undefined;
@@ -75,14 +68,14 @@ export async function assertOrgMembership(
       result: "denied",
       resource: { type: opts.resourceType, id: opts.resourceId },
       org_id: actor.organization_id,
-      ip: clientIp(opts.c),
+      ip: getRequestIp(opts.c),
       user_agent: userAgent(opts.c),
       request_id: opts.c.get("requestId"),
       metadata: { reason: "cross_org_access" },
     });
   } catch (err) {
     // Audit must never break the request path — log and continue with 403.
-    logger.warn("[assertOrgMembership] audit emit failed", {
+    logger.error("[assertOrgMembership] audit emit failed", {
       error: err instanceof Error ? err.message : String(err),
     });
   }

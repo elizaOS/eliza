@@ -6,8 +6,8 @@
  * Mockoon environment on `http://localhost:<port>`.
  *
  * Port assignments are documented in
- * `packages/scenario-runner/test/mocks/mockoon/INVENTORY.md` and must stay in sync with the
- * generated environment files.
+ * `packages/testing/scripts/mocks/compatibility-ports.json` and served by the
+ * canonical mock process.
  *
  * The helper mutates `process.env` because every connector base-URL resolver
  * already reads from there. Callers must invoke `applyMockoonEnvOverrides()`

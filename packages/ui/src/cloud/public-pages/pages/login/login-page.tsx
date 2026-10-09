@@ -13,19 +13,19 @@
  * therefore be dead code that immediately falls back to this same page.
  */
 
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { CheckCircle2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Button } from "../../../../components/primitives";
+import { BRAND_PATHS, LOGO_FILES } from "../../../../brand/index.js";
+import { Button } from "../../../../components/ui/button";
 import { isLoopbackStagingStewardDevelopment } from "../../../../state/loopback-steward-development";
 import {
   hasCloudAuthCompleted,
   isCloudAuthHandoffSurface,
   subscribeCloudAuthComplete,
-} from "../../../auth/cloud-auth-complete-signal";
+} from "../../../cloud-auth-complete-signal";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
-import { usePageTitle } from "../../lib/use-page-title";
 import { LoginOptionsSkeleton } from "./login-section-skeleton";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
@@ -109,7 +109,9 @@ function PublicLoginPage(): React.JSX.Element {
   );
   const [handoffComplete, setHandoffComplete] = useState(false);
 
-  usePageTitle(t("cloud.login.metaTitle", { defaultValue: "Sign In | Eliza" }));
+  useDocumentTitle(
+    t("cloud.login.metaTitle", { defaultValue: "Sign In | Eliza" }),
+  );
 
   useEffect(() => {
     if (!handoffSessionId) return;

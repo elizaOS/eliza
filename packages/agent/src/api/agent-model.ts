@@ -11,14 +11,13 @@
  * resolveProviderFromModel maps a model string to a provider display name.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { type AgentRuntime, ModelType } from "@elizaos/core";
 import {
+  type ElizaConfig,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
+} from "@elizaos/host/protocol";
 
 /**
  * The provider name the elizacloud plugin registers its chat-brain handlers
@@ -250,9 +249,28 @@ export function detectRuntimeModel(
     : [];
 
   if (pluginNames.length > 0) {
+    const textProviders = new Set(
+      (runtime.getModelRegistrations?.() ?? [])
+        .filter((entry) =>
+          [
+            ModelType.TEXT_SMALL,
+            ModelType.TEXT_LARGE,
+            ModelType.TEXT_MEDIUM,
+            ModelType.TEXT_NANO,
+            ModelType.TEXT_MEGA,
+            ModelType.ACTION_PLANNER,
+            ModelType.RESPONSE_HANDLER,
+          ].some((type) => type === entry.modelType),
+        )
+        .map((entry) => entry.provider.toLowerCase()),
+    );
+    // Connector names (for example google-workspace) do not establish a
+    // serving model. The plugin must own a registered text handler.
     const lowerPluginNames = pluginNames.map((name) => name.toLowerCase());
     for (const hint of PROVIDER_HINTS) {
-      const index = lowerPluginNames.findIndex((name) => name.includes(hint));
+      const index = lowerPluginNames.findIndex(
+        (name) => name.includes(hint) && textProviders.has(name),
+      );
       if (index >= 0) return pluginNames[index];
     }
   }

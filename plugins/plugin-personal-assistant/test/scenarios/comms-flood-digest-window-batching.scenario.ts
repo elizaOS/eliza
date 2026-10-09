@@ -16,8 +16,8 @@
  * SCHEDULED_TASKS create as often as the definitions lane) — and the judge
  * grades the load-bearing nuance — batch, do not ping per message.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 const DIGEST_TITLE = /digest|batch/i;
 

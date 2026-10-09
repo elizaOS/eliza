@@ -10,6 +10,8 @@
  * to `0` and break the resulting tie on id so the order stays deterministic.
  */
 
+import { compareMemoryIds } from "@elizaos/core";
+
 /** Conversation summary fields the recency comparator depends on. */
 export interface ConversationSortInput {
   id: string;
@@ -41,7 +43,9 @@ export function compareConversationsByRecency(
 
 /**
  * Orders message memories oldest-created first, treating a missing or
- * non-finite `createdAt` as epoch 0 and tie-breaking on memory id.
+ * non-finite `createdAt` as epoch 0 and tie-breaking on UUID order. Locale
+ * string compare disagrees with the store for mixed-case ids, so a
+ * same-millisecond burst rendered in a different order than it was stored.
  */
 export function compareMemoriesByCreatedAt(
   a: MemorySortInput,
@@ -51,6 +55,6 @@ export function compareMemoriesByCreatedAt(
   const bCreated = finiteOrZero(b.createdAt);
   return (
     aCreated - bCreated ||
-    (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
+    compareMemoryIds(a.id ? String(a.id) : "", b.id ? String(b.id) : "")
   );
 }

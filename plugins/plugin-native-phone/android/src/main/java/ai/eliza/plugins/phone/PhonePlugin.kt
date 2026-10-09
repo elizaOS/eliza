@@ -1,3 +1,4 @@
+/** Exposes Android Telecom, complete call-history reads and agent-authored transcript storage through Capacitor. */
 package ai.eliza.plugins.phone
 
 import android.Manifest
@@ -37,14 +38,11 @@ class PhonePlugin : Plugin() {
 
     @PluginMethod
     fun getStatus(call: PluginCall) {
-        // Device read is delegated to PhoneStatusReader so it can be exercised by
-        // an instrumented androidTest without a Capacitor Bridge (issue #9967);
-        // the JS wire shape below is unchanged.
         val status = PhoneStatusReader(context).readStatus()
         val result = JSObject()
         result.put("hasTelecom", status.hasTelecom)
         result.put("canPlaceCalls", status.canPlaceCalls)
-        result.put("defaultDialerPackage", status.defaultDialerPackage)
+        result.put("defaultDialerPackage", status.defaultDialerPackage ?: JSONObject.NULL)
         result.put("isDefaultDialer", status.isDefaultDialer)
         call.resolve(result)
     }
@@ -53,30 +51,42 @@ class PhonePlugin : Plugin() {
     fun placeCall(call: PluginCall) {
         val number = call.getString("number")?.trim()
         if (number.isNullOrEmpty()) {
-            call.reject("number is required")
+            call.reject("number is required", "INVALID_ARGUMENT")
             return
         }
         val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
         if (telecom == null) {
-            call.reject("Telecom service is unavailable")
+            call.reject("Telecom service is unavailable", "TELECOM_UNAVAILABLE")
             return
         }
         try {
             telecom.placeCall(Uri.parse("tel:$number"), Bundle())
             call.resolve()
         } catch (error: SecurityException) {
-            call.reject("CALL_PHONE permission is required", error)
+            // error-policy:J1 Telecom permission denial is returned to the bridge caller.
+            call.reject("CALL_PHONE permission is required", "CALL_PERMISSION_DENIED", error)
         }
     }
 
     @PluginMethod
     fun openDialer(call: PluginCall) {
-        val number = call.getString("number")?.trim()
-        val uri = if (number.isNullOrEmpty()) Uri.parse("tel:") else Uri.parse("tel:$number")
+        val rawNumber = call.data.opt("number")
+        if (call.data.has("number") && rawNumber !is String) {
+            call.reject("number must be a string", "INVALID_ARGUMENT")
+            return
+        }
+        val number = (rawNumber as? String)?.trim()
+        val uri = Uri.fromParts("tel", number.orEmpty(), null)
         val intent = Intent(Intent.ACTION_DIAL, uri)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
-        call.resolve()
+        try {
+            context.startActivity(intent)
+            call.resolve()
+        } catch (error: android.content.ActivityNotFoundException) {
+            call.reject("No dialer application is available", "DIALER_UNAVAILABLE", error)
+        } catch (error: SecurityException) {
+            call.reject("Android denied opening the dialer", "DIALER_PERMISSION_DENIED", error)
+        }
     }
 
     @PluginMethod
@@ -85,12 +95,21 @@ class PhonePlugin : Plugin() {
             call.reject("READ_CALL_LOG permission is required")
             return
         }
-        val requestedLimit = call.getInt("limit")
-        if (requestedLimit != null && requestedLimit <= 0) {
-            call.reject("limit must be positive")
+        val requestedLimit = (call.data.opt("limit") as? Number)?.toDouble()
+        if (call.data.has("limit") && (requestedLimit == null || !requestedLimit.isFinite() ||
+                requestedLimit <= 0 || requestedLimit > 9_007_199_254_740_991.0 || requestedLimit % 1.0 != 0.0)) {
+            call.reject("limit must be a positive safe integer", "INVALID_LIMIT")
             return
         }
-        val limit = requestedLimit ?: Int.MAX_VALUE
+        try {
+            call.resolve(readRecentCalls(call, requestedLimit?.toLong()))
+        } catch (error: Exception) {
+            // error-policy:J1 Reject incomplete history without exposing stored transcript text in parse errors.
+            call.reject("Call history or saved transcripts could not be read", "CALL_HISTORY_UNAVAILABLE")
+        }
+    }
+
+    private fun readRecentCalls(call: PluginCall, limit: Long?): JSObject {
         val number = call.getString("number")?.trim()
         val selection = if (number.isNullOrEmpty()) null else "${CallLog.Calls.NUMBER} LIKE ?"
         val selectionArgs = if (number.isNullOrEmpty()) null else arrayOf("%$number%")
@@ -114,11 +133,7 @@ class PhonePlugin : Plugin() {
             selection,
             selectionArgs,
             "${CallLog.Calls.DATE} DESC"
-        )
-        if (cursor == null) {
-            call.reject("Call log provider returned no cursor")
-            return
-        }
+        ) ?: throw IllegalStateException("Call log provider returned no cursor")
         cursor.use {
             val idCol = cursor.getColumnIndexOrThrow(CallLog.Calls._ID)
             val numberCol = cursor.getColumnIndexOrThrow(CallLog.Calls.NUMBER)
@@ -131,41 +146,39 @@ class PhonePlugin : Plugin() {
             val locationCol = cursor.getColumnIndexOrThrow(CallLog.Calls.GEOCODED_LOCATION)
             val transcriptionCol = cursor.getColumnIndexOrThrow(CallLog.Calls.TRANSCRIPTION)
             val voicemailCol = cursor.getColumnIndexOrThrow(CallLog.Calls.VOICEMAIL_URI)
-            var count = 0
-            while (cursor.moveToNext() && count < limit) {
+            while ((limit == null || calls.length().toLong() < limit) && cursor.moveToNext()) {
                 val id = cursor.getString(idCol)
                 val type = cursor.getInt(typeCol)
                 val savedTranscript = transcripts[id]
                 val entry = JSObject()
                 entry.put("id", id)
                 entry.put("number", cursor.getString(numberCol) ?: "")
-                entry.put("cachedName", cursor.getString(nameCol))
+                entry.put("cachedName", cursor.getString(nameCol) ?: JSONObject.NULL)
                 entry.put("date", cursor.getLong(dateCol))
                 entry.put("durationSeconds", cursor.getLong(durationCol))
                 entry.put("type", callLogType(type))
                 entry.put("rawType", type)
                 entry.put("isNew", cursor.getInt(newCol) == 1)
-                entry.put("phoneAccountId", cursor.getString(accountCol))
-                entry.put("geocodedLocation", cursor.getString(locationCol))
-                entry.put("transcription", cursor.getString(transcriptionCol))
-                entry.put("voicemailUri", cursor.getString(voicemailCol))
-                entry.put("agentTranscript", savedTranscript?.optionalString("transcript"))
-                entry.put("agentSummary", savedTranscript?.optionalString("summary"))
+                entry.put("phoneAccountId", cursor.getString(accountCol) ?: JSONObject.NULL)
+                entry.put("geocodedLocation", cursor.getString(locationCol) ?: JSONObject.NULL)
+                entry.put("transcription", cursor.getString(transcriptionCol) ?: JSONObject.NULL)
+                entry.put("voicemailUri", cursor.getString(voicemailCol) ?: JSONObject.NULL)
+                entry.put("agentTranscript", savedTranscript?.optionalString("transcript") ?: JSONObject.NULL)
+                entry.put("agentSummary", savedTranscript?.optionalString("summary") ?: JSONObject.NULL)
                 entry.put(
                     "agentTranscriptUpdatedAt",
                     if (savedTranscript != null && savedTranscript.has("updatedAt")) {
                         savedTranscript.optLong("updatedAt")
                     } else {
-                        null
+                        JSONObject.NULL
                     }
                 )
                 calls.put(entry)
-                count += 1
             }
         }
         val result = JSObject()
         result.put("calls", calls)
-        call.resolve(result)
+        return result
     }
 
     @PluginMethod
@@ -175,21 +188,28 @@ class PhonePlugin : Plugin() {
             call.reject("callId is required")
             return
         }
-        val transcript = call.getString("transcript")?.trim()
-        if (transcript.isNullOrEmpty()) {
+        val transcript = call.getString("transcript")
+        if (transcript.isNullOrBlank()) {
             call.reject("transcript is required")
             return
         }
-        val summary = call.getString("summary")?.trim()
+        val summary = call.getString("summary")
         val updatedAt = System.currentTimeMillis()
         val payload = JSONObject()
             .put("transcript", transcript)
-            .put("summary", if (summary.isNullOrEmpty()) JSONObject.NULL else summary)
+            .put("summary", summary ?: JSONObject.NULL)
             .put("updatedAt", updatedAt)
-        context.getSharedPreferences(transcriptPreferencesName, Context.MODE_PRIVATE)
-            .edit()
-            .putString(callId, payload.toString())
-            .apply()
+        try {
+            val saved = context.getSharedPreferences(transcriptPreferencesName, Context.MODE_PRIVATE)
+                .edit()
+                .putString(callId, payload.toString())
+                .commit()
+            if (!saved) throw IllegalStateException("Transcript persistence did not complete")
+        } catch (error: Exception) {
+            // error-policy:J1 A failed persistence attempt cannot acknowledge a saved transcript or expose its contents.
+            call.reject("Call transcript could not be saved", "TRANSCRIPT_SAVE_FAILED")
+            return
+        }
 
         val result = JSObject()
         result.put("updatedAt", updatedAt)
@@ -200,8 +220,17 @@ class PhonePlugin : Plugin() {
         val preferences = context.getSharedPreferences(transcriptPreferencesName, Context.MODE_PRIVATE)
         val entries = mutableMapOf<String, JSONObject>()
         for ((key, value) in preferences.all) {
-            val raw = value as? String ?: continue
+            val raw = value as? String ?: throw IllegalStateException("Saved transcript has an invalid storage type")
             val parsed = JSONObject(raw)
+            val transcript = parsed.opt("transcript")
+            val summary = parsed.opt("summary")
+            val updatedAt = (parsed.opt("updatedAt") as? Number)?.toDouble()
+            if (transcript !is String || transcript.isBlank() ||
+                (summary != null && summary != JSONObject.NULL && summary !is String) ||
+                updatedAt == null || !updatedAt.isFinite() || updatedAt <= 0 ||
+                updatedAt > 9_007_199_254_740_991.0 || updatedAt % 1.0 != 0.0) {
+                throw IllegalStateException("Saved transcript has invalid fields")
+            }
             entries[key] = parsed
         }
         return entries

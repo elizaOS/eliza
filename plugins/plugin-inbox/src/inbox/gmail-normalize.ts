@@ -4,13 +4,12 @@
  * Normalization, summarization, and synthesis helpers for Gmail triage / search
  * / spam-review / reply-draft / recommendation feeds. Operates on
  * already-fetched LifeOps Gmail DTOs; carries no Gmail-client dependency.
- * Depends only on `node:crypto` and `@elizaos/shared` (LifeOps contract
+ * Depends only on `node:crypto` and `@elizaos/core` (LifeOps contract
  * types/constants + the LifeOps service-constants / normalize / email-fence
  * primitives). Per the plugin-inbox boundary, this module MUST NOT import from
  * `@elizaos/plugin-personal-assistant`. PA keeps a thin re-export shim at
  * `lifeops/service-normalize-gmail.ts` for its historical importers.
  */
-
 import crypto from "node:crypto";
 import {
   fail,
@@ -38,9 +37,8 @@ import {
   normalizeFiniteNumber,
   normalizeOptionalString,
   requireNonEmptyString,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import { extractLooseEmailAddress } from "./email-address.ts";
-
 export type SyncedGoogleGmailMessageSummary = Omit<
   LifeOpsGmailMessageSummary,
   | "id"
@@ -53,7 +51,6 @@ export type SyncedGoogleGmailMessageSummary = Omit<
   | "grantId"
   | "accountEmail"
 >;
-
 export function normalizeGmailSearchQuery(value: unknown): string {
   const query = requireNonEmptyString(value, "query");
   if (query.length > 500) {
@@ -61,13 +58,11 @@ export function normalizeGmailSearchQuery(value: unknown): string {
   }
   return query;
 }
-
 export function normalizeGmailBulkOperation(
   value: unknown,
 ): LifeOpsGmailBulkOperation {
   return normalizeEnumValue(value, "operation", LIFEOPS_GMAIL_BULK_OPERATIONS);
 }
-
 export function normalizeGmailUnrespondedOlderThanDays(value: unknown): number {
   if (value === undefined || value === null || value === "") {
     return 3;
@@ -78,7 +73,6 @@ export function normalizeGmailUnrespondedOlderThanDays(value: unknown): number {
   }
   return days;
 }
-
 export function parseGmailRelativeDuration(value: string): number | null {
   const match = value
     .trim()
@@ -96,7 +90,6 @@ export function parseGmailRelativeDuration(value: string): number | null {
     unit === "d" ? amount : unit === "m" ? amount * 30 : amount * 365;
   return days * 24 * 60 * 60 * 1000;
 }
-
 export function parseGmailDateBoundary(value: string): number | null {
   const normalized = value.trim().replace(/\//g, "-");
   const match = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
@@ -132,16 +125,21 @@ export function parseGmailDateBoundary(value: string): number | null {
   }
   return utc;
 }
-
 export function splitMailboxLikeList(value: string): string[] {
   const parts: string[] = [];
   let current = "";
   let inQuotes = false;
   let angleDepth = 0;
-
   for (let index = 0; index < value.length; index += 1) {
     const char = value[index];
     const next = value[index + 1];
+    // RFC 5322 quoted-pair: a backslash inside a display name keeps the next
+    // character literal, so \" does not end the quoted name.
+    if (inQuotes && char === "\\" && next !== undefined) {
+      current += char + next;
+      index += 1;
+      continue;
+    }
     if (char === '"') {
       inQuotes = !inQuotes;
       current += char;
@@ -180,14 +178,12 @@ export function splitMailboxLikeList(value: string): string[] {
     }
     current += char;
   }
-
   const trimmed = current.trim();
   if (trimmed.length > 0) {
     parts.push(trimmed);
   }
   return parts;
 }
-
 export function extractNormalizedEmailAddress(value: string): string | null {
   const trimmed = value.trim().replace(/^mailto:/i, "");
   if (!trimmed) {
@@ -195,7 +191,6 @@ export function extractNormalizedEmailAddress(value: string): string | null {
   }
   return extractLooseEmailAddress(trimmed);
 }
-
 export function normalizeOptionalMessageIdArray(
   value: unknown,
   field: string,
@@ -221,7 +216,6 @@ export function normalizeOptionalMessageIdArray(
   }
   return items;
 }
-
 export function normalizeOptionalGmailLabelIdArray(
   value: unknown,
   field: string,
@@ -253,7 +247,6 @@ export function normalizeOptionalGmailLabelIdArray(
   }
   return items;
 }
-
 export function normalizeGmailSearchQueryMatches(
   query: string,
   message: LifeOpsGmailMessageSummary,
@@ -314,7 +307,6 @@ export function normalizeGmailSearchQueryMatches(
   if (tokens.length === 0) {
     return false;
   }
-
   const matchesToken = (token: string): boolean => {
     const normalizedToken = token.trim();
     if (normalizedToken.length === 0) {
@@ -354,7 +346,6 @@ export function normalizeGmailSearchQueryMatches(
     if (value.length === 0) {
       return true;
     }
-
     const labelTokens = message.labels.map((label) => label.toLowerCase());
     const hasAttachment =
       typeof message.metadata.hasAttachments === "boolean"
@@ -366,7 +357,6 @@ export function normalizeGmailSearchQueryMatches(
       if (!operatorMatch) {
         return all.includes(value);
       }
-
       const operator = (operatorMatch[1] ?? "").toLowerCase();
       switch (operator) {
         case "from":
@@ -433,7 +423,6 @@ export function normalizeGmailSearchQueryMatches(
     })();
     return isNegated ? !matched : matched;
   };
-
   // Gmail's top-level `OR` keyword (uppercase only, matching Gmail syntax)
   // splits the query into disjunct runs; tokens within a run remain ANDed.
   // A flat split means `from:alice invoice OR receipt` is evaluated as
@@ -464,7 +453,6 @@ export function normalizeGmailSearchQueryMatches(
   }
   return disjuncts.some((run) => run.every((token) => matchesToken(token)));
 }
-
 export function filterGmailMessagesBySearch(args: {
   messages: LifeOpsGmailMessageSummary[];
   query?: string;
@@ -481,7 +469,6 @@ export function filterGmailMessagesBySearch(args: {
     .filter((message) => !replyNeededOnly || message.likelyReplyNeeded)
     .sort(compareGmailMessagePriority);
 }
-
 export function compareGmailMessagePriority(
   left: LifeOpsGmailMessageSummary,
   right: LifeOpsGmailMessageSummary,
@@ -502,7 +489,6 @@ export function compareGmailMessagePriority(
   if (rightSafe !== leftSafe) return rightSafe - leftSafe;
   return left.id.localeCompare(right.id);
 }
-
 export function normalizeGmailDraftTone(
   value: unknown,
 ): "brief" | "neutral" | "warm" {
@@ -512,7 +498,6 @@ export function normalizeGmailDraftTone(
     LIFEOPS_GMAIL_DRAFT_TONES,
   );
 }
-
 export function normalizeOptionalStringArray(
   value: unknown,
   field: string,
@@ -541,7 +526,6 @@ export function normalizeOptionalStringArray(
   }
   return items;
 }
-
 export function normalizeGmailReplyBody(value: unknown): string {
   const body = requireNonEmptyString(value, "bodyText");
   if (body.length > 8000) {
@@ -549,7 +533,6 @@ export function normalizeGmailReplyBody(value: unknown): string {
   }
   return body;
 }
-
 export function summarizeGmailSearch(
   messages: LifeOpsGmailMessageSummary[],
 ): LifeOpsGmailSearchFeed["summary"] {
@@ -561,7 +544,6 @@ export function summarizeGmailSearch(
       .length,
   };
 }
-
 export function summarizeGmailBatchReplyDrafts(
   drafts: LifeOpsGmailReplyDraft[],
 ): LifeOpsGmailBatchReplyDraftsFeed["summary"] {
@@ -573,7 +555,6 @@ export function summarizeGmailBatchReplyDrafts(
     ).length,
   };
 }
-
 export function collectCalendarEventContactEmails(
   event: LifeOpsCalendarEvent,
 ): Set<string> {
@@ -593,21 +574,18 @@ export function collectCalendarEventContactEmails(
   }
   return emails;
 }
-
 export function extractSubjectTokens(subject: string): string[] {
   return subject
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter((token) => token.length >= 4);
 }
-
 export function findLinkedMailForCalendarEvent(
   event: LifeOpsCalendarEvent,
   messages: LifeOpsGmailMessageSummary[],
 ): LifeOpsGmailMessageSummary[] {
   const relatedEmails = collectCalendarEventContactEmails(event);
   const subjectTokens = new Set(extractSubjectTokens(event.title));
-
   return messages
     .filter((message) => {
       if (
@@ -648,7 +626,6 @@ export function findLinkedMailForCalendarEvent(
     })
     .slice(0, 3);
 }
-
 export function isGmailSyncStateFresh(args: {
   syncedAt: string;
   maxResults: number;
@@ -664,7 +641,6 @@ export function isGmailSyncStateFresh(args: {
   }
   return args.maxResults >= args.requestedMaxResults;
 }
-
 export function summarizeGmailTriage(
   messages: LifeOpsGmailMessageSummary[],
 ): LifeOpsGmailTriageFeed["summary"] {
@@ -678,7 +654,6 @@ export function summarizeGmailTriage(
     ).length,
   };
 }
-
 export function summarizeGmailNeedsResponse(
   messages: LifeOpsGmailMessageSummary[],
 ): LifeOpsGmailNeedsResponseFeed["summary"] {
@@ -688,7 +663,6 @@ export function summarizeGmailNeedsResponse(
     importantCount: messages.filter((message) => message.isImportant).length,
   };
 }
-
 export function summarizeGmailUnresponded(
   threads: LifeOpsGmailUnrespondedFeed["threads"],
 ): LifeOpsGmailUnrespondedFeed["summary"] {
@@ -700,7 +674,6 @@ export function summarizeGmailUnresponded(
         : null,
   };
 }
-
 function recommendationMessage(
   message: LifeOpsGmailMessageSummary,
 ): LifeOpsGmailRecommendation["sampleMessages"][number] {
@@ -714,7 +687,6 @@ function recommendationMessage(
     labels: message.labels,
   };
 }
-
 function hasGmailLabel(
   message: LifeOpsGmailMessageSummary,
   labelId: string,
@@ -724,7 +696,6 @@ function hasGmailLabel(
     (label) => label.trim().toUpperCase() === normalized,
   );
 }
-
 export function isGmailSpamReviewCandidate(
   message: LifeOpsGmailMessageSummary,
 ): boolean {
@@ -749,7 +720,6 @@ export function isGmailSpamReviewCandidate(
     /\b(?:spam|phish(?:ing)?)\b/.test(triageReason)
   );
 }
-
 export function buildGmailSpamReviewItem(args: {
   message: LifeOpsGmailMessageSummary;
   grantId: string;
@@ -800,14 +770,12 @@ export function buildGmailSpamReviewItem(args: {
     reviewedAt: null,
   };
 }
-
 export function normalizeGmailSpamReviewStatus(
   value: unknown,
   field = "status",
 ): LifeOpsGmailSpamReviewStatus {
   return normalizeEnumValue(value, field, LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES);
 }
-
 export function summarizeGmailSpamReviewItems(
   items: LifeOpsGmailSpamReviewItem[],
 ): LifeOpsGmailSpamReviewFeed["summary"] {
@@ -820,7 +788,6 @@ export function summarizeGmailSpamReviewItems(
     dismissedCount: items.filter((item) => item.status === "dismissed").length,
   };
 }
-
 function isAutomatedLowValueGmailMessage(
   message: LifeOpsGmailMessageSummary,
 ): boolean {
@@ -836,14 +803,11 @@ function isAutomatedLowValueGmailMessage(
       hasGmailLabel(message, "CATEGORY_PROMOTIONS"))
   );
 }
-
 type GmailRecommendationGrouping =
   | "reply_needed"
   | "automated_low_value"
   | "spam_review";
-
 type GmailRecommendationBodyStatus = "available" | "summary_only" | "missing";
-
 interface GmailRecommendationPolicyDetails {
   grouping: GmailRecommendationGrouping;
   signals: string[];
@@ -853,7 +817,6 @@ interface GmailRecommendationPolicyDetails {
   requiresHumanConfirmation: boolean;
   emailContentIsUntrusted: true;
 }
-
 interface GmailRecommendationContextReadiness {
   bodyStatus: GmailRecommendationBodyStatus;
   bodyAvailableCount: number;
@@ -864,12 +827,10 @@ interface GmailRecommendationContextReadiness {
   summaryFields: string[];
   missingContext: string[];
 }
-
 type LifeOpsGmailAgentReadyRecommendation = LifeOpsGmailRecommendation & {
   policy: GmailRecommendationPolicyDetails;
   contextReadiness: GmailRecommendationContextReadiness;
 };
-
 function metadataString(
   metadata: Record<string, unknown>,
   field: string,
@@ -879,14 +840,12 @@ function metadataString(
     ? value.trim()
     : null;
 }
-
 function metadataBoolean(
   metadata: Record<string, unknown>,
   field: string,
 ): boolean {
   return metadata[field] === true;
 }
-
 function uniqueStrings(
   values: readonly (string | null | undefined)[],
 ): string[] {
@@ -901,13 +860,11 @@ function uniqueStrings(
   }
   return items;
 }
-
 function hasGmailBodyTextContext(message: LifeOpsGmailMessageSummary): boolean {
   return ["bodyText", "plainTextBody", "bodyPlainText", "textBody"].some(
     (field) => metadataString(message.metadata, field) !== null,
   );
 }
-
 function hasGmailReplyHeaderContext(
   message: LifeOpsGmailMessageSummary,
 ): boolean {
@@ -916,7 +873,6 @@ function hasGmailReplyHeaderContext(
     metadataString(message.metadata, "referencesHeader") !== null
   );
 }
-
 function gmailPolicySignalsForMessage(
   message: LifeOpsGmailMessageSummary,
 ): string[] {
@@ -936,7 +892,6 @@ function gmailPolicySignalsForMessage(
     ?.toLowerCase()
     .replace(/\s+/g, "_");
   const triageReason = message.triageReason.toLowerCase();
-
   return uniqueStrings([
     message.likelyReplyNeeded ? "likely_reply_needed" : "reply_not_needed",
     message.isUnread ? "unread" : "read",
@@ -966,7 +921,6 @@ function gmailPolicySignalsForMessage(
       : null,
   ]);
 }
-
 function buildGmailRecommendationContextReadiness(args: {
   kind: LifeOpsGmailRecommendation["kind"];
   messages: LifeOpsGmailMessageSummary[];
@@ -990,7 +944,6 @@ function buildGmailRecommendationContextReadiness(args: {
       : snippetAvailableCount > 0
         ? "summary_only"
         : "missing";
-
   return {
     bodyStatus,
     bodyAvailableCount,
@@ -1017,7 +970,6 @@ function buildGmailRecommendationContextReadiness(args: {
     ]),
   };
 }
-
 function buildRecommendation(args: {
   id: string;
   kind: LifeOpsGmailRecommendation["kind"];
@@ -1071,7 +1023,6 @@ function buildRecommendation(args: {
     }),
   };
 }
-
 export function buildGmailRecommendations(
   messages: LifeOpsGmailMessageSummary[],
 ): LifeOpsGmailRecommendation[] {
@@ -1105,7 +1056,6 @@ export function buildGmailRecommendations(
       confidence: replyMessages.length > 0 ? 0.84 : 0,
     }),
   );
-
   const archiveMessages = messages
     .filter(
       (message) =>
@@ -1136,7 +1086,6 @@ export function buildGmailRecommendations(
       confidence: archiveMessages.length > 0 ? 0.78 : 0,
     }),
   );
-
   const markReadMessages = messages
     .filter(
       (message) =>
@@ -1169,7 +1118,6 @@ export function buildGmailRecommendations(
       confidence: markReadMessages.length > 0 ? 0.74 : 0,
     }),
   );
-
   const spamMessages = messages.filter(isGmailSpamReviewCandidate);
   recommendations.push(
     buildRecommendation({
@@ -1193,13 +1141,11 @@ export function buildGmailRecommendations(
       confidence: spamMessages.length > 0 ? 0.9 : 0,
     }),
   );
-
   return recommendations.filter(
     (recommendation): recommendation is LifeOpsGmailAgentReadyRecommendation =>
       recommendation !== null,
   );
 }
-
 export function summarizeGmailRecommendations(
   recommendations: LifeOpsGmailRecommendation[],
 ): LifeOpsGmailRecommendationsFeed["summary"] {
@@ -1222,14 +1168,12 @@ export function summarizeGmailRecommendations(
     ).length,
   };
 }
-
 /**
- * Re-export shim. `wrapUntrustedEmailContent` moved to `@elizaos/shared`
+ * Re-export shim. `wrapUntrustedEmailContent` moved to `@elizaos/core`
  * alongside the email classifier that depends on it; this preserves the
  * historical import path for in-plugin callers.
  */
-export { wrapUntrustedEmailContent } from "@elizaos/shared";
-
+export { wrapUntrustedEmailContent } from "@elizaos/core/protocol";
 export function buildFallbackGmailReplyDraftBody(args: {
   message: LifeOpsGmailMessageSummary;
   tone: "brief" | "neutral" | "warm";
@@ -1260,10 +1204,8 @@ export function buildFallbackGmailReplyDraftBody(args: {
         .map((line) => `> ${line.trim()}`),
     );
   }
-
   return bodyLines.join("\n");
 }
-
 export function normalizeGeneratedGmailReplyDraftBody(
   value: string,
 ): string | null {
@@ -1295,7 +1237,6 @@ export function normalizeGeneratedGmailReplyDraftBody(
     .trim();
   return normalized.length > 0 ? normalized : null;
 }
-
 export function buildGmailReplyPreviewLines(bodyText: string): string[] {
   const lines = bodyText
     .split("\n")
@@ -1304,7 +1245,6 @@ export function buildGmailReplyPreviewLines(bodyText: string): string[] {
     .slice(0, 3);
   return lines.length > 0 ? lines : [bodyText.trim()].filter(Boolean);
 }
-
 export function buildGmailReplyDraft(args: {
   message: LifeOpsGmailMessageSummary;
   senderName: string;
@@ -1315,7 +1255,6 @@ export function buildGmailReplyDraft(args: {
   if (!recipient) {
     fail(409, "The selected Gmail message has no replyable sender.");
   }
-
   return {
     messageId: args.message.id,
     threadId: args.message.threadId,
@@ -1328,7 +1267,6 @@ export function buildGmailReplyDraft(args: {
     requiresConfirmation: true,
   };
 }
-
 export function createCalendarEventId(
   agentId: string,
   provider: LifeOpsConnectorGrant["provider"],
@@ -1342,7 +1280,6 @@ export function createCalendarEventId(
     .digest("hex");
   return `life-calendar-${digest.slice(0, 32)}`;
 }
-
 export function createGmailMessageId(
   agentId: string,
   provider: LifeOpsConnectorGrant["provider"],
@@ -1358,7 +1295,6 @@ export function createGmailMessageId(
     .digest("hex");
   return `life-gmail-${digest.slice(0, 32)}`;
 }
-
 export function createGmailSpamReviewItemId(
   agentId: string,
   provider: LifeOpsConnectorGrant["provider"],
@@ -1374,7 +1310,6 @@ export function createGmailSpamReviewItemId(
     .digest("hex");
   return `life-gmail-spam-${digest.slice(0, 32)}`;
 }
-
 export function materializeGmailMessageSummary(args: {
   agentId: string;
   side: LifeOpsConnectorGrant["side"];
@@ -1401,7 +1336,6 @@ export function materializeGmailMessageSummary(args: {
     updatedAt: args.syncedAt,
   };
 }
-
 export function isCalendarSyncStateFresh(args: {
   syncedAt: string;
   timeMin: string;

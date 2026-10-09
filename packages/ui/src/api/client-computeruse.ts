@@ -36,7 +36,7 @@ export interface ComputerUseApprovalResolution {
   reason?: string;
 }
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getComputerUseApprovals(): Promise<ComputerUseApprovalSnapshot>;
     respondToComputerUseApproval(

@@ -11,9 +11,8 @@
  * pins OPENAI_BASE_URL and the key unconditionally.
  */
 import { logger, ModelType } from "@elizaos/core";
+import { describeLive } from "@elizaos/testing/live";
 import { expect, it } from "vitest";
-
-import { describeLive } from "../../../packages/app-core/test/helpers/live-agent-test";
 
 interface UseModelResult {
   text?: string;

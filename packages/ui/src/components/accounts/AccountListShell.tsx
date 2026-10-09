@@ -7,7 +7,7 @@
  */
 
 import type { ReactNode } from "react";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Card } from "../ui/card";
 import { Spinner } from "../ui/spinner";
@@ -65,7 +65,7 @@ export function AccountListShell({
     >
       <section>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-strong">
             {heading}
           </h3>
           {action}

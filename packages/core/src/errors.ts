@@ -1,13 +1,7 @@
-/**
- * Structured error base for the fast-fail error policy (#12263 / parent #12182).
- *
- * `ElizaError` is the one shared error type new and rewritten throw sites use so
- * failures carry a machine-classifiable `code`, structured `context`, and a
- * preserved `cause` chain instead of a bare string. It is additive: existing
- * ad-hoc error classes (`CapabilityError`, `SecretsError`, …) are not
- * force-migrated and may extend it opportunistically. The runtime is throw-based
- * end to end — this is a plain `Error` subclass, not a `Result<T,E>` wrapper.
- */
+/** Structured errors carry a machine-readable code, contextual data, and the original cause. */
+// Extension-explicit so plain `node --test` lanes can resolve it and the emit
+// config's relative-extension rewrite applies (extensionless would survive emit).
+import { formatError, readDiagnosticProperty } from "./utils/errors.ts";
 
 /**
  * Severity hint for an {@link ElizaError}. `ephemeral` failures are expected to
@@ -18,6 +12,8 @@ export type ElizaErrorSeverity = "ephemeral" | "fatal";
 
 /** Options accepted by the {@link ElizaError} constructor. */
 export interface ElizaErrorOptions {
+	/** Earliest retry time in epoch milliseconds; schedulers may wait longer. */
+	retryAt?: number;
 	/**
 	 * Stable, grep-able classification key (e.g. `DB_QUERY_FAILED`). Drives the
 	 * per-code counter and escalation threshold in `runtime.reportError`.
@@ -31,13 +27,34 @@ export interface ElizaErrorOptions {
 	severity?: ElizaErrorSeverity;
 }
 
+/** Process-wide branding preserves instanceof across separately bundled copies. */
+const ELIZA_ERROR_BRAND: unique symbol = Symbol.for("elizaos.core.ElizaError");
+
 /**
  * Structured error with a classification `code`, optional `context`, an
  * optional `severity`, and a preserved `cause` chain.
+ *
+ * `value instanceof ElizaError` recognizes an `ElizaError` (or subclass)
+ * created by any bundled copy of this module through the shared brand.
+ * Subclasses keep ordinary prototype-chain `instanceof` semantics.
  */
 export class ElizaError extends Error {
+	static override [Symbol.hasInstance](value: unknown): boolean {
+		// biome-ignore lint/complexity/noThisInStatic: `this` is the class on the right of `instanceof`; subclasses keep prototype semantics.
+		if (this !== ElizaError) {
+			// biome-ignore lint/complexity/noThisInStatic: see above.
+			return Function.prototype[Symbol.hasInstance].call(this, value);
+		}
+		return (
+			(typeof value === "object" || typeof value === "function") &&
+			value !== null &&
+			readDiagnosticProperty(value, ELIZA_ERROR_BRAND) === true
+		);
+	}
+
 	override readonly name: string = "ElizaError";
 	readonly code: string;
+	readonly retryAt?: number;
 	readonly context?: Record<string, unknown>;
 	readonly severity?: ElizaErrorSeverity;
 
@@ -49,6 +66,7 @@ export class ElizaError extends Error {
 			options.cause !== undefined ? { cause: options.cause } : undefined,
 		);
 		this.code = options.code;
+		this.retryAt = options.retryAt;
 		this.context = options.context;
 		this.severity = options.severity;
 		// Restore the prototype chain for reliable `instanceof` across the
@@ -56,6 +74,10 @@ export class ElizaError extends Error {
 		Object.setPrototypeOf(this, new.target.prototype);
 	}
 }
+
+Object.defineProperty(ElizaError.prototype, ELIZA_ERROR_BRAND, {
+	value: true,
+});
 
 /**
  * A single entry in the runtime's in-memory reported-error ring, produced by
@@ -91,10 +113,7 @@ export function toElizaError(
 	fallbackCode = "UNCLASSIFIED",
 ): ElizaError {
 	if (value instanceof ElizaError) return value;
-	if (value instanceof Error) {
-		return new ElizaError(value.message, { code: fallbackCode, cause: value });
-	}
-	return new ElizaError(typeof value === "string" ? value : String(value), {
+	return new ElizaError(formatError(value), {
 		code: fallbackCode,
 		cause: value,
 	});

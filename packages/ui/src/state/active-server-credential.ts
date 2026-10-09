@@ -7,6 +7,7 @@
 import { setStorageValue } from "../bridge/storage-bridge";
 import {
   getActiveProfile,
+  loadAgentProfileRegistry,
   updateAgentProfile,
   upsertAndActivateAgentProfile,
 } from "./agent-profiles";
@@ -17,6 +18,7 @@ import {
 } from "./persistence";
 
 const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
+const AGENT_PROFILES_STORAGE_KEY = "elizaos:agent-profiles";
 
 export async function persistActiveServerCredential(
   token: string,
@@ -97,4 +99,36 @@ export function scrubRejectedActiveServerCredential(token: string): void {
   if (activeProfile?.accessToken === rejected) {
     updateAgentProfile(activeProfile.id, { accessToken: undefined });
   }
+}
+
+/** A revoked remote session must not return from native Preferences on relaunch. */
+export async function scrubRevokedRemoteCredential(
+  token: string,
+  apiBase: string,
+): Promise<boolean> {
+  const activeServer = loadPersistedActiveServer();
+  if (
+    activeServer?.kind !== "remote" ||
+    activeServer.apiBase?.replace(/\/+$/, "") !== apiBase.replace(/\/+$/, "") ||
+    activeServer.accessToken !== token
+  ) {
+    return false;
+  }
+  scrubRejectedActiveServerCredential(token);
+  const scrubbed = loadPersistedActiveServer();
+  if (
+    !scrubbed ||
+    scrubbed.accessToken === token ||
+    getActiveProfile()?.accessToken === token
+  ) {
+    throw new Error("Revoked remote credential could not be cleared locally");
+  }
+  await Promise.all([
+    setStorageValue(ACTIVE_SERVER_STORAGE_KEY, JSON.stringify(scrubbed)),
+    setStorageValue(
+      AGENT_PROFILES_STORAGE_KEY,
+      JSON.stringify(loadAgentProfileRegistry()),
+    ),
+  ]);
+  return true;
 }

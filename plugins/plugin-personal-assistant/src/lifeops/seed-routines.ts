@@ -5,7 +5,7 @@
  * Do not add new templates here — author them there instead.
  */
 
-import type { CreateLifeOpsDefinitionRequest } from "../contracts/index.js";
+import type { CreateLifeOpsDefinitionRequest } from "@elizaos/contracts";
 import { HABIT_STARTER_KEYS } from "../default-packs/habit-starters.js";
 import {
   REMINDER_ACTIVITY_GATE_METADATA_KEY,

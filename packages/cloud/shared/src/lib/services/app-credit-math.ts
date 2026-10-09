@@ -1,12 +1,11 @@
 // Pure money math for app credits (issue #9145 — "add unit tests for
-// app-credits.ts processPurchase/deductCredits/reconcileCredits").
+// app-credits.ts deductCredits/reconcileCredits").
 //
-// processPurchase / deductCredits / reconcileCredits are DB-transactional and
-// can't be unit-tested in isolation, but the load-bearing part is the credit /
-// markup / creator-share arithmetic — which was inline-duplicated across all
-// three methods (the markup formula appeared verbatim in deduct + reconcile).
-// This extracts that arithmetic into one pure, deterministic place so it can be
-// unit-tested directly and the three methods compute it identically.
+// deductCredits / reconcileCredits are DB-transactional and can't be
+// unit-tested in isolation, but the load-bearing part is the markup /
+// creator-share arithmetic. This extracts that arithmetic into one pure,
+// deterministic place so it can be unit-tested directly and both methods
+// compute it identically.
 //
 // Money rule (unchanged): the purchasing/spending USER is never up-charged the
 // creator's cut beyond the configured markup — markup/share apply ONLY when the
@@ -118,54 +117,6 @@ export interface AppMonetizationConfig {
   purchaseSharePercentage: AppMonetizationNumeric;
   /** Creator markup on inference cost, as a percentage 0–100. */
   inferenceMarkupPercentage: AppMonetizationNumeric;
-}
-
-export interface PurchaseSplit {
-  /** Platform fee applied (0 when monetization is off; never exceeds the purchase). */
-  platformOffset: number;
-  /** Purchase amount remaining after the platform fee. */
-  amountAfterOffset: number;
-  /** Credits the creator earns from this purchase. */
-  creatorEarnings: number;
-  /** Credits added to the buyer — always the full purchase (buyers get full value). */
-  creditsToAdd: number;
-}
-
-/**
- * Split a credit purchase into the platform fee, creator earnings, and the
- * credits the buyer receives. Mirrors `AppCreditsService.processPurchase`.
- */
-export function computePurchaseSplit(
-  purchaseAmount: number,
-  config: AppMonetizationConfig,
-): PurchaseSplit {
-  // Fail closed on a corrupt config value BEFORE it enters the split math, so a
-  // corrupt `platform_offset_amount` / `purchase_share_percentage` can't mint a
-  // NaN platform fee or NaN creator earnings. Only validate the fields the math
-  // actually consumes and only when monetization is active (disabled collapses
-  // everything to 0 regardless of the stored values).
-  const platformOffset = config.monetizationEnabled
-    ? Math.min(
-        parseAppMonetizationNumber("platform_offset_amount", config.platformOffsetAmount, {
-          min: 0,
-        }),
-        purchaseAmount,
-      )
-    : 0;
-  const amountAfterOffset = purchaseAmount - platformOffset;
-  const creatorSharePercentage = config.monetizationEnabled
-    ? parseAppMonetizationNumber("purchase_share_percentage", config.purchaseSharePercentage, {
-        min: 0,
-        max: 100,
-      }) / 100
-    : 0;
-  return {
-    platformOffset,
-    amountAfterOffset,
-    creatorEarnings: amountAfterOffset * creatorSharePercentage,
-    // Buyers always receive the full purchase as spendable credits.
-    creditsToAdd: purchaseAmount,
-  };
 }
 
 export interface InferenceCharge {

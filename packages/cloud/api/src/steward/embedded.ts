@@ -1,10 +1,14 @@
+import {
+  sha256TextHex,
+  signStewardMutatingRequest,
+} from "@elizaos/cloud-shared/lib/steward/sign";
 /** Proxies the first-party login service with signed mutations and bounded public discovery. */
+
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { MiddlewareHandler } from "hono";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-const REQUEST_TTL_SECONDS = 60;
 // Keep in lockstep with STEWARD_AUTH_UPSTREAM_TIMEOUT_MS in
 // packages/cloud/shared/src/lib/auth/steward-client.ts. Inlined so this module
 // (and the thin login path that loads it) does not pull the JWT/jose graph.
@@ -15,90 +19,6 @@ const MAX_PROVIDERS_CONTAINER_ENTRIES = 256;
 const MAX_PROVIDERS_JSON_NODES = 2_048;
 const MAX_PROVIDERS_CACHE_ENTRIES = 8;
 const DANGEROUS_JSON_KEYS = new Set(["__proto__", "prototype", "constructor"]);
-
-function bytesToHex(bytes: Uint8Array): string {
-  let out = "";
-  for (let i = 0; i < bytes.length; i += 1) {
-    out += bytes[i].toString(16).padStart(2, "0");
-  }
-  return out;
-}
-
-async function sha256Hex(input: ArrayBuffer): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", input);
-  return bytesToHex(new Uint8Array(digest));
-}
-
-async function sha256TextHex(value: string): Promise<string> {
-  return sha256Hex(new TextEncoder().encode(value).buffer);
-}
-
-async function hmacSha256Hex(secret: string, message: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(message),
-  );
-  return bytesToHex(new Uint8Array(signature));
-}
-
-/**
- * Steward's request-signature middleware HMACs this exact ordered list with a
- * shared secret and compares against `X-Steward-Signature: v1=<hex>`. Keep
- * this in lockstep with `canonicalRequest` in
- * Steward-Fi/steward:packages/api/src/middleware/authorization-signature.ts —
- * the upstream is authoritative; if it grows a new header or reorders, this
- * proxy starts shipping 401s and Magic Link / sensitive auth flows break.
- */
-async function buildStewardCanonicalRequest(
-  method: string,
-  pathAndSearch: string,
-  headers: Headers,
-  body: ArrayBuffer,
-): Promise<string> {
-  const bodyHash = await sha256Hex(body);
-  const authHash = await sha256TextHex(headers.get("authorization") ?? "");
-  const apiKeyHash = await sha256TextHex(headers.get("x-steward-key") ?? "");
-  const platformKeyHash = await sha256TextHex(
-    headers.get("x-steward-platform-key") ?? "",
-  );
-  const signerIdHash = await sha256TextHex(
-    headers.get("x-steward-signer-id") ?? "",
-  );
-  const signerSecretHash = await sha256TextHex(
-    headers.get("x-steward-signer-secret") ?? "",
-  );
-  const quorumIdHash = await sha256TextHex(
-    headers.get("x-steward-key-quorum-id") ?? "",
-  );
-  const quorumCredentialsHash = await sha256TextHex(
-    headers.get("x-steward-key-quorum-credentials") ?? "",
-  );
-  return [
-    "steward-request-signature-v1",
-    method.toUpperCase(),
-    pathAndSearch,
-    headers.get("x-steward-tenant") ?? "",
-    authHash,
-    apiKeyHash,
-    platformKeyHash,
-    signerIdHash,
-    signerSecretHash,
-    quorumIdHash,
-    quorumCredentialsHash,
-    headers.get("x-steward-request-timestamp") ?? "",
-    headers.get("x-steward-request-expires-at") ?? "",
-    headers.get("idempotency-key") ?? "",
-    bodyHash,
-  ].join("\n");
-}
 
 function stripStewardPrefix(pathname: string): string {
   if (pathname === "/steward") return "/";
@@ -745,7 +665,7 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
       {
         success: false,
         error: "steward_upstream_not_configured",
-        message: "Set LOGIN_API_URL to the owned @elizaos/login service.",
+        message: "Set LOGIN_API_URL to the owned @elizaos/auth service.",
       },
       503,
     );
@@ -848,24 +768,13 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   }
 
   if (isMutating && signingSecret && bodyBytes) {
-    const expiresAt = Math.floor(Date.now() / 1000) + REQUEST_TTL_SECONDS;
-    headers.set("x-steward-request-expires-at", String(expiresAt));
-    // Steward's idempotency middleware requires Idempotency-Key on every
-    // signed mutating request. Use the SPA-supplied value when present so
-    // retries dedup, otherwise stamp a fresh UUID v4 just to satisfy the
-    // gate — without it Steward rejects with "Signed requests require an
-    // Idempotency-Key header" (packages/api/src/middleware/idempotency.ts).
-    if (!headers.get("idempotency-key")) {
-      headers.set("idempotency-key", crypto.randomUUID());
-    }
-    const canonical = await buildStewardCanonicalRequest(
+    await signStewardMutatingRequest(
+      signingSecret,
       method,
       `${upstreamUrl.pathname}${upstreamUrl.search}`,
       headers,
       bodyBytes,
     );
-    const signature = await hmacSha256Hex(signingSecret, canonical);
-    headers.set("x-steward-signature", `v1=${signature}`);
   }
 
   if (isProvidersRequest && providerCacheKey) {

@@ -4,8 +4,8 @@ import type {
   InteractionIsolationMode,
   InteractionOutcomeStatus,
   InteractionSessionState,
-} from "@elizaos/core";
-import { INTERACTION_CONTRACT_VERSION } from "@elizaos/core";
+} from "@elizaos/contracts/node";
+import { INTERACTION_CONTRACT_VERSION } from "@elizaos/contracts/node";
 
 /** Compatibility alias; core remains the single contract-version authority. */
 export const COMPUTER_USE_INTERACTION_CONTRACT_VERSION =

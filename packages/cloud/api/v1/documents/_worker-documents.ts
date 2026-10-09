@@ -1,11 +1,18 @@
 // Handles v1 cloud API v1 documents worker documents route traffic with route-local auth expectations.
+
+import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import { memoriesRepository } from "@elizaos/cloud-shared/db/repositories/agents";
+import {
+  DOCUMENT_CONSTANTS,
+  isValidFilename,
+} from "@elizaos/cloud-shared/lib/constants/documents";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
+import type {
+  AppEnv,
+  AuthedUser,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { Memory } from "@elizaos/core";
 import { sql } from "drizzle-orm";
-import { dbWrite } from "@/db/helpers";
-import { memoriesRepository } from "@/db/repositories/agents";
-import { DOCUMENT_CONSTANTS, isValidFilename } from "@/lib/constants/documents";
-import { charactersService } from "@/lib/services/characters/characters";
-import type { AppEnv, AuthedUser } from "@/types/cloud-worker-env";
 
 export interface DocumentScope {
   agentId: string;

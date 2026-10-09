@@ -2,14 +2,15 @@
  * Leases and acknowledges proactive onboarding greetings for the authenticated
  * Discord gateway leader without deleting work before external delivery.
  */
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   acknowledgeDiscordProactiveGreetings,
   drainDiscordProactiveGreetings,
-} from "@/lib/services/eliza-app/onboarding-proactive-greeting";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-proactive-greeting";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { requireInternalAuth } from "../../../_auth";
 
 const app = new Hono<AppEnv>();

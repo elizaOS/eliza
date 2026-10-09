@@ -38,12 +38,15 @@ export * from "./connector-account-provider.js";
 export * from "./credential-resolver.js";
 export * from "./drive.js";
 export * from "./gmail.js";
+export * from "./gmail-content-cache.js";
 export * from "./gmail-message-connector.js";
 export * from "./google-oauth-callback.js";
 export { GoogleGmailAdapter } from "./lifeops-message-adapter.js";
 export * from "./meet.js";
 export * from "./people.js";
 export * from "./scopes.js";
+export type { GoogleWorkspaceServiceOptions } from "./service.js";
+export * from "./task-code-resolver.js";
 export * from "./types.js";
 export { GoogleChatService, GoogleWorkspaceService };
 

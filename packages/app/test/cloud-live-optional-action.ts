@@ -20,6 +20,28 @@ export type CloudLiveOptionalActionName =
 
 export type CloudLivePersonalIdentityRecovery = "runtime-cloud" | "retry";
 
+/**
+ * A stored session can start onboarding before the runtime chooser is shown.
+ * Observing that request only avoids replaying the choice; callers must still
+ * prove the resolved identity, consent, and binding through the normal gates.
+ */
+export async function chooseCloudRuntimeUnlessIdentityStarted(
+  identityStarted: () => Promise<boolean>,
+  chooseRuntime: () => Promise<void>,
+): Promise<void> {
+  if (await identityStarted()) return;
+  try {
+    await chooseRuntime();
+  } catch (error) {
+    if (
+      error instanceof CloudLiveRequiredActionUnavailableError &&
+      (await identityStarted())
+    )
+      return;
+    throw error;
+  }
+}
+
 export type CloudLiveDedicatedConfirmationRequiredReason =
   | "approval-required"
   | "quote-changed"
@@ -217,6 +239,11 @@ interface WaitForCloudLivePersonalIdentityOptions<T> {
     performConfirmation: (
       confirmation: Locator,
     ) => Promise<Exclude<CloudLiveDedicatedConfirmationKind, "none">>;
+    /**
+     * Selects the rendered non-billable path when confirmation was not
+     * explicitly approved. Omit this to retain the fail-closed diagnostic.
+     */
+    performCancellation?: (cancellation: Locator) => Promise<void>;
   };
   timeoutMs: number;
   runtimeCloudGraceMs: number;
@@ -323,6 +350,12 @@ export async function waitForCloudLivePersonalIdentity<T>({
   const startedAt = Date.now();
   const deadline = startedAt + timeoutMs;
   let runtimeCloudWasAbsent = false;
+  let cancellationHandled = false;
+  const waitForNextPoll = () =>
+    withinCloudLivePersonalIdentityDeadline(
+      () => new Promise<void>((resolve) => setTimeout(resolve, pollIntervalMs)),
+      deadline,
+    );
   for (;;) {
     const binding = await withinCloudLivePersonalIdentityDeadline(
       readBinding,
@@ -336,8 +369,40 @@ export async function waitForCloudLivePersonalIdentity<T>({
         deadline,
       );
       if (confirmation) {
+        // The click can settle before React locks the rendered pair. Never
+        // dispatch a second cancellation while waiting for the Shared binding.
+        if (cancellationHandled) {
+          await waitForNextPoll();
+          continue;
+        }
         const decision = dedicatedConsent.gate.claimVisibleConfirmation();
         if (decision !== "approved") {
+          const performCancellation = dedicatedConsent.performCancellation;
+          if (decision === "approval-required" && performCancellation) {
+            const cancellation = await lastVisibleEnabledChoice(
+              dedicatedConsent.cancellationChoices,
+              deadline,
+            );
+            if (!cancellation) {
+              throw new CloudLiveDedicatedConfirmationRequiredError(decision);
+            }
+            try {
+              await withinCloudLivePersonalIdentityDeadline(
+                () => performCancellation(cancellation),
+                deadline,
+              );
+              dedicatedConsent.gate.recordCancellation();
+              cancellationHandled = true;
+            } catch (error) {
+              if (error instanceof CloudLivePersonalIdentityDeadlineError) {
+                throw error;
+              }
+              throw new CloudLiveDedicatedConfirmationRequiredError(
+                "interaction-failed",
+              );
+            }
+            continue;
+          }
           throw new CloudLiveDedicatedConfirmationRequiredError(decision);
         }
         try {
@@ -368,16 +433,20 @@ export async function waitForCloudLivePersonalIdentity<T>({
         continue;
       }
 
-      // A newly rendered enabled quote supersedes an older cancelled transcript
-      // turn, so cancellation is checked only after no current confirmation is
-      // actionable. On the current turn both buttons lock after cancellation.
+      // Before this helper dispatches a cancellation, a newly rendered enabled
+      // quote supersedes an older cancelled transcript turn. Check historical
+      // cancellation only after no current confirmation is actionable.
       const cancelled = await hasSelectedCancellation(
         dedicatedConsent.cancellationChoices,
         deadline,
       );
       if (cancelled) {
-        dedicatedConsent.gate.recordCancellation();
-        throw new CloudLiveDedicatedConfirmationRequiredError("cancelled");
+        if (!cancellationHandled) {
+          dedicatedConsent.gate.recordCancellation();
+          throw new CloudLiveDedicatedConfirmationRequiredError("cancelled");
+        }
+        await waitForNextPoll();
+        continue;
       }
     }
 

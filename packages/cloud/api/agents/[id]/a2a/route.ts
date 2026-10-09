@@ -2,14 +2,61 @@
  * /api/agents/:id/a2a — Per-agent A2A endpoint.
  *
  * GET → returns the A2A Agent Card (cached 1h).
- * POST → JSON-RPC dispatch (`chat`, `getAgentInfo`). Bills the caller's org;
- * if `monetization_enabled`, credits the creator's redeemable earnings.
+ * POST → JSON-RPC dispatch (`chat`, `getAgentInfo`). Bills the caller's org
+ * the base inference cost. Creator markup is retired (#22961), so a stored
+ * `monetization_enabled` row neither adds a surcharge nor accrues earnings.
  *
  * Per the realtime audit: A2A is JSON-RPC sync, not streaming — chat collects
  * the full text before responding rather than streaming back.
  */
 
-import { calculateCreditMarkup } from "@elizaos/cloud-shared/billing";
+import { UntrustedA2AChatMessagesSchema } from "@elizaos/cloud-shared/lib/api/a2a/chat-messages";
+import {
+  A2AJsonRpcRequestSchema,
+  type JsonRpcId,
+  jsonRpcIdFromUnknown,
+} from "@elizaos/cloud-shared/lib/api/a2a/request-validation";
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  CORS_ALLOW_HEADERS,
+  CORS_ALLOW_METHODS,
+} from "@elizaos/cloud-shared/lib/cors-constants";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  calculateCost,
+  estimateRequestCost,
+  getProviderFromModel,
+} from "@elizaos/cloud-shared/lib/pricing";
+import {
+  type AnthropicCotEnv,
+  mergeAnthropicCotProviderOptions,
+  parseThinkingBudgetFromCharacterSettings,
+  resolveAnthropicThinkingBudgetTokens,
+} from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
+import {
+  getLanguageModel,
+  resolveAiProviderSource,
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import {
+  charactersService,
+  type UserCharacter,
+} from "@elizaos/cloud-shared/lib/services/characters";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
+import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { assertModelOutputComplete } from "@elizaos/core";
 import { streamText } from "ai";
 import { Hono } from "hono";
@@ -20,48 +67,6 @@ import {
   requireGenerativeRouteCaller,
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
-import { UntrustedA2AChatMessagesSchema } from "@/lib/api/a2a/chat-messages";
-import {
-  A2AJsonRpcRequestSchema,
-  type JsonRpcId,
-  jsonRpcIdFromUnknown,
-} from "@/lib/api/a2a/request-validation";
-import {
-  ApiError,
-  safeUnknownErrorMessage,
-} from "@/lib/api/cloud-worker-errors";
-import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
-  calculateCost,
-  estimateRequestCost,
-  getProviderFromModel,
-} from "@/lib/pricing";
-import {
-  type AnthropicCotEnv,
-  mergeAnthropicCotProviderOptions,
-  parseThinkingBudgetFromCharacterSettings,
-  resolveAnthropicThinkingBudgetTokens,
-} from "@/lib/providers/anthropic-thinking";
-import {
-  getLanguageModel,
-  resolveAiProviderSource,
-} from "@/lib/providers/language-model";
-import { agentMonetizationService } from "@/lib/services/agent-monetization";
-import {
-  charactersService,
-  type UserCharacter,
-} from "@/lib/services/characters/characters";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
-import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
-import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const A2A_BILLING_OUTPUT_ESTIMATE_TOKENS = 500;
 
@@ -83,9 +88,6 @@ export function generateAgentCard(character: UserCharacter, baseUrl: string) {
   const bioText = Array.isArray(character.bio)
     ? character.bio.join("\n")
     : character.bio;
-  const markupPct = Number(character.inference_markup_percentage || 0);
-  const hasMonetization = character.monetization_enabled && markupPct > 0;
-
   return {
     name: character.name,
     description: bioText,
@@ -113,7 +115,6 @@ export function generateAgentCard(character: UserCharacter, baseUrl: string) {
           type: "token-based" as const,
           inputCostPer1k: 0.005,
           outputCostPer1k: 0.015,
-          ...(hasMonetization && { markupPercentage: markupPct }),
         },
       },
       {
@@ -123,7 +124,6 @@ export function generateAgentCard(character: UserCharacter, baseUrl: string) {
         pricing: {
           type: "fixed" as const,
           amount: 0.05,
-          ...(hasMonetization && { markupPercentage: markupPct }),
         },
       },
     ],
@@ -344,8 +344,9 @@ app.post("/", async (c) => {
           bio: character.bio,
           category: character.category,
           tags: character.tags,
-          monetizationEnabled: character.monetization_enabled,
-          markupPercentage: character.inference_markup_percentage,
+          // Creator markup is retired (#22961); report what chat bills.
+          monetizationEnabled: false,
+          markupPercentage: "0",
         },
         id: rpcId,
       });
@@ -430,12 +431,6 @@ async function handleChat(
     estimatedOutputTokens,
   );
 
-  const markupPct = Number(character.inference_markup_percentage || 0);
-  const { totalCredits: totalCost } = calculateCreditMarkup({
-    baseCredits: baseCost,
-    markupPercent: character.monetization_enabled ? markupPct : 0,
-  });
-
   const requestId = `agent-a2a:${character.id}:${crypto.randomUUID()}`;
   let admission: Awaited<ReturnType<typeof admitOrganizationInference>>;
   try {
@@ -455,8 +450,8 @@ async function handleChat(
       estimatedOutputTokens: 0,
       flatCost: {
         baseTotalCost: baseCost,
-        platformMarkup: totalCost - baseCost,
-        totalCost,
+        platformMarkup: 0,
+        totalCost: baseCost,
       },
       executionCtx: authUser.executionCtx,
       admissionSnapshot: authUser.admissionSnapshot,
@@ -528,14 +523,8 @@ async function handleChat(
       usage.inputTokens,
       usage.outputTokens,
     );
-    const { markupCredits: actualCreatorMarkup, totalCredits: actualTotal } =
-      calculateCreditMarkup({
-        baseCredits: actualBaseCost,
-        markupPercent: character.monetization_enabled ? markupPct : 0,
-      });
-
     const settlementTask = (async () => {
-      const reconciliation = await admission.settle(actualTotal);
+      const reconciliation = await admission.settle(actualBaseCost);
       if (reconciliation?.adjustmentType === "uncollected_overage") {
         logger.error("[Agent A2A] Final usage overage was not collected", {
           agentId: character.id,
@@ -544,27 +533,6 @@ async function handleChat(
           reserved: reconciliation.reservedAmount,
           actual: reconciliation.actualCost,
         });
-        return;
-      }
-      if (character.monetization_enabled && actualCreatorMarkup > 0) {
-        await agentMonetizationService.recordCreatorEarnings({
-          agentId: character.id,
-          agentName: character.name,
-          ownerId: character.user_id,
-          earnings: actualCreatorMarkup,
-          consumerOrgId: authUser.organization_id,
-          model,
-          tokens: usage.totalTokens,
-          protocol: "a2a",
-        });
-        logger.info(
-          "[Agent A2A] Creator earnings credited to redeemable balance",
-          {
-            agentId: character.id,
-            ownerId: character.user_id,
-            earnings: actualCreatorMarkup,
-          },
-        );
       }
     })().catch((settlementError) => {
       // error-policy:J7 the response is already complete; durable admission
@@ -592,8 +560,8 @@ async function handleChat(
         },
         cost: {
           base: actualBaseCost,
-          markup: actualCreatorMarkup,
-          total: actualTotal,
+          markup: 0,
+          total: actualBaseCost,
         },
       },
       id: rpcId,

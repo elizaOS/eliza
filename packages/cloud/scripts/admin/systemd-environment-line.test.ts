@@ -16,9 +16,9 @@ import {
   lookupSystemdEnvironmentValue,
   reconcileSystemdEnvironmentFile,
   serializeSystemdEnvironmentLine,
-} from "./systemd-environment-line.mjs";
+} from "./systemd-environment-line.ts";
 
-const serializer = path.join(import.meta.dir, "systemd-environment-line.mjs");
+const serializer = path.join(import.meta.dir, "systemd-environment-line.ts");
 const backupService = path.join(
   import.meta.dir,
   "eliza-backup-catalog-worker.service",

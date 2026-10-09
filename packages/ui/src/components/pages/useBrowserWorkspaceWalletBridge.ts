@@ -19,7 +19,7 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
-import type { BrowserWorkspaceTab } from "../../api";
+import type { BrowserWorkspaceTab } from "../../api/browser-contracts";
 import {
   BROWSER_WALLET_READY_TYPE,
   BROWSER_WALLET_RESPONSE_TYPE,
@@ -101,49 +101,11 @@ export function redactBrowserWorkspaceIframeWalletState(
   };
 }
 
-export function normalizeBrowserWorkspaceTxRequest(
-  params: unknown,
-  fallbackChainId: number,
-): {
-  broadcast: boolean;
-  chainId: number;
-  data?: string;
-  description?: string;
-  to: string;
-  value: string;
-} | null {
-  const raw = Array.isArray(params) && params.length > 0 ? params[0] : params;
-  if (!raw || typeof raw !== "object") return null;
-  const value = raw as Record<string, unknown>;
-  const chainId =
-    parseBrowserWorkspaceEvmChainId(value.chainId) ?? fallbackChainId;
-  const to = typeof value.to === "string" ? value.to.trim() : "";
-  // `value` is optional — ERC-20 / contract calls legitimately omit it.
-  const amount =
-    typeof value.value === "string"
-      ? value.value.trim()
-      : typeof value.value === "number"
-        ? String(value.value)
-        : "0x0";
-  if (!to || !chainId || !Number.isFinite(chainId)) return null;
-  return {
-    broadcast: value.broadcast !== false,
-    chainId,
-    data: typeof value.data === "string" ? value.data : undefined,
-    description:
-      typeof value.description === "string" ? value.description : undefined,
-    to,
-    value: amount,
-  };
-}
-
 // ── Request dispatch ──────────────────────────────────────────────────
 
 type HandlerResult =
   | { ok: true; result: unknown }
   | { ok: false; error: string };
-
-export type BrowserWorkspaceWalletHandlerResult = HandlerResult;
 
 export interface BrowserWorkspaceWalletHandlerContext {
   sourceTab: BrowserWorkspaceTab;

@@ -2,8 +2,10 @@
  * Mock app/translation providers for Storybook, seeding the app-store and
  * translator so components render outside the real shell.
  */
+
+import type { UiLanguage } from "@elizaos/core/protocol";
 import type { ReactNode } from "react";
-import { createTranslator, type UiLanguage } from "../i18n";
+import { createTranslator } from "../i18n";
 import { publishAppValue } from "../state/app-store";
 import {
   type TranslationContextValue,
@@ -27,6 +29,7 @@ const baseMockApp: Partial<AppContextValue> = {
   // `noop` fallback (a truthy function) — otherwise ChatView takes its
   // terminal/inbox early-return branch ("Starting terminal…") instead of
   // rendering the composer + transcript.
+  activeConversationId: null,
   activeInboxChat: null,
   activeTerminalSessionId: null,
   agentStatus: {

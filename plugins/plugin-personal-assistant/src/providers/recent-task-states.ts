@@ -14,7 +14,6 @@
  * spine activity, not just test seeds.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -22,7 +21,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { hasRoleAccess, logger } from "@elizaos/core";
 import { asCacheRuntime } from "../lifeops/runtime-cache.js";
 import type {
   ScheduledTaskKind,
@@ -262,7 +261,7 @@ export const recentTaskStatesProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return EMPTY;
     }
     let summary: RecentTaskStatesSummary;

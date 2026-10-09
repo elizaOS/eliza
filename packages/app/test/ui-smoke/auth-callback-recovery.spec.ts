@@ -5,6 +5,7 @@
  */
 
 import { expect, type Locator, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { installDefaultAppRoutes } from "./helpers";
 
 type FocusStyle = {
@@ -48,6 +49,8 @@ for (const callback of INVALID_CALLBACKS) {
   test(`${callback.name} provides an accessible recovery action`, async ({
     page,
   }) => {
+    const shortViewport = callback.path === "/auth/cli-login";
+    if (shortViewport) await page.setViewportSize({ width: 390, height: 360 });
     await page.goto(callback.path, { waitUntil: "domcontentloaded" });
 
     await expect(page.getByRole("main")).toHaveCount(1);
@@ -67,6 +70,25 @@ for (const callback of INVALID_CALLBACKS) {
     const focused = await readFocusStyle(recovery);
     expect(focused.borderColor).not.toBe(resting.borderColor);
     expect(focused.backgroundColor).not.toBe(resting.backgroundColor);
+    // Check initial keyboard order before scrolling or pointer actionability changes
+    // Chromium's sequential-focus starting point. Keep viewport checks afterward.
+    if (shortViewport) {
+      const heading = page.getByRole("heading", {
+        level: 1,
+        name: callback.heading,
+      });
+      await heading.scrollIntoViewIfNeeded();
+      await expect(heading).toBeInViewport();
+      await recovery.scrollIntoViewIfNeeded();
+      await expect(recovery).toBeInViewport();
+      await recovery.click({ trial: true });
+      await page.screenshot({
+        path: testOutputPath(
+          "auth-callback-recovery",
+          "cli-short-viewport.png",
+        ),
+      });
+    }
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/login$/);
   });

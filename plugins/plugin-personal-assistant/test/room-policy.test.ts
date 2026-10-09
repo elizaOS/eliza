@@ -18,8 +18,8 @@
  */
 
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import { createHandoffStore } from "@elizaos/plugin-assistant";
 import { describe, expect, it } from "vitest";
-import { createHandoffStore } from "../src/lifeops/handoff/store.ts";
 import { roomPolicyProvider } from "../src/providers/room-policy.ts";
 import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
 

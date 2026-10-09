@@ -8,19 +8,19 @@
  * refreshed balance.
  */
 
+import { ArrowRight, CheckCircle, XCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
+import { Button } from "../../components/ui/button";
 import {
-  Button,
   Card,
   CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
-  DashboardLoadingState,
-} from "@elizaos/ui/cloud-ui";
-import { ArrowRight, CheckCircle, XCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+} from "../../components/ui/card";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { CreditBalanceDisplay } from "./components/success-client";

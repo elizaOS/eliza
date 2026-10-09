@@ -9,15 +9,7 @@
 import type { RoleName } from "../roles";
 import type { UUID } from "./primitives";
 
-/**
- * Identity of the requester a memory read runs on behalf of, used to filter
- * retrieval down to what that requester is permitted to see.
- *
- * Threading an `AccessContext` is always optional: when a read omits it, the
- * adapter applies no access-context filtering — i.e. today's single-tenant
- * behavior is preserved byte-for-byte. Enforcement composes with (and never
- * duplicates) the opt-in Postgres RLS in `plugin-sql`.
- */
+/** Requester authority for memory reads. Omission disables access-context filtering; adapter RLS remains a separate boundary. */
 export interface AccessContext {
 	/**
 	 * Entity the read runs for — the speaker/requester (`Memory.entityId`). For
@@ -27,14 +19,7 @@ export interface AccessContext {
 	requesterEntityId: UUID;
 	/** World/tenant the request is scoped to. */
 	worldId?: UUID;
-	/**
-	 * Rooms whose membership/containment has already been authorized for this
-	 * read. When present, adapters intersect every memory query with this set and
-	 * with `worldId` (when supplied) before ordering, ranking, or pagination; an
-	 * empty set therefore denies all room-backed memories. Omission preserves the
-	 * legacy scope-only contract for callers that have not yet resolved room
-	 * authority, so topology-aware callers must never omit it accidentally.
-	 */
+	/** Authorized room intersection applied before ranking or pagination. Empty denies room-backed records; omission applies scope-only filtering. Topology-aware callers must supply the verified set. */
 	authorizedRoomIds?: readonly UUID[];
 	/** Requester's resolved role within `worldId`. */
 	role?: RoleName;

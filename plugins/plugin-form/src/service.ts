@@ -134,7 +134,12 @@ import type {
   UncertainFieldSummary,
 } from "./types";
 import { FORM_CONTROL_DEFAULTS, FORM_DEFINITION_DEFAULTS } from "./types";
-import { formatValue, validateField } from "./validation";
+import {
+  formatValue,
+  getTypeHandler,
+  parseValue,
+  validateField,
+} from "./validation";
 
 const UNSAFE_OBJECT_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 
@@ -395,6 +400,22 @@ export class FormService extends Service {
   // SESSION MANAGEMENT
   // ============================================================================
 
+  private normalizeBuiltinDateValue(
+    value: JsonValue,
+    control: FormControl,
+  ): JsonValue {
+    const type = this.getControlType(control.type);
+    if (
+      control.type === "date" &&
+      typeof value === "string" &&
+      type?.builtin &&
+      getTypeHandler(control.type, type) === type
+    ) {
+      return parseValue(value, control, type);
+    }
+    return value;
+  }
+
   /**
    * Start a new form session
    */
@@ -431,22 +452,35 @@ export class FormService extends Service {
     const fields = createValueMap<FieldState>();
     for (const control of form.controls) {
       if (options?.initialValues?.[control.key] !== undefined) {
-        const validation = validateField(
+        const value = this.normalizeBuiltinDateValue(
           options.initialValues[control.key],
           control,
         );
+        const validation = validateField(
+          value,
+          control,
+          this.getControlType(control.type),
+        );
         fields[control.key] = {
           status: validation.valid ? "filled" : "invalid",
-          value: options.initialValues[control.key],
+          value,
           source: "manual",
           updatedAt: now,
           error: validation.error,
         };
       } else if (control.defaultValue !== undefined) {
-        const validation = validateField(control.defaultValue, control);
+        const value = this.normalizeBuiltinDateValue(
+          control.defaultValue,
+          control,
+        );
+        const validation = validateField(
+          value,
+          control,
+          this.getControlType(control.type),
+        );
         fields[control.key] = {
           status: validation.valid ? "filled" : "invalid",
-          value: control.defaultValue,
+          value,
           source: "default",
           updatedAt: now,
           error: validation.error,
@@ -561,8 +595,14 @@ export class FormService extends Service {
     // Get old value for history
     const oldValue = session.fields[field]?.value;
 
+    value = this.normalizeBuiltinDateValue(value, control);
+
     // Validate the value
-    const validation = validateField(value, control);
+    const validation = validateField(
+      value,
+      control,
+      this.getControlType(control.type),
+    );
 
     // Determine status based on confidence and validation
     let status: FieldState["status"];
@@ -576,21 +616,20 @@ export class FormService extends Service {
 
     const now = Date.now();
 
-    // Add to history for undo
-    if (oldValue !== undefined) {
-      const historyEntry: FieldHistoryEntry = {
-        field,
-        oldValue,
-        newValue: value,
-        timestamp: now,
-      };
-      session.history.push(historyEntry);
+    // Add to history for undo. A first answer is recorded too (no oldValue),
+    // so undoing it clears the field instead of reverting an older change.
+    const historyEntry: FieldHistoryEntry = {
+      field,
+      ...(oldValue !== undefined ? { oldValue } : {}),
+      newValue: value,
+      timestamp: now,
+    };
+    session.history.push(historyEntry);
 
-      // Limit history size
-      const maxUndo = form.ux?.maxUndoSteps ?? 5;
-      if (session.history.length > maxUndo) {
-        session.history = session.history.slice(-maxUndo);
-      }
+    // Limit history size
+    const maxUndo = form.ux?.maxUndoSteps ?? 5;
+    if (session.history.length > maxUndo) {
+      session.history = session.history.slice(-maxUndo);
     }
 
     // Update field state
@@ -640,7 +679,7 @@ export class FormService extends Service {
   async undoLastChange(
     sessionId: string,
     entityId: UUID,
-  ): Promise<{ field: string; restoredValue: JsonValue } | null> {
+  ): Promise<{ field: string; restoredValue: JsonValue | undefined } | null> {
     const session = await getSessionById(this.runtime, entityId, sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
@@ -837,7 +876,11 @@ export class FormService extends Service {
       }
     } else {
       // Fallback to basic validation
-      const validation = validateField(value, subControl);
+      const validation = validateField(
+        value,
+        subControl,
+        this.getControlType(subControl.type),
+      );
       if (!validation.valid) {
         subFieldStatus = "invalid";
         error = validation.error;
@@ -1197,7 +1240,11 @@ export class FormService extends Service {
     for (const control of form.controls) {
       const fieldState = session.fields[control.key];
       if (fieldState?.value !== undefined) {
-        const validation = validateField(fieldState.value, control);
+        const validation = validateField(
+          fieldState.value,
+          control,
+          this.getControlType(control.type),
+        );
         if (!validation.valid) {
           const error = validation.error ?? "validation failed";
           throw new Error(`Field ${control.key} is invalid: ${error}`);
@@ -1468,11 +1515,15 @@ export class FormService extends Service {
       }
 
       if (fieldState?.status === "filled") {
-        filledCount++;
+        if (control.required) filledCount++;
         filledFields.push({
           key: control.key,
           label: control.label,
-          displayValue: formatValue(fieldState.value ?? null, control),
+          displayValue: formatValue(
+            fieldState.value ?? null,
+            control,
+            this.getControlType(control.type),
+          ),
         });
       } else if (fieldState?.status === "pending") {
         // External field waiting for confirmation
@@ -1661,12 +1712,13 @@ export class FormService extends Service {
     for (const control of form.controls) {
       if (!control.required) continue;
 
+      // Only a filled field satisfies a required control. A field whose
+      // external activation is still pending, or whose value is uncertain,
+      // has no committed value yet; treating either as filled let the
+      // session flip to ready and submit while the required value was still
+      // in flight, and skipping a required control is refused upstream.
       const fieldState = session.fields[control.key];
-      if (
-        !fieldState ||
-        fieldState.status === "empty" ||
-        fieldState.status === "invalid"
-      ) {
+      if (fieldState?.status !== "filled") {
         return false;
       }
     }

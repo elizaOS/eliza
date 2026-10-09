@@ -7,9 +7,8 @@ import {
   BUILTIN_MCP_PRICING,
   MCP_FREE_COST_LABEL,
 } from "@elizaos/cloud-shared/billing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

@@ -3,16 +3,16 @@
  * durable auto-top-up state machine without reading or recomputing money.
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireCurrentBillingManagerSession } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { autoTopUpService } from "@/lib/services/auto-top-up";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { autoTopUpService } from "@elizaos/cloud-shared/lib/services/auto-top-up";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 
@@ -20,7 +20,7 @@ app.use("*", moneyRateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const user = await requireCurrentBillingManagerSession(c);
     const result = await autoTopUpService.executeAutoTopUpForOrganization(
       user.organization_id,
       { source: "manual" },

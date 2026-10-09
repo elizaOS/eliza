@@ -5,8 +5,8 @@
  * memoizes the render.
  */
 
+import type { TranslateFn } from "@elizaos/contracts";
 import { useMemo } from "react";
-import type { TranslateFn } from "../../types";
 import {
   type DesktopWorkspaceSnapshot,
   formatDesktopWorkspaceSummary,

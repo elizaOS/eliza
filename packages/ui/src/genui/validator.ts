@@ -703,14 +703,3 @@ export function validateElizaGenUiSpec(
   }
   return { ok: true, spec: snapshot as ElizaGenUiSpec };
 }
-
-export function assertValidElizaGenUiSpec(
-  value: unknown,
-  options?: ElizaGenUiValidationOptions,
-): ElizaGenUiSpec {
-  const result = validateElizaGenUiSpec(value, options);
-  if (!result.ok) {
-    throw new Error(result.errors.map((issue) => issue.message).join("\n"));
-  }
-  return result.spec;
-}

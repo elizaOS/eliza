@@ -10,13 +10,13 @@
  */
 import { CheckCircle2, RefreshCw, ShieldAlert, UserRound } from "lucide-react";
 import { useRef } from "react";
-import type { ConnectorAccountRecord } from "../../api/client-agent";
-import { useBranding } from "../../config/branding";
+import type { ConnectorAccountRecord } from "../../api/client-agent-connector-accounts";
+import { useBranding } from "../../config/branding-react.hooks";
 import {
   type ConnectorReconnectPhase,
   useConnectorReconnect,
 } from "../../hooks/useConnectorReconnect";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
@@ -191,14 +191,14 @@ export function AccountRequiredCard({
         <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warn" />
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-txt">{title}</div>
-          <div className="mt-0.5 leading-5 text-muted">
+          <div className="mt-0.5 leading-5 text-muted-strong">
             {resolvedDescription}
           </div>
         </div>
       </div>
 
       {loading ? (
-        <div className="mt-2 flex items-center gap-2 text-muted">
+        <div className="mt-2 flex items-center gap-2 text-muted-strong">
           <Spinner className="size-3" />
           Loading {sourceLabel} accounts…
         </div>
@@ -241,7 +241,7 @@ export function AccountRequiredCard({
                     <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
                       <StatusBadge label={status.label} tone={status.tone} />
                       {account.handle || account.externalId ? (
-                        <span className="truncate text-2xs text-muted">
+                        <span className="truncate text-2xs text-muted-strong">
                           {account.handle ?? account.externalId}
                         </span>
                       ) : null}

@@ -14,7 +14,7 @@ import {
   type Theme,
   VIEWPORT_SIZES,
   type ViewportName,
-} from "../../../../scripts/ai-qa/route-catalog.ts";
+} from "../../../scripts/ai-qa/route-catalog.ts";
 import {
   installDefaultAppRoutes,
   openAppPath,

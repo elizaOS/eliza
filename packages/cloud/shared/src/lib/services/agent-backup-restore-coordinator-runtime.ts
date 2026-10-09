@@ -13,6 +13,8 @@ const MAX_CLAIM_MS = 3_600_000;
 const DEFAULT_CLAIM_MS = 60_000;
 const DEFAULT_RETRY_BASE_MS = 5_000;
 const MAX_RETRY_MS = 3_600_000;
+const DEFAULT_MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS = 50;
 
 export type AgentBackupRestoreCoordinatorConfig =
   | { enabled: false }
@@ -21,9 +23,31 @@ export type AgentBackupRestoreCoordinatorConfig =
       workerId: string;
       claimMs: number;
       retryBaseMs: number;
+      /** Pre-boot attempts before a restore is closed without touching its route. */
+      maxAttempts: number;
       /** Explicit restore only; node-loss failover consumes this authority later. */
       automaticFailoverEnabled: false;
     };
+
+export type AgentBackupRestoreEnabledCoordinatorConfig = Extract<
+  AgentBackupRestoreCoordinatorConfig,
+  { enabled: true }
+>;
+
+/**
+ * `"1"` is on; unset, empty, or `"0"` is off; any other value is a
+ * configuration error. A bare `=== "1"` check would read `true` as off and
+ * silently leave the coordinator (or the unimplemented failover refusal)
+ * inactive while the deployment believes otherwise.
+ */
+function readStrictFlag(env: NodeJS.ProcessEnv, name: string): boolean {
+  const raw = env[name];
+  if (raw === undefined || raw === "" || raw === "0") return false;
+  if (raw !== "1") {
+    throw new Error(`${name} must be "1" or "0" when set, or left unset`);
+  }
+  return true;
+}
 
 function readBoundedInteger(params: {
   env: NodeJS.ProcessEnv;
@@ -47,8 +71,8 @@ function readBoundedInteger(params: {
 export function readAgentBackupRestoreCoordinatorConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): AgentBackupRestoreCoordinatorConfig {
-  const failoverEnabled = env.AGENT_BACKUP_RESTORE_FAILOVER_ENABLED === "1";
-  if (env.AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED !== "1") {
+  const failoverEnabled = readStrictFlag(env, "AGENT_BACKUP_RESTORE_FAILOVER_ENABLED");
+  if (!readStrictFlag(env, "AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED")) {
     if (failoverEnabled) {
       throw new Error(
         "AGENT_BACKUP_RESTORE_FAILOVER_ENABLED requires AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED=1",
@@ -85,6 +109,13 @@ export function readAgentBackupRestoreCoordinatorConfig(
       fallback: DEFAULT_RETRY_BASE_MS,
       min: 1,
       max: MAX_RETRY_MS,
+    }),
+    maxAttempts: readBoundedInteger({
+      env,
+      name: "AGENT_BACKUP_RESTORE_MAX_ATTEMPTS",
+      fallback: DEFAULT_MAX_ATTEMPTS,
+      min: 1,
+      max: MAX_ATTEMPTS,
     }),
     automaticFailoverEnabled: false,
   };

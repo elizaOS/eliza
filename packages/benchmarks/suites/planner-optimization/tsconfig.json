@@ -1,0 +1,4 @@
+{
+  "extends": "../../../testing/scenario-runner/tsconfig.json",
+  "include": ["src/**/*.ts", "gepa/**/*.ts", "index.ts"]
+}

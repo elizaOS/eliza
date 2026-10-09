@@ -6,12 +6,12 @@
  * POST (see `makeCronHandler`), so a GET-only route 404s every cycle.
  */
 
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { cryptoPaymentsService } from "@elizaos/cloud-shared/lib/services/crypto-payments";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { type Context, Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { cryptoPaymentsService } from "@/lib/services/crypto-payments";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
@@ -33,7 +33,7 @@ async function handle(c: Context<AppEnv>) {
     let errors = 0;
     for (const payment of expiredPayments) {
       try {
-        await cryptoPaymentsService.expirePaymentWithCallback(payment);
+        await cryptoPaymentsService.expirePayment(payment);
         markedExpired++;
       } catch (error) {
         errors++;

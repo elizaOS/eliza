@@ -6,7 +6,8 @@
  * to its later `result`/`error` by `callId` and updated in place, so one row
  * flips running → success/failure rather than appending a duplicate.
  */
-import type { ChatToolCallEvent } from "../../api/client-types-chat";
+
+import type { ChatToolCallEvent } from "@elizaos/contracts";
 import type { NativeToolCallEvent } from "../../api/client-types-cloud";
 
 function toNativeToolCallEvent(event: ChatToolCallEvent): NativeToolCallEvent {

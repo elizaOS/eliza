@@ -5,8 +5,12 @@
  * payloads, client-chat echoes, and events whose room is already tracked by an
  * open conversation, then handing the rest to routeAutonomyTextToUser.
  */
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
-import type { AgentEventPayloadLike } from "../runtime/agent-event-service.ts";
+import { MESSAGE_SOURCE_CLIENT_CHAT, validateUuid } from "@elizaos/core";
+import {
+  type AgentEventPayloadLike,
+  AUTONOMY_NOTIFICATION_DELIVERY,
+  type AutonomyNotificationDelivery,
+} from "../runtime/agent-event-service.ts";
 import { routeAutonomyTextToUser } from "./server-helpers-swarm.ts";
 import type { ServerState } from "./server-types.ts";
 
@@ -28,8 +32,8 @@ export async function maybeRouteAutonomyEventToConversation(
     event.data && typeof event.data === "object"
       ? (event.data as Record<string, unknown>)
       : null;
-  const text = typeof payload?.text === "string" ? payload.text.trim() : "";
-  if (!text) return;
+  const text = typeof payload?.text === "string" ? payload.text : "";
+  if (!text.trim()) return;
 
   const explicitSource =
     typeof payload?.source === "string" ? payload.source : null;
@@ -49,5 +53,34 @@ export async function maybeRouteAutonomyEventToConversation(
     return;
   }
 
-  await routeAutonomyTextToUser(state, text, source);
+  const handoff = (payload as Record<PropertyKey, unknown> | null)?.[
+    AUTONOMY_NOTIFICATION_DELIVERY
+  ] as AutonomyNotificationDelivery | undefined;
+  if (handoff?.routed) return handoff.routed;
+  const routed = routeAutonomyTextToUser(
+    state,
+    text,
+    source,
+    payload?.reminderPresentation,
+    source === "reminder" &&
+      payload?.ownerType === "occurrence" &&
+      payload.subjectType === "owner" &&
+      validateUuid(payload.ownerId) &&
+      typeof payload.scheduledFor === "string" &&
+      Number.isFinite(Date.parse(payload.scheduledFor)) &&
+      (payload.dueAt === null ||
+        (typeof payload.dueAt === "string" &&
+          Number.isFinite(Date.parse(payload.dueAt))))
+      ? {
+          ownerType: "occurrence",
+          ownerId: payload.ownerId as string,
+          subjectType: "owner",
+          scheduledFor: payload.scheduledFor,
+          dueAt: payload.dueAt as string | null,
+        }
+      : undefined,
+    handoff?.publish,
+  );
+  if (handoff) handoff.routed = routed;
+  await routed;
 }

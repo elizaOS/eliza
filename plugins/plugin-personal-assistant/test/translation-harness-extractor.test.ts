@@ -1,7 +1,7 @@
 /**
  * Translation harness — extractor regression tests.
  *
- * Covers `scripts/translate-action-examples.mjs`'s `extractFromActionFile`
+ * Covers `scripts/translate-action-examples.ts`'s `extractFromActionFile`
  * via fixture files in `test/fixtures/translate-action-examples/`. The
  * companion `translation-harness.test.ts` covers the registered packs;
  * this file covers the AST-level extraction strategies the bulk-translation
@@ -27,9 +27,8 @@ const fixtureDir = path.resolve(here, "fixtures", "translate-action-examples");
 const elizaRoot = path.resolve(here, "..", "..", "..");
 const scriptPath = path.resolve(
   here,
-  "..",
-  "scripts",
-  "translate-action-examples.mjs",
+  "../../../packages/scripts/plugins/plugin-personal-assistant",
+  "translate-action-examples.ts",
 );
 
 function locateBun(): string {
@@ -106,9 +105,8 @@ function runHarness(fixture: string): {
   stderr: string;
 } {
   const fixturePath = path.join(fixtureDir, fixture);
-  // Use bun to invoke the harness so ts-morph resolves through the workspace
-  // bun store (ts-morph is transitively installed; never declared as a
-  // direct dep of any package, so plain `node` import resolution fails).
+  // Use the repository Bun runtime to invoke the harness. Its AST dependency
+  // belongs to packages/scripts, where the relocated CLI is owned.
   // Vitest's setup files override HOME with a sandboxed tmpdir, so we can't
   // rely on `~/.bun/bin/bun`. Probe known locations.
   const bunBinary = locateBun();

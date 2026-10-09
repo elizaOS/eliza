@@ -93,6 +93,8 @@ beforeAll(async () => {
   for (const migration of MIGRATIONS) await executeSqlFile(migration);
   const pg = (await import("../../client")).getPgliteClientForTests();
   await installOrganizationPolicyTestSchema((query) => pg.exec(query));
+  // Subscription funding binds storage charges to billing_funding_reservations.
+  await executeSqlFile("0482_org_storage_subscription_funding.sql");
   ({ orgStorageMutationsRepository: repository } = await import("../org-storage-mutations"));
 }, TIMEOUT);
 

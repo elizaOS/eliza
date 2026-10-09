@@ -1,10 +1,4 @@
-/**
- * Canonical bounded YAML-frontmatter parser for Markdown documents.
- *
- * It preserves the complete body, distinguishes absent from malformed input,
- * rejects NULs and excessive nesting before YAML traversal, and exposes legacy
- * string coercion only as an explicit adapter.
- */
+/** Parses bounded YAML frontmatter without losing document content. Rejects NULs and excessive nesting; string coercion is explicit. */
 import YAML from "yaml";
 
 export const DEFAULT_FRONTMATTER_MAX_DEPTH = 32;
@@ -82,10 +76,13 @@ export function parseFrontmatterDocument(
 	options: ParseFrontmatterDocumentOptions = {},
 ): FrontmatterDocumentResult {
 	const normalized = normalizeNewlines(content);
-	if (!/^---[ \t]*(?:\n|$)/.test(normalized)) {
-		return { kind: "none", body: normalized };
+	const document = normalized.startsWith("\uFEFF")
+		? normalized.slice(1)
+		: normalized;
+	if (!/^---[ \t]*(?:\n|$)/.test(document)) {
+		return { kind: "none", body: document };
 	}
-	const lines = normalized.split("\n");
+	const lines = document.split("\n");
 	let closingLine = -1;
 	for (let index = 1; index < lines.length; index += 1) {
 		if (/^---[ \t]*$/.test(lines[index])) {
@@ -94,7 +91,7 @@ export function parseFrontmatterDocument(
 		}
 	}
 	if (closingLine === -1) {
-		return { kind: "invalid", code: "invalid-delimiter", body: normalized };
+		return { kind: "invalid", code: "invalid-delimiter", body: document };
 	}
 	const raw = lines.slice(1, closingLine).join("\n");
 	const body = lines.slice(closingLine + 1).join("\n");
@@ -124,7 +121,7 @@ export function parseFrontmatterDocument(
 	return { kind: "parsed", frontmatter: parsed, body, raw };
 }
 
-/** Legacy Markdown metadata representation with explicitly coerced values. */
+/** Markdown metadata with explicitly string-coerced values. */
 export type ParsedFrontmatter = Record<string, string>;
 
 function coerceFrontmatterValue(value: unknown): string | undefined {

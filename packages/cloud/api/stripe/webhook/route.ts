@@ -1,17 +1,26 @@
-// Handles webhook cloud API stripe webhook route traffic with signature or internal auth checks.
+/** Verifies Stripe signatures and persists generic billing lookup triggers before the existing queue handoff. */
+
+import { webhookEventsRepository } from "@elizaos/cloud-shared/db/repositories/webhook-events";
+import {
+  getRequestIp,
+  moneyRateLimit,
+  RateLimitPresets,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { enqueue } from "@elizaos/cloud-shared/lib/redis-queue";
+import { appBillingTriggerFromVerifiedEvent } from "@elizaos/cloud-shared/lib/services/app-billing-webhook-intake";
+import {
+  isStripeConfigured,
+  requireStripe,
+} from "@elizaos/cloud-shared/lib/stripe";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queue-message";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
-import type { StripeEventMessage } from "@/api-queue/types";
-import { webhookEventsRepository } from "@/db/repositories/webhook-events";
-import {
-  moneyRateLimit,
-  RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { enqueue } from "@/lib/queue/redis-queue";
-import { isStripeConfigured, requireStripe } from "@/lib/stripe";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const STRIPE_QUEUE_KEY = "stripe-events";
 
@@ -57,14 +66,6 @@ async function hashPayload(body: string): Promise<string> {
     .join("");
 }
 
-function getClientIp(c: AppContext): string {
-  return (
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    c.req.header("x-real-ip") ||
-    "unknown"
-  );
-}
-
 /**
  * POST /api/stripe/webhook
  *
@@ -85,7 +86,10 @@ function getClientIp(c: AppContext): string {
  *
  * Rate limited: AGGRESSIVE (100 req/min per IP).
  */
-async function handleStripeWebhook(c: AppContext): Promise<Response> {
+export async function handleStripeWebhook(
+  c: AppContext,
+  enqueueEvent: typeof enqueue = enqueue,
+): Promise<Response> {
   const body = await c.req.text();
   const signature = c.req.header("stripe-signature");
 
@@ -112,12 +116,38 @@ async function handleStripeWebhook(c: AppContext): Promise<Response> {
     // variant calls into node:crypto which is not available here.
     // Tolerance passed explicitly so out-of-window webhooks raise here and
     // we can emit a dedicated audit event for them.
-    event = await stripe.webhooks.constructEventAsync(
-      body,
-      signature,
+    const secrets = [
       webhookSecret,
-      STRIPE_WEBHOOK_TOLERANCE_SECONDS,
+      c.env.STRIPE_TEST_WEBHOOK_SECRET,
+      c.env.STRIPE_CONNECT_WEBHOOK_SECRET,
+    ].filter(
+      (secret): secret is string =>
+        typeof secret === "string" && secret.length > 0,
     );
+    let verified: Stripe.Event | null = null;
+    let lastError: unknown;
+    for (const secret of secrets) {
+      try {
+        verified = await stripe.webhooks.constructEventAsync(
+          body,
+          signature,
+          secret,
+          STRIPE_WEBHOOK_TOLERANCE_SECONDS,
+        );
+        if (secret === c.env.STRIPE_TEST_WEBHOOK_SECRET && verified.livemode) {
+          verified = null;
+          throw new Error(
+            "Test webhook credential cannot authenticate a live event",
+          );
+        }
+        break;
+      } catch (error) {
+        // error-policy:J3 Each configured endpoint secret must verify exact bytes; no unsigned fallback exists.
+        lastError = error;
+      }
+    }
+    if (!verified) throw lastError;
+    event = verified;
   } catch (err) {
     const reason =
       err instanceof Error && /timestamp/i.test(err.message)
@@ -130,7 +160,7 @@ async function handleStripeWebhook(c: AppContext): Promise<Response> {
         action: "payment.charge",
         result: "denied",
         resource: { type: "webhook", id: "stripe" },
-        ip: getClientIp(c),
+        ip: getRequestIp(c),
         request_id: c.get("requestId"),
         metadata: { provider: "stripe", reason },
       })
@@ -149,17 +179,32 @@ async function handleStripeWebhook(c: AppContext): Promise<Response> {
 
   logger.info(`[Stripe Webhook] Received event: ${event.type} (${event.id})`);
 
+  const appBilling = await appBillingTriggerFromVerifiedEvent(event, body);
+  const receiptKey = appBilling?.receiptKey ?? event.id;
   const payloadHash = await hashPayload(body);
   const insertResult = await webhookEventsRepository.tryCreate({
-    event_id: event.id,
+    event_id: receiptKey,
+    ...(appBilling ? { app_billing_trigger: appBilling.trigger } : {}),
     provider: "stripe",
     event_type: event.type,
     payload_hash: payloadHash,
-    source_ip: getClientIp(c),
+    source_ip: getRequestIp(c) ?? "unknown",
     event_timestamp: event.created ? new Date(event.created * 1000) : undefined,
   });
 
   if (!insertResult.created) {
+    if (appBilling) {
+      const receipt =
+        await webhookEventsRepository.findByEventIdPrimary(receiptKey);
+      if (
+        receipt?.provider !== "stripe" ||
+        receipt.payload_hash !== payloadHash
+      )
+        return c.json(
+          { error: "Webhook replay changes its signed payload" },
+          409,
+        );
+    }
     logger.debug(
       `[Stripe Webhook] Duplicate event ${event.id} — skipping enqueue`,
     );
@@ -173,18 +218,24 @@ async function handleStripeWebhook(c: AppContext): Promise<Response> {
     event,
     paymentIntentId: extractPaymentIntentId(event),
     receivedAt: Date.now(),
+    ...(appBilling ? { appBilling } : {}),
   };
 
-  // The dedup marker (tryCreate) is already committed to Postgres. If the
-  // durable enqueue to Redis fails (e.g. an Upstash blip), we MUST roll the
-  // marker back — otherwise Stripe's retry hits `created:false` above, returns
-  // 200 {duplicate}, and the paid event is dropped forever (card charged, no
-  // credits). Roll back, then rethrow so Stripe gets a 5xx and retries.
+  // App billing retains its signed trigger for PostgreSQL recovery. Legacy payments
+  // require a queue retry, so their marker is removed when enqueueing fails.
   try {
-    await enqueue(STRIPE_QUEUE_KEY, message);
+    await enqueueEvent(STRIPE_QUEUE_KEY, message);
   } catch (enqueueError) {
+    // error-policy:J2 Generic triggers already have a durable PostgreSQL recovery path.
+    if (appBilling) {
+      logger.error(
+        "[Stripe Webhook] App billing queue handoff failed; durable reconciliation is pending",
+        { eventId: event.id },
+      );
+      throw enqueueError;
+    }
     await webhookEventsRepository
-      .deleteByEventId(event.id, "stripe")
+      .deleteByEventId(receiptKey, "stripe")
       .catch((rollbackError) => {
         logger.error(
           "[Stripe Webhook] enqueue failed AND dedup-marker rollback failed — event may be dropped",

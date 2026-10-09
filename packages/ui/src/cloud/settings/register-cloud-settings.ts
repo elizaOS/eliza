@@ -9,7 +9,7 @@
  *
  * Every section is registered through {@link registerSettingsSection} (the
  * pluggable registry) — never the pinned `settings-section-meta.ts` list — so the
- * built-in section count the app-core `dev-route-catalog` parity test pins stays
+ * built-in section count the app `dev-route-catalog` parity test pins stays
  * unchanged, exactly like the existing `cloud-agents` section does.
  *
  * Section → source domain:

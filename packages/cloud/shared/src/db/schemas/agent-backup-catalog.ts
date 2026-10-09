@@ -447,6 +447,14 @@ export const agentBackupRestoreOperations = pgTable(
     last_error: text("last_error"),
     last_failure_generation: uuid("last_failure_generation"),
     last_failure_digest: text("last_failure_digest"),
+    /**
+     * Write-once evidence of each post-create coordinator phase (roots,
+     * sealed candidate, committed generation, previous route, serving ports,
+     * signed attestation and probes). Every key is set once and replays must
+     * present identical canonical bytes; see agent-backup-restore-serving.ts.
+     */
+    serving_state: jsonb("serving_state").$type<Record<string, unknown>>(),
+    route_published_at: timestamp("route_published_at", { withTimezone: true }),
     completed_at: timestamp("completed_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -558,6 +566,13 @@ export const agentBackupRestoreOperations = pgTable(
           AND ${table.receipt_digest} IS NULL)
         OR (${table.phase} = 'finalized' AND ${table.completed_at} IS NOT NULL
           AND ${table.receipt_digest} ~ '^[0-9a-f]{64}$')
+      ) IS TRUE`,
+    ),
+    serving_state_check: check(
+      "agent_backup_restore_operations_serving_state_check",
+      sql`((${table.serving_state} IS NULL OR jsonb_typeof(${table.serving_state}) = 'object')
+        AND (${table.route_published_at} IS NULL
+          OR ${table.phase} IN ('published', 'finalized', 'failed_retryable', 'failed_terminal'))
       ) IS TRUE`,
     ),
     failure_replay_check: check(

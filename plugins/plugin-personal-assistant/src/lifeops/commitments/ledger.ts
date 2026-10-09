@@ -5,6 +5,14 @@
  * renewal/filing deadlines, and "what will I regret" queries.
  */
 import crypto from "node:crypto";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getLocalDateKey,
+  getWeekdayForLocalDate,
+  getZonedDateParts,
+  type ZonedDateParts,
+} from "../time.js";
 
 export type LifeOpsCommitmentSource =
   | "sent_mail"
@@ -48,6 +56,11 @@ export interface CommitmentExtractionInput {
   sourceKey: string;
   text: string;
   observedAt: string;
+  /**
+   * IANA zone whose calendar resolves relative due dates and the 17:00 due
+   * wall time. Defaults to UTC for callers that do not know the owner's zone.
+   */
+  timeZone?: string;
   counterparty?: string | null;
   metadata?: Record<string, unknown>;
 }
@@ -91,7 +104,17 @@ export const COMMITMENT_OBLIGATION_EVENT_KIND = "document.obligation.observed";
 
 /** Cheap deterministic prefilter: does the text contain a first-person commitment cue? */
 export function textHasCommitmentCue(text: string): boolean {
-  return COMMITMENT_RE.test(text);
+  for (const cue of text.matchAll(new RegExp(COMMITMENT_RE, "gi"))) {
+    // A requested affordance's purpose ("open Notes so I can see it") is
+    // not an owner promise. Other cues in the same source still qualify.
+    if (
+      cue[0].toLowerCase() === "i can" &&
+      /\bso(?:\s+that)?\s+$/i.test(text.slice(0, cue.index))
+    )
+      continue;
+    return true;
+  }
+  return false;
 }
 
 /** True when the text hedges ("maybe sometime") and must never become a ledger row. */
@@ -126,38 +149,75 @@ function addUtcDays(date: Date, days: number): Date {
   return next;
 }
 
-function endOfUtcDay(date: Date): string {
-  const next = new Date(date.getTime());
-  next.setUTCHours(17, 0, 0, 0);
-  return next.toISOString();
+type LocalDate = Pick<ZonedDateParts, "year" | "month" | "day">;
+
+/** Local wall-clock hour a dated commitment falls due. */
+const COMMITMENT_DUE_HOUR = 17;
+
+function localDateFromKey(key: string): LocalDate | null {
+  const [year, month, day] = key.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  const parts = { year, month, day };
+  // Round-trip so an impossible day such as 02-30 is rejected rather than
+  // rolled into the next month.
+  return getLocalDateKey(addDaysToLocalDate(parts, 0)) === key ? parts : null;
 }
 
-function nextWeekdayIso(observedAt: string, weekdayName: string): string {
-  const base = new Date(observedAt);
-  const target = WEEKDAYS.indexOf(
-    weekdayName.toLowerCase() as (typeof WEEKDAYS)[number],
-  );
-  if (target < 0 || Number.isNaN(base.getTime())) return observedAt;
-  const today = base.getUTCDay();
-  let delta = (target - today + 7) % 7;
-  if (delta === 0) delta = 7;
-  return endOfUtcDay(addUtcDays(base, delta));
+function dueAtOnLocalDate(date: LocalDate, timeZone: string): string {
+  return buildUtcDateFromLocalParts(timeZone, {
+    ...date,
+    hour: COMMITMENT_DUE_HOUR,
+    minute: 0,
+    second: 0,
+  }).toISOString();
 }
 
-function resolveDueAt(text: string, observedAt: string): string | null {
+/**
+ * Resolve an explicit `YYYY-MM-DD`, `tomorrow`, or a weekday to 17:00 wall
+ * time in `timeZone`. Relative days count from the observation instant's
+ * calendar day in that zone, so an evening promise in a zone behind UTC is
+ * not pushed a day late by the UTC date rollover.
+ */
+function resolveDueAt(
+  text: string,
+  observedAt: string,
+  timeZone: string,
+): string | null {
   const isoDate = text.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
   if (isoDate?.[1]) {
-    return endOfUtcDay(new Date(`${isoDate[1]}T00:00:00.000Z`));
+    const explicit = localDateFromKey(isoDate[1]);
+    return explicit ? dueAtOnLocalDate(explicit, timeZone) : null;
   }
+  const base = new Date(observedAt);
+  if (Number.isNaN(base.getTime())) return null;
+  const { year, month, day } = getZonedDateParts(base, timeZone);
+  const observedDay: LocalDate = { year, month, day };
   if (/\btomorrow\b/i.test(text)) {
-    return endOfUtcDay(addUtcDays(new Date(observedAt), 1));
+    return dueAtOnLocalDate(addDaysToLocalDate(observedDay, 1), timeZone);
   }
-  const weekdayPattern = new RegExp(
-    `\\b(?:by|before|on|next)?\\s*(${WEEKDAYS.join("|")})\\b`,
-    "i",
+  const weekdayNames = WEEKDAYS.join("|");
+  // "by Friday ... on Monday" is a Friday deadline. A later "on"/"next"
+  // day must not override an earlier "by"/"before" day.
+  const deadlineWeekday = [
+    ...text.matchAll(
+      new RegExp(`\\b(?:by|before)\\s+(${weekdayNames})\\b`, "gi"),
+    ),
+  ].at(-1)?.[1];
+  const scheduledWeekday = [
+    ...text.matchAll(
+      new RegExp(`\\b(?:on|next)\\s+(${weekdayNames})\\b`, "gi"),
+    ),
+  ].at(-1)?.[1];
+  const weekday =
+    deadlineWeekday ??
+    scheduledWeekday ??
+    text.match(new RegExp(`\\b(${weekdayNames})\\b`, "i"))?.[1];
+  if (!weekday) return null;
+  const target = WEEKDAYS.indexOf(
+    weekday.toLowerCase() as (typeof WEEKDAYS)[number],
   );
-  const weekday = text.match(weekdayPattern)?.[1];
-  return weekday ? nextWeekdayIso(observedAt, weekday) : null;
+  const delta = (target - getWeekdayForLocalDate(observedDay) + 7) % 7 || 7;
+  return dueAtOnLocalDate(addDaysToLocalDate(observedDay, delta), timeZone);
 }
 
 /** Classify a commitment sentence into the ledger's typed obligation kind. */
@@ -193,13 +253,18 @@ function firstCommitmentSentence(text: string): string | null {
   for (const part of text.split(/(?<=[.!?])\s+/)) {
     const sentence = normalizeText(part);
     if (!sentence) continue;
-    if (!COMMITMENT_RE.test(sentence)) continue;
+    if (!textHasCommitmentCue(sentence)) continue;
     if (SPECULATIVE_RE.test(sentence)) continue;
     let end = sentence.length;
     while (end > 0 && ".!?".includes(sentence[end - 1] ?? "")) end -= 1;
     return sentence.slice(0, end);
   }
   return null;
+}
+
+/** True when `extractCommitmentLedgerRecords` would produce a row for `text`. */
+export function hasFirmCommitmentSentence(text: string): boolean {
+  return firstCommitmentSentence(text) !== null;
 }
 
 export function createLifeOpsCommitmentLedgerRecord(
@@ -244,7 +309,7 @@ export function extractCommitmentLedgerRecords(
       kind,
       summary: sentence,
       counterparty: input.counterparty?.trim() || null,
-      dueAt: resolveDueAt(sentence, input.observedAt),
+      dueAt: resolveDueAt(sentence, input.observedAt, input.timeZone ?? "UTC"),
       confidence: kind === "commitment" ? 0.74 : 0.82,
       metadata: {
         ...(input.metadata ?? {}),

@@ -2,7 +2,7 @@
  * Page container + stack primitives for cloud dashboard routes (max-width, spacing).
  */
 import type { HTMLAttributes, ReactNode } from "react";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 type DashboardContainerElement = "div" | "main" | "section";
 type DashboardContainerWidth = "wide" | "narrow" | "full";

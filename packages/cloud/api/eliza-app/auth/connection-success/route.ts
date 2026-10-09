@@ -1,8 +1,8 @@
 // Handles cloud API eliza app auth connection success route traffic with route-local auth expectations.
-import { Hono } from "hono";
 
-import { normalizePostMessageTargetOrigin } from "@/lib/services/agent-github-return";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { normalizePostMessageTargetOrigin } from "@elizaos/cloud-shared/lib/services/agent-github-return";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 function escapeForJsString(value: string): string {
   return value

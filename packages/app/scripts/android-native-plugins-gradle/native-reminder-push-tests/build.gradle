@@ -1,0 +1,32 @@
+apply plugin: 'com.android.library'
+
+def production = new File(rootDir, '../../platforms/android/app/src/main/java/ai/elizaos/app')
+def generated = layout.buildDirectory.dir('generated/production-reminder-push')
+def stage = tasks.register('stageProductionReminderPush', Copy) {
+    from production
+    include 'ElizaReminderMessagingService.java', 'SafePushNotificationsPlugin.java', 'DeepLinkBufferPlugin.java', 'ReminderNotificationDismissReceiver.java'
+    into generated
+}
+android {
+    namespace 'ai.elizaos.app'
+    compileSdk rootProject.ext.compileSdkVersion
+    defaultConfig { minSdk 26 }
+    sourceSets.main.java.srcDir(generated)
+    testOptions.unitTests.includeAndroidResources = true
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+}
+tasks.named('preBuild').configure { dependsOn stage }
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation project(':capacitor-android')
+    implementation project(':capacitor-push-notifications')
+    implementation 'com.google.firebase:firebase-messaging:25.0.1'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.16.1'
+}
+tasks.withType(Test).configureEach {
+    systemProperty 'robolectric.dependency.repo.url', rootProject.ext.mavenCentralMirrorUrl
+}

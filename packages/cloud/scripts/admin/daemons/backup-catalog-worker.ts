@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import type { AgentBackupCatalogRuntimeSummary } from "@elizaos/cloud-shared/lib/services/agent-backup-catalog-runtime";
 import {
   type AgentBackupCatalogWorkerComposition,
+  agentBackupCatalogCycleFailureDiagnostic,
   createAgentBackupCatalogWorkerComposition,
 } from "@elizaos/cloud-shared/lib/services/agent-backup-catalog-worker-composition";
 
@@ -129,6 +130,7 @@ const SAFE_BACKUP_CATALOG_ERROR_CODES = new Set([
 ]);
 
 const SAFE_BACKUP_CATALOG_ALERT_CODES = new Set([
+  "BACKUP_CAPTURE_V2_ESCALATED",
   "BACKUP_CAPTURE_V2_RETRY_SCHEDULED",
   "BACKUP_CAPTURE_V2_TERMINAL",
   "BACKUP_DELETION_ENQUEUE_RECONCILE_REQUIRED",
@@ -150,6 +152,7 @@ const SAFE_BACKUP_CATALOG_CONFIGURATION_NAMES = new Set([
   "ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED",
   "AGENT_BACKUP_AGENT_SCHEMA_VERSION",
   "AGENT_BACKUP_CAPTURE_DEADLINE_MS",
+  "AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS",
   "AGENT_BACKUP_CATALOG_RUNTIME_ENABLED",
   "AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE",
   "AGENT_BACKUP_CATALOG_WORKER_ID",
@@ -183,6 +186,12 @@ const SAFE_BACKUP_CATALOG_CONFIGURATION_NAMES = new Set([
   "AGENT_BACKUP_R2_ENDPOINT_ALIAS",
   "AGENT_BACKUP_R2_REGION",
   "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
+  "AGENT_BACKUP_RESTORE_CLAIM_MS",
+  "AGENT_BACKUP_RESTORE_COORDINATOR_ENABLED",
+  "AGENT_BACKUP_RESTORE_FAILOVER_ENABLED",
+  "AGENT_BACKUP_RESTORE_MAX_ATTEMPTS",
+  "AGENT_BACKUP_RESTORE_RETRY_BASE_MS",
+  "AGENT_BACKUP_RESTORE_WORKER_ID",
   "AGENT_BACKUP_RPO_SCHEDULER_ENABLED",
   "AGENT_BACKUP_RUNTIME_PLUGINS_JSON",
   "AGENT_BACKUP_SCHEDULE_BATCH_SIZE",
@@ -325,9 +334,29 @@ function ownDataString(error: unknown, property: string): string | undefined {
   }
 }
 
+function ownDataCause(error: unknown): unknown {
+  if (!error || (typeof error !== "object" && typeof error !== "function")) {
+    return undefined;
+  }
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(error, "cause");
+    return descriptor && "value" in descriptor ? descriptor.value : undefined;
+  } catch {
+    // error-policy:J1 hostile thrown values end the bounded cause walk.
+    return undefined;
+  }
+}
+
 function safeErrorCode(error: unknown): string {
-  const code = ownDataString(error, "code");
-  if (code && SAFE_BACKUP_CATALOG_ERROR_CODES.has(code)) return code;
+  // Stage attribution wraps the original failure; keep its allowlisted code.
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  for (let depth = 0; depth < 8 && current && !seen.has(current); depth += 1) {
+    seen.add(current);
+    const code = ownDataString(current, "code");
+    if (code && SAFE_BACKUP_CATALOG_ERROR_CODES.has(code)) return code;
+    current = ownDataCause(current);
+  }
   return "AGENT_BACKUP_CATALOG_CYCLE_FAILED";
 }
 
@@ -658,6 +687,9 @@ export async function runBackupCatalogWorker(input: {
         {
           code: safeErrorCode(error),
           failures,
+          // Closed stage/class/code/status only: never messages, queries,
+          // parameters, hosts, buckets, object keys, or credentials.
+          diagnostic: agentBackupCatalogCycleFailureDiagnostic(error),
         },
       );
       if (config.runOnce) {

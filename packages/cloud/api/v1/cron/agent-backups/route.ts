@@ -1,11 +1,14 @@
 // Handles v1 cloud API v1 cron agent backups route traffic with route-local auth expectations.
 
-import { parseCanonicalInteger } from "@elizaos/shared";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { verifyCronSecret } from "@elizaos/cloud-shared/lib/auth/cron";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { parseCanonicalInteger } from "@elizaos/core/protocol";
 import { Hono } from "hono";
-import { verifyCronSecret } from "@/lib/auth/cron";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * Scheduled-backups cron.

@@ -1,11 +1,19 @@
-import { registerPlugin } from "@capacitor/core";
+/**
+ * Public entry for @elizaos/plugin-native-wifi — Android-only Wi-Fi overlay.
+ *
+ * Wraps `@elizaos/plugin-native-wifi/bridge` and exposes a simple scan + connect UI plus
+ * a single SCAN_WIFI agent action. The app is only registered on Android via
+ * the `register` subpath; other platforms intentionally leave registration unchanged so
+ * the app does not appear in the catalog where it cannot function.
+ */
 
-import type { WiFiPlugin } from "./definitions";
-
-export * from "./definitions";
-
-const loadWeb = () => import("./web").then((m) => new m.WiFiWeb());
-
-export const WiFi = registerPlugin<WiFiPlugin>("ElizaWiFi", {
-  web: loadWeb,
-});
+export { WifiAppView } from "./components/WifiAppView";
+export {
+  registerWifiApp,
+  WIFI_APP_NAME,
+  wifiApp,
+} from "./components/wifi-app";
+export { appWifiPlugin, default } from "./plugin";
+export { wifiNetworksProvider } from "./providers/networks";
+export * from "./register";
+export * from "./ui";

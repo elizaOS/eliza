@@ -5,42 +5,37 @@
  * raw `fetch` from UI code.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
-import type { ProviderStatus } from "@elizaos/shared";
-import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge";
-import type { PublicRegistration } from "../services/local-inference/handler-registry";
-import type {
-  RoutingPolicy,
-  RoutingPreferences,
-} from "../services/local-inference/routing-preferences";
 import type {
   ActiveModelState,
   AgentModelSlot,
   CatalogModel,
+  DeviceBridgeStatus,
   DownloadJob,
   HardwareProbe,
   InstalledModel,
+  LocalInferenceRegistration,
   ModelAssignments,
-  ModelBucket,
   ModelHubSnapshot,
-} from "../services/local-inference/types";
-import type { VerifyResult } from "../services/local-inference/verify";
+  ProviderStatus,
+  VerifyResult,
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core/protocol";
+import type {
+  RoutingPolicy,
+  RoutingPreferences,
+} from "@elizaos/plugin-native-inference/model-catalog/routing-policy";
 import { ElizaClient } from "./client-base";
 
 let localInferenceHubRequest: Promise<ModelHubSnapshot> | null = null;
-
 /** Stable classification for an invalid hardware section in the hub response. */
 export const LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE =
   "LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID";
-
 const GPU_BACKENDS = new Set(["cuda", "metal", "vulkan"]);
 const MODEL_BUCKETS = new Set(["small", "mid", "large", "xl"]);
 const HARDWARE_PROBE_SOURCES = new Set(["capacitor-llama", "os-fallback"]);
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
 function invalidHardware(path: string, expected: string): never {
   throw new ElizaError(
     "Hardware details are unavailable because the agent returned invalid data. Retry after the device check finishes.",
@@ -50,7 +45,6 @@ function invalidHardware(path: string, expected: string): never {
     },
   );
 }
-
 function assertFiniteNonNegativeNumber(
   value: unknown,
   path: string,
@@ -59,7 +53,6 @@ function assertFiniteNonNegativeNumber(
     invalidHardware(path, "a finite non-negative number");
   }
 }
-
 function assertSupportedString(
   value: unknown,
   supported: ReadonlySet<string>,
@@ -70,10 +63,8 @@ function assertSupportedString(
     invalidHardware(path, expected);
   }
 }
-
 function assertHardwareProbe(value: unknown): asserts value is HardwareProbe {
   if (!isRecord(value)) invalidHardware("response.hardware", "an object");
-
   assertFiniteNonNegativeNumber(
     value.totalRamGb,
     "response.hardware.totalRamGb",
@@ -106,7 +97,6 @@ function assertHardwareProbe(value: unknown): asserts value is HardwareProbe {
     "response.hardware.source",
     "a supported hardware probe source",
   );
-
   if (value.gpu !== null) {
     if (!isRecord(value.gpu)) {
       invalidHardware("response.hardware.gpu", "an object or null");
@@ -127,7 +117,6 @@ function assertHardwareProbe(value: unknown): asserts value is HardwareProbe {
     );
   }
 }
-
 /** Validates the hardware subsection; other hub fields keep their own owners. */
 function parseModelHubSnapshotHardware(value: unknown): ModelHubSnapshot {
   if (!isRecord(value)) invalidHardware("response", "an object");
@@ -135,27 +124,8 @@ function parseModelHubSnapshotHardware(value: unknown): ModelHubSnapshot {
   return value as unknown as ModelHubSnapshot;
 }
 
-export type {
-  ActiveModelState,
-  AgentModelSlot,
-  CatalogModel,
-  DeviceBridgeStatus,
-  DownloadJob,
-  HardwareProbe,
-  InstalledModel,
-  ModelAssignments,
-  ModelBucket,
-  ModelHubSnapshot,
-  ProviderStatus,
-  PublicRegistration,
-  RoutingPolicy,
-  RoutingPreferences,
-  VerifyResult,
-};
-
 /** Hardware classification tier (mirrors the plugin `DeviceTier`). */
 export type DeviceTier = "MAX" | "GOOD" | "OKAY" | "POOR";
-
 /**
  * Resolved device tier for the UI. `reason` is a short human line explaining
  * the classification (e.g. "16.0 GB free · dGPU"); `cpuOnly` and `mobile` drive
@@ -169,137 +139,99 @@ export interface DeviceTierResult {
   /** True on iOS/Android (clamped to OKAY at best). */
   mobile: boolean;
   /**
-   * Authoritative fields populated when this came from the server
-   * `/api/local-inference/device-tier` endpoint (the same assessment the router's
-   * AUTO policy uses). Absent when falling back to the coarse client estimate.
+   * The server assessment used by the router's AUTO policy.
    */
-  recommendedMode?: "local" | "cloud-with-local-voice" | "cloud-only";
-  canRunLocalLm?: boolean;
-  canRunLocalVoice?: boolean;
+  recommendedMode: "local" | "cloud-with-local-voice" | "cloud-only";
+  canRunLocalLm: boolean;
+  canRunLocalVoice: boolean;
   /** The biggest eliza-1 tier (+128k QJL context) that fits, or null → Cloud. */
-  recommendedFit?: {
+  recommendedFit: {
     tierId: string;
     contextLength: number;
     kvQuant: string;
     contextDownscaled: boolean;
   } | null;
 }
-
-/**
- * Classify a `HardwareProbe` into a coarse device tier for UI display.
- *
- * This is a deliberately small client-side approximation of the plugin's
- * `classifyDeviceTier` (which carries the authoritative R9 thresholds). The UI
- * only needs the tier label + a one-line reason to render the banner and the
- * per-slot "Auto" resolution; it does not gate runtime behaviour, so the full
- * server classifier is not required on the client.
- */
-export function classifyDeviceTierFromProbe(
-  probe: HardwareProbe,
-): DeviceTierResult {
-  const mobile =
-    probe.mobile?.platform === "ios" || probe.mobile?.platform === "android";
-  const cpuOnly = !probe.gpu && !probe.appleSilicon;
-  const vramGb = probe.gpu?.totalVramGb ?? 0;
-  const effectiveMemoryGb = probe.appleSilicon
-    ? probe.totalRamGb
-    : probe.gpu
-      ? Math.max(vramGb, probe.totalRamGb * 0.5)
-      : probe.totalRamGb * 0.5;
-
-  const accelerator = probe.appleSilicon
-    ? `Apple Silicon ${probe.totalRamGb.toFixed(0)} GB`
-    : probe.gpu
-      ? `${vramGb.toFixed(0)} GB VRAM`
-      : `${probe.totalRamGb.toFixed(0)} GB RAM, ${probe.cpuCores} cores`;
-  const reason = `${effectiveMemoryGb.toFixed(1)} GB effective · ${probe.freeRamGb.toFixed(1)} GB free · ${accelerator}`;
-
-  const tier = ((): DeviceTier => {
-    // Mobile clamps to OKAY at best (OS background-task limits).
-    if (mobile) {
-      return probe.freeRamGb >= 3 ? "OKAY" : "POOR";
-    }
-    if (probe.cpuCores < 4) return "POOR";
-    const meetsMax =
-      effectiveMemoryGb >= 24 &&
-      probe.freeRamGb >= 16 &&
-      (vramGb >= 16 || (probe.appleSilicon && probe.totalRamGb >= 32));
-    if (meetsMax) return "MAX";
-    const meetsGood =
-      effectiveMemoryGb >= 12 &&
-      probe.freeRamGb >= 8 &&
-      (vramGb >= 8 ||
-        (probe.appleSilicon && probe.totalRamGb >= 16) ||
-        (cpuOnly && probe.totalRamGb >= 32));
-    if (meetsGood) return "GOOD";
-    const meetsOkay = effectiveMemoryGb >= 6 && probe.freeRamGb >= 3;
-    return meetsOkay ? "OKAY" : "POOR";
-  })();
-
-  return { tier, reason, cpuOnly, mobile };
-}
-
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getLocalInferenceHub(): Promise<ModelHubSnapshot>;
     getLocalInferenceHardware(): Promise<HardwareProbe>;
     /**
-     * Resolve the live device tier by probing hardware and classifying it.
+     * Read the authoritative device-tier assessment from the agent.
      * Backs the Settings → Voice tier banner and the per-slot "Auto"
      * resolution in the routing matrix.
      */
     getLocalInferenceDeviceTier(): Promise<DeviceTierResult>;
-    getLocalInferenceCatalog(): Promise<{ models: CatalogModel[] }>;
-    getLocalInferenceInstalled(): Promise<{ models: InstalledModel[] }>;
-    startLocalInferenceDownload(modelId: string): Promise<{ job: DownloadJob }>;
+    getLocalInferenceCatalog(): Promise<{
+      models: CatalogModel[];
+    }>;
+    getLocalInferenceInstalled(): Promise<{
+      models: InstalledModel[];
+    }>;
+    startLocalInferenceDownload(modelId: string): Promise<{
+      job: DownloadJob;
+    }>;
     searchHuggingFaceGguf(
       query: string,
       limit?: number,
       hub?: "huggingface" | "modelscope",
-    ): Promise<{ models: CatalogModel[] }>;
-    cancelLocalInferenceDownload(
-      modelId: string,
-    ): Promise<{ cancelled: boolean }>;
+    ): Promise<{
+      models: CatalogModel[];
+    }>;
+    cancelLocalInferenceDownload(modelId: string): Promise<{
+      cancelled: boolean;
+    }>;
     getLocalInferenceActive(): Promise<ActiveModelState>;
     setLocalInferenceActive(modelId: string): Promise<ActiveModelState>;
     clearLocalInferenceActive(): Promise<ActiveModelState>;
-    uninstallLocalInferenceModel(id: string): Promise<{ removed: boolean }>;
+    uninstallLocalInferenceModel(id: string): Promise<{
+      removed: boolean;
+    }>;
     getLocalInferenceDeviceStatus(): Promise<DeviceBridgeStatus>;
-    getLocalInferenceProviders(): Promise<{ providers: ProviderStatus[] }>;
+    getLocalInferenceProviders(): Promise<{
+      providers: ProviderStatus[];
+    }>;
     getLocalInferenceAssignments(): Promise<{
       assignments: ModelAssignments;
     }>;
     setLocalInferenceAssignment(
       slot: AgentModelSlot,
       modelId: string | null,
-    ): Promise<{ assignments: ModelAssignments }>;
+    ): Promise<{
+      assignments: ModelAssignments;
+    }>;
     verifyLocalInferenceModel(id: string): Promise<VerifyResult>;
     getLocalInferenceRouting(): Promise<{
-      registrations: PublicRegistration[];
+      registrations: LocalInferenceRegistration[];
       preferences: RoutingPreferences;
     }>;
     setLocalInferencePreferredProvider(
       slot: AgentModelSlot,
       provider: string | null,
-    ): Promise<{ preferences: RoutingPreferences }>;
+    ): Promise<{
+      preferences: RoutingPreferences;
+    }>;
     setLocalInferenceTextRouting(
       provider: string,
       policy?: RoutingPolicy,
-    ): Promise<{ preferences: RoutingPreferences }>;
+    ): Promise<{
+      preferences: RoutingPreferences;
+    }>;
     setLocalInferencePolicy(
       slot: AgentModelSlot,
       policy: RoutingPolicy | null,
-    ): Promise<{ preferences: RoutingPreferences }>;
+    ): Promise<{
+      preferences: RoutingPreferences;
+    }>;
   }
 }
-
 ElizaClient.prototype.getLocalInferenceHub = async function (
   this: ElizaClient,
 ) {
   localInferenceHubRequest ??= this.fetch<unknown>(
     "/api/local-inference/hub",
     undefined,
-    { timeoutMs: 30_000 },
+    { timeoutMs: 30000 },
   )
     .then(parseModelHubSnapshotHardware)
     .finally(() => {
@@ -307,7 +239,6 @@ ElizaClient.prototype.getLocalInferenceHub = async function (
     });
   return localInferenceHubRequest;
 };
-
 ElizaClient.prototype.getLocalInferenceHardware = async function (
   this: ElizaClient,
 ) {
@@ -315,63 +246,75 @@ ElizaClient.prototype.getLocalInferenceHardware = async function (
   assertHardwareProbe(hardware);
   return hardware;
 };
-
 ElizaClient.prototype.getLocalInferenceDeviceTier = async function (
   this: ElizaClient,
 ) {
-  // Prefer the authoritative server assessment (same one the router's AUTO policy
-  // consumes) so the UI's tier/recommendedMode/recommendedFit cannot disagree with
-  // the actual routing decision. Fall back to the coarse client estimate only when
-  // the endpoint is unavailable (older agent, transient error).
-  try {
-    const res = (await this.fetch("/api/local-inference/device-tier")) as {
-      tier?: {
-        tier?: DeviceTier;
-        reasons?: string[];
-        canRunLocalLm?: boolean;
-        canRunLocalVoice?: boolean;
-        recommendedMode?: DeviceTierResult["recommendedMode"];
-        recommendedFit?: DeviceTierResult["recommendedFit"];
-        numericContext?: {
-          vramGb?: number | null;
-          appleSilicon?: boolean;
-          mobile?: boolean;
-        };
-      };
-    };
-    const a = res?.tier;
-    if (a && typeof a.tier === "string") {
-      const nc = a.numericContext ?? {};
-      return {
-        tier: a.tier,
-        reason: a.reasons?.[0] ?? "",
-        cpuOnly: !nc.vramGb && !nc.appleSilicon,
-        mobile: Boolean(nc.mobile),
-        recommendedMode: a.recommendedMode,
-        canRunLocalLm: a.canRunLocalLm,
-        canRunLocalVoice: a.canRunLocalVoice,
-        recommendedFit: a.recommendedFit ?? null,
-      };
-    }
-  } catch {
-    // fall through to the client-side approximation
+  const response = await this.fetch<unknown>(
+    "/api/local-inference/device-tier",
+  );
+  const assessment = isRecord(response) ? response.tier : undefined;
+  const context = isRecord(assessment) ? assessment.numericContext : undefined;
+  if (
+    !isRecord(assessment) ||
+    typeof assessment.tier !== "string" ||
+    !["MAX", "GOOD", "OKAY", "POOR"].includes(assessment.tier) ||
+    !Array.isArray(assessment.reasons) ||
+    !assessment.reasons.every((reason) => typeof reason === "string") ||
+    typeof assessment.canRunLocalLm !== "boolean" ||
+    typeof assessment.canRunLocalVoice !== "boolean" ||
+    typeof assessment.recommendedMode !== "string" ||
+    !["local", "cloud-with-local-voice", "cloud-only"].includes(
+      assessment.recommendedMode,
+    ) ||
+    !isRecord(context) ||
+    typeof context.appleSilicon !== "boolean" ||
+    typeof context.mobile !== "boolean" ||
+    (context.vramGb !== null &&
+      (typeof context.vramGb !== "number" ||
+        !Number.isFinite(context.vramGb) ||
+        context.vramGb < 0))
+  ) {
+    throw new ElizaError("The agent returned an invalid device assessment.", {
+      code: "LOCAL_INFERENCE_DEVICE_TIER_RESPONSE_INVALID",
+    });
   }
-  const probe = await this.getLocalInferenceHardware();
-  return classifyDeviceTierFromProbe(probe);
+  const fit = assessment.recommendedFit;
+  if (
+    fit !== null &&
+    (!isRecord(fit) ||
+      typeof fit.tierId !== "string" ||
+      typeof fit.contextLength !== "number" ||
+      !Number.isFinite(fit.contextLength) ||
+      fit.contextLength <= 0 ||
+      typeof fit.kvQuant !== "string" ||
+      typeof fit.contextDownscaled !== "boolean")
+  ) {
+    throw new ElizaError("The agent returned an invalid model fit.", {
+      code: "LOCAL_INFERENCE_DEVICE_TIER_RESPONSE_INVALID",
+    });
+  }
+  return {
+    tier: assessment.tier as DeviceTier,
+    reason: assessment.reasons[0] ?? "",
+    cpuOnly: !context.vramGb && !context.appleSilicon,
+    mobile: context.mobile,
+    recommendedMode:
+      assessment.recommendedMode as DeviceTierResult["recommendedMode"],
+    canRunLocalLm: assessment.canRunLocalLm,
+    canRunLocalVoice: assessment.canRunLocalVoice,
+    recommendedFit: fit as DeviceTierResult["recommendedFit"],
+  };
 };
-
 ElizaClient.prototype.getLocalInferenceCatalog = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/catalog");
 };
-
 ElizaClient.prototype.getLocalInferenceInstalled = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/installed");
 };
-
 ElizaClient.prototype.startLocalInferenceDownload = async function (
   this: ElizaClient,
   modelId: string,
@@ -381,7 +324,6 @@ ElizaClient.prototype.startLocalInferenceDownload = async function (
     body: JSON.stringify({ modelId }),
   });
 };
-
 ElizaClient.prototype.searchHuggingFaceGguf = async function (
   this: ElizaClient,
   query: string,
@@ -393,7 +335,6 @@ ElizaClient.prototype.searchHuggingFaceGguf = async function (
   params.set("hub", hub);
   return this.fetch(`/api/local-inference/hf-search?${params.toString()}`);
 };
-
 ElizaClient.prototype.cancelLocalInferenceDownload = async function (
   this: ElizaClient,
   modelId: string,
@@ -403,13 +344,11 @@ ElizaClient.prototype.cancelLocalInferenceDownload = async function (
     { method: "DELETE" },
   );
 };
-
 ElizaClient.prototype.getLocalInferenceActive = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/active");
 };
-
 ElizaClient.prototype.setLocalInferenceActive = async function (
   this: ElizaClient,
   modelId: string,
@@ -419,7 +358,6 @@ ElizaClient.prototype.setLocalInferenceActive = async function (
     body: JSON.stringify({ modelId }),
   });
 };
-
 ElizaClient.prototype.clearLocalInferenceActive = async function (
   this: ElizaClient,
 ) {
@@ -427,7 +365,6 @@ ElizaClient.prototype.clearLocalInferenceActive = async function (
     method: "DELETE",
   });
 };
-
 ElizaClient.prototype.uninstallLocalInferenceModel = async function (
   this: ElizaClient,
   id: string,
@@ -437,25 +374,21 @@ ElizaClient.prototype.uninstallLocalInferenceModel = async function (
     { method: "DELETE" },
   );
 };
-
 ElizaClient.prototype.getLocalInferenceDeviceStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/device");
 };
-
 ElizaClient.prototype.getLocalInferenceProviders = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/providers");
 };
-
 ElizaClient.prototype.getLocalInferenceAssignments = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/assignments");
 };
-
 ElizaClient.prototype.setLocalInferenceAssignment = async function (
   this: ElizaClient,
   slot: AgentModelSlot,
@@ -466,7 +399,6 @@ ElizaClient.prototype.setLocalInferenceAssignment = async function (
     body: JSON.stringify({ slot, modelId }),
   });
 };
-
 ElizaClient.prototype.verifyLocalInferenceModel = async function (
   this: ElizaClient,
   id: string,
@@ -476,13 +408,11 @@ ElizaClient.prototype.verifyLocalInferenceModel = async function (
     { method: "POST" },
   );
 };
-
 ElizaClient.prototype.getLocalInferenceRouting = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/local-inference/routing");
 };
-
 ElizaClient.prototype.setLocalInferencePreferredProvider = async function (
   this: ElizaClient,
   slot: AgentModelSlot,
@@ -493,7 +423,6 @@ ElizaClient.prototype.setLocalInferencePreferredProvider = async function (
     body: JSON.stringify({ slot, provider }),
   });
 };
-
 ElizaClient.prototype.setLocalInferenceTextRouting = async function (
   this: ElizaClient,
   provider: string,
@@ -504,7 +433,6 @@ ElizaClient.prototype.setLocalInferenceTextRouting = async function (
     body: JSON.stringify({ provider, policy }),
   });
 };
-
 ElizaClient.prototype.setLocalInferencePolicy = async function (
   this: ElizaClient,
   slot: AgentModelSlot,

@@ -193,12 +193,3 @@ export function matchWakeName(
   }
   return NO_MATCH;
 }
-
-/** Convenience boolean wrapper. */
-export function isWakePhrase(
-  transcript: string,
-  name: string,
-  options?: WakeNameMatchOptions,
-): boolean {
-  return matchWakeName(transcript, name, options).matched;
-}

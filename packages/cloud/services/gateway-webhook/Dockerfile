@@ -10,8 +10,8 @@
 #   docker build -f packages/cloud/services/gateway-webhook/Dockerfile .
 #
 # The deps stage writes a pruned workspace root containing just this service and
-# the workspace packages it needs, so `bun install` resolves every link without
-# installing the whole monorepo (32 packages rather than several thousand).
+# the workspace packages it needs, including SDK browser billing contracts.
+# This resolves workspace links without installing the full monorepo.
 
 # BUN_BASE selects the Bun base image. Default targets linux/amd64 + linux/arm64
 # via upstream oven/bun, pinned to the canonical version in
@@ -19,7 +19,7 @@
 # For linux/riscv64 (no upstream image — oven-sh/bun#6266, #21923), build a local
 # Bun image via elizaOS/os packages/os/toolchains/bun-riscv64/build.sh and pass
 # --build-arg BUN_BASE=<local-tag>.
-ARG BUN_BASE=oven/bun:1.3.14-alpine
+ARG BUN_BASE=oven/bun:1.4.2-alpine
 
 FROM ${BUN_BASE} AS base
 
@@ -28,20 +28,25 @@ WORKDIR /app
 ARG SERVICE_DIR=packages/cloud/services/gateway-webhook
 ARG COMMON_DIR=packages/cloud/services/_common
 ARG CORE_DIR=packages/core
+ARG SDK_DIR=packages/cloud/sdk
 
 # Install dependencies
 FROM base AS deps
 ARG SERVICE_DIR
 ARG COMMON_DIR
 ARG CORE_DIR
+ARG SDK_DIR
 COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
 COPY ${COMMON_DIR}/package.json ${COMMON_DIR}/
 COPY ${CORE_DIR}/package.json ${CORE_DIR}/
+COPY ${SDK_DIR}/package.json ${SDK_DIR}/
 # Production dependency resolution must not traverse test-only workspace links;
 # doing so would require vendoring cloud-shared's entire transitive workspace.
 RUN bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); delete manifest.devDependencies; await Bun.write(path, JSON.stringify(manifest));' "${SERVICE_DIR}/package.json" \
-    && bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); await Bun.write(path, JSON.stringify({name:manifest.name,version:manifest.version,type:"module",exports:"./src/errors.ts"}));' "${CORE_DIR}/package.json" \
-    && printf '{"name":"gateway-webhook-build","private":true,"workspaces":["packages/cloud/services/*","packages/core"]}\n' > package.json \
+    && bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); await Bun.write(path, JSON.stringify({name:manifest.name,version:manifest.version,type:"module",exports:{".":"./src/errors.ts","./errors":"./src/errors.ts","./protocol":"./src/protocol.ts","./security/log-redaction":"./src/security/log-redaction.ts"}}));' "${CORE_DIR}/package.json" \
+    && mkdir -p "${CORE_DIR}/src" \
+    && printf 'export * from "./errors.ts"; export * from "./security/log-redaction.ts";\n' > "${CORE_DIR}/src/protocol.ts" \
+    && printf '{"name":"gateway-webhook-build","private":true,"workspaces":["packages/cloud/services/*","packages/core","packages/cloud/sdk"]}\n' > package.json \
     && bun install --production
 
 # Build stage
@@ -49,12 +54,16 @@ FROM deps AS builder
 ARG SERVICE_DIR
 ARG COMMON_DIR
 ARG CORE_DIR
+ARG SDK_DIR
 COPY ${COMMON_DIR}/src ${COMMON_DIR}/src
+COPY ${SDK_DIR}/src ${SDK_DIR}/src
 COPY ${CORE_DIR}/src/errors.ts ${CORE_DIR}/src/errors.ts
+COPY ${CORE_DIR}/src/utils/errors.ts ${CORE_DIR}/src/utils/errors.ts
+COPY ${CORE_DIR}/src/security/log-redaction.ts ${CORE_DIR}/src/security/log-redaction.ts
 COPY ${SERVICE_DIR}/tsconfig.json ${SERVICE_DIR}/
 COPY ${SERVICE_DIR}/src ${SERVICE_DIR}/src
 WORKDIR /app/${SERVICE_DIR}
-RUN bun build src/index.ts --outdir dist --target node
+RUN bun build src/index.ts --outdir dist --target node --conditions eliza-source
 
 # Production stage
 FROM base AS runner

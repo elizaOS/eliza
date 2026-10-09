@@ -7,6 +7,8 @@ const PERSONAL_SHARED_AGENT_NAMESPACE = "af8f7624-42f8-4da8-bdf1-593b1a0d7f20";
 const PERSONAL_SHARED_AGENT_PREFIX = "personal:";
 
 export interface PersonalSharedAccountIdentity {
+  /** Optional canonical profile name supplied by the server account resolver. */
+  ownerName?: string;
   userId: string;
   organizationId: string;
 }

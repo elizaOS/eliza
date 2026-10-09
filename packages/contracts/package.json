@@ -1,0 +1,60 @@
+{
+  "name": "@elizaos/contracts",
+  "version": "2.0.3-beta.7",
+  "description": "Browser-safe shared domain contracts and validation for Eliza hosts, plugins and renderers.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "eliza-source": "./src/node.ts",
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js",
+      "default": "./dist/node.js"
+    },
+    "./native-notes-query": {
+      "eliza-source": "./src/native-notes-query.ts",
+      "types": "./dist/native-notes-query.d.ts",
+      "import": "./dist/native-notes-query.js",
+      "default": "./dist/native-notes-query.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc6 --noCheck -p tsconfig.emit.json && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/contracts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint:check": "bunx @biomejs/biome check src *.ts",
+    "lint": "bunx @biomejs/biome check --write src *.ts",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "scripts": {
+      "buildOnInstall": {},
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
+}

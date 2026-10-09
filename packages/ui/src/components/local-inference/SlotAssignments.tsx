@@ -1,15 +1,16 @@
 /** Assigns installed local models to runtime slots with capability guardrails. */
 
-import { useCallback, useRef, useState } from "react";
-import { client } from "../../api";
 import type {
   AgentModelSlot,
   InstalledModel,
   ModelAssignments,
-} from "../../api/client-local-inference";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
+} from "@elizaos/contracts";
+import { isVerifiedCuratedEliza1Download } from "@elizaos/plugin-native-inference/model-catalog/catalog";
+import { useCallback, useRef, useState } from "react";
+import { client } from "../../api/client";
+import { appNameInterpolationVars } from "../../config/branding-base";
+import { useBranding } from "../../config/branding-react.hooks";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { isVerifiedCuratedEliza1Download } from "../../services/local-inference/catalog-policy";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import {
   Select,

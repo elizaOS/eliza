@@ -14,7 +14,7 @@ import dns, { type LookupAddress } from "node:dns";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
-import { isMobilePlatform } from "@elizaos/shared";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import { decodeMobileFetchBody } from "./mobile-dns-decode-budget.ts";
 
 export {
@@ -34,6 +34,18 @@ export {
  * agent.
  */
 const MOBILE_DNS_SERVERS = ["1.1.1.1", "8.8.8.8"] as const;
+
+/** Native host network configuration, never renderer-supplied names or URLs. */
+export function mobileDnsServers(
+  value = process.env.ELIZA_MOBILE_DNS_SERVERS,
+): string[] {
+  if (value === undefined) return [...MOBILE_DNS_SERVERS];
+  const servers = value.split(",").map((server) => server.trim());
+  if (servers.length > 8 || servers.some((server) => net.isIP(server) === 0)) {
+    throw new Error("Invalid native mobile DNS configuration");
+  }
+  return [...new Set(servers)];
+}
 
 let configured = false;
 
@@ -62,17 +74,18 @@ function needsResolution(hostname: string): boolean {
  */
 export function configureMobileDnsIfNeeded(): void {
   if (configured || !isMobilePlatform()) return;
+  const servers = mobileDnsServers();
   configured = true;
 
   try {
-    dns.setServers([...MOBILE_DNS_SERVERS]);
+    dns.setServers(servers);
   } catch {
     // older/locked-down resolvers may reject setServers; layers 2+3 cover us.
   }
 
   const resolver = new dns.Resolver();
   try {
-    resolver.setServers([...MOBILE_DNS_SERVERS]);
+    resolver.setServers(servers);
   } catch {
     return;
   }

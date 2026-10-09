@@ -1,11 +1,12 @@
 /** Registers authoritative plugin schemas and applies guarded LifeOps compatibility repairs in dependency order. */
-import { knowledgeGraphSchema } from "@elizaos/agent/services/knowledge-graph";
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { browserBridgeSchema } from "@elizaos/plugin-browser/schema";
-import { calendarSchema } from "@elizaos/plugin-calendar/service/schema";
+import { calendarSchema } from "@elizaos/plugin-calendar";
 import { goalsDbSchema } from "@elizaos/plugin-goals/db/schema";
-import { inboxDbSchema } from "@elizaos/plugin-inbox/db/schema";
+import { inboxDbSchema } from "@elizaos/plugin-inbox";
+import { knowledgeGraphSchema } from "@elizaos/plugin-relationships";
 import { remindersDbSchema } from "@elizaos/plugin-reminders/db/schema";
 import { schedulingDbSchema } from "@elizaos/plugin-scheduling";
 import { resolveBrowserBridgeTable } from "./repositories/browser-tables.js";
@@ -38,8 +39,8 @@ export async function bootstrapSchema(runtime: IAgentRuntime): Promise<void> {
   if (typeof adapter.isReady === "function" && !(await adapter.isReady())) {
     return;
   }
-  // Production's `eliza` plugin owns both the knowledge-graph and pendant
-  // session tables. Re-registering only knowledgeGraphSchema under that same
+  // Production's `eliza` plugin owns the host schema, including the graph.
+  // Re-registering only knowledgeGraphSchema under that same
   // owner name replaces the migration service's full schema snapshot and
   // makes every later route bootstrap look like a destructive table drop.
   // Reuse the runtime's authoritative schema when present; isolated test

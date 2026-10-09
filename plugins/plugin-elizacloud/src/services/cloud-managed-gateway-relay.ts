@@ -12,7 +12,7 @@ import {
   Service,
   type UUID,
 } from "@elizaos/core";
-import { isCloudProvisionedContainer } from "@elizaos/shared";
+import { isCloudProvisionedContainer } from "../cloud-config/cloud-provisioning.js";
 import type {
   GatewayRelayRequest,
   GatewayRelayRequestEnvelope,

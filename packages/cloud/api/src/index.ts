@@ -10,9 +10,7 @@
  *   bun run dev       # wrangler dev
  *   bun run deploy    # wrangler deploy
  */
-
 import "./worker-polyfills";
-
 import {
   isPlaywrightTestAuthEnabled,
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
@@ -20,28 +18,25 @@ import {
 import { readStewardAccessCookieFromHeader } from "@elizaos/cloud-shared/lib/auth/steward-cookies";
 import { corsMiddleware } from "@elizaos/cloud-shared/lib/cors/cloud-api-hono-cors";
 import { getCookieValueFromHeader } from "@elizaos/cloud-shared/lib/http/cookie-header";
-import {
-  canonicalCloudPathForLegacyDashboard,
-  canonicalElizaServiceHostname,
-  classifyElizaHostname,
-  ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/shared/elizacloud";
-import { Hono, type ExecutionContext as HonoExecutionContext } from "hono";
-import {
-  cloneRequestWithScheduledCronMetadata,
-  makeCronHandler,
-} from "@/lib/cron/cloudflare-cron";
+import { nativeApplicationSelectionSurfaceError } from "@elizaos/cloud-shared/lib/http/native-application-selection";
 import {
   ELIZA_TRACE_ID_HEADER,
   resolveElizaTraceId,
   setHttpTelemetryHeaders,
-} from "@/lib/observability/http-telemetry";
-import { shouldDecorateHttpTelemetryStatus } from "@/lib/observability/http-telemetry-hono";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { shouldDecorateHttpTelemetryStatus } from "@elizaos/cloud-shared/lib/observability/http-telemetry-hono";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import {
+  canonicalElizaServiceHostname,
+  classifyElizaHostname,
+  ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { Hono, type ExecutionContext as HonoExecutionContext } from "hono";
 import { KNOWN_ROUTE_SHARD_KEYS } from "./_router-shard-keys.generated";
 import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isThinCliSessionPath } from "./cli-session-paths";
+import { cloneRequestWithScheduledCronMetadata, makeCronHandler } from "./cron";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import {
   isPersonalTelegramDeliveryEpoch1CompatEnabled,
@@ -83,18 +78,17 @@ let stewardThinAppPromise: Promise<Hono<AppEnv>> | undefined;
 let cliSessionThinAppPromise: Promise<Hono<AppEnv>> | undefined;
 /** Lazy provider-webhook shell that avoids the generated application router. */
 let webhookAppPromise: Promise<Hono<AppEnv>> | undefined;
+/** Personal message routes avoid unrelated application bootstrap. */
+let personalSharedAppPromise: Promise<Hono<AppEnv>> | undefined;
 /** Lazy authenticated Discord shell that avoids the generated application router. */
 let discordGatewayAppPromise: Promise<Hono<AppEnv>> | undefined;
-
 const CRYPTO_PAYMENT_CONFIRM_PATH_RE =
   /^\/api\/crypto\/payments\/[^/]+\/confirm\/?$/;
 const STRUCTURAL_JWT_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
-
 // Preserve the full app's credentialed CORS policy without loading the route
 // shard for a browser preflight. The CORS middleware completes OPTIONS itself.
 const cryptoPaymentConfirmPreflightApp = new Hono<AppEnv>();
 cryptoPaymentConfirmPreflightApp.use("*", corsMiddleware);
-
 async function handleCryptoPaymentConfirmBeforeShard(
   request: Request,
   env: AppEnv["Bindings"],
@@ -108,7 +102,6 @@ async function handleCryptoPaymentConfirmBeforeShard(
     return cryptoPaymentConfirmPreflightApp.fetch(request, env, ctx);
   }
   if (request.method !== "POST") return null;
-
   const authorization = request.headers.get("authorization")?.trim() ?? "";
   const bearer = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? "";
   const hasApiKey =
@@ -124,7 +117,6 @@ async function handleCryptoPaymentConfirmBeforeShard(
       { status: 401, headers: { "cache-control": "no-store" } },
     );
   }
-
   const hasPossibleSession = Boolean(
     readStewardAccessCookieFromHeader(
       request.headers.get("cookie"),
@@ -138,7 +130,6 @@ async function handleCryptoPaymentConfirmBeforeShard(
         )),
   );
   if (hasPossibleSession) return null;
-
   return Response.json(
     {
       success: false,
@@ -148,11 +139,9 @@ async function handleCryptoPaymentConfirmBeforeShard(
     { status: 401, headers: { "cache-control": "no-store" } },
   );
 }
-
 const STAGING_SESSION_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STAGING_SESSION_KEY_ID_RE = /^staging-qa-v1-[A-Za-z0-9._-]{1,48}$/;
-
 function hasExactStagingSessionUuidList(value: string | undefined): boolean {
   const entries = value
     ?.split(/[\s,]+/)
@@ -165,14 +154,14 @@ function hasExactStagingSessionUuidList(value: string | undefined): boolean {
       entries.every((entry) => STAGING_SESSION_UUID_RE.test(entry)),
   );
 }
-
 interface InferenceRouteSpec {
   key: string;
   mountPath: string;
   matches(pathname: string): boolean;
-  load(): Promise<{ default: Hono<AppEnv> }>;
+  load(): Promise<{
+    default: Hono<AppEnv>;
+  }>;
 }
-
 function exactInferenceRoute(
   pathname: string,
   load: InferenceRouteSpec["load"],
@@ -184,7 +173,6 @@ function exactInferenceRoute(
     load,
   };
 }
-
 const INFERENCE_ROUTES: readonly InferenceRouteSpec[] = [
   exactInferenceRoute(
     "/api/v1/chat/completions",
@@ -260,7 +248,10 @@ const DEFAULT_AGENT_BASE_DOMAIN =
   ELIZA_DOMAIN_CONTRACTS.production.dedicatedAgentHostnameSuffix.slice(1);
 const FRONTEND_ALIAS_TARGETS: Record<
   string,
-  { appHost: string; apiHost: string }
+  {
+    appHost: string;
+    apiHost: string;
+  }
 > = {
   "cloud.eliza.app": {
     appHost: "eliza-app.pages.dev",
@@ -279,7 +270,6 @@ type AgentDomainBindings = Pick<
   AppEnv["Bindings"],
   "AGENT_ROUTER_ORIGIN_HOST" | "ELIZA_CLOUD_AGENT_BASE_DOMAIN"
 >;
-
 function getAppForPath(pathname: string): Promise<Hono<AppEnv>> {
   const shard = knownRouteShardKey(pathname, knownRouteShards);
   let promise = fullAppPromises.get(shard);
@@ -298,7 +288,6 @@ function getAppForPath(pathname: string): Promise<Hono<AppEnv>> {
   }
   return promise;
 }
-
 /** Preserve Workerd upgrade responses; rebuilding one drops its `webSocket` extension. */
 export function decorateFullAppDispatchResponse(
   response: Response,
@@ -307,7 +296,6 @@ export function decorateFullAppDispatchResponse(
   moduleInitMs: number | null,
 ): Response {
   if (!shouldDecorateHttpTelemetryStatus(response.status)) return response;
-
   const responseHeaders = new Headers(response.headers);
   setHttpTelemetryHeaders(responseHeaders, traceId, [
     { name: "full_app_dispatch", durationMs: dispatchMs },
@@ -331,7 +319,6 @@ export function decorateFullAppDispatchResponse(
     headers: responseHeaders,
   });
 }
-
 export async function dispatchFullApp(
   request: Request,
   env: AppEnv["Bindings"],
@@ -344,7 +331,6 @@ export async function dispatchFullApp(
   const cryptoConfirmAuthRejection =
     await handleCryptoPaymentConfirmBeforeShard(request, env, ctx);
   if (cryptoConfirmAuthRejection) return cryptoConfirmAuthRejection;
-
   const startedAt = performance.now();
   const requestPathname = new URL(request.url).pathname;
   const moduleWasInitialized = loadFullApp
@@ -361,7 +347,6 @@ export async function dispatchFullApp(
   });
   let moduleInitMs: number | null = null;
   let status: number | null = null;
-
   try {
     const app = await loadApp();
     moduleInitMs = Math.round((performance.now() - startedAt) * 100) / 100;
@@ -387,7 +372,7 @@ export async function dispatchFullApp(
     if (
       status === null ||
       status >= 500 ||
-      durationMs >= 1_000 ||
+      durationMs >= 1000 ||
       (moduleInitMs ?? 0) >= 250
     ) {
       logger.warn(
@@ -399,35 +384,29 @@ export async function dispatchFullApp(
     }
   }
 }
-
 async function getStewardThinApp(): Promise<Hono<AppEnv>> {
   stewardThinAppPromise ??= import("./steward/thin-app").then((m) =>
     m.createStewardThinApp(),
   );
   return stewardThinAppPromise;
 }
-
 async function getCliSessionThinApp(): Promise<Hono<AppEnv>> {
   cliSessionThinAppPromise ??= import("./cli-session-app").then((m) =>
     m.createCliSessionThinApp(),
   );
   return cliSessionThinAppPromise;
 }
-
 const ELIZA_APP_WEBHOOK_PATH =
   /^\/api\/eliza-app\/webhook\/(?:blooio|discord|telegram|twilio|whatsapp)(?:\/|$)/;
-
 export function isElizaAppWebhookPath(pathname: string): boolean {
   return ELIZA_APP_WEBHOOK_PATH.test(pathname);
 }
-
 async function getWebhookApp(): Promise<Hono<AppEnv>> {
   webhookAppPromise ??= import("./webhook-app").then((module) =>
     module.createWebhookApp(),
   );
   return webhookAppPromise;
 }
-
 async function dispatchWebhook(
   request: Request,
   env: AppEnv["Bindings"],
@@ -435,7 +414,6 @@ async function dispatchWebhook(
 ): Promise<Response | null> {
   const pathname = new URL(request.url).pathname;
   if (!isElizaAppWebhookPath(pathname)) return null;
-
   const startedAt = performance.now();
   const moduleWasInitialized = webhookAppPromise !== undefined;
   const traceId = resolveElizaTraceId(request.headers);
@@ -453,7 +431,6 @@ async function dispatchWebhook(
       : []),
   ]);
   responseHeaders.set("X-Eliza-Webhook-Path", "thin");
-
   const logContext = {
     traceId,
     path: pathname,
@@ -462,7 +439,7 @@ async function dispatchWebhook(
     moduleInitMs: Math.round(moduleInitMs * 100) / 100,
     durationMs: Math.round(dispatchMs * 100) / 100,
   };
-  if (response.status >= 500 || dispatchMs >= 1_000 || moduleInitMs >= 250) {
+  if (response.status >= 500 || dispatchMs >= 1000 || moduleInitMs >= 250) {
     logger.warn(
       "[CloudEntrypoint] webhook dispatch slow or failed",
       logContext,
@@ -470,31 +447,26 @@ async function dispatchWebhook(
   } else {
     logger.info("[CloudEntrypoint] webhook dispatch completed", logContext);
   }
-
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
     headers: responseHeaders,
   });
 }
-
 const INTERNAL_DISCORD_GATEWAY_PATHS = new Set([
   "/api/internal/auth/token",
   "/api/internal/discord/eliza-app/messages",
   "/api/internal/discord/eliza-app/pending-greetings",
 ]);
-
 export function isInternalDiscordGatewayPath(pathname: string): boolean {
   return INTERNAL_DISCORD_GATEWAY_PATHS.has(pathname);
 }
-
 async function getDiscordGatewayApp(): Promise<Hono<AppEnv>> {
   discordGatewayAppPromise ??= import("./discord-gateway-app").then((module) =>
     module.createDiscordGatewayApp(),
   );
   return discordGatewayAppPromise;
 }
-
 async function dispatchDiscordGateway(
   request: Request,
   env: AppEnv["Bindings"],
@@ -502,7 +474,6 @@ async function dispatchDiscordGateway(
 ): Promise<Response | null> {
   const pathname = new URL(request.url).pathname;
   if (!isInternalDiscordGatewayPath(pathname)) return null;
-
   const startedAt = performance.now();
   const moduleWasInitialized = discordGatewayAppPromise !== undefined;
   const traceId = resolveElizaTraceId(request.headers);
@@ -520,7 +491,6 @@ async function dispatchDiscordGateway(
       : []),
   ]);
   responseHeaders.set("X-Eliza-Discord-Path", "thin");
-
   const logContext = {
     traceId,
     status: response.status,
@@ -528,7 +498,7 @@ async function dispatchDiscordGateway(
     moduleInitMs: Math.round(moduleInitMs * 100) / 100,
     durationMs: Math.round(dispatchMs * 100) / 100,
   };
-  if (response.status >= 500 || dispatchMs >= 1_000 || moduleInitMs >= 250) {
+  if (response.status >= 500 || dispatchMs >= 1000 || moduleInitMs >= 250) {
     logger.warn(
       "[CloudEntrypoint] Discord gateway dispatch slow or failed",
       logContext,
@@ -539,14 +509,12 @@ async function dispatchDiscordGateway(
       logContext,
     );
   }
-
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
     headers: responseHeaders,
   });
 }
-
 async function dispatchCliSession(
   request: Request,
   env: AppEnv["Bindings"],
@@ -554,14 +522,12 @@ async function dispatchCliSession(
 ): Promise<Response | null> {
   const pathname = new URL(request.url).pathname;
   if (!isThinCliSessionPath(request.method, pathname)) return null;
-
   const dispatchStartedAt = performance.now();
   const moduleWasInitialized = cliSessionThinAppPromise !== undefined;
   const app = await getCliSessionThinApp();
   const moduleInitMs = performance.now() - dispatchStartedAt;
   const response = await app.fetch(request, env, ctx);
   const dispatchMs = performance.now() - dispatchStartedAt;
-
   const headers = new Headers(response.headers);
   headers.set("X-Eliza-Cli-Session-Path", "thin");
   headers.append(
@@ -580,7 +546,6 @@ async function dispatchCliSession(
     headers,
   });
 }
-
 async function dispatchThinSteward(
   request: Request,
   env: AppEnv["Bindings"],
@@ -588,14 +553,12 @@ async function dispatchThinSteward(
 ): Promise<Response | null> {
   const pathname = new URL(request.url).pathname;
   if (!isThinStewardPath(request.method, pathname)) return null;
-
   const dispatchStartedAt = performance.now();
   const moduleWasInitialized = stewardThinAppPromise !== undefined;
   const app = await getStewardThinApp();
   const moduleInitMs = performance.now() - dispatchStartedAt;
   const response = await app.fetch(request, env, ctx);
   const dispatchMs = performance.now() - dispatchStartedAt;
-
   const headers = new Headers(response.headers);
   headers.set("X-Eliza-Steward-Path", "thin");
   headers.append(
@@ -614,7 +577,6 @@ async function dispatchThinSteward(
     headers,
   });
 }
-
 async function getInferenceApp(
   spec: InferenceRouteSpec,
 ): Promise<Hono<AppEnv>> {
@@ -628,17 +590,14 @@ async function getInferenceApp(
   }
   return promise;
 }
-
 export function isThinInferenceEnabled(
   env: Pick<AppEnv["Bindings"], "THIN_INFERENCE_ENTRY_ENABLED">,
 ): boolean {
   return env.THIN_INFERENCE_ENTRY_ENABLED === "true";
 }
-
 export function isCanonicalInferencePath(pathname: string): boolean {
   return INFERENCE_ROUTES.some((route) => route.matches(pathname));
 }
-
 async function dispatchInference(
   request: Request,
   env: AppEnv["Bindings"],
@@ -652,14 +611,12 @@ async function dispatchInference(
     candidate.matches(pathname),
   );
   if (!route) return null;
-
   const dispatchStartedAt = performance.now();
   const moduleWasInitialized = inferenceAppPromises.has(route.key);
   const app = await getInferenceApp(route);
   const moduleInitMs = performance.now() - dispatchStartedAt;
   const response = await app.fetch(request, env, ctx);
   const dispatchMs = performance.now() - dispatchStartedAt;
-
   response.headers.set("X-Eliza-Inference-Path", "thin");
   response.headers.append(
     "Server-Timing",
@@ -673,7 +630,6 @@ async function dispatchInference(
   }
   return response;
 }
-
 function healthResponse(env: AppEnv["Bindings"]): Response {
   const personalSharedTelegramEdgeEnabled =
     isPersonalSharedTelegramEdgeEnabled(env);
@@ -715,7 +671,12 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
     {
       status: "ok",
       timestamp: Date.now(),
-      region: (env as { CF_REGION?: string }).CF_REGION ?? "unknown",
+      region:
+        (
+          env as {
+            CF_REGION?: string;
+          }
+        ).CF_REGION ?? "unknown",
       commit: env.ELIZA_DEPLOY_COMMIT ?? null,
       ...(e2eRunReceipt ? { e2eRunReceipt } : {}),
       // Self-identify which deployment env answered. Production and staging
@@ -726,7 +687,7 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       // staging subdomain silently falls into the prod wildcard and starts
       // serving prod — invisible except by asking who answered. This field is
       // the beacon the cross-environment routing verifier probes
-      // (packages/cloud/scripts/verify-environment-routing.mjs).
+      // (packages/cloud/scripts/verify-environment-routing.ts).
       environment: env.ENVIRONMENT ?? null,
       // The protected Telegram cutover uses a secret binding to override the
       // tracked false default without changing code. This value-free beacon
@@ -768,7 +729,6 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
     },
   );
 }
-
 function normalizeHostname(hostname: string | undefined): string | null {
   const value = hostname?.trim().toLowerCase();
   if (!value) return null;
@@ -777,7 +737,6 @@ function normalizeHostname(hostname: string | undefined): string | null {
   const normalized = value.slice(0, end);
   return normalized || null;
 }
-
 export function getGeneratedAgentId(
   url: URL,
   env: AgentDomainBindings,
@@ -793,7 +752,6 @@ export function getGeneratedAgentId(
   }
   return null;
 }
-
 export function redirectFrontendHost(
   url: URL,
   _env: AgentDomainBindings,
@@ -810,10 +768,6 @@ export function redirectFrontendHost(
     );
   }
   const classified = classifyElizaHostname(hostname);
-  const canonicalDashboardPath = canonicalCloudPathForLegacyDashboard(
-    url.pathname,
-    url.search,
-  );
   let canonicalHostname: string | null = null;
   if (hostname === "www.eliza.app") {
     canonicalHostname = new URL(
@@ -824,9 +778,6 @@ export function redirectFrontendHost(
       ELIZA_DOMAIN_CONTRACTS[classified.environment ?? "production"];
     if (isFrontendAliasBackendPath(url)) {
       canonicalHostname = new URL(contract.cloudApiOrigin).hostname;
-    } else if (canonicalDashboardPath) {
-      canonicalHostname = new URL(contract.cloudAppOrigin).hostname;
-      url.pathname = canonicalDashboardPath;
     } else {
       canonicalHostname = classified.canonicalHostname;
     }
@@ -848,20 +799,10 @@ export function redirectFrontendHost(
     }
   }
   if (!canonicalHostname || canonicalHostname === hostname) return null;
-
-  if (
-    canonicalDashboardPath &&
-    (classified.role === "legacy-marketing" ||
-      classified.role === "legacy-cloud-app")
-  ) {
-    url.pathname = canonicalDashboardPath;
-  }
-
   const targetUrl = new URL(url);
   targetUrl.hostname = canonicalHostname;
   return Response.redirect(targetUrl.toString(), 308);
 }
-
 /** Identify legacy wildcard hosts with no explicit redirect or UUID agent. */
 export function isUnsupportedLegacyWildcardHostname(
   rawHostname: string,
@@ -872,7 +813,6 @@ export function isUnsupportedLegacyWildcardHostname(
     return false;
   }
   if (canonicalElizaServiceHostname(hostname)) return false;
-
   const classified = classifyElizaHostname(hostname);
   if (
     classified.role === "legacy-marketing" ||
@@ -887,7 +827,6 @@ export function isUnsupportedLegacyWildcardHostname(
     AGENT_ID_RE.test(classified.agentId)
   );
 }
-
 function rejectUnsupportedLegacyWildcardHost(url: URL): Response | null {
   if (!isUnsupportedLegacyWildcardHostname(url.hostname)) return null;
   return Response.json(
@@ -898,7 +837,6 @@ function rejectUnsupportedLegacyWildcardHost(url: URL): Response | null {
     },
   );
 }
-
 const FRONTEND_ALIAS_PROXY_HEADER_DENYLIST = new Set([
   "cdn-loop",
   "connection",
@@ -914,22 +852,17 @@ const FRONTEND_ALIAS_PROXY_HEADER_DENYLIST = new Set([
   "x-forwarded-for",
   "x-real-ip",
 ]);
-
 export function getFrontendAliasProxyTarget(url: URL): URL | null {
   const hostname = normalizeHostname(url.hostname);
   if (!hostname) return null;
-
   const target = FRONTEND_ALIAS_TARGETS[hostname];
   if (!target) return null;
-
   const apiTarget = getFrontendAliasApiProxyTarget(url);
   if (apiTarget) return apiTarget;
-
   const targetUrl = new URL(url);
   targetUrl.hostname = target.appHost;
   return targetUrl;
 }
-
 function isFrontendAliasBackendPath(url: URL): boolean {
   return (
     url.pathname === "/api" ||
@@ -945,32 +878,26 @@ function isFrontendAliasBackendPath(url: URL): boolean {
     url.pathname === "/.well-known/oidc/jwks.json"
   );
 }
-
 export function getFrontendAliasApiProxyTarget(url: URL): URL | null {
   const hostname = normalizeHostname(url.hostname);
   if (!hostname) return null;
-
   const target = FRONTEND_ALIAS_TARGETS[hostname];
   if (!target || !isFrontendAliasBackendPath(url)) return null;
-
   const targetUrl = new URL(url);
   targetUrl.hostname = target.apiHost;
   return targetUrl;
 }
-
 function proxyFrontendAliasRequest(
   request: Request,
   url: URL,
 ): Promise<Response> | null {
   const targetUrl = getFrontendAliasProxyTarget(url);
   if (!targetUrl) return null;
-
   return fetch(
     targetUrl.toString(),
     createFrontendAliasProxyInit(request, url),
   );
 }
-
 function createFrontendAliasProxyInit(request: Request, url: URL): RequestInit {
   const headers = new Headers();
   for (const [name, value] of request.headers) {
@@ -983,7 +910,6 @@ function createFrontendAliasProxyInit(request: Request, url: URL): RequestInit {
     }
     headers.append(name, value);
   }
-
   const connectingIp = request.headers.get("cf-connecting-ip");
   if (connectingIp) {
     headers.set("x-forwarded-for", connectingIp);
@@ -991,7 +917,6 @@ function createFrontendAliasProxyInit(request: Request, url: URL): RequestInit {
   }
   headers.set("x-forwarded-host", url.host);
   headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
-
   const method = request.method.toUpperCase();
   const init: RequestInit = {
     method,
@@ -1001,10 +926,8 @@ function createFrontendAliasProxyInit(request: Request, url: URL): RequestInit {
   if (method !== "GET" && method !== "HEAD") {
     init.body = request.body;
   }
-
   return init;
 }
-
 function proxyGeneratedAgentRequest(
   request: Request,
   env: AppEnv["Bindings"],
@@ -1012,7 +935,6 @@ function proxyGeneratedAgentRequest(
 ): Promise<Response> | null {
   const agentId = getGeneratedAgentId(url, env);
   if (!agentId) return null;
-
   // Unified cloud-token auth + tailnet proxy for dedicated agents. Lazy-imported
   // so this entrypoint stays thin (Cloudflare startup-CPU budget) — the auth/DB
   // module only loads on an actual UUID-subdomain request.
@@ -1020,7 +942,6 @@ function proxyGeneratedAgentRequest(
     m.handleDedicatedAgentProxy(request, env, url, agentId),
   );
 }
-
 /**
  * Managed frontend hosting (#10690): when `ELIZA_FRONTEND_HOST_SUFFIX` is set,
  * a non-API request to `<app-slug>.<suffix>` is served from the app's active
@@ -1034,7 +955,9 @@ function proxyGeneratedAgentRequest(
  */
 export function getHostedFrontendServeRewrite(
   url: URL,
-  env: { ELIZA_FRONTEND_HOST_SUFFIX?: string },
+  env: {
+    ELIZA_FRONTEND_HOST_SUFFIX?: string;
+  },
 ): URL | null {
   const suffix = normalizeHostname(env.ELIZA_FRONTEND_HOST_SUFFIX)?.replace(
     /^\.+/,
@@ -1046,22 +969,68 @@ export function getHostedFrontendServeRewrite(
   const slug = hostname.slice(0, hostname.length - suffix.length - 1);
   if (!slug || slug.includes(".")) return null;
   if (isFrontendAliasBackendPath(url)) return null;
-
   const rewritten = new URL(url);
   rewritten.pathname = `/api/v1/hosted-frontend/serve${url.pathname === "/" ? "" : url.pathname}`;
   return rewritten;
+}
+/** Cost: no new I/O; reuse the original route and authorities in a smaller shell. */
+export function isPersonalSharedMessagePath(pathname: string): boolean {
+  return /^\/api\/internal\/eliza-app\/personal-shared\/messages\/?$/.test(
+    pathname,
+  );
+}
+
+async function dispatchPersonalShared(
+  request: Request,
+  env: AppEnv["Bindings"],
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  if (!isPersonalSharedMessagePath(new URL(request.url).pathname)) return null;
+  const startedAt = performance.now();
+  const cold = personalSharedAppPromise === undefined;
+  const traceId = resolveElizaTraceId(request.headers);
+  const headers = new Headers(request.headers);
+  headers.set(ELIZA_TRACE_ID_HEADER, traceId);
+  personalSharedAppPromise ??= import("./personal-shared-app")
+    .then((module) => module.createPersonalSharedApp())
+    .catch((error) => {
+      personalSharedAppPromise = undefined;
+      throw error;
+    });
+  const app = await personalSharedAppPromise;
+  const response = await app.fetch(new Request(request, { headers }), env, ctx);
+  const responseHeaders = new Headers(response.headers);
+  setHttpTelemetryHeaders(responseHeaders, traceId, [
+    {
+      name: "personal_shared_entry",
+      durationMs: performance.now() - startedAt,
+    },
+    {
+      name: "personal_shared_isolate",
+      durationMs: 0,
+      description: cold ? "cold" : "warm",
+    },
+  ]);
+  responseHeaders.set("X-Eliza-Personal-Shared-Path", "thin");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: responseHeaders,
+  });
 }
 
 const scheduled = makeCronHandler(async (request, env, ctx) =>
   dispatchFullApp(request, env, ctx),
 );
-
 export default {
   fetch: async (
     request: Request,
     env: AppEnv["Bindings"],
     ctx: ExecutionContext,
   ) => {
+    const nativeSelectionError =
+      nativeApplicationSelectionSurfaceError(request);
+    if (nativeSelectionError) return nativeSelectionError;
     const url = new URL(request.url);
     // Capability tokens are bearer credentials. Reserve their opaque namespace
     // before any host redirect or proxy can forward it to another origin.
@@ -1079,7 +1048,6 @@ export default {
       if (frontendAliasApiTarget.pathname === "/api/health") {
         return healthResponse(env);
       }
-
       const apiRequest = new Request(
         frontendAliasApiTarget.toString(),
         createFrontendAliasProxyInit(request, url),
@@ -1106,9 +1074,14 @@ export default {
       if (stewardThinResponse) return stewardThinResponse;
       const inferenceResponse = await dispatchInference(apiRequest, env, ctx);
       if (inferenceResponse) return inferenceResponse;
+      const personalSharedResponse = await dispatchPersonalShared(
+        apiRequest,
+        env,
+        ctx,
+      );
+      if (personalSharedResponse) return personalSharedResponse;
       return dispatchFullApp(apiRequest, env, ctx);
     }
-
     const frontendAliasResponse = proxyFrontendAliasRequest(request, url);
     if (frontendAliasResponse) return frontendAliasResponse;
     const frontendRedirect = redirectFrontendHost(url, env);
@@ -1121,7 +1094,6 @@ export default {
     if (registryResponse) return registryResponse;
     const agentProxyResponse = proxyGeneratedAgentRequest(request, env, url);
     if (agentProxyResponse) return agentProxyResponse;
-
     const hostedFrontendServe = getHostedFrontendServeRewrite(url, env);
     if (hostedFrontendServe) {
       return dispatchFullApp(
@@ -1130,32 +1102,25 @@ export default {
         ctx,
       );
     }
-
     if (url.pathname === "/api/health") {
       return healthResponse(env);
     }
-
     const webhookResponse = await dispatchWebhook(request, env, ctx);
     if (webhookResponse) return webhookResponse;
-
     const discordGatewayResponse = await dispatchDiscordGateway(
       request,
       env,
       ctx,
     );
     if (discordGatewayResponse) return discordGatewayResponse;
-
     // CLI-session login hot path before full-app bootstrap (#22948).
     const cliSessionThinResponse = await dispatchCliSession(request, env, ctx);
     if (cliSessionThinResponse) return cliSessionThinResponse;
-
     // Login-critical Steward GETs before full-app bootstrap (#18049).
     const stewardThinResponse = await dispatchThinSteward(request, env, ctx);
     if (stewardThinResponse) return stewardThinResponse;
-
     const inferenceResponse = await dispatchInference(request, env, ctx);
     if (inferenceResponse) return inferenceResponse;
-
     // OpenAI-compat prefix rewrite. Dedicated agents whose cloud base/embedding
     // URL got stamped as the bare host (`https://api.eliza.app`) hit
     // `/v1/embeddings` / `/embeddings` (and would for `/chat/completions`),
@@ -1181,9 +1146,13 @@ export default {
       if (rewrittenInferenceResponse) return rewrittenInferenceResponse;
       return dispatchFullApp(rewrittenRequest, env, ctx);
     }
-
+    const personalSharedResponse = await dispatchPersonalShared(
+      request,
+      env,
+      ctx,
+    );
+    if (personalSharedResponse) return personalSharedResponse;
     return dispatchFullApp(request, env, ctx);
   },
-
   scheduled,
 };

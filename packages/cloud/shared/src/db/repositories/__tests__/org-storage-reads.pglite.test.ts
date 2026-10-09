@@ -8,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
+import { installOrganizationPolicyTestSchema } from "../organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -75,6 +76,19 @@ beforeAll(async () => {
   for (const statement of source.split("--> statement-breakpoint")) {
     if (statement.trim()) await dbWrite.execute(sql.raw(statement));
   }
+  // Paid reads resolve subscription policy and may bind funding reservations.
+  const pg = (await import("../../client")).getPgliteClientForTests();
+  await installOrganizationPolicyTestSchema((query) => pg.exec(query));
+  const funding = readFileSync(
+    join(import.meta.dir, "../../migrations/0482_org_storage_subscription_funding.sql"),
+    "utf8",
+  );
+  // This fixture owns only the read receipt table, so the PUT half is not replayed.
+  for (const statement of funding.split("--> statement-breakpoint")) {
+    if (statement.trim() && !statement.includes("org_storage_put_operations")) {
+      await dbWrite.execute(sql.raw(statement));
+    }
+  }
   ({ orgStorageReadsRepository: repository } = await import("../org-storage-reads"));
 }, TIMEOUT);
 
@@ -89,9 +103,12 @@ beforeEach(async () => {
   try {
     await dbWrite.execute(
       sql.raw(
-        "TRUNCATE org_storage_read_operations, org_storage_delete_operations, credit_transactions, org_storage_objects, users, organizations CASCADE",
+        "TRUNCATE org_storage_read_operations, org_storage_delete_operations, org_storage_objects CASCADE",
       ),
     );
+    // Subscription ledgers are append-only, so ledger fixtures are deleted rather than cascaded.
+    await dbWrite.execute(sql`DELETE FROM credit_transactions`);
+    await dbWrite.execute(sql`DELETE FROM users`);
   } finally {
     await dbWrite.execute(
       sql.raw(
@@ -101,7 +118,8 @@ beforeEach(async () => {
   }
   await dbWrite.execute(
     sql`INSERT INTO organizations (id, name, slug, credit_balance)
-      VALUES (${ORG}, 'Storage Test', 'storage-test', 1.000000)`,
+      VALUES (${ORG}, 'Storage Test', 'storage-test', 1.000000)
+      ON CONFLICT (id) DO UPDATE SET credit_balance = 1.000000`,
   );
   await dbWrite.execute(sql`INSERT INTO users (id, organization_id) VALUES (${USER}, ${ORG})`);
   await dbWrite.execute(sql`INSERT INTO org_storage_objects (

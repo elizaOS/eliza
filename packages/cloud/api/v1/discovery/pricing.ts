@@ -13,7 +13,7 @@ import {
   legacyMcpPointsToOrganizationCredits,
   ORGANIZATION_CREDIT_UNIT,
 } from "@elizaos/cloud-shared/billing";
-import { logger } from "@/lib/utils/logger";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 
 export interface LegacyMcpCreditPricing {
   type: "credits";

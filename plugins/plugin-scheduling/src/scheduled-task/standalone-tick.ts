@@ -110,6 +110,7 @@ export async function runStandaloneSchedulingTick(
       // reopen from a parked status; `fireWithResult`'s own refire guard
       // re-verifies dueness on the fresh row before claiming.
       const fire = await runner.fireWithResult(task.taskId, {
+        cause: "automatic",
         allowTerminalRefire: true,
       });
       result.fires.push({ taskId: task.taskId, outcome: fire.kind });

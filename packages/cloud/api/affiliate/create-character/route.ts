@@ -9,25 +9,29 @@
  * `processAffiliateImages` for callers that need it.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
 import {
   ApiError,
   AuthenticationError,
   ForbiddenError,
   failureResponse,
   ValidationError,
-} from "@/lib/api/cloud-worker-errors";
-import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { apiKeysService } from "@/lib/services/api-keys";
-import { charactersService } from "@/lib/services/characters/characters";
-import { organizationsService } from "@/lib/services/organizations";
-import { usersService } from "@/lib/services/users";
-import type { ElizaCharacter } from "@/lib/types";
-import { getCorsHeaders } from "@/lib/utils/cors";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getRequestIp } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { anonymousSessionsService } from "@elizaos/cloud-shared/lib/services/anonymous-sessions";
+import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
+import { organizationsService } from "@elizaos/cloud-shared/lib/services/organizations";
+import { usersService } from "@elizaos/cloud-shared/lib/services/users";
+import type { ElizaCharacter } from "@elizaos/cloud-shared/lib/types";
+import { getCorsHeaders } from "@elizaos/cloud-shared/lib/utils/cors";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const SESSION_TTL_DAYS = 7;
 const ANON_USER_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
@@ -163,14 +167,6 @@ function resolveAvatarUrl(
   return pickHttpUrl(characterAvatar) ?? imageUrls?.find(isHttpUrl) ?? null;
 }
 
-function clientIp(c: AppContext): string | undefined {
-  return (
-    c.req.header("x-real-ip")?.trim() ||
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    undefined
-  );
-}
-
 function parsePositiveIntEnv(
   value: string | undefined,
   defaultValue: number,
@@ -288,7 +284,7 @@ app.post("/", async (c) => {
       user_id: anonymousUser.id,
       expires_at: expiresAt,
       messages_limit: messagesLimit,
-      ip_address: clientIp(c),
+      ip_address: getRequestIp(c),
       user_agent: c.req.header("user-agent") ?? undefined,
     });
 

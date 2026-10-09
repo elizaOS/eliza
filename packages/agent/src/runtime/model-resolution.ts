@@ -6,11 +6,11 @@
  * explicitly configured, so elizaOS falls back to whichever model plugin loads.
  */
 import {
+  type ElizaConfig,
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
+} from "@elizaos/host/protocol";
 
 function trimEnvString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;

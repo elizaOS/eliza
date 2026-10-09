@@ -51,7 +51,7 @@ const readRepoFile = (relativePath: string) =>
 describe("Android Assistant and App Actions routing source", () => {
   it("registers shortcuts.xml on the launcher activity", () => {
     const manifest = readRepoFile(
-      "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+      "packages/app/platforms/android/app/src/main/AndroidManifest.xml",
     );
 
     expect(manifest).toContain('android:name="android.app.shortcuts"');
@@ -60,7 +60,7 @@ describe("Android Assistant and App Actions routing source", () => {
 
   it("declares default-assistant and voice-command surfaces without privileged voice permissions", () => {
     const manifest = readRepoFile(
-      "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+      "packages/app/platforms/android/app/src/main/AndroidManifest.xml",
     );
 
     expect(manifest).toContain("ElizaAssistActivity");
@@ -80,7 +80,7 @@ describe("Android Assistant and App Actions routing source", () => {
 
   it("declares Play-compatible App Actions BIIs and static shortcuts", () => {
     const shortcuts = readRepoFile(
-      "packages/app-core/platforms/android/app/src/main/res/xml/shortcuts.xml",
+      "packages/app/platforms/android/app/src/main/res/xml/shortcuts.xml",
     );
 
     expect(shortcuts).toContain(

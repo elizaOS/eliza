@@ -8,8 +8,7 @@
  * Cited: 03-coverage-gap-matrix.md — mark-as-spam single message.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { judgeRubric, scenario } from "@elizaos/testing";
 
 const SPAM_TARGET = "msg-spam";
 
@@ -22,7 +21,7 @@ export default scenario({
   isolation: "per-scenario",
   requires: {
     credentials: ["gmail:test-owner"],
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

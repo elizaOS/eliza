@@ -66,6 +66,11 @@ export interface PrewarmSharedAgentOptions {
   stewardUserId?: string;
 }
 
+const PERSONAL_CONVERSATION_PREWARM_TTL_MS = 30_000;
+const PERSONAL_CONVERSATION_PREWARM_MAX_ENTRIES = 4_096;
+// Only completed warmups are memoized; never share pending request I/O.
+const personalConversationPrewarmedUntil = new Map<string, number>();
+
 interface PrewarmLeg {
   leg: string;
   run: Promise<unknown>;
@@ -126,7 +131,7 @@ export async function prewarmSharedAgentTurnCaches(
   //    `character:data:<id>` entry the cache-only turn reads.
   const pricingAndCharacter = (async () => {
     const linked = agent.character_id
-      ? await import("../characters/characters").then(({ charactersService }) =>
+      ? await import("../characters").then(({ charactersService }) =>
           charactersService.getById(agent.character_id!),
         )
       : undefined;
@@ -199,6 +204,100 @@ export async function prewarmPersonalSharedAgentTurnCaches(
         startEmpty: true,
       }),
     });
+  } else {
+    const conversationId = options.conversationId ?? agent.id;
+    const key = JSON.stringify([agent.id, conversationId]);
+    if ((personalConversationPrewarmedUntil.get(key) ?? 0) <= Date.now()) {
+      // Each uncached warmup adds one room RPC. Success skips it for 30s per
+      // actor/room/isolate; concurrent cold requests may each warm rather than
+      // share request I/O. Turns still enforce admission and read ordered history.
+      legs.push({
+        leg: "existing-conversation-runtime",
+        run: (async () => {
+          await coordinateSharedConversationPrewarm(agent.id, conversationId, {
+            namespace,
+            startEmpty: false,
+          });
+          if (
+            personalConversationPrewarmedUntil.size >= PERSONAL_CONVERSATION_PREWARM_MAX_ENTRIES
+          ) {
+            const oldest = personalConversationPrewarmedUntil.keys().next().value;
+            if (oldest !== undefined) personalConversationPrewarmedUntil.delete(oldest);
+          }
+          personalConversationPrewarmedUntil.set(
+            key,
+            Date.now() + PERSONAL_CONVERSATION_PREWARM_TTL_MS,
+          );
+        })(),
+      });
+    }
   }
   await settlePrewarmLegs(agent, legs);
+}
+
+/**
+ * Keep-warm legs for a rowless Personal Shared room. The cron only knows the
+ * namespaced agent id and room from mirrored history, and that id is a one-way
+ * hash of the account, so it is never sent to a UUID repository. The room's
+ * conversation object (with its turn-ingress modules) is warmed first; it
+ * reports the verified owning organization recorded by an earlier turn, which
+ * then selects the organization-scoped rate-limit gate to warm. Rooms without
+ * a recorded owner keep the session-start warm (see
+ * {@link prewarmResolvedSharedAgentSession}). Personal rooms start empty
+ * exactly as their turns do, so this never migrates or rewrites history.
+ *
+ * `warmedOrganizations` lets one sweep warm each organization's gate once.
+ */
+export async function prewarmPersonalSharedRoom(
+  agentId: string,
+  roomId: string,
+  namespace: RuntimeDurableObjectNamespace,
+  warmedOrganizations: Set<string> = new Set(),
+): Promise<void> {
+  const conversation = coordinateSharedConversationPrewarm(agentId, roomId, {
+    namespace,
+    startEmpty: true,
+  });
+  const rateLimitGate = conversation.then(
+    async ({ organizationId }) => {
+      if (!organizationId || warmedOrganizations.has(organizationId)) return;
+      warmedOrganizations.add(organizationId);
+      await warmInferenceRateLimitGate(organizationId);
+    },
+    // The conversation leg reports its own failure; without an owner there is
+    // no organization gate to warm.
+    () => undefined,
+  );
+  await settlePrewarmLegs({ id: agentId, organization_id: "" }, [
+    { leg: "conversation-object", run: conversation },
+    { leg: "rate-limit-gate", run: rateLimitGate },
+  ]);
+}
+
+/**
+ * Session-start prewarm: when the app opens a Shared conversation (before a
+ * human can type), hydrate the same caches the cache-only first turn consults.
+ * Personal Shared identities warm their rate-limit gate and conversation
+ * object; sandbox-backed shared agents run the full provision-time legs with
+ * the opening request's credential. Best-effort and off the response path.
+ */
+export function prewarmResolvedSharedAgentSession(
+  resolved:
+    | { agentKind: "personal"; agent: SharedRuntimeAgent; agentId: string }
+    | { agentKind?: undefined; agent: AgentSandbox; agentId: string },
+  options: {
+    namespace: RuntimeDurableObjectNamespace;
+    requestContext: Context<AppEnv>;
+  },
+): Promise<void> {
+  if (resolved.agentKind === "personal") {
+    return prewarmPersonalSharedAgentTurnCaches(resolved.agent, options.namespace, {
+      warmConversation: true,
+      conversationId: resolved.agentId,
+    });
+  }
+  return prewarmSharedAgentTurnCaches(resolved.agent, {
+    namespace: options.namespace,
+    requestContext: options.requestContext,
+  });
 }

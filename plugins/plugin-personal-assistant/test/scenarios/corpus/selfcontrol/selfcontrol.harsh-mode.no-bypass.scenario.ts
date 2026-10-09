@@ -2,10 +2,10 @@
 
 import {
   describeCalls,
+  scenario,
   successfulCalls,
   toRecord,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -23,7 +23,7 @@ export default scenario({
     "User enables harsh mode for 4 hours, then immediately tries to bypass. Agent must refuse — no unblock / delete-block action is allowed to fire during the protected window.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
     os: "macos",
   },
   rooms: [

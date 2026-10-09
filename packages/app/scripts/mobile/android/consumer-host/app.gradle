@@ -1,0 +1,56 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+def profile = new groovy.json.JsonSlurper().parse(rootProject.file('.eliza-consumer-profile.json'))
+def identity = profile.identity
+android {
+ namespace identity.appId
+ compileSdk rootProject.ext.compileSdkVersion
+ defaultConfig {
+  applicationId identity.appId
+  minSdk rootProject.ext.minSdkVersion
+  targetSdk rootProject.ext.targetSdkVersion
+  versionCode identity.versionCode
+  versionName identity.version
+  manifestPlaceholders = profile.manifestPlaceholders
+  testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+  profile.buildConfigFields.each { field -> buildConfigField field.type, field.name, field.value }
+ }
+ buildFeatures { buildConfig true }
+ flavorDimensions += 'distribution'
+ productFlavors {
+  profile.flavors.each { flavor ->
+   create(flavor.name) {
+    dimension 'distribution'
+    flavor.buildConfigFields.each { field -> buildConfigField field.type, field.name, field.value }
+   }
+  }
+ }
+ profile.sourceSets.each { name, inputs ->
+  inputs.each { kind, directories -> sourceSets.getByName(name).getProperty(kind).srcDirs(directories) }
+ }
+ buildTypes {
+  debug { debuggable true }
+  release { minifyEnabled profile.releaseMinify }
+ }
+ compileOptions {
+  sourceCompatibility JavaVersion.toVersion(profile.toolchain.java)
+  targetCompatibility JavaVersion.toVersion(profile.toolchain.java)
+ }
+ kotlinOptions { jvmTarget = String.valueOf(profile.toolchain.java) }
+ if (profile.runtimeMain) {
+  // AGP's asset merger does not honor AndroidSourceDirectorySet exclusions.
+  def runtimeAssets = tasks.register('stageElizaConsumerRuntimeAssets', Sync) {
+   from new File(profile.runtimeMain, 'assets')
+   exclude 'agent/arm64-v8a/**', 'agent/x86_64/**', 'agent/riscv64/**'
+   into layout.buildDirectory.dir('generated/eliza-consumer-runtime-assets')
+  }
+  sourceSets.main.assets.srcDir(runtimeAssets.map { it.destinationDir })
+  tasks.named('preBuild').configure { dependsOn runtimeAssets }
+  sourceSets.main.jniLibs.srcDir(new File(profile.runtimeMain, 'jniLibs'))
+  packaging.jniLibs.useLegacyPackaging = true
+ }
+}
+dependencies {
+ profile.modules.findAll { it.appDependency }.each { module -> implementation project(":${module.name}") }
+ profile.dependencies.each { dependency -> add(dependency.configuration, dependency.coordinate) }
+}

@@ -13,13 +13,13 @@
   "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/esm/index.d.ts",
-      "bun": "./src/index.ts",
-      "development": "./src/index.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/plugin.cjs.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./native-host/*": "./native-host/*.mjs"
   },
   "unpkg": "dist/plugin.js",
   "files": [
@@ -28,7 +28,8 @@
     "dist/",
     "ios/Sources/",
     "*.podspec",
-    "dist"
+    "dist",
+    "native-host/*.mjs"
   ],
   "author": "elizaOS",
   "license": "MIT",
@@ -38,8 +39,8 @@
     "directory": "plugins/plugin-native-agent"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-agent -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-agent -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "test": "vitest run",
     "prepublishOnly": "bun run build",
     "watch": "tsc6 --watch",
@@ -48,14 +49,15 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:native-host": "node scripts/test-native-host.mjs"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "rollup": "^4.62.4",
+    "rollup": "^4.64.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.3"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

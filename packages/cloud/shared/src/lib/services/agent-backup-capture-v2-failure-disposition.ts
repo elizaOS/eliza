@@ -5,7 +5,7 @@
  * authorize irreversible catalogue settlement or local spool cleanup.
  */
 
-import { AgentBackupCaptureV2ProtocolError } from "@elizaos/shared";
+import { AgentBackupCaptureV2ProtocolError } from "@elizaos/contracts";
 import { AgentBackupCaptureV2HttpError } from "./agent-backup-capture-v2-client";
 import { AgentBackupCaptureV2PipelineError } from "./agent-backup-capture-v2-pipeline";
 import { AgentBackupCaptureV3SpoolError } from "./agent-backup-capture-v2-spool";
@@ -253,4 +253,49 @@ export function normalizeAgentBackupCaptureV2TerminalFailure(
     if (cause !== undefined) pending.push(cause);
   }
   return undefined;
+}
+
+/** Terminal code for a capture that kept failing retryably on the same operation (#23235). */
+export const AGENT_BACKUP_CAPTURE_V2_ESCALATED_CODE = "AGENT_BACKUP_V2_CAPTURE_ESCALATED";
+export const DEFAULT_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS = 8;
+export const MAX_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS = 100;
+
+/**
+ * Escalate repeated retryable capture failure to a trusted terminal
+ * disposition. A capture that cannot fit its container (for example the
+ * available-memory gate) fails `ephemeral` forever; after `threshold` claims of
+ * the same operation it becomes terminal with the exact spool cleanup
+ * authority attached, so the catalogue settles it through the vetted terminal
+ * path and an operator is alerted instead of the work retrying indefinitely.
+ * A stale runtime authority is never escalated: it needs source
+ * reconciliation, not a terminal verdict.
+ */
+export function escalateRepeatedAgentBackupCaptureV2Failure(params: {
+  error: unknown;
+  attempts: number;
+  threshold: number;
+  terminalSpoolCleanup: AgentBackupCaptureV3TerminalSpoolCleanupAuthority;
+}): AgentBackupCaptureV2CatalogExecutorError | undefined {
+  if (
+    !Number.isSafeInteger(params.threshold) ||
+    params.threshold < 1 ||
+    params.threshold > MAX_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS
+  ) {
+    throw new RangeError(
+      `capture escalation threshold must be between 1 and ${MAX_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS}`,
+    );
+  }
+  if (!Number.isSafeInteger(params.attempts) || params.attempts < params.threshold) {
+    return undefined;
+  }
+  if (isResolvedAgentBackupCaptureV3RuntimeAuthorityStale(params.error)) return undefined;
+  const failure = typedFailure(params.error);
+  return trustedTerminalDisposition({
+    code: AGENT_BACKUP_CAPTURE_V2_ESCALATED_CODE,
+    message: `Capture failed retryably on ${params.attempts} consecutive attempts${
+      failure ? ` (last: ${failure.code})` : ""
+    }; escalated for operator action`,
+    cause: params.error,
+    terminalSpoolCleanup: params.terminalSpoolCleanup,
+  });
 }

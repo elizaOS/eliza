@@ -5,7 +5,9 @@
 import type { JSDOM } from "jsdom";
 import {
   buildBrowserWorkspaceCssStringLiteral,
+  isBrowserWorkspacePrivateControl,
   normalizeBrowserWorkspaceText,
+  readBrowserWorkspaceElementText,
 } from "./browser-workspace-helpers.js";
 import { getJSDOMClass } from "./browser-workspace-jsdom.js";
 import type {
@@ -71,17 +73,18 @@ export function createBrowserWorkspaceElementSummary(
     element.tagName === "TEXTAREA" ||
     element.tagName === "SELECT";
 
-  const elementValue = inputLike
-    ? ((element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)
-        .value ?? null)
-    : null;
+  const elementValue =
+    inputLike && !isBrowserWorkspacePrivateControl(element)
+      ? ((element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)
+          .value ?? null)
+      : null;
 
   return {
     selector: buildBrowserWorkspaceElementSelector(element),
     tag: element.tagName.toLowerCase(),
-    text: normalizeBrowserWorkspaceText(
-      inputLike ? elementValue : element.textContent,
-    ),
+    text: inputLike
+      ? normalizeBrowserWorkspaceText(elementValue)
+      : readBrowserWorkspaceElementText(element),
     type: element.getAttribute("type"),
     name: element.getAttribute("name"),
     href: element.getAttribute("href"),
@@ -739,6 +742,15 @@ export function findClosestBrowserWorkspaceForm(
 ): HTMLFormElement | null {
   if (!element) {
     return null;
+  }
+  if (["BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(element.tagName)) {
+    return (
+      element as
+        | HTMLButtonElement
+        | HTMLInputElement
+        | HTMLSelectElement
+        | HTMLTextAreaElement
+    ).form;
   }
   return (
     element.tagName === "FORM" ? element : element.closest("form")

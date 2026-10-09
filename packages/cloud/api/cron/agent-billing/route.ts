@@ -2,7 +2,7 @@
  * Bills managed-agent compute and records one durable receipt per invocation.
  *
  * The hourly processor:
- * - Charges organizations hourly for running agents ($0.01/hour)
+ * - Charges organizations hourly for running agents at the quoted Dedicated rate
  * - Charges for idle/stopped agents with snapshots ($0.0025/hour)
  * - Immediately queues a durable stop when accrued compute cannot be paid
  * - Rechecks funding under the lifecycle lock before committing the stop
@@ -12,42 +12,45 @@
  */
 
 import { createHmac } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
-import { Hono } from "hono";
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
+import {
+  listRecoverableAgentComputeStopIntents,
+  provisioningJobService,
+  rearmRecoverableAgentComputeStopIntentOnce,
+} from "@elizaos/cloud-shared/agents";
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
 import {
   type AgentBillingOrganization,
   type AgentBillingSandbox,
   agentBillingRepository,
-} from "@/db/repositories/agent-billing";
-import { agentBillingRunRepository } from "@/db/repositories/agent-billing-runs";
+} from "@elizaos/cloud-shared/db/repositories/agent-billing";
+import { agentBillingRunRepository } from "@elizaos/cloud-shared/db/repositories/agent-billing-runs";
 import type {
   AgentBillingRun,
   AgentBillingRunErrorSample,
   AgentBillingRunItem,
   AgentBillingRunStatus,
-} from "@/db/schemas/compute-billing";
+} from "@elizaos/cloud-shared/db/schemas/compute-billing";
 import {
   failureResponse,
   ValidationError,
-} from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { safeFetch } from "@elizaos/cloud-shared/lib/security/safe-fetch";
+import { enqueueAgentUnfundedStopForRun } from "@elizaos/cloud-shared/lib/services/agent-unfunded-stop";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { ElizaError } from "@elizaos/core";
+import { Hono } from "hono";
 import {
   CRON_INVOCATION_ID_HEADER,
   CRON_SCHEDULE_HEADER,
   CRON_SCHEDULED_TIME_HEADER,
   getScheduledCronInvocationMetadata,
   scheduledCronInvocationId,
-} from "@/lib/cron/cloudflare-cron";
-import { safeFetch } from "@/lib/security/safe-fetch";
-import { enqueueAgentUnfundedStopForRun } from "@/lib/services/agent-unfunded-stop";
-import {
-  listRecoverableAgentComputeStopIntents,
-  provisioningJobService,
-  rearmRecoverableAgentComputeStopIntentOnce,
-} from "@/lib/services/provisioning-jobs";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@/api-app/cron";
 
 const REBILL_GUARD_MINUTES = 55;
 const AGENT_BILLING_PATH = "/api/cron/agent-billing";
@@ -161,14 +164,15 @@ async function getOrgBalance(organizationId: string): Promise<number | null> {
   }
 }
 
-/**
- * Determine hourly rate for a sandbox based on its status.
- * Running → RUNNING_HOURLY_RATE, Stopped with backups → IDLE_HOURLY_RATE.
- */
-function getHourlyRate(status: string): number {
-  if (status === "running") return AGENT_PRICING.RUNNING_HOURLY_RATE;
-  // Stopped agents are only billed if they have snapshots (checked in query).
-  return AGENT_PRICING.IDLE_HOURLY_RATE;
+/** Resolves the retained compute or backup rate while provider deletion is unconfirmed. */
+function getHourlyRate(sandbox: AgentBillingSandbox): number {
+  const status =
+    sandbox.status === "deletion_pending" ||
+    sandbox.status === "deletion_failed"
+      ? sandbox.deletion_previous_status
+      : sandbox.status;
+  if (status !== "stopped") return AGENT_PRICING.RUNNING_HOURLY_RATE;
+  return sandbox.last_backup_at ? AGENT_PRICING.IDLE_HOURLY_RATE : 0;
 }
 
 // ── Per-Agent Billing ─────────────────────────────────────────────────
@@ -182,7 +186,10 @@ async function processSandboxBilling(
   const sandboxId = sandbox.id;
   const agentName = sandbox.agent_name ?? sandboxId;
   const organizationId = sandbox.organization_id;
-  const hourlyRate = getHourlyRate(sandbox.status);
+  const hourlyRate = getHourlyRate(sandbox);
+  const deletionPending =
+    sandbox.status === "deletion_pending" ||
+    sandbox.status === "deletion_failed";
   const currentBalance = Number(org.credit_balance);
   const periodStart =
     sandbox.last_billed_at ??
@@ -196,6 +203,16 @@ async function processSandboxBilling(
     hourlyRate * ((now.getTime() - periodStart.getTime()) / (60 * 60 * 1000));
 
   async function queueUnfundedStop(): Promise<BillingResult> {
+    // Deletion owns teardown; accrued debt cannot enqueue a competing stop.
+    if (deletionPending) {
+      return {
+        sandboxId,
+        agentName,
+        organizationId,
+        action: "skipped",
+        error: "Provider deletion is pending; accrued usage remains unsettled",
+      };
+    }
     const item = await enqueueAgentUnfundedStopForRun({
       ...runAuthority,
       sandboxId,
@@ -224,14 +241,14 @@ async function processSandboxBilling(
     billingStatus: sandbox.billing_status,
   });
 
-  // Previously warned agents are rechecked immediately; no unpaid grace remains.
-  if (sandbox.billing_status === "shutdown_pending") {
+  // Previously warned agents are rechecked immediately; deletion retains its owner.
+  if (!deletionPending && sandbox.billing_status === "shutdown_pending") {
     return queueUnfundedStop();
   }
 
   // ── Sufficient credits — bill the hour ──────────────────────────
   const billingDescription =
-    sandbox.status === "running"
+    hourlyRate === AGENT_PRICING.RUNNING_HOURLY_RATE
       ? `Eliza agent hosting (running): ${agentName}`
       : `Eliza agent storage (idle): ${agentName}`;
   const billingResult = await agentBillingRepository.recordHourlyBilling({
@@ -262,7 +279,10 @@ async function processSandboxBilling(
     };
   }
 
-  if (billingResult.status === "insufficient_credits") {
+  if (
+    billingResult.status === "insufficient_credits" ||
+    billingResult.status === "funded_until"
+  ) {
     return queueUnfundedStop();
   }
 

@@ -1,7 +1,7 @@
 /**
  * Owns runtime-specific deferred boot work from kickoff through shutdown.
- * Shutdown aborts the shared owner signal and releases every registered waiter.
- * Task bodies remain observed until they settle, while an aborted owner is kept
+ * Shutdown aborts the shared owner signal and awaits every registered task.
+ * Task bodies remain owned until they settle, while an aborted owner is kept
  * as a tombstone so late registrations cannot touch a stopped runtime.
  */
 
@@ -41,35 +41,13 @@ export function trackDeferredBootTask(
     })
     .then(() => undefined);
 
-  const release = new Promise<void>((resolve, reject) => {
-    const signal = owner.controller.signal;
-    const onAbort = () => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    };
-
-    execution.then(
-      () => {
-        signal.removeEventListener("abort", onAbort);
-        resolve();
-      },
-      (error) => {
-        signal.removeEventListener("abort", onAbort);
-        if (signal.aborted) {
-          // error-policy:J5 the release promise observes the late rejection;
-          // shutdown already surfaced the owning cancellation.
-          logger.debug(
-            `[DeferredBootOwner] task settled after cancellation: ${error instanceof Error ? error.message : String(error)}`,
-          );
-          resolve();
-          return;
-        }
-        reject(error);
-      },
+  // Cancellation must not release shutdown before the task has closed its
+  // resources. Task bodies receive the owner signal and settle cooperatively.
+  const release = execution.catch((error) => {
+    if (!owner.controller.signal.aborted) throw error;
+    logger.debug(
+      `[DeferredBootOwner] task settled after cancellation: ${error instanceof Error ? error.message : String(error)}`,
     );
-
-    signal.addEventListener("abort", onAbort, { once: true });
-    if (signal.aborted) onAbort();
   });
 
   owner.tasks.add(release);

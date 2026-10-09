@@ -19,9 +19,9 @@ export interface VastEndpointConfig {
 type EnvReader = (name: string) => string | null;
 
 function readVastConfiguration(name: string): string | null {
-  // JSON maps contain model names and URLs, not just credentials. Filtering
+  // The JSON map contains model names and URLs, not just credentials. Filtering
   // their whole value as a provider key can hide invalid configured maps.
-  if (name === "VAST_ENDPOINTS_JSON" || name === "VAST_FALLBACK_MODEL_MAP_JSON") {
+  if (name === "VAST_ENDPOINTS_JSON") {
     return getCloudAwareEnv()[name]?.trim() || null;
   }
   return getProviderKey(name);
@@ -43,7 +43,6 @@ const EndpointEntrySchema = z.union([
     .refine((value) => Boolean(value.baseUrl || value.url)),
 ]);
 const EndpointMapSchema = z.record(z.string(), EndpointEntrySchema);
-const FallbackMapSchema = z.record(z.string(), z.string().min(1));
 type VastEndpointJsonValue = z.infer<typeof EndpointEntrySchema>;
 
 function trimTrailingSlash(url: string): string {
@@ -169,36 +168,4 @@ export function resolveVastEndpointConfig(
 
 export function hasAnyVastProviderConfigured(reader: EnvReader = readVastConfiguration): boolean {
   return VAST_NATIVE_MODELS.some((model) => resolveVastEndpointConfig(model.id, reader));
-}
-
-export function hasDedicatedVastEndpointConfigured(
-  model: string,
-  reader: EnvReader = readVastConfiguration,
-): boolean {
-  const config = resolveVastEndpointConfig(model, reader);
-  return Boolean(config && config.source !== "global");
-}
-
-export function resolveVastFallbackModel(
-  model: string,
-  reader: EnvReader = readVastConfiguration,
-): string | null {
-  if (!isVastNativeModel(model)) return null;
-  const rawMap = parseConfiguredMap(
-    reader("VAST_FALLBACK_MODEL_MAP_JSON"),
-    "VAST_FALLBACK_MODEL_MAP_JSON",
-    FallbackMapSchema,
-  );
-  const fallback =
-    rawMap[model] ??
-    (model === "vast/eliza-1-27b-256k"
-      ? "vast/eliza-1-27b"
-      : model === "vast/eliza-1-27b"
-        ? "vast/eliza-1-9b"
-        : model === "vast/eliza-1-9b"
-          ? "vast/eliza-1-2b"
-          : null);
-
-  if (!fallback || fallback === model || !isVastNativeModel(fallback)) return null;
-  return hasDedicatedVastEndpointConfigured(fallback, reader) ? fallback : null;
 }

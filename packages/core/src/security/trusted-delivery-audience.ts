@@ -18,6 +18,12 @@
  * When a gate denial suppresses owner-private surfaces, the suppression is
  * recorded on the turn so state composition can surface an explicit note the
  * model can see — silence would read as the capabilities not existing.
+ *
+ * Evidence expires after a fixed TTL. A turn that is still active may renew it
+ * (see {@link beginTrustedDeliveryAudienceTurn}): renewal re-derives the
+ * evidence from current trusted authority and only succeeds when the audience
+ * is unchanged, so a long turn keeps working without a longer TTL, while a
+ * completed or cancelled turn can never acquire renewed access.
  */
 
 import { ElizaError } from "../errors";
@@ -26,7 +32,7 @@ import type { DisclosureGate } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
-import { stringToUuid } from "../utils";
+import { stringToUuid } from "../utils/string-to-uuid.js";
 
 const trustedDeliveryAudienceBrand: unique symbol = Symbol(
 	"eliza.trusted-delivery-audience.brand",
@@ -146,10 +152,27 @@ export type OwnerExclusiveDisclosureDecision =
 			audience?: TrustedDeliveryAudience;
 	  };
 
+/**
+ * Re-checks an authenticated API principal with a fresh credential/session
+ * lookup, never cached ingress authorization. Returns `null` when the
+ * principal is no longer valid.
+ */
+export type TrustedApiPrincipalRevalidator =
+	() => Promise<TrustedApiPrincipal | null>;
+
+type AudienceTurnLease = {
+	active: boolean;
+	signal?: AbortSignal;
+};
+
 type AudienceRecord = {
 	audience: TrustedDeliveryAudience;
 	runtime?: IAgentRuntime;
 	sensitiveUsed: boolean;
+	/** Present only for authenticated-API evidence whose host can re-check it. */
+	revalidateApiPrincipal?: TrustedApiPrincipalRevalidator;
+	/** Present only while the originating turn is running. */
+	turnLease?: AudienceTurnLease;
 };
 
 type AudienceBinding = Readonly<{ token: "trusted-delivery-audience" }>;
@@ -369,6 +392,7 @@ function bindAudience(
 	message: Memory,
 	audience: TrustedDeliveryAudience,
 	runtime?: IAgentRuntime,
+	revalidateApiPrincipal?: TrustedApiPrincipalRevalidator,
 ): void {
 	const existingBinding = (
 		message as Memory & {
@@ -377,9 +401,12 @@ function bindAudience(
 	)[trustedDeliveryAudienceBinding];
 	if (existingBinding) {
 		const existingRecord = audienceByBinding.get(existingBinding);
+		// A re-attestation starts fresh evidence: any lease on the previous
+		// record belonged to the turn that minted it and is not carried over.
 		audienceByBinding.set(existingBinding, {
 			audience,
 			runtime,
+			revalidateApiPrincipal,
 			sensitiveUsed:
 				existingRecord !== undefined &&
 				existingRecord.runtime === runtime &&
@@ -393,9 +420,10 @@ function bindAudience(
 	audienceByBinding.set(binding, {
 		audience,
 		runtime,
+		revalidateApiPrincipal,
 		sensitiveUsed: false,
 	});
-	// Enumerable symbol properties survive ordinary `{ ...message }` pipeline
+	// Enumerable symbol properties survive ordinary `{...message }` pipeline
 	// clones, while JSON and request-body parsing cannot name or serialize the
 	// module-private symbol.
 	Object.defineProperty(message, trustedDeliveryAudienceBinding, {
@@ -415,6 +443,16 @@ export async function attestDeliveryAudienceFromCanonicalRoom(
 	message: Memory,
 	options: { nowMs?: number; ttlMs?: number } = {},
 ): Promise<TrustedDeliveryAudience> {
+	const audience = await deriveCanonicalRoomAudience(runtime, message, options);
+	bindAudience(message, audience, runtime);
+	return audience;
+}
+
+async function deriveCanonicalRoomAudience(
+	runtime: IAgentRuntime,
+	message: Memory,
+	options: { nowMs?: number; ttlMs?: number },
+): Promise<TrustedDeliveryAudience> {
 	const nowMs = options.nowMs ?? Date.now();
 	const [room, rawParticipants, canonicalOwnerEntityId] = await Promise.all([
 		runtime.getRoom(message.roomId),
@@ -431,7 +469,7 @@ export async function attestDeliveryAudienceFromCanonicalRoom(
 		rawParticipants,
 		ownerPrivateCandidate,
 	);
-	const audience = createAudience({
+	return createAudience({
 		kind,
 		provenance: "canonical_room",
 		actorEntityId: message.entityId,
@@ -442,8 +480,6 @@ export async function attestDeliveryAudienceFromCanonicalRoom(
 		nowMs,
 		ttlMs: options.ttlMs,
 	});
-	bindAudience(message, audience, runtime);
-	return audience;
 }
 
 /**
@@ -455,7 +491,31 @@ export async function attestAuthenticatedApiDeliveryAudience(
 	runtime: IAgentRuntime,
 	message: Memory,
 	principal: TrustedApiPrincipal,
-	options: { nowMs?: number; ttlMs?: number } = {},
+	options: {
+		nowMs?: number;
+		ttlMs?: number;
+		/**
+		 * Fresh credential/session re-check used to renew this evidence during a
+		 * long active turn. Without it, API evidence is never renewed.
+		 */
+		revalidatePrincipal?: TrustedApiPrincipalRevalidator;
+	} = {},
+): Promise<TrustedDeliveryAudience> {
+	const audience = await deriveApiAudience(
+		runtime,
+		message,
+		principal,
+		options,
+	);
+	bindAudience(message, audience, runtime, options.revalidatePrincipal);
+	return audience;
+}
+
+async function deriveApiAudience(
+	runtime: IAgentRuntime,
+	message: Memory,
+	principal: TrustedApiPrincipal,
+	options: { nowMs?: number; ttlMs?: number },
 ): Promise<TrustedDeliveryAudience> {
 	const nowMs = options.nowMs ?? Date.now();
 	const [canonicalOwnerEntityId, rawParticipants] = await Promise.all([
@@ -473,7 +533,7 @@ export async function attestAuthenticatedApiDeliveryAudience(
 		rawParticipants,
 		ownerPrivateCandidate,
 	);
-	const audience = createAudience({
+	return createAudience({
 		kind: ownerPrincipal ? "api_private" : "api_external",
 		provenance: ownerPrincipal ? "authenticated_owner_api" : "service_gateway",
 		actorEntityId: message.entityId,
@@ -484,8 +544,165 @@ export async function attestAuthenticatedApiDeliveryAudience(
 		nowMs,
 		ttlMs: options.ttlMs,
 	});
-	bindAudience(message, audience, runtime);
-	return audience;
+}
+
+/**
+ * Mark this exact turn's evidence as renewable while the turn runs. Call once
+ * the turn is admitted, with the turn's cancellation signal, and call the
+ * returned function when the turn completes (success, failure or abort).
+ * Renewal is refused after that, after the signal aborts, for evidence minted
+ * by another runtime, and for evidence that had already expired when the turn
+ * began — a lease never revives a stale attestation.
+ */
+export function beginTrustedDeliveryAudienceTurn(
+	runtime: IAgentRuntime,
+	message: Memory,
+	options: { signal?: AbortSignal; nowMs?: number } = {},
+): () => void {
+	const record = getAudienceRecord(message);
+	const nowMs = options.nowMs ?? Date.now();
+	if (
+		!record ||
+		record.runtime !== runtime ||
+		record.audience.expiresAtMs <= nowMs ||
+		record.audience.issuedAtMs > nowMs + MAX_CLOCK_SKEW_MS
+	) {
+		return () => {};
+	}
+	const lease: AudienceTurnLease = { active: true, signal: options.signal };
+	record.turnLease = lease;
+	return () => {
+		lease.active = false;
+		if (record.turnLease === lease) record.turnLease = undefined;
+	};
+}
+
+function sameAudienceAuthority(
+	current: TrustedDeliveryAudience,
+	renewed: TrustedDeliveryAudience,
+): boolean {
+	return (
+		renewed.kind === current.kind &&
+		renewed.provenance === current.provenance &&
+		renewed.actorEntityId === current.actorEntityId &&
+		renewed.agentEntityId === current.agentEntityId &&
+		renewed.roomId === current.roomId &&
+		renewed.canonicalOwnerEntityId === current.canonicalOwnerEntityId &&
+		sameParticipants(renewed.participantEntityIds, current.participantEntityIds)
+	);
+}
+
+export type TrustedDeliveryAudienceRenewal =
+	| { renewed: true; audience: TrustedDeliveryAudience }
+	| {
+			renewed: false;
+			reason:
+				| "not_expired"
+				| "no_active_turn"
+				| "turn_cancelled"
+				| "runtime_mismatch"
+				| "actor_mismatch"
+				| "verification_unavailable"
+				| "principal_revoked"
+				| "audience_changed"
+				| "audience_lookup_failed";
+	  };
+
+/**
+ * Renew expired evidence for an active turn from current trusted authority.
+ * Canonical-room evidence re-reads the room kind, canonical owner and complete
+ * participant census; authenticated-API evidence re-checks its principal with
+ * the host's fresh revalidator. Renewal succeeds only when the result matches
+ * the original audience exactly (actor, agent, room, destination kind, owner,
+ * census); anything else leaves the expired evidence in place so every gate
+ * keeps denying. Sensitive-disclosure bookkeeping is preserved.
+ */
+export async function renewTrustedDeliveryAudience(
+	runtime: IAgentRuntime,
+	message: Memory,
+	nowMs = Date.now(),
+): Promise<TrustedDeliveryAudienceRenewal> {
+	const record = getAudienceRecord(message);
+	const lease = record?.turnLease;
+	if (!record || !lease?.active) {
+		return { renewed: false, reason: "no_active_turn" };
+	}
+	if (record.runtime !== runtime) {
+		return { renewed: false, reason: "runtime_mismatch" };
+	}
+	if (lease.signal?.aborted) {
+		return { renewed: false, reason: "turn_cancelled" };
+	}
+	const current = record.audience;
+	if (current.expiresAtMs > nowMs) {
+		return { renewed: false, reason: "not_expired" };
+	}
+	if (
+		current.actorEntityId !== message.entityId ||
+		current.roomId !== message.roomId ||
+		current.agentEntityId !== message.agentId
+	) {
+		return { renewed: false, reason: "actor_mismatch" };
+	}
+	let renewed: TrustedDeliveryAudience;
+	try {
+		if (current.provenance === "canonical_room") {
+			renewed = await deriveCanonicalRoomAudience(runtime, message, { nowMs });
+		} else {
+			if (!record.revalidateApiPrincipal) {
+				return { renewed: false, reason: "verification_unavailable" };
+			}
+			const principal = await record.revalidateApiPrincipal();
+			if (!principal) {
+				return { renewed: false, reason: "principal_revoked" };
+			}
+			renewed = await deriveApiAudience(runtime, message, principal, {
+				nowMs,
+			});
+		}
+	} catch (cause) {
+		// error-policy:J4 an authority lookup failure leaves the expired
+		// evidence in place, so owner-private surfaces stay denied.
+		runtime.reportError(
+			"TrustedDeliveryAudience.renew",
+			new ElizaError("Could not renew the owner-private delivery audience.", {
+				code: "DELIVERY_AUDIENCE_RENEWAL_FAILED",
+				cause,
+				context: {
+					attestationId: current.attestationId,
+					roomId: message.roomId,
+				},
+			}),
+		);
+		return { renewed: false, reason: "audience_lookup_failed" };
+	}
+	// The turn may have ended or been cancelled while authority was re-read.
+	if (!lease.active || record.turnLease !== lease) {
+		return { renewed: false, reason: "no_active_turn" };
+	}
+	if (lease.signal?.aborted) {
+		return { renewed: false, reason: "turn_cancelled" };
+	}
+	if (!sameAudienceAuthority(current, renewed)) {
+		return { renewed: false, reason: "audience_changed" };
+	}
+	record.audience = renewed;
+	return { renewed: true, audience: renewed };
+}
+
+/**
+ * Renew this turn's evidence when it has expired and the turn is still active;
+ * a no-op otherwise. Call before synchronous exposure or execution gates.
+ */
+export async function renewExpiredTrustedDeliveryAudience(
+	runtime: IAgentRuntime,
+	message: Memory | undefined,
+	nowMs = Date.now(),
+): Promise<void> {
+	if (!message) return;
+	const record = getAudienceRecord(message);
+	if (!record?.turnLease || record.audience.expiresAtMs > nowMs) return;
+	await renewTrustedDeliveryAudience(runtime, message, nowMs);
 }
 
 /** Return the trusted evidence attached to this exact in-memory turn. */
@@ -685,12 +902,35 @@ export async function revalidateOwnerExclusiveDisclosure(
 			audience: record.audience,
 		};
 	}
-	const initial = decisionFromAudience(
+	let initial = decisionFromAudience(
 		message,
 		record.audience,
 		nowMs,
 		isRuntimeManagedInternalActor(runtime, message.entityId),
 	);
+	if (!initial.allowed && initial.reason === "expired_attestation") {
+		const renewal = await renewTrustedDeliveryAudience(runtime, message, nowMs);
+		if (renewal.renewed) {
+			initial = decisionFromAudience(
+				message,
+				renewal.audience,
+				nowMs,
+				isRuntimeManagedInternalActor(runtime, message.entityId),
+			);
+		} else if (renewal.reason === "audience_changed") {
+			return {
+				allowed: false,
+				reason: "audience_changed",
+				audience: record.audience,
+			};
+		} else if (renewal.reason === "audience_lookup_failed") {
+			return {
+				allowed: false,
+				reason: "audience_lookup_failed",
+				audience: record.audience,
+			};
+		}
+	}
 	if (!initial.allowed) return initial;
 
 	try {

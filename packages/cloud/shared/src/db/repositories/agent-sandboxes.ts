@@ -9,7 +9,7 @@ import { ElizaError } from "@elizaos/core";
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   SnapshotPayloadTooLargeError,
-} from "@elizaos/shared/agent-backup-limits";
+} from "@elizaos/core/protocol";
 import {
   and,
   asc,
@@ -61,7 +61,7 @@ import {
   offloadJsonField,
 } from "../../lib/storage/object-store";
 import { logger } from "../../lib/utils/logger";
-import type { Database, DbTransaction } from "../client";
+import { type Database, type DbTransaction } from "../client";
 import { decryptAgentBackupStateData, encryptAgentBackupStateData } from "../crypto/agent-backups";
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { sqlRows } from "../execute-helpers";
@@ -104,8 +104,117 @@ export type {
   NewAgentSandboxBackup,
 };
 
-const CANONICAL_SHA256_IMAGE_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
+export type LegacyBackupVerificationSource = {
+  agentId: string;
+  organizationId: string;
+  backupRowVersion: string;
+  backupCreatedAtNative: string;
+  backupVerifiedAtNative: string | null;
+  backupRecoveryExpiresAtNative: string | null;
+  agentRowVersion: string | null;
+  deletionStartedAtNative: string | null;
+  backupWithinDeletionIntent: boolean | null;
+  attached: Pick<
+    AgentSandbox,
+    | "id"
+    | "organization_id"
+    | "user_id"
+    | "status"
+    | "execution_tier"
+    | "pool_status"
+    | "deleted_at"
+    | "sandbox_id"
+    | "node_id"
+    | "container_name"
+    | "environment_revision"
+    | "lifecycle_revision"
+    | "image_digest"
+    | "deletion_attempt_id"
+    | "deletion_started_at"
+  > | null;
+};
 
+/**
+ * A driver's Date-only candidate loses PostgreSQL microseconds. Millisecond
+ * matching is only initial discovery; native timestamps and xmin captured
+ * from primary below are the exact publication fence.
+ */
+function legacyBackupVerificationRowPredicate(row: StoredAgentSandboxBackup): SQL {
+  const fields = [
+    [agentSandboxBackups.id, row.id],
+    [agentSandboxBackups.sandbox_record_id, row.sandbox_record_id],
+    [agentSandboxBackups.snapshot_type, row.snapshot_type],
+    [agentSandboxBackups.backup_kind, row.backup_kind],
+    [agentSandboxBackups.parent_backup_id, row.parent_backup_id],
+    [agentSandboxBackups.base_backup_id, row.base_backup_id],
+    [agentSandboxBackups.content_hash, row.content_hash],
+    [agentSandboxBackups.size_bytes, row.size_bytes],
+    [
+      sql`date_trunc('milliseconds', ${agentSandboxBackups.created_at})`,
+      row.created_at.toISOString(),
+    ],
+    [agentSandboxBackups.state_data_storage, row.state_data_storage],
+    [agentSandboxBackups.state_data_key, row.state_data_key],
+    [agentSandboxBackups.catalog_version, row.catalog_version],
+    [agentSandboxBackups.catalog_state, row.catalog_state],
+    [agentSandboxBackups.catalog_organization_id, row.catalog_organization_id],
+    [agentSandboxBackups.catalog_agent_id, row.catalog_agent_id],
+    [agentSandboxBackups.backup_operation_id, row.backup_operation_id],
+    [agentSandboxBackups.lifecycle_generation, row.lifecycle_generation],
+    [agentSandboxBackups.lifecycle_revision, row.lifecycle_revision],
+    [agentSandboxBackups.recovery_organization_id, row.recovery_organization_id],
+    [agentSandboxBackups.recovery_agent_id, row.recovery_agent_id],
+    [agentSandboxBackups.recovery_deletion_attempt_id, row.recovery_deletion_attempt_id],
+    [
+      sql`date_trunc('milliseconds', ${agentSandboxBackups.recovery_expires_at})`,
+      row.recovery_expires_at?.toISOString() ?? null,
+    ],
+    [agentSandboxBackups.verification_status, row.verification_status],
+    [
+      sql`date_trunc('milliseconds', ${agentSandboxBackups.verified_at})`,
+      row.verified_at?.toISOString() ?? null,
+    ],
+  ] as const;
+  return and(
+    backupVisibleToLegacyReaders(),
+    or(isNull(agentSandboxBackups.catalog_version), eq(agentSandboxBackups.catalog_version, 1)),
+    ...fields.map(([column, value]) => sql`${column} IS NOT DISTINCT FROM ${value}`),
+    sql`${agentSandboxBackups.state_data} IS NOT DISTINCT FROM ${JSON.stringify(row.state_data)}::jsonb`,
+  ) as SQL;
+}
+
+function legacyBackupVerificationAgentPredicate(
+  source: NonNullable<LegacyBackupVerificationSource["attached"]>,
+): SQL {
+  const fields = [
+    [agentSandboxes.id, source.id],
+    [agentSandboxes.organization_id, source.organization_id],
+    [agentSandboxes.user_id, source.user_id],
+    [agentSandboxes.status, source.status],
+    [agentSandboxes.execution_tier, source.execution_tier],
+    [agentSandboxes.pool_status, source.pool_status],
+    [
+      sql`date_trunc('milliseconds', ${agentSandboxes.deleted_at})`,
+      source.deleted_at?.toISOString() ?? null,
+    ],
+    [agentSandboxes.sandbox_id, source.sandbox_id],
+    [agentSandboxes.node_id, source.node_id],
+    [agentSandboxes.container_name, source.container_name],
+    [agentSandboxes.environment_revision, source.environment_revision],
+    [agentSandboxes.lifecycle_revision, source.lifecycle_revision],
+    [agentSandboxes.image_digest, source.image_digest],
+    [agentSandboxes.deletion_attempt_id, source.deletion_attempt_id],
+    [
+      sql`date_trunc('milliseconds', ${agentSandboxes.deletion_started_at})`,
+      source.deletion_started_at?.toISOString() ?? null,
+    ],
+  ] as const;
+  return and(
+    ...fields.map(([column, value]) => sql`${column} IS NOT DISTINCT FROM ${value}`),
+  ) as SQL;
+}
+
+const CANONICAL_SHA256_IMAGE_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
 /**
  * Lightweight legacy-list projection. Catalogue-v2 fields are intentionally
  * read through the dedicated catalogue repository so this path never grows
@@ -131,7 +240,6 @@ export type AgentSandboxBackupMetadata = Pick<
   | "recovery_expires_at"
   | "created_at"
 >;
-
 /**
  * A user sandbox row freshly claimed from the warm pool. `warm_pool_row_id`
  * is the id of the pool row the claim transaction deleted — the container's
@@ -139,8 +247,9 @@ export type AgentSandboxBackupMetadata = Pick<
  * post-claim re-key needs it to revoke the pool-org credential; it exists
  * nowhere else once the pool row is gone (#17066 review).
  */
-export type WarmClaimedAgentSandbox = AgentSandbox & { warm_pool_row_id: string };
-
+export type WarmClaimedAgentSandbox = AgentSandbox & {
+  warm_pool_row_id: string;
+};
 /**
  * Identifies the exact container generation observed by a warm-pool
  * reconciler. Heartbeats intentionally do not participate: they update
@@ -161,7 +270,6 @@ export type WarmPoolRuntimeGeneration = Pick<
   | "image_digest"
   | "pool_ready_at"
 >;
-
 /**
  * Exact row authority captured before a stopped restore prepares its backup.
  * Provisioning may begin only if every captured lifecycle discriminator still
@@ -180,7 +288,6 @@ export type ProvisioningAdmissionCapture = Pick<
   | "deletion_attempt_id"
   | "lifecycle_revision"
 >;
-
 /**
  * Exact container generation that a stuck-provisioning reconciler actually
  * probed. The final write must compare every field that selects the provider
@@ -206,11 +313,9 @@ export type ProvisioningRecoveryCapture = Pick<
   | "deleted_at"
   | "deletion_attempt_id"
 >;
-
 /** Exact row generation whose bridge was probed by disconnected recovery. */
 export type DisconnectedRecoveryCapture = ProvisioningRecoveryCapture &
   Pick<AgentSandbox, "previous_image_digest" | "error_message">;
-
 /** Ingress repair committed atomically with a successful reconnect CAS. */
 export interface RepairedDisconnectedIngress {
   headscaleIp: string;
@@ -218,7 +323,6 @@ export interface RepairedDisconnectedIngress {
   healthUrl: string;
   errorCount?: number;
 }
-
 /**
  * Every execution tier intentionally supported by the single-agent runtime
  * lookup. Keep the literals here instead of deriving "not shared" or spreading
@@ -230,19 +334,16 @@ const RUNNING_SANDBOX_EXECUTION_TIERS = [
   "dedicated-always",
   "custom",
 ] as const satisfies readonly AgentExecutionTier[];
-
 const RESTORE_PROVISIONING_ADMISSIBLE_STATUSES = [
   "stopped",
   "sleeping",
   "disconnected",
   "error",
 ] as const satisfies readonly AgentSandboxStatus[];
-
 export interface WarmPoolReconciliationCandidate {
   sandbox: AgentSandbox;
   canPromote: boolean;
 }
-
 const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
   memories: [],
   config: {},
@@ -254,7 +355,6 @@ const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
  * backup wire payload — it is what gets handed to restore (#17172).
  */
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
-
 /**
  * V2 catalogue operations are always invisible to legacy restore/list paths:
  * their inline state is only a schema placeholder and the real payload lives
@@ -267,11 +367,9 @@ function backupVisibleToLegacyReaders(): SQL {
     eq(agentSandboxBackups.catalog_state, "legacy_unmigrated"),
   ) as SQL;
 }
-
 /** Successful agent deletes retain one final recovery point for 30 days. */
 export const PRE_DELETE_BACKUP_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const PRE_DELETE_BACKUP_CLEANUP_BATCH_SIZE = 100;
-
 export interface PreDeleteBackupCleanupResult {
   deletedRows: number;
   deletedObjects: number;
@@ -280,7 +378,6 @@ export interface PreDeleteBackupCleanupResult {
   /** Malformed rows discarded under the terminal invalid-row policy. */
   invalidRows: number;
 }
-
 /**
  * Correlates a sandbox row with the queue operations that legitimately own its
  * `provisioning` state. Drizzle binds every type/status value as a parameter;
@@ -301,11 +398,9 @@ function hasNoProvisioningOwnerJob(ownerJobTypes: readonly ProvisioningJobType[]
     )
   )`;
 }
-
 function hasNoProvisioningStatusOwnerJob(): SQL {
   return hasNoProvisioningOwnerJob([...PROVISIONING_STATUS_OWNER_JOB_TYPES]);
 }
-
 /**
  * Runtime fields every capacity reader and claimant requires. Keeping this as
  * one SQL fragment prevents a row from counting as capacity on one path while
@@ -325,16 +420,13 @@ function warmPoolRuntimeLocatorConditions(): SQL[] {
     isNull(agentSandboxes.replacement_cleanup_sandbox_id),
   ];
 }
-
 function warmPoolRuntimeReadyConditions(): SQL[] {
   return [isNotNull(agentSandboxes.pool_ready_at), ...warmPoolRuntimeLocatorConditions()];
 }
-
 export interface WarmPoolImageFilter {
   image?: string;
   digest?: string;
 }
-
 function claimableWarmPoolConditions(filter: WarmPoolImageFilter = {}): SQL[] {
   const conditions: SQL[] = [
     eq(agentSandboxes.organization_id, WARM_POOL_ORG_ID),
@@ -351,7 +443,6 @@ function claimableWarmPoolConditions(filter: WarmPoolImageFilter = {}): SQL[] {
   }
   return conditions;
 }
-
 function inFlightWarmPoolConditions(filter: WarmPoolImageFilter = {}): SQL[] {
   const conditions: SQL[] = [
     eq(agentSandboxes.organization_id, WARM_POOL_ORG_ID),
@@ -370,7 +461,6 @@ function inFlightWarmPoolConditions(filter: WarmPoolImageFilter = {}): SQL[] {
   }
   return conditions;
 }
-
 function warmPoolGenerationConditions(expected: WarmPoolRuntimeGeneration): SQL[] {
   return [
     eq(agentSandboxes.id, expected.id),
@@ -387,7 +477,6 @@ function warmPoolGenerationConditions(expected: WarmPoolRuntimeGeneration): SQL[
     sql`${agentSandboxes.pool_ready_at} IS NOT DISTINCT FROM ${expected.pool_ready_at}`,
   ];
 }
-
 /** Keep generic and restore-fenced provisioning transitions byte-equivalent. */
 function provisioningAdmissionUpdatePayload() {
   const permanentProvisionFailure = sql`${agentSandboxes.status} = 'error' AND ${agentSandboxes.error_message} LIKE 'Provisioning permanently failed%'`;
@@ -411,12 +500,10 @@ function provisioningAdmissionUpdatePayload() {
     headscale_ip: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
   };
 }
-
 export interface ReconciliationBatchResult<T> {
   updated: T[];
   deferred: number;
 }
-
 async function getStoredBackupById(
   backupId: string,
   database: Database = dbWrite,
@@ -428,7 +515,6 @@ async function getStoredBackupById(
     .limit(1);
   return row;
 }
-
 async function backupOrganizationId(sandboxRecordId: string): Promise<string> {
   const [sandbox] = await dbWrite
     .select({ organizationId: agentSandboxes.organization_id })
@@ -438,7 +524,6 @@ async function backupOrganizationId(sandboxRecordId: string): Promise<string> {
   if (!sandbox) throw new Error(`Agent sandbox not found: ${sandboxRecordId}`);
   return sandbox.organizationId;
 }
-
 export async function hydrateAgentSandboxBackup(
   backup: StoredAgentSandboxBackup,
 ): Promise<AgentSandboxBackup> {
@@ -447,23 +532,18 @@ export async function hydrateAgentSandboxBackup(
     if (!backup.state_data_key) {
       throw new Error(`Agent sandbox backup ${backup.id} is missing state_data_key`);
     }
-
     const raw = await getObjectText(backup.state_data_key);
     if (!raw) {
       throw new Error(`Agent sandbox backup payload not found: ${backup.state_data_key}`);
     }
-
     stateData = JSON.parse(raw) as AgentBackupStoredStateData;
   }
-
   const decrypted = await decryptAgentBackupStateData(backup.id, stateData);
-
   return {
     ...backup,
     state_data: decrypted,
   };
 }
-
 /**
  * Reconstruct an already-authorized target→base chain from the exact captured
  * rows. Every intermediate state is checked against its persisted digest, so
@@ -471,7 +551,10 @@ export async function hydrateAgentSandboxBackup(
  */
 export async function reconstructStoredAgentSandboxBackupChain(
   capturedTargetToBase: readonly StoredAgentSandboxBackup[],
-): Promise<{ state: AgentBackupStateData; target: AgentSandboxBackup }> {
+): Promise<{
+  state: AgentBackupStateData;
+  target: AgentSandboxBackup;
+}> {
   if (capturedTargetToBase.length === 0) throw new Error("Backup chain is empty");
   let chainBytes = 0;
   let state: AgentBackupStateData | undefined;
@@ -498,13 +581,11 @@ export async function reconstructStoredAgentSandboxBackupChain(
   if (!state || !target) throw new Error("Backup chain did not produce a restorable state");
   return { state, target };
 }
-
 export async function prepareAgentBackupInsertData(
   data: NewAgentSandboxBackup,
   organizationId?: string,
 ): Promise<NewAgentSandboxBackup> {
   if (data.state_data_storage === "r2") return data;
-
   const id = data.id ?? randomUUID();
   const createdAt = data.created_at ?? new Date();
   const effectiveOrganizationId =
@@ -523,7 +604,6 @@ export async function prepareAgentBackupInsertData(
     value: encryptedStateData,
     inlineValueWhenOffloaded: EMPTY_BACKUP_STATE,
   });
-
   return {
     ...data,
     id,
@@ -533,7 +613,6 @@ export async function prepareAgentBackupInsertData(
     state_data_key: stateData.key,
   };
 }
-
 /**
  * Outcome of spending a deletion generation's allocation ownership.
  *
@@ -544,13 +623,11 @@ export async function prepareAgentBackupInsertData(
  * tell which they were looking at.
  */
 export type DeletionAllocationRelease = "released" | "not-owned" | "counter-unchanged";
-
 export interface DeletionAllocationSpendResult {
   outcome: DeletionAllocationRelease;
   /** Post-trigger row generation when this call consumed ownership. */
   lifecycleRevision: number | null;
 }
-
 /** Existing metered rows retain their population slot; terminal recovery requires a new one. */
 async function assertProvisionQuota(
   tx: DbTransaction,
@@ -621,10 +698,8 @@ async function assertProvisionQuota(
       },
     });
 }
-
 export class AgentSandboxesRepository {
   // Reads
-
   async findById(id: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbRead
@@ -634,7 +709,6 @@ export class AgentSandboxesRepository {
       .limit(1);
     return r;
   }
-
   async findOrganizationIdById(id: string): Promise<string | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbRead
@@ -644,7 +718,6 @@ export class AgentSandboxesRepository {
       .limit(1);
     return r?.organizationId;
   }
-
   /** Distinguishes a completed user shutdown from a recoverable billing stop. */
   async wasStoppedByUser(id: string, orgId: string): Promise<boolean> {
     const [latest] = await dbWrite
@@ -665,7 +738,6 @@ export class AgentSandboxesRepository {
       .limit(1);
     return latest?.authorization === "user_request";
   }
-
   async findByIdAndOrg(id: string, orgId: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbRead
@@ -675,7 +747,6 @@ export class AgentSandboxesRepository {
       .limit(1);
     return r;
   }
-
   async findByIdAndOrgForWrite(id: string, orgId: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbWrite
@@ -685,7 +756,6 @@ export class AgentSandboxesRepository {
       .limit(1);
     return r;
   }
-
   async listByOrganization(orgId: string): Promise<AgentSandbox[]> {
     await ensureAgentSandboxSchema();
     return dbRead
@@ -694,7 +764,6 @@ export class AgentSandboxesRepository {
       .where(eq(agentSandboxes.organization_id, orgId))
       .orderBy(desc(agentSandboxes.created_at));
   }
-
   async findBySandboxId(sandboxId: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbRead
@@ -704,7 +773,6 @@ export class AgentSandboxesRepository {
       .limit(1);
     return r;
   }
-
   /** Primary-authority lookup for destructive teardown identity. */
   async findBySandboxIdForWrite(sandboxId: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
@@ -715,7 +783,6 @@ export class AgentSandboxesRepository {
       .limit(1);
     return r;
   }
-
   async findLatestByCharacterId(characterId: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbRead
@@ -726,7 +793,6 @@ export class AgentSandboxesRepository {
       .limit(1);
     return r;
   }
-
   /** List active (non-terminal) sandboxes on a specific docker node. */
   async listByNodeId(nodeId: string): Promise<AgentSandbox[]> {
     await ensureAgentSandboxSchema();
@@ -741,7 +807,6 @@ export class AgentSandboxesRepository {
         ),
       );
   }
-
   /**
    * Running sandboxes the heartbeat cycle should dial. Excludes the `shared`
    * execution tier: those run container-free in the hosted shared runtime
@@ -754,7 +819,12 @@ export class AgentSandboxesRepository {
    * agent, so dialing them wastes cycles and pollutes heartbeat telemetry
    * (#22548).
    */
-  async listRunning(): Promise<Array<{ id: string; organization_id: string }>> {
+  async listRunning(): Promise<
+    Array<{
+      id: string;
+      organization_id: string;
+    }>
+  > {
     return dbRead
       .select({
         id: agentSandboxes.id,
@@ -770,7 +840,6 @@ export class AgentSandboxesRepository {
         ),
       );
   }
-
   /**
    * Tier x status census of the container-backed tenant fleet, for the
    * fleet-liveness monitor (#22548). Grouping by BOTH keys is the point: the
@@ -793,7 +862,11 @@ export class AgentSandboxesRepository {
    * `running` rows — must still appear in the census.
    */
   async summarizeDedicatedFleet(): Promise<
-    Array<{ execution_tier: string; status: string; count: number }>
+    Array<{
+      execution_tier: string;
+      status: string;
+      count: number;
+    }>
   > {
     await ensureAgentSandboxSchema();
     return dbRead
@@ -812,7 +885,6 @@ export class AgentSandboxesRepository {
       )
       .groupBy(agentSandboxes.execution_tier, agentSandboxes.status);
   }
-
   /**
    * Always-on (paid) agents that should be reconciled back to `running`. A
    * `dedicated-always` agent is contractually meant to stay up, so a transient
@@ -869,7 +941,6 @@ export class AgentSandboxesRepository {
       )
       .limit(limit);
   }
-
   /**
    * Rows WEDGED in `provisioning` past `cutoff` that still carry a container
    * to re-probe (`sandbox_id` set): a container was created but the readiness
@@ -917,7 +988,6 @@ export class AgentSandboxesRepository {
       )
       .limit(limit);
   }
-
   /**
    * Shared-tier bridge rows old enough to be reap candidates: live (not
    * soft-deleted), `execution_tier = 'shared'`, created before `cutoff`. The
@@ -957,7 +1027,6 @@ export class AgentSandboxesRepository {
       .orderBy(asc(agentSandboxes.created_at))
       .limit(limit);
   }
-
   /**
    * Live (running, non-deleted) dedicated sandboxes in the given orgs — the
    * "twin took over" side of the orphan-shared decision. A shared bridge is an
@@ -991,7 +1060,6 @@ export class AgentSandboxesRepository {
         ),
       );
   }
-
   /**
    * Find running, non-deleted agents whose stored `image_digest` differs from
    * `targetDigest` (treating NULL as different). Used by the fleet-upgrade
@@ -1101,7 +1169,6 @@ export class AgentSandboxesRepository {
       )
       .limit(limit);
   }
-
   /**
    * Inventory pre-fence warm claims that need one lifecycle-locked restart
    * before they can participate in image rollout. Running, stopped, and error
@@ -1139,7 +1206,6 @@ export class AgentSandboxesRepository {
       .orderBy(asc(agentSandboxes.updated_at), asc(agentSandboxes.id))
       .limit(limit);
   }
-
   /**
    * Claimed handoffs that durably entered pending/attested state but lost their
    * restart enqueue (for example, the route process died after committing the
@@ -1150,7 +1216,13 @@ export class AgentSandboxesRepository {
   async listStrandedWarmClaimRecoveryCandidates(
     cutoff: Date,
     limit: number,
-  ): Promise<Array<{ id: string; organization_id: string; user_id: string }>> {
+  ): Promise<
+    Array<{
+      id: string;
+      organization_id: string;
+      user_id: string;
+    }>
+  > {
     return dbWrite
       .select({
         id: agentSandboxes.id,
@@ -1178,15 +1250,17 @@ export class AgentSandboxesRepository {
       .orderBy(asc(agentSandboxes.updated_at), asc(agentSandboxes.id))
       .limit(limit);
   }
-
   /**
    * Durable credential cleanup queue for exhausted warm-claim recovery. Rows
    * retain their source id until both target and source owners are revoked;
    * a failed cleanup remains selectable on the next daemon pass.
    */
-  async listFailedWarmClaimCredentialCleanupCandidates(
-    limit: number,
-  ): Promise<Array<{ id: string; organization_id: string }>> {
+  async listFailedWarmClaimCredentialCleanupCandidates(limit: number): Promise<
+    Array<{
+      id: string;
+      organization_id: string;
+    }>
+  > {
     return dbWrite
       .select({
         id: agentSandboxes.id,
@@ -1203,7 +1277,6 @@ export class AgentSandboxesRepository {
       .orderBy(asc(agentSandboxes.updated_at), asc(agentSandboxes.id))
       .limit(limit);
   }
-
   /**
    * Find running, non-deleted agents currently on `currentDigest` that also
    * have a persisted `previous_image_digest`. Used by the operator-gated
@@ -1251,7 +1324,6 @@ export class AgentSandboxesRepository {
       )
       .limit(limit);
   }
-
   async findRunningSandbox(id: string, orgId: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     // Use dbWrite (primary) for fresh read-after-write data from the VPS worker.
@@ -1269,14 +1341,12 @@ export class AgentSandboxesRepository {
       .limit(1);
     return r;
   }
-
   async findByManagedDiscordGuildId(guildId: string): Promise<AgentSandbox[]> {
     await ensureAgentSandboxSchema();
     const trimmedGuildId = guildId.trim();
     if (!trimmedGuildId) {
       return [];
     }
-
     const rows = await sqlRows<AgentSandbox>(
       dbWrite,
       sql`
@@ -1286,19 +1356,15 @@ export class AgentSandboxesRepository {
       ORDER BY ${agentSandboxes.updated_at} DESC
     `,
     );
-
     return rows;
   }
-
   // Writes
-
   async create(data: NewAgentSandbox): Promise<AgentSandbox> {
     await ensureAgentSandboxSchema();
     const [r] = await dbWrite.insert(agentSandboxes).values(data).returning();
     if (!r) throw new Error("Failed to create Agent sandbox record");
     return r;
   }
-
   async markStuckProvisioningWithoutActiveJobAsError(cutoff: Date): Promise<
     ReconciliationBatchResult<{
       agentId: string;
@@ -1324,7 +1390,6 @@ export class AgentSandboxesRepository {
       )
       .orderBy(asc(agentSandboxes.updated_at), asc(agentSandboxes.id))
       .limit(PROVISIONING_RECONCILIATION_BATCH_SIZE);
-
     const swept: Array<{
       agentId: string;
       agentName: string | null;
@@ -1335,10 +1400,9 @@ export class AgentSandboxesRepository {
     for (const candidate of candidates) {
       const updated = await dbWrite.transaction(async (tx) => {
         await configureElizaLifecycleTransaction(tx);
-        const [lock] = await sqlRows<{ acquired: boolean }>(
-          tx,
-          elizaTryProvisionAdvisoryLockSql(candidate.organizationId, candidate.agentId),
-        );
+        const [lock] = await sqlRows<{
+          acquired: boolean;
+        }>(tx, elizaTryProvisionAdvisoryLockSql(candidate.organizationId, candidate.agentId));
         if (!lock?.acquired) return "deferred" as const;
         const [row] = await tx
           .update(agentSandboxes)
@@ -1373,7 +1437,6 @@ export class AgentSandboxesRepository {
     }
     return { updated: swept, deferred };
   }
-
   /**
    * Recover ORPHANED PENDING sandboxes: a user-owned row that was committed as
    * `pending` but never got an `agent_provision` job enqueued (a throw in the
@@ -1417,7 +1480,6 @@ export class AgentSandboxesRepository {
       )
       .orderBy(asc(agentSandboxes.created_at), asc(agentSandboxes.id))
       .limit(PROVISIONING_RECONCILIATION_BATCH_SIZE);
-
     const swept: Array<{
       agentId: string;
       agentName: string | null;
@@ -1428,10 +1490,9 @@ export class AgentSandboxesRepository {
     for (const candidate of candidates) {
       const updated = await dbWrite.transaction(async (tx) => {
         await configureElizaLifecycleTransaction(tx);
-        const [lock] = await sqlRows<{ acquired: boolean }>(
-          tx,
-          elizaTryProvisionAdvisoryLockSql(candidate.organizationId, candidate.agentId),
-        );
+        const [lock] = await sqlRows<{
+          acquired: boolean;
+        }>(tx, elizaTryProvisionAdvisoryLockSql(candidate.organizationId, candidate.agentId));
         if (!lock?.acquired) return "deferred" as const;
         const [row] = await tx
           .update(agentSandboxes)
@@ -1465,7 +1526,51 @@ export class AgentSandboxesRepository {
     }
     return { updated: swept, deferred };
   }
-
+  /** Failed asynchronous work may only mark its own execution, or its exact unleased generation. */
+  async markProvisionFailed(
+    expected: AgentSandbox,
+    message: string,
+  ): Promise<AgentSandbox | undefined> {
+    await ensureAgentSandboxSchema();
+    const execution =
+      expected.lifecycle_job_id !== null && expected.lifecycle_execution_generation !== null;
+    const [updated] = await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "error",
+        error_message: message,
+        error_count: sql`COALESCE(${agentSandboxes.error_count}, 0) + 1`,
+        bridge_url: null,
+        health_url: null,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(agentSandboxes.id, expected.id),
+          eq(agentSandboxes.organization_id, expected.organization_id),
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+          inArray(agentSandboxes.status, ["provisioning", "running"]),
+          eq(agentSandboxes.environment_revision, expected.environment_revision),
+          isNull(agentSandboxes.deletion_attempt_id),
+          isNull(agentSandboxes.deleted_at),
+          execution
+            ? and(
+                eq(agentSandboxes.lifecycle_job_id, expected.lifecycle_job_id!),
+                eq(
+                  agentSandboxes.lifecycle_execution_generation,
+                  expected.lifecycle_execution_generation!,
+                ),
+              )
+            : and(
+                isNull(agentSandboxes.lifecycle_job_id),
+                isNull(agentSandboxes.lifecycle_execution_generation),
+                eq(agentSandboxes.lifecycle_revision, expected.lifecycle_revision),
+              ),
+        ),
+      )
+      .returning();
+    return updated;
+  }
   async update(
     id: string,
     data: Partial<NewAgentSandbox>,
@@ -1567,7 +1672,6 @@ export class AgentSandboxesRepository {
       .returning();
     return r;
   }
-
   /**
    * Atomically take the provisioning lock. `provisioning` is included so a
    * row left stuck by a crashed worker can be retaken; the job-level stale
@@ -1616,7 +1720,6 @@ export class AgentSandboxesRepository {
       return r;
     });
   }
-
   /**
    * Atomically admit a non-running restore into provisioning only while the
    * exact tenant lifecycle authority captured by restore selection is current.
@@ -1653,7 +1756,6 @@ export class AgentSandboxesRepository {
     ) {
       return undefined;
     }
-
     await ensureAgentSandboxSchema();
     return dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
@@ -1694,7 +1796,6 @@ export class AgentSandboxesRepository {
       return r;
     });
   }
-
   /**
    * Atomically restore a still-recoverable agent to `running` after a successful
    * bridge re-probe. The recovery read -> probe -> write window spans seconds,
@@ -1735,14 +1836,12 @@ export class AgentSandboxesRepository {
     ) {
       return undefined;
     }
-
     await ensureAgentSandboxSchema();
     return dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
-      const [lock] = await sqlRows<{ acquired: boolean }>(
-        tx,
-        elizaTryProvisionAdvisoryLockSql(expected.organization_id, expected.id),
-      );
+      const [lock] = await sqlRows<{
+        acquired: boolean;
+      }>(tx, elizaTryProvisionAdvisoryLockSql(expected.organization_id, expected.id));
       if (!lock?.acquired) return undefined;
       const eligibility = and(
         eq(agentSandboxes.id, expected.id),
@@ -1793,7 +1892,6 @@ export class AgentSandboxesRepository {
       return r;
     });
   }
-
   /**
    * Guarded CAS that flips a WEDGED `provisioning` row to `running` after the
    * daemon reconciler re-probed its container and found it healthy (#15310 #6).
@@ -1823,15 +1921,12 @@ export class AgentSandboxesRepository {
     ) {
       return undefined;
     }
-
     await ensureAgentSandboxSchema();
-
     return dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
-      const [lock] = await sqlRows<{ acquired: boolean }>(
-        tx,
-        elizaTryProvisionAdvisoryLockSql(expected.organization_id, expected.id),
-      );
+      const [lock] = await sqlRows<{
+        acquired: boolean;
+      }>(tx, elizaTryProvisionAdvisoryLockSql(expected.organization_id, expected.id));
       if (!lock?.acquired) return undefined;
       const [updated] = await tx
         .update(agentSandboxes)
@@ -1868,7 +1963,6 @@ export class AgentSandboxesRepository {
       return updated;
     });
   }
-
   async delete(id: string, orgId: string): Promise<boolean> {
     await ensureAgentSandboxSchema();
     const r = await dbWrite
@@ -1877,9 +1971,7 @@ export class AgentSandboxesRepository {
       .returning({ id: agentSandboxes.id });
     return r.length > 0;
   }
-
   // ── Warm pool ─────────────────────────────────────────────────────────
-
   /** Count entries that the claim transaction can transfer immediately. */
   async countUnclaimedPool(filter: WarmPoolImageFilter = {}): Promise<number> {
     await ensureAgentSandboxSchema();
@@ -1895,15 +1987,15 @@ export class AgentSandboxesRepository {
     }
     return row.count;
   }
-
   /**
    * Count claimable and in-flight entries for one desired image. Image-scoped
    * sizing prevents stale-image or otherwise unclaimable rows from suppressing
    * replacement capacity.
    */
-  async countAllPoolEntries(
-    filter: WarmPoolImageFilter = {},
-  ): Promise<{ ready: number; provisioning: number }> {
+  async countAllPoolEntries(filter: WarmPoolImageFilter = {}): Promise<{
+    ready: number;
+    provisioning: number;
+  }> {
     await ensureAgentSandboxSchema();
     const claimable = and(...claimableWarmPoolConditions(filter));
     const inFlight = and(...inFlightWarmPoolConditions(filter));
@@ -1927,7 +2019,6 @@ export class AgentSandboxesRepository {
     }
     return inventory;
   }
-
   /**
    * Count ready (claimable) unclaimed pool entries for a specific image.
    * Used ONLY on the claim-null path to distinguish an EMPTY pool (starvation
@@ -1941,7 +2032,6 @@ export class AgentSandboxesRepository {
   async countReadyPoolEntriesForImage(image: string): Promise<number> {
     return this.countUnclaimedPool({ image });
   }
-
   /**
    * Count user-facing provisions created in the given window.
    * Used by the forecast to predict next-period demand.
@@ -1967,7 +2057,6 @@ export class AgentSandboxesRepository {
       );
     return row?.count ?? 0;
   }
-
   /**
    * Count retained user-owned agent rows for an organization. Used by org-vacate
    * guards where deleting the org would cascade agent state without going
@@ -1987,7 +2076,6 @@ export class AgentSandboxesRepository {
       );
     return row?.count ?? 0;
   }
-
   async countUserProvisionsSince(sinceMs: number): Promise<number> {
     await ensureAgentSandboxSchema();
     const since = new Date(Date.now() - sinceMs);
@@ -2003,7 +2091,6 @@ export class AgentSandboxesRepository {
       );
     return row?.count ?? 0;
   }
-
   /**
    * User provisions per UTC hour over the last `windowHours`, oldest first.
    * Excludes pool sentinel org rows. Used by the forecast.
@@ -2012,7 +2099,10 @@ export class AgentSandboxesRepository {
     await ensureAgentSandboxSchema();
     if (windowHours <= 0) return [];
     const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
-    const rows = await sqlRows<{ bucket: string; count: number }>(
+    const rows = await sqlRows<{
+      bucket: string;
+      count: number;
+    }>(
       dbRead,
       sql`
         SELECT
@@ -2027,18 +2117,16 @@ export class AgentSandboxesRepository {
       `,
     );
     const byBucket = new Map(rows.map((r) => [r.bucket, r.count]));
-
     const buckets: number[] = [];
     const nowMs = Date.now();
-    const startHourMs = Math.floor(nowMs / 3_600_000) * 3_600_000;
+    const startHourMs = Math.floor(nowMs / 3600000) * 3600000;
     for (let i = windowHours - 1; i >= 0; i--) {
-      const ms = startHourMs - i * 3_600_000;
+      const ms = startHourMs - i * 3600000;
       const key = new Date(ms).toISOString().slice(0, 13) + ":00:00";
       buckets.push(byBucket.get(key) ?? 0);
     }
     return buckets;
   }
-
   /** Claimable rows, ordered by the same FIFO stamp used by the claim path. */
   async listClaimablePool(filter: WarmPoolImageFilter = {}): Promise<AgentSandbox[]> {
     await ensureAgentSandboxSchema();
@@ -2048,7 +2136,6 @@ export class AgentSandboxesRepository {
       .where(and(...claimableWarmPoolConditions(filter)))
       .orderBy(agentSandboxes.pool_ready_at);
   }
-
   /**
    * Running pool rows that cannot be claimed. A row with complete runtime
    * locators but no readiness stamp can be promoted after a live probe; all
@@ -2096,7 +2183,6 @@ export class AgentSandboxesRepository {
       )
       .orderBy(agentSandboxes.created_at);
   }
-
   /** All live pool rows used for health reporting and image rollout. */
   async listAllRunningPoolEntries(): Promise<AgentSandbox[]> {
     await ensureAgentSandboxSchema();
@@ -2115,7 +2201,6 @@ export class AgentSandboxesRepository {
       )
       .orderBy(agentSandboxes.pool_ready_at);
   }
-
   /**
    * Every retained warm-pool generation that image rollout may classify.
    * Unlike the ready-only status reader, this includes provisioning/error
@@ -2138,7 +2223,6 @@ export class AgentSandboxesRepository {
       )
       .orderBy(agentSandboxes.pool_ready_at, agentSandboxes.created_at);
   }
-
   /**
    * Pool rows whose provision never reached the final atomic ready transition.
    * Running rows are reconciled separately without an `updated_at` cutoff
@@ -2160,7 +2244,6 @@ export class AgentSandboxesRepository {
         ),
       );
   }
-
   /**
    * Atomically claim a warm pool entry on behalf of a user's pending
    * sandbox row. Uses `FOR UPDATE SKIP LOCKED` so concurrent claims pick
@@ -2264,7 +2347,6 @@ export class AgentSandboxesRepository {
         }
         return null;
       }
-
       const [userRow] = await tx
         .select()
         .from(agentSandboxes)
@@ -2283,7 +2365,6 @@ export class AgentSandboxesRepository {
       if (!CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === userRow.execution_tier)) {
         return null;
       }
-
       // Pool claim is for fresh provisions only. If the user's row already
       // has a database, fall through to the existing provision flow which
       // will reuse it. Likewise if it's already running or retains any durable
@@ -2301,14 +2382,12 @@ export class AgentSandboxesRepository {
       if (userRow.claimed_at !== null || userRow.warm_claim_credential_state !== null) {
         return null;
       }
-
       if (
         params.expectedLifecycleRevision !== undefined &&
         userRow.lifecycle_revision !== params.expectedLifecycleRevision
       ) {
         return null;
       }
-
       await assertProvisionQuota(tx, params.userAgentId, params.organizationId);
       const claimedAt = new Date();
       const [updated] = await tx
@@ -2372,10 +2451,8 @@ export class AgentSandboxesRepository {
           ),
         )
         .returning();
-
       if (!updated) return null;
       await tx.delete(agentSandboxes).where(eq(agentSandboxes.id, pool.id));
-
       // Carry the deleted pool row's id out of the transaction: the container's
       // boot-time inference key is named `agent-sandbox:<pool.id>`, and this is
       // the last moment that id exists anywhere — the post-claim re-key uses it
@@ -2383,7 +2460,6 @@ export class AgentSandboxesRepository {
       return { ...updated, warm_pool_row_id: pool.id };
     });
   }
-
   /** Insert a pool entry pre-bound to the sentinel pool org. */
   async createPoolEntry(
     data: Omit<
@@ -2423,7 +2499,6 @@ export class AgentSandboxesRepository {
     if (!row) throw new Error("Failed to create warm pool entry");
     return row;
   }
-
   /** Hard-delete a pool entry by id. Caller is responsible for stopping the container. */
   async deletePoolEntry(id: string): Promise<boolean> {
     await ensureAgentSandboxSchema();
@@ -2440,7 +2515,6 @@ export class AgentSandboxesRepository {
       .returning({ id: agentSandboxes.id });
     return r.length > 0;
   }
-
   /**
    * Commit the final `provisioning` → claimable transition in one write after
    * the container, runtime bootstrap, and restore path have all succeeded.
@@ -2479,7 +2553,6 @@ export class AgentSandboxesRepository {
       return ready;
     });
   }
-
   /**
    * Recover a pre-fix row whose container reached `running` before its readiness
    * stamp was committed. The generation CAS prevents a stale health probe from
@@ -2514,7 +2587,6 @@ export class AgentSandboxesRepository {
       .returning();
     return ready;
   }
-
   /**
    * Fence an unclaimable generation before remote teardown. A concurrent ready
    * commit or locator change makes the CAS lose, so reconciliation never
@@ -2550,7 +2622,6 @@ export class AgentSandboxesRepository {
       .returning();
     return reserved;
   }
-
   /**
    * Fence one exact stale image generation before rollout tears down its
    * remote container. The generation CAS closes both races that matter:
@@ -2594,7 +2665,6 @@ export class AgentSandboxesRepository {
       .returning();
     return reserved;
   }
-
   /**
    * Fence a stale non-running provision before its remote resources are
    * destroyed. The cutoff and generation are rechecked in the write, closing
@@ -2628,9 +2698,7 @@ export class AgentSandboxesRepository {
       .returning();
     return reserved;
   }
-
   // Backups
-
   /**
    * Revalidate an unlocked retry candidate inside the lifecycle transaction.
    * The row must still be this agent's attached, full pre-delete capture and
@@ -2665,7 +2733,6 @@ export class AgentSandboxesRepository {
       .limit(1);
     return backup !== undefined;
   }
-
   /**
    * Mark the exact legacy pre-delete snapshot as the user-visible recovery
    * point while the sandbox row is locked. Other legacy rows retain their
@@ -2699,6 +2766,8 @@ export class AgentSandboxesRepository {
           eq(agentSandboxBackups.snapshot_type, "pre-delete"),
           eq(agentSandboxBackups.backup_kind, "full"),
           isNull(agentSandboxBackups.parent_backup_id),
+          eq(agentSandboxBackups.verification_status, "verified"),
+          isNotNull(agentSandboxBackups.verified_at),
           gte(agentSandboxBackups.created_at, params.deletionStartedAt),
           isNull(agentSandboxBackups.recovery_organization_id),
           isNull(agentSandboxBackups.recovery_agent_id),
@@ -2710,7 +2779,6 @@ export class AgentSandboxesRepository {
       .returning({ id: agentSandboxBackups.id });
     return retained !== undefined;
   }
-
   /** Return the newest unexpired recovery point visible to this organization. */
   async getPreDeleteRecoveryBackup(
     organizationId: string,
@@ -2734,7 +2802,6 @@ export class AgentSandboxesRepository {
       .limit(1);
     return row ? await hydrateAgentSandboxBackup(row) : undefined;
   }
-
   /**
    * Delete a bounded batch of expired detached recovery rows. Offloaded bytes
    * are removed first; a storage failure leaves the row for a later retry.
@@ -2764,7 +2831,6 @@ export class AgentSandboxesRepository {
       )
       .orderBy(agentSandboxBackups.recovery_expires_at)
       .limit(boundedLimit);
-
     let deletedRows = 0;
     let deletedObjects = 0;
     let failedRows = 0;
@@ -2799,7 +2865,6 @@ export class AgentSandboxesRepository {
           }
         }
       }
-
       try {
         const removed = await dbWrite
           .delete(agentSandboxBackups)
@@ -2822,17 +2887,14 @@ export class AgentSandboxesRepository {
         });
       }
     }
-
     return { deletedRows, deletedObjects, failedRows, invalidRows };
   }
-
   async createBackup(data: NewAgentSandboxBackup): Promise<AgentSandboxBackup> {
     const insertData = await prepareAgentBackupInsertData(data);
     const [r] = await dbWrite.insert(agentSandboxBackups).values(insertData).returning();
     if (!r) throw new Error("Failed to create backup");
     return await hydrateAgentSandboxBackup(r);
   }
-
   async listBackups(sandboxRecordId: string, limit = 10): Promise<AgentSandboxBackup[]> {
     const rows = await dbRead
       .select()
@@ -2847,7 +2909,6 @@ export class AgentSandboxesRepository {
       .limit(limit);
     return await Promise.all(rows.map(hydrateAgentSandboxBackup));
   }
-
   async listBackupMetadata(
     sandboxRecordId: string,
     limit = 10,
@@ -2882,7 +2943,6 @@ export class AgentSandboxesRepository {
       .orderBy(desc(agentSandboxBackups.created_at), desc(agentSandboxBackups.id))
       .limit(limit);
   }
-
   async getLatestBackup(sandboxRecordId: string): Promise<AgentSandboxBackup | undefined> {
     const [r] = await dbWrite
       .select()
@@ -2897,7 +2957,6 @@ export class AgentSandboxesRepository {
       .limit(1);
     return r ? await hydrateAgentSandboxBackup(r) : undefined;
   }
-
   /**
    * The newest backup of a given `snapshot_type` for a sandbox. Used by
    * `executeDowngrade` to find the `pre-upgrade` restore point captured right
@@ -2921,12 +2980,10 @@ export class AgentSandboxesRepository {
       .limit(1);
     return r ? await hydrateAgentSandboxBackup(r) : undefined;
   }
-
   async getBackupById(backupId: string): Promise<AgentSandboxBackup | undefined> {
     const r = await getStoredBackupById(backupId);
     return r ? await hydrateAgentSandboxBackup(r) : undefined;
   }
-
   /**
    * The stored (still-encrypted, possibly R2-offloaded) backup row, un-hydrated.
    * The wake restore-integrity gate feeds these to `verifyBackupRestorability`,
@@ -2936,7 +2993,6 @@ export class AgentSandboxesRepository {
   async getStoredBackupById(backupId: string): Promise<StoredAgentSandboxBackup | undefined> {
     return getStoredBackupById(backupId);
   }
-
   /** Newest stored (still-encrypted) backup row for a sandbox, un-hydrated. */
   async getLatestStoredBackup(
     sandboxRecordId: string,
@@ -2957,6 +3013,150 @@ export class AgentSandboxesRepository {
     return row;
   }
 
+  /** Primary-only source proof before downloading or decrypting a persisted artifact. */
+  async getLegacyBackupVerificationSource(
+    row: StoredAgentSandboxBackup,
+  ): Promise<LegacyBackupVerificationSource | undefined> {
+    const [persisted] = await dbWrite
+      .select({
+        backupRowVersion: sql<string>`${agentSandboxBackups}.xmin::text`,
+        backupCreatedAtNative: sql<string>`${agentSandboxBackups.created_at}::text`,
+        backupVerifiedAtNative: sql<string | null>`${agentSandboxBackups.verified_at}::text`,
+        backupRecoveryExpiresAtNative: sql<
+          string | null
+        >`${agentSandboxBackups.recovery_expires_at}::text`,
+      })
+      .from(agentSandboxBackups)
+      .where(legacyBackupVerificationRowPredicate(row))
+      .limit(1);
+    if (!persisted) return undefined;
+    if (row.sandbox_record_id === null) {
+      if (
+        !row.recovery_agent_id ||
+        !row.recovery_organization_id ||
+        (row.catalog_organization_id !== null &&
+          row.catalog_organization_id !== row.recovery_organization_id) ||
+        (row.catalog_agent_id !== null && row.catalog_agent_id !== row.recovery_agent_id)
+      )
+        return undefined;
+      return {
+        ...persisted,
+        agentId: row.recovery_agent_id,
+        organizationId: row.recovery_organization_id,
+        agentRowVersion: null,
+        deletionStartedAtNative: null,
+        backupWithinDeletionIntent: null,
+        attached: null,
+      };
+    }
+    const [attached] = await dbWrite
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+        user_id: agentSandboxes.user_id,
+        status: agentSandboxes.status,
+        execution_tier: agentSandboxes.execution_tier,
+        pool_status: agentSandboxes.pool_status,
+        deleted_at: agentSandboxes.deleted_at,
+        sandbox_id: agentSandboxes.sandbox_id,
+        node_id: agentSandboxes.node_id,
+        container_name: agentSandboxes.container_name,
+        environment_revision: agentSandboxes.environment_revision,
+        lifecycle_revision: agentSandboxes.lifecycle_revision,
+        image_digest: agentSandboxes.image_digest,
+        deletion_attempt_id: agentSandboxes.deletion_attempt_id,
+        deletion_started_at: agentSandboxes.deletion_started_at,
+        agentRowVersion: sql<string>`${agentSandboxes}.xmin::text`,
+        deletionStartedAtNative: sql<string | null>`${agentSandboxes.deletion_started_at}::text`,
+        backupWithinDeletionIntent: sql<
+          boolean | null
+        >`${agentSandboxBackups.created_at} >= ${agentSandboxes.deletion_started_at}`,
+      })
+      .from(agentSandboxes)
+      .innerJoin(
+        agentSandboxBackups,
+        and(
+          eq(agentSandboxBackups.id, row.id),
+          eq(agentSandboxBackups.sandbox_record_id, agentSandboxes.id),
+          sql`${agentSandboxBackups}.xmin::text = ${persisted.backupRowVersion}`,
+        ),
+      )
+      .where(eq(agentSandboxes.id, row.sandbox_record_id))
+      .limit(1);
+    if (
+      !attached ||
+      (row.catalog_organization_id !== null &&
+        row.catalog_organization_id !== attached.organization_id) ||
+      (row.catalog_agent_id !== null && row.catalog_agent_id !== attached.id)
+    )
+      return undefined;
+    const { agentRowVersion, deletionStartedAtNative, backupWithinDeletionIntent, ...agent } =
+      attached;
+    return {
+      ...persisted,
+      agentId: agent.id,
+      organizationId: agent.organization_id,
+      agentRowVersion,
+      deletionStartedAtNative,
+      backupWithinDeletionIntent,
+      attached: agent,
+    };
+  }
+
+  /** Publish a real verifier outcome only against the unchanged artifact and source. */
+  async stampBackupVerificationIfCurrent(
+    row: StoredAgentSandboxBackup,
+    source: LegacyBackupVerificationSource,
+    outcome: { status: "verified" | "failed" | "errored"; verifiedAt: Date; error: string | null },
+  ): Promise<boolean> {
+    return dbWrite.transaction(async (tx) => {
+      if (source.attached) {
+        if (
+          row.sandbox_record_id !== source.agentId ||
+          source.attached.id !== source.agentId ||
+          source.attached.organization_id !== source.organizationId
+        )
+          return false;
+        const [current] = await tx
+          .select({ id: agentSandboxes.id })
+          .from(agentSandboxes)
+          .where(
+            and(
+              legacyBackupVerificationAgentPredicate(source.attached),
+              sql`${agentSandboxes}.xmin::text = ${source.agentRowVersion}`,
+              sql`${agentSandboxes.deletion_started_at} IS NOT DISTINCT FROM ${source.deletionStartedAtNative}`,
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!current) return false;
+      } else if (
+        row.sandbox_record_id !== null ||
+        row.recovery_agent_id !== source.agentId ||
+        row.recovery_organization_id !== source.organizationId
+      )
+        return false;
+      const [updated] = await tx
+        .update(agentSandboxBackups)
+        .set({
+          verification_status: outcome.status,
+          verified_at: outcome.verifiedAt,
+          verification_error: outcome.error,
+        })
+        .where(
+          and(
+            legacyBackupVerificationRowPredicate(row),
+            sql`${agentSandboxBackups}.xmin::text = ${source.backupRowVersion}`,
+            sql`${agentSandboxBackups.created_at} IS NOT DISTINCT FROM ${source.backupCreatedAtNative}`,
+            sql`${agentSandboxBackups.verified_at} IS NOT DISTINCT FROM ${source.backupVerifiedAtNative}`,
+            sql`${agentSandboxBackups.recovery_expires_at} IS NOT DISTINCT FROM ${source.backupRecoveryExpiresAtNative}`,
+          ),
+        )
+        .returning({ id: agentSandboxBackups.id });
+      return updated !== undefined;
+    });
+  }
+
   /**
    * Stamp a verification outcome on a backup row. Field semantics match the
    * continuous verifier cycle (`agent-backup-verifier.ts`): `verified_at`
@@ -2966,7 +3166,11 @@ export class AgentSandboxesRepository {
    */
   async stampBackupVerification(
     backupId: string,
-    outcome: { status: "verified" | "failed"; verifiedAt: Date; error: string | null },
+    outcome: {
+      status: "verified" | "failed";
+      verifiedAt: Date;
+      error: string | null;
+    },
   ): Promise<void> {
     await dbWrite
       .update(agentSandboxBackups)
@@ -2977,7 +3181,6 @@ export class AgentSandboxesRepository {
       })
       .where(and(eq(agentSandboxBackups.id, backupId), backupVisibleToLegacyReaders()));
   }
-
   /**
    * Chain-safe prune: keep the newest `keep` restore points plus every
    * ancestor any retained incremental still needs, then delete the rest. This
@@ -3015,7 +3218,6 @@ export class AgentSandboxesRepository {
       .returning({ id: agentSandboxBackups.id });
     return r.length;
   }
-
   /**
    * Reconstruct the full agent state for a backup. For `full` backups this is
    * the stored state verbatim; for `incremental` backups it replays the parent
@@ -3070,7 +3272,6 @@ export class AgentSandboxesRepository {
     }
     return state;
   }
-
   /**
    * Spend recorded allocation ownership and give the node its slot back, in one
    * transaction (#17185).
@@ -3110,7 +3311,6 @@ export class AgentSandboxesRepository {
           lifecycleRevision: agentSandboxes.lifecycle_revision,
         });
       if (!claimed) return { outcome: "not-owned", lifecycleRevision: null };
-
       const decremented = await tx
         .update(dockerNodes)
         .set({
@@ -3137,7 +3337,6 @@ export class AgentSandboxesRepository {
       return { outcome: "released", lifecycleRevision: claimed.lifecycleRevision };
     });
   }
-
   /**
    * Release the slot held by ONE deletion generation, at most once.
    *
@@ -3164,7 +3363,6 @@ export class AgentSandboxesRepository {
     );
     return result.outcome;
   }
-
   /**
    * Release allocation ownership for the exact prepared lifecycle generation
    * and return the post-trigger revision needed by the row-delete CAS.
@@ -3187,7 +3385,6 @@ export class AgentSandboxesRepository {
       ) as SQL,
     );
   }
-
   /**
    * Release a held slot once the orphan reconciler has PROVEN the container is
    * gone.
@@ -3237,5 +3434,4 @@ export class AgentSandboxesRepository {
     return result.outcome;
   }
 }
-
 export const agentSandboxesRepository = new AgentSandboxesRepository();

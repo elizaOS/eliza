@@ -19,7 +19,7 @@ import {
   type StewardTelegramClaimConfirmationRequest,
   sanitizeTelegramAccountClaimContinuation,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import {
   clearPendingOnboardingSessionIfMatches,
   TELEGRAM_ACCOUNT_CLAIM_PURPOSE,

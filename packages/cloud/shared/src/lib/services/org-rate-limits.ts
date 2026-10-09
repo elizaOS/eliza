@@ -1,10 +1,11 @@
 /**
  * Per-organization rate limit tier service.
  *
- * Resolves the legacy rate-limit selector from its current credit-ledger input,
- * merges manual overrides, and caches the result for inference admission.
- * Which economic credit provenances should qualify remains policy work in
- * #23019; selector keys such as `paid` are not subscription labels.
+ * Subscribers get their plan's RPM tier from the entitlement projection. For
+ * pay-as-you-go organizations the tier derives only from purchased credits
+ * (#23019): see {@link ORG_TIER_PURCHASED_CREDIT_SOURCES}. Manual overrides
+ * are merged and the result is cached for inference admission. Selector keys
+ * such as `paid` are not subscription labels.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -84,12 +85,27 @@ const TIER_THRESHOLDS: ReadonlyArray<
 const SORTED_THRESHOLDS = [...TIER_THRESHOLDS].sort((a, b) => b.minSpend - a.minSpend);
 const FREE_TIER = SORTED_THRESHOLDS[SORTED_THRESHOLDS.length - 1];
 
-/** Metadata markers excluded by the current selector; #23019 owns economic qualification. */
-export const ORG_TIER_EXCLUDED_CREDIT_METADATA_TYPES = [
-  "initial_free_credits",
-  "wallet_signup",
-  "signup_code_bonus",
-] as const;
+/**
+ * Ledger provenance that qualifies a pay-as-you-go organization for the $5 and
+ * $100 RPM thresholds (#23019). Only credits bought with money count, keyed by
+ * the payment identity the purchase path writes:
+ *
+ * - Stripe card purchases, checkout and auto top-up (`pi_…` payment intent);
+ * - OxaPay crypto payments (`crypto:…`) and x402 top-ups (`x402:…`);
+ * - direct wallet payments (`wallet_native:…`), counting the paid USD and
+ *   never the promotional bonus;
+ * - payment-request purchases (`metadata.type = payment_request_topup`).
+ *
+ * Signup, promo, referral and affiliate grants, earnings conversions, MCP
+ * credits and refund or compensation credits never qualify. The total is net
+ * of reversals: a refund or chargeback clawback subtracts its requested amount
+ * and a won-dispute reinstatement adds it back.
+ */
+export const ORG_TIER_PURCHASED_CREDIT_SOURCES = Object.freeze({
+  paymentIdentityPrefixes: ["pi_", "crypto:", "x402:"],
+  bonusExcludedPaymentIdentityPrefix: "wallet_native:",
+  metadataTypes: ["payment_request_topup"],
+} as const);
 
 export interface OrgTierCacheExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
@@ -246,9 +262,8 @@ export async function readOrgTierFromSources(orgId: string): Promise<OrgTierData
 /**
  * Recalculates an org's rate limit tier from the DB and caches the result.
  *
- * The current selector sums credit rows except its legacy excluded metadata
- * markers. That input is observable implementation state, not a ratified
- * definition of paid spend; #23019 owns the qualification policy.
+ * Pay-as-you-go organizations are selected by net purchased credits only
+ * (#23019); subscribers use their plan's projected RPM values.
  */
 export async function recalculateOrgTier(orgId: string): Promise<OrgTierSnapshot> {
   const { withOrganizationPolicyAdmission } = await import("./organization-policy-admission");
@@ -273,7 +288,16 @@ export async function recalculateOrgTier(orgId: string): Promise<OrgTierSnapshot
  */
 export async function getOrgTier(orgId: string): Promise<OrgTierSnapshot> {
   const cached = await cache.get<OrgTierSnapshot>(CacheKeys.org.rateLimitTier(orgId));
-  if (cached && isOrgTierData(cached) && isOrganizationPolicyStamp(cached.authority)) return cached;
+  if (cached && isOrgTierData(cached) && isOrganizationPolicyStamp(cached.authority)) {
+    // Checkout, renewal and cancellation advance the policy generation; a
+    // cached tier from an older generation is stale and must be rebuilt.
+    const { readOrganizationPolicyGeneration } = await import(
+      "../../db/repositories/organization-policy-generation"
+    );
+    if ((await readOrganizationPolicyGeneration(orgId)) === cached.authority.generation) {
+      return cached;
+    }
+  }
   return recalculateOrgTier(orgId);
 }
 

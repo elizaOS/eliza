@@ -1,4 +1,4 @@
-/** Generated public route contracts. Regenerate with scripts/generate-public-routes.mjs. */
+/** Generated public route contracts. Regenerate with scripts/generate-public-routes.ts. */
 import type { CloudResponse } from "../types.js";
 import { PublicRouteTransport } from "./transport.js";
 import type { PublicRouteCallOptions } from "./types.generated.js";
@@ -106,6 +106,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     >("DELETE /api/v1/apis/storage/objects/_", options);
   }
 
+  deleteApiV1AppAuthDelegationsConsent<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/app-auth/delegations/consent"> = {},
+  ): Promise<TResponse> {
+    return this.call<"DELETE /api/v1/app-auth/delegations/consent", TResponse>(
+      "DELETE /api/v1/app-auth/delegations/consent",
+      options,
+    );
+  }
+
   deleteApiV1AppAuthMobileCredentialsById<TResponse = unknown>(
     options: PublicRouteCallOptions<"DELETE /api/v1/app-auth/mobile/credentials/{id}">,
   ): Promise<TResponse> {
@@ -122,6 +131,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
       "DELETE /api/v1/apps/{id}",
       options,
     );
+  }
+
+  deleteApiV1AppsByIdDelegationClientsByClientId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}/delegation-clients/{clientId}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "DELETE /api/v1/apps/{id}/delegation-clients/{clientId}",
+      TResponse
+    >("DELETE /api/v1/apps/{id}/delegation-clients/{clientId}", options);
   }
 
   deleteApiV1AppsByIdDiscordAutomation<TResponse = unknown>(
@@ -768,6 +786,33 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("GET /api/v1/apis/storage/objects/_", options);
   }
 
+  getApiV1AppAuthDelegationsGoogleConnections<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/delegations/google/connections"> = {},
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/app-auth/delegations/google/connections",
+      TResponse
+    >("GET /api/v1/app-auth/delegations/google/connections", options);
+  }
+
+  getApiV1AppAuthDelegationsIdentity<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/delegations/identity"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/app-auth/delegations/identity", TResponse>(
+      "GET /api/v1/app-auth/delegations/identity",
+      options,
+    );
+  }
+
+  getApiV1AppAuthDelegationsRegistration<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/delegations/registration"> = {},
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/app-auth/delegations/registration",
+      TResponse
+    >("GET /api/v1/app-auth/delegations/registration", options);
+  }
+
   getApiV1AppAuthMobileConfig<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/app-auth/mobile/config"> = {},
   ): Promise<TResponse> {
@@ -800,15 +845,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/app-credits/balance", TResponse>(
       "GET /api/v1/app-credits/balance",
-      options,
-    );
-  }
-
-  getApiV1AppCreditsVerify<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/app-credits/verify"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/app-credits/verify", TResponse>(
-      "GET /api/v1/app-credits/verify",
       options,
     );
   }
@@ -891,6 +927,33 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  getApiV1AppsByIdBillingAdmin<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/billing/admin">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/apps/{id}/billing/admin", TResponse>(
+      "GET /api/v1/apps/{id}/billing/admin",
+      options,
+    );
+  }
+
+  getApiV1AppsByIdBillingAdminNotifications<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/billing/admin/notifications">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/apps/{id}/billing/admin/notifications",
+      TResponse
+    >("GET /api/v1/apps/{id}/billing/admin/notifications", options);
+  }
+
+  getApiV1AppsByIdBillingAdminPaidPeriods<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/billing/admin/paid-periods">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/apps/{id}/billing/admin/paid-periods",
+      TResponse
+    >("GET /api/v1/apps/{id}/billing/admin/paid-periods", options);
+  }
+
   getApiV1AppsByIdCharacters<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/characters">,
   ): Promise<TResponse> {
@@ -900,29 +963,20 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
-  getApiV1AppsByIdCharges<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/charges">,
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/apps/{id}/charges", TResponse>(
-      "GET /api/v1/apps/{id}/charges",
-      options,
-    );
-  }
-
-  getApiV1AppsByIdChargesByChargeId<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/charges/{chargeId}">,
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/apps/{id}/charges/{chargeId}", TResponse>(
-      "GET /api/v1/apps/{id}/charges/{chargeId}",
-      options,
-    );
-  }
-
   getApiV1AppsByIdDatabase<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/database">,
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/apps/{id}/database", TResponse>(
       "GET /api/v1/apps/{id}/database",
+      options,
+    );
+  }
+
+  getApiV1AppsByIdDelegationClients<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/delegation-clients">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/apps/{id}/delegation-clients", TResponse>(
+      "GET /api/v1/apps/{id}/delegation-clients",
       options,
     );
   }
@@ -1121,6 +1175,24 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/billing/active", TResponse>(
       "GET /api/v1/billing/active",
+      options,
+    );
+  }
+
+  getApiV1BillingApplicationSlotsBySlotKey<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/billing/application-slots/{slotKey}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/billing/application-slots/{slotKey}",
+      TResponse
+    >("GET /api/v1/billing/application-slots/{slotKey}", options);
+  }
+
+  getApiV1BillingHold<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/billing/hold"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/billing/hold", TResponse>(
+      "GET /api/v1/billing/hold",
       options,
     );
   }
@@ -1422,6 +1494,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  getApiV1EarningsStatement<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/earnings/statement"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/earnings/statement", TResponse>(
+      "GET /api/v1/earnings/statement",
+      options,
+    );
+  }
+
   getApiV1ElizaAgents<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/agents"> = {},
   ): Promise<TResponse> {
@@ -1631,6 +1712,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  getApiV1ElizaGoogleGmailInboxV1<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/inbox-v1"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/eliza/google/gmail/inbox-v1", TResponse>(
+      "GET /api/v1/eliza/google/gmail/inbox-v1",
+      options,
+    );
+  }
+
   getApiV1ElizaGoogleGmailRead<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/read"> = {},
   ): Promise<TResponse> {
@@ -1714,6 +1804,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/eliza/personal", TResponse>(
       "GET /api/v1/eliza/personal",
+      options,
+    );
+  }
+
+  getApiV1ElizaPersonalRecoveryByToken<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/personal/recovery/{token}">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/eliza/personal/recovery/{token}", TResponse>(
+      "GET /api/v1/eliza/personal/recovery/{token}",
       options,
     );
   }
@@ -1997,6 +2096,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  getApiV1MeConsents<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/me/consents"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/me/consents", TResponse>(
+      "GET /api/v1/me/consents",
+      options,
+    );
+  }
+
   getApiV1MeMfa<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/me/mfa"> = {},
   ): Promise<TResponse> {
@@ -2146,15 +2254,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/oauth/token/{platform}", TResponse>(
       "GET /api/v1/oauth/token/{platform}",
-      options,
-    );
-  }
-
-  getApiV1Outreachr<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/outreachr"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/outreachr", TResponse>(
-      "GET /api/v1/outreachr",
       options,
     );
   }
@@ -2382,6 +2481,24 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
       "GET /api/v1/subscriptions/cancel/undo/{commandId}",
       TResponse
     >("GET /api/v1/subscriptions/cancel/undo/{commandId}", options);
+  }
+
+  getApiV1SubscriptionsCancelUndoReview<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/cancel/undo/review"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/subscriptions/cancel/undo/review", TResponse>(
+      "GET /api/v1/subscriptions/cancel/undo/review",
+      options,
+    );
+  }
+
+  getApiV1SubscriptionsCheckoutPayer<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/checkout/payer"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/subscriptions/checkout/payer", TResponse>(
+      "GET /api/v1/subscriptions/checkout/payer",
+      options,
+    );
   }
 
   getApiV1SubscriptionsCommands<TResponse = unknown>(
@@ -3130,6 +3247,42 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  postApiV1AppAuthDelegationsGoogleConnect<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/delegations/google/connect"> = {},
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/app-auth/delegations/google/connect",
+      TResponse
+    >("POST /api/v1/app-auth/delegations/google/connect", options);
+  }
+
+  postApiV1AppAuthDelegationsGoogleRequest<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/delegations/google/request"> = {},
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/app-auth/delegations/google/request",
+      TResponse
+    >("POST /api/v1/app-auth/delegations/google/request", options);
+  }
+
+  postApiV1AppAuthDelegationsRevoke<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/delegations/revoke"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/app-auth/delegations/revoke", TResponse>(
+      "POST /api/v1/app-auth/delegations/revoke",
+      options,
+    );
+  }
+
+  postApiV1AppAuthDelegationsToken<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/delegations/token"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/app-auth/delegations/token", TResponse>(
+      "POST /api/v1/app-auth/delegations/token",
+      options,
+    );
+  }
+
   postApiV1AppAuthMobileAck<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/app-auth/mobile/ack"> = {},
   ): Promise<TResponse> {
@@ -3144,15 +3297,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/app-auth/mobile/token", TResponse>(
       "POST /api/v1/app-auth/mobile/token",
-      options,
-    );
-  }
-
-  postApiV1AppCreditsCheckout<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/app-credits/checkout"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/app-credits/checkout", TResponse>(
-      "POST /api/v1/app-credits/checkout",
       options,
     );
   }
@@ -3211,6 +3355,152 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  postApiV1AppsByIdBillingAdminMerchants<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/merchants">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/billing/admin/merchants",
+      TResponse
+    >("POST /api/v1/apps/{id}/billing/admin/merchants", options);
+  }
+
+  postApiV1AppsByIdBillingAdminMerchantsDisconnect<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/merchants/disconnect">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/billing/admin/merchants/disconnect",
+      TResponse
+    >("POST /api/v1/apps/{id}/billing/admin/merchants/disconnect", options);
+  }
+
+  postApiV1AppsByIdBillingAdminMerchantsOnboarding<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/merchants/onboarding">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/billing/admin/merchants/onboarding",
+      TResponse
+    >("POST /api/v1/apps/{id}/billing/admin/merchants/onboarding", options);
+  }
+
+  postApiV1AppsByIdBillingAdminMerchantsRefresh<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/merchants/refresh">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/billing/admin/merchants/refresh",
+      TResponse
+    >("POST /api/v1/apps/{id}/billing/admin/merchants/refresh", options);
+  }
+
+  postApiV1AppsByIdBillingAdminNotifications<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/notifications">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/billing/admin/notifications",
+      TResponse
+    >("POST /api/v1/apps/{id}/billing/admin/notifications", options);
+  }
+
+  postApiV1AppsByIdBillingAdminNotificationsKeysActivate<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/notifications/keys/activate">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/billing/admin/notifications/keys/activate",
+      TResponse
+    >(
+      "POST /api/v1/apps/{id}/billing/admin/notifications/keys/activate",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminNotificationsKeysPrepare<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/notifications/keys/prepare">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/billing/admin/notifications/keys/prepare",
+      TResponse
+    >(
+      "POST /api/v1/apps/{id}/billing/admin/notifications/keys/prepare",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminOperationsByCommandIdRecover<
+    TResponse = unknown,
+  >(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/operations/{commandId}/recover">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/billing/admin/operations/{commandId}/recover",
+      TResponse
+    >(
+      "POST /api/v1/apps/{id}/billing/admin/operations/{commandId}/recover",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminPlans<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/plans">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apps/{id}/billing/admin/plans", TResponse>(
+      "POST /api/v1/apps/{id}/billing/admin/plans",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminPlansAdopt<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/plans/adopt">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/billing/admin/plans/adopt",
+      TResponse
+    >("POST /api/v1/apps/{id}/billing/admin/plans/adopt", options);
+  }
+
+  postApiV1AppsByIdBillingAdminPlansPublish<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/plans/publish">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/billing/admin/plans/publish",
+      TResponse
+    >("POST /api/v1/apps/{id}/billing/admin/plans/publish", options);
+  }
+
+  postApiV1AppsByIdBillingAdminPlansRetire<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/plans/retire">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/billing/admin/plans/retire",
+      TResponse
+    >("POST /api/v1/apps/{id}/billing/admin/plans/retire", options);
+  }
+
+  postApiV1AppsByIdBillingAdminPlansVerify<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/plans/verify">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/billing/admin/plans/verify",
+      TResponse
+    >("POST /api/v1/apps/{id}/billing/admin/plans/verify", options);
+  }
+
+  postApiV1AppsByIdBillingAdminRefunds<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/refunds">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apps/{id}/billing/admin/refunds", TResponse>(
+      "POST /api/v1/apps/{id}/billing/admin/refunds",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminRefundsPreview<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/refunds/preview">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/billing/admin/refunds/preview",
+      TResponse
+    >("POST /api/v1/apps/{id}/billing/admin/refunds/preview", options);
+  }
+
   postApiV1AppsByIdBillingRegistration<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/registration">,
   ): Promise<TResponse> {
@@ -3220,24 +3510,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
-  postApiV1AppsByIdCharges<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/charges">,
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/apps/{id}/charges", TResponse>(
-      "POST /api/v1/apps/{id}/charges",
-      options,
-    );
-  }
-
-  postApiV1AppsByIdChargesByChargeIdCheckout<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/charges/{chargeId}/checkout">,
-  ): Promise<TResponse> {
-    return this.call<
-      "POST /api/v1/apps/{id}/charges/{chargeId}/checkout",
-      TResponse
-    >("POST /api/v1/apps/{id}/charges/{chargeId}/checkout", options);
-  }
-
   postApiV1AppsByIdChat<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/chat">,
   ): Promise<TResponse> {
@@ -3245,6 +3517,24 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
       "POST /api/v1/apps/{id}/chat",
       options,
     );
+  }
+
+  postApiV1AppsByIdDelegationClients<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/delegation-clients">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apps/{id}/delegation-clients", TResponse>(
+      "POST /api/v1/apps/{id}/delegation-clients",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdDelegationClientsByClientIdRotate<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/delegation-clients/{clientId}/rotate">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/delegation-clients/{clientId}/rotate",
+      TResponse
+    >("POST /api/v1/apps/{id}/delegation-clients/{clientId}/rotate", options);
   }
 
   postApiV1AppsByIdDeploy<TResponse = unknown>(
@@ -3371,6 +3661,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
       "POST /api/v1/apps/{id}/generate-image",
       options,
     );
+  }
+
+  postApiV1AppsByIdInferenceChatCompletions<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/inference/chat/completions">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/apps/{id}/inference/chat/completions",
+      TResponse
+    >("POST /api/v1/apps/{id}/inference/chat/completions", options);
   }
 
   postApiV1AppsByIdPromote<TResponse = unknown>(
@@ -3513,6 +3812,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/ballots/{id}/vote", TResponse>(
       "POST /api/v1/ballots/{id}/vote",
+      options,
+    );
+  }
+
+  postApiV1BillingHold<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/billing/hold"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/billing/hold", TResponse>(
+      "POST /api/v1/billing/hold",
       options,
     );
   }
@@ -4439,6 +4747,24 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  postApiV1MeConsents<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/me/consents"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/me/consents", TResponse>(
+      "POST /api/v1/me/consents",
+      options,
+    );
+  }
+
+  postApiV1MeDataExport<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/me/data-export"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/me/data-export", TResponse>(
+      "POST /api/v1/me/data-export",
+      options,
+    );
+  }
+
   postApiV1Messages<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/messages"> = {},
   ): Promise<TResponse> {
@@ -4507,15 +4833,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/oauth/initiate", TResponse>(
       "POST /api/v1/oauth/initiate",
-      options,
-    );
-  }
-
-  postApiV1Outreachr<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/outreachr"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/outreachr", TResponse>(
-      "POST /api/v1/outreachr",
       options,
     );
   }
@@ -4825,6 +5142,51 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/subscriptions/cancel/undo", TResponse>(
       "POST /api/v1/subscriptions/cancel/undo",
+      options,
+    );
+  }
+
+  postApiV1SubscriptionsCancelUndoConfirm<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/cancel/undo/confirm"> = {},
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/subscriptions/cancel/undo/confirm",
+      TResponse
+    >("POST /api/v1/subscriptions/cancel/undo/confirm", options);
+  }
+
+  postApiV1SubscriptionsCheckout<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/checkout"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/checkout", TResponse>(
+      "POST /api/v1/subscriptions/checkout",
+      options,
+    );
+  }
+
+  postApiV1SubscriptionsCheckoutConfirm<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/checkout/confirm"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/checkout/confirm", TResponse>(
+      "POST /api/v1/subscriptions/checkout/confirm",
+      options,
+    );
+  }
+
+  postApiV1SubscriptionsPortal<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/portal"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/portal", TResponse>(
+      "POST /api/v1/subscriptions/portal",
+      options,
+    );
+  }
+
+  postApiV1SubscriptionsUpgradeReview<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/upgrade/review"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/upgrade/review", TResponse>(
+      "POST /api/v1/subscriptions/upgrade/review",
       options,
     );
   }
@@ -5360,6 +5722,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("DELETE /api/v1/apis/storage/objects/_", options);
   }
 
+  deleteApiV1AppAuthDelegationsConsentRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/app-auth/delegations/consent"> = {},
+  ): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/app-auth/delegations/consent", options);
+  }
+
   deleteApiV1AppAuthMobileCredentialsByIdRaw(
     options: PublicRouteCallOptions<"DELETE /api/v1/app-auth/mobile/credentials/{id}">,
   ): Promise<Response> {
@@ -5373,6 +5741,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}">,
   ): Promise<Response> {
     return this.callRaw("DELETE /api/v1/apps/{id}", options);
+  }
+
+  deleteApiV1AppsByIdDelegationClientsByClientIdRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}/delegation-clients/{clientId}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "DELETE /api/v1/apps/{id}/delegation-clients/{clientId}",
+      options,
+    );
   }
 
   deleteApiV1AppsByIdDiscordAutomationRaw(
@@ -5855,6 +6232,30 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("GET /api/v1/apis/storage/objects/_", options);
   }
 
+  getApiV1AppAuthDelegationsGoogleConnectionsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/delegations/google/connections"> = {},
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/app-auth/delegations/google/connections",
+      options,
+    );
+  }
+
+  getApiV1AppAuthDelegationsIdentityRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/delegations/identity"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/app-auth/delegations/identity", options);
+  }
+
+  getApiV1AppAuthDelegationsRegistrationRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/delegations/registration"> = {},
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/app-auth/delegations/registration",
+      options,
+    );
+  }
+
   getApiV1AppAuthMobileConfigRaw(
     options: PublicRouteCallOptions<"GET /api/v1/app-auth/mobile/config"> = {},
   ): Promise<Response> {
@@ -5877,12 +6278,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"GET /api/v1/app-credits/balance"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/app-credits/balance", options);
-  }
-
-  getApiV1AppCreditsVerifyRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/app-credits/verify"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/app-credits/verify", options);
   }
 
   getApiV1ApprovalRequestsRaw(
@@ -5939,28 +6334,46 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("GET /api/v1/apps/{id}/billing/account", options);
   }
 
+  getApiV1AppsByIdBillingAdminRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/billing/admin">,
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/apps/{id}/billing/admin", options);
+  }
+
+  getApiV1AppsByIdBillingAdminNotificationsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/billing/admin/notifications">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/apps/{id}/billing/admin/notifications",
+      options,
+    );
+  }
+
+  getApiV1AppsByIdBillingAdminPaidPeriodsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/billing/admin/paid-periods">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/apps/{id}/billing/admin/paid-periods",
+      options,
+    );
+  }
+
   getApiV1AppsByIdCharactersRaw(
     options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/characters">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/apps/{id}/characters", options);
   }
 
-  getApiV1AppsByIdChargesRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/charges">,
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/apps/{id}/charges", options);
-  }
-
-  getApiV1AppsByIdChargesByChargeIdRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/charges/{chargeId}">,
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/apps/{id}/charges/{chargeId}", options);
-  }
-
   getApiV1AppsByIdDatabaseRaw(
     options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/database">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/apps/{id}/database", options);
+  }
+
+  getApiV1AppsByIdDelegationClientsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/delegation-clients">,
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/apps/{id}/delegation-clients", options);
   }
 
   getApiV1AppsByIdDeployStatusRaw(
@@ -6102,6 +6515,21 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"GET /api/v1/billing/active"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/billing/active", options);
+  }
+
+  getApiV1BillingApplicationSlotsBySlotKeyRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/billing/application-slots/{slotKey}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/billing/application-slots/{slotKey}",
+      options,
+    );
+  }
+
+  getApiV1BillingHoldRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/billing/hold"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/billing/hold", options);
   }
 
   getApiV1BillingLedgerRaw(
@@ -6311,6 +6739,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("GET /api/v1/domains/resolve", options);
   }
 
+  getApiV1EarningsStatementRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/earnings/statement"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/earnings/statement", options);
+  }
+
   getApiV1ElizaAgentsRaw(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/agents"> = {},
   ): Promise<Response> {
@@ -6479,6 +6913,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("GET /api/v1/eliza/google/calendar/feed", options);
   }
 
+  getApiV1ElizaGoogleGmailInboxV1Raw(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/inbox-v1"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/eliza/google/gmail/inbox-v1", options);
+  }
+
   getApiV1ElizaGoogleGmailReadRaw(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/google/gmail/read"> = {},
   ): Promise<Response> {
@@ -6543,6 +6983,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"GET /api/v1/eliza/personal"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/eliza/personal", options);
+  }
+
+  getApiV1ElizaPersonalRecoveryByTokenRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/personal/recovery/{token}">,
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/eliza/personal/recovery/{token}", options);
   }
 
   getApiV1ElizaPlaidStatusRaw(
@@ -6755,6 +7201,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("GET /api/v1/me/account-deletion", options);
   }
 
+  getApiV1MeConsentsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/me/consents"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/me/consents", options);
+  }
+
   getApiV1MeMfaRaw(
     options: PublicRouteCallOptions<"GET /api/v1/me/mfa"> = {},
   ): Promise<Response> {
@@ -6855,12 +7307,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"GET /api/v1/oauth/token/{platform}">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/oauth/token/{platform}", options);
-  }
-
-  getApiV1OutreachrRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/outreachr"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/outreachr", options);
   }
 
   getApiV1PaymentRequestsRaw(
@@ -7020,6 +7466,21 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
       "GET /api/v1/subscriptions/cancel/undo/{commandId}",
       options,
     );
+  }
+
+  getApiV1SubscriptionsCancelUndoReviewRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/cancel/undo/review"> = {},
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/subscriptions/cancel/undo/review",
+      options,
+    );
+  }
+
+  getApiV1SubscriptionsCheckoutPayerRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/checkout/payer"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/subscriptions/checkout/payer", options);
   }
 
   getApiV1SubscriptionsCommandsRaw(
@@ -7568,6 +8029,36 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("POST /api/v1/app-auth/connect", options);
   }
 
+  postApiV1AppAuthDelegationsGoogleConnectRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/delegations/google/connect"> = {},
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/app-auth/delegations/google/connect",
+      options,
+    );
+  }
+
+  postApiV1AppAuthDelegationsGoogleRequestRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/delegations/google/request"> = {},
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/app-auth/delegations/google/request",
+      options,
+    );
+  }
+
+  postApiV1AppAuthDelegationsRevokeRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/delegations/revoke"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/app-auth/delegations/revoke", options);
+  }
+
+  postApiV1AppAuthDelegationsTokenRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/delegations/token"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/app-auth/delegations/token", options);
+  }
+
   postApiV1AppAuthMobileAckRaw(
     options: PublicRouteCallOptions<"POST /api/v1/app-auth/mobile/ack"> = {},
   ): Promise<Response> {
@@ -7578,12 +8069,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/app-auth/mobile/token"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/app-auth/mobile/token", options);
-  }
-
-  postApiV1AppCreditsCheckoutRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/app-credits/checkout"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/app-credits/checkout", options);
   }
 
   postApiV1AppAgentsRaw(
@@ -7622,31 +8107,163 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("POST /api/v1/apps", options);
   }
 
+  postApiV1AppsByIdBillingAdminMerchantsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/merchants">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/merchants",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminMerchantsDisconnectRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/merchants/disconnect">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/merchants/disconnect",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminMerchantsOnboardingRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/merchants/onboarding">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/merchants/onboarding",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminMerchantsRefreshRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/merchants/refresh">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/merchants/refresh",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminNotificationsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/notifications">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/notifications",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminNotificationsKeysActivateRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/notifications/keys/activate">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/notifications/keys/activate",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminNotificationsKeysPrepareRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/notifications/keys/prepare">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/notifications/keys/prepare",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminOperationsByCommandIdRecoverRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/operations/{commandId}/recover">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/operations/{commandId}/recover",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminPlansRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/plans">,
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/apps/{id}/billing/admin/plans", options);
+  }
+
+  postApiV1AppsByIdBillingAdminPlansAdoptRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/plans/adopt">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/plans/adopt",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminPlansPublishRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/plans/publish">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/plans/publish",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminPlansRetireRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/plans/retire">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/plans/retire",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminPlansVerifyRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/plans/verify">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/plans/verify",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminRefundsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/refunds">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/refunds",
+      options,
+    );
+  }
+
+  postApiV1AppsByIdBillingAdminRefundsPreviewRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/admin/refunds/preview">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/billing/admin/refunds/preview",
+      options,
+    );
+  }
+
   postApiV1AppsByIdBillingRegistrationRaw(
     options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/billing/registration">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/apps/{id}/billing/registration", options);
   }
 
-  postApiV1AppsByIdChargesRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/charges">,
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/apps/{id}/charges", options);
-  }
-
-  postApiV1AppsByIdChargesByChargeIdCheckoutRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/charges/{chargeId}/checkout">,
-  ): Promise<Response> {
-    return this.callRaw(
-      "POST /api/v1/apps/{id}/charges/{chargeId}/checkout",
-      options,
-    );
-  }
-
   postApiV1AppsByIdChatRaw(
     options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/chat">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/apps/{id}/chat", options);
+  }
+
+  postApiV1AppsByIdDelegationClientsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/delegation-clients">,
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/apps/{id}/delegation-clients", options);
+  }
+
+  postApiV1AppsByIdDelegationClientsByClientIdRotateRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/delegation-clients/{clientId}/rotate">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/delegation-clients/{clientId}/rotate",
+      options,
+    );
   }
 
   postApiV1AppsByIdDeployRaw(
@@ -7737,6 +8354,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/generate-image">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/apps/{id}/generate-image", options);
+  }
+
+  postApiV1AppsByIdInferenceChatCompletionsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/apps/{id}/inference/chat/completions">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/apps/{id}/inference/chat/completions",
+      options,
+    );
   }
 
   postApiV1AppsByIdPromoteRaw(
@@ -7839,6 +8465,12 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/ballots/{id}/vote">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/ballots/{id}/vote", options);
+  }
+
+  postApiV1BillingHoldRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/billing/hold"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/billing/hold", options);
   }
 
   postApiV1BillingResourcesByIdCancelRaw(
@@ -8528,6 +9160,18 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("POST /api/v1/me/account-deletion", options);
   }
 
+  postApiV1MeConsentsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/me/consents"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/me/consents", options);
+  }
+
+  postApiV1MeDataExportRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/me/data-export"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/me/data-export", options);
+  }
+
   postApiV1MessagesRaw(
     options: PublicRouteCallOptions<"POST /api/v1/messages"> = {},
   ): Promise<Response> {
@@ -8574,12 +9218,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/oauth/initiate"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/oauth/initiate", options);
-  }
-
-  postApiV1OutreachrRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/outreachr"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/outreachr", options);
   }
 
   postApiV1PaymentRequestsRaw(
@@ -8793,6 +9431,39 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     options: PublicRouteCallOptions<"POST /api/v1/subscriptions/cancel/undo"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/subscriptions/cancel/undo", options);
+  }
+
+  postApiV1SubscriptionsCancelUndoConfirmRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/cancel/undo/confirm"> = {},
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/subscriptions/cancel/undo/confirm",
+      options,
+    );
+  }
+
+  postApiV1SubscriptionsCheckoutRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/checkout"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/subscriptions/checkout", options);
+  }
+
+  postApiV1SubscriptionsCheckoutConfirmRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/checkout/confirm"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/subscriptions/checkout/confirm", options);
+  }
+
+  postApiV1SubscriptionsPortalRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/portal"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/subscriptions/portal", options);
+  }
+
+  postApiV1SubscriptionsUpgradeReviewRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/upgrade/review"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/subscriptions/upgrade/review", options);
   }
 
   postApiV1TelegramConnectRaw(

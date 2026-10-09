@@ -2,45 +2,19 @@
  * Vitest configuration for the orchestrator package. Workspace source aliases
  * keep clean-checkout tests independent of prebuilt peer-package artifacts.
  */
-import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
 
+import { defineConfig } from "vitest/config";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 export default defineConfig({
   resolve: {
-    alias: {
-      "@elizaos/shared/db/raw-sql": fileURLToPath(
-        new URL("../../packages/shared/src/db/raw-sql.ts", import.meta.url),
-      ),
-      "@elizaos/shared/host-execution-env": fileURLToPath(
-        new URL(
-          "../../packages/shared/src/host-execution-env.ts",
-          import.meta.url,
-        ),
-      ),
-      "@elizaos/auth/token-expiry": fileURLToPath(
-        new URL("../../packages/auth/src/token-expiry.ts", import.meta.url),
-      ),
-      "@elizaos/auth": new URL(
-        "../../packages/auth/src/index.ts",
-        import.meta.url,
-      ).pathname,
-      // The auth source alias pulls in @elizaos/vault, which resolves only
-      // through its built dist; pin it to source for clean-checkout runs.
-      "@elizaos/vault": fileURLToPath(
-        new URL("../../packages/vault/src/index.ts", import.meta.url),
-      ),
-      "@elizaos/plugin-sql": fileURLToPath(
-        new URL("../plugin-sql/src/index.node.ts", import.meta.url),
-      ),
-      "@elizaos/shared": fileURLToPath(
-        new URL("./__tests__/shared-runtime-env.ts", import.meta.url),
-      ),
-    },
+    conditions: ["eliza-source"],
+    alias: buildWorkspaceSourceAliases(),
   },
   test: {
     environment: "node",
     setupFiles: ["./__tests__/setup.ts"],
     include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
+    exclude: ["src/ui/**"],
     coverage: {
       reporter: ["text", "json", "html"],
     },

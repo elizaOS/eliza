@@ -5,8 +5,8 @@
  */
 
 import { expect, test } from "bun:test";
-import { mobileApiKeyIngressRateLimitKey } from "@/lib/auth/mobile-api-key";
-import type { Bindings } from "@/types/cloud-worker-env";
+import { mobileApiKeyIngressRateLimitKey } from "@elizaos/cloud-shared/lib/auth/mobile-api-key";
+import type { Bindings } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const {
   createApp,
@@ -286,6 +286,100 @@ test("an allowed native decision preserves public locale routing", async () => {
   expect(body).toEqual({ language: "ja" });
 });
 
+test("a q=0 accept-language tag is excluded and does not shadow region routing", async () => {
+  const app = await createApp({ requestPath: "/api/i18n/locale" });
+  const response = await app.fetch(
+    new Request("https://api.example.test/api/i18n/locale", {
+      headers: {
+        "accept-language": "ja;q=0",
+        "cf-ipcountry": "KR",
+        "cf-connecting-ip": "203.0.113.10",
+      },
+    }),
+    environment({
+      async limit() {
+        return { success: true };
+      },
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  // `ja;q=0` is "not acceptable" (RFC 9110 §12.4.2), so the country geo hint
+  // must decide. Before the fix the excluded tag was still ranked first and
+  // the response was `{ language: "ja" }`.
+  const body = (await response.json()) as { language: string | null };
+  expect(body).toEqual({ language: "ko" });
+});
+
+test("an uppercase Q=0 accept-language tag is excluded and does not shadow region routing", async () => {
+  const app = await createApp({ requestPath: "/api/i18n/locale" });
+  const response = await app.fetch(
+    new Request("https://api.example.test/api/i18n/locale", {
+      headers: {
+        "accept-language": "ja;Q=0",
+        "cf-ipcountry": "KR",
+        "cf-connecting-ip": "203.0.113.11",
+      },
+    }),
+    environment({
+      async limit() {
+        return { success: true };
+      },
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  // HTTP parameter names are case-insensitive. `ja;Q=0` is not acceptable,
+  // so the country geo hint must decide.
+  const body = (await response.json()) as { language: string | null };
+  expect(body).toEqual({ language: "ko" });
+});
+
+test("a Chinese Accept-Language tag wins over a lower-priority English tag", async () => {
+  const app = await createApp({ requestPath: "/api/i18n/locale" });
+  const response = await app.fetch(
+    new Request("https://api.example.test/api/i18n/locale", {
+      headers: {
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+      },
+    }),
+    environment({
+      async limit() {
+        return { success: true };
+      },
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { language: string | null };
+  expect(body).toEqual({ language: "zh-CN" });
+});
+
+test("a Traditional Chinese Accept-Language tag selects the Chinese UI", async () => {
+  const app = await createApp({ requestPath: "/api/i18n/locale" });
+  for (const header of [
+    "zh-TW,en;q=0.8",
+    "zh-HK,en;q=0.8",
+    "zh-Hant,en;q=0.8",
+  ]) {
+    const response = await app.fetch(
+      new Request("https://api.example.test/api/i18n/locale", {
+        headers: { "accept-language": header },
+      }),
+      environment({
+        async limit() {
+          return { success: true };
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    // Browsers send zh-TW / zh-HK / zh-Hant. The only Chinese UI is zh-CN.
+    const body = (await response.json()) as { language: string | null };
+    expect(body).toEqual({ language: "zh-CN" });
+  }
+});
+
 test("only model-dispatch surfaces bypass the legacy Railway Redis guard", () => {
   for (const path of [
     "/api/v1/chat",
@@ -391,5 +485,32 @@ test("process-global wiring is installed once per isolate, not once per shard", 
   } finally {
     // Leave no process-global substitution behind for sibling tests.
     setAuditDispatcher(installed);
+  }
+});
+
+test("locale matching reuses canonical aliases without selecting unsupported or excluded tags", async () => {
+  const app = await createApp({ requestPath: "/api/i18n/locale" });
+  for (const [header, language] of [
+    ["ZH-cn,en;q=0.8", "zh-CN"],
+    ["zh-Hans-SG,en;q=0.8", "zh-CN"],
+    ["zh,en;q=0.8", "zh-CN"],
+    ["fil-PH,en;q=0.8", "tl"],
+    ["de,ja;q=0.8", "ja"],
+    ["zh-CN;q=0,en;q=0.8", "en"],
+    ["de", null],
+  ]) {
+    const response = await app.fetch(
+      new Request("https://api.example.test/api/i18n/locale", {
+        headers: { "accept-language": header! },
+      }),
+      environment({
+        async limit() {
+          return { success: true };
+        },
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { language: string | null };
+    expect(body).toEqual({ language });
   }
 });

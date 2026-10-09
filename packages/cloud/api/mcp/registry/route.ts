@@ -6,8 +6,13 @@
  * withheld.
  */
 
+import { getCurrentUser } from "@elizaos/cloud-shared/auth";
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: file contains MCP config templates with literal ${BASE_URL} placeholders for client-side substitution
 import { BUILTIN_MCP_PRICING } from "@elizaos/cloud-shared/billing";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { userMcpsService } from "@elizaos/cloud-shared/lib/services/user-mcps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -19,11 +24,6 @@ import {
   plannerVisibleFeatures,
   resolveIntegrationAvailability,
 } from "@/api-app/lib/mcp/integration-catalog";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import { userMcpsService } from "@/lib/services/user-mcps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 // SECURITY FIX: Validate query parameters to prevent DoS attacks
 // Whitelist allowed values and enforce length limits

@@ -1,14 +1,16 @@
 /**
- * Agent-side wiring for the merged relationships graph in `@elizaos/core`.
- * Import graph types and helpers from `@elizaos/core` directly.
+ * Injects host owner and cloud-account identity resolvers into the assistant's
+ * relationship graph service. Re-exports preserve the host graph API without
+ * creating a second graph implementation or pulling host code into assistant.
  */
 
+import { type IAgentRuntime, resolveOwnerEntityId } from "@elizaos/core";
+
 import type {
-  IAgentRuntime,
   RelationshipsGraphService,
   RelationshipsServiceLike,
-} from "@elizaos/core";
-import { resolveOwnerEntityId } from "../runtime/owner-entity.ts";
+} from "@elizaos/plugin-assistant";
+import { getCloudAuthService } from "./cloud-auth-service.ts";
 import { fetchConfiguredOwnerName } from "./owner-name.ts";
 
 export {
@@ -37,7 +39,7 @@ export {
   type RelationshipsServiceLike,
   type RelationshipsUserPersonalityPreference,
   searchMemoriesForCluster,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 
 type RelationshipsFeatureRuntime = IAgentRuntime & {
   enableRelationships?: () => Promise<void>;
@@ -49,6 +51,9 @@ type RelationshipsServiceWithGraph = RelationshipsServiceLike &
     setGraphResolvers?: (resolvers: {
       resolveOwnerEntityId: (runtime: IAgentRuntime) => Promise<string | null>;
       fetchConfiguredOwnerName: () => Promise<string | null>;
+      resolveOwnerExternalIdentity: (
+        runtime: IAgentRuntime,
+      ) => Promise<{ source: string; userId: string } | null>;
     }) => void;
   };
 
@@ -101,6 +106,10 @@ export async function resolveRelationshipsGraphService(
     graphService.setGraphResolvers({
       resolveOwnerEntityId: (rt) => resolveOwnerEntityId(rt),
       fetchConfiguredOwnerName: () => fetchConfiguredOwnerName(),
+      resolveOwnerExternalIdentity: async (rt) => {
+        const userId = getCloudAuthService(rt)?.getUserId()?.trim();
+        return userId ? { source: "elizacloud", userId } : null;
+      },
     });
   }
 

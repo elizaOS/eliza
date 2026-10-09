@@ -6,18 +6,21 @@
  * when the graph service is unavailable; empty-state when there are no contacts.
  * Gated to ADMIN (enforced by applyPluginRoleGating).
  */
+import {
+  getValidationKeywordTerms,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type Service,
+  type State,
+} from "@elizaos/core";
+
 import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
   RelationshipsGraphService,
   RelationshipsPersonSummary,
-  Service,
-  State,
-} from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { getValidationKeywordTerms } from "@elizaos/shared";
+} from "@elizaos/plugin-assistant";
 
 function formatPerson(person: RelationshipsPersonSummary): string {
   const platforms =

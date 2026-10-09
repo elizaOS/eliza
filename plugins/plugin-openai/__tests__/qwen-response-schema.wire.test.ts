@@ -1,25 +1,38 @@
 /**
- * Exercises Qwen response-schema serialization through the real AI SDK and
- * provider client against a loopback HTTP endpoint. No live provider is used;
- * schema enforcement is asserted on the request, not simulated model behavior.
+ * Exercises response schemas and generation controls through the real AI SDK
+ * and provider client against a loopback HTTP endpoint. No live provider is
+ * used; request serialization is asserted, not simulated model behavior.
  */
 import { createServer, type Server } from "node:http";
-import type { IAgentRuntime, ToolDefinition } from "@elizaos/core";
+import type {
+  EvaluatorModelResult,
+  EvaluatorRuntime,
+  IAgentRuntime,
+  PlannerTrajectory,
+  ToolDefinition,
+} from "@elizaos/core";
+import { buildPlannerToolsFromActions, ModelType, parseAndValidate } from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { jsonSchema, Output } from "ai";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildPlannerToolsFromActions } from "../../../packages/core/src/actions/to-tool";
-import { ExtractorOutputSchema } from "../../../packages/core/src/features/advanced-capabilities/evaluators/factExtractor.schema";
-import { factMemoryEvaluator } from "../../../packages/core/src/features/advanced-capabilities/evaluators/reflection-items";
-import { evaluatorSchema } from "../../../packages/core/src/prompts/evaluator";
-import { withTurnScopeToolArg } from "../../../packages/core/src/runtime/planner-loop";
-import { parseAndValidate } from "../../../packages/core/src/runtime/validated-model-call";
-import { handleActionPlanner, handleTextSmall } from "../models/text";
+import { ExtractorOutputSchema } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts";
+import { factMemoryEvaluator } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
+import { evaluatorSchema } from "../../plugin-assistant/src/prompts/evaluator.ts";
+import { runEvaluator } from "../../plugin-assistant/src/runtime/evaluator.ts";
+import { withTurnScopeToolArg } from "../../plugin-assistant/src/runtime/planner-loop.ts";
+import { openaiPlugin } from "../index";
+import { handleActionPlanner, handleResponseHandler, handleTextSmall } from "../models/text";
 
 interface WireRequest {
   model: string;
   stream?: boolean;
   temperature?: number;
   top_p?: number;
+  stop?: string[];
+  frequency_penalty?: number;
+  presence_penalty?: number;
+  seed?: number;
+  reasoning_effort?: string;
   messages: Array<{ role: string; content: string }>;
   tools?: unknown[];
   response_format?: {
@@ -124,6 +137,7 @@ beforeEach(() => {
   replyToolCall = undefined;
   rejectSchema = false;
   vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+  vi.stubEnv("ELIZA_EVALUATOR_MODEL", undefined);
   vi.stubEnv("OPENAI_BASE_URL", baseUrl);
   vi.stubEnv("OPENAI_API_KEY", "loopback-only-key");
   vi.stubEnv("CEREBRAS_API_KEY", undefined);
@@ -151,11 +165,24 @@ async function invoke(options: {
   tools?: ToolDefinition[];
   responseFormat?: { type: "json_object" };
   actionPlanner?: boolean;
+  responseHandler?: boolean;
+  providerOptions?: {
+    eliza?: { thinking: "on" | "off" };
+    openai?: { reasoningEffort: "none" | "high" };
+  };
   temperature?: number;
   topP?: number;
+  stopSequences?: string[];
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+  seed?: number;
 }) {
   const chunks: string[] = [];
-  const handler = options.actionPlanner ? handleActionPlanner : handleTextSmall;
+  const handler = options.actionPlanner
+    ? handleActionPlanner
+    : options.responseHandler
+      ? handleResponseHandler
+      : handleTextSmall;
   const result: unknown = await handler(runtime(), {
     model: options.model ?? "qwen-3.8-27b",
     messages: [
@@ -170,6 +197,13 @@ async function invoke(options: {
     stream: options.stream ?? false,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(options.topP !== undefined ? { topP: options.topP } : {}),
+    ...(options.stopSequences !== undefined ? { stopSequences: options.stopSequences } : {}),
+    ...(options.frequencyPenalty !== undefined
+      ? { frequencyPenalty: options.frequencyPenalty }
+      : {}),
+    ...(options.presencePenalty !== undefined ? { presencePenalty: options.presencePenalty } : {}),
+    ...(options.seed !== undefined ? { seed: options.seed } : {}),
+    ...(options.providerOptions ? { providerOptions: options.providerOptions } : {}),
     onStreamChunk: (chunk: string) => chunks.push(chunk),
   } as never);
   if (!result || typeof result !== "object" || !("text" in result)) {
@@ -187,6 +221,127 @@ async function invoke(options: {
 }
 
 describe("Qwen3.8 response-schema wire contract", () => {
+  it("applies the evaluator-only opt-in through the real adapter without changing other model slots", async () => {
+    reply = { ...verdict, messageToUser: "Completed from the supplied evidence." };
+    const settings: Record<string, string> = {
+      CEREBRAS_MODEL: "qwen-3.8-27b",
+      OPENAI_RESPONSE_HANDLER_MODEL: "qwen-3.8-27b",
+      OPENAI_ACTION_PLANNER_MODEL: "qwen-3.8-27b",
+      OPENAI_SMALL_MODEL: "qwen-3.8-27b",
+      ELIZA_EVALUATOR_MODEL: "gpt-oss-120b",
+    };
+    const host = {
+      ...runtime(),
+      getSetting: (key: string) => settings[key] ?? null,
+    } as IAgentRuntime;
+    const evaluatorRuntime: EvaluatorRuntime = {
+      getSetting: host.getSetting,
+      useModel: async (_type, params) =>
+        (await handleResponseHandler(host, {
+          ...params,
+          stream: false,
+        } as never)) as EvaluatorModelResult,
+    };
+    const trajectory: PlannerTrajectory = {
+      context: { id: "evaluator-only", events: [] },
+      steps: [],
+      plannedQueue: [],
+      evaluatorOutputs: [],
+    };
+    expect(
+      (await runEvaluator({ runtime: evaluatorRuntime, context: trajectory.context, trajectory }))
+        .decision
+    ).toBe("FINISH");
+    expect(requests.at(-1)?.model).toBe("gpt-oss-120b");
+    expect(requests.at(-1)?.reasoning_effort).toBe("low");
+    const unchanged = {
+      messages: [{ role: "user" as const, content: "Complete original input." }],
+      stream: false,
+      providerOptions: { eliza: { thinking: "off" as const } },
+    };
+    for (const handler of [handleResponseHandler, handleActionPlanner, handleTextSmall]) {
+      await handler(host, unchanged);
+      expect(requests.at(-1)?.model).toBe("qwen-3.8-27b");
+      expect(requests.at(-1)?.reasoning_effort).toBe("none");
+    }
+    delete settings.ELIZA_EVALUATOR_MODEL;
+    await runEvaluator({ runtime: evaluatorRuntime, context: trajectory.context, trajectory });
+    expect(requests.at(-1)?.model).toBe("qwen-3.8-27b");
+    expect(requests).toHaveLength(5);
+  });
+  it.each([false, true])(
+    "transmits the history-reconciliation reasoning opt-in and explicit overrides (stream=%s)",
+    async (stream) => {
+      vi.stubEnv("OPENAI_REASONING_EFFORT", "none");
+      const cases = [
+        { options: {}, effort: "none" },
+        { options: { eliza: { thinking: "on" } }, effort: "low" },
+        {
+          options: { eliza: { thinking: "on" }, openai: { reasoningEffort: "none" } },
+          effort: "none",
+        },
+        {
+          options: { eliza: { thinking: "on" }, openai: { reasoningEffort: "high" } },
+          effort: "high",
+        },
+      ] as const;
+      for (const { options, effort } of cases) {
+        expect(await invoke({ responseHandler: true, stream, providerOptions: options })).toEqual(
+          verdict
+        );
+        const request = requests.at(-1);
+        expect(request?.reasoning_effort).toBe(effort);
+        expect(request?.messages).toContainEqual({
+          role: "user",
+          content: "Return JSON for the full navigation request; retain this final context marker.",
+        });
+      }
+      expect(requests).toHaveLength(cases.length);
+    }
+  );
+
+  it.each([false, true])(
+    "transmits preferred native-tool reasoning with explicit override=%s",
+    async (override) => {
+      vi.stubEnv("OPENAI_REASONING_EFFORT", "");
+      const body = "Keep  two spaces and Mira’s 'literal' quotes.";
+      replyToolCall = {
+        id: "literal-1",
+        type: "function",
+        function: { name: "SAVE_LITERAL", arguments: JSON.stringify({ body }) },
+      };
+      const tools = buildPlannerToolsFromActions([
+        {
+          name: "SAVE_LITERAL",
+          description: "Save exact supplied text.",
+          parameters: [
+            {
+              name: "body",
+              description: "Literal content",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+        },
+      ]);
+      const result = await handleActionPlanner(runtime(), {
+        model: "qwen-3.8-27b",
+        messages: [{ role: "user", content: "Save the exact supplied literal." }],
+        toolChoice: "required",
+        stream: false,
+        tools,
+        providerOptions: {
+          eliza: { thinking: "off", preferToolReasoning: true },
+          ...(override ? { openai: { reasoningEffort: "none" as const } } : {}),
+        },
+      } as never);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({ tool_choice: "required" });
+      expect(requests[0].reasoning_effort).toBe(override ? "none" : "low");
+      expect(result).toMatchObject({ toolCalls: [{ name: "SAVE_LITERAL", arguments: { body } }] });
+    }
+  );
+
   it("restores opted-in aggregator maps after the actual native tool response", async () => {
     const customFields = { label: "complete value", nested: { id: "task-1", values: [1, false] } };
     const tools = withTurnScopeToolArg(
@@ -256,8 +411,9 @@ describe("Qwen3.8 response-schema wire contract", () => {
       expect.objectContaining({
         toolCalls: [
           expect.objectContaining({
-            toolName: "SAVE_RECORD",
-            input: { action: "update", customFields, eliza_turn_scope: "more_work_pending" },
+            id: "call-record",
+            name: "SAVE_RECORD",
+            arguments: { action: "update", customFields, eliza_turn_scope: "more_work_pending" },
           }),
         ],
       })
@@ -422,6 +578,8 @@ describe("Qwen3.8 response-schema wire contract", () => {
         additionalProperties: false,
       };
       const original = structuredClone(parameters);
+      const optionalWire = (schema: object) =>
+        provider === "cerebras" ? schema : { anyOf: [schema, { type: "null" }] };
       await invoke({
         tools: [{ name: "MEMORY", description: "Manage memory", strict: true, parameters }],
       });
@@ -436,14 +594,19 @@ describe("Qwen3.8 response-schema wire contract", () => {
               required: provider === "cerebras" ? ["action"] : Object.keys(parameters.properties),
               properties: {
                 ...parameters.properties,
-                snapshot: {
+                text: optionalWire(parameters.properties.text),
+                snapshot: optionalWire({
                   type: "string",
                   description: expect.stringContaining("^[0-9a-f]{64}$"),
-                },
-                detail: {
+                }),
+                detail: optionalWire({
                   ...parameters.properties.detail,
+                  properties: {
+                    label: { type: "string" },
+                    optional: optionalWire({ type: "string" }),
+                  },
                   required: provider === "cerebras" ? ["label"] : ["label", "optional"],
-                },
+                }),
               },
             },
           }),
@@ -477,14 +640,148 @@ describe("Qwen3.8 response-schema wire contract", () => {
   );
 
   it.each([false, true])(
+    "preserves generation controls through registered runtime dispatch (stream=%s)",
+    async (stream) => {
+      vi.stubEnv("ELIZA_PROVIDER", "openai");
+      const agent = createSQLiteTestRuntime({
+        character: {
+          name: "generation-controls",
+          bio: "Keep caller output boundaries and sampling settings",
+          settings: {
+            ELIZA_PROVIDER: "openai",
+            OPENAI_API_KEY: "loopback-only-key",
+            OPENAI_BASE_URL: baseUrl,
+            OPENAI_SMALL_MODEL: "gpt-4o-mini",
+            OPENAI_LARGE_MODEL: "gpt-4o-mini",
+          },
+        },
+        plugins: [openaiPlugin],
+        logLevel: "fatal",
+      });
+      const stopSequences = ["END", "结束🛑"];
+      try {
+        await agent.initialize();
+        for (const modelType of [ModelType.TEXT_SMALL, ModelType.TEXT_LARGE]) {
+          const result = await agent.useModel(modelType, {
+            prompt: "Return the navigation verdict.",
+            stream,
+            stopSequences,
+            frequencyPenalty: 0,
+            presencePenalty: -0.4,
+            seed: 0,
+          });
+          if (typeof result === "string") expect(JSON.parse(result)).toEqual(verdict);
+          else if (result.textStream) {
+            let text = "";
+            for await (const chunk of result.textStream) text += chunk;
+            expect(JSON.parse(text)).toEqual(verdict);
+          } else expect(JSON.parse(await result.text)).toEqual(verdict);
+          expect(requests.at(-1)).toMatchObject({
+            model: "gpt-4o-mini",
+            stop: stopSequences,
+            frequency_penalty: 0,
+            presence_penalty: -0.4,
+            seed: 0,
+          });
+        }
+        expect(requests).toHaveLength(2);
+        expect(stopSequences).toEqual(["END", "结束🛑"]);
+      } finally {
+        await agent.stop();
+      }
+    }
+  );
+
+  it.each([false, true])(
+    "preserves independent controls and omission across calls (stream=%s)",
+    async (stream) => {
+      const samples = [
+        {},
+        { stopSequences: ["END", "结束"] },
+        { frequencyPenalty: 0 },
+        { presencePenalty: 0 },
+        { seed: 0 },
+        { frequencyPenalty: -0.5, presencePenalty: 0.7, seed: 42 },
+        { stopSequences: [] },
+        {},
+      ];
+      for (const sample of samples) {
+        expect(await invoke({ stream, ...sample })).toEqual(verdict);
+        const sent = requests.at(-1);
+        if (!sent) throw new Error("Expected outbound SDK request");
+        for (const [input, wire] of [
+          ["stopSequences", "stop"],
+          ["frequencyPenalty", "frequency_penalty"],
+          ["presencePenalty", "presence_penalty"],
+          ["seed", "seed"],
+        ] as const) {
+          const value = sample[input];
+          if (value === undefined || (Array.isArray(value) && value.length === 0)) {
+            expect(sent).not.toHaveProperty(wire);
+          } else expect(sent[wire]).toEqual(value);
+        }
+      }
+      expect(requests).toHaveLength(samples.length);
+    }
+  );
+
+  it.each([false, true])(
+    "sanitizes stop text without changing caller data (stream=%s)",
+    async (stream) => {
+      const stopSequences = ["结束🛑", "broken\ud800"];
+      expect(await invoke({ stream, stopSequences })).toEqual(verdict);
+      expect(requests).toHaveLength(1);
+      expect(requests[0].stop).toEqual(["结束🛑", "broken\ufffd"]);
+      expect(stopSequences).toEqual(["结束🛑", "broken\ud800"]);
+    }
+  );
+
+  it.each([{ actionPlanner: true }, { responseHandler: true }])(
+    "preserves controls for the agent model slot %j",
+    async (slot) => {
+      expect(
+        await invoke({
+          ...slot,
+          stopSequences: ["END"],
+          frequencyPenalty: 0.4,
+          presencePenalty: 0,
+          seed: 42,
+        })
+      ).toEqual(verdict);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        stop: ["END"],
+        frequency_penalty: 0.4,
+        presence_penalty: 0,
+        seed: 42,
+      });
+    }
+  );
+
+  it.each([false, true])(
     "retains SDK omission for unsupported reasoning-model sampling (stream=%s)",
     async (stream) => {
       vi.stubEnv("ELIZA_PROVIDER", "openai");
-      expect(await invoke({ stream, model: "o3", temperature: 0, topP: 0.7 })).toEqual(verdict);
+      expect(
+        await invoke({
+          stream,
+          model: "o3",
+          stopSequences: [],
+          temperature: 0,
+          topP: 0.7,
+          frequencyPenalty: 0.5,
+          presencePenalty: 0.5,
+          seed: 0,
+        })
+      ).toEqual(verdict);
       expect(requests).toHaveLength(1);
       expect(requests[0].model).toBe("o3");
+      expect(requests[0]).not.toHaveProperty("stop");
+      expect(requests[0].seed).toBe(0);
       expect(requests[0]).not.toHaveProperty("temperature");
       expect(requests[0]).not.toHaveProperty("top_p");
+      expect(requests[0]).not.toHaveProperty("frequency_penalty");
+      expect(requests[0]).not.toHaveProperty("presence_penalty");
     }
   );
 
@@ -748,9 +1045,10 @@ describe("Qwen3.8 response-schema wire contract", () => {
     vi.stubEnv("ELIZA_PROVIDER", undefined);
     expect(await invoke({ schema: evaluatorSchema })).toEqual(verdict);
     expect(requests).toHaveLength(1);
-    expect(requests[0].response_format?.json_schema?.schema.required).toEqual(
-      Object.keys(evaluatorSchema.properties ?? {})
-    );
+    const required = requests[0].response_format?.json_schema?.schema.required;
+    const propertyNames = Object.keys(evaluatorSchema.properties ?? {});
+    expect(required).toEqual(expect.arrayContaining(propertyNames));
+    expect(required).toHaveLength(propertyNames.length);
   });
 
   it("round-trips schema-only planner arguments through the strict entry representation", async () => {

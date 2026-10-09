@@ -1,12 +1,16 @@
 // Handles v1 cloud API v1 eliza agents agentid github link route traffic with route-local auth expectations.
+
+import { errorToResponse } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { managedAgentGithubService } from "@elizaos/cloud-shared/lib/services/agent-managed-github";
+import { oauthService } from "@elizaos/cloud-shared/lib/services/oauth";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { managedAgentGithubService } from "@/lib/services/agent-managed-github";
-import { oauthService } from "@/lib/services/oauth";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "POST, OPTIONS";
 

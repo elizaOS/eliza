@@ -8,12 +8,12 @@
  * managed-domains service (`releaseStaleUnverifiedExternals`).
  */
 
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { managedDomainsService } from "@elizaos/cloud-shared/lib/services/managed-domains";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { type Context, Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { managedDomainsService } from "@/lib/services/managed-domains";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 export const DEFAULT_STALE_UNVERIFIED_TTL_MS = 48 * 60 * 60 * 1000;
 

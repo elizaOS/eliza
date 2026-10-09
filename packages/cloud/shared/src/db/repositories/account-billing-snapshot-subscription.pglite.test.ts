@@ -2,6 +2,7 @@
 
 import { afterAll, beforeAll, beforeEach, expect, setDefaultTimeout, test } from "bun:test";
 import { readFile } from "node:fs/promises";
+import { installOrganizationBillingScopeTestColumns } from "./organization-billing-scope-test-fixture";
 import { observeSubscriptionAllowanceEligibility } from "./subscription-allowance-eligibility";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -37,7 +38,7 @@ beforeAll(async () => {
   await getPgliteClientForTests().exec(`
     ALTER TABLE organizations ADD COLUMN is_active boolean NOT NULL DEFAULT true, ADD COLUMN account_deletion_request_id uuid, ADD COLUMN credit_balance numeric(16,6) NOT NULL DEFAULT 0, ADD COLUMN balance_revision bigint NOT NULL DEFAULT 0, ADD COLUMN settings jsonb NOT NULL DEFAULT '{}';
     ALTER TABLE org_storage_quota ADD COLUMN created_at timestamp DEFAULT now(), ADD COLUMN updated_at timestamp DEFAULT now(), ADD COLUMN native_catalog_reconciled_at timestamptz;
-    ALTER TABLE credit_transactions ADD COLUMN amount numeric(16,6), ADD COLUMN type text, ADD COLUMN metadata jsonb;
+    ALTER TABLE credit_transactions ADD COLUMN amount numeric(16,6), ADD COLUMN type text, ADD COLUMN metadata jsonb, ADD COLUMN stripe_payment_intent_id text;
     CREATE TABLE organization_config(organization_id uuid PRIMARY KEY, settings jsonb NOT NULL DEFAULT '{}');
     CREATE TABLE org_rate_limit_overrides(id uuid PRIMARY KEY,organization_id uuid,completions_rpm integer,embeddings_rpm integer,standard_rpm integer,strict_rpm integer);
   `);
@@ -67,6 +68,11 @@ beforeAll(async () => {
       new URL("../migrations/0380_organization_policy_authority.sql", import.meta.url),
       "utf8",
     ),
+  );
+});
+beforeAll(async () => {
+  await installOrganizationBillingScopeTestColumns((query) =>
+    getPgliteClientForTests().exec(query),
   );
 });
 beforeEach(async () => {
@@ -181,7 +187,25 @@ test("current-source read preserves exact allowance and strips all provider auth
   // A caller can mutate its serialized snapshot without mutating server enforcement.
   Reflect.set(policy.value.operationClasses, "voice", "cash_only");
   expect(SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION.voice).toBe("allowance_eligible");
-  const json = JSON.stringify(actual);
+  // The durable subscription id is the cancel/undo command subject (already echoed by the
+  // cancellation DTO); provider identifiers, tenant id and digests never cross this boundary.
+  expect(actual).toMatchObject({
+    value: {
+      subscriptionId: SUB_A,
+      cancellationControl: {
+        action: "cancel",
+        subscriptionId: SUB_A,
+        expectedSubscriptionRevision: 1,
+        eligible: false,
+        blockers: [
+          "interactive_session_required",
+          "billing_account_ineligible",
+          "owner_or_admin_role_required",
+        ],
+      },
+    },
+  });
+  const json = JSON.stringify(actual).replaceAll(`"${SUB_A}"`, '"<subscription>"');
   for (const value of [
     "cus_repoa",
     "sub_repoa",
@@ -256,7 +280,7 @@ test("observed expiry makes allowance unavailable to spend without pretending th
     value: {
       fundingPolicy: {
         status: "available",
-        value: { schemaVersion: 1, requiresRequestEligibility: true },
+        value: { requiresRequestEligibility: true },
       },
       allowance: {
         status: "available",

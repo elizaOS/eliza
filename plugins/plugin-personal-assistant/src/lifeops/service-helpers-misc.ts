@@ -3,8 +3,7 @@
  * computation, metadata merging, reminder-channel/urgency checks, and other
  * small pure utilities shared across the domains.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
+
 import type {
   CreateLifeOpsDefinitionRequest,
   LifeOpsActiveReminderView,
@@ -17,8 +16,10 @@ import type {
   LifeOpsWindowPolicy,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
-} from "../contracts/index.js";
-import { LIFEOPS_REMINDER_CHANNELS } from "../contracts/index.js";
+} from "@elizaos/contracts";
+import { LIFEOPS_REMINDER_CHANNELS } from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import { DEFAULT_REMINDER_STEPS, isValidTimeZone } from "./defaults.js";
 import { DAY_MINUTES, MAX_OVERVIEW_OCCURRENCES } from "./service-constants.js";
 import {

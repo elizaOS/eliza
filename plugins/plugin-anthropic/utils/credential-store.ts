@@ -2,7 +2,7 @@
  * Anthropic OAuth credential store with multi-account support.
  *
  * If the host runtime has installed the account-pool bridge on
- * `globalThis` (app-core does this when the multi-account `LinkedAccountConfig`
+ * `globalThis` (app does this when the multi-account `LinkedAccountConfig`
  * store is non-empty), token reads route through the pool: `select` picks
  * the active account, the OAuth fetch wrapper retries on 401 against a
  * different account, and the pool tracks rate-limited / invalid health.
@@ -213,13 +213,10 @@ export function clearTokenCache(accountId?: string): void {
 }
 
 function getEnvVar(key: string): string | undefined {
-  if (typeof process === "undefined") return undefined;
   return process.env[key];
 }
 
 function readAppManagedAnthropicToken(): OAuthToken | null {
-  if (typeof process === "undefined") return null;
-
   const cached = tokenCache.get(APP_CREDENTIAL_CACHE_KEY);
   if (cached && Date.now() < cached.expiresAt - 60_000) {
     return cached;
@@ -267,8 +264,6 @@ function readAppManagedAnthropicToken(): OAuthToken | null {
 }
 
 function readFromCredentialStore(): ClaudeCredentials | null {
-  if (typeof process === "undefined") return null;
-
   const { join } = require("node:path") as typeof import("node:path");
   const { homedir } = require("node:os") as typeof import("node:os");
 

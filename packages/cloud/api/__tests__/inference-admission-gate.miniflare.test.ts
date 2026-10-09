@@ -170,7 +170,11 @@ describe("Miniflare Durable Object integration", () => {
     path: string,
     body: Record<string, unknown>,
     gateName = "org-miniflare",
-  ): Promise<{ readonly status: number; text(): Promise<string> }> {
+  ): Promise<{
+    readonly status: number;
+    readonly handlerMs: string | null;
+    text(): Promise<string>;
+  }> {
     const response = await miniflare.dispatchFetch(`https://gate.test${path}`, {
       method: "POST",
       headers: {
@@ -182,9 +186,30 @@ describe("Miniflare Durable Object integration", () => {
     });
     return {
       status: response.status,
+      handlerMs: response.headers.get("x-eliza-gate-handler-ms"),
       text: async () => await response.text(),
     };
   }
+
+  test("internal handler timing crosses a real Durable Object binding without changing quota", async () => {
+    const gate = "rate-limit:v2:handler-timing";
+    const policy = {
+      endpointType: "completions",
+      windowMs: 60000,
+      maxRequests: 1,
+    };
+    const warm = await post("/rate-limit-warm", {}, gate);
+    const allowed = await post("/rate-limit", policy, gate);
+    const denied = await post("/rate-limit", policy, gate);
+    expect(allowed.status).toBe(200);
+    expect(denied.status).toBe(429);
+    expect(JSON.parse(await denied.text()).allowed).toBe(false);
+    for (const response of [warm, allowed, denied]) {
+      expect(response.handlerMs).not.toBeNull();
+      expect(Number.isFinite(Number(response.handlerMs))).toBe(true);
+      expect(Number(response.handlerMs)).toBeGreaterThanOrEqual(0);
+    }
+  });
 
   // Match the cloud test lane's budget because Miniflare startup can be delayed
   // when this integration test runs alongside the rest of the batched suite.
@@ -485,6 +510,63 @@ describe("Miniflare Durable Object integration", () => {
     expect((await post("/credential/check", credential)).status).toBe(200);
   });
 
+  test("a per-key rate_limit caps one key under the plan tier without limiting others", async () => {
+    const gate = "rate-limit:v2:api-key-cap";
+    const tier = {
+      windowMs: 60_000,
+      maxRequests: 10,
+      windowStartedAt: Math.floor(Date.now() / 60_000) * 60_000,
+    };
+    const capped = { id: "key-capped", maxRequests: 2 };
+    const decide = async (endpointType: string, apiKey?: typeof capped) => {
+      const response = await post(
+        "/rate-limit",
+        { ...tier, endpointType, ...(apiKey && { apiKey }) },
+        gate,
+      );
+      return {
+        status: response.status,
+        body: JSON.parse(await response.text()) as {
+          allowed: boolean;
+          remaining: number;
+        },
+      };
+    };
+
+    // The key cap counts across endpoints and is reported as the binding limit.
+    expect(await decide("completions", capped)).toMatchObject({
+      status: 200,
+      body: { allowed: true, remaining: 1 },
+    });
+    expect((await decide("embeddings", capped)).status).toBe(200);
+    expect(await decide("completions", capped)).toMatchObject({
+      status: 429,
+      body: { allowed: false, remaining: 0 },
+    });
+    // Another key, and a key-less caller, still get the rest of the tier.
+    expect(
+      (await decide("completions", { id: "key-other", maxRequests: 2 })).status,
+    ).toBe(200);
+    expect(await decide("completions")).toMatchObject({
+      status: 200,
+      body: { allowed: true },
+    });
+    // An invalid cap is rejected rather than ignored.
+    expect(
+      (
+        await post(
+          "/rate-limit",
+          {
+            ...tier,
+            endpointType: "completions",
+            apiKey: { id: "k", maxRequests: 0 },
+          },
+          gate,
+        )
+      ).status,
+    ).toBe(400);
+  });
+
   test("a separate rate-limit identity answers without duplicating a window across cutover", async () => {
     const windowMs = 1_000;
     const legacyWindowStartedAt = Math.floor(Date.now() / windowMs) * windowMs;
@@ -673,4 +755,281 @@ describe("Miniflare Durable Object integration", () => {
     });
     expect((await post("/credential/check", credential)).status).toBe(200);
   });
+
+  test("subscriber funding capacity is a fenced view of the same balance revision", async () => {
+    const gate = "org-funding-view";
+    const lease = (
+      requestId: string,
+      estimatedCostUsd: number,
+      snapshot: { balanceUsd: number; balanceRevision: string },
+      options: {
+        balanceView?: "funding";
+        accounting?: "subscription_funding" | "direct_debit";
+      } = { balanceView: "funding", accounting: "subscription_funding" },
+    ) =>
+      post(
+        "/lease",
+        {
+          organizationId: "org-miniflare",
+          requestId,
+          ...snapshot,
+          ...(options.balanceView && { balanceView: options.balanceView }),
+          estimatedCostUsd,
+          recovery: {
+            version: 1,
+            kind: "organization",
+            organizationId: "org-miniflare",
+            userId: "00000000-0000-0000-0000-000000000002",
+            requestId,
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            description: "Miniflare subscriber funding test",
+            accounting: { kind: options.accounting ?? "subscription_funding" },
+          },
+        },
+        gate,
+      );
+
+    // Purchased credit alone is $1 at revision 5.
+    expect(
+      (await post("/hydrate", { balanceUsd: 1, balanceRevision: "5" }, gate))
+        .status,
+    ).toBe(200);
+
+    // A funding lease must carry the funding view, and only it may.
+    expect(
+      (
+        await lease(
+          "funding-no-view",
+          1,
+          { balanceUsd: 10, balanceRevision: "5" },
+          { accounting: "subscription_funding" },
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await lease(
+          "credit-with-view",
+          1,
+          { balanceUsd: 10, balanceRevision: "5" },
+          { balanceView: "funding", accounting: "direct_debit" },
+        )
+      ).status,
+    ).toBe(400);
+
+    // Same revision: $10 of credit plus allowance supersedes the credit view.
+    expect(
+      (await lease("funding-a", 7, { balanceUsd: 10, balanceRevision: "5" }))
+        .status,
+    ).toBe(200);
+    // A late credit-only observation of that revision cannot shrink or grow
+    // the funding ceiling.
+    expect(
+      (await post("/hydrate", { balanceUsd: 1, balanceRevision: "5" }, gate))
+        .status,
+    ).toBe(200);
+    expect(
+      (await lease("funding-b", 2, { balanceUsd: 10, balanceRevision: "5" }))
+        .status,
+    ).toBe(200);
+    // $7 + $2 are held against $10: another $2 would overspend.
+    const exhausted = await lease("funding-c", 2, {
+      balanceUsd: 10,
+      balanceRevision: "5",
+    });
+    expect(exhausted.status).toBe(402);
+    expect(JSON.parse(await exhausted.text()).availableUsd).toBeCloseTo(1, 6);
+
+    // A newer credit-only revision is adopted conservatively; the next
+    // subscriber admission restores capacity at that revision.
+    expect(
+      (await post("/hydrate", { balanceUsd: 0, balanceRevision: "6" }, gate))
+        .status,
+    ).toBe(200);
+    expect(
+      (await lease("funding-d", 0.5, { balanceUsd: 0, balanceRevision: "5" }))
+        .status,
+    ).toBe(402);
+    expect(
+      (await lease("funding-e", 0.5, { balanceUsd: 10, balanceRevision: "6" }))
+        .status,
+    ).toBe(200);
+  }, 120_000);
+
+  test("snapshot admissions under a superseded policy generation fail closed at lease and dispatch", async () => {
+    const gate = "org-policy-generation";
+    const lease = (requestId: string, policyGeneration: string) =>
+      post(
+        "/lease",
+        {
+          organizationId: "org-miniflare",
+          requestId,
+          balanceUsd: 10,
+          balanceRevision: "4",
+          estimatedCostUsd: 1,
+          policyGeneration,
+          recovery: {
+            version: 1,
+            kind: "organization",
+            organizationId: "org-miniflare",
+            userId: "00000000-0000-0000-0000-000000000002",
+            requestId,
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            description: "Miniflare policy generation test",
+            accounting: { kind: "direct_debit" },
+          },
+        },
+        gate,
+      );
+    const staleCode = async (response: {
+      status: number;
+      text(): Promise<string>;
+    }) => {
+      expect(response.status).toBe(409);
+      return JSON.parse(await response.text()).code;
+    };
+
+    // A snapshot publication carries the authoritative generation.
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "4", policyGeneration: "5" },
+          gate,
+        )
+      ).status,
+    ).toBe(200);
+    expect(await staleCode(await lease("policy-old", "4"))).toBe(
+      "inference_admission_policy_stale",
+    );
+    expect((await lease("policy-current", "5")).status).toBe(200);
+    // A newer authoritative admission advances the fence for everyone else.
+    expect((await lease("policy-newer", "6")).status).toBe(200);
+    expect(await staleCode(await lease("policy-was-current", "5"))).toBe(
+      "inference_admission_policy_stale",
+    );
+    // An out-of-order older publication cannot roll the fence back.
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "4", policyGeneration: "3" },
+          gate,
+        )
+      ).status,
+    ).toBe(200);
+    expect(await staleCode(await lease("policy-rollback", "5"))).toBe(
+      "inference_admission_policy_stale",
+    );
+
+    // A lease taken at generation 6 cannot dispatch once 7 is published.
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "4", policyGeneration: "7" },
+          gate,
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      await staleCode(
+        await post(
+          "/dispatch",
+          {
+            requestId: "policy-newer",
+            preProviderCancellationToken: "policy-newer-token",
+          },
+          gate,
+        ),
+      ),
+    ).toBe("inference_admission_policy_stale");
+    // The undispatched lease still releases through the normal zero path.
+    expect(
+      (await post("/release", { requestId: "policy-newer" }, gate)).status,
+    ).toBe(200);
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "4", policyGeneration: "x" },
+          gate,
+        )
+      ).status,
+    ).toBe(400);
+  }, 120_000);
+
+  test("subscriber funding leases pin a well-formed affiliate payout contract", async () => {
+    const gate = "org-funding-affiliate";
+    const userId = "00000000-0000-0000-0000-000000000002";
+    const attribution = {
+      affiliateCodeId: "00000000-0000-4000-8000-0000000000a1",
+      affiliateUserId: "00000000-0000-4000-8000-0000000000a2",
+      affiliateCode: "PARTNER",
+      markupPercent: 0.2,
+    };
+    const lease = (requestId: string, affiliate: unknown) =>
+      post(
+        "/lease",
+        {
+          organizationId: "org-miniflare",
+          requestId,
+          balanceUsd: 10,
+          balanceRevision: "3",
+          balanceView: "funding",
+          estimatedCostUsd: 1.2,
+          recovery: {
+            version: 1,
+            kind: "organization",
+            organizationId: "org-miniflare",
+            userId,
+            requestId,
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            description: "Miniflare subscriber affiliate test",
+            accounting: { kind: "subscription_funding", affiliate },
+          },
+        },
+        gate,
+      );
+    expect(
+      (await post("/hydrate", { balanceUsd: 10, balanceRevision: "3" }, gate))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await lease("funding-affiliate-ok", {
+          attribution,
+          payoutSourceId: "ai_billing:affiliate:funding-affiliate-ok",
+        })
+      ).status,
+    ).toBe(200);
+    // A self-referral, a missing payout identity, or an extra field is not a
+    // recoverable payout contract and never reaches the alarm.
+    expect(
+      (
+        await lease("funding-affiliate-self", {
+          attribution: { ...attribution, affiliateUserId: userId },
+          payoutSourceId: "ai_billing:affiliate:funding-affiliate-self",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await lease("funding-affiliate-nosource", { attribution })).status,
+    ).toBe(400);
+    expect(
+      (
+        await lease("funding-affiliate-extra", {
+          attribution,
+          payoutSourceId: "ai_billing:affiliate:funding-affiliate-extra",
+          amount: 1,
+        })
+      ).status,
+    ).toBe(400);
+  }, 120_000);
 });

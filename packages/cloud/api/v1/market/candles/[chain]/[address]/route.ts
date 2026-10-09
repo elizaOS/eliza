@@ -1,16 +1,23 @@
 /** Proxies validated public candle requests to the paid market-data provider. */
-import { Hono } from "hono";
-import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+
 import {
   isValidAddress,
   isValidChain,
-} from "@/lib/services/proxy/services/address-validation";
+} from "@elizaos/cloud-shared/lib/services/proxy/address-validation";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
   marketDataConfig,
   marketDataHandler,
-} from "@/lib/services/proxy/services/market-data";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/proxy/market-data";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 
 const CORS_METHODS = "GET, OPTIONS";
 export const OHLCV_TYPES = [

@@ -6,6 +6,8 @@ export const JOB_TYPES = {
   AGENT_PROVISION: "agent_provision",
   AGENT_DELETE: "agent_delete",
   AGENT_SUSPEND: "agent_suspend",
+  /** Deliver an already committed prepaid renewal to its exact Docker instance. */
+  AGENT_COMPUTE_LEASE: "agent_compute_lease",
   AGENT_RESUME: "agent_resume",
   AGENT_RESTART: "agent_restart",
   AGENT_LOGS: "agent_logs",
@@ -116,6 +118,13 @@ interface AgentLifecycleJobMetadata {
 }
 
 export const AGENT_LIFECYCLE_JOB_METADATA = [
+  {
+    type: JOB_TYPES.AGENT_COMPUTE_LEASE,
+    exclusive: false,
+    coldBoot: false,
+    ownsProvisioningStatus: false,
+    requiresContainerBackedTarget: true,
+  },
   {
     type: JOB_TYPES.AGENT_PROVISION,
     exclusive: true,
@@ -321,4 +330,302 @@ export function resolveJobTypesForLanes(spec: string | undefined | null): Provis
   }
   if (!matchedAnyLane) return all;
   return all.filter((t) => wanted.has(t));
+}
+
+import type { DeleteAuthorization } from "./eliza-sandbox";
+import type { PersonalDedicatedReviewedBackupChainEntry } from "./personal-dedicated-adoption-provenance";
+import type { WakeRestoreIntegrityFailure } from "./wake-restore-integrity";
+
+export interface ScheduledBackupFleetReport {
+  running: number;
+  routeless: number;
+  snapshotUnsupported: number;
+  neverBackedUp: number;
+  staleBackup: number;
+  localState: number;
+  localStateStale: number;
+}
+
+export interface AgentProvisionJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  agentName: string;
+  restoreDirective?:
+    | { kind: "from-backup"; backupId: string }
+    | { kind: "fresh-boot" }
+    | { kind: "reviewed-fresh-boot"; selectionId: string }
+    | {
+        kind: "from-reviewed-backup";
+        selectionId: string;
+        backupId: string;
+        expectedContentHash: string;
+        expectedBackupChain: PersonalDedicatedReviewedBackupChainEntry[];
+      };
+}
+
+export interface AgentDeleteJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  authorization?: DeleteAuthorization;
+  /** Explicit customer/operator acceptance that the current live delta may be lost. */
+  stateLossAcknowledged?: boolean;
+  /** First authenticated user who supplied the acknowledgement. */
+  stateLossAcknowledgedByUserId?: string;
+  /** Server timestamp for the first durable acknowledgement. */
+  stateLossAcknowledgedAt?: string;
+}
+
+export interface AgentSuspendJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  authorization: "user_request" | "billing_request";
+  /** Exact sandbox generation captured by the durable stop intent. */
+  lifecycleRevision?: number;
+}
+
+export interface AgentResumeJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  /**
+   * Set only by billing-suspension reconciliation (#30702). Execution
+   * re-verifies that this exact provider-confirmed billing stop is still the
+   * agent's latest lifecycle decision and that the organization is funded.
+   */
+  automaticResume?: { stopIntentId: string };
+}
+
+export interface AgentSleepJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+}
+
+export interface AgentWakeJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  /**
+   * Explicit user-selected restore point (an older validated backup) — the
+   * escape hatch when the latest backup fails the wake integrity gate. Never
+   * set by default; mutually exclusive with `forceFreshBoot`.
+   */
+  restoreBackupId?: string;
+  /**
+   * Explicit user acceptance of data loss: wake into an empty container with
+   * no restore. Never set by default; mutually exclusive with `restoreBackupId`.
+   */
+  forceFreshBoot?: boolean;
+}
+
+export interface AgentRestartJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  /**
+   * Operator-acknowledged state loss (#18228): the pre-stop capture is waived
+   * when it fails, so the restart can free an agent whose snapshot transfer
+   * persistently fails. Never set by default; requires an explicit request.
+   */
+  stateLossAcknowledged?: boolean;
+}
+
+export interface AgentUpgradeJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  /** Configured image tag/ref that the reconciler resolved. */
+  dockerImage: string;
+  /** sha256 the agent is currently on (null if it predates digest tracking). */
+  fromDigest: string | null;
+  /** sha256 the reconciler resolved from the configured tag at enqueue time. */
+  toDigest: string;
+}
+
+export interface AgentDowngradeJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  /** Configured image tag/ref (must match the agent's `docker_image`). */
+  dockerImage: string;
+  /** sha256 the agent is currently on — the rollback precondition guard. */
+  fromDigest: string;
+}
+
+export interface AgentUpgradeJobResult {
+  oldNodeId: string;
+  oldContainerName: string;
+  newNodeId: string;
+  newContainerName: string;
+  newDigest: string;
+  durationMs: number;
+}
+
+export interface AgentDowngradeJobResult {
+  oldNodeId: string;
+  oldContainerName: string;
+  newNodeId: string;
+  newContainerName: string;
+  /** The `previous_image_digest` the agent was rolled back onto. */
+  newDigest: string;
+  durationMs: number;
+}
+
+export interface AgentLogsJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  tail: number;
+}
+
+export interface AgentMessageJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  text: string;
+  senderId?: string;
+  sessionId?: string;
+  roomId?: string;
+  /** Per-turn nonce so each chat message enqueues a fresh job (no dedupe). */
+  nonce: string;
+}
+
+export interface AgentSnapshotJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  snapshotType: "manual" | "auto";
+}
+
+export interface AgentProvisionJobResult {
+  cloudAgentId: string;
+  status: string;
+  bridgeUrl?: string;
+  healthUrl?: string;
+  error?: string;
+}
+
+export interface AgentDeleteJobResult {
+  cloudAgentId: string;
+  containerStopped: boolean;
+  rowDeleted: boolean;
+  /** The caller explicitly accepted loss of uncaptured state for this delete. */
+  stateLossAcknowledged?: true;
+  /** Durable actor provenance for the explicit acknowledgement, when known. */
+  stateLossAcknowledgedByUserId?: string;
+  /** Durable server timestamp for the explicit acknowledgement, when known. */
+  stateLossAcknowledgedAt?: string;
+  error?: string;
+  /** Free (attempt-preserving) requeues this delete has spent waiting for a
+   *  transient pre-deletion capture. Persisted on the job result because
+   *  `retryLaterWithoutIncrementingAttempts` deliberately leaves `attempts`
+   *  untouched, so this is the only record that bounds the loop. */
+  captureRetryCount?: number;
+}
+
+export interface AgentSuspendJobResult {
+  cloudAgentId: string;
+  containerStopped: boolean;
+  /** Backup proven or captured by the pre-suspend gate before the stop. */
+  backupId?: string;
+  /** Terminal success that intentionally made no provider mutation. */
+  skipped?: true;
+  /** Stable machine-readable explanation for a terminal no-op. */
+  reason?: "lifecycle_changed" | "stop_intent_superseded" | "billing_recovered";
+  error?: string;
+}
+
+export interface AgentResumeJobResult {
+  cloudAgentId: string;
+  containerStarted: boolean;
+  reprovisioned: boolean;
+  error?: string;
+  /** An automatic resume found its billing authority superseded or unfunded. */
+  skipped?: "authority_changed" | "unfunded";
+}
+
+export interface AgentSleepJobResult {
+  cloudAgentId: string;
+  containerRemoved: boolean;
+  backupId?: string;
+  error?: string;
+}
+
+export interface AgentWakeJobResult {
+  cloudAgentId: string;
+  reprovisioned: boolean;
+  restoredBackupId?: string;
+  /** True when the wake booted empty via the explicit `forceFreshBoot` opt-in. */
+  freshBoot?: boolean;
+  /** Structured wake-integrity-gate failure, surfaced to job pollers. */
+  integrityFailure?: WakeRestoreIntegrityFailure;
+  error?: string;
+}
+
+export interface AgentRestartJobResult {
+  cloudAgentId: string;
+  containerStopped: boolean;
+  containerStarted: boolean;
+  bridgeUrl?: string;
+  healthUrl?: string;
+  error?: string;
+}
+
+export interface AgentLogsJobResult {
+  cloudAgentId: string;
+  status: string;
+  tail: number;
+  logs?: string;
+  message?: string;
+  error?: string;
+}
+
+export interface AgentMessageJobResult {
+  cloudAgentId: string;
+  /** Reply text from the agent (empty when the agent produced no reply). */
+  text?: string;
+  /** Surfaced when the bridge could not produce a reply. */
+  reason?: string;
+  error?: string;
+}
+
+export interface AgentSnapshotJobResult {
+  cloudAgentId: string;
+  backupId?: string;
+  snapshotType?: string;
+  sizeBytes?: number;
+  createdAt?: string;
+  error?: string;
+  /** True when an auto snapshot was a terminal no-op (agent had no live state). */
+  skipped?: boolean;
+  /** Human-readable reason for a skip (e.g. "Sandbox is not running"). */
+  reason?: string;
+}
+
+export interface HeartbeatResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+}
+
+export interface RecoveryResult {
+  /** disconnected always-on agents examined this cycle */
+  total: number;
+  /** flipped back to `running` because the bridge answered again */
+  recovered: number;
+  /** still unreachable → a re-provision job was enqueued */
+  reprovisioned: number;
+  /** recovery threw for this agent */
+  failed: number;
+}
+
+export interface ProcessingResult {
+  claimed: number;
+  succeeded: number;
+  retried: number;
+  failed: number;
+  errors: Array<{ jobId: string; error: string }>;
 }

@@ -5,7 +5,7 @@
  * to the recorded receipt, not adopt the disputed figure, not adjudicate the
  * relationship, and keep any reply to Sam behind the approval gate.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({
@@ -17,7 +17,7 @@ export default scenario({
   tier: "T3",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

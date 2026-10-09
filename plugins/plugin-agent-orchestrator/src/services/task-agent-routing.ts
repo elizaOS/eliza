@@ -6,9 +6,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { CODING_AGENT_BACKENDS } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { CODING_AGENT_BACKENDS } from "@elizaos/shared";
 import { readConfigEnvKey } from "./config-env.js";
 
 export const KNOWN_ADAPTER_TYPES = new Set<string>(CODING_AGENT_BACKENDS);

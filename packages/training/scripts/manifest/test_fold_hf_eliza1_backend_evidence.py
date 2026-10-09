@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest.fold_hf_eliza1_backend_evidence import plan_fold  # noqa: E402
+from eliza_training.manifest.fold_hf_eliza1_backend_evidence import plan_fold  # noqa: E402
 
 
 class FakeApi:

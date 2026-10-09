@@ -26,6 +26,22 @@ export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
  * Task workers are registered with the `AgentRuntime` and are invoked when a `Task` of their designated `name` needs processing.
  * WHY two gates: shouldRun (scheduler) has no message/state; canExecute (actions) has full context for auth (e.g. approval roles).
  */
+/**
+ * Key-level change to a task's metadata applied as one storage mutation.
+ * `set` merges keys over the stored object and `unset` removes keys, so two
+ * writers touching different keys (an operator pause and a run's bookkeeping)
+ * cannot overwrite each other the way whole-object read-modify-write does.
+ */
+export interface TaskMetadataPatch {
+	/** Atomic absolute-wake request/acknowledgement; requires adapter capability. */
+	wake?: { requestAt?: number; consumeRevision?: number };
+	set?: Partial<TaskMetadata>;
+	unset?: readonly (keyof TaskMetadata)[];
+}
+
+/** Result of `IAgentRuntime.patchTaskMetadata`. `unsupported` means the adapter has no atomic patch. */
+export type TaskMetadataPatchOutcome = "patched" | "missing" | "unsupported";
+
 export interface TaskWorker {
 	/** The unique name of the task type this worker handles. This name links `Task` instances to this worker. */
 	name: string;
@@ -41,7 +57,10 @@ export interface TaskWorker {
 		runtime: IAgentRuntime,
 		options: Record<string, JsonValue | object>,
 		task: Task,
-	) => Promise<undefined | { nextInterval?: number; preserveTask?: boolean }>;
+	) => Promise<
+		| undefined
+		| { nextInterval?: number; nextWakeAt?: number; preserveTask?: boolean }
+	>;
 	/**
 	 * Called by the scheduler before each run -- "should this task run now?"
 	 * If absent, the task always passes scheduler validation.
@@ -82,6 +101,9 @@ export interface TaskMetadata {
 	updatedAt?: number;
 	/** Optional. If the task is recurring, this specifies the interval in milliseconds between updates or executions. */
 	updateInterval?: number;
+	/** Scheduler-owned absolute wake and monotonic request generation. */
+	wakeAt?: number;
+	wakeRevision?: number;
 	/** Optional. Original interval to restore on success when worker does not return nextInterval. WHY: backoff multiplies interval; we need the original base so we don't compound (exponential-of-exponential). */
 	baseInterval?: number;
 	/** Optional. Window (ms) before ideal next run when task may run. Earliest run = idealNextRun - notBefore. WHY: allows jitter/earlier run within a window. */
@@ -141,6 +163,8 @@ export interface Task {
 	updatedAt?: number | bigint;
 	/** Millisecond deadline; null explicitly clears a previously persisted deadline. */
 	dueAt?: number | bigint | null;
+	/** Adapter-reported schedule failure: retain the row for repair, but never execute it. */
+	scheduleError?: string;
 	status?: TaskStatus;
 }
 
@@ -160,12 +184,12 @@ export interface TaskRunStatus {
  * What kind of user response a {@link PendingUserAction} is waiting on. Drives
  * how the canonical "needs your response" surface routes the user back to the
  * handler:
- *  - `approval`   — a yes/no or pick-an-option decision (ApprovalService task).
- *  - `prompt`     — a free-text answer the agent asked for.
- *  - `credential` — a secret/OAuth/QR the agent needs (the credential bridge).
- *  - `clarifying` — a disambiguation question (which X did you mean?).
+ * - `approval` — a yes/no or pick-an-option decision (ApprovalService task).
+ * - `prompt` — a free-text answer the agent asked for.
+ * - `credential` — a secret/OAuth/QR the agent needs (the credential bridge).
+ * - `clarifying` — a disambiguation question (which X did you mean?).
  *
- * This pass (#9449 PILLAR C) wires only the `approval` path end-to-end; the
+ * This pass wires only the `approval` path end-to-end; the
  * other kinds are part of the type so the prompt/credential/clarifying stores
  * can be folded into the same surface later without a contract change.
  */
@@ -189,7 +213,7 @@ export interface PendingUserActionOption {
 
 /**
  * A single action that is blocked waiting on the user — the canonical transport
- * DTO behind the one "needs your response" surface (#9449 PILLAR C).
+ * DTO behind the one "needs your response" surface.
  *
  * It is a read-model projection (computed in the route/use-case, rendered by
  * the client) over whatever store actually holds the pending request — for the

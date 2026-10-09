@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.build.shared.json",
+  "compilerOptions": {
+    "outDir": "../dist/ui",
+    "rootDir": "../src/ui",
+    "emitDeclarationOnly": false
+  },
+  "include": ["../src/ui"],
+  "exclude": [
+    "../src/ui/**/*.test.ts",
+    "../src/ui/**/*.test.tsx",
+    "../src/ui/**/*.stories.ts",
+    "../src/ui/**/*.stories.tsx",
+    "../src/ui/**/__tests__/**"
+  ]
+}

@@ -4,8 +4,8 @@
  * shell supports full app-shell routes.
  */
 import { useCallback, useEffect, useState } from "react";
-import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
 import { AGENT_READY_EVENT } from "../events";
 import { useIsAuthenticated } from "../hooks/useAuthStatus";
 import {

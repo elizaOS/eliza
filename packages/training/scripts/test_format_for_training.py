@@ -1,7 +1,7 @@
 import pytest
 
-from format_for_training import format_record
-from privacy_filter_trajectories import PrivacyFilterError
+from eliza_training.format_for_training import format_record
+from eliza_training.privacy_filter_trajectories import PrivacyFilterError
 
 
 def _attested(row, *, passed: bool = True):

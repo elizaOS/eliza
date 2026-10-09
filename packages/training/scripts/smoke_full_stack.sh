@@ -97,10 +97,9 @@ else
 fi
 
 cd "$TRAIN_ROOT"
-export PYTHONPATH="$TRAIN_ROOT/scripts:${PYTHONPATH:-}"
 
 # Resolve the registry entry once so every step gets the same hf_id.
-BASE_HF_ID="$("${PY_RUN[@]}" -c "import sys; sys.path.insert(0, 'scripts'); from training.model_registry import get; print(get('$REGISTRY_KEY').hf_id)")"
+BASE_HF_ID="$("${PY_RUN[@]}" -c "from eliza_training.training.model_registry import get; print(get('$REGISTRY_KEY').hf_id)")"
 echo "[smoke] config: registry=$REGISTRY_KEY base=$BASE_HF_ID run=$RUN_NAME port=$VLLM_PORT"
 
 # ---------- STEP 1/9: deps ----------
@@ -176,7 +175,7 @@ run_bench() {
     # native_tool_call_bench uses --model / --test-file / --out-dir (writes summary.json).
     # We point it at smoke val.jsonl with a tight per-bucket cap.
     # shellcheck disable=SC2086
-    "${PY_RUN[@]}" scripts/benchmark/native_tool_call_bench.py \
+    "${PY_RUN[@]}" scripts/eval/native_tool_call_bench.py \
         --model "$model_arg" \
         $extra_arg \
         --test-file "$VAL_DATA" \
@@ -291,13 +290,13 @@ if [[ -n "${LLAMA_CPP_DIR:-}" && -x "${LLAMA_CPP_DIR}/llama-quantize" ]]; then
     HAS_LLAMA_CPP=1
 fi
 if [[ $HAS_LLAMA_CPP -eq 1 ]]; then
-    "${PY_RUN[@]}" scripts/quantization/gguf-q4_k_m_apply.py \
+    "${PY_RUN[@]}" -m eliza_training.quantization.gguf_profile --profile Q4_K_M \
         --model "$SFT_DIR" \
         --output "$GGUF_DIR" \
         2>&1 | tee "$LOG_DIR/05-gguf.log"
     mark_pass "gguf"
 else
-    echo "[smoke]   SKIP: llama.cpp not on PATH (need llama-quantize + convert_hf_to_gguf.py; set LLAMA_CPP_DIR or build the plugins/plugin-local-inference/native/llama.cpp submodule — see gguf-q4_k_m_apply.py _VENDOR_HINT)"
+    echo "[smoke]   SKIP: llama.cpp not on PATH (need llama-quantize + convert_hf_to_gguf.py; set LLAMA_CPP_DIR or build the plugins/plugin-local-inference/native/llama.cpp submodule — see eliza_training.quantization.gguf_profile --help)"
     mark_skip_tooling "gguf"
 fi
 

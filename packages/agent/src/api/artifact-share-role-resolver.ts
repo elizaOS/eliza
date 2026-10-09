@@ -19,9 +19,11 @@
  *
  * Viewer tokens are read-only capabilities: `isRouteInScope` allows only the
  * GET artifact routes, so a leaked viewer token can never mutate or reach the
- * broader API surface. Byte serving is untouched — `/api/media/<sha256>` stays
- * pre-auth per the #8876 doctrine (the hash is the capability); these tokens
- * gate DISCLOSURE of references, not bytes.
+ * broader API surface. These tokens gate DISCLOSURE of references, not bytes.
+ * On ordinary hosts `/api/media/<sha256>` stays pre-auth per the #8876
+ * doctrine (the hash is the capability); under the protected profile media
+ * requires an authenticated request (`isMediaAuthRequired`), which a viewer
+ * token does not satisfy, so viewers there see references but not bytes.
  */
 import crypto from "node:crypto";
 import type http from "node:http";

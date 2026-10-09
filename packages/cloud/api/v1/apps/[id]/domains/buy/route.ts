@@ -8,36 +8,36 @@
  * same organization may reassign the already-owned domain without another debit.
  */
 
-import { Hono } from "hono";
-import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
-import { creditTransactionsRepository } from "@/db/repositories/credit-transactions";
-import { domainPurchaseAttemptsRepository } from "@/db/repositories/domain-purchase-attempts";
-import type { CreditTransaction } from "@/db/schemas/credit-transactions";
-import type { DomainPurchaseIdempotency } from "@/db/schemas/domain-purchase-idempotency";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
+import { creditTransactionsRepository } from "@elizaos/cloud-shared/db/repositories/credit-transactions";
+import { domainPurchaseAttemptsRepository } from "@elizaos/cloud-shared/db/repositories/domain-purchase-attempts";
+import type { CreditTransaction } from "@elizaos/cloud-shared/db/schemas/credit-transactions";
+import type { DomainPurchaseIdempotency } from "@elizaos/cloud-shared/db/schemas/domain-purchase-idempotency";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
-import { appDomainsCompat } from "@/lib/services/app-domains-compat";
-import { appsService } from "@/lib/services/apps";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { appDomainsCompat } from "@elizaos/cloud-shared/lib/services/app-domains-compat";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 import {
   cloudflareDnsService,
   type DnsRecordType,
-} from "@/lib/services/cloudflare-dns";
+} from "@elizaos/cloud-shared/lib/services/cloudflare-dns";
 import {
   cloudflareRegistrarService,
   type RegisteredDomain,
-} from "@/lib/services/cloudflare-registrar";
-import { creditsService } from "@/lib/services/credits";
-import { computeDomainPrice } from "@/lib/services/domain-pricing";
-import { managedDomainsService } from "@/lib/services/managed-domains";
-import { extractErrorMessage } from "@/lib/utils/error-handling";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/cloudflare-registrar";
+import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
+import { computeDomainPrice } from "@elizaos/cloud-shared/lib/services/domain-pricing";
+import { managedDomainsService } from "@elizaos/cloud-shared/lib/services/managed-domains";
+import { extractErrorMessage } from "@elizaos/cloud-shared/lib/utils/error-handling";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import { domainBodySchema as BuySchema } from "../schemas";
 
 const DOMAIN_PURCHASE_PROVIDER_LEASE_MS = 2 * 60 * 1000;

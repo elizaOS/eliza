@@ -1,37 +1,4 @@
-/**
- * Remote-model "parse + schema-validate + reroll" wrapper around
- * {@link IAgentRuntime.useModel}.
- *
- * WHY THIS EXISTS:
- * For local models (e.g. Eliza-1/Gemma local tiers) we constrain output at the
- * sampler with GBNF grammars, so the model *cannot* emit out-of-schema values.
- * For remote models (Anthropic, OpenAI, Cerebras llama3.1-8b, etc.) we have no
- * such guarantee — a parse-valid response can still contain out-of-enum values
- * or wrong types. The legacy retry path in
- * {@link AgentRuntime.dynamicPromptExecFromState} only rerolls on
- * `JSON.parse` failure, so an out-of-enum string passes through and gets
- * coerced post-hoc by handler code.
- *
- * This module:
- *   1. Calls `useModel` and parses the response as JSON.
- *   2. Validates the parsed object against the supplied JSON Schema using
- *      {@link validateSchema} (the same per-arg checker used by
- *      `validateToolArgs`, lifted to a top-level "does this object satisfy
- *      the full schema" check).
- *   3. On parse OR validation failure, **rerolls up to 2 times**
- *      (3 total attempts).
- *   4. On the 3rd failure, throws {@link SchemaValidationFailedError}.
- *
- * The reroll budget applies **only to the remote path**. The gate is either:
- *   - explicit: caller passes `validateBeforeReturn: false` → no validation,
- *     no reroll (local callers should leave it false), or
- *   - automatic: the handler registered for `modelType` belongs to a provider
- *     matched by {@link isLocalProvider} → skip.
- *
- * Existing `VALIDATION_LEVEL` semantics are respected as an UPPER BOUND: if a
- * user has dialled retries down (e.g. `trusted`/`fast` → 0), the wrapper will
- * not exceed that even though its own default is 2.
- */
+/** Parses and schema-validates model output, with up to two repair retries. Explicit validation settings and provider locality control admission; VALIDATION_LEVEL caps the retry budget. */
 
 import { type JsonSchema, validateSchema } from "../actions/validate-tool-args";
 import type {
@@ -64,7 +31,7 @@ export interface ParseAndValidateResult {
 	/**
 	 * First schema-path that failed validation, if any. Useful for
 	 * {@link SchemaValidationFailedError.schemaPath}. Best-effort: extracted
-	 * from the leading "Argument '<path>' ..." prefix of the first error.
+	 * from the leading "Argument '<path>'..." prefix of the first error.
 	 */
 	failedSchemaPath?: string;
 }
@@ -151,8 +118,8 @@ export class SchemaValidationFailedError extends Error {
  * Lookup the provider name registered for `modelType` on this runtime.
  *
  * Returns `undefined` when:
- *   - no handler is registered for the type, or
- *   - the runtime is a mock without a `models` map.
+ * - no handler is registered for the type, or
+ * - the runtime is a mock without a `models` map.
  *
  * Used by {@link callModelWithValidation} to detect local providers (which
  * already guarantee a valid response via grammar enforcement and so skip the
@@ -176,11 +143,11 @@ export function getProviderForModelType(
  * Resolve whether this call should validate-before-return.
  *
  * Priority (later wins):
- *   1. Default: true (validate on the remote path).
- *   2. If the resolved provider is local, flip to false (grammar already
- *      enforces validity).
- *   3. Explicit `validateBeforeReturn` from the caller overrides everything.
- *      Local callers passing `false` is the canonical way to opt out.
+ * 1. Default: true (validate on the remote path).
+ * 2. If the resolved provider is local, flip to false (grammar already
+ * enforces validity).
+ * 3. Explicit `validateBeforeReturn` from the caller overrides everything.
+ * Local callers passing `false` is the canonical way to opt out.
  */
 function shouldValidate(
 	runtime: IAgentRuntime,
@@ -199,10 +166,10 @@ function shouldValidate(
  * when the user has dialled it down.
  *
  * Mapping mirrors {@link AgentRuntime.dynamicPromptExecFromState}:
- *   - `trusted` / `fast` → 0 rerolls
- *   - `progressive`     → 2 rerolls
- *   - `strict` / `safe` → 3 rerolls
- *   - anything else (incl. unset / unknown) → no override (returns undefined)
+ * - `trusted` / `fast` → 0 rerolls
+ * - `progressive` → 2 rerolls
+ * - `strict` / `safe` → 3 rerolls
+ * - anything else (incl. unset / unknown) → no override (returns undefined)
  *
  * Returns `undefined` when no cap should be applied, so callers can use
  * `Math.min(ourBudget, cap ?? ourBudget)` cleanly.
@@ -275,16 +242,16 @@ export interface CallModelWithValidationResult {
  *
  * See module docstring for the overall contract. The short version:
  *
- *   - Remote provider (default): parse + validate. On failure, reroll up to
- *     `maxRerolls` times (default 2). After exhausting the budget, throws
- *     {@link SchemaValidationFailedError}.
+ * - Remote provider (default): parse + validate. On failure, reroll up to
+ * `maxRerolls` times (default 2). After exhausting the budget, throws
+ * {@link SchemaValidationFailedError}.
  *
- *   - Local provider: skip validation + reroll entirely (grammar at the
- *     sampler already guarantees a valid response).
+ * - Local provider: skip validation + reroll entirely (grammar at the
+ * sampler already guarantees a valid response).
  *
- *   - Caller can force either behaviour via `validateBeforeReturn`.
+ * - Caller can force either behaviour via `validateBeforeReturn`.
  *
- *   - `VALIDATION_LEVEL` from runtime settings caps the reroll budget.
+ * - `VALIDATION_LEVEL` from runtime settings caps the reroll budget.
  *
  * Surrounding flow (planner-loop) treats no-actions as a terminal turn, so a
  * thrown error here ends the turn cleanly — see the catch-site in
@@ -367,7 +334,7 @@ export async function callModelWithValidation(
 }
 
 /**
- * Extract the first `Argument '<path>' ...` path token from an error string
+ * Extract the first `Argument '<path>'...` path token from an error string
  * produced by {@link validateSchema}. Best-effort: returns `undefined` when
  * the prefix is absent (e.g. for the bare "Missing required argument 'x'"
  * shape). Used solely to populate {@link SchemaValidationFailedError.schemaPath}.

@@ -258,8 +258,8 @@ function buildAbortSignal(params: {
  * - Validates URL protocol (http/https only)
  * - With a `lookupFn`: resolves and pins DNS to also defend against rebinding
  * - Without a `lookupFn`: synchronous literal-host checks (blocks private/
- *   loopback/link-local IPs and internal hostnames) — usable from
- *   environment-agnostic core, but no rebinding protection
+ * loopback/link-local IPs and internal hostnames) — usable from
+ * environment-agnostic core, but no rebinding protection
  * - Follows redirects manually, re-validating every hop
  * - Supports timeout and abort signals
  */
@@ -278,7 +278,7 @@ export async function fetchWithSsrfGuard(
 	const pinnedFetchImpl =
 		params.pinnedFetchImpl ?? nodeDefaults?.pinnedFetchImpl;
 
-	// Fail CLOSED on the footgun that re-creates #11147: a `lookupFn` computes a
+	// Fail CLOSED on the footgun that re-creates: a `lookupFn` computes a
 	// DNS pin, but without a `pinnedFetchImpl` to connect to that pinned IP the
 	// request falls through to the unpinned `fetcher` — the pin is computed and
 	// then silently discarded, re-opening the DNS-rebinding race the lookup was
@@ -359,7 +359,7 @@ export async function fetchWithSsrfGuard(
 				// (Cloudflare Workers / environment-agnostic core). It blocks literal
 				// internal targets but CANNOT defend against DNS rebinding (a public
 				// name that flips to a private address between check and connect,
-				// #12229 M5); on the edge that residual must be closed by a Cloudflare
+				// M5); on the edge that residual must be closed by a Cloudflare
 				// egress policy denying RFC1918/link-local, or by routing outbound
 				// through a resolve-and-connect-by-IP proxy. Operator follow-up.
 				//
@@ -429,7 +429,11 @@ export async function fetchWithSsrfGuard(
 				if (redirectCount > maxRedirects) {
 					cancelResponseBody(response);
 					await release();
-					throw new Error(`Too many redirects (limit: ${maxRedirects})`);
+					// Redirect budget and loop violations are policy blocks, not
+					// transient transport failures: retrying cannot succeed.
+					throw new SsrfBlockedError(
+						`Too many redirects (limit: ${maxRedirects})`,
+					);
 				}
 				// No redirect response body is consumed by this guard. Dispose it
 				// before parsing or validating the next hop so malformed Location
@@ -439,7 +443,7 @@ export async function fetchWithSsrfGuard(
 				const nextUrl = nextParsedUrl.toString();
 				if (visited.has(nextUrl)) {
 					await release();
-					throw new Error("Redirect loop detected");
+					throw new SsrfBlockedError("Redirect loop detected");
 				}
 				visited.add(nextUrl);
 				// 301/302 on a POST, and any 303, are rewritten to a bodyless GET

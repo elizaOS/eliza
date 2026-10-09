@@ -1,7 +1,11 @@
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.ts";
 import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed.ts";
+	SENSITIVE_TEXT_PATTERNS as DEFAULT_REDACT_PATTERNS,
+	isSensitiveLogKey,
+	redactTrailingArgs,
+	SENSITIVE_ASSIGNMENT_PATTERNS,
+} from "./log-redaction.js";
+
 /** Masks credential patterns and configured character secrets before logging or display. */
 
 /**
@@ -19,193 +23,9 @@ const DEFAULT_REDACT_KEEP_END = 4;
 // Minimum length for a secret to be considered for redaction
 // Shorter values could cause false positives
 export const MIN_SECRET_LENGTH = 8;
-
-// RFC 9110 §5.6.2 and §11.2. Keeping these grammar fragments together makes
-// Authorization classification one authority for both direct redaction and
-// SecretSwapSession, which compiles this module's exported default patterns.
-const HTTP_TOKEN_PATTERN = "[!#$%&'*+\\-.^_`|~0-9A-Za-z]+";
-const HTTP_BWS_PATTERN = String.raw`[ \t]*`;
-const HTTP_QUOTED_STRING_PATTERN = String.raw`"(?:[\t\x20\x21\x23-\x5B\x5D-\x7E\x80-\xFF]|\\[\t\x20-\x7E\x80-\xFF])*"`;
-const HTTP_AUTH_PARAM_PATTERN = `${HTTP_TOKEN_PATTERN}${HTTP_BWS_PATTERN}=${HTTP_BWS_PATTERN}(?:${HTTP_TOKEN_PATTERN}|${HTTP_QUOTED_STRING_PATTERN})`;
-const HTTP_AUTH_PARAM_LIST_PATTERN = `(?:,${HTTP_BWS_PATTERN})*${HTTP_AUTH_PARAM_PATTERN}(?:${HTTP_BWS_PATTERN},${HTTP_BWS_PATTERN}(?:${HTTP_AUTH_PARAM_PATTERN})?)*`;
-const HTTP_TOKEN68_PATTERN = String.raw`[A-Za-z0-9._~+/\-]+={0,}`;
-
-/**
- * Default patterns for detecting sensitive data.
- * Matches common formats for API keys, tokens, passwords, etc.
- */
-const DEFAULT_REDACT_PATTERNS: string[] = [
-	// ENV-style assignments (incl. seed/mnemonic/passphrase/credential names).
-	// Keep the broad environment-name form case-sensitive: compiling bare
-	// `key` case-insensitively also matches ordinary source such as
-	// `key = prefix + tag` and corrupts code returned by READ. Lowercase env
-	// spellings remain covered when they use an unambiguous compound name.
-	String.raw`/\b(?:[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)|(?:api_key|access_token|refresh_token|auth_token|bot_token|session_key|private_key|client_secret|seed_phrase|connection_string|webhook_url))\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1/g`,
-	// JSON fields.
-	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
-	// Quoted credential keys with arbitrary naming. The ENV-style row above
-	// requires the key's word boundary to be followed immediately by `=`/`:`,
-	// which a quoted key never is — the closing quote intervenes — so
-	// `{"api_key": "…"}` matched nothing at all. Serialized provider error
-	// bodies are exactly this shape, and they are the payloads most likely to
-	// be logged verbatim, so the blind spot pointed at the highest-risk input.
-	// The name vocabulary is open-ended: an optional separator-terminated
-	// prefix followed by a credential word, which keeps ordinary words that
-	// merely end in one ("monkey", "turkey") from matching because they have no
-	// separator before the suffix. Both quote styles are accepted so JS/Python
-	// reprs are covered alongside JSON. The prefix repeat is capped at 8
-	// segments (real key names never nest that deep) rather than left
-	// unbounded, keeping worst-case matching linear in input length instead of
-	// letting the engine explore every possible split of a long benign run.
-	String.raw`(["'])(?:[A-Za-z0-9]+[_.\-]){0,8}(?:api[_.\-]?key|access[_.\-]?token|refresh[_.\-]?token|auth[_.\-]?token|bot[_.\-]?token|session[_.\-]?key|private[_.\-]?key|client[_.\-]?secret|seed[_.\-]?phrase|passphrase|password|passwd|mnemonic|credential|secret|token|key)\1\s*[:=]\s*(["'])([^"'\\]+)\2`,
-	// CLI flags (space-separated and --flag=value forms).
-	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
-	// Authorization credentials are either one token68 value or a complete
-	// comma-separated auth-param list. Basic is classified first because its
-	// trailing `=` is token68 padding, not an auth-param assignment; this also
-	// lets diagnostic prose follow a Basic credential without being swallowed.
-	// Extension schemes then use the complete RFC token/quoted-string grammar.
-	// Line boundaries keep invalid prose such as "Authorization: required for
-	// this endpoint" unchanged. Bearer retains its floor-free compatibility for
-	// short service values in env-style `*_AUTHORIZATION` output.
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=/~]+)`,
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Basic[ \t]+(${HTTP_TOKEN68_PATTERN})(?=[ \t]|[\r\n]|$)`,
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_AUTH_PARAM_LIST_PATTERN})(?=${HTTP_BWS_PATTERN}(?:[\r\n]|$))`,
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_TOKEN68_PATTERN})(?=${HTTP_BWS_PATTERN}(?:[\r\n]|$))`,
-	// Once a non-Basic/Bearer credential has the unambiguous `token BWS =`
-	// assignment opener, malformed quoting or a truncated list must fail toward
-	// masking rather than leave a likely credential in diagnostics.
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(?!(?:Basic|Bearer)(?:[ \t]|$))(${HTTP_TOKEN_PATTERN})[ \t]+((?=${HTTP_TOKEN_PATTERN}${HTTP_BWS_PATTERN}=)[^\r\n]+)(?=[\r\n]|$)`,
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z0-9._~+/\-]{18,}={0,})(?=[\r\n]|$)`,
-	String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
-	// URI userinfo. Mask the complete userinfo component (user:password,
-	// token-only, or password-only) so credentials in database URLs, curl
-	// arguments, and remote URLs never survive as output.
-	String.raw`\b[a-z][a-z0-9+.-]*:\/\/([^\s/@]+)@`,
-	// PEM blocks.
-	String.raw`-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----`,
-	// Common token prefixes.
-	String.raw`\b(sk-[A-Za-z0-9_-]{8,})\b`,
-	// Cerebras inference keys (csk-…) — a distinct prefix from OpenAI's sk-,
-	// routinely echoed by sub-agent stdout as the model key in use.
-	String.raw`\b(csk-[A-Za-z0-9_-]{8,})\b`,
-	// Stripe secret + restricted keys (underscore form) — sk_live_/sk_test_/rk_live_/rk_test_.
-	// Distinct shape from the OpenAI sk- above; Stripe is the payment processor so a leaked
-	// sk_live_ is catastrophic, and these often appear as bare values (not under a *_SECRET name).
-	String.raw`\b((?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,})\b`,
-	// AWS credential identifiers have fixed four-character type prefixes and
-	// 16 uppercase base32 characters. AKIA/ASIA are access-key IDs; ABIA/ACCA
-	// are bearer/context credential identifiers and should be masked as well.
-	// Keep this regex explicitly case-sensitive so ordinary mixed-case words
-	// beginning with "Asia" are not folded into the credential shape.
-	String.raw`/\b((?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16})\b/g`,
-	String.raw`\b(ghp_[A-Za-z0-9]{20,})\b`,
-	String.raw`\b(github_pat_[A-Za-z0-9_]{20,})\b`,
-	String.raw`\b(xox[baprs]-[A-Za-z0-9-]{10,})\b`,
-	String.raw`\b(xapp-[A-Za-z0-9-]{10,})\b`,
-	String.raw`\b(gsk_[A-Za-z0-9_-]{10,})\b`,
-	String.raw`\b(AIza[0-9A-Za-z\-_]{20,})\b`,
-	String.raw`\b(pplx-[A-Za-z0-9_-]{10,})\b`,
-	String.raw`\b(npm_[A-Za-z0-9]{10,})\b`,
-	String.raw`\b(\d{6,}:[A-Za-z0-9_-]{20,})\b`,
-	// Google OAuth credentials. Refresh tokens (`1//0…`) and access tokens
-	// (`ya29.…`) carry no key name when echoed by a token-endpoint error body,
-	// and neither shape survives a `\b`-anchored alphanumeric pattern: `1//`
-	// opens with a digit followed by slashes. Case-sensitive `ya29.` avoids
-	// folding unrelated prose.
-	String.raw`/(1\/\/[A-Za-z0-9_\-]{10,})/g`,
-	String.raw`/\b(ya29\.[A-Za-z0-9_\-.]{10,})/g`,
-];
-
-/**
- * Substrings that mark an object key as holding a credential. Case-insensitive.
- * This is the single source of truth for *name-based* redaction — the cloud
- * logger's `redact.context()` and the log-sink redactor below both consult
- * {@link isSensitiveKeyName}, so "which field names are secret" is defined once.
- * Value-shape detection (sk-, ghp_, Bearer, PEM, …) lives in
- * {@link DEFAULT_REDACT_PATTERNS}; the two are complementary, not duplicated.
- */
-const SENSITIVE_KEY_SUBSTRINGS: readonly string[] = [
-	"privatekey",
-	"private_key",
-	"secret",
-	"password",
-	"passwd",
-	"passphrase",
-	"mnemonic",
-	"seedphrase",
-	"seed_phrase",
-	"apikey",
-	"api_key",
-	"accesstoken",
-	"access_token",
-	"refreshtoken",
-	"refresh_token",
-	"authkey",
-	"auth_key",
-	"credential",
-	"authorization",
-];
-
-// Exact telemetry/schema controls whose names contain "token" but whose
-// values are counts, budgets, or correlation identifiers rather than
-// credentials. Keep this list deliberately closed: broad suffix rules would
-// accidentally exempt credential collections such as `accessTokens`.
-const NON_SECRET_TOKEN_METADATA_KEYS = new Set([
-	"cachecreationinputtokens",
-	"cachereadinputtokens",
-	"completiontokens",
-	"compactionthresholdtokens",
-	"contextwindowtokens",
-	"estimatedinputtokens",
-	"inputtokens",
-	"maxtokens",
-	"maxtokensomitted",
-	"outputtokens",
-	"prompttokens",
-	"reasoningtokens",
-	"reservetokens",
-	"tokencount",
-	"tokencountestimated",
-	"tokenid",
-	"totaltokens",
-]);
-
-/**
- * Whether an object key names a credential and its value must be fully masked.
- * Matches the substrings in {@link SENSITIVE_KEY_SUBSTRINGS} plus `token`
- * (excluding `tokenId`) and the `*key` forms the cloud logger recognized
- * (ssh/api/signing key). Callers redact the *value* under a matching key.
- */
+/** Shared credential-name policy used by model and log redaction. */
 export function isSensitiveKeyName(key: string): boolean {
-	const lower = key.toLowerCase();
-	const normalized = lower.replace(/[_-]/g, "");
-	if (NON_SECRET_TOKEN_METADATA_KEYS.has(normalized)) {
-		return false;
-	}
-	if (SENSITIVE_KEY_SUBSTRINGS.some((needle) => lower.includes(needle))) {
-		return true;
-	}
-	if (lower.includes("token") && !lower.includes("tokenid")) {
-		return true;
-	}
-	if (
-		lower.includes("key") &&
-		(lower.includes("ssh") ||
-			lower.includes("api") ||
-			lower.includes("signing"))
-	) {
-		return true;
-	}
-	// Separator-free concatenations (masterKey, MASTERKEY, encryption-key, …)
-	// have no word boundary for the substring rules above; a closed suffix set
-	// on the normalized name catches them without opening `key$` to lookalikes
-	// (monkey/turnkey/KEYBOARD stay non-sensitive). Same closed set as the leaf
-	// logger's isSensitiveLogKey and the agent's isSensitiveConfigKey.
-	if (/(?:master|signing|ssh|encryption)key$/i.test(normalized)) {
-		return true;
-	}
-	return false;
+	return isSensitiveLogKey(key);
 }
 
 /**
@@ -386,15 +206,22 @@ export function redactToolDetail(detail: string): string {
 /**
  * Get the default redaction patterns.
  *
+ * Source reviewers may classify named assignments with their own literal parser.
+ * Runtime redaction keeps broad assignment matching by default. Provider token,
+ * quoted field, header and URL patterns remain present in both modes.
  * @returns Copy of default pattern strings
  */
-export function getDefaultRedactPatterns(): string[] {
-	return [...DEFAULT_REDACT_PATTERNS];
+export function getDefaultRedactPatterns(
+	options: { includeNamedAssignments?: boolean } = {},
+): string[] {
+	return options.includeNamedAssignments === false
+		? DEFAULT_REDACT_PATTERNS.filter(
+				(pattern) => !SENSITIVE_ASSIGNMENT_PATTERNS.includes(pattern),
+			)
+		: [...DEFAULT_REDACT_PATTERNS];
 }
 
-// ============================================================================
 // Secrets-Based Redaction
-// ============================================================================
 
 /**
  * Escape special regex characters in a string.
@@ -563,112 +390,20 @@ export function redactObjectSecrets<T>(
 	return obj;
 }
 
-// ============================================================================
 // Log-Sink Redaction (applied to every log line, not opt-in per call)
-// ============================================================================
-
-const REDACTED_MASK = "[REDACTED]";
-const MAX_LOG_REDACT_DEPTH = 8;
-
-/**
- * Redact one log argument for output at the sink. A string is scrubbed with the
- * value-shape patterns ({@link redactSensitiveText}); an object/array is walked
- * so any value under a credential-named key ({@link isSensitiveKeyName}) is
- * fully masked and every remaining string is pattern-scrubbed. This is the
- * mechanism that makes redaction structural rather than opt-in: a logger that
- * pipes its arguments through {@link redactLogArgs} masks `{ apiKey }` whether
- * or not the caller wrapped the context first.
- *
- * Function values never survive the walk. They are executable serializer hooks
- * (toJSON/valueOf/toString), and a copied hook re-runs when a JSON sink
- * stringifies the clone, able to reconstitute the very secrets the walk just
- * masked. A bare function argument collapses to null and a function-valued
- * property is dropped outright — matching JSON.stringify, which emits null for
- * array functions and omits object function props. Symbol-keyed hooks such as
- * util.inspect.custom never reach the clone because the walk copies string keys
- * only.
- *
- * Buffer/TypedArray/DataView/ArrayBuffer values collapse to a size-only marker:
- * the indexed walk would otherwise emit the raw bytes as {"0":115,…} under an
- * innocent-looking key, and JSON.stringify would emit them as
- * {"type":"Buffer","data":[…]} — either way secret bytes survive in every sink.
- *
- * Depth is bounded and cycles are broken (returning the mask) so a pathological
- * log payload cannot hang or blow the stack — a redactor must never be the thing
- * that takes the process down.
- */
-function redactLogArg(
-	value: unknown,
-	seen: WeakSet<object>,
-	depth: number,
-): unknown {
-	if (typeof value === "string") {
-		return redactSensitiveText(value);
-	}
-	if (typeof value === "function") {
-		return null;
-	}
-	if (value === null || typeof value !== "object") {
-		return value;
-	}
-	if (depth >= MAX_LOG_REDACT_DEPTH || seen.has(value)) {
-		return REDACTED_MASK;
-	}
-	seen.add(value);
-	if (Array.isArray(value)) {
-		// Do not call value.map: an Array subclass, custom Symbol.species, or own
-		// map property can return caller-owned data carrying a serializer hook.
-		// Index into the input but construct the output with the intrinsic Array
-		// constructor so no caller-controlled method or result prototype survives.
-		const result: unknown[] = [];
-		for (let index = 0; index < value.length; index += 1) {
-			result.push(redactLogArg(value[index], seen, depth + 1));
-		}
-		return result;
-	}
-	if (value instanceof Error) {
-		// Preserve the Error shape (name/stack) callers rely on, but scrub the
-		// message — thrown errors routinely interpolate the offending secret.
-		const redacted = new Error(redactSensitiveText(value.message));
-		redacted.name = value.name;
-		redacted.stack = value.stack ? redactSensitiveText(value.stack) : undefined;
-		return redacted;
-	}
-	// Binary payloads carry raw bytes that JSON serializes verbatim
-	// ({"type":"Buffer","data":[...]}); walked as indexed objects they emit the
-	// same bytes as {"0":115,...} under an innocent-looking key, so mask with a
-	// size-only marker (same marker shape as the leaf logger's).
-	if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
-		return `[BUFFER REDACTED ${value.byteLength} bytes]`;
-	}
-	// A null-prototype target prevents a __proto__ input key from changing the
-	// clone's prototype and reintroducing inherited serializer behavior.
-	const result = Object.create(null) as Record<string, unknown>;
-	for (const [key, entry] of Object.entries(value)) {
-		if (isSensitiveKeyName(key)) {
-			result[key] = REDACTED_MASK;
-			continue;
-		}
-		// Function-valued properties are executable serializer hooks
-		// (toJSON/valueOf/toString): a copied hook re-runs when a sink
-		// JSON-stringifies the clone and can reconstitute the very secrets the
-		// walk just masked. JSON.stringify omits function props anyway, so
-		// dropping the key matches serialization semantics.
-		if (typeof entry === "function") {
-			continue;
-		}
-		result[key] = redactLogArg(entry, seen, depth + 1);
-	}
-	return result;
-}
 
 /**
  * Redact every argument in a `logger.error(...args)` call before it reaches the
  * transport. Consumed by log sinks so secret masking is structural, not opt-in:
  * `logger.error("msg", { apiKey })` masks the key with no `redact.context()` at
- * the call site. Value-shape and credential-named-key redaction converge here on
- * the one core module ({@link redactSensitiveText} + {@link isSensitiveKeyName}).
+ * the call site.
+ *
+ * Delegates to the single fail-closed log walker in `log-redaction.ts` rather
+ * than keeping a parallel one: a throwing getter or hostile Proxy degrades to
+ * a per-key (or per-argument) redaction-failed marker instead of aborting the
+ * walk, so sibling credentials are never emitted unmasked and logging never
+ * throws into the caller.
  */
 export function redactLogArgs(args: readonly unknown[]): unknown[] {
-	return args.map((arg) => redactLogArg(arg, new WeakSet<object>(), 0));
+	return redactTrailingArgs(args);
 }

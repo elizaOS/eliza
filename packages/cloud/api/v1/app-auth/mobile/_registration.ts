@@ -1,12 +1,12 @@
 /** Resolves and verifies the server-owned first-party mobile client record. */
-import { appsRepository } from "@/db/repositories/apps";
-import { isAllowedOrigin } from "@/lib/security/origin-validation";
-import { appsService } from "@/lib/services/apps";
+import { appsRepository } from "@elizaos/cloud-shared/db/repositories/apps";
+import { isAllowedOrigin } from "@elizaos/cloud-shared/lib/security/origin-validation";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 import {
   MobileAppAuthProtocolError,
   resolveMobileAppAuthRegistration,
-} from "@/lib/services/mobile-app-auth";
-import type { AppContext } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 export async function requireRegisteredMobileApp(
   c: AppContext,

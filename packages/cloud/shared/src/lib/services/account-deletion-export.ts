@@ -84,7 +84,16 @@ type ExplicitExportPath = Readonly<{
   table: string;
   policy: "portable_subject_data" | "retained_security_audit";
   where(input: { userId: string; organizationId: string }): ReturnType<typeof sql>;
+  /** Rows owned by the user alone; paths without it are organization data. */
+  userWhere?(input: { userId: string }): ReturnType<typeof sql>;
 }>;
+
+/**
+ * `account` exports everything the deletion saga erases (the user and their
+ * organization). `user` exports only rows owned by the user, for live exports
+ * where the organization may have other members.
+ */
+export type AccountExportSubjectScope = "account" | "user";
 
 /**
  * Ownership paths that are not direct user/organization foreign keys. Audit
@@ -101,6 +110,7 @@ const EXPLICIT_EXPORT_PATHS: readonly ExplicitExportPath[] = Object.freeze([
     table: "app_subscriber_accounts",
     policy: "portable_subject_data",
     where: ({ userId }) => sql`subject.subscriber_user_id = ${userId}`,
+    userWhere: ({ userId }) => sql`subject.subscriber_user_id = ${userId}`,
   },
   {
     table: "conversation_messages",
@@ -109,6 +119,10 @@ const EXPLICIT_EXPORT_PATHS: readonly ExplicitExportPath[] = Object.freeze([
       SELECT 1 FROM conversations AS parent
       WHERE parent.id = subject.conversation_id
         AND (parent.user_id = ${userId} OR parent.organization_id = ${organizationId})
+    )`,
+    userWhere: ({ userId }) => sql`EXISTS (
+      SELECT 1 FROM conversations AS parent
+      WHERE parent.id = subject.conversation_id AND parent.user_id = ${userId}
     )`,
   },
   {
@@ -335,12 +349,15 @@ export async function collectPortableAccountDeletionExport(input: {
   userId: string;
   organizationId: string;
   generatedAt: Date;
+  subjectScope?: AccountExportSubjectScope;
 }): Promise<Uint8Array> {
+  const userOnly = input.subjectScope === "user";
   const grouped = new Map<string, Map<string, { column: string; value: string }>>();
   for (const descriptor of listAccountDeletionForeignKeys()) {
     if (descriptor.sourceColumns.includes(",") || descriptor.targetColumns !== "id") {
       throw new Error("Composite account export authority is unsupported");
     }
+    if (userOnly && descriptor.targetTable !== "users") continue;
     const value = descriptor.targetTable === "users" ? input.userId : input.organizationId;
     const predicates = grouped.get(descriptor.sourceTable) ?? new Map();
     predicates.set(`${descriptor.sourceColumns}:${value}`, {
@@ -349,10 +366,12 @@ export async function collectPortableAccountDeletionExport(input: {
     });
     grouped.set(descriptor.sourceTable, predicates);
   }
-  grouped.set(
-    "organizations",
-    new Map([[`id:${input.organizationId}`, { column: "id", value: input.organizationId }]]),
-  );
+  if (!userOnly) {
+    grouped.set(
+      "organizations",
+      new Map([[`id:${input.organizationId}`, { column: "id", value: input.organizationId }]]),
+    );
+  }
   grouped.set("users", new Map([[`id:${input.userId}`, { column: "id", value: input.userId }]]));
 
   const tables = await dbWrite.transaction(
@@ -378,10 +397,12 @@ export async function collectPortableAccountDeletionExport(input: {
         snapshotTables.push({ table, rowCount: rows.length, rows: stableRows(rows) });
       }
       for (const path of EXPLICIT_EXPORT_PATHS) {
+        const where = userOnly ? path.userWhere?.(input) : path.where(input);
+        if (!where) continue;
         const { rows, sourceBytes } = await querySubjectRowsWhere({
           executor: tx,
           table: path.table,
-          where: path.where(input),
+          where,
         });
         cumulativeSourceBytes += sourceBytes;
         if (cumulativeSourceBytes > BigInt(MAX_EXPORT_BYTES)) {
@@ -404,7 +425,10 @@ export async function collectPortableAccountDeletionExport(input: {
   );
 
   return serializePortableAccountDeletionExport({
-    ...input,
+    requestId: input.requestId,
+    userId: input.userId,
+    organizationId: input.organizationId,
+    generatedAt: input.generatedAt,
     tables,
   });
 }

@@ -8,7 +8,7 @@
  *
  * Two targets run in sequence:
  *   1. `fixture` (default) — the synthetic fixture's own controls.
- *   2. `real-view` — REAL components from @elizaos/plugin-task-coordinator
+ *   2. `real-view` — REAL components from @elizaos/plugin-agent-orchestrator
  *      (TaskCard / BackChip / TaskSearchInput) mounted in the host
  *      AgentSurfaceProvider. Their `useAgentElement` calls resolve to the same
  *      `@elizaos/ui/agent-surface` registry singleton as the host, so the bridge
@@ -57,26 +57,32 @@ function assert(cond, msg) {
 }
 
 /**
- * Bundle one fixture into a self-contained IIFE HTML page. `alias` lets a real
- * plugin view + the host both resolve `@elizaos/ui/agent-surface` to the same
- * local source so they share the registry singleton (mirrors the host-external
- * singleton in packages/scripts/view-bundle-vite.config.ts, but bundled-in for
+ * Bundle one fixture into a self-contained module HTML page. `alias` lets a real
+ * plugin view + the host both resolve `@elizaos/ui` to the same
+ * public source root so they share the registry singleton (mirrors the
+ * host-external singleton in packages/scripts/view-bundle-vite.config.ts for
  * a hermetic no-server e2e).
  */
 async function bundleFixture(name, entry, alias) {
   const result = await build({
     entryPoints: [entry],
     bundle: true,
-    format: "iife",
+    format: "esm",
     platform: "browser",
     jsx: "automatic",
     loader: { ".tsx": "tsx", ".ts": "ts" },
     define: { "process.env.NODE_ENV": '"production"' },
     alias,
+    outfile: join(outDir, `${name}.js`),
     write: false,
   });
-  const js = result.outputFiles[0].text;
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>agent-surface e2e — ${name}</title></head><body><div id="root"></div><script>${js}</script></body></html>`;
+  const js = result.outputFiles.find((file) => file.path.endsWith(".js"));
+  if (!js) throw new Error(`Fixture ${name} produced no JavaScript bundle`);
+  const css = result.outputFiles
+    .filter((file) => file.path.endsWith(".css"))
+    .map((file) => file.text)
+    .join("\n");
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>agent-surface e2e — ${name}</title><style>${css}</style></head><body><div id="root"></div><script type="module">${js.text}</script></body></html>`;
   const htmlPath = join(outDir, `${name}.html`);
   await writeFile(htmlPath, html);
   return htmlPath;
@@ -134,7 +140,10 @@ async function driveSyntheticFixture(browser) {
     const focused = await page.evaluate(
       () => window.__agentSurface("get-focus").focusedId,
     );
-    assert(focused === "name", `get-focus reports the focused element (${focused})`);
+    assert(
+      focused === "name",
+      `get-focus reports the focused element (${focused})`,
+    );
 
     await page.screenshot({ path: join(outDir, "agent-surface-rest.png") });
 
@@ -155,25 +164,20 @@ async function driveSyntheticFixture(browser) {
   }
 }
 
-// ── Target 2: real plugin view (plugin-task-coordinator) ─────────────────────
+// ── Target 2: real plugin view (plugin-agent-orchestrator) ─────────────────────
 async function driveRealView(browser) {
-  console.log("\n── target: real-view (@elizaos/plugin-task-coordinator) ──");
+  console.log("\n── target: real-view (@elizaos/plugin-agent-orchestrator) ──");
   const htmlPath = await bundleFixture(
     "real-view",
     join(here, "real-view-fixture.tsx"),
     {
-      // Resolve the plugin view to source so we drive the real component, and
-      // resolve its `@elizaos/ui/agent-surface` import to the local
-      // `useAgentElement` source (all TaskCardList needs). It transitively pulls
-      // the same AgentSurfaceContext + registry modules the host imports
-      // relatively → one shared registry singleton, no app-server, no heavy
-      // barrel (the full agent-surface index would drag node-only transitive deps
-      // into the browser bundle).
-      "@elizaos/plugin-task-coordinator/TaskCardList": join(
+      // Resolve the real plugin and public UI entry to source so the view's
+      // useAgentElement and the host share one registry singleton.
+      "@elizaos/plugin-agent-orchestrator/ui/TaskCardList": join(
         repoRoot,
-        "plugins/plugin-task-coordinator/src/TaskCardList.tsx",
+        "plugins/plugin-agent-orchestrator/src/ui/TaskCardList.tsx",
       ),
-      "@elizaos/ui/agent-surface": join(uiSrc, "useAgentElement.ts"),
+      "@elizaos/ui": join(uiSrc, "../index.ts"),
     },
   );
   const page = await browser.newPage({
@@ -229,7 +233,9 @@ async function driveRealView(browser) {
       "agent-click activates the real BackChip (back=1)",
     );
 
-    await page.screenshot({ path: join(outDir, "agent-surface-real-view.png") });
+    await page.screenshot({
+      path: join(outDir, "agent-surface-real-view.png"),
+    });
   } finally {
     await page.close();
   }

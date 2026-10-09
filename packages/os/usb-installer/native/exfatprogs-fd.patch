@@ -1,0 +1,100 @@
+--- a/lib/libexfat.c
++++ b/lib/libexfat.c
+@@ -147 +147,15 @@
+-	fd = open(ui->dev_name, ui->writeable ? O_RDWR|O_EXCL : O_RDONLY);
++	/* elizaOS: the broker already holds the whole-device exclusive claim.
++	 * Duplicate its retained partition FD; reopening even /proc/self/fd/4
++	 * with O_EXCL would take a second, incompatible block-device claim. */
++	if (strcmp(ui->dev_name, "/proc/self/fd/4") != 0 ||
++	    fstat(4, &st) != 0 || !S_ISBLK(st.st_mode)) {
++		exfat_err("elizaOS requires an inherited block-device FD 4\n");
++		return -1;
++	}
++	ret = fcntl(4, F_GETFL);
++	if (ret < 0 || (ret & O_ACCMODE) == O_WRONLY ||
++	    (ui->writeable && (ret & O_ACCMODE) != O_RDWR)) {
++		exfat_err("elizaOS inherited descriptor has invalid access mode\n");
++		return -1;
++	}
++	fd = fcntl(4, F_DUPFD_CLOEXEC, 5);
+@@ -157 +171 @@
+-		ret = blk_dev_size;
++		ret = -1;
+@@ -162 +176,3 @@
+-	if (fstat(fd, &st) == 0 && S_ISBLK(st.st_mode)) {
++	/* This helper accepts partitions only; missing topology is a failure,
++	 * never an invented zero offset after device removal. */
++	{
+@@ -165 +181 @@
+-
++		int fields;
+@@ -169,10 +185,12 @@
+-		if (fp != NULL) {
+-			if (fscanf(fp, "%llu", &blk_dev_offset) == 1) {
+-				/*
+-				 * Linux kernel always reports partition offset
+-				 * in 512-byte units, regardless of sector size
+-				 */
+-				blk_dev_offset <<= 9;
+-			}
+-			fclose(fp);
+-		}
++		if (fp == NULL) {
++			close(fd);
++			return -1;
++		}
++		fields = fscanf(fp, "%llu", &blk_dev_offset);
++		ret = fclose(fp);
++		if (fields != 1 || ret != 0 || blk_dev_offset == 0 ||
++		    blk_dev_offset > (ULLONG_MAX >> 9)) {
++			close(fd);
++			return -1;
++		}
++		blk_dev_offset <<= 9;
+@@ -190,6 +208,6 @@
+-	if (ui->sector_size)
+-		bd->sector_size = ui->sector_size;
+-	else if (ioctl(fd, BLKPBSZGET, &bd->sector_size) >= 0)
+-		;
+-	else if (ioctl(fd, BLKSSZGET, &bd->sector_size) < 0)
+-		bd->sector_size = DEFAULT_SECTOR_SIZE;
++	if (ioctl(fd, BLKSSZGET, &bd->sector_size) < 0 ||
++	    (bd->sector_size != 512 && bd->sector_size != 4096) ||
++	    blk_dev_size % bd->sector_size != 0) {
++		close(fd);
++		return -1;
++	}
+--- a/mkfs/mkfs.c
++++ b/mkfs/mkfs.c
+@@ -619 +619 @@
+-int main(int argc, char *argv[])
++static int exfat_main(int argc, char *argv[])
+@@ -765,0 +766,11 @@
++
++/* No caller-supplied pathname or option reaches the formatter/verifier. */
++int main(int argc, char * const argv[])
++{
++	char *fixed[] = { "elizaos-mkfs-exfat-fd", "-L", "ELIZAOS-USB", "/proc/self/fd/4", NULL };
++	if (argc != 1 || argv == NULL || argv[0] == NULL) {
++		fputs("elizaOS exFAT FD helper takes no arguments\n", stderr);
++		return 2;
++	}
++	return exfat_main((int)(sizeof(fixed) / sizeof(fixed[0])) - 1, fixed);
++}
+--- a/fsck/fsck.c
++++ b/fsck/fsck.c
+@@ -1682 +1682 @@
+-int main(int argc, char * const argv[])
++static int exfat_main(int argc, char * const argv[])
+@@ -1851,0 +1852,11 @@
++
++/* No caller-supplied pathname or option reaches the formatter/verifier. */
++int main(int argc, char * const argv[])
++{
++	char *fixed[] = { "elizaos-fsck-exfat-fd", "-n", "/proc/self/fd/4", NULL };
++	if (argc != 1 || argv == NULL || argv[0] == NULL) {
++		fputs("elizaOS exFAT FD helper takes no arguments\n", stderr);
++		return 2;
++	}
++	return exfat_main((int)(sizeof(fixed) / sizeof(fixed[0])) - 1, fixed);
++}

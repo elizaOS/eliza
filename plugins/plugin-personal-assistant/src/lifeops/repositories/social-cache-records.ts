@@ -4,7 +4,7 @@ import type {
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
   LifeOpsXSyncState,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import { parseJsonRecord, toBoolean, toText } from "../sql.js";
 
 export function parseXDm(row: Record<string, unknown>): LifeOpsXDm {

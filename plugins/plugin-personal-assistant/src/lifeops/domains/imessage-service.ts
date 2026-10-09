@@ -4,11 +4,16 @@
  * into assistant connector DTOs. The connector plugin owns transport behavior;
  * this layer owns only the LifeOps projection and native plugin-load fallback.
  */
+
 import { basename } from "node:path";
+import type { LifeOpsIMessageConnectorStatus } from "@elizaos/contracts";
 import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared";
 import type { LifeOpsContext } from "../lifeops-context.js";
+import {
+  assertConnectorSenderIdentity,
+  ConnectorDeliveryEvidenceError,
+} from "../messaging/connector-delivery-evidence.js";
 import {
   readIMessagesWithRuntimeService,
   sendIMessageWithRuntimeService,
@@ -62,6 +67,7 @@ type RuntimeIMessageServiceLike = {
   ): Promise<{
     success: boolean;
     messageId?: string;
+    messageIds?: string[];
     chatId?: string;
     error?: string;
   }>;
@@ -86,6 +92,7 @@ export interface IMessageSendRequest {
   text: string;
   attachmentPaths?: string[];
   transport?: "auto" | "native";
+  expectedAccount?: { identityId: string; transport: string };
 }
 
 export interface IMessageRecord {
@@ -171,7 +178,21 @@ async function withNativeIMessageSendTimeout<T>(
 async function ensureNativeIMessagePluginLoaded(
   runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
 ): Promise<boolean> {
-  if (process.platform !== "darwin") {
+  const backend = String(
+    runtime.getSetting("ELIZA_IMESSAGE_BACKEND") ??
+      process.env.ELIZA_IMESSAGE_BACKEND ??
+      process.env.IMESSAGE_BACKEND ??
+      "",
+  )
+    .trim()
+    .toLowerCase();
+  // Simulated hosts may supply a synthetic service, but must never lazily
+  // admit the native transport or open the operator's Messages database.
+  if (
+    process.platform !== "darwin" ||
+    backend === "none" ||
+    backend === "disabled"
+  ) {
     return false;
   }
   if (runtime.getService("imessage")) {
@@ -289,7 +310,7 @@ function runtimeStatusToLifeOps(
     connected,
     bridgeType: transport === "blooio" ? "blooio" : "native",
     hostPlatform: normalizeHostPlatform(),
-    accountHandle: null,
+    accountHandle: transport === "blooio" ? (status?.channelId ?? null) : null,
     sendMode:
       connected && transport === "blooio"
         ? "provider-api"
@@ -326,7 +347,7 @@ function nativeServiceCanRead(service: RuntimeIMessageServiceLike): boolean {
   );
 }
 
-function nativeMessageToLifeOps(
+export function nativeMessageToLifeOps(
   message: NativeIMessageMessage,
 ): IMessageRecord {
   const attachmentPaths = message.attachmentPaths ?? [];
@@ -336,7 +357,12 @@ function nativeMessageToLifeOps(
     toHandles: message.isFromMe && message.handle ? [message.handle] : [],
     text: message.text,
     isFromMe: message.isFromMe,
-    sentAt: new Date(message.timestamp || Date.now()).toISOString(),
+    sentAt: new Date(
+      typeof message.timestamp === "number" &&
+        Number.isFinite(message.timestamp)
+        ? message.timestamp
+        : Date.now(),
+    ).toISOString(),
     chatId: message.chatId,
     attachments:
       attachmentPaths.length > 0
@@ -401,8 +427,8 @@ export class IMessageDomain {
 
   async sendIMessage(
     req: IMessageSendRequest,
-  ): Promise<{ ok: true; messageId?: string }> {
-    if (req.transport !== "native") {
+  ): Promise<{ ok: true; messageId?: string; messageIds?: string[] }> {
+    if (req.transport !== "native" && !req.expectedAccount) {
       const delegated = await sendIMessageWithRuntimeService({
         runtime: this.ctx.runtime,
         to: req.to,
@@ -432,6 +458,20 @@ export class IMessageDomain {
     if (!nativeService) {
       fail(503, IMESSAGE_PLUGIN_SETUP_MESSAGE);
     }
+    if (req.expectedAccount) {
+      const current = runtimeStatusToLifeOps(
+        nativeService,
+        new Date().toISOString(),
+      );
+      const actual = current.accountHandle
+        ? `${current.bridgeType}:${current.sendMode}:${current.accountHandle}`
+        : null;
+      assertConnectorSenderIdentity(
+        "imessage",
+        `${req.expectedAccount.transport}:${req.expectedAccount.identityId}`,
+        actual,
+      );
+    }
     const result = await withNativeIMessageSendTimeout(
       nativeService.sendMessage(req.to, req.text, {
         ...(req.attachmentPaths?.[0]
@@ -440,9 +480,24 @@ export class IMessageDomain {
       }),
     );
     if (!result.success) {
+      if (result.messageIds?.length) {
+        throw new ConnectorDeliveryEvidenceError(
+          "iMessage accepted part of the send; reconcile before sending again.",
+          {
+            provider: "imessage",
+            channelId: req.to,
+            deliveryStatus: "partial",
+            messageIds: result.messageIds,
+          },
+        );
+      }
       fail(502, result.error ?? "iMessage runtime service send failed.");
     }
-    return { ok: true, messageId: result.messageId };
+    return {
+      ok: true,
+      messageId: result.messageId,
+      ...(result.messageIds ? { messageIds: result.messageIds } : {}),
+    };
   }
 
   async readIMessages(opts: {

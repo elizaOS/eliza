@@ -1,32 +1,22 @@
 /**
- * Runtime consumer that turns a finalized meeting transcript into queued owner
- * approvals and commitment-ledger rows — the reachable path that makes
- * `analyzeMeetingGhostTranscript` (a pure function in `./index.ts`) act on the
- * system.
- *
- * A caller (the meeting post-processing hook, or a scheduled-task watcher that
- * reads finalized `TranscriptSegment[]` off the `transcripts` memory table)
- * hands us the diarized transcript the owner skipped plus their context. We
- * derive the follow-up emails and calendar-deadline events the owner would send
- * if they had attended, enqueue each as an owner-approval request through the
- * shared `ApprovalQueue`, then persist the extracted promises to the shared
- * commitment ledger. External effects stay behind the owner's one-tap
- * approve/reject, never auto-sent; ledger rows make the owed follow-ups
- * auditable even before approval.
- *
- * `analyzeMeetingGhostTranscript` already emits `ApprovalEnqueueInput[]` and
- * ledger records, so this is a routing pass: analyze, then write each side
- * effect. Failures surface (no swallow) so a broken approval or ledger pipeline
- * is observable.
+ * Queues owner-reviewed follow-ups and calendar deadlines from finalized
+ * transcripts, then persists commitments in the shared ledger. Email approvals
+ * bind the connected sender before any queue or ledger writes; retries compare
+ * the complete saved envelope, including that sender.
+ * A transcript without a `timeZone` is stamped with the owner's zone first
+ * so relative due dates resolve on the owner's calendar day rather than the
+ * process zone of whatever host runs the consumer.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
+import { INTERNAL_URL } from "../access.js";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {
   ApprovalEnqueueInput,
   ApprovalRequest,
 } from "../approval-queue.types.js";
+import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import { LifeOpsRepository } from "../repository.js";
 import {
   analyzeMeetingGhostTranscript,
@@ -95,6 +85,14 @@ async function enqueueOrReuseApproval(
   return queue.enqueue(request);
 }
 
+// The owner's zone is evaluated at the meeting instant so an active travel
+// window covers the meeting; an unparseable `startedAt` yields no relative due
+// dates anyway, so the current instant is only used to pick the zone.
+function ownerZoneInstant(startedAt: string): Date {
+  const at = new Date(startedAt);
+  return Number.isNaN(at.getTime()) ? new Date() : at;
+}
+
 /**
  * Analyze the transcript and enqueue every derived owner-approval request.
  * Follow-up emails enqueue before calendar-deadline events so the owner sees
@@ -105,11 +103,40 @@ export async function runMeetingGhostForTranscript(
   runtime: IAgentRuntime,
   input: RunMeetingGhostInput,
 ): Promise<MeetingGhostRunResult> {
-  const analysis = analyzeMeetingGhostTranscript({
+  const transcript = input.transcript.timeZone
+    ? input.transcript
+    : {
+        ...input.transcript,
+        timeZone: await resolveOwnerTimeZone(
+          runtime,
+          ownerZoneInstant(input.transcript.startedAt),
+        ),
+      };
+  let analysis = analyzeMeetingGhostTranscript({
     agentId: input.agentId,
-    transcript: input.transcript,
+    transcript,
     owner: input.owner,
   });
+
+  if (analysis.followUpApprovals.length) {
+    const { LifeOpsService } = await import("../service.js");
+    const grant = await new LifeOpsService(runtime, {
+      ownerEntityId: input.owner.ownerUserId,
+    }).requireGoogleGmailSendGrant(INTERNAL_URL, "local", "owner");
+    if (!grant.id || !grant.identityEmail)
+      throw new ElizaError(
+        "Reconnect the Google sender before reviewing meeting follow-ups.",
+        { code: "MEETING_FOLLOWUP_SENDER_UNAVAILABLE" },
+      );
+    analysis = {
+      ...analysis,
+      followUpApprovals: analysis.followUpApprovals.map((request) => ({
+        ...request,
+        payload: { ...request.payload, grantId: grant.id },
+        reason: `${request.reason}\nFrom: ${grant.identityEmail}`,
+      })),
+    };
+  }
 
   const requests = [
     ...analysis.followUpApprovals,

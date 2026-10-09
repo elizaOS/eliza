@@ -3,21 +3,23 @@
  * plugins and connectors. Manager-backed ops (install/uninstall/update/sync/
  * eject/reinject) go through the plugin_manager service; configure/read_config/
  * toggle/list/disconnect hit the local /api/plugins compat routes because their
- * orchestration lives in @elizaos/app-core, which this layer cannot import.
+ * orchestration lives in @elizaos/app, which this layer cannot import.
  */
-import type {
-  Action,
-  ActionExample,
-  ActionResult,
-  HandlerOptions,
-  IAgentRuntime,
+import {
+  type Action,
+  type ActionExample,
+  type ActionResult,
+  ElizaError,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   createSelfApiRequestHeaders,
-  requestRestart,
-  resolveServerOnlyPort,
-} from "@elizaos/shared";
+  requireRestartHandler,
+  resolveSelfApiBaseUrl,
+} from "@elizaos/host/protocol";
+
 import {
   isPluginManagerLike,
   type PluginManagerLike,
@@ -108,10 +110,34 @@ interface PluginsListResponse {
 }
 
 interface DisconnectResponse {
+  connector?: string;
+  state?: string;
   ok?: boolean;
   success?: boolean;
   message?: string;
   error?: string;
+}
+
+async function readMutationResponse(
+  resp: Response,
+): Promise<PluginMutationResponse & DisconnectResponse> {
+  try {
+    const data: unknown = await resp.json();
+    return data && typeof data === "object" && !Array.isArray(data)
+      ? (data as PluginMutationResponse & DisconnectResponse)
+      : {};
+  } catch {
+    // error-policy:J3 An unreadable response does not acknowledge a mutation.
+    return {};
+  }
+}
+
+function mutationAcknowledged(data: PluginMutationResponse): boolean {
+  return (
+    (data.ok === true || data.success === true) &&
+    data.ok !== false &&
+    data.success !== false
+  );
 }
 
 const CONNECTOR_DISCONNECT_PATHS: Record<string, string> = {
@@ -122,8 +148,7 @@ const CONNECTOR_DISCONNECT_PATHS: Record<string, string> = {
 };
 
 function getApiBase(): string {
-  const port = resolveServerOnlyPort(process.env);
-  return `http://localhost:${port}`;
+  return resolveSelfApiBaseUrl(process.env);
 }
 
 function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
@@ -290,12 +315,14 @@ async function doSync(
 }
 
 async function doEject(
+  runtime: IAgentRuntime,
   mgr: PluginManagerLike,
   params: PluginParams,
 ): Promise<ActionResult> {
   const pluginId = resolveTargetId(params);
   if (!pluginId) return fail("Missing pluginId.", "PLUGIN_EJECT_FAILED");
 
+  const restart = requireRestartHandler();
   const result = await mgr.ejectPlugin(pluginId);
   if (!result.success) {
     return fail(
@@ -305,7 +332,16 @@ async function doEject(
   }
 
   setTimeout(() => {
-    requestRestart(`Plugin ${result.pluginName} ejected`);
+    void Promise.resolve()
+      .then(() => restart(`Plugin ${result.pluginName} ejected`))
+      .catch((error: unknown) => {
+        // error-policy:J7 observe deferred host failures after the plugin mutation.
+        logger.error(
+          { error, pluginId },
+          "[plugin:eject] Deferred restart failed",
+        );
+        runtime.reportError("plugin.eject.restart", error);
+      });
   }, 1_000);
 
   return {
@@ -316,12 +352,14 @@ async function doEject(
 }
 
 async function doReinject(
+  runtime: IAgentRuntime,
   mgr: PluginManagerLike,
   params: PluginParams,
 ): Promise<ActionResult> {
   const pluginId = resolveTargetId(params);
   if (!pluginId) return fail("Missing pluginId.", "PLUGIN_REINJECT_FAILED");
 
+  const restart = requireRestartHandler();
   const result = await mgr.reinjectPlugin(pluginId);
   if (!result.success) {
     return fail(
@@ -331,7 +369,16 @@ async function doReinject(
   }
 
   setTimeout(() => {
-    requestRestart(`Plugin ${result.pluginName} reinjected`);
+    void Promise.resolve()
+      .then(() => restart(`Plugin ${result.pluginName} reinjected`))
+      .catch((error: unknown) => {
+        // error-policy:J7 observe deferred host failures after the plugin mutation.
+        logger.error(
+          { error, pluginId },
+          "[plugin:reinject] Deferred restart failed",
+        );
+        runtime.reportError("plugin.reinject.restart", error);
+      });
   }, 1_000);
 
   return {
@@ -342,7 +389,7 @@ async function doReinject(
 }
 
 // configure / read_config / toggle: orchestration (vault mirror, runtime
-// mutation, drift reconciliation) is in @elizaos/app-core which the agent
+// mutation, drift reconciliation) is in @elizaos/app which the agent
 // layer cannot import. Hit the local /api/plugins compat routes instead.
 
 async function doConfigure(params: PluginParams): Promise<ActionResult> {
@@ -368,9 +415,32 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
     },
   );
 
-  const data = (await resp.json().catch(() => ({}))) as PluginMutationResponse;
+  let data: PluginMutationResponse;
+  try {
+    const parsed: unknown = await resp.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Save response was not a JSON object.");
+    }
+    data = parsed as PluginMutationResponse;
+  } catch {
+    // error-policy:J3 untrusted save-response parse — a 200 with a proxy
+    // HTML page, empty body, or truncated payload does not acknowledge a save,
+    // so fail closed instead of reporting a successful save.
+    logger.warn(
+      `[plugin:configure] Save response was not JSON (${resp.status}).`,
+    );
+    return fail(
+      `Failed to save config for ${pluginId}: Save failed (${resp.status}).`,
+      "PLUGIN_CONFIGURE_FAILED",
+    );
+  }
 
-  if (!resp.ok || data.success === false || data.ok === false) {
+  if (
+    !resp.ok ||
+    (data.ok !== true && data.success !== true) ||
+    data.success === false ||
+    data.ok === false
+  ) {
     const errMsg =
       data.error || data.message || `Save failed (${resp.status}).`;
     logger.warn(`[plugin:configure] ${errMsg}`);
@@ -540,9 +610,9 @@ async function doToggle(params: PluginParams): Promise<ActionResult> {
     },
   );
 
-  const data = (await resp.json().catch(() => ({}))) as PluginMutationResponse;
+  const data = await readMutationResponse(resp);
 
-  if (!resp.ok || data.success === false || data.ok === false) {
+  if (!resp.ok || !mutationAcknowledged(data)) {
     const errMsg =
       data.error || data.message || `Toggle failed (${resp.status}).`;
     logger.warn(`[plugin:toggle] ${errMsg}`);
@@ -722,8 +792,15 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
       },
       signal: AbortSignal.timeout(30_000),
     });
-    const data = (await resp.json().catch(() => ({}))) as DisconnectResponse;
-    if (!resp.ok || data.ok === false || data.success === false) {
+    const data = await readMutationResponse(resp);
+    const acknowledged =
+      dedicatedPath === "/api/setup/telegram-account/cancel"
+        ? data.connector === "telegram-account" &&
+          data.state === "idle" &&
+          data.ok !== false &&
+          data.success !== false
+        : mutationAcknowledged(data);
+    if (!resp.ok || !acknowledged) {
       const errMsg =
         data.error || data.message || `Disconnect failed (${resp.status}).`;
       logger.warn(`[plugin:disconnect] ${errMsg}`);
@@ -758,8 +835,8 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
       signal: AbortSignal.timeout(60_000),
     },
   );
-  const data = (await resp.json().catch(() => ({}))) as PluginMutationResponse;
-  if (!resp.ok || data.success === false || data.ok === false) {
+  const data = await readMutationResponse(resp);
+  if (!resp.ok || !mutationAcknowledged(data)) {
     const errMsg =
       data.error || data.message || `Disconnect failed (${resp.status}).`;
     return fail(
@@ -888,9 +965,9 @@ export const pluginAction: Action = {
           case "sync":
             return await doSync(mgr, params);
           case "eject":
-            return await doEject(mgr, params);
+            return await doEject(runtime, mgr, params);
           case "reinject":
-            return await doReinject(mgr, params);
+            return await doReinject(runtime, mgr, params);
         }
       }
 
@@ -1080,3 +1157,47 @@ export const pluginAction: Action = {
     ],
   ] as ActionExample[][],
 };
+
+/** Authored package-operation schemas; account lifecycle remains CONNECTOR-owned. */
+export function pluginOperationSchemaOverrides() {
+  const target = ["type", "pluginId", "connectorId"];
+  const operations: Record<PluginOp, readonly string[]> = {
+    install: target,
+    uninstall: target,
+    update: [...target, "stream"],
+    sync: target,
+    eject: target,
+    reinject: target,
+    configure: [...target, "config"],
+    read_config: target,
+    toggle: [...target, "enabled"],
+    list: ["type", "status", "configured", "search"],
+    disconnect: target,
+  };
+  const byName = new Map(
+    pluginAction.parameters?.map((parameter) => [parameter.name, parameter]),
+  );
+  return Object.fromEntries(
+    Object.entries(operations).map(([operation, names]) => [
+      operation,
+      {
+        parameters: names.map((name) => {
+          const parameter = byName.get(name);
+          if (!parameter)
+            throw new ElizaError(
+              `PLUGIN ${operation}: missing parameter ${name}`,
+              {
+                code: "PLUGIN_OPERATION_SCHEMA_INVALID",
+                context: { operation, parameter: name },
+              },
+            );
+          // Either target alias is valid. Requiring pluginId would break connectorId callers.
+          return {
+            ...parameter,
+            required: name === "config" || name === "enabled",
+          };
+        }),
+      },
+    ]),
+  );
+}

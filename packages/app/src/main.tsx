@@ -1,9 +1,102 @@
+import { getStylePresets } from "@elizaos/host/protocol";
+import type { AuthCallbackDeepLinkOutcome } from "./native-smoke";
 // FIRST side-effect: repair the same-origin WebSocket base for the plain-web
 // served bundle before the `client` singleton can dial its socket. The dev
 // server injects a desktop-loopback `__ELIZA_WS_BASE__` (ws://127.0.0.1:31337)
 // that client-base reads first; on a reverse-proxied web page the socket must
 // be same-origin (wss://<host>/ws). No-op on desktop / native. See module.
 import "./web-ws-base-fix";
+import "./renderer/transports/configure";
+import {
+  AGENT_READY_EVENT,
+  type AppBootConfig,
+  applyAppTheme,
+  applyLaunchConnection,
+  applyLaunchConnectionFromUrl,
+  type BrandingConfig,
+  COMMAND_PALETTE_EVENT,
+  clearStandaloneBottomReclaim,
+  client,
+  completeAndroidCloudSignIn,
+  createPersistedActiveServer,
+  createTranslator,
+  dedicatedCloudAgentIdFromBase,
+  dispatchAppEvent,
+  dispatchConnectRequest,
+  dispatchNavigateViewRequest,
+  dispatchOpenNotificationCenter,
+  dispatchRemoteControllerPairingIntent,
+  ELIZA_DEFAULT_THEME,
+  ElizaClient,
+  ErrorBoundary,
+  exchangeRemoteAgentPairing,
+  getBootConfig,
+  getChatOverlayHotkey,
+  getPushToTalkAccelerator,
+  getWindowNavigationPath,
+  IOS_LOCAL_AGENT_IPC_BASE,
+  initializeCapacitorBridge,
+  initializeStorageBridge,
+  initOcrBridge,
+  initScreenCaptureBridge,
+  initStartupTrace,
+  installDesktopPermissionsClientPatch,
+  installLocalProviderCloudPreferencePatch,
+  installStandaloneBottomReclaim,
+  invokeDesktopBridgeRequest,
+  isAndroidCloudBuild,
+  isAppWindowRoute,
+  isChatOverlayWindowShell,
+  isDedicatedCloudAgentBase,
+  isDetachedWindowShell,
+  isDeveloperWorkspaceRoute,
+  isElectrobunRuntime,
+  isStandalonePwa,
+  isStandaloneWindowShell,
+  isTrustedBuildConfiguredRemoteApiBaseUrl,
+  loadAppWindowRenderer,
+  loadCloudRouterShell,
+  loadDeveloperWorkspace,
+  loadManagedCloudPage,
+  loadPersistedActiveServer,
+  loadShellViewAgentSurface,
+  loadUiLanguage,
+  logger,
+  MOBILE_LOCAL_AGENT_API_BASE,
+  MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+  MOBILE_RUNTIME_MODE_STORAGE_KEY,
+  markStartup,
+  measureStartup,
+  normalizeMobileRuntimeMode,
+  PUSH_TO_TALK_HOLD_EVENT,
+  PUSH_TO_TALK_TOGGLE_EVENT,
+  parseFirstRunRemoteConnectDeepLink,
+  parseRemoteAgentPairingDeepLink,
+  parseRemoteControllerPairingDeepLink,
+  preSeedAndroidLocalRuntimeIfFresh,
+  RemoteAgentPairingError,
+  RenderTelemetryProfiler,
+  resolveDedicatedAgentId,
+  resolveWindowShellRoute,
+  routeFirstRunDeepLink,
+  SHARE_TARGET_EVENT,
+  type ShareTargetPayload,
+  ShellModalityProvider,
+  ShellRoleProvider,
+  savePersistedActiveServer,
+  setBootConfig,
+  setStorageValue,
+  shellLocalStorage,
+  shouldAcknowledgeAndroidCloudCallback,
+  shouldInstallMainWindowFirstRunPatches,
+  shouldInstallStandaloneBottomReclaim,
+  startRendererServiceHost,
+  subscribeDesktopBridgeEvent,
+  syncDetachedShellLocation,
+  TRAY_ACTION_EVENT,
+  upsertAndActivateAgentProfile,
+} from "@elizaos/ui";
+import { installAndroidNativeAgentFetchBridge } from "./renderer/transports/android-native-agent-transport";
 /**
  * Renderer boot entry and composition root for the cross-platform Eliza app
  * shell (web browser, Electrobun desktop, and Capacitor iOS/Android). Runs
@@ -17,7 +110,7 @@ import "./web-ws-base-fix";
  * shells, then the per-platform bridge stack (storage + Capacitor bridges, iOS
  * local-agent fetch/native-request bridges, Android native agent fetch bridge,
  * screen-capture / OCR / voice harnesses) — before mounting the React tree
- * (`@elizaos/ui` App, optionally wrapped by the web-only CloudRouterShell) and
+ * (app renderer App, optionally wrapped by the web-only CloudRouterShell) and
  * running `initializePlatform()` concurrently after paint.
  *
  * Also owns deep-link handling (custom `<scheme>://` + `eliza.app` universal
@@ -28,161 +121,46 @@ import "./web-ws-base-fix";
  * global-shortcut / chat-overlay wiring. Modules not needed for first paint are
  * deferred onto the idle path. Exports the resolved platform flags.
  */
-import { ErrorBoundary } from "@elizaos/ui";
+
 import "@elizaos/ui/styles";
 // Relationships owns the canonical /apps/relationships route. Its registration
 // metadata is tiny and must be available before the first route capture; the
 // page component itself remains lazy-loaded by the plugin registration.
-import "@elizaos/plugin-relationships/register";
+import { registerRelationshipsApp } from "@elizaos/plugin-relationships/register";
 // Native-only (ios/android/desktop): register the Eliza Cloud Applications
 // dashboard as an in-process app-shell page (`/cloud-apps`) that mounts the
 // self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves
 // the same surfaces.
 import "./cloud-apps-view";
+import "./context-inspector-page";
 // Surfaces the renderer build stamp on window.__ELIZA_RENDERER_BUILD__ so the
 // running build's identity is observable in-app and assertable on-device (#9309).
 import "./renderer-build-stamp";
 
 import { BackgroundRunner } from "@capacitor/background-runner";
-import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
-// #18056: desktop shell is loaded only via dynamic import / React.lazy so the
-// cold anonymous /login entry does not static-import app-core/ui browser graphs.
-import {
-  installIosLocalAgentFetchBridge,
-  installIosLocalAgentNativeRequestBridge,
-} from "@elizaos/app-core/api/ios-local-agent-transport";
-import type { DetachedShellRootProps } from "@elizaos/app-core/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
-import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
-import { logger } from "@elizaos/logger";
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/shared";
-import { getStylePresets } from "@elizaos/shared";
+} from "@elizaos/contracts";
 import {
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   cloudPairTokenKeyForAgent,
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
-} from "@elizaos/shared/contracts";
-import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
-import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";
-import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";
-import { shouldAcknowledgeAndroidCloudCallback } from "@elizaos/ui/android-cloud/android-cloud-client";
-import { client } from "@elizaos/ui/api";
-import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
+} from "@elizaos/contracts";
+import type { PushToTalkHoldDetail } from "@elizaos/core/protocol";
+import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
+import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
 import {
-  invokeDesktopBridgeRequest,
-  isElectrobunRuntime,
-  shellLocalStorage,
-  subscribeDesktopBridgeEvent,
-} from "@elizaos/ui/bridge";
-import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
-import {
-  initializeStorageBridge,
-  setStorageValue,
-} from "@elizaos/ui/bridge/storage-bridge";
-import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
-import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
-import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
-import type {
-  BrandingConfig,
-  CodingAgentTasksPanelProps,
-} from "@elizaos/ui/config";
-import {
-  type AppBootConfig,
-  getBootConfig,
-  setBootConfig,
-} from "@elizaos/ui/config";
-import {
-  AGENT_READY_EVENT,
-  COMMAND_PALETTE_EVENT,
-  dispatchAppEvent,
-  dispatchConnectRequest,
-  dispatchNavigateViewRequest,
-  dispatchOpenNotificationCenter,
-  MOBILE_RUNTIME_MODE_CHANGED_EVENT,
-  PUSH_TO_TALK_HOLD_EVENT,
-  PUSH_TO_TALK_TOGGLE_EVENT,
-  type PushToTalkHoldDetail,
-  SHARE_TARGET_EVENT,
-  TRAY_ACTION_EVENT,
-} from "@elizaos/ui/events";
-import {
-  parseFirstRunRemoteConnectDeepLink,
-  routeFirstRunDeepLink,
-} from "@elizaos/ui/first-run/deep-link-handler";
-import {
-  FIRST_RUN_CLOUD_LOGIN_ACTION,
-  tryHandleFirstRunAction,
-} from "@elizaos/ui/first-run/first-run-action-channel";
-import {
-  IOS_LOCAL_AGENT_IPC_BASE,
-  MOBILE_LOCAL_AGENT_API_BASE,
-  MOBILE_RUNTIME_MODE_STORAGE_KEY,
-  normalizeMobileRuntimeMode,
-} from "@elizaos/ui/first-run/mobile-runtime-mode";
-import { preSeedAndroidLocalRuntimeIfFresh } from "@elizaos/ui/first-run/pre-seed-local-runtime";
-import { createTranslator } from "@elizaos/ui/i18n";
-import {
-  getWindowNavigationPath,
-  isAppWindowRoute,
-} from "@elizaos/ui/navigation";
-import type { ShareTargetPayload } from "@elizaos/ui/platform";
-import { isStandalonePwa } from "@elizaos/ui/platform";
-import { isAndroidCloudBuild } from "@elizaos/ui/platform/android-runtime";
-import {
-  applyLaunchConnection,
-  applyLaunchConnectionFromUrl,
-} from "@elizaos/ui/platform/browser-launch";
-import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
-import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
-import {
-  dispatchRemoteControllerPairingIntent,
-  parseRemoteControllerPairingDeepLink,
-} from "@elizaos/ui/platform/remote-target-pairing-intent";
-import { startRendererServiceHost } from "@elizaos/ui/platform/renderer-services";
-import {
-  clearStandaloneBottomReclaim,
-  installStandaloneBottomReclaim,
-  shouldInstallStandaloneBottomReclaim,
-} from "@elizaos/ui/platform/standalone-bottom-reclaim";
-import {
-  isChatOverlayWindowShell,
-  isDetachedWindowShell,
-  isStandaloneWindowShell,
-  resolveWindowShellRoute,
-  shouldInstallMainWindowFirstRunPatches,
-  syncDetachedShellLocation,
-} from "@elizaos/ui/platform/window-shell";
-import { AppProvider } from "@elizaos/ui/state/AppContext";
-import { upsertAndActivateAgentProfile } from "@elizaos/ui/state/agent-profiles";
-import { resolveDedicatedAgentId } from "@elizaos/ui/state/agent-session-recovery";
-import { initOcrBridge } from "@elizaos/ui/state/ocr-bridge";
-import {
-  applyUiTheme,
-  createPersistedActiveServer,
-  loadPersistedActiveServer,
-  loadUiLanguage,
-  loadUiThemeMode,
-  resolveUiTheme,
-  savePersistedActiveServer,
-} from "@elizaos/ui/state/persistence";
-import { getPushToTalkAccelerator } from "@elizaos/ui/state/push-to-talk-hotkey";
-import { initScreenCaptureBridge } from "@elizaos/ui/state/screen-capture-bridge";
-import {
-  initStartupTrace,
-  markStartup,
-  measureStartup,
-} from "@elizaos/ui/state/startup-telemetry";
-import { getChatOverlayHotkey } from "@elizaos/ui/state/useChatOverlayHotkey";
-import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
-import {
-  dedicatedCloudAgentIdFromBase,
-  isDedicatedCloudAgentBase,
-} from "@elizaos/ui/utils/cloud-agent-base";
+  apiBaseToDeviceBridgeUrl,
+  type IosRuntimeConfig,
+  resolveCloudApiBase,
+  resolveIosRuntimeConfig,
+  resolveMobileApiConnection,
+} from "@elizaos/ui";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
 import {
@@ -205,11 +183,14 @@ import { renderBootFailure } from "./boot-failure";
 import { startVoiceModuleLoad } from "./boot-voice-load";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
-import { resolveAppCloudOnlyBranding } from "./cloud-only-branding";
-import { isTrustedAppLink } from "./deep-link-handler";
+import {
+  resolveAppCloudOnlyBranding,
+  resolveNativeCloudRuntimeMode,
+} from "./cloud-only-branding";
 import {
   buildAssistantLaunchHashRoute,
   type DeepLinkNavigationIntent,
+  isTrustedAppLink,
   resolveDeepLinkNavigationIntent,
 } from "./deep-link-routing";
 import { shouldStartFnHoldMonitor } from "./desktop-fn-hold-policy";
@@ -217,24 +198,12 @@ import { decideChatOverlayToggle } from "./desktop-hotkey";
 import { isEmbedPath, runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
-import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
-import {
-  extractIosLivenessChallengeToken,
-  type IosCloudOnboardingSmokeRequest,
-  isIosCloudOnboardingComplete,
-  isIosLivenessReplyRow as isIosLivenessReplyRowFromContract,
-  parseIosCloudOnboardingSmokeRequest as parseIosCloudOnboardingSmokeRequestFromContract,
-} from "./ios-cloud-onboarding-smoke";
 import { runIosFullBunEntrypoint } from "./ios-full-bun-entrypoint";
-import {
-  apiBaseToDeviceBridgeUrl,
-  type IosRuntimeConfig,
-  resolveIosRuntimeConfig,
-} from "./ios-runtime";
 import { startKeyboardDictationSession } from "./keyboard-dictation";
 import {
   type AndroidDeepLinkBuffer,
   createMobileLifecycle,
+  type DeepLinkApplicationResult,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
 import {
@@ -248,17 +217,30 @@ import {
   type SideEffectAppModuleLoader,
 } from "./plugin-registrations";
 import { isRemoteControllerPairingRuntimeAllowed } from "./remote-controller-deep-link";
+import { isAlreadyPairedRemoteTarget } from "./remote-deep-link-connection";
+import { AppProvider } from "./renderer/AppProvider";
+// #18056: desktop shell is loaded only via dynamic import / React.lazy so the
+// cold anonymous /login entry does not static-import app/ui browser graphs.
+import {
+  installIosLocalAgentFetchBridge,
+  installIosLocalAgentNativeRequestBridge,
+} from "./renderer/transports/ios-local-agent-transport";
 import {
   PHONE_COMPANION_AGENT_VIEW_ID,
   resolveRendererShellKind,
 } from "./renderer-shell-scope";
+import type { DetachedShellRootProps } from "./runtime/desktop";
 import {
   applyRuntimeChooserOverrideFromUrl,
   removeUrlParameter,
 } from "./runtime-chooser-override";
 import {
+  isElizaCloudAgentHost,
   isElizaCloudSharedHost,
+  isLoopbackApiHost,
+  isPrivateOrLoopbackApiHost,
   isTrustedCloudOnlyApiBaseUrl,
+  isTrustedPrivateHttpHost,
 } from "./url-trust-policy";
 
 declare const __ELIZA_BUILD_VARIANT__: string | undefined;
@@ -272,10 +254,11 @@ declare const __ELIZA_CHAT_UI_HARNESS__: boolean | undefined;
 declare global {
   interface Window {
     __ELIZA_APP_SHARE_QUEUE__?: ShareTargetPayload[];
-    __ELIZA_APP_API_BASE__?: string;
     __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
   }
 }
+
+registerRelationshipsApp();
 
 const { createRoot } = ReactDomClient;
 // Keep one renderer owner across entry-module HMR. An in-flight boot finishes
@@ -314,35 +297,19 @@ registerAppHostExternalImporters();
 function importPersonalAssistant() {
   return cachedDynamicImport(
     "@elizaos/plugin-personal-assistant",
-    () => import("@elizaos/plugin-personal-assistant"),
+    () => import("@elizaos/plugin-personal-assistant/ui"),
   );
 }
 
 function importAppPhone() {
   return cachedDynamicImport(
-    "@elizaos/plugin-phone",
-    () => import("@elizaos/plugin-phone"),
-  );
-}
-
-function importAppTaskCoordinator() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-task-coordinator",
-    () => import("@elizaos/plugin-task-coordinator"),
-  );
-}
-
-function importAppTaskCoordinatorRegister() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-task-coordinator/register",
-    () => import("@elizaos/plugin-task-coordinator/register"),
-  );
-}
-
-function importAppRelationshipsRegister() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-relationships/register",
-    () => import("@elizaos/plugin-relationships/register"),
+    "@elizaos/plugin-native-phone/companion",
+    async () => {
+      const { PhoneCompanionApp } = await import(
+        "@elizaos/plugin-native-phone/companion"
+      );
+      return { PhoneCompanionApp };
+    },
   );
 }
 
@@ -359,12 +326,12 @@ function lazyNamedComponent<TProps>(
  * under the same Suspense boundary as the rest of the tree.
  */
 const App = lazy(async () => {
-  const mod = await import("@elizaos/ui/App");
+  const mod = await import("./renderer/App");
   return { default: mod.App };
 });
 
 const AppWindowRenderer = lazyNamedComponent<{ slug: string }>(async () => {
-  const mod = await import("@elizaos/ui/components/apps/AppWindowRenderer");
+  const mod = await loadAppWindowRenderer();
   return mod.AppWindowRenderer;
 });
 
@@ -373,9 +340,7 @@ const ShellViewAgentSurface = lazyNamedComponent<{
   surfaceKind: "app-shell";
   children: ReactNode;
 }>(async () => {
-  const mod = await import(
-    "@elizaos/ui/components/views/ShellViewAgentSurface"
-  );
+  const mod = await loadShellViewAgentSurface();
   return mod.ShellViewAgentSurface;
 });
 
@@ -383,18 +348,18 @@ const ShellViewAgentSurface = lazyNamedComponent<{
 const DesktopSurfaceNavigationRuntime = lazyNamedComponent<
   Record<string, never>
 >(async () => {
-  const mod = await import("@elizaos/app-core/desktop-shell");
+  const mod = await import("./runtime/desktop");
   return mod.DesktopSurfaceNavigationRuntime;
 });
 const DesktopTrayRuntime = lazyNamedComponent<Record<string, never>>(
   async () => {
-    const mod = await import("@elizaos/app-core/desktop-shell");
+    const mod = await import("./runtime/desktop");
     return mod.DesktopTrayRuntime;
   },
 );
 const DetachedShellRoot = lazyNamedComponent<DetachedShellRootProps>(
   async () => {
-    const mod = await import("@elizaos/app-core/desktop-shell");
+    const mod = await import("./runtime/desktop");
     return mod.DetachedShellRoot;
   },
 );
@@ -403,17 +368,15 @@ const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
 
-async function runIosFullBunSmokeFromDesktopShell(): Promise<boolean> {
-  const mod = await import("@elizaos/app-core/desktop-shell");
+async function runIosFullBunSmoke(): Promise<boolean> {
+  const mod = await import("./platform/ios-runtime-bridge");
   return mod.runIosFullBunSmokeIfRequested();
 }
 
 async function buildLocalizedTrayMenuAsync(
-  ...args: Parameters<
-    typeof import("@elizaos/app-core/desktop-shell").buildLocalizedTrayMenu
-  >
+  ...args: Parameters<typeof import("./runtime/desktop").buildLocalizedTrayMenu>
 ) {
-  const mod = await import("@elizaos/app-core/desktop-shell");
+  const mod = await import("./runtime/desktop");
   return mod.buildLocalizedTrayMenu(...args);
 }
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
@@ -423,33 +386,12 @@ const WebsiteBlockerSettingsCard =
   lazyNamedComponent<WebsiteBlockerSettingsCardProps>(
     async () => (await importPersonalAssistant()).WebsiteBlockerSettingsCard,
   );
-const CodingAgentControlChip = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppTaskCoordinator()).CodingAgentControlChip,
-);
-const CodingAgentSettingsSection = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppTaskCoordinator()).CodingAgentSettingsSection,
-);
-const CodingAgentTasksPanel = lazyNamedComponent<CodingAgentTasksPanelProps>(
-  async () => (await importAppTaskCoordinator()).CodingAgentTasksPanel,
-);
 const BRANDED_WINDOW_KEYS = {
-  apiBase: `__${APP_ENV_PREFIX}_API_BASE__`,
   shareQueue: `__${APP_ENV_PREFIX}_SHARE_QUEUE__`,
 } as const;
 
 function isShareTargetQueue(value: unknown): value is ShareTargetPayload[] {
   return Array.isArray(value);
-}
-
-function getLegacyInjectedAppApiBase(): string | undefined {
-  const brandedApiBase: unknown = Reflect.get(
-    window,
-    BRANDED_WINDOW_KEYS.apiBase,
-  );
-  return (
-    window.__ELIZA_APP_API_BASE__ ??
-    (typeof brandedApiBase === "string" ? brandedApiBase : undefined)
-  );
 }
 
 // Resolve the desktop "cloud-only" runtime-mode signal from whichever path is
@@ -476,21 +418,25 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   ...APP_BRANDING_BASE,
   theme: ELIZA_DEFAULT_THEME,
   // The hosted web bundle stays cloud-only in production. Desktop shells seed
-  // the typed boot config before renderer modules evaluate (with the branded
-  // window key retained as a legacy fallback), and that host backend should
+  // the typed boot config before renderer modules evaluate, and that backend should
   // control first-run capabilities instead — UNLESS the desktop shell explicitly
   // opted into cloud-only mode, which remains authoritative over a loopback base.
   cloudOnly: resolveAppCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
     bootApiBase:
       getBootConfig().apiBase ?? getMobileRemoteFallbackApiBase() ?? undefined,
-    legacyInjectedApiBase:
-      typeof window === "undefined" ? undefined : getLegacyInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
-    nativeRuntimeMode:
-      isAndroidCloudBuild() && !getMobileRemoteFallbackApiBase()
-        ? "cloud"
-        : undefined,
+    nativeRuntimeMode: resolveNativeCloudRuntimeMode({
+      platform: Capacitor.getPlatform(),
+      buildVariant:
+        typeof __ELIZA_BUILD_VARIANT__ === "string"
+          ? __ELIZA_BUILD_VARIANT__
+          : undefined,
+      iosRuntimeMode: (import.meta.env as Record<string, string | undefined>)
+        .VITE_ELIZA_IOS_RUNTIME_MODE,
+      androidCloudBuild: isAndroidCloudBuild(),
+      androidRemoteFallbackApiBase: getMobileRemoteFallbackApiBase(),
+    }),
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
 };
@@ -502,40 +448,25 @@ const isAndroid = platform === "android";
 const isStoreBuild =
   typeof __ELIZA_BUILD_VARIANT__ === "string" &&
   __ELIZA_BUILD_VARIANT__ === "store";
-const IOS_RUNTIME_ENV_CONFIG = resolveIosRuntimeConfig(import.meta.env);
+const IOS_RUNTIME_ENV_CONFIG = isIOS
+  ? resolveIosRuntimeConfig(import.meta.env)
+  : {
+      ...resolveIosRuntimeConfig({}),
+      cloudApiBase: resolveCloudApiBase(import.meta.env),
+    };
+const MOBILE_API_CONNECTION = resolveMobileApiConnection(
+  isAndroid ? "android" : "ios",
+  import.meta.env,
+);
 configureStoredStewardTokenScope(IOS_RUNTIME_ENV_CONFIG.cloudApiBase);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
 const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
-const IOS_ONBOARDING_SMOKE_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
-const IOS_ONBOARDING_SMOKE_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
-const IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY =
-  "eliza:ios-cloud-onboarding-smoke:request";
-const IOS_CLOUD_ONBOARDING_SMOKE_RESULT_KEY =
-  "eliza:ios-cloud-onboarding-smoke:result";
-const IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY = "eliza:auth-callback-smoke:request";
-const IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY = "eliza:auth-callback-smoke:result";
-const IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY =
-  "eliza:ios-onboarding-relaunch-smoke:request";
-const IOS_ONBOARDING_RELAUNCH_SMOKE_RESULT_KEY =
-  "eliza:ios-onboarding-relaunch-smoke:result";
-const IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY =
-  "eliza:ios-mixed-content-smoke:request";
-const IOS_MIXED_CONTENT_SMOKE_RESULT_KEY =
-  "eliza:ios-mixed-content-smoke:result";
-const IOS_ONBOARDING_SMOKE_TIMEOUT_MS = 120_000;
-const CLOUD_PAIR_SESSION_TOKEN_KEY = "eliza:cloud-pair:api-token";
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let cameraBridgeResponderStop: (() => void) | null = null;
 let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
-let mobileAgentTunnelListener: PluginListenerHandle | null = null;
-let mobileAgentTunnelStartPromise: Promise<void> | null = null;
 let mobileRuntimeModeListenerInstalled = false;
-let iosOnboardingSmokeStarted = false;
-let iosCloudOnboardingSmokeStarted = false;
-let iosOnboardingRelaunchSmokeStarted = false;
-let iosMixedContentSmokeStarted = false;
 
 function isDesktopPlatform(): boolean {
   return isElectrobunRuntime();
@@ -644,49 +575,6 @@ function applyCloudPairSessionToken(): void {
       }
     }
   }
-  // Gate 4 — legacy single-key migration with target equality. A pre-#17579
-  // install stored the bearer under the global `eliza:cloud-pair:api-token`
-  // key with no owner binding. That key is adopted ONLY when the persisted
-  // active server for THIS agent still carries the identical bearer — i.e.
-  // the local record proves the legacy credential belongs to the agent being
-  // booted. Without that proof the legacy key is left untouched (never
-  // mirrored onto an agent that cannot claim it) and the pairing flow writes
-  // the scoped key on the next explicit pair.
-  if (!token) {
-    let legacyToken: string | null = null;
-    try {
-      legacyToken =
-        window.localStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() ||
-        null;
-    } catch {
-      // error-policy:J4 unreadable legacy storage — no adoption.
-    }
-    if (legacyToken) {
-      try {
-        const activeServer = loadPersistedActiveServer();
-        const ownedByTarget =
-          activeServer !== null &&
-          resolveDedicatedAgentId(activeServer) === agentId &&
-          activeServer.accessToken === legacyToken;
-        if (ownedByTarget) {
-          token = legacyToken;
-          try {
-            shellLocalStorage.setItem(agentTokenKey, token);
-          } catch {
-            // error-policy:J4 best-effort migration write.
-          }
-          try {
-            shellLocalStorage.removeItem(CLOUD_PAIR_SESSION_TOKEN_KEY);
-          } catch {
-            // error-policy:J3 best-effort legacy cleanup.
-          }
-        }
-      } catch {
-        // error-policy:J4 unreadable active-server record — legacy key stays
-        // unadopted rather than being stamped onto an unproven target.
-      }
-    }
-  }
   if (!token) return;
   client.setToken(token);
   const activeServer = createPersistedActiveServer({
@@ -776,13 +664,6 @@ const APP_VRM_ASSETS = APP_STYLE_PRESETS.slice()
 let appModulesInitialized: Promise<void> | null = null;
 const SIDE_EFFECT_APP_MODULE_LOAD_CONCURRENCY = 2;
 
-function importSideEffectAppModule(
-  key: string,
-  loader: () => Promise<unknown>,
-) {
-  return cachedDynamicImport(key, loader);
-}
-
 function scheduleAppModuleIdleWork(work: () => void): void {
   if (typeof window === "undefined") {
     work();
@@ -834,7 +715,7 @@ function scheduleAppModuleIdleLoads(
       const { key, load } = registration;
       nextIndex += 1;
       activeCount += 1;
-      void importSideEffectAppModule(key, load)
+      void cachedDynamicImport(key, load)
         // error-policy:J4 deferred enhancement modules — a load failure is
         // logged and the app stays usable without that module
         .catch((error) => {
@@ -904,12 +785,10 @@ function buildAppBootConfig(): AppBootConfig {
       (import.meta.env.VITE_ASSET_BASE_URL as string | undefined)?.trim() ||
       undefined,
     cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
+    applicationBillingSlot: import.meta.env.VITE_ELIZA_APPLICATION_SLOT,
     autoUpgradeSharedToDedicated: true,
     vrmAssets: APP_VRM_ASSETS,
     firstRunStyles: APP_STYLE_PRESETS,
-    codingAgentTasksPanel: CodingAgentTasksPanel,
-    codingAgentSettingsSection: CodingAgentSettingsSection,
-    codingAgentControlChip: CodingAgentControlChip,
     characterCatalog: APP_CHARACTER_CATALOG,
     envAliases: APP_ENV_ALIASES,
     appBlockerSettingsCard: AppBlockerSettingsCard,
@@ -931,35 +810,22 @@ function buildAppBootConfig(): AppBootConfig {
 // first visible shell (#9565). Deferred onto the idle path like
 // SIDE_EFFECT_APP_MODULE_LOADERS; on-demand render still triggers the cached
 // import if idle work has not run yet, so no surface can be missed.
+// The scheduler owns caching. These must be raw imports: a cached loader with
+// the same key would return its own pending promise and reject with a cycle.
 const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] =
   [
     {
       key: "@elizaos/plugin-personal-assistant",
-      load: importPersonalAssistant,
-    },
-    { key: "@elizaos/plugin-task-coordinator", load: importAppTaskCoordinator },
-    {
-      key: "@elizaos/plugin-task-coordinator/register",
-      load: importAppTaskCoordinatorRegister,
+      load: () => import("@elizaos/plugin-personal-assistant/ui"),
     },
     {
-      key: "@elizaos/plugin-relationships/register",
-      load: importAppRelationshipsRegister,
+      key: "@elizaos/plugin-agent-orchestrator/ui/register",
+      load: () => import("@elizaos/plugin-agent-orchestrator/ui/register"),
     },
-    { key: "@elizaos/plugin-phone", load: importAppPhone },
   ];
 
 function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (() => {
-    // app-core owns the AppBootConfig singleton and is already evaluated: this
-    // module statically imports its desktop bindings, so the whole package
-    // loads with the entry chunk before main() runs. A dynamic
-    // import("@elizaos/app-core") here would be a runtime no-op, but its
-    // escaping namespace would force Rollup to retain every export of the
-    // barrel (`export * from "@elizaos/ui/browser"`) in the startup-critical
-    // entry chunk (#13187). Everything else exposed through the boot config is
-    // a React.lazy handle that loads on render, so its import is deferred onto
-    // the idle path instead of gating the first visible shell (#9565).
     setBootConfig(buildAppBootConfig());
     return Promise.resolve();
   })();
@@ -998,54 +864,6 @@ function logNativePluginUnavailable(pluginName: string, error: unknown): void {
   );
 }
 
-async function writeIosOnboardingSmokeResult(
-  result: Record<string, unknown>,
-): Promise<void> {
-  await writeIosPreferenceSmokeResult(IOS_ONBOARDING_SMOKE_RESULT_KEY, result);
-}
-
-async function writeIosCloudOnboardingSmokeResult(
-  result: Record<string, unknown>,
-): Promise<void> {
-  await writeIosPreferenceSmokeResult(
-    IOS_CLOUD_ONBOARDING_SMOKE_RESULT_KEY,
-    result,
-  );
-}
-
-async function writeIosOnboardingRelaunchSmokeResult(
-  result: Record<string, unknown>,
-): Promise<void> {
-  await writeIosPreferenceSmokeResult(
-    IOS_ONBOARDING_RELAUNCH_SMOKE_RESULT_KEY,
-    result,
-  );
-}
-
-async function writeIosMixedContentSmokeResult(
-  result: Record<string, unknown>,
-): Promise<void> {
-  await writeIosPreferenceSmokeResult(
-    IOS_MIXED_CONTENT_SMOKE_RESULT_KEY,
-    result,
-  );
-}
-
-async function writeIosAuthCallbackSmokeResult(
-  result: Record<string, unknown>,
-): Promise<void> {
-  await writeIosPreferenceSmokeResult(
-    IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY,
-    result,
-  );
-}
-
-interface AuthCallbackDeepLinkOutcome {
-  accepted: boolean;
-  classification: "synthetic_callback_rejected";
-  reason: string;
-}
-
 function rejectOsDeliveredAuthCallback(): AuthCallbackDeepLinkOutcome {
   return {
     accepted: false,
@@ -1056,810 +874,6 @@ function rejectOsDeliveredAuthCallback(): AuthCallbackDeepLinkOutcome {
 
 function readActiveServerSessionSnapshot(): string {
   return window.localStorage.getItem("elizaos:active-server") ?? "";
-}
-
-async function writeIosPreferenceSmokeResult(
-  key: string,
-  result: Record<string, unknown>,
-): Promise<void> {
-  const value = JSON.stringify({
-    ...result,
-    updatedAt: new Date().toISOString(),
-  });
-  try {
-    // shellLocalStorage, not Storage.prototype.call: the surface-realm guard
-    // Proxy does not forward Storage internal slots, so a prototype-bound call
-    // throws "Illegal invocation" once any view has mounted.
-    shellLocalStorage.setItem(key, value);
-  } catch {
-    // error-policy:J6 best-effort echo — Preferences is the simulator
-    // harness source of truth
-  }
-  await boundedPreferenceWrite(() =>
-    Preferences.set({
-      key,
-      value,
-    }),
-  );
-}
-
-async function boundedPreferenceWrite(
-  operation: () => Promise<unknown>,
-): Promise<void> {
-  try {
-    await Promise.race([
-      operation(),
-      new Promise((resolve) => window.setTimeout(resolve, 2_000)),
-    ]);
-  } catch {
-    // error-policy:J7 smoke-harness diagnostics write — the storage bridge
-    // also issued a fire-and-forget Preferences write from
-    // localStorage.setItem. The simulator smoke will keep polling the native
-    // defaults domain, but the WebView must not block forever on persistence.
-  }
-}
-
-async function boundedPreferenceGet(key: string): Promise<string | null> {
-  try {
-    const result = await Promise.race([
-      Preferences.get({ key }),
-      new Promise<null>((resolve) => window.setTimeout(resolve, 2_000)),
-    ]);
-    return result?.value ?? null;
-  } catch {
-    // error-policy:J7 smoke-harness preference probe — a blocked Preferences
-    // bridge must not wedge the smoke; the poll loop retries
-    return null;
-  }
-}
-
-function parseIosOnboardingSmokeRequest(raw: string | null): {
-  apiBase: string;
-  // Liveness contract (#14359): when the harness points the lane at a
-  // live-provider host it sets `liveness: true` so the verifier drives one real
-  // chat turn after landing on home and reports the reply for the shared
-  // non-stub assertion. Default false — the deterministic host is stub-backed.
-  liveness: boolean;
-  livenessPrompt: string;
-} {
-  const fallback = {
-    apiBase: "http://127.0.0.1:31338",
-    liveness: false,
-    livenessPrompt: "In one short sentence, say hello.",
-  };
-  if (!raw || raw === "1") return fallback;
-  try {
-    const parsed = JSON.parse(raw) as {
-      apiBase?: unknown;
-      liveness?: unknown;
-      livenessPrompt?: unknown;
-    };
-    return {
-      apiBase:
-        typeof parsed.apiBase === "string" && parsed.apiBase.trim()
-          ? parsed.apiBase.trim()
-          : fallback.apiBase,
-      liveness: parsed.liveness === true,
-      livenessPrompt:
-        typeof parsed.livenessPrompt === "string" &&
-        parsed.livenessPrompt.trim()
-          ? parsed.livenessPrompt.trim()
-          : fallback.livenessPrompt,
-    };
-  } catch {
-    // error-policy:J3 corrupt smoke-request blob — run with the defaults
-    return fallback;
-  }
-}
-
-async function readIosMixedContentSmokeRequest(
-  fallbackApiBase?: string,
-): Promise<{ apiBase: string } | null> {
-  let rawRequest: string | null = null;
-  try {
-    rawRequest = window.localStorage.getItem(
-      IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY,
-    );
-  } catch {
-    // error-policy:J3 unavailable storage reads as "no request"; the
-    // Preferences fallback below still serves the simulator harness
-    rawRequest = null;
-  }
-  if (!rawRequest) {
-    rawRequest = await boundedPreferenceGet(
-      IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY,
-    );
-  }
-  if (!rawRequest && !fallbackApiBase) return null;
-  return parseIosOnboardingSmokeRequest(
-    rawRequest ?? JSON.stringify({ apiBase: fallbackApiBase }),
-  );
-}
-
-async function waitForIosOnboardingElement<T extends Element>(
-  selector: string,
-  options?: { timeoutMs?: number; visible?: boolean },
-): Promise<T> {
-  const timeoutMs = options?.timeoutMs ?? IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
-  const deadline = Date.now() + timeoutMs;
-  let lastElement: Element | null = null;
-  while (Date.now() < deadline) {
-    lastElement = document.querySelector(selector);
-    if (lastElement) {
-      const visible =
-        !options?.visible ||
-        (lastElement instanceof HTMLElement &&
-          lastElement.offsetParent !== null);
-      if (visible) return lastElement as T;
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
-  }
-  throw new Error(
-    `Timed out waiting for iOS onboarding selector ${selector}${lastElement ? " to become visible" : ""}`,
-  );
-}
-
-function readIosOnboardingSmokeStorageSnapshot(): Record<
-  string,
-  string | null
-> {
-  const keys = [
-    "eliza:first-run-complete",
-    "eliza:setup:step",
-    "eliza:mobile-runtime-mode",
-    "elizaos:active-server",
-  ];
-  return Object.fromEntries(
-    keys.map((key) => {
-      try {
-        return [key, window.localStorage.getItem(key)];
-      } catch {
-        // error-policy:J7 diagnostics snapshot — an unreadable key reports null
-        return [key, null];
-      }
-    }),
-  );
-}
-
-function readIosCloudOnboardingSmokeStorageSnapshot(): Record<
-  string,
-  string | boolean | null
-> {
-  const base = readIosOnboardingSmokeStorageSnapshot();
-  let stewardSessionToken = "";
-  try {
-    stewardSessionToken =
-      window.localStorage.getItem("steward_session_token") ?? "";
-  } catch {
-    // error-policy:J7 diagnostics snapshot — an unreadable key reports false
-    stewardSessionToken = "";
-  }
-  return {
-    ...base,
-    stewardSessionPresent: stewardSessionToken.length > 0,
-  };
-}
-
-async function waitForIosOnboardingSmokeStorageSnapshot(
-  apiBase: string,
-): Promise<Record<string, string | null>> {
-  const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
-  let snapshot = readIosOnboardingSmokeStorageSnapshot();
-  while (Date.now() < deadline) {
-    const activeServer = snapshot["elizaos:active-server"];
-    if (typeof activeServer === "string" && activeServer.includes(apiBase)) {
-      return snapshot;
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
-    snapshot = readIosOnboardingSmokeStorageSnapshot();
-  }
-  throw new Error(
-    `Timed out waiting for iOS onboarding active server ${apiBase}: ${JSON.stringify(snapshot)}`,
-  );
-}
-
-const IOS_LIVENESS_ASSISTANT_SELECTOR =
-  '[data-role="assistant"], [data-testid="chat-message-assistant"], [data-testid="thread-line"][data-role="assistant"]';
-
-// Set a React-controlled textarea's value so React's onChange fires. Assigning
-// `.value` directly bypasses React's synthetic value tracker, so we call the
-// native prototype setter first, then dispatch a bubbling `input` event — the
-// canonical way to drive a controlled input from outside React.
-function setReactTextareaValue(el: HTMLTextAreaElement, value: string): void {
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLTextAreaElement.prototype,
-    "value",
-  )?.set;
-  if (!setter) {
-    throw new Error("HTMLTextAreaElement value setter unavailable");
-  }
-  setter.call(el, value);
-  el.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-/**
- * Drive one real chat turn in-app and return the rendered assistant reply, so
- * the harness can enforce the shared liveness contract (#14359) against a
- * live-provider host. The SIWE cloud lane always drives it (#16936); the
- * remote-connect lane still opts in with `liveness: true`, because that lane
- * also runs against the deterministic stub host.
- *
- * Fail-closed reply selection (#16936 review): only assistant rows that did
- * not exist before the send are considered, and — when the prompt carries a
- * run-unique challenge token — a row counts only once its text contains that
- * token. The pending overlay row renders a status label ("Thinking") as its
- * text content before any model token arrives; reading any non-empty new row
- * would accept that placeholder, so the token requirement is what proves a
- * real model answered this exact turn. A tokenless prompt (the remote-connect
- * default hello) falls back to requiring a reply-phase body on the new row,
- * which the pending row can never satisfy because the renderer marks it
- * `data-phase="status"` until real content exists.
- */
-async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
-  const composer = await waitForIosOnboardingElement<HTMLTextAreaElement>(
-    '[data-testid="chat-composer-textarea"]',
-    { visible: true },
-  );
-  const priorReplies = document.querySelectorAll(
-    IOS_LIVENESS_ASSISTANT_SELECTOR,
-  ).length;
-  const expectedToken = extractIosLivenessChallengeToken(prompt);
-
-  composer.focus();
-  setReactTextareaValue(composer, prompt);
-  const send = document.querySelector<HTMLButtonElement>(
-    '[data-testid="chat-composer-action"], button[aria-label="Send"], button[aria-label="Send message"]',
-  );
-  if (send && !send.disabled) {
-    send.click();
-  } else {
-    composer.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
-    );
-  }
-
-  const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
-  // Invariant: the overlay transcript only appends rows during a turn, so
-  // indices at or beyond the pre-send snapshot are exactly this run's rows.
-  while (Date.now() < deadline) {
-    const replies = document.querySelectorAll<HTMLElement>(
-      IOS_LIVENESS_ASSISTANT_SELECTOR,
-    );
-    for (let index = priorReplies; index < replies.length; index += 1) {
-      const row = replies[index];
-      // A pending row (status phase) can never be the reply — its text is the
-      // "Thinking"/"Running …" placeholder. This also blocks status chrome
-      // that echoes the prompt text from satisfying the token gate.
-      if (!isIosLivenessReplyRow(row)) continue;
-      const text = row?.textContent?.trim() ?? "";
-      if (!text) continue;
-      if (expectedToken) {
-        // The run-unique token can only appear in text produced by something
-        // that saw this run's prompt — never in a status label or cached row.
-        if (text.toLowerCase().includes(expectedToken)) return text;
-      } else {
-        return text;
-      }
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
-  }
-  throw new Error(
-    "iOS liveness chat turn: assistant never produced a reply within the timeout",
-  );
-}
-
-/**
- * Thin re-exports of the pure, unit-tested smoke contract in
- * `ios-cloud-onboarding-smoke.ts`: fail-closed reply-row classification (the
- * overlay's `data-phase` marker is authoritative) and the smoke-request parser
- * whose behavior #16936's coverage bar names explicitly.
- */
-function isIosLivenessReplyRow(row: Element | undefined): boolean {
-  return isIosLivenessReplyRowFromContract(row);
-}
-
-function parseIosCloudOnboardingSmokeRequest(
-  raw: string | null,
-): IosCloudOnboardingSmokeRequest {
-  return parseIosCloudOnboardingSmokeRequestFromContract(raw);
-}
-
-function installFirstRunPostCounter(): {
-  getCount: () => number;
-  restore: () => void;
-} {
-  const originalFetch = window.fetch.bind(window);
-  let firstRunPostCount = 0;
-  window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    const method =
-      init?.method ??
-      (typeof input === "object" && "method" in input ? input.method : "GET");
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
-    if (
-      String(method).toUpperCase() === "POST" &&
-      /\/api\/first-run(?:[?#]|$)/.test(url)
-    ) {
-      firstRunPostCount += 1;
-    }
-    return originalFetch(input, init);
-  }) as typeof window.fetch;
-  return {
-    getCount: () => firstRunPostCount,
-    restore: () => {
-      window.fetch = originalFetch;
-    },
-  };
-}
-
-async function waitForIosCloudSignInGreeting(): Promise<boolean> {
-  const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const text = document.body?.innerText ?? "";
-    if (/Sign in to Eliza(?: Cloud)?/i.test(text)) return true;
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
-  }
-  throw new Error("Timed out waiting for the Eliza Cloud sign-in greeting");
-}
-
-async function triggerIosCloudSignInAction(): Promise<void> {
-  const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    if (tryHandleFirstRunAction(FIRST_RUN_CLOUD_LOGIN_ACTION)) return;
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
-  }
-  throw new Error("Timed out waiting for the cloud sign-in action handler");
-}
-
-async function waitForIosCloudOnboardingHome(): Promise<{
-  home: HTMLElement;
-  composer: HTMLElement;
-}> {
-  const home = await waitForIosOnboardingElement<HTMLElement>(
-    '[data-testid="home-launcher-surface"][data-page="home"]',
-    { visible: true, timeoutMs: IOS_ONBOARDING_SMOKE_TIMEOUT_MS },
-  );
-  const composer = await waitForIosOnboardingElement<HTMLElement>(
-    '[data-testid="chat-composer-textarea"]',
-    { visible: true, timeoutMs: IOS_ONBOARDING_SMOKE_TIMEOUT_MS },
-  );
-  return { home, composer };
-}
-
-async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
-  if (!isIOS || iosCloudOnboardingSmokeStarted) {
-    return iosCloudOnboardingSmokeStarted;
-  }
-  let rawRequest: string | null = null;
-  try {
-    rawRequest = window.localStorage.getItem(
-      IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY,
-    );
-  } catch {
-    // error-policy:J3 unavailable storage reads as "no request"; the
-    // Preferences fallback below still serves the simulator harness
-    rawRequest = null;
-  }
-  if (!rawRequest) {
-    rawRequest = await boundedPreferenceGet(
-      IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY,
-    );
-  }
-  if (!rawRequest) return false;
-
-  iosCloudOnboardingSmokeStarted = true;
-  const request = parseIosCloudOnboardingSmokeRequest(rawRequest);
-  const firstRunCounter = installFirstRunPostCounter();
-  await writeIosCloudOnboardingSmokeResult({
-    ok: false,
-    phase: "running",
-    mode: request.mode,
-    startedAt: new Date().toISOString(),
-  });
-
-  try {
-    let signInGreetingVisible = false;
-    if (request.mode === "tap") {
-      signInGreetingVisible = await waitForIosCloudSignInGreeting();
-      await triggerIosCloudSignInAction();
-    }
-
-    const { home, composer } = await waitForIosCloudOnboardingHome();
-    const storage = readIosCloudOnboardingSmokeStorageSnapshot();
-    const firstRunPostCount = firstRunCounter.getCount();
-    const activeServer = storage["elizaos:active-server"];
-    const cloudActiveServer =
-      typeof activeServer === "string" &&
-      activeServer.includes('"kind":"cloud"');
-    const onboardingHidden = !document.querySelector(
-      '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
-    );
-
-    // Liveness contract (#14359 / #16936): the cloud agent is
-    // SIWE-provisioned and live, so every lane ends with one real chat turn.
-    // The result carries the reply for the harness's shared non-stub assertion.
-    const livenessReply = await driveIosLivenessChatTurn(
-      request.livenessPrompt,
-    );
-
-    await writeIosCloudOnboardingSmokeResult({
-      ok: isIosCloudOnboardingComplete({
-        homeVisible: Boolean(home),
-        composerVisible: Boolean(composer),
-        onboardingHidden,
-        cloudActiveServer,
-        firstRunPostCount,
-      }),
-      phase: "complete",
-      mode: request.mode,
-      finishedAt: new Date().toISOString(),
-      signInGreetingVisible,
-      homeVisible: Boolean(home),
-      composerVisible: Boolean(composer),
-      onboardingHidden,
-      firstRunPostCount,
-      cloudActiveServer,
-      storage,
-      livenessRequested: true,
-      livenessReply,
-    });
-  } catch (error) {
-    // error-policy:J1 smoke boundary — the failure is written to the
-    // harness result sink
-    await writeIosCloudOnboardingSmokeResult({
-      ok: false,
-      phase: "failed",
-      mode: request.mode,
-      finishedAt: new Date().toISOString(),
-      firstRunPostCount: firstRunCounter.getCount(),
-      error: error instanceof Error ? error.message : String(error),
-      storage: readIosCloudOnboardingSmokeStorageSnapshot(),
-    });
-  } finally {
-    firstRunCounter.restore();
-    try {
-      shellLocalStorage.removeItem(IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY);
-    } catch (error) {
-      // error-policy:J6 best-effort cleanup — Preferences removal below is
-      // authoritative for the simulator harness
-      logger.debug(
-        { error },
-        "[iOSCloudOnboardingSmoke] localStorage request cleanup failed",
-      );
-    }
-    await boundedPreferenceWrite(() =>
-      Preferences.remove({ key: IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY }),
-    );
-  }
-  return true;
-}
-
-async function fetchIosMixedContentHealth(apiBase: string): Promise<
-  | {
-      ok: boolean;
-      status: number;
-      url: string;
-      body: unknown;
-    }
-  | {
-      ok: false;
-      status?: number;
-      url: string;
-      error: string;
-    }
-> {
-  const url = new URL("/api/health", apiBase).href;
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 10_000);
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      signal: controller.signal,
-    });
-    let body: unknown = null;
-    try {
-      body = await response.clone().json();
-    } catch {
-      // error-policy:J7 diagnostics preserve status even when body is not JSON
-      try {
-        body = await response.text();
-      } catch {
-        // error-policy:J7 diagnostics preserve the health failure without a body
-        body = null;
-      }
-    }
-    return {
-      ok: response.ok,
-      status: response.status,
-      url,
-      body,
-    };
-  } catch (error) {
-    // error-policy:J7 diagnostics preserve the failed health probe for the harness
-    return {
-      ok: false,
-      url,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  } finally {
-    window.clearTimeout(timeout);
-  }
-}
-
-async function runIosMixedContentSmokeIfRequested(options?: {
-  apiBase?: string;
-}): Promise<boolean> {
-  if (!isIOS || iosMixedContentSmokeStarted) {
-    return iosMixedContentSmokeStarted;
-  }
-  const request = await readIosMixedContentSmokeRequest(options?.apiBase);
-  if (!request) return false;
-
-  iosMixedContentSmokeStarted = true;
-  await writeIosMixedContentSmokeResult({
-    ok: false,
-    phase: "running",
-    startedAt: new Date().toISOString(),
-    apiBase: request.apiBase,
-  });
-
-  const wsConstructorCalls: string[] = [];
-  const originalWebSocket = window.WebSocket;
-  const clientBaseUrl =
-    typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
-  try {
-    window.WebSocket = new Proxy(originalWebSocket, {
-      construct(target, args) {
-        wsConstructorCalls.push(String(args[0] ?? ""));
-        return Reflect.construct(target, args);
-      },
-    }) as typeof WebSocket;
-
-    client.connectWs();
-    const connectionState =
-      typeof client.getConnectionState === "function"
-        ? client.getConnectionState()
-        : null;
-    const restHealth = await fetchIosMixedContentHealth(request.apiBase);
-    const bodyText = document.body?.innerText ?? "";
-    const lostBackendOverlayAbsent =
-      !/Lost backend connection/i.test(bodyText) &&
-      !document.querySelector('[data-testid="connection-lost-overlay"]');
-
-    await writeIosMixedContentSmokeResult({
-      ok:
-        restHealth.ok === true &&
-        wsConstructorCalls.length === 0 &&
-        connectionState?.state === "connected" &&
-        lostBackendOverlayAbsent,
-      phase: "complete",
-      finishedAt: new Date().toISOString(),
-      apiBase: request.apiBase,
-      webViewOrigin: window.location.origin,
-      webViewProtocol: window.location.protocol,
-      clientBaseUrl,
-      expectedInsecureWebSocketUrl: new URL(
-        "/ws",
-        request.apiBase,
-      ).href.replace(/^http:/, "ws:"),
-      mixedContentWouldBlockWebSocket:
-        window.location.protocol === "https:" &&
-        request.apiBase.startsWith("http://"),
-      webSocketConstructorCalls: wsConstructorCalls,
-      connectionState,
-      lostBackendOverlayAbsent,
-      restHealth,
-      storage: readIosOnboardingSmokeStorageSnapshot(),
-    });
-  } catch (error) {
-    // error-policy:J1 smoke boundary — the failure is written to the
-    // harness result sink
-    await writeIosMixedContentSmokeResult({
-      ok: false,
-      phase: "failed",
-      finishedAt: new Date().toISOString(),
-      apiBase: request.apiBase,
-      webViewOrigin: window.location.origin,
-      clientBaseUrl,
-      webSocketConstructorCalls: wsConstructorCalls,
-      connectionState:
-        typeof client.getConnectionState === "function"
-          ? client.getConnectionState()
-          : null,
-      error: error instanceof Error ? error.message : String(error),
-      storage: readIosOnboardingSmokeStorageSnapshot(),
-    });
-  } finally {
-    window.WebSocket = originalWebSocket;
-    try {
-      shellLocalStorage.removeItem(IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY);
-    } catch {
-      // error-policy:J6 best-effort cleanup — Preferences removal below is
-      // authoritative for the simulator harness
-    }
-    await boundedPreferenceWrite(() =>
-      Preferences.remove({ key: IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY }),
-    );
-  }
-  return true;
-}
-
-async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
-  if (!isIOS || iosOnboardingSmokeStarted) return iosOnboardingSmokeStarted;
-  let rawRequest: string | null = null;
-  try {
-    rawRequest = window.localStorage.getItem(IOS_ONBOARDING_SMOKE_REQUEST_KEY);
-  } catch {
-    // error-policy:J3 unavailable storage reads as "no request"; the
-    // Preferences fallback below still serves the simulator harness
-    rawRequest = null;
-  }
-  if (!rawRequest) {
-    rawRequest = await boundedPreferenceGet(IOS_ONBOARDING_SMOKE_REQUEST_KEY);
-  }
-  if (!rawRequest) return false;
-
-  iosOnboardingSmokeStarted = true;
-  const request = parseIosOnboardingSmokeRequest(rawRequest);
-  await writeIosOnboardingSmokeResult({
-    ok: false,
-    phase: "running",
-    startedAt: new Date().toISOString(),
-    apiBase: request.apiBase,
-  });
-  try {
-    // WKWebView is not CDP-drivable, and recent iOS simulators can stop
-    // `simctl openurl` behind a system "Open in <app>?" confirmation. Drive the
-    // same hardened remote-connect handler that the OS deep-link route uses,
-    // after React has had a chance to install its CONNECT_EVENT listener.
-    await new Promise((resolve) => window.setTimeout(resolve, 750));
-    connectFirstRunRemoteDeepLink(request.apiBase);
-
-    // Prove the post-connect surface, decoupled from the onboarding DOM — no
-    // remote-address field to fill, resilient to the in-chat redesign.
-    const home = await waitForIosOnboardingElement<HTMLElement>(
-      '[data-testid="home-launcher-surface"][data-page="home"]',
-      { visible: true },
-    );
-    const composer = await waitForIosOnboardingElement<HTMLElement>(
-      '[data-testid="chat-composer-textarea"]',
-      { visible: true },
-    );
-
-    const onboardingHidden = !document.querySelector(
-      '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
-    );
-    const storage = await waitForIosOnboardingSmokeStorageSnapshot(
-      request.apiBase,
-    );
-    await runIosMixedContentSmokeIfRequested({ apiBase: request.apiBase });
-
-    // Liveness contract (#14359): against a live-provider host, end the lane
-    // with one real chat turn and report the reply for the harness's shared
-    // non-stub assertion. Skipped for the default deterministic (stub) host.
-    const livenessReply = request.liveness
-      ? await driveIosLivenessChatTurn(request.livenessPrompt)
-      : null;
-
-    await writeIosOnboardingSmokeResult({
-      ok: true,
-      phase: "complete",
-      finishedAt: new Date().toISOString(),
-      apiBase: request.apiBase,
-      homeVisible: Boolean(home),
-      composerVisible: Boolean(composer),
-      onboardingHidden,
-      storage,
-      livenessRequested: request.liveness,
-      livenessReply,
-    });
-  } catch (error) {
-    // error-policy:J1 smoke boundary — the failure is written to the
-    // harness result sink
-    await writeIosOnboardingSmokeResult({
-      ok: false,
-      phase: "failed",
-      finishedAt: new Date().toISOString(),
-      apiBase: request.apiBase,
-      error: error instanceof Error ? error.message : String(error),
-      storage: readIosOnboardingSmokeStorageSnapshot(),
-    });
-  } finally {
-    try {
-      shellLocalStorage.removeItem(IOS_ONBOARDING_SMOKE_REQUEST_KEY);
-    } catch {
-      // error-policy:J6 best-effort cleanup — Preferences removal below is
-      // authoritative for the simulator harness
-    }
-    await boundedPreferenceWrite(() =>
-      Preferences.remove({ key: IOS_ONBOARDING_SMOKE_REQUEST_KEY }),
-    );
-  }
-  return true;
-}
-
-async function runIosOnboardingRelaunchSmokeIfRequested(): Promise<boolean> {
-  if (!isIOS || iosOnboardingRelaunchSmokeStarted) {
-    return iosOnboardingRelaunchSmokeStarted;
-  }
-  let rawRequest: string | null = null;
-  try {
-    rawRequest = window.localStorage.getItem(
-      IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY,
-    );
-  } catch {
-    // error-policy:J3 unavailable storage reads as "no request"; the
-    // Preferences fallback below still serves the simulator harness
-    rawRequest = null;
-  }
-  if (!rawRequest) {
-    rawRequest = await boundedPreferenceGet(
-      IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY,
-    );
-  }
-  if (!rawRequest) return false;
-
-  iosOnboardingRelaunchSmokeStarted = true;
-  const request = parseIosOnboardingSmokeRequest(rawRequest);
-  await writeIosOnboardingRelaunchSmokeResult({
-    ok: false,
-    phase: "running",
-    startedAt: new Date().toISOString(),
-    apiBase: request.apiBase,
-  });
-  try {
-    const home = await waitForIosOnboardingElement<HTMLElement>(
-      '[data-testid="home-launcher-surface"][data-page="home"]',
-      { visible: true },
-    );
-    const composer = await waitForIosOnboardingElement<HTMLElement>(
-      '[data-testid="chat-composer-textarea"]',
-      { visible: true },
-    );
-    const onboardingHidden = !document.querySelector(
-      '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
-    );
-    const storage = await waitForIosOnboardingSmokeStorageSnapshot(
-      request.apiBase,
-    );
-
-    await writeIosOnboardingRelaunchSmokeResult({
-      ok: true,
-      phase: "complete",
-      finishedAt: new Date().toISOString(),
-      apiBase: request.apiBase,
-      homeVisible: Boolean(home),
-      composerVisible: Boolean(composer),
-      onboardingHidden,
-      storage,
-    });
-  } catch (error) {
-    // error-policy:J1 smoke boundary — the failure is written to the
-    // harness result sink
-    await writeIosOnboardingRelaunchSmokeResult({
-      ok: false,
-      phase: "failed",
-      finishedAt: new Date().toISOString(),
-      apiBase: request.apiBase,
-      error: error instanceof Error ? error.message : String(error),
-      storage: readIosOnboardingSmokeStorageSnapshot(),
-    });
-  } finally {
-    try {
-      shellLocalStorage.removeItem(IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY);
-    } catch {
-      // error-policy:J6 best-effort cleanup — Preferences removal below is
-      // authoritative for the simulator harness
-    }
-    await boundedPreferenceWrite(() =>
-      Preferences.remove({ key: IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY }),
-    );
-  }
-  return true;
 }
 
 async function initializeAgent(): Promise<void> {
@@ -1880,37 +894,13 @@ async function initializePlatform(): Promise<void> {
   await initializeStorageBridge();
   initializeCapacitorBridge();
   installNativeTranscriptPlatformBridge();
-  void runIosFullBunSmokeFromDesktopShell();
-  void runIosOnboardingSmokeIfRequested();
-  void runIosCloudOnboardingSmokeIfRequested();
-  void runIosOnboardingRelaunchSmokeIfRequested();
-  void runIosAttachmentSmokeIfRequested({
-    isIOS,
-    getApiBaseUrl: () => client.getBaseUrl(),
-    getPreference: boundedPreferenceGet,
-    removePreference: (key) =>
-      boundedPreferenceWrite(() => Preferences.remove({ key })),
-    writeResult: writeIosPreferenceSmokeResult,
-    waitForElement: waitForIosOnboardingElement,
-    readStorageSnapshot: readIosOnboardingSmokeStorageSnapshot,
-  });
-  // Lazy + iOS-gated: the voice self-test pulls the whole @elizaos/ui/voice
-  // graph, which a static import anchors into every web/desktop entry chunk.
-  // Non-iOS platforms never ran the smoke anyway (the module self-gates), so
-  // they now skip fetching the chunk entirely.
+  void runIosFullBunSmoke();
   if (isIOS) {
-    void import("./ios-voice-selftest-smoke").then(
-      ({ runIosVoiceSelfTestSmokeIfRequested }) =>
-        runIosVoiceSelfTestSmokeIfRequested({
-          isIOS,
-          client,
-          getPreference: boundedPreferenceGet,
-          removePreference: (key) =>
-            boundedPreferenceWrite(() => Preferences.remove({ key })),
-          writeResult: writeIosPreferenceSmokeResult,
-          readStorageSnapshot: readIosOnboardingSmokeStorageSnapshot,
-        }),
-    );
+    void import("./native-smoke")
+      .then((smoke) =>
+        smoke.runNativeSmokeDrivers(connectFirstRunRemoteDeepLink),
+      )
+      .catch((error) => logger.error({ error }, "Native smoke drivers failed"));
   }
 
   // Foreground/background lifecycle + connectivity are wired on every surface,
@@ -1922,11 +912,13 @@ async function initializePlatform(): Promise<void> {
   void getMobileLifecycle().initializeNetworkListener();
 
   if (isIOS || isAndroid) {
+    void import("@elizaos/capacitor-network-policy")
+      .then(({ installNetworkPolicyGlobal }) => installNetworkPolicyGlobal())
+      .catch((error) => logNativePluginUnavailable("Network policy", error));
     await initializeStatusBar();
     await getMobileLifecycle().initializeKeyboard();
     initializeMobileRuntimeModeListener();
     void initializeMobileDeviceBridge();
-    void initializeMobileAgentTunnel();
     void registerMobileBlockerBackends();
   }
 
@@ -2070,6 +1062,11 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
     );
     return;
   }
+  // Android can replay the launch intent on a cold app start. An exact target
+  // already paired by this installation needs no second connect transaction;
+  // that transaction would otherwise clear its saved machine session.
+  if (isAlreadyPairedRemoteTarget(validatedUrl, loadPersistedActiveServer()))
+    return;
   // SECURITY: never accept a bearer token from an OS-delivered deep link (see
   // the `connect` case below). A pairing-disabled remote that needs a token is
   // connected via the trusted in-app Settings entry instead.
@@ -2101,94 +1098,37 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
   dispatchConnect();
 }
 
-async function recordIosAuthCallbackSmoke(
-  parsed: URL,
-  path: string,
-  url: string,
-  outcome: AuthCallbackDeepLinkOutcome,
-  activeServerBefore: string,
-): Promise<void> {
-  // Record the auth-callback end state on ANY native platform. Pre-#13693 this
-  // was iOS-only, so the Android smoke leg had no in-app readback at all (pure
-  // `am start` fire-and-forget). Broadening to `isNative` lets the Android
-  // smoke read the same Capacitor-Preferences handshake (backed by
-  // SharedPreferences) and assert the same end state instead of trusting intent
-  // resolution alone. This is a smoke seam: the body no-ops unless the harness
-  // has armed the request key, so real users' deep-link handling is unchanged.
-  if (!isNative) return;
-  let rawRequest: string | null = null;
-  try {
-    rawRequest = window.localStorage.getItem(
-      IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY,
-    );
-  } catch {
-    rawRequest = null;
-  }
-  rawRequest ??= await boundedPreferenceGet(
-    IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY,
-  );
-  if (!rawRequest) return;
-
-  let request: Record<string, unknown> = {};
-  try {
-    const parsedRequest = JSON.parse(rawRequest);
-    if (parsedRequest && typeof parsedRequest === "object") {
-      request = parsedRequest as Record<string, unknown>;
-    }
-  } catch {
-    request = { malformedRequest: rawRequest };
-  }
-
-  // #13693: assert the AUTH OUTCOME, not just delivery. The security invariant
-  // for this handler (see the `connect`/first-run-remote cases above) is that
-  // an OS-delivered deep link NEVER establishes or swaps an authenticated
-  // session. Compare the real active-server key before/after handling the
-  // callback so a pre-authenticated simulator passes when the callback leaves
-  // the session untouched, while a regression that authenticates from the deep
-  // link flips `sessionChanged=true`.
-  let activeServerAfter = "";
-  try {
-    activeServerAfter = readActiveServerSessionSnapshot();
-  } catch (error) {
-    // error-policy:J7 diagnostics readback — the smoke must fail closed when it
-    // cannot observe the auth outcome it is supposed to prove.
-    await writeIosAuthCallbackSmokeResult({
-      ok: false,
-      phase: "failed",
-      classification: outcome.classification,
-      accepted: outcome.accepted,
-      reason: outcome.reason,
-      error:
-        error instanceof Error
-          ? error.message
-          : `active-server readback failed: ${String(error)}`,
-      path,
-      url,
-      state: parsed.searchParams.get("state") ?? "",
-      code: parsed.searchParams.get("code") ?? "",
-      query: Object.fromEntries(parsed.searchParams.entries()),
-      request,
+// Remote-mode pairing QR/deep link for a hosted agent (remote-agent pairing
+// contract in @elizaos/core): `<scheme>://remote/agent-pair?v=1&url=&code=&instance=`.
+// The link carries a one-time code, never a token. The code is exchanged on a
+// separate client against the already-trusted origin (for Alpha phones, the
+// build-pinned VITE_ELIZA_REMOTE_FALLBACK_API_BASE), then the normal connect
+// path asks the user to confirm the host before switching.
+function pairRemoteAgentDeepLink(url: string): boolean {
+  const payload = parseRemoteAgentPairingDeepLink(url, APP_URL_SCHEME);
+  if (!payload) return false;
+  void exchangeRemoteAgentPairing(
+    payload,
+    new ElizaClient(payload.apiBase),
+    (apiBase) =>
+      isTrustedBuildConfiguredRemoteApiBaseUrl(apiBase) ||
+      isTrustedDeepLinkApiBaseUrl(new URL(apiBase)),
+  )
+    .then(({ apiBase, token }) => {
+      dispatchConnectRequest({
+        gatewayUrl: apiBase,
+        token,
+        completeFirstRun: true,
+      });
+    })
+    .catch((error: unknown) => {
+      // error-policy:J2 pairing failure is surfaced, never a silent connect
+      console.error(
+        `${APP_LOG_PREFIX} Remote agent pairing failed:`,
+        error instanceof RemoteAgentPairingError ? error.code : error,
+      );
     });
-    return;
-  }
-
-  await writeIosAuthCallbackSmokeResult({
-    ok: true,
-    phase: "handled",
-    classification: outcome.classification,
-    accepted: outcome.accepted,
-    reason: outcome.reason,
-    sessionEstablished: activeServerAfter.length > 0,
-    sessionChanged: activeServerAfter !== activeServerBefore,
-    activeServerBeforePresent: activeServerBefore.length > 0,
-    activeServerAfterPresent: activeServerAfter.length > 0,
-    path,
-    url,
-    state: parsed.searchParams.get("state") ?? "",
-    code: parsed.searchParams.get("code") ?? "",
-    query: Object.fromEntries(parsed.searchParams.entries()),
-    request,
-  });
+  return true;
 }
 
 async function handleAuthCallbackDeepLink(
@@ -2214,32 +1154,53 @@ async function handleAuthCallbackDeepLink(
   try {
     activeServerBefore = readActiveServerSessionSnapshot();
   } catch (error) {
-    await writeIosAuthCallbackSmokeResult({
-      ok: false,
-      phase: "failed",
-      classification: outcome.classification,
-      accepted: outcome.accepted,
-      reason: outcome.reason,
-      error:
-        error instanceof Error
-          ? error.message
-          : `active-server pre-readback failed: ${String(error)}`,
-      path,
-      url,
-      state: parsed.searchParams.get("state") ?? "",
-      code: parsed.searchParams.get("code") ?? "",
-      query: Object.fromEntries(parsed.searchParams.entries()),
-    });
+    logger.error({ error }, "Active server session readback failed");
+    if (isNative) {
+      try {
+        const { writeIosAuthCallbackSmokeResult } = await import(
+          "./native-smoke"
+        );
+        await writeIosAuthCallbackSmokeResult({
+          ok: false,
+          phase: "failed",
+          classification: outcome.classification,
+          accepted: outcome.accepted,
+          reason: outcome.reason,
+          error:
+            error instanceof Error
+              ? error.message
+              : `active-server pre-readback failed: ${String(error)}`,
+          path,
+          url,
+          state: parsed.searchParams.get("state") ?? "",
+          code: parsed.searchParams.get("code") ?? "",
+          query: Object.fromEntries(parsed.searchParams.entries()),
+        });
+      } catch (smokeError) {
+        logger.error(
+          { error: smokeError },
+          "Native auth callback smoke recording failed",
+        );
+      }
+    }
     return true;
   }
 
-  await recordIosAuthCallbackSmoke(
-    parsed,
-    path,
-    url,
-    outcome,
-    activeServerBefore,
-  );
+  if (isNative) {
+    try {
+      const { recordIosAuthCallbackSmoke } = await import("./native-smoke");
+      await recordIosAuthCallbackSmoke(
+        parsed,
+        path,
+        url,
+        outcome,
+        activeServerBefore,
+        readActiveServerSessionSnapshot,
+      );
+    } catch (error) {
+      logger.error({ error }, "Native auth callback smoke recording failed");
+    }
+  }
   return true;
 }
 
@@ -2250,7 +1211,9 @@ async function handleAuthCallbackDeepLink(
  * `mobile-lifecycle.ts`, gating its Android deep-link-buffer acknowledgement —
  * can await it instead of acking on dispatch alone.
  */
-function handleDeepLink(url: string): undefined | Promise<boolean> {
+function handleDeepLink(
+  url: string,
+): undefined | Promise<DeepLinkApplicationResult> {
   const remotePairing = parseRemoteControllerPairingDeepLink(
     url,
     APP_URL_SCHEME,
@@ -2279,6 +1242,7 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
       subview: "my-runtimes",
     });
   }
+  if (pairRemoteAgentDeepLink(url)) return;
   const firstRunRemote = parseFirstRunRemoteConnectDeepLink(
     url,
     APP_URL_SCHEME,
@@ -2338,7 +1302,18 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
     path,
     parsed.searchParams,
   );
+  if (navigationIntent === false) return Promise.resolve({ rejected: true });
   if (navigationIntent) {
+    if (navigationIntent.payload?.kind === "notification-chat") {
+      let rejected = false;
+      return dispatchDeepLinkNavigation(navigationIntent, {
+        onRejected: () => {
+          rejected = true;
+        },
+      }).then((accepted) =>
+        accepted ? true : rejected ? ({ rejected: true } as const) : false,
+      );
+    }
     return dispatchDeepLinkNavigation(navigationIntent);
   }
 
@@ -2400,6 +1375,14 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
               `${APP_LOG_PREFIX} Rejected untrusted gateway URL host:`,
               validatedUrl.hostname,
             );
+            break;
+          }
+          if (
+            isAlreadyPairedRemoteTarget(
+              validatedUrl,
+              loadPersistedActiveServer(),
+            )
+          ) {
             break;
           }
           // SECURITY: never accept a bearer token from an OS-delivered deep
@@ -2473,15 +1456,16 @@ function setHashRoute(route: string, params: URLSearchParams): void {
 
 /**
  * Dispatch a top-level-surface deep link on the in-app `eliza:navigate:view`
- * bus (consumed in packages/ui App.tsx: `viewPath` → `tabFromPath` → `setTab`,
+ * bus (consumed in renderer/App.tsx: `viewPath` → `tabFromPath` → `setTab`,
  * `subview` → Settings section). This is the platform-agnostic navigation path
  * the rest of the app uses; a raw `window.location.hash` write does not open a
  * tab on the mobile/Capacitor entrypoint (see `resolveDeepLinkNavigationIntent`).
  */
 function dispatchDeepLinkNavigation(
   intent: DeepLinkNavigationIntent,
+  options?: { onRejected: () => void },
 ): Promise<boolean> {
-  return dispatchNavigateViewRequest(intent);
+  return dispatchNavigateViewRequest(intent, options);
 }
 
 async function initializeDesktopShell(): Promise<void> {
@@ -2700,34 +1684,12 @@ function setupPlatformStyles(): void {
     document.body.classList.add("native");
   }
 
-  // Installed PWA on the WEB platform (iOS home-screen app, chrome-less Android
-  // PWA): tag the body so base.css/styles.css apply the mobile touch-viewport
-  // lockdown + #14319 large-viewport geometry. This is the SECONDARY path: the
-  // CSS-first `@media (display-mode: standalone) and (pointer: coarse)` rules
-  // are the source of truth (they land even when this class does not), but the
-  // class is kept for back-compat (legacy iOS Safari signalling only via
-  // navigator.standalone) and parity with the @elizaos/ui setupPlatformStyles.
-  // Scoped to `platform === "web"`: the native build already locks via `native`
-  // and desktop (electrobun) must keep its window scroll/trackpad behavior.
+  // Web PWAs share touch-viewport styles; native and desktop shells own theirs.
   if (platform === "web" && isStandalonePwa()) {
     document.body.classList.add("pwa-standalone");
   }
 
-  // JS-MEASURED BOTTOM RECLAIM — THE LOAD-BEARING INSTALL POINT ON THE REAL
-  // PWA BOOT PATH (#15103/#15136/#15178). This local `setupPlatformStyles` is
-  // the function `main()` actually calls on the installed standalone PWA (the
-  // `@elizaos/ui` init.ts `setupPlatformStyles` is NOT on this entry graph — it
-  // is only reachable from unit tests). If the installer is not called HERE it
-  // never runs on device: the layout viewport collapses to the small box
-  // (`documentElement.clientHeight` = 873 while `screen.height` = 932) so every
-  // pure-CSS reclaim (`100lvh - 100dvh`) resolves to 0 and is a device no-op,
-  // leaving the black home-indicator strip. #15178's WIP (f903c59) dropped this
-  // block and the restore landed only in the orphaned ui copy, reproducing the
-  // regression (device chip read `rc?` = var never set). The platform gate lives
-  // INSIDE `shouldInstallStandaloneBottomReclaim` (standalone + iOS only), so
-  // this is a hard 0 no-op everywhere else and a future refactor of this entry
-  // cannot silently orphan the installer without turning the app-entry lockdown
-  // contract test RED. See standalone-bottom-reclaim.ts + standalone-pwa-lockdown.test.ts.
+  // Install the iOS standalone viewport correction on the actual app entry.
   if (
     shouldInstallStandaloneBottomReclaim({
       standalonePwa: isStandalonePwa(),
@@ -2793,13 +1755,11 @@ const CloudRouterShell = lazy(async () => {
   // no cloud/auth/payment route resolves. Both imports live inside this
   // `__ELIZA_WEB_SHELL__`-guarded factory, so a cloud-free build drops them
   // statically.
-  // Progressive public boot (#18056): import register-public, NOT register-all.
-  // register-all remains the synchronous full-table contract for unmodified
-  // consumers; this entrypoint only registers public/auth routes so idle
-  // /login never pulls private dashboard chunks.
+  // Load public routes without loading private Cloud domains.
+  // The app owns registration for this renderer.
   const [{ registerPublicCloudSurfaces }, mod] = await Promise.all([
-    import("@elizaos/ui/cloud/register-public"),
-    import("@elizaos/ui/cloud/shell/CloudRouterShell"),
+    import("./renderer/cloud-registration"),
+    loadCloudRouterShell(),
   ]);
   // Public/auth only on shell boot. Private dashboard domains are loaded by
   // CloudRouterShell when a /cloud/* path is visited — never from idle /login.
@@ -2812,22 +1772,7 @@ const ManagedCloudPage = lazy(async () => {
   if (__ELIZA_WEB_SHELL__ !== true) {
     throw new Error("ManagedCloudPage is web-build-only");
   }
-  return import("@elizaos/ui/cloud/shell/ManagedCloudPage");
-});
-
-/** Approved marketing surfaces bundled only into the hosted web shell. */
-const MarketingHomePage = lazy(async () => {
-  if (__ELIZA_WEB_SHELL__ !== true) {
-    throw new Error("MarketingHomePage is web-build-only");
-  }
-  return import("@homepage/embedded-home");
-});
-
-const MarketingDownloadsPage = lazy(async () => {
-  if (__ELIZA_WEB_SHELL__ !== true) {
-    throw new Error("MarketingDownloadsPage is web-build-only");
-  }
-  return import("@homepage/embedded-downloads");
+  return loadManagedCloudPage();
 });
 
 /**
@@ -2839,9 +1784,16 @@ const ChatWidgetHarness = lazy(async () => {
   if (__ELIZA_CHAT_UI_HARNESS__ !== true) {
     throw new Error("ChatWidgetHarness is disabled in this build");
   }
-  const mod = await import("@elizaos/ui/components/chat/ChatWidgetHarness");
+  const mod = await import("./dev/ChatWidgetHarness");
   return { default: mod.ChatWidgetHarness };
 });
+
+// Only local developer routes mount the inspector; normal routes ignore the old session opt-in.
+const DeveloperWorkspace = lazy(async () => {
+  const mod = await loadDeveloperWorkspace();
+  return { default: mod.DeveloperWorkspace };
+});
+const developerWorkspaceEnabled = isDeveloperWorkspaceRoute();
 
 /**
  * The shell owns the parametric cloud / public / auth / payment routes and
@@ -2884,7 +1836,15 @@ function mountReactApp(): void {
           any view can gate developer/owner surfaces with useRole/<RoleGate>. */}
       <ShellModalityProvider modality="gui">
         <ShellRoleProvider>
-          <App />
+          {developerWorkspaceEnabled && !isSpecialWindowShell ? (
+            <DeveloperWorkspace
+              readerMode={/^\/dev2\/?$/.test(window.location.pathname)}
+            >
+              <App />
+            </DeveloperWorkspace>
+          ) : (
+            <App />
+          )}
         </ShellRoleProvider>
       </ShellModalityProvider>
     </>
@@ -2896,8 +1856,6 @@ function mountReactApp(): void {
     ) : shouldMountWebShell() && !isSpecialWindowShell ? (
       <CloudRouterShell
         cloudManagementElement={<ManagedCloudPage />}
-        marketingHomeElement={<MarketingHomePage />}
-        downloadsElement={<MarketingDownloadsPage />}
         appElement={
           <AppProvider branding={APP_BRANDING}>{appSubtree}</AppProvider>
         }
@@ -2947,61 +1905,12 @@ function isPopoutWindow(): boolean {
   return getWindowUrlSearchParams().has("popout");
 }
 
-function isTrustedPrivateHttpHost(host: string): boolean {
-  return (
-    host === "0.0.0.0" ||
-    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    /^169\.254\.\d{1,3}\.\d{1,3}$/.test(host) ||
-    host === "local" ||
-    host === "internal" ||
-    host === "lan" ||
-    host === "ts.net" ||
-    host.endsWith(".local") ||
-    host.endsWith(".lan") ||
-    host.endsWith(".internal") ||
-    host.endsWith(".ts.net")
-  );
-}
-
-function isLoopbackApiHost(host: string): boolean {
-  return (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "[::1]" ||
-    host === "::1"
-  );
-}
-
-/**
- * Dedicated Cloud agents serve their runtime on the canonical managed-agent
- * hostname family. The shared classifier also recognizes legacy agent hosts
- * during the DNS migration; control-plane hosts never match this predicate.
- */
-function isElizaCloudAgentSubdomain(host: string): boolean {
-  return isElizaDedicatedAgentHostname(host);
-}
-
 function isNativeIosStoreBuild(): boolean {
   return isNative && isIOS && isStoreBuild;
 }
 
 function isIosLocalAgentIpcUrl(parsed: URL): boolean {
   return parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc";
-}
-
-function isPrivateOrLoopbackApiHost(host: string): boolean {
-  const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");
-  return (
-    isLoopbackApiHost(normalized) ||
-    (normalized.includes(":") &&
-      (normalized.startsWith("fc") ||
-        normalized.startsWith("fd") ||
-        normalized.startsWith("fe80:"))) ||
-    isTrustedPrivateHttpHost(normalized)
-  );
 }
 
 function isNativeIosCloudRuntimeMode(): boolean {
@@ -3062,7 +1971,7 @@ function isTrustedApiBaseUrl(parsed: URL): boolean {
       isCurrentOriginHost(host) ||
       isConfiguredCloudApiHost(host) ||
       isElizaCloudSharedHost(host) ||
-      isElizaCloudAgentSubdomain(host)
+      isElizaCloudAgentHost(host)
     );
   }
   if (isPopoutWindow() && parsed.protocol === "https:") return true;
@@ -3073,7 +1982,7 @@ function isTrustedApiBaseUrl(parsed: URL): boolean {
     isLoopbackApiHost(host) ||
     isCurrentOriginHost(host) ||
     (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
-    (parsed.protocol === "https:" && isElizaCloudAgentSubdomain(host)) ||
+    (parsed.protocol === "https:" && isElizaCloudAgentHost(host)) ||
     isTrustedPrivateHttpHost(host)
   );
 }
@@ -3094,14 +2003,14 @@ function isTrustedDeepLinkApiBaseUrl(parsed: URL): boolean {
       isCurrentOriginHost(host) ||
       (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
       (parsed.protocol === "https:" && isElizaCloudSharedHost(host)) ||
-      (parsed.protocol === "https:" && isElizaCloudAgentSubdomain(host))
+      (parsed.protocol === "https:" && isElizaCloudAgentHost(host))
     );
   }
   return (
     isLoopbackApiHost(host) ||
     isCurrentOriginHost(host) ||
     (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
-    (parsed.protocol === "https:" && isElizaCloudAgentSubdomain(host)) ||
+    (parsed.protocol === "https:" && isElizaCloudAgentHost(host)) ||
     isTrustedPrivateHttpHost(host)
   );
 }
@@ -3175,20 +2084,27 @@ function injectDetachedShellApiBase(): void {
 }
 
 function getCurrentIosRuntimeConfig(): IosRuntimeConfig {
-  if (typeof window === "undefined") return IOS_RUNTIME_ENV_CONFIG;
-  try {
-    const mode = normalizeMobileRuntimeMode(
-      window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY),
-    );
-    if (!mode) return IOS_RUNTIME_ENV_CONFIG;
-    return { ...IOS_RUNTIME_ENV_CONFIG, mode };
-  } catch {
-    // error-policy:J3 unavailable storage — build-time runtime config
-    return IOS_RUNTIME_ENV_CONFIG;
+  let config = IOS_RUNTIME_ENV_CONFIG;
+  if (typeof window !== "undefined") {
+    try {
+      const mode = normalizeMobileRuntimeMode(
+        window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY),
+      );
+      if (mode) config = { ...config, mode };
+    } catch (error) {
+      // error-policy:J4 unavailable browser storage — retain explicit build-time configuration.
+      if (!(error instanceof DOMException) || error.name !== "SecurityError")
+        throw error;
+      console.warn(
+        `${APP_LOG_PREFIX} Runtime preference storage unavailable`,
+        error,
+      );
+    }
   }
+  return config;
 }
 
-function applyBuildTimeIosConnection(): void {
+function applyBuildTimeMobileConnection(): void {
   if (!isNative) return;
 
   const current = getBootConfig();
@@ -3197,18 +2113,17 @@ function applyBuildTimeIosConnection(): void {
     ...(isIOS && IOS_RUNTIME_ENV_CONFIG.mode === "local"
       ? { apiBase: IOS_LOCAL_AGENT_IPC_BASE }
       : {}),
-    ...(IOS_RUNTIME_ENV_CONFIG.apiToken
-      ? { apiToken: IOS_RUNTIME_ENV_CONFIG.apiToken }
+    ...(MOBILE_API_CONNECTION.apiToken
+      ? { apiToken: MOBILE_API_CONNECTION.apiToken }
       : {}),
   };
   setBootConfig(next);
 
   if (isIOS && IOS_RUNTIME_ENV_CONFIG.mode === "local") return;
-  if (!IOS_RUNTIME_ENV_CONFIG.apiBase && !IOS_RUNTIME_ENV_CONFIG.apiToken)
-    return;
+  if (!MOBILE_API_CONNECTION.apiBase && !MOBILE_API_CONNECTION.apiToken) return;
 
-  if (IOS_RUNTIME_ENV_CONFIG.apiBase) {
-    validateAndSetApiBase(IOS_RUNTIME_ENV_CONFIG.apiBase);
+  if (MOBILE_API_CONNECTION.apiBase) {
+    validateAndSetApiBase(MOBILE_API_CONNECTION.apiBase);
   }
 }
 
@@ -3371,7 +2286,7 @@ async function initializeMobileDeviceBridge(): Promise<void> {
   mobileDeviceBridgeStartPromise = (async () => {
     try {
       const [{ startDeviceBridgeClient }, deviceId] = await Promise.all([
-        import("@elizaos/capacitor-llama"),
+        import("@elizaos/plugin-native-inference/llama"),
         getOrCreateDeviceBridgeId(),
       ]);
       const pairingToken =
@@ -3427,119 +2342,29 @@ function stopMobileDeviceBridge(): void {
   mobileDeviceBridgeClient = null;
 }
 
-async function initializeMobileAgentTunnel(): Promise<void> {
-  const runtimeConfig = getCurrentIosRuntimeConfig();
-  if (!isNative || (!isIOS && !isAndroid)) return;
-  if (runtimeConfig.mode !== "tunnel-to-mobile") return;
-  if (mobileAgentTunnelStartPromise) return;
-  const relayUrl = runtimeConfig.tunnelRelayUrl;
-  if (!relayUrl) {
-    console.warn(
-      `${APP_LOG_PREFIX} tunnel-to-mobile mode requires VITE_ELIZA_TUNNEL_RELAY_URL`,
-    );
-    return;
-  }
-  if (!isTrustedNativeWebSocketUrl(relayUrl)) {
-    console.warn(`${APP_LOG_PREFIX} Rejected unsafe mobile tunnel relay URL`);
-    return;
-  }
-
-  mobileAgentTunnelStartPromise = (async () => {
-    try {
-      const [{ MobileAgentBridge }, deviceId] = await Promise.all([
-        import("@elizaos/capacitor-mobile-agent-bridge"),
-        getOrCreateDeviceBridgeId(),
-      ]);
-
-      if (!mobileAgentTunnelListener) {
-        mobileAgentTunnelListener = await MobileAgentBridge.addListener(
-          "stateChange",
-          (event) => {
-            console.info(
-              `${APP_LOG_PREFIX} Mobile agent tunnel ${event.state}`,
-              event.reason ?? "",
-            );
-          },
-        );
-      }
-
-      const status = await MobileAgentBridge.startInboundTunnel({
-        relayUrl,
-        deviceId,
-        ...(runtimeConfig.tunnelPairingToken
-          ? { pairingToken: runtimeConfig.tunnelPairingToken }
-          : {}),
-        ...(isAndroid
-          ? { localAgentApiBase: MOBILE_LOCAL_AGENT_API_BASE }
-          : {}),
-      });
-      console.info(
-        `${APP_LOG_PREFIX} Mobile agent tunnel ${status.state}`,
-        status.lastError ?? "",
-      );
-    } catch (error) {
-      // error-policy:J4 optional native module — absence logged, app degrades
-      console.warn(
-        `${APP_LOG_PREFIX} Mobile agent tunnel unavailable:`,
-        error instanceof Error ? error.message : error,
-      );
-    } finally {
-      mobileAgentTunnelStartPromise = null;
-    }
-  })();
-
-  await mobileAgentTunnelStartPromise;
-}
-
-async function stopMobileAgentTunnel(): Promise<void> {
-  mobileAgentTunnelStartPromise = null;
-  try {
-    const { MobileAgentBridge } = await import(
-      "@elizaos/capacitor-mobile-agent-bridge"
-    );
-    await MobileAgentBridge.stopInboundTunnel();
-  } catch (error) {
-    // error-policy:J6 teardown — stop failure is logged
-    console.warn(
-      `${APP_LOG_PREFIX} Mobile agent tunnel stop failed:`,
-      error instanceof Error ? error.message : error,
-    );
-  }
-  try {
-    await mobileAgentTunnelListener?.remove();
-  } catch {
-    // error-policy:J6 teardown — the native tunnel stop above is
-    // authoritative
-  }
-  mobileAgentTunnelListener = null;
-}
-
 function initializeMobileRuntimeModeListener(): void {
   if (!isNative || mobileRuntimeModeListenerInstalled) return;
   mobileRuntimeModeListenerInstalled = true;
   document.addEventListener(MOBILE_RUNTIME_MODE_CHANGED_EVENT, () => {
-    const mode = getCurrentIosRuntimeConfig().mode;
-    if (mode === "cloud-hybrid" || mode === "local") {
+    try {
+      const mode = getCurrentIosRuntimeConfig().mode;
+      if (mode === "cloud-hybrid" || mode === "local") {
+        stopMobileDeviceBridge();
+        void initializeMobileDeviceBridge();
+        void configureMobileBackgroundRunner();
+        return;
+      }
       stopMobileDeviceBridge();
-      void stopMobileAgentTunnel();
-      void initializeMobileDeviceBridge();
       void configureMobileBackgroundRunner();
-      return;
+    } catch (error) {
+      // error-policy:J1 runtime-mode UI boundary — expose unsupported persisted modes.
+      renderBootFailure(error);
     }
-    if (mode === "tunnel-to-mobile") {
-      stopMobileDeviceBridge();
-      void initializeMobileAgentTunnel();
-      void configureMobileBackgroundRunner();
-      return;
-    }
-    stopMobileDeviceBridge();
-    void stopMobileAgentTunnel();
-    void configureMobileBackgroundRunner();
   });
 }
 
 function applyStoredDetachedShellTheme(): void {
-  applyUiTheme(resolveUiTheme(loadUiThemeMode()));
+  applyAppTheme();
 }
 
 /**
@@ -3571,7 +2396,9 @@ async function main(): Promise<void> {
   // #9947: when served at /embed inside a Telegram Mini App / Discord Activity
   // iframe, exchange the platform's signed launch payload for a scoped session
   // token and install it on the ElizaClient BEFORE any authenticated agent API
-  // call is made. No-op (and never throws) off the /embed route.
+  // call is made. No-op (and never throws) off the /embed route; a failed
+  // handshake is reported through the app logger by runEmbedHandshake and the
+  // app mounts unauthenticated.
   await runEmbedHandshake({ client });
 
   // The headless device gate owns the WebView when requested, so resolve it
@@ -3583,14 +2410,14 @@ async function main(): Promise<void> {
       initializeCapacitorBridge,
       installNativeRequestBridge: installIosLocalAgentNativeRequestBridge,
       installFetchBridge: installIosLocalAgentFetchBridge,
-      runSmoke: runIosFullBunSmokeFromDesktopShell,
+      runSmoke: runIosFullBunSmoke,
     })
   ) {
     return;
   }
 
   setupPlatformStyles();
-  applyBuildTimeIosConnection();
+  applyBuildTimeMobileConnection();
 
   try {
     await applyLaunchConnectionFromUrl();

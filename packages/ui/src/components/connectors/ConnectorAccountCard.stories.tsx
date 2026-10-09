@@ -4,7 +4,7 @@
  */
 
 import type { Meta, StoryObj } from "@storybook/react";
-import type { ConnectorAccountRecord } from "../../api/client-agent";
+import type { ConnectorAccountRecord } from "../../api/client-agent-connector-accounts";
 import { TranslationProvider } from "../../state/TranslationProvider";
 import { ConnectorAccountCard } from "./ConnectorAccountCard";
 

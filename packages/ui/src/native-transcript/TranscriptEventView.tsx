@@ -13,18 +13,18 @@
  * render correctly without any text inspection here.
  */
 
+import type {
+  TranscriptEvent,
+  TranscriptItem,
+  TranscriptViewModel,
+} from "@elizaos/contracts";
+import { reduceTranscriptEvents } from "@elizaos/contracts";
 import { type ReactNode, useMemo } from "react";
 import { parseSegments } from "../components/chat/message-parser-helpers";
 import { Alert } from "../components/ui/alert";
 import { Card } from "../components/ui/card";
 import { CodeBlock } from "../components/ui/code-block";
-import { cn } from "../lib/utils";
-import type {
-  TranscriptEvent,
-  TranscriptItem,
-  TranscriptViewModel,
-} from "./contract";
-import { reduceTranscriptEvents } from "./reduce";
+import { cn } from "../utils/cn";
 
 /** Fold a decoded event log into the render model (memoized by identity). */
 export function useTranscriptEvents(

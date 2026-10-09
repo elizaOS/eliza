@@ -1,13 +1,20 @@
 // Handles v1 cloud API v1 eliza agents agentid restore route traffic with route-local auth expectations.
+
+import { CONTAINER_BACKED_EXECUTION_TIERS } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
+import {
+  errorToResponse,
+  ValidationError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { CONTAINER_BACKED_EXECUTION_TIERS } from "@/db/schemas/agent-sandboxes";
-import { errorToResponse, ValidationError } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "POST, OPTIONS";
 
@@ -160,12 +167,37 @@ async function __hono_POST(
           : result.error === "No backup found"
             ? 404
             : result.error ===
-                "Stopped agents can only restore the latest backup"
+                  "Stopped agents can only restore the latest backup" ||
+                result.error ===
+                  "Backup is not in a restorable catalogue state" ||
+                result.error === "Another restore of this backup is in progress"
               ? 409
               : 500;
 
       return applyCorsHeaders(
         Response.json({ success: false, error: result.error }, { status }),
+        CORS_METHODS,
+      );
+    }
+
+    if (result.restoreOperation) {
+      // Manifest-v3 restores run in the restore coordinator: the agent keeps
+      // its current route until the restored runtime is attested and probed.
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: true,
+            data: {
+              status: "accepted",
+              restoredFromBackupId: result.restoreOperation.backupId,
+              restoreOperationId: result.restoreOperation.operationId,
+              restoreAttemptId: result.restoreOperation.restoreAttemptId,
+              phase: result.restoreOperation.phase,
+              alreadyInProgress: result.restoreOperation.replayed,
+            },
+          },
+          { status: 202 },
+        ),
         CORS_METHODS,
       );
     }

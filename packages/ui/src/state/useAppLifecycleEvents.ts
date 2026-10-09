@@ -27,22 +27,23 @@
  *    bfcache pageshow arriving together) do not stampede reconnects/refetches.
  */
 
-import { logger } from "@elizaos/logger";
-import type { MutableRefObject } from "react";
-import { useEffect, useRef } from "react";
-import { type ConversationMessage, client } from "../api";
+import type { NetworkStatusChangeDetail } from "@elizaos/core/protocol";
+import { type MutableRefObject, useEffect, useRef } from "react";
+
+import { client } from "../api/client";
 import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
+import type { ConversationMessage } from "../api/client-types-chat";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
   NETWORK_STATUS_CHANGE_EVENT,
-  type NetworkStatusChangeDetail,
 } from "../events";
+import { logger } from "../logger.ts";
 import { isAndroidCloudBuild } from "../platform/android-runtime";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 import { recoverMissedCurrentView } from "../view-action-handoff";
-import type { LoadConversationMessagesResult } from "./internal";
+import type { LoadConversationMessagesResult } from "./types";
 
 /** Storage key for the last-known active conversation id. */
 export const ACTIVE_CONVERSATION_STORAGE_KEY =

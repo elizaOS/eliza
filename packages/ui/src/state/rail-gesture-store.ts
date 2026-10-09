@@ -1,20 +1,3 @@
-/**
- * Live "the home↔launcher rail is mid-gesture" signal, so render work that
- * would re-rasterize the promoted rail layer (e.g. live-widget flushes from
- * useActivityEvents) can park until the swipe settles.
- *
- * The window is exactly the pager's rail-promotion window: armed only after
- * horizontal intent commits (or a coalesced down→up release resolves
- * horizontal), then released when the settle transition ends or the surface
- * unmounts. Pending taps and vertical gestures never enter this store. Reduced
- * motion keeps a restrained spatial settle, so it uses the same bounded window.
- *
- * Module-level store shared via globalThis (survives HMR + reachable from the
- * pager's imperative gesture handlers outside any React subtree) +
- * useSyncExternalStore, mirroring `shell-surface-store.ts`.
- */
-import * as React from "react";
-
 interface RailGestureStore {
   active: boolean;
   /** performance.now()/Date.now() timestamp of the activating edge, so parked
@@ -85,18 +68,4 @@ export function resetRailGestureForTests(): void {
   s.active = false;
   s.since = 0;
   for (const l of s.listeners) l();
-}
-
-// ── React binding ─────────────────────────────────────────────────────────────
-
-export function useRailGestureActive(): boolean {
-  const s = store();
-  return React.useSyncExternalStore(
-    (l) => {
-      s.listeners.add(l);
-      return () => s.listeners.delete(l);
-    },
-    () => s.active,
-    () => false,
-  );
 }

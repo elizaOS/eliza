@@ -1,14 +1,5 @@
-/**
- * Defines the ordered, React-free route contract for every host-owned tab.
- * Navigation paths and shell metadata derive from this table; aliases name a
- * canonical route and cannot redeclare its layout or surface policy.
- */
-
-import {
-  IMMERSIVE_WALLPAPER_SURFACE,
-  type PageLayoutManifest,
-  type SurfaceManifest,
-} from "@elizaos/core";
+import type { PageLayoutManifest, SurfaceManifest } from "@elizaos/core";
+import { IMMERSIVE_WALLPAPER_SURFACE } from "@elizaos/core/protocol";
 
 /** A route-sensitive surface policy used by launcher roots with opaque children. */
 export interface BuiltinRouteConditionalSurface {
@@ -20,49 +11,23 @@ export type BuiltinRouteSurfaceDeclaration =
   | SurfaceManifest
   | BuiltinRouteConditionalSurface;
 
-interface CanonicalBuiltinRouteDescriptor {
+interface BuiltinRouteDescriptor {
   readonly path: string;
   readonly layout: PageLayoutManifest;
-  /** Retired browser paths that redirect to this canonical route. */
-  readonly legacyPaths?: readonly string[];
   readonly surface?: BuiltinRouteSurfaceDeclaration;
+  /** Dynamic children composed by this builtin's host-owned renderer. */
+  readonly dynamicChildren?: readonly BuiltinDynamicViewDescriptor[];
 }
 
-interface BuiltinRouteAliasDescriptor {
-  readonly aliasOf: string;
+interface BuiltinDynamicViewDescriptor {
+  readonly viewId: string;
+  readonly componentExport: string;
 }
 
-type BuiltinRouteDescriptorSeed =
-  | CanonicalBuiltinRouteDescriptor
-  | BuiltinRouteAliasDescriptor;
-
-type InvalidAliasIds<
-  Routes extends Record<string, BuiltinRouteDescriptorSeed>,
-> = {
-  [Id in keyof Routes]: Routes[Id] extends {
-    readonly aliasOf: infer Target;
-  }
-    ? Target extends Exclude<keyof Routes, Id>
-      ? Routes[Target] extends BuiltinRouteAliasDescriptor
-        ? Id
-        : never
-      : Id
-    : never;
-}[keyof Routes];
-
-function defineBuiltinRoutes<
-  const Routes extends Record<string, BuiltinRouteDescriptorSeed>,
->(
-  routes: Routes,
-  ...invalidAliases: InvalidAliasIds<Routes> extends never
-    ? []
-    : ["Invalid builtin route aliases", InvalidAliasIds<Routes>]
-): Routes {
-  if (invalidAliases.length > 0) {
-    throw new Error("Invalid builtin route alias declaration");
-  }
-  return routes;
-}
+export const DATABASE_VECTOR_VIEW = Object.freeze({
+  viewId: "vector-browser",
+  componentExport: "VectorBrowserView",
+});
 
 const CONTENT_LAYOUT: PageLayoutManifest = Object.freeze({
   kind: "content",
@@ -119,14 +84,9 @@ const AMBIENT_IMMERSIVE_LAYOUT: PageLayoutManifest = Object.freeze({
   topology: "ambient",
 });
 
-/**
- * Ordered route descriptors for built-in tabs. Order is retained for callers
- * that enumerate {@link TAB_PATHS}; it matches the historical navigation map.
- */
-export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
+export const BUILTIN_ROUTE_DESCRIPTORS = {
   chat: {
     path: "/chat",
-    legacyPaths: ["/home"],
     layout: AMBIENT_IMMERSIVE_LAYOUT,
     surface: IMMERSIVE_WALLPAPER_SURFACE,
   },
@@ -145,10 +105,6 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
     },
   },
   stream: { path: "/stream", layout: CONTENT_LAYOUT },
-  "pendant-transcript": {
-    path: "/pendant/transcript",
-    layout: CONTENT_LAYOUT,
-  },
   apps: {
     path: "/apps",
     layout: IMMERSIVE_LAYOUT,
@@ -164,20 +120,22 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
     path: "/character/select",
     layout: FRAMED_PAGE_LAYOUT,
   },
+  clock: { path: "/clock", layout: FRAMED_PAGE_LAYOUT },
   automations: { path: "/automations", layout: FRAMED_PAGE_LAYOUT },
-  triggers: { aliasOf: "automations" },
   inventory: { path: "/wallet", layout: SHELL_WIDE_CONTENT_LAYOUT },
   documents: {
     path: "/character/documents",
     layout: WORKSPACE_LAYOUT,
-    legacyPaths: ["/documents", "/knowledge"],
   },
   files: { path: "/apps/files", layout: SHELL_CONTENT_LAYOUT },
   plugins: { path: "/apps/plugins", layout: WORKSPACE_LAYOUT },
   skills: { path: "/apps/skills", layout: WORKSPACE_LAYOUT },
   trajectories: { path: "/apps/trajectories", layout: WORKSPACE_LAYOUT },
   transcripts: { path: "/apps/transcripts", layout: CONTENT_LAYOUT },
-  relationships: { path: "/apps/relationships", layout: WORKSPACE_LAYOUT },
+  relationships: {
+    path: "/apps/relationships",
+    layout: WORKSPACE_LAYOUT,
+  },
   experience: { path: "/character/experience", layout: FRAMED_PAGE_LAYOUT },
   "character-skills": {
     path: "/character/skills",
@@ -188,9 +146,12 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
     layout: FRAMED_PAGE_LAYOUT,
     surface: { background: "opaque" },
   },
-  rolodex: { path: "/rolodex", layout: CONTENT_LAYOUT },
   runtime: { path: "/apps/runtime", layout: WORKSPACE_LAYOUT },
-  database: { path: "/apps/database", layout: FRAMED_PAGE_LAYOUT },
+  database: {
+    path: "/apps/database",
+    layout: FRAMED_PAGE_LAYOUT,
+    dynamicChildren: [DATABASE_VECTOR_VIEW],
+  },
   desktop: { path: "/desktop", layout: FULL_WORKSPACE_LAYOUT },
   settings: { path: "/settings", layout: FULL_WORKSPACE_LAYOUT },
   vault: { path: "/vault", layout: FRAMED_PAGE_LAYOUT },
@@ -200,58 +161,32 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
     layout: IMMERSIVE_LAYOUT,
     surface: IMMERSIVE_WALLPAPER_SURFACE,
   },
-} as const);
+} as const satisfies Record<string, BuiltinRouteDescriptor>;
 
 /** Built-in tab identifiers derived from the route authority. */
 export type BuiltinTab = keyof typeof BUILTIN_ROUTE_DESCRIPTORS;
 
-/** Built-in ids that own renderers rather than inheriting one through an alias. */
-export type CanonicalBuiltinTab = {
-  [Id in BuiltinTab]: (typeof BUILTIN_ROUTE_DESCRIPTORS)[Id] extends BuiltinRouteAliasDescriptor
-    ? never
-    : Id;
-}[BuiltinTab];
-
-/** A canonical descriptor after alias inheritance has been applied. */
-export interface ResolvedBuiltinRouteDescriptor
-  extends CanonicalBuiltinRouteDescriptor {
+export interface ResolvedBuiltinRouteDescriptor extends BuiltinRouteDescriptor {
   readonly id: BuiltinTab;
-  readonly canonicalId: CanonicalBuiltinTab;
 }
 
-const BUILTIN_ROUTE_BY_ID: Readonly<
-  Record<string, BuiltinRouteDescriptorSeed>
-> = BUILTIN_ROUTE_DESCRIPTORS;
+const BUILTIN_ROUTE_BY_ID: Readonly<Record<string, BuiltinRouteDescriptor>> =
+  BUILTIN_ROUTE_DESCRIPTORS;
 
-/** Built-in ids in stable declaration order, including compatibility aliases. */
+/** Built-in ids in stable declaration order. */
 export const BUILTIN_ROUTE_IDS = Object.freeze(
   Object.keys(BUILTIN_ROUTE_DESCRIPTORS) as BuiltinTab[],
 );
 
-/** Resolve a built-in route and inherit every classified field through aliases. */
+/** Resolve the route owned by a built-in tab. */
 export function resolveBuiltinRouteDescriptor(
   id: string,
 ): ResolvedBuiltinRouteDescriptor | null {
   const descriptor = BUILTIN_ROUTE_BY_ID[id];
   if (!descriptor) return null;
 
-  if ("aliasOf" in descriptor) {
-    const canonical = BUILTIN_ROUTE_BY_ID[descriptor.aliasOf];
-    if (!canonical || "aliasOf" in canonical) {
-      throw new Error(
-        `Builtin route alias "${id}" has invalid target "${descriptor.aliasOf}"`,
-      );
-    }
-    return {
-      id: id as BuiltinTab,
-      canonicalId: descriptor.aliasOf as CanonicalBuiltinTab,
-      ...canonical,
-    };
-  }
-
   return {
     id: id as BuiltinTab,
-    canonicalId: id as CanonicalBuiltinTab,
     ...descriptor,
   };
 }

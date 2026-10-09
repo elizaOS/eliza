@@ -10,7 +10,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const RM_RECURSIVE_SCRIPT = fileURLToPath(
-  new URL("../../../../../packages/scripts/rm-path-recursive.mjs", import.meta.url)
+  new URL("../../../../../packages/scripts/rm-path-recursive.ts", import.meta.url)
 );
 const PACKAGE_JSON = fileURLToPath(new URL("../../../package.json", import.meta.url));
 

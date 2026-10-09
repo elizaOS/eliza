@@ -9,9 +9,7 @@ import type { ControlMessageAction } from "./messaging";
 import type { Content, JsonObject, JsonValue, UUID } from "./primitives";
 import { Service, ServiceType } from "./service";
 
-// ============================================================================
 // Token & Wallet Types
-// ============================================================================
 
 export interface TokenBalance {
 	address: string;
@@ -60,9 +58,7 @@ export interface WalletPortfolio {
 	assets: WalletAsset[];
 }
 
-// ============================================================================
 // Liquidity Pool Types
-// ============================================================================
 
 export interface PoolTokenInfo {
 	mint: string;
@@ -103,9 +99,7 @@ export interface TransactionResult {
 	data?: JsonObject;
 }
 
-// ============================================================================
 // Message Bus Service Interface
-// ============================================================================
 
 export interface IMessageBusService extends Service {
 	notifyActionStart(
@@ -141,9 +135,7 @@ export abstract class IControlTransportService extends Service {
 	abstract sendMessage(message: ControlTransportMessage): Promise<void>;
 }
 
-// ============================================================================
 // Token & Wallet Interfaces
-// ============================================================================
 
 export abstract class ITokenDataService extends Service {
 	static override readonly serviceType = ServiceType.TOKEN_DATA;
@@ -192,9 +184,7 @@ export abstract class IWalletService extends Service {
 	): Promise<string>;
 }
 
-// ============================================================================
 // Liquidity Pool Interfaces
-// ============================================================================
 
 export abstract class ILpService extends Service {
 	static override readonly serviceType = "lp_pool";
@@ -237,9 +227,7 @@ export abstract class ILpService extends Service {
 	): Promise<Record<string, Partial<PoolInfo>>>;
 }
 
-// ============================================================================
 // Transcription & Audio Interfaces
-// ============================================================================
 
 export abstract class ITranscriptionService extends Service {
 	static override readonly serviceType = ServiceType.TRANSCRIPTION;
@@ -281,9 +269,7 @@ export abstract class ITranscriptionService extends Service {
 	abstract detectLanguage(audioPath: string | Buffer): Promise<string>;
 }
 
-// ============================================================================
 // Video Interfaces
-// ============================================================================
 
 export abstract class IVideoService extends Service {
 	static override readonly serviceType = ServiceType.VIDEO;
@@ -314,9 +300,7 @@ export abstract class IVideoService extends Service {
 	abstract getAvailableFormats(url: string): Promise<VideoFormat[]>;
 }
 
-// ============================================================================
 // Media Generation Interfaces
-// ============================================================================
 
 export type MediaGenerationMediaType = "image" | "video" | "audio";
 export type MediaGenerationAudioKind = "music" | "sfx" | "tts";
@@ -374,9 +358,7 @@ export abstract class IMediaGenerationService extends Service {
 	): Promise<MediaGenerationResponse>;
 }
 
-// ============================================================================
 // Browser Interfaces
-// ============================================================================
 
 /** Options for {@link IScreenCaptureService.startFrameCapture}. */
 export interface ScreenCaptureFrameOptions {
@@ -450,9 +432,7 @@ export abstract class IBrowserService extends Service {
 	abstract refresh(): Promise<void>;
 }
 
-// ============================================================================
 // PDF Interfaces
-// ============================================================================
 
 export abstract class IPdfService extends Service {
 	static override readonly serviceType = ServiceType.PDF;
@@ -477,9 +457,7 @@ export abstract class IPdfService extends Service {
 	abstract splitPdf(pdfPath: string | Buffer): Promise<Buffer[]>;
 }
 
-// ============================================================================
 // File Storage Interfaces
-// ============================================================================
 
 /** A stored file's identity + served handle. */
 export interface StoredFile {
@@ -556,53 +534,7 @@ export abstract class IFileStorageService extends Service {
 	abstract delete(fileName: string): Promise<boolean>;
 }
 
-// ============================================================================
-// Web Search Interfaces
-// ============================================================================
-
-export abstract class IWebSearchService extends Service {
-	static override readonly serviceType = ServiceType.WEB_SEARCH;
-
-	public readonly capabilityDescription =
-		"Web search and content discovery capabilities";
-
-	abstract search(
-		query: string,
-		options?: SearchOptions,
-	): Promise<SearchResponse>;
-
-	abstract searchNews(
-		query: string,
-		options?: NewsSearchOptions,
-	): Promise<SearchResponse>;
-
-	abstract searchImages(
-		query: string,
-		options?: ImageSearchOptions,
-	): Promise<SearchResponse>;
-
-	abstract searchVideos(
-		query: string,
-		options?: VideoSearchOptions,
-	): Promise<SearchResponse>;
-
-	abstract getSuggestions(query: string): Promise<string[]>;
-
-	abstract getTrendingSearches(region?: string): Promise<string[]>;
-
-	abstract getPageInfo(url: string): Promise<{
-		title: string;
-		description: string;
-		content: string;
-		metadata: Record<string, string>;
-		images: string[];
-		links: string[];
-	}>;
-}
-
-// ============================================================================
 // Email Interfaces
-// ============================================================================
 
 export abstract class IEmailService extends Service {
 	static override readonly serviceType = ServiceType.EMAIL;
@@ -639,9 +571,7 @@ export abstract class IEmailService extends Service {
 	): Promise<EmailMessage[]>;
 }
 
-// ============================================================================
 // Message Interfaces
-// ============================================================================
 
 export abstract class IMessagingService extends Service {
 	static override readonly serviceType = ServiceType.MESSAGE;
@@ -694,9 +624,7 @@ export abstract class IMessagingService extends Service {
 	): Promise<MessageInfo[]>;
 }
 
-// ============================================================================
 // Post/Social Media Interfaces
-// ============================================================================
 
 export abstract class IPostService extends Service {
 	static override readonly serviceType = ServiceType.POST;
@@ -746,9 +674,7 @@ export abstract class IPostService extends Service {
 	): Promise<PostInfo[]>;
 }
 
-// ============================================================================
 // Transcription & Audio Interfaces
-// ============================================================================
 
 /**
  * Options for audio transcription.
@@ -862,9 +788,7 @@ export interface TextToSpeechOptions {
 	response_format?: "mp3" | "opus" | "aac" | "flac";
 }
 
-// ============================================================================
 // Video Interfaces
-// ============================================================================
 
 /**
  * Video information.
@@ -960,9 +884,7 @@ export interface VideoProcessingOptions {
 	videoCodec?: string;
 }
 
-// ============================================================================
 // Browser Interfaces
-// ============================================================================
 
 /**
  * Browser navigation options.
@@ -1064,9 +986,7 @@ export interface TypeOptions {
 	clear?: boolean;
 }
 
-// ============================================================================
 // PDF Interfaces
-// ============================================================================
 
 /**
  * PDF text extraction result.
@@ -1118,144 +1038,7 @@ export interface PdfConversionOptions {
 	compression?: boolean;
 }
 
-// ============================================================================
-// Web Search Interfaces
-// ============================================================================
-
-/**
- * Web search options.
- */
-export interface SearchOptions {
-	/** Maximum results to return */
-	limit?: number;
-	/** Offset for pagination */
-	offset?: number;
-	/** Language code */
-	language?: string;
-	/** Region code */
-	region?: string;
-	/** Date range filter */
-	dateRange?: {
-		start?: Date;
-		end?: Date;
-	};
-	/** File type filter */
-	fileType?: string;
-	/** Limit to specific site */
-	site?: string;
-	/** Sort order */
-	sortBy?: "relevance" | "date" | "popularity";
-	/** Safe search level */
-	safeSearch?: "strict" | "moderate" | "off";
-}
-
-/**
- * A single search result.
- */
-export interface SearchResult {
-	/** Result title */
-	title: string;
-	/** Result URL */
-	url: string;
-	/** Result description/snippet */
-	description: string;
-	/** Display URL */
-	displayUrl?: string;
-	/** Thumbnail URL */
-	thumbnail?: string;
-	/** Published date */
-	publishedDate?: Date;
-	/** Source name */
-	source?: string;
-	/** Relevance score */
-	relevanceScore?: number;
-	/** Text snippet */
-	snippet?: string;
-}
-
-/**
- * Search response containing results.
- */
-export interface SearchResponse {
-	/** Original query */
-	query: string;
-	/** Search results */
-	results: SearchResult[];
-	/** Total available results */
-	totalResults?: number;
-	/** Search time in seconds */
-	searchTime?: number;
-	/** Query suggestions */
-	suggestions?: string[];
-	/** Token for next page */
-	nextPageToken?: string;
-	/** Related search queries */
-	relatedSearches?: string[];
-}
-
-/**
- * News search options.
- */
-export interface NewsSearchOptions extends SearchOptions {
-	/** Explicit maximum age in days; takes precedence over freshness. */
-	days?: number;
-	/** News category */
-	category?:
-		| "general"
-		| "business"
-		| "entertainment"
-		| "health"
-		| "science"
-		| "sports"
-		| "technology";
-	/** Freshness filter */
-	freshness?: "day" | "week" | "month";
-}
-
-/**
- * Image search options.
- */
-export interface ImageSearchOptions extends SearchOptions {
-	/** Image size filter */
-	size?: "small" | "medium" | "large" | "wallpaper" | "any";
-	/** Color filter */
-	color?:
-		| "color"
-		| "monochrome"
-		| "red"
-		| "orange"
-		| "yellow"
-		| "green"
-		| "blue"
-		| "purple"
-		| "pink"
-		| "brown"
-		| "black"
-		| "gray"
-		| "white";
-	/** Image type filter */
-	type?: "photo" | "clipart" | "line" | "animated";
-	/** Image layout filter */
-	layout?: "square" | "wide" | "tall" | "any";
-	/** License filter */
-	license?: "any" | "public" | "share" | "sharecommercially" | "modify";
-}
-
-/**
- * Video search options.
- */
-export interface VideoSearchOptions extends SearchOptions {
-	/** Duration filter */
-	duration?: "short" | "medium" | "long" | "any";
-	/** Resolution filter */
-	resolution?: "high" | "standard" | "any";
-	/** Quality filter */
-	quality?: "high" | "standard" | "any";
-}
-
-// ============================================================================
 // Email Interfaces
-// ============================================================================
 
 /**
  * Email address with optional name.
@@ -1399,9 +1182,7 @@ export interface EmailAccount {
 	quotaLimit?: number;
 }
 
-// ============================================================================
 // Message Interfaces
-// ============================================================================
 
 /**
  * Message participant information.
@@ -1604,9 +1385,7 @@ export interface MessageChannel {
 	unreadCount?: number;
 }
 
-// ============================================================================
 // Post/Social Media Interfaces
-// ============================================================================
 
 /**
  * Post media content.

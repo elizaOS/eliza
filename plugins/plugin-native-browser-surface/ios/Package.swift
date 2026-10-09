@@ -1,8 +1,8 @@
 // swift-tools-version: 5.9
 /**
- * Standalone executable proof for the iOS Browser owner and presentation
- * contract. CocoaPods compiles the contract beside the Capacitor plugin; this
- * package keeps its state semantics executable without a bridge host.
+ * Standalone checks for the shared iOS Browser identity predicate. CocoaPods
+ * compiles the same predicate beside the Capacitor plugin; this package tests
+ * its matching rules without a bridge host.
  */
 
 import PackageDescription

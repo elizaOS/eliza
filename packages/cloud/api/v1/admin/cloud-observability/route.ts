@@ -6,15 +6,15 @@
  * buffer; persisted analytics still live in usage/billing tables.
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   clearCloudTelemetry,
   getCloudTelemetrySnapshot,
-} from "@/lib/observability/cloud-backend-observability";
-import { parseClampedLimit } from "@/lib/utils/clamp-limit";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/observability/cloud-backend-observability";
+import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

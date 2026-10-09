@@ -1,48 +1,13 @@
-/**
- * Shared `vi.mock("@elizaos/core")` factory for the plugin's unit tests: stubs
- * the enums, logger, `Service` base, and id helpers the connector touches while
- * delegating to the real interaction protocol so callback encoding/layout is
- * exercised for real rather than re-stubbed.
- */
+/** Partial core mock retaining real public behavior with connector runtime fixtures. */
 import { vi } from "vitest";
 
 vi.mock("@elizaos/core", async () => {
   const { createHash } = await import("node:crypto");
 
-  // The interaction protocol (parse/serialize/layout/callback/normalize) is
-  // pure — types-only imports, no runtime deps — so the mock uses the real
-  // implementation rather than re-stubbing it.
-  const interactions = await import(
-    "../../../packages/core/src/messaging/interactions/index"
-  );
-
-  // The message-triage adapter base + service are equally pure (only `logger`
-  // and type imports), so the mock delegates to the real submodules rather than
-  // re-stubbing — `triage-adapter.ts` subclasses BaseMessageAdapter at module
-  // eval, so the real class must be present or `./index` fails to load.
-  const { BaseMessageAdapter } = await import(
-    "../../../packages/core/src/features/messaging/triage/adapters/base"
-  );
-  const { getDefaultTriageService } = await import(
-    "../../../packages/core/src/features/messaging/triage/triage-service"
-  );
-
-  // The LifeOps passive-connectors gate is pure env/settings inspection; the
-  // standalone-mode tests exercise its real truth table, so delegate.
+  const actualCore =
+    await vi.importActual<typeof import("@elizaos/core")>("@elizaos/core");
   const { lifeOpsPassiveConnectorsEnabled } = await import(
-    "../../../packages/core/src/lifeops-passive-connectors"
-  );
-  const { ElizaError } = await import("../../../packages/core/src/errors");
-
-  // The pairing integration is a pure service lookup plus reply formatting
-  // over a duck-typed PairingService; the DM-policy suites exercise its real
-  // fail-closed behavior (missing service, queue cap, reply claims), so it is
-  // delegated rather than re-stubbed.
-  const { checkPairingAllowed } = await import(
-    "../../../packages/core/src/services/pairing-integration"
-  );
-  const { toWellFormedUnicode, truncateWellFormed } = await import(
-    "../../../packages/core/src/utils/well-formed"
+    "../../../packages/host/src/passive-connectors"
   );
 
   const logger = {
@@ -134,16 +99,12 @@ vi.mock("@elizaos/core", async () => {
   }
 
   return {
-    ...interactions,
-    BaseMessageAdapter,
+    ...actualCore,
     ChannelType,
     CommandRegistryService,
     DEFAULT_CONNECTOR_ACCOUNT_ID: "default",
-    ElizaError,
     EventType,
-    checkPairingAllowed,
     getConfiguredOwnerEntityIds: () => [],
-    getDefaultTriageService,
     ModelType,
     Role,
     Service,
@@ -157,7 +118,5 @@ vi.mock("@elizaos/core", async () => {
     selectDefaultConnectorAccountId: (accountIds: readonly string[]) =>
       accountIds.includes("default") ? "default" : (accountIds[0] ?? "default"),
     stringToUuid,
-    toWellFormedUnicode,
-    truncateWellFormed,
   };
 });

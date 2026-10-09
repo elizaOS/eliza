@@ -19,24 +19,21 @@ import {
   registerCloudRoute,
 } from "../shell/cloud-route-registry";
 
+const PricingPage = lazy(() => import("../billing/PricingPage"));
+
 const PaymentRequestPage = lazy(
   () => import("./pages/payment/payment-request-page"),
 );
 const PaymentSuccessPage = lazy(
   () => import("./pages/payment/payment-success-page"),
 );
-const AppChargePaymentPage = lazy(
-  () => import("./pages/payment/app-charge-page"),
-);
-const ApprovalPage = lazy(() => import("./pages/approve/approval-page"));
-const BallotPage = lazy(() => import("./pages/ballot/ballot-page"));
+const ApprovalPage = lazy(() => import("./pages/approval-page"));
+const BallotPage = lazy(() => import("./pages/ballot-page"));
 const SensitiveRequestPage = lazy(
-  () => import("./pages/sensitive-requests/sensitive-request-page"),
+  () => import("./pages/sensitive-request-page"),
 );
-const PublicChatPage = lazy(() => import("./pages/chat/public-chat-page"));
-const InviteAcceptPage = lazy(
-  () => import("./pages/invite/invite-accept-page"),
-);
+const PublicChatPage = lazy(() => import("./pages/public-chat-page"));
+const InviteAcceptPage = lazy(() => import("./pages/invite-accept-page"));
 const LoginPage = lazy(() => import("./pages/login/login-page"));
 const AuthSuccessPage = lazy(() => import("./pages/auth/auth-success-page"));
 const AuthErrorPage = lazy(() => import("./pages/auth/auth-error-page"));
@@ -44,10 +41,8 @@ const CliLoginPage = lazy(() => import("./pages/auth/cli-login-page"));
 const EmailCallbackPage = lazy(
   () => import("./pages/auth/email-callback-page"),
 );
-const AppAuthAuthorizePage = lazy(
-  () => import("./pages/app-auth/app-authorize-page"),
-);
-const OidcContinuePage = lazy(() => import("./pages/oidc/oidc-continue-page"));
+const AppAuthAuthorizePage = lazy(() => import("./pages/app-authorize-page"));
+const OidcContinuePage = lazy(() => import("./pages/oidc-continue-page"));
 const SsoBridgePage = lazy(() => import("../sso-bridge/SsoBridgeRoute"));
 const TermsOfServicePage = lazy(
   () => import("./pages/legal/terms-of-service-page"),
@@ -74,6 +69,13 @@ export function registerPublicPages(): void {
   if (registered) return;
   registered = true;
 
+  registerCloudRoute({
+    path: "pricing",
+    element: PricingPage,
+    ...PUBLIC_ROUTE_ACCESS,
+    group: "marketing",
+  });
+
   // ── Payment (external/unauthenticated payers; the id IS the link) ──
   registerCloudRoute({
     path: "payment/:paymentRequestId",
@@ -84,12 +86,6 @@ export function registerPublicPages(): void {
   registerCloudRoute({
     path: "payment/success",
     element: PaymentSuccessPage,
-    ...PUBLIC_ROUTE_ACCESS,
-    group: "payment",
-  });
-  registerCloudRoute({
-    path: "payment/app-charge/:appId/:chargeId",
-    element: AppChargePaymentPage,
     ...PUBLIC_ROUTE_ACCESS,
     group: "payment",
   });

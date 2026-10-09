@@ -1,7 +1,7 @@
 /** Durable claim and fenced settlement for restore-v3 candidate cleanup. */
 
 import { Buffer } from "node:buffer";
-import type { AgentBackupRestoreV3OperationControl } from "@elizaos/shared";
+import { type AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { isValidUUID } from "../../lib/utils/validation";
 import type { DbTransaction } from "../client";

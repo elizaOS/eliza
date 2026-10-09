@@ -20,12 +20,12 @@ import {
 } from "lucide-react";
 import type * as React from "react";
 import type { ContinuousChatLatency } from "../../../hooks/useContinuousChat";
-import { cn } from "../../../lib/utils";
 import {
   hasLiveNativeTranscriptContent,
   LiveNativeTranscriptView,
   useLiveNativeTranscript,
 } from "../../../native-transcript/LiveNativeTranscript";
+import { cn } from "../../../utils/cn";
 import type {
   VoiceContinuousStatus,
   VoiceSpeakerMetadata,
@@ -342,7 +342,7 @@ export function ChatVoiceStatusBar({
       interimTranscript &&
       interimTranscript.trim().length > 0 ? (
         <span
-          className="min-w-0 flex-1 truncate italic text-muted"
+          className="min-w-0 flex-1 truncate italic text-muted-strong"
           data-testid="chat-voice-interim-transcript"
           title={interimTranscript}
         >

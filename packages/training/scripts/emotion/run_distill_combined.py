@@ -50,11 +50,9 @@ import sys
 
 # Make sibling-package imports work when invoked as a script.
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 
-from packages.training.scripts.emotion import distill_wav2small as dw  # noqa: E402
-from packages.training.scripts.emotion import run_distill_ravdess as rdr  # noqa: E402
+from eliza_training.emotion import distill_wav2small as dw  # noqa: E402
+from eliza_training.emotion import run_distill_ravdess as rdr  # noqa: E402
 
 LOG = logging.getLogger("run_distill_combined")
 

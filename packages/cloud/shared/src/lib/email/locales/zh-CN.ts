@@ -48,6 +48,9 @@ export const emailMessages: EmailMessages = {
   containerShutdownWarning: {
     subject: '🚨 紧急：容器 "{{containerName}}" 将在 48 小时内关闭',
   },
+  agentRetentionDeletionNotice: {
+    subject: '您的智能体 "{{agentName}}" 将在 {{daysRemaining}} 天后被删除',
+  },
   footer: {
     copyright: "© {{year}} Eliza Cloud. 保留所有权利。",
   },

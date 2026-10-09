@@ -1,55 +1,23 @@
 /**
- * Context-retrieval pass for the PII scrub pipeline (#14805).
- *
- * Stage position: between candidate-mining and the LLM-pass. A scrubber that
- * sees only the chunk cannot classify: is "Paris" a person or a city? does
- * "Dr. K" corefer with an entity already pseudonymized elsewhere? Before the
- * LLM-pass judges a chunk, this pass gathers related memories, knowledge,
- * conversations, and resolved-entity candidates so the verdict is
- * context-aware, and extracts the per-chunk pseudonym-assignment slice so the
- * rewrite is consistent with the corpus-wide map
- * ({@link ./pii-pseudonym-map | CorpusPseudonymMap}).
- *
- * Retrieval sources (all existing infra — this module builds none):
- * - **Entity resolution** — the alias backbone. The structural
- *   {@link PiiEntityResolverStore} seam matches `EntityStore.resolve`
- *   (`packages/agent/src/services/knowledge-graph/entity-store.ts`) exactly, so
- *   the pipeline wires `entityResolverFromStore(kg.getEntityStore())` with zero
- *   adaptation; standalone/batch callers construct the store with just
- *   `{agentId, adapter.db.execute}` per the issue. Identity merges keep going
- *   through the merge engine — this pass only READS resolution candidates.
- * - **Knowledge** — `DocumentService.searchDocuments` (hybrid vector+BM25).
- * - **Memories** — `runtime.searchMemories` with the caller-supplied embedding
- *   from `runtime.useModel(TEXT_EMBEDDING)`; the embeddings doctrine holds
- *   (a failure THROWS — never fabricate). When no embedding model is
- *   registered the source is structurally absent (a configuration fact,
- *   recorded in `sourcesQueried`), not silently empty.
- * - **Conversations** — `adapter.searchMessages` FTS; requires explicit
- *   `roomIds` (enumerate via `getRoomsByWorld` / `getRoomsForParticipant`).
- *
- * Failure doctrine: an ABSENT source is skipped and audited; a PRESENT source
- * that throws propagates (fail-closed — the scrub rails retry the item;
- * degraded context silently producing a wrong verdict is the failure mode this
- * pass exists to prevent).
- *
- * Secrecy: the assembled pack text contains retrieved corpus fragments (they
- * flow only to the PII_SCRUB model seam, local-first by registration priority)
- * but NEVER the pseudonym map — assignments travel separately as the
- * `{entityClusterId, surrogate, kind}` slice for exactly the clusters relevant
- * to this chunk, never the whole secret artifact and never a real alias.
+ * Retrieves complete authorized context before PII classification and selects relevant
+ * pseudonym assignments. Absent sources are recorded; failures from configured sources
+ * propagate. Conversation search requires explicit room IDs. Retrieved fragments go only to
+ * the PII scrub model; the secret alias map never enters the prompt, and assignments contain
+ * only cluster ID, surrogate, and kind.
  */
 
 import { ElizaError } from "../errors.js";
 import type { PiiScrubRequestPayload } from "../types/events.js";
-import type { Memory, UUID } from "../types/index.js";
-import type {
-	PiiPseudonymAssignment,
-	TextEmbeddingParams,
+import type { Memory } from "../types/memory.js";
+import {
+	ModelType,
+	type PiiPseudonymAssignment,
+	type TextEmbeddingParams,
 } from "../types/model.js";
-import { ModelType } from "../types/model.js";
+import type { UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { Service } from "../types/service.js";
-import { toWellFormedUnicode } from "../utils/well-formed.js";
+import { toWellFormedUnicode } from "../utils/unicode.js";
 import { canonicalKind } from "./entity-recognizer.js";
 import type { CorpusPseudonymMap } from "./pii-pseudonym-map.js";
 
@@ -189,106 +157,109 @@ export interface AssembleContextPackRequest {
 	 * and leave fuzzy ones to the model.
 	 */
 	readonly minEntityConfidence?: number;
-	/** @deprecated Retained for source compatibility; every fragment is included. */
-	readonly maxFragments?: number;
-	/** @deprecated Retained for source compatibility; pack text is never clipped. */
-	readonly maxChars?: number;
 }
 
 const DEFAULT_MIN_ENTITY_CONFIDENCE = 0.6;
-const COMPLETE_SOURCE_INITIAL_PREFIX = 64;
+const COMPLETE_SOURCE_PAGE_SIZE = 64;
 
 interface PrefixRequest {
 	readonly limit: number;
 	readonly offset: number;
 }
 
-function sameOrderedValues<T>(
-	left: readonly T[],
-	right: readonly T[],
-): boolean {
-	return JSON.stringify(left) === JSON.stringify(right);
+function requiredSourceIdentity(
+	source: string,
+	value: { readonly id?: UUID },
+): string {
+	if (value.id) return value.id;
+	throw new ElizaError(
+		`PII context ${source} source returned an unidentifiable row`,
+		{
+			code: "PII_CONTEXT_SOURCE_INVALID_PAGE",
+			context: { source },
+			severity: "fatal",
+		},
+	);
 }
 
-async function readStableCompletePrefix<T>(
+async function readStableCompletePages<T>(
 	source: string,
 	fetchPrefix: (request: PrefixRequest) => Promise<readonly T[]>,
+	identity: (value: T) => string,
 ): Promise<readonly T[]> {
-	let limit = COMPLETE_SOURCE_INITIAL_PREFIX;
-	let previous: readonly T[] = [];
+	const complete: T[] = [];
+	const seen = new Set<string>();
+	let offset = 0;
 
 	for (;;) {
-		const current = await fetchPrefix({ limit, offset: 0 });
-		if (current.length > limit) {
+		const current = await fetchPrefix({
+			limit: COMPLETE_SOURCE_PAGE_SIZE,
+			offset,
+		});
+		if (current.length > COMPLETE_SOURCE_PAGE_SIZE) {
 			throw new ElizaError(
 				`PII context ${source} source exceeded its requested page`,
 				{
 					code: "PII_CONTEXT_SOURCE_INVALID_PAGE",
-					context: { source, requested: limit, received: current.length },
+					context: {
+						source,
+						offset,
+						requested: COMPLETE_SOURCE_PAGE_SIZE,
+						received: current.length,
+					},
 					severity: "fatal",
 				},
 			);
 		}
-		if (
-			previous.length > 0 &&
-			!sameOrderedValues(current.slice(0, previous.length), previous)
-		) {
-			throw new ElizaError(
-				`PII context ${source} source changed during traversal`,
-				{
-					code: "PII_CONTEXT_SOURCE_UNSTABLE",
-					context: { source, requested: limit },
-				},
-			);
+
+		for (const value of current) {
+			const key = identity(value);
+			if (seen.has(key)) {
+				throw new ElizaError(
+					`PII context ${source} source repeated a result during traversal`,
+					{
+						code: "PII_CONTEXT_SOURCE_UNSTABLE",
+						context: { source, offset, repeatedIdentity: key },
+					},
+				);
+			}
+			seen.add(key);
+			complete.push(value);
 		}
 
-		if (current.length < limit) {
+		if (current.length < COMPLETE_SOURCE_PAGE_SIZE) {
 			const continuation = await fetchPrefix({
 				limit: 1,
-				offset: current.length,
+				offset: offset + current.length,
 			});
 			if (continuation.length > 0) {
 				throw new ElizaError(
 					`PII context ${source} source returned a capped prefix`,
 					{
 						code: "PII_CONTEXT_SOURCE_INCOMPLETE",
-						context: { source, returned: current.length, requested: limit },
+						context: {
+							source,
+							offset,
+							returned: current.length,
+							requested: COMPLETE_SOURCE_PAGE_SIZE,
+						},
 					},
 				);
 			}
-
-			const verified = await fetchPrefix({ limit, offset: 0 });
-			const verifiedContinuation = await fetchPrefix({
-				limit: 1,
-				offset: verified.length,
-			});
-			if (
-				!sameOrderedValues(current, verified) ||
-				verifiedContinuation.length > 0
-			) {
-				throw new ElizaError(
-					`PII context ${source} source changed during verification`,
-					{
-						code: "PII_CONTEXT_SOURCE_UNSTABLE",
-						context: { source, requested: limit },
-					},
-				);
-			}
-			return verified;
+			return complete;
 		}
 
-		previous = current;
-		if (limit > Math.floor(Number.MAX_SAFE_INTEGER / 2)) {
+		if (offset > Number.MAX_SAFE_INTEGER - current.length) {
 			throw new ElizaError(
 				`PII context ${source} result count is not representable`,
 				{
 					code: "PII_CONTEXT_SOURCE_TOO_LARGE",
-					context: { source, requested: limit },
+					context: { source, offset, pageSize: current.length },
 					severity: "fatal",
 				},
 			);
 		}
-		limit *= 2;
+		offset += current.length;
 	}
 }
 
@@ -354,8 +325,6 @@ export async function assembleContextPack(
 		map,
 		rulesetVersion,
 		minEntityConfidence = DEFAULT_MIN_ENTITY_CONFIDENCE,
-		maxFragments: _maxFragments,
-		maxChars: _maxChars,
 	} = request;
 
 	const sourcesQueried: string[] = [];
@@ -512,8 +481,6 @@ export interface RuntimeContextSourceOptions {
 	 * When omitted, the messages source is structurally absent.
 	 */
 	readonly roomIds?: readonly UUID[];
-	/** @deprecated Retained for compatibility; complete source traversal ignores it. */
-	readonly limit?: number;
 	/**
 	 * The entity resolver, wired by the pipeline from the knowledge-graph
 	 * service (`entityResolverFromStore(kg.getEntityStore())`). Core does not
@@ -575,22 +542,22 @@ export function sourcesFromRuntime(
 	if (runtime.getModel(ModelType.TEXT_EMBEDDING)) {
 		sources.searchMemories = async (query) => {
 			const params: TextEmbeddingParams = { text: query };
-			// Embeddings doctrine: a failure here THROWS (#9324) — the pass never
+			// Embeddings doctrine: a failure here THROWS — the pass never
 			// degrades to a fabricated empty context for a wired source.
 			const embedding = await runtime.useModel(
 				ModelType.TEXT_EMBEDDING,
 				params,
 			);
-			const memories = await readStableCompletePrefix(
+			const memories = await readStableCompletePages(
 				"memories",
 				async ({ limit, offset }) =>
 					runtime.searchMemories({
 						embedding,
-						query,
 						tableName: "messages",
 						count: limit,
 						offset,
 					}),
+				(memory) => requiredSourceIdentity("memories", memory),
 			);
 			return memories
 				.filter((memory) => typeof memory.content.text === "string")
@@ -608,7 +575,7 @@ export function sourcesFromRuntime(
 	const roomIds = options.roomIds;
 	if (roomIds && roomIds.length > 0) {
 		sources.searchMessages = async (query) => {
-			const hits = await readStableCompletePrefix(
+			const hits = await readStableCompletePages(
 				"messages",
 				async ({ limit, offset }) =>
 					runtime.adapter.searchMessages({
@@ -617,6 +584,7 @@ export function sourcesFromRuntime(
 						limit,
 						offset,
 					}),
+				(hit) => requiredSourceIdentity("messages", hit.memory),
 			);
 			return hits
 				.filter((hit) => typeof hit.memory.content.text === "string")

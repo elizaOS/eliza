@@ -8,14 +8,12 @@
  */
 import { randomUUID } from "node:crypto";
 import { ChannelType, type Metadata, type UUID } from "@elizaos/core";
-import { and, desc, eq, lt, sql } from "drizzle-orm";
-import {
-  channelParticipantsTable,
-  channelTable,
-  messageServerAgentsTable,
-  messageServerTable,
-  messageTable,
-} from "../schema/index";
+import { and, desc, eq, lt, or, type SQL, sql } from "drizzle-orm";
+import { channelTable } from "../schema/channel";
+import { channelParticipantsTable } from "../schema/channelParticipant";
+import { messageTable } from "../schema/message";
+import { messageServerTable } from "../schema/messageServer";
+import { messageServerAgentsTable } from "../schema/messageServerAgent";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
 
@@ -600,19 +598,35 @@ export class MessagingStore implements Store {
   async getMessagesForChannel(
     channelId: UUID,
     limit: number = 50,
-    beforeTimestamp?: Date
+    beforeTimestamp?: Date,
+    beforeMessageId?: UUID
   ): Promise<Message[]> {
     return this.ctx.withRetry(async () => {
       const conditions = [eq(messageTable.channelId, channelId)];
       if (beforeTimestamp) {
-        conditions.push(lt(messageTable.createdAt, beforeTimestamp));
+        // A bare timestamp cursor drops the rest of a same-timestamp group
+        // that straddled the previous page boundary. When the caller also
+        // names the last row's id, the cursor becomes the exact
+        // (createdAt, id) position this descending composite sort walks.
+        if (beforeMessageId) {
+          conditions.push(
+            or(
+              lt(messageTable.createdAt, beforeTimestamp),
+              and(eq(messageTable.createdAt, beforeTimestamp), lt(messageTable.id, beforeMessageId))
+            ) as SQL
+          );
+        } else {
+          conditions.push(lt(messageTable.createdAt, beforeTimestamp));
+        }
       }
 
       const query = this.db
         .select()
         .from(messageTable)
         .where(and(...conditions))
-        .orderBy(desc(messageTable.createdAt))
+        // The id tiebreak gives same-timestamp rows one deterministic order;
+        // without it two identical calls can return different pages.
+        .orderBy(desc(messageTable.createdAt), desc(messageTable.id))
         .limit(limit);
 
       const results = await query;

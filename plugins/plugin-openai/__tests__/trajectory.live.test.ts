@@ -4,9 +4,8 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { runWithTrajectoryContext } from "@elizaos/core";
+import { describeLive } from "@elizaos/testing/live";
 import { describe, expect, it } from "vitest";
-
-import { describeLive } from "../../../packages/app-core/test/helpers/live-agent-test";
 import { handleTextLarge, handleTextSmall } from "../models/text";
 
 interface CapturedLlmCall {

@@ -7,18 +7,16 @@ import Decimal from "decimal.js";
 import { sql } from "drizzle-orm";
 import { type SqlExecutor, sqlRows } from "../../db/execute-helpers";
 import { dbWrite, writeTransaction } from "../../db/helpers";
+import { appsRepository } from "../../db/repositories/apps";
 import {
-  appsRepository,
-  type CreditPack,
   type CreditTransaction,
-  creditPacksRepository,
   creditTransactionsRepository,
   type NewCreditTransaction,
-  organizationsRepository,
-} from "../../db/repositories";
+} from "../../db/repositories/credit-transactions";
+import { organizationsRepository } from "../../db/repositories/organizations";
 import { CacheInvalidation } from "../cache/invalidation";
 import { invalidateOrganizationCache } from "../cache/organizations-cache";
-import { canSendLowCreditsEmail, markLowCreditsEmailSent } from "../email/utils/rate-limiter";
+import { canSendLowCreditsEmail, markLowCreditsEmailSent } from "../email/rate-limiter";
 import { calculateCost, getProviderFromModel } from "../pricing";
 import { PROVIDER_DEFAULT_MAX_RETRIES, PROVIDER_MAX_BACKOFF_DELAY_MS } from "../providers/_http";
 import { getRequestTaskDefer } from "../runtime/request-context";
@@ -120,7 +118,7 @@ export function assertCreditRefundWithinReservation(params: {
  * + 1), each try holding a fresh per-attempt timeout of up to
  * getRouteTimeoutMs(800) — 800s being the largest metered route budget
  * (`v1/apps/[id]/chat` ROUTE_MAX_DURATION) — with capped backoff between
- * tries, and `withProviderFallback` can run that whole ladder once per
+ * tries, and `withRetryableFallback` can run that whole ladder once per
  * provider (primary + fallback). The prior fixed 20-minute grace sat INSIDE
  * that window, so the sweep refunded holds whose settle was still coming and
  * the settle lane then refunded again under its own idempotency key. A truly
@@ -195,6 +193,31 @@ export class InsufficientCreditsError extends Error {
       `Insufficient credits. Required: $${required.toFixed(4)}, Available: $${available.toFixed(4)}`,
     );
     this.name = "InsufficientCreditsError";
+  }
+}
+
+export const BILLING_HOLD_ACTIVE_CODE = "billing_hold_active";
+
+/**
+ * Thrown at paid admission while an underfunding payment reversal holds the
+ * organization (#22930; see `billing-hold.ts`). It extends
+ * {@link InsufficientCreditsError} so every paid route that already maps a
+ * funding denial to HTTP 402 fails closed the same way.
+ */
+export class BillingHoldActiveError extends InsufficientCreditsError {
+  readonly code = BILLING_HOLD_ACTIVE_CODE;
+  readonly organizationId: string;
+  readonly outstandingUsd: string;
+
+  constructor(organizationId: string, outstandingUsd: string) {
+    super(Number(outstandingUsd), 0, BILLING_HOLD_ACTIVE_CODE);
+    this.name = "BillingHoldActiveError";
+    this.message =
+      outstandingUsd === "0.000000"
+        ? "Paid usage is on hold because of a reversed payment. Contact support to restore it."
+        : `Paid usage is on hold because a refunded or disputed payment left $${new Decimal(outstandingUsd).toFixed(2)} unpaid. Add funds at /cloud/billing to repay it and restore paid usage.`;
+    this.organizationId = organizationId;
+    this.outstandingUsd = outstandingUsd;
   }
 }
 
@@ -543,7 +566,7 @@ function toCreditTransaction(row: CreditMutationRow): CreditTransaction {
 }
 
 /**
- * Service for managing credits, transactions, and credit packs.
+ * Service for managing credits and credit transactions.
  */
 export class CreditsService {
   private async applyCreditIncrease(
@@ -814,6 +837,7 @@ export class CreditsService {
       logger.error("[CreditsService] Failed to invalidate org cache:", error);
     });
     await CacheInvalidation.onCreditMutation(organizationId);
+    await CacheInvalidation.onPurchasedCreditMutation(organizationId);
   }
 
   async deductCredits(params: DeductCreditsParams): Promise<{
@@ -1263,7 +1287,9 @@ export class CreditsService {
    * Claw back credits after a Stripe refund / chargeback (#10920). The live
    * organizations table forbids negative credit balances, so this applies as much
    * of the clawback as the current balance can cover, floors the balance at zero,
-   * and records any unrecovered shortfall in transaction metadata for follow-up.
+   * and records any unrecovered shortfall in transaction metadata plus an
+   * organization billing hold that fails paid admission closed until the
+   * shortfall is repaid or the dispute is reinstated (#22930).
    * Idempotent on `stripePaymentIntentId` (key it on the refund/dispute so a
    * re-delivered webhook doesn't double-claw).
    */
@@ -1405,6 +1431,30 @@ export class CreditsService {
             stripe_payment_intent_id,
             created_at
         ),
+        -- An unrecovered shortfall places the organization billing hold in the
+        -- same statement as the clawback, so no committed shortfall can exist
+        -- without its hold (#22930).
+        shortfall_hold AS (
+          INSERT INTO organization_payment_reversal_holds (
+            organization_id,
+            reason,
+            clawback_transaction_id,
+            shortfall_usd,
+            outstanding_usd,
+            stripe_payment_intent_id
+          )
+          SELECT
+            inserted.organization_id,
+            'reversal_shortfall',
+            inserted.id,
+            candidate.shortfall_amount,
+            candidate.shortfall_amount,
+            ${originalPaymentIntentId}
+          FROM inserted
+          CROSS JOIN candidate
+          WHERE candidate.shortfall_amount > 0
+          RETURNING id
+        ),
         updated AS (
           UPDATE organizations AS o
           SET
@@ -1532,6 +1582,8 @@ export class CreditsService {
     invalidateOrganizationCache(params.organizationId).catch((error) => {
       logger.error("[CreditsService] Failed to invalidate org cache:", error);
     });
+    // A reversal lowers the purchased-credit total behind the RPM tier.
+    await CacheInvalidation.onPurchasedCreditMutation(params.organizationId);
     return result;
   }
 
@@ -2168,24 +2220,26 @@ export class CreditsService {
     if (params.preserveInferenceBalanceHint) {
       try {
         // The actual affiliate debit may exceed the estimate held by the
-        // Durable Object. Publish the committed lower ceiling before the
-        // authoritative read so a concurrent lease cannot spend that delta.
+        // Durable Object. Publish the committed lower ceiling first so a
+        // concurrent lease cannot spend that delta before the revision advances.
         await params.inferenceBalanceFence?.lowerCommittedBalance(
           outcome.newBalance,
           outcome.balanceRevision,
         );
         await lowerOrgBalanceHint(params.organizationId, outcome.newBalance, Date.now());
         const balanceAt = Date.now();
-        const snapshot = await this.getOrganizationBalanceSnapshot(params.organizationId);
+        // The settlement transaction read the row FOR UPDATE and returned the
+        // committed balance and revision; publish that result directly rather
+        // than reading the organization back.
         await params.inferenceBalanceFence?.publishAuthoritativeBalance(
-          snapshot.balanceUsd,
-          snapshot.revision,
+          outcome.newBalance,
+          outcome.balanceRevision,
         );
         await republishOrgBalanceHint(
           params.organizationId,
-          snapshot.balanceUsd,
+          outcome.newBalance,
           balanceAt,
-          snapshot.revision,
+          outcome.balanceRevision,
         );
       } catch (cause) {
         // error-policy:J2 preserve the failed publication after invalidating its cache projection.
@@ -2956,32 +3010,6 @@ export class CreditsService {
       reservationTransactionId: null,
       reconcile: async () => {},
     };
-  }
-
-  // Credit Packs
-  async getCreditPackById(id: string): Promise<CreditPack | undefined> {
-    return await creditPacksRepository.findById(id);
-  }
-
-  async getCreditPackByStripePriceId(stripePriceId: string): Promise<CreditPack | undefined> {
-    return await creditPacksRepository.findByStripePriceId(stripePriceId);
-  }
-
-  /**
-   * List active credit packs with caching.
-   * Credit packs rarely change so we cache aggressively with SWR.
-   */
-  async listActiveCreditPacks(): Promise<CreditPack[]> {
-    // Import cache lazily to avoid circular dependencies
-    const { creditPacksCache } = await import("../cache/credit-packs-cache");
-
-    return await creditPacksCache.getWithSWR(async () => {
-      return await creditPacksRepository.listActive();
-    });
-  }
-
-  async listAllCreditPacks(): Promise<CreditPack[]> {
-    return await creditPacksRepository.listAll();
   }
 }
 

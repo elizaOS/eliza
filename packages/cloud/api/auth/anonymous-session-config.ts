@@ -3,7 +3,7 @@
  * mint routes, including the spend and lifetime safety bounds.
  */
 
-import { logger } from "@/lib/utils/logger";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 
 export const MAX_ANONYMOUS_EXPIRY_DAYS = 365;
 export const MAX_ANONYMOUS_MESSAGE_LIMIT = 1000;

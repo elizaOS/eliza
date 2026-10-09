@@ -1,0 +1,269 @@
+/**
+ * Defines the native detector and embedder ABI consumed by plugin-vision.
+ * Detector boxes use source-image pixels with a top-left origin. Six landmark
+ * pairs follow BlazeFace order: left eye, right eye, nose, mouth, left ear,
+ * right ear. Embeddings are L2-normalized 128-dimensional vectors.
+ *
+ * Distinct handles are reentrant; callers synchronize access to a shared
+ * handle. Status-returning operations use negative errno codes for failure;
+ * distance helpers return floating-point measurements. Model-family metadata
+ * is checked by the GGUF loader before a session handle is exposed.
+ *
+ * Detector provenance: Bazarevsky et al., arXiv:1907.05047 and MediaPipe's
+ * front-face model. Embedding converters pin FaceNet or ArcFace upstream
+ * weights; see packages/scripts/plugins/plugin-vision/native/face-cpp/blazeface_to_gguf.py and packages/scripts/plugins/plugin-vision/native/face-cpp/face_embed_to_gguf.py.
+ */
+
+#ifndef FACE_FACE_H
+#define FACE_FACE_H
+
+#include <stdint.h>
+#include <stddef.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Pinned model variants this header is dimensioned around. The GGUF
+ * conversion scripts (`packages/scripts/plugins/plugin-vision/native/face-cpp/blazeface_to_gguf.py`,
+ * `packages/scripts/plugins/plugin-vision/native/face-cpp/face_embed_to_gguf.py`) emit artifacts that declare these
+ * as their `face.detector` / `face.embedder` keys. Loaders refuse a
+ * GGUF whose tag does not match. */
+#define FACE_DETECTOR_BLAZEFACE_FRONT  "blazeface_front"
+#define FACE_EMBEDDER_FACENET_128      "facenet_128"
+#define FACE_EMBEDDER_ARCFACE_MINI_128 "arcface_mini_128"
+
+/* BlazeFace front model is dimensioned around a 128x128 RGB input. */
+#define FACE_DETECTOR_INPUT_SIZE       128
+
+/* Anchor count for the BlazeFace front model: two strides (8, 16) on a
+ * 128x128 input grid, with (2, 6) anchors per cell respectively:
+ *   (128/8)^2  * 2 = 256 * 2 = 512
+ *   (128/16)^2 * 6 = 64  * 6 = 384
+ *   total                     = 896
+ * The anchor decoder in `src/face_anchor_decode.c` produces exactly
+ * this many anchors. */
+#define FACE_DETECTOR_ANCHOR_COUNT     896
+
+/* 6 keypoints per detection, packed as (x, y) pairs. */
+#define FACE_DETECTOR_KEYPOINT_COUNT   6
+#define FACE_DETECTOR_KEYPOINT_FLOATS  (FACE_DETECTOR_KEYPOINT_COUNT * 2)
+
+/* Aligned crop dimensions used by both the embedding network and the
+ * affine-warp helper (`src/face_align.c`). Standard for ArcFace /
+ * FaceNet small variants. */
+#define FACE_EMBED_CROP_SIZE           112
+
+/* Embedding dimensionality. Both supported embedders emit 128-d L2
+ * normalized vectors. */
+#define FACE_EMBED_DIM                 128
+
+/*
+ * Detection record. Coordinates are in source-image absolute pixels;
+ * `(x, y)` is the bbox top-left and `(w, h)` are the bbox dimensions.
+ * `confidence` is the post-sigmoid score in [0, 1]. `landmarks` packs
+ * 6 (x, y) keypoint coordinates in source-image absolute pixels, in
+ * the BlazeFace order documented at the top of this header.
+ */
+typedef struct face_detection {
+    float x;
+    float y;
+    float w;
+    float h;
+    float confidence;
+    float landmarks[FACE_DETECTOR_KEYPOINT_FLOATS];
+} face_detection;
+
+/* Opaque handles for each loaded model. */
+typedef struct face_detect_session  *face_detect_handle;
+typedef struct face_embed_session   *face_embed_handle;
+
+/* ---------------- detection ---------------- */
+
+/*
+ * Open a BlazeFace session against a GGUF produced by
+ * `packages/scripts/plugins/plugin-vision/native/face-cpp/blazeface_to_gguf.py`. The GGUF must declare its
+ * `face.detector` key as FACE_DETECTOR_BLAZEFACE_FRONT. Returns 0 on
+ * success and writes the new handle into `*out`. Returns `-ENOENT`
+ * for missing GGUF, `-EINVAL` for shape / version mismatch.
+ */
+int face_detect_open(const char *gguf_path, face_detect_handle *out);
+
+/*
+ * Run detection over a contiguous RGB plane. `stride` is the byte
+ * distance between consecutive rows; for tightly packed images that is
+ * `w * 3`. Allowing a separate stride lets callers feed sub-rectangles
+ * of a larger frame buffer without copy.
+ *
+ *   - `conf` filters candidates by post-sigmoid score before NMS
+ *     (e.g. 0.5).
+ *
+ * The library writes up to `cap` detections into `out` and the actual
+ * count into `*count`. Returns 0 on success, `-ENOSPC` if the buffer
+ * was too small for the detected box count (the caller should re-call
+ * with a bigger buffer; `*count` then carries the required size).
+ */
+int face_detect(face_detect_handle handle,
+                const uint8_t *rgb,
+                int w,
+                int h,
+                int stride,
+                float conf,
+                face_detection *out,
+                size_t cap,
+                size_t *count);
+
+/* Release a session. Returns 0 on success. Safe with NULL. */
+int face_detect_close(face_detect_handle handle);
+
+/* ---------------- recognition ---------------- */
+
+/*
+ * Open a face-embedding session against a GGUF produced by
+ * `packages/scripts/plugins/plugin-vision/native/face-cpp/face_embed_to_gguf.py`. The GGUF must declare its
+ * `face.embedder` key as one of FACE_EMBEDDER_FACENET_128 /
+ * FACE_EMBEDDER_ARCFACE_MINI_128. Returns 0 on success and writes the
+ * new handle into `*out`.
+ */
+int face_embed_open(const char *gguf_path, face_embed_handle *out);
+
+/*
+ * Compute a 128-d L2-normalized embedding for a single face crop.
+ *
+ *   - `rgb`, `w`, `h`, `stride` describe the source RGB image.
+ *   - `crop` is the detection record whose bbox + landmarks identify
+ *     the face. The embedder uses the 5 alignment keypoints (eyes,
+ *     nose, mouth corners) to build a 112x112 affine-warped crop via
+ *     `face_align.c` before running the embedding network.
+ *   - `embedding_out` must point to a buffer of FACE_EMBED_DIM (128)
+ *     floats. The library writes the L2-normalized embedding there.
+ *
+ * Returns 0 on success, `-EINVAL` for null inputs or zero-area crop.
+ */
+int face_embed(face_embed_handle handle,
+               const uint8_t *rgb,
+               int w,
+               int h,
+               int stride,
+               const face_detection *crop,
+               float *embedding_out);
+
+/* Release an embedding session. Returns 0 on success. Safe with NULL. */
+int face_embed_close(face_embed_handle handle);
+
+/*
+ * Cosine distance between two 128-d face embeddings. Returns a value in
+ * [0, 2]: 0 for identical (post-normalization) vectors, 1 for
+ * orthogonal, 2 for antipodal.
+ *
+ * The function assumes both inputs are already L2-normalized (which is
+ * what `face_embed` produces). It does NOT re-normalize; if the caller
+ * stores raw un-normalized embeddings, normalize before calling.
+ */
+float face_embed_distance(const float *a, const float *b);
+
+/* L2 distance variant. Same assumptions; returns a value in [0, 2]
+ * for unit-norm inputs. */
+float face_embed_distance_l2(const float *a, const float *b);
+
+/* ---------------- anchors ---------------- */
+
+/* BlazeFace anchor record in normalized [0, 1] coordinates. Generated
+ * by `face_blazeface_make_anchors`. The anchor table is keyed only on
+ * the input dimension and the (stride, anchors-per-cell) schedule;
+ * since we lock the front model at 128x128, the table is constant per
+ * model and can be precomputed once at load time. */
+typedef struct face_blazeface_anchor {
+    float x_center;
+    float y_center;
+    float w;
+    float h;
+} face_blazeface_anchor;
+
+/*
+ * Generate the BlazeFace front-model anchor table. Writes
+ * `FACE_DETECTOR_ANCHOR_COUNT` anchors into `out`. Returns the number
+ * of anchors written, or a negative errno on shape mismatch.
+ *
+ * The schedule (matches mediapipe/modules/face_detection/face_detection_front.pbtxt):
+ *   stride 8,  anchors_per_cell = 2 → 16x16 grid → 512 anchors
+ *   stride 16, anchors_per_cell = 6 → 8x8 grid   → 384 anchors
+ *
+ * Each anchor's (x_center, y_center, w, h) is in normalized [0, 1]
+ * coordinates relative to the FACE_DETECTOR_INPUT_SIZE square input.
+ * `w` and `h` are 1 by convention for BlazeFace (the regressor learns
+ * the actual width/height as offsets).
+ */
+int face_blazeface_make_anchors(face_blazeface_anchor *out, size_t cap);
+
+/*
+ * Decode raw BlazeFace outputs into source-image absolute-pixel
+ * detections. Inputs:
+ *   - `anchors`: FACE_DETECTOR_ANCHOR_COUNT entries (precomputed via
+ *      face_blazeface_make_anchors).
+ *   - `regressors`: FACE_DETECTOR_ANCHOR_COUNT * 16 floats (4 bbox
+ *      coords + 6 keypoint pairs per anchor) — model output, in
+ *      input-pixel coordinates relative to FACE_DETECTOR_INPUT_SIZE.
+ *   - `scores`: FACE_DETECTOR_ANCHOR_COUNT pre-sigmoid logits.
+ *   - `conf`: post-sigmoid confidence threshold; anchors below this
+ *      are discarded.
+ *   - `src_w`, `src_h`: source image dimensions (pixels). Detections
+ *      are scaled from the 128-pixel input space back to source
+ *      pixels.
+ *   - `out`, `cap`, `count`: caller-provided detection buffer and
+ *      out-count, same convention as `face_detect`.
+ *
+ * Returns 0 on success, `-ENOSPC` on buffer overflow.
+ *
+ * NOTE: This function does NOT run NMS — it only decodes. The caller
+ * (or `face_detect`) is responsible for IoU-NMS on the returned set.
+ */
+int face_blazeface_decode(const face_blazeface_anchor *anchors,
+                          const float *regressors,
+                          const float *scores,
+                          float conf,
+                          int src_w,
+                          int src_h,
+                          face_detection *out,
+                          size_t cap,
+                          size_t *count);
+
+/* ---------------- alignment ---------------- */
+
+/*
+ * Affine-warp a face crop into a FACE_EMBED_CROP_SIZE x
+ * FACE_EMBED_CROP_SIZE RGB image using 5 of the 6 BlazeFace keypoints
+ * (left eye, right eye, nose tip, mouth-left, mouth-right). Bilinear
+ * sampling. Pure-C implementation in `src/face_align.c`.
+ *
+ * Inputs:
+ *   - `rgb`, `src_w`, `src_h`, `src_stride`: source RGB plane.
+ *   - `det`: detection whose 5-of-6 keypoints anchor the affine.
+ *
+ * Output:
+ *   - `out_rgb`: caller-allocated buffer, size
+ *      FACE_EMBED_CROP_SIZE * FACE_EMBED_CROP_SIZE * 3 bytes.
+ *
+ * Returns 0 on success, `-EINVAL` on null inputs or degenerate
+ * keypoints.
+ */
+int face_align_5pt(const uint8_t *rgb,
+                   int src_w,
+                   int src_h,
+                   int src_stride,
+                   const face_detection *det,
+                   uint8_t *out_rgb);
+
+/* ---------------- diagnostics ---------------- */
+
+/*
+ * Capability string of the active backend, e.g. "ggml-cpu-ref",
+ * "ggml-cpu", "ggml-metal". Reflects the *runtime*-selected path.
+ */
+const char *face_active_backend(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* FACE_FACE_H */

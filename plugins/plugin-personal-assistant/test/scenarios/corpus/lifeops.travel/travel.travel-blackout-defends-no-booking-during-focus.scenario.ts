@@ -4,8 +4,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
@@ -21,7 +21,7 @@ export default scenario({
     "User has a 'deep work / no travel' focus window on the calendar (matches PRD §Defend Calendar). Someone proposes a flight that lands inside it. The agent must refuse to silently book and either propose a different slot or surface the conflict for the user.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

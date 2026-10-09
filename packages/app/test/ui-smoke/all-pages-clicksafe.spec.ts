@@ -16,8 +16,8 @@ import {
   seedAppStorage,
 } from "./helpers";
 import {
-  assertSharedViewHeaderContract,
-  clickViewHeaderBack,
+  assertHeaderlessViewChrome,
+  clickViewBackControl,
 } from "./helpers/view-header";
 
 type ReadyCheck =
@@ -31,23 +31,9 @@ type RouteProbe = {
   readyChecks: readonly ReadyCheck[];
   mode?: "any" | "all";
   timeoutMs?: number;
-  /**
-   * When set, the route is a `normal` view that MUST render the shared
-   * ViewHeader (#13586) — the probe asserts the icon-only-back contract via
-   * `assertSharedViewHeaderContract`. Chat / launcher-catalog / onboarding
-   * surfaces render no shared header (they own their chrome), so they leave
-   * this unset and are not asserted — matching `assertSharedViewHeader`'s
-   * no-op-for-exempt-views semantics.
-   */
-  requireViewHeader?: boolean;
-  /**
-   * Scope for the ViewHeader assertion: the routed view's shell selector
-   * (`viewHeaderWithin`) or the header's own title text (`viewHeaderTitle`).
-   * Without one, the helper could bind to an AMBIENT header floating under
-   * the routed view and mask a view that lost its own header (#14152).
-   */
-  viewHeaderWithin?: string;
-  viewHeaderTitle?: string;
+  /** Route readiness and controls stay visible without duplicate view chrome. */
+  headerless?: boolean;
+  viewWithin?: string;
 };
 
 type ViewportProbe = {
@@ -173,26 +159,45 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     // Retired My Apps deep link (#17031): lands on the consolidated Projects
     // surface with the Apps segment pre-selected. The launcher grid remains
     // available at `/views`.
-    readyChecks: [{ text: "No apps installed yet" }],
+    readyChecks: [
+      { text: "No apps installed yet" },
+      { selector: '[aria-label="Create new app"]' },
+      {
+        selector:
+          '[role="tablist"][aria-label="Projects sections"] [role="tab"][aria-selected="true"]:has-text("Apps")',
+      },
+    ],
+    mode: "all",
     timeoutMs: 60_000,
-    requireViewHeader: true,
-    viewHeaderTitle: "Projects",
+    headerless: true,
   },
   {
     name: "automations",
     path: "/automations",
-    readyChecks: [{ selector: '[data-testid="automations-shell"]' }],
-    viewHeaderTitle: "Automations",
+    readyChecks: [
+      { selector: '[data-testid="automations-shell"]' },
+      { selector: 'button[aria-label="New automation"]' },
+    ],
+    mode: "all",
     timeoutMs: 60_000,
-    requireViewHeader: true,
+    headerless: true,
   },
   {
     name: "browser",
     path: "/browser",
+    // Linux desktop hosts open Websites; web hosts open the tab workspace.
+    // Require the address control and its matching surface in either host.
     readyChecks: [
-      { selector: '[data-testid="browser-workspace-address-input"]' },
-      { selector: '[data-testid="browser-workspace-open-home"]' },
+      {
+        selector:
+          '[data-testid="browser-workspace-address-input"], section[aria-label="Browser"] input[aria-label="Website or search"]',
+      },
+      {
+        selector:
+          '[data-testid="browser-workspace-surface-panel"], section[aria-label="Browser"] button[type="submit"]:has-text("Go")',
+      },
     ],
+    mode: "all",
     timeoutMs: 60_000,
   },
   {
@@ -211,9 +216,8 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     name: "wallet",
     path: "/wallet",
     readyChecks: [{ selector: '[data-testid="wallet-shell"]' }],
-    viewHeaderTitle: "Wallet",
     timeoutMs: 60_000,
-    requireViewHeader: true,
+    headerless: true,
   },
   {
     name: "stream",
@@ -223,15 +227,13 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   },
   {
     name: "rolodex",
-    path: "/rolodex",
-    // Rolodex is a retired built-in route whose launcher entry canonicalizes
-    // to Relationships. Its retained deep link must remain a visible,
-    // recoverable unavailable state instead of presenting a healthy launcher.
-    readyChecks: [
-      {
-        selector: '[data-view-status="unavailable"][data-view-id="rolodex"]',
-      },
-    ],
+    path: "/apps/relationships",
+    // Rolodex is a legacy path of Relationships (`rolodex: { aliasOf:
+    // "relationships" }` in builtin-route-descriptors.ts): the retained deep
+    // link must land on the canonical Relationships route, not on an
+    // unavailable state or a healthy launcher.
+    expectedUrl: /\/apps\/relationships$/,
+    readyChecks: [{ selector: '[data-testid="relationships-view"]' }],
     timeoutMs: 60_000,
   },
   {
@@ -291,35 +293,35 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     path: "/character/documents",
     readyChecks: [{ selector: '[data-testid="documents-view"]' }],
     timeoutMs: 60_000,
-    requireViewHeader: true,
-    viewHeaderWithin: '[data-testid="documents-view"]',
-    viewHeaderTitle: "Knowledge",
+    headerless: true,
+    viewWithin: '[data-testid="documents-view"]',
   },
   {
-    // Character Skills and Experience are headerless bodies under the shared
-    // Character section nav; the section header is the canonical route chrome.
+    // Each Character deep link must select its own section in the shared nav.
     name: "character skills deep link",
     path: "/character/skills",
     readyChecks: [
-      { selector: '[data-testid="section-nav-character"]' },
-      { text: "Character" },
+      {
+        selector:
+          '[data-testid="section-nav-character"] button[aria-current="page"]:has-text("Skills")',
+      },
     ],
     mode: "all",
     timeoutMs: 60_000,
-    requireViewHeader: true,
-    viewHeaderTitle: "Character",
+    headerless: true,
   },
   {
     name: "character experience deep link",
     path: "/character/experience",
     readyChecks: [
-      { selector: '[data-testid="section-nav-character"]' },
-      { text: "Character" },
+      {
+        selector:
+          '[data-testid="section-nav-character"] button[aria-current="page"]:has-text("Experience")',
+      },
     ],
     mode: "all",
     timeoutMs: 60_000,
-    requireViewHeader: true,
-    viewHeaderTitle: "Character",
+    headerless: true,
   },
   {
     // installDesktopPermissionsBridge injects __ELIZA_ELECTROBUN_RPC__, so
@@ -348,16 +350,6 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     // gracefully (#root present, no crash) rather than the Android camera UI.
     name: "camera deep link",
     path: "/camera",
-    readyChecks: [{ selector: "#root" }],
-    timeoutMs: 60_000,
-  },
-  {
-    // /pendant/transcript renders the realtime pendant transcription view
-    // (#15806). Without a paired pendant the view shows its designed
-    // disconnected state; like the device deep links above, the sweep proves
-    // the shell renders it without crashing.
-    name: "pendant transcript deep link",
-    path: "/pendant/transcript",
     readyChecks: [{ selector: "#root" }],
     timeoutMs: 60_000,
   },
@@ -850,16 +842,8 @@ async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
     route.timeoutMs,
   );
   await expectMainShell(page, route);
-  // A normal view must uphold the shared ViewHeader icon-only-back contract
-  // (#13586). On the mobile viewport, also enforce the ≥44px tap target.
-  if (route.requireViewHeader) {
-    const viewport = page.viewportSize();
-    const isMobileViewport = Boolean(viewport && viewport.width <= 500);
-    await assertSharedViewHeaderContract(page, {
-      requireTapTarget: isMobileViewport,
-      within: route.viewHeaderWithin,
-      title: route.viewHeaderTitle,
-    });
+  if (route.headerless) {
+    await assertHeaderlessViewChrome(page, { within: route.viewWithin });
   }
 }
 
@@ -1062,16 +1046,60 @@ test("visible safe app tiles and allowlisted buttons are click-safe", async ({
   await clickSafeAllowlist(page, issues);
 });
 
-test("shared ViewHeader back control navigates away without crashing (#13586)", async ({
+test("stale inventory link opens the canonical wallet without crashing", async ({
+  page,
+}) => {
+  const issues = installPageIssueGuards(page);
+  await openAppPath(page, "/apps/inventory");
+  const recovery = page.getByTestId("app-route-not-found");
+  await expect(recovery).toBeVisible();
+  await expect(recovery).toContainText("/apps/inventory");
+  await recovery
+    .getByRole("button", { name: "Open Wallet", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/wallet(?:[?#]|$)/);
+  await expect(page.getByTestId("wallet-shell")).toBeVisible();
+  await expect(recovery).toHaveCount(0);
+  await expectNoPageIssues(issues, "stale inventory link recovery");
+});
+
+test("browser history returns from Wallet to the launcher without crashing", async ({
   page,
 }) => {
   const issues = installPageIssueGuards(page);
   await page.setViewportSize(DESKTOP_PROBE.size);
-
-  // Wallet is a canonical shared-header view. Settings owns split-pane chrome
-  // and its sidebar back control, so it is intentionally outside this contract.
+  const launcher = coreRouteProbe("views catalog deep link");
+  await probeRoute(page, launcher);
   await probeRoute(page, coreRouteProbe("wallet"));
-  await assertSharedViewHeaderContract(page, { title: "Wallet" });
-  await clickViewHeaderBack(page, { title: "Wallet" });
-  await expectNoPageIssues(issues, "wallet view-header back");
+  await page.goBack();
+  await expect(page).toHaveURL(/\/views$/);
+  await assertReadyChecks(
+    page,
+    launcher.name,
+    launcher.readyChecks,
+    launcher.mode ?? "any",
+  );
+  await expectNoPageIssues(issues, "wallet browser back");
+});
+
+test("mobile Settings back control returns to the settings hub without crashing", async ({
+  page,
+}) => {
+  const issues = installPageIssueGuards(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await probeRoute(page, coreRouteProbe("settings"));
+  const hub = page.getByTestId("settings-hub-list");
+  await expect(hub).toBeVisible();
+  await hub.getByRole("button", { name: "Voice", exact: true }).click();
+  await expect(hub).toHaveCount(0);
+  await clickViewBackControl(page, {
+    name: "Back to Settings",
+    within: '[data-testid="settings-shell"]',
+    requireTapTarget: true,
+    destination: page.getByTestId("settings-hub-list"),
+  });
+  await expect(
+    page.getByRole("button", { name: "Back to Settings", exact: true }),
+  ).toHaveCount(0);
+  await expectNoPageIssues(issues, "mobile settings back navigation");
 });

@@ -11,7 +11,7 @@ import {
 	stringToUuid,
 	type UUID,
 } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/core/testing";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it } from "vitest";
 import type { ManageableGuild } from "../guild-management";
 import {

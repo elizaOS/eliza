@@ -4,36 +4,51 @@
  * the model to produce the check-in message. Check-ins fire as structural
  * scheduled tasks routed through the shared runner, not on prompt-text matching.
  */
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
-import type { IAgentRuntime } from "@elizaos/core";
+
+import type {
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarFeed,
+} from "@elizaos/contracts";
 import {
+  type GetLifeOpsGmailTriageRequest,
+  type GetLifeOpsInboxRequest,
+  LIFEOPS_INBOX_CHANNELS,
+  LIFEOPS_OCCURRENCE_STATES,
+  type LifeOpsCadence,
+  type LifeOpsConnectorMode,
+  type LifeOpsConnectorSide,
+  type LifeOpsGmailTriageFeed,
+  type LifeOpsGoogleConnectorStatus,
+  type LifeOpsInbox,
+  type LifeOpsOccurrence,
+  type LifeOpsOccurrenceState,
+  type LifeOpsXConnectorStatus,
+  type LifeOpsXDm,
+  type LifeOpsXFeedItem,
+  type LifeOpsXFeedType,
+} from "@elizaos/contracts";
+import {
+  ElizaError,
+  type IAgentRuntime,
   logger,
   ModelType,
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import {
-  type GetLifeOpsCalendarFeedRequest,
-  type GetLifeOpsGmailTriageRequest,
-  type GetLifeOpsInboxRequest,
-  LIFEOPS_OCCURRENCE_STATES,
-  type LifeOpsCadence,
-  type LifeOpsCalendarFeed,
-  type LifeOpsGmailTriageFeed,
-  type LifeOpsInbox,
-  type LifeOpsOccurrence,
-  type LifeOpsOccurrenceState,
-  type LifeOpsXDm,
-  type LifeOpsXFeedItem,
-  type LifeOpsXFeedType,
-} from "@elizaos/shared";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { computeOverdueFollowups } from "../../followup/followup-tracker.js";
+import { resolveOwnerDefinitionSurface } from "../definition-owner-surface.js";
+import { formatCalendarEventTimeRange } from "../google/format-helpers.js";
 import {
   computeMissedOccurrenceStreak,
   computeOccurrenceStreaks,
 } from "../service-helpers-occurrence.js";
 import { executeRawSql, parseJsonRecord, sqlQuote, toText } from "../sql.js";
-import { buildUtcDateFromLocalParts, getZonedDateParts } from "../time.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+} from "../time.js";
 import {
   type BriefingEngagement,
   buildBriefingSignals,
@@ -41,6 +56,7 @@ import {
   toFiniteNonNegativeNumber,
 } from "./checkin-briefing-ranking.js";
 import type {
+  CheckinBriefingItem,
   CheckinBriefingSection,
   CheckinKind,
   CheckinReport,
@@ -53,7 +69,6 @@ import type {
   RunCheckinRequest,
   SleepRecap,
 } from "./types.js";
-
 /**
  * Check-in engine (T9f). Assembles morning/night reports from existing LifeOps data
  * and tracks acknowledgement state for tone escalation.
@@ -64,19 +79,25 @@ import type {
  * `CheckinReport.collectorErrors.<field>` so callers can distinguish empty
  * data from an unavailable source.
  */
-
 export const CHECKIN_REPORTS_TABLE = "app_lifeops.life_checkin_reports";
-
 export function getCheckinSummaryTrajectoryPurpose(
   kind: CheckinKind,
 ): "morning_brief" | "health_checkin" {
   return kind === "morning" ? "morning_brief" : "health_checkin";
 }
-
 const ACK_WINDOW_MS = 72 * 60 * 60 * 1000;
 const INTERNAL_URL = new URL("http://127.0.0.1/");
-
 export interface CheckinSourceService {
+  getGoogleConnectorAccounts?(
+    requestUrl: URL,
+    side?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsGoogleConnectorStatus[]>;
+  getXConnectorStatus?(
+    mode?: LifeOpsConnectorMode,
+    side?: LifeOpsConnectorSide,
+    accountId?: string | null,
+  ): Promise<LifeOpsXConnectorStatus>;
+
   getInbox?(request?: GetLifeOpsInboxRequest): Promise<LifeOpsInbox>;
   getGmailTriage?(
     requestUrl: URL,
@@ -88,25 +109,32 @@ export interface CheckinSourceService {
     request?: GetLifeOpsCalendarFeedRequest,
     now?: Date,
   ): Promise<LifeOpsCalendarFeed>;
-  syncXDms?(opts?: { limit?: number }): Promise<{ synced: number }>;
+  syncXDms?(opts?: { limit?: number }): Promise<{
+    synced: number;
+  }>;
   getXDms?(opts?: {
     conversationId?: string;
     limit?: number;
   }): Promise<LifeOpsXDm[]>;
   syncXFeed?(
     feedType: LifeOpsXFeedType,
-    opts?: { limit?: number; query?: string },
-  ): Promise<{ synced: number }>;
+    opts?: {
+      limit?: number;
+      query?: string;
+    },
+  ): Promise<{
+    synced: number;
+  }>;
   getXFeedItems?(
     feedType: LifeOpsXFeedType,
-    opts?: { limit?: number },
+    opts?: {
+      limit?: number;
+    },
   ): Promise<LifeOpsXFeedItem[]>;
 }
-
 export interface CheckinServiceOptions {
   readonly sources?: CheckinSourceService;
 }
-
 // Single-shot logging for graceful-degradation paths.
 const loggedMissingSources = new Set<string>();
 function logMissingOnce(key: string, message: string): void {
@@ -114,7 +142,6 @@ function logMissingOnce(key: string, message: string): void {
   loggedMissingSources.add(key);
   logger.info(`[CheckinService] ${message}`);
 }
-
 /**
  * Format a `medianBedtimeLocalHour` (in [12, 36)) as a local HH:MM string.
  * Hours >= 24 wrap into the next day, e.g. 24.5 → "00:30". Returns null when
@@ -133,7 +160,6 @@ function formatBedtimeHour(hour: number | null): string | null {
   const normMm = mm === 60 ? 0 : mm;
   return `${String(normHh).padStart(2, "0")}:${String(normMm).padStart(2, "0")}`;
 }
-
 function formatDurationMinutes(durationMin: number | null): string | null {
   if (
     durationMin === null ||
@@ -142,13 +168,15 @@ function formatDurationMinutes(durationMin: number | null): string | null {
   ) {
     return null;
   }
-  const hours = Math.floor(durationMin / 60);
-  const minutes = Math.round(durationMin - hours * 60);
+  // Round the whole duration first. 59.5 minutes becomes 60, which is 1h,
+  // not "60m". 119.5 minutes becomes 2h, not "1h60m".
+  const total = Math.round(durationMin);
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
   if (hours === 0) return `${minutes}m`;
   if (minutes === 0) return `${hours}h`;
   return `${hours}h${minutes}m`;
 }
-
 function formatPromptScalar(value: unknown): string {
   if (value === null || value === undefined) {
     return "null";
@@ -160,11 +188,50 @@ function formatPromptScalar(value: unknown): string {
     value instanceof Date ? value.toISOString() : String(value).trim();
   return text.replace(/\s+/g, " ").trim();
 }
-
 function formatCheckinReportForPrompt(
   report: Omit<CheckinReport, "summaryText">,
 ): string {
-  return JSON.stringify(report, (_key, value: unknown) => {
+  const withRecordedMisses = report.habitSummaries.filter(
+    (habit) => habit.missedOccurrenceStreak > 0,
+  );
+  const withoutRecordedMisses = report.habitSummaries.filter(
+    (habit) => !(habit.missedOccurrenceStreak > 0),
+  );
+  const modelReport = {
+    ...report,
+    overdueTodos:
+      report.collectorErrors.overdueTodos === null ? report.overdueTodos : null,
+    todaysMeetings:
+      report.collectorErrors.todaysMeetings === null
+        ? report.todaysMeetings
+        : null,
+    yesterdaysWins:
+      report.collectorErrors.yesterdaysWins === null
+        ? report.yesterdaysWins
+        : null,
+    habitSummaries:
+      report.collectorErrors.habitSummaries === null
+        ? {
+            withRecordedMisses: {
+              count: withRecordedMisses.length,
+              records: withRecordedMisses,
+            },
+            withoutRecordedMisses: {
+              count: withoutRecordedMisses.length,
+              records: withoutRecordedMisses,
+            },
+          }
+        : null,
+    briefingSections: {
+      available: report.briefingSections.filter(
+        (section) => !section.error || section.coverage === "partial",
+      ),
+      unavailable: report.briefingSections.filter(
+        (section) => section.error && section.coverage !== "partial",
+      ),
+    },
+  };
+  return JSON.stringify(modelReport, (_key, value: unknown) => {
     if (value instanceof Date) {
       return value.toISOString();
     }
@@ -174,7 +241,6 @@ function formatCheckinReportForPrompt(
     return value;
   });
 }
-
 /**
  * Build the LLM prompt for a check-in summary. Exported for direct unit
  * testing of prompt content (especially the night-only sleep recap section).
@@ -186,16 +252,33 @@ export function buildCheckinSummaryPrompt(
     report.kind === "morning"
       ? "Write the owner's morning personal-assistant intro summary."
       : "Write the owner's night personal-assistant closeout summary.",
-    "This is generated from LifeOps source data. Do not invent facts.",
+    "Use the supplied source data. Do not invent facts.",
+    "Describe recorded states and counts without inventing their cause: a missed occurrence is not evidence of failed delivery, abandoned work, or a system fault. Missed streaks have no occurrence dates here; do not assign those misses to today or yesterday.",
+    "Streak counters count occurrences, not days. Report empty collections as no collected items, not proof that no urgent work or messages exist outside the available sources.",
+    "Habit group counts are supplied by code and count habit records, not missed occurrences. Use only supplied totals; do not invent counts for subsets or calculate a total from streaks.",
     "Rank for genuinely interesting, important, reply-needed, or schedule-changing items.",
     "Include X/socials (timeline, mentions, DMs), inboxes/messages/Discord, Gmail, GitHub, calendar changes, completed work, contacts, promises, agreements, and follow-ups when present.",
     "When a source is unavailable, say that source is unavailable in one compact clause instead of pretending it was empty.",
+    "An unavailable or disconnected source is a coverage limitation, not evidence that a service is down, critical, or needs repair. Do not make reconnecting optional sources a priority unless the report establishes an owner task or affected commitment.",
     report.kind === "morning"
       ? "Tone: concise start-of-day briefing, with what matters now and first next steps."
       : "Tone: concise evening recap sent before the owner's predicted bedtime, with what happened, loose ends, and tomorrow carry-forward.",
-    "Use short sections or tight bullets. No markdown table. No emojis.",
+    "Write a short, natural message for the owner. Use plain words and only a few paragraphs or bullets. Do not mention internal names such as LifeOps, report JSON, collectors, operational status, or escalation levels. No markdown table or emojis.",
+    "Do not put a date or time in the heading. If the body mentions the report time, copy the supplied local report time exactly; do not calculate or invent another date.",
   ];
-
+  if (report.timezone) {
+    lines.push(
+      `Report time: ${new Intl.DateTimeFormat("en-US", {
+        timeZone: report.timezone,
+        dateStyle: "full",
+        timeStyle: "short",
+      }).format(new Date(report.generatedAt))} (${report.timezone}).`,
+    );
+  } else {
+    lines.push(
+      "The owner timezone is unavailable; do not invent a local date or time.",
+    );
+  }
   if (report.kind === "night" && report.sleepRecap) {
     const recap = report.sleepRecap;
     const bedtime = formatBedtimeHour(recap.medianBedtimeLocalHour);
@@ -216,7 +299,6 @@ export function buildCheckinSummaryPrompt(
       'Include a short "Sleep recap" section in the summary using these numbers when present. If `regularityClass` is `irregular` or `very_irregular`, suggest one concrete step toward consistency. If it is `insufficient_data`, say so plainly and skip recommendations.',
     );
   }
-
   lines.push(
     "",
     "Report JSON:",
@@ -226,19 +308,220 @@ export function buildCheckinSummaryPrompt(
   );
   return lines.join("\n");
 }
-
 function newReportId(): string {
-  const maybeCrypto = (globalThis as { crypto?: { randomUUID?: () => string } })
-    .crypto;
+  const maybeCrypto = (
+    globalThis as {
+      crypto?: {
+        randomUUID?: () => string;
+      };
+    }
+  ).crypto;
   if (maybeCrypto?.randomUUID) return maybeCrypto.randomUUID();
   return `checkin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function morningBriefExcerpt(text: string): string {
+  const characters = Array.from(clip(text));
+  return characters.length > 220
+    ? `${characters.slice(0, 220).join("")}… (excerpt)`
+    : characters.join("");
+}
+
+/** Render morning facts from the existing report; retain every raw record in storage. */
+export function renderMorningCheckinReport(
+  report: Omit<CheckinReport, "summaryText">,
+): string {
+  const reference = report.timezone
+    ? `${new Intl.DateTimeFormat("en-US", {
+        timeZone: report.timezone,
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      }).format(new Date(report.generatedAt))}`
+    : report.generatedAt;
+  const paragraphs = ["Good morning."];
+  const unavailable: string[] = [];
+  const emptySummaries: string[] = [];
+  const calendarSection = report.briefingSections.find(
+    (section) =>
+      section.key === "calendar_changes" &&
+      (!section.error || section.coverage === "partial"),
+  );
+  const combinedCalendarItems = new Set<CheckinBriefingItem>();
+  const clearDay =
+    !report.collectorErrors.todaysMeetings &&
+    !report.collectorErrors.overdueTodos &&
+    report.todaysMeetings.length === 0 &&
+    report.overdueTodos.length === 0;
+  const lists = [
+    {
+      key: "todaysMeetings" as const,
+      title: "Calendar today",
+      empty: "No Calendar events listed for today.",
+      rows: report.todaysMeetings,
+    },
+    {
+      key: "overdueTodos" as const,
+      title: "Overdue tasks",
+      empty: "No overdue tasks listed.",
+      rows: report.overdueTodos,
+    },
+    {
+      key: "yesterdaysWins" as const,
+      title: "Finished yesterday",
+      empty: "No completed items were recorded yesterday.",
+      rows: report.yesterdaysWins,
+    },
+  ];
+  for (const list of lists) {
+    if (report.collectorErrors[list.key]) {
+      unavailable.push(list.title);
+      continue;
+    }
+    if (list.rows.length === 0) {
+      if (list.key !== "yesterdaysWins" && !clearDay)
+        emptySummaries.push(list.empty);
+      continue;
+    }
+    const highlights = list.rows.slice(0, 3).map((row) => {
+      if (!("startAt" in row)) return `- ${morningBriefExcerpt(row.title)}`;
+      const calendarItem = calendarSection?.items.find((item) => {
+        const event = item.calendarEvent;
+        return (
+          Boolean(event?.id) &&
+          event?.id === row.id &&
+          item.title === row.title &&
+          parseMs(event.startAt) !== null &&
+          parseMs(event.startAt) === parseMs(row.startAt) &&
+          parseMs(event.endAt) !== null &&
+          parseMs(event.endAt) === parseMs(row.endAt) &&
+          row.status !== undefined &&
+          event.status === row.status &&
+          event.isAllDay === row.isAllDay
+        );
+      });
+      if (calendarItem) combinedCalendarItems.add(calendarItem);
+      const facts = [
+        row.status?.toLowerCase() === "confirmed" ? null : row.status,
+        calendarItem?.reason === "on schedule" ? null : calendarItem?.reason,
+      ]
+        .filter(Boolean)
+        .join("; ");
+      return `- ${formatCalendarEventTimeRange({ ...row, timezone: report.timezone })}: ${morningBriefExcerpt(row.title)}${facts ? ` (${facts})` : ""}`;
+    });
+    const extra = list.rows.length - highlights.length;
+    paragraphs.push(
+      `${list.title}: ${list.rows.length}.${highlights.length ? `\n${highlights.join("\n")}` : ""}${extra ? `\n${extra} more items.` : ""}`,
+    );
+  }
+  if (clearDay)
+    paragraphs.push(
+      "No Calendar events or overdue tasks are listed for today.",
+    );
+  if (emptySummaries.length > 0) paragraphs.push(emptySummaries.join(" "));
+  const xUnavailable: { label: string; setupUnavailable: boolean }[] = [];
+  let gmailDisconnected = false;
+  for (const section of report.briefingSections) {
+    if (
+      section.key === "calendar_changes" &&
+      section.error &&
+      section.coverage === "partial"
+    )
+      unavailable.push("Some Calendar information");
+    if (section.error && section.coverage !== "partial") {
+      if (section.key === "x") {
+        unavailable.push("X");
+        continue;
+      }
+      if (
+        section.key === "gmail" &&
+        section.error === "Google Gmail is not connected."
+      ) {
+        gmailDisconnected = true;
+      } else if (
+        section.key === "x_dms" ||
+        section.key === "x_timeline" ||
+        section.key === "x_mentions"
+      ) {
+        const expectedError =
+          section.key === "x_dms"
+            ? "[x_read_dms] X runtime service fetchConnectorMessages is not registered."
+            : section.key === "x_timeline"
+              ? "[x_read_feed_home_timeline] X runtime service fetchFeedForAccount is not registered."
+              : "[x_read_feed_mentions] X runtime service fetchFeedForAccount is not registered.";
+        xUnavailable.push({
+          label:
+            section.key === "x_dms"
+              ? "DMs"
+              : section.key === "x_timeline"
+                ? "timeline"
+                : "mentions",
+          setupUnavailable: section.error === expectedError,
+        });
+      } else {
+        unavailable.push(section.title);
+      }
+      continue;
+    }
+    const items = section.items.filter(
+      (item) => !combinedCalendarItems.has(item),
+    );
+    const highlights = items.slice(0, 3).map((item) => {
+      const detail = item.calendarEvent
+        ? `${formatCalendarEventTimeRange({ ...item.calendarEvent, timezone: report.timezone })}${item.calendarEvent.status && item.calendarEvent.status.toLowerCase() !== "confirmed" ? ` (${item.calendarEvent.status})` : ""}${item.reason && item.reason !== "on schedule" ? `; ${item.reason}` : ""}`
+        : item.detail;
+      return `- ${morningBriefExcerpt(item.title)}${detail ? `: ${morningBriefExcerpt(detail)}` : ""}`;
+    });
+    const extra = items.length - highlights.length;
+    if (
+      section.key === "gmail" &&
+      section.coverage === "partial" &&
+      highlights.length === 0
+    )
+      paragraphs.push("Some Gmail inboxes couldn't be checked.");
+    if (highlights.length > 0) {
+      paragraphs.push(
+        `${section.summary}\n${highlights.join("\n")}${extra ? `\n${extra} more items.` : ""}`,
+      );
+    } else if (section.key === "calendar_changes" && section.items.length > 0) {
+      paragraphs.push(section.summary);
+    }
+  }
+  if (report.collectorErrors.habitSummaries) {
+    unavailable.push("Habit tracking");
+  } else if (report.habitSummaries.length > 0) {
+    const missed = report.habitSummaries.filter(
+      (habit) => habit.missedOccurrenceStreak > 0,
+    ).length;
+    paragraphs.push(
+      `${missed} of ${report.habitSummaries.length} tracked items have missed check-ins.`,
+    );
+  }
+  const coverage = [
+    ...(gmailDisconnected ? ["Gmail isn't connected"] : []),
+    ...(xUnavailable.length > 0
+      ? [
+          xUnavailable.length === 3 &&
+          xUnavailable.every((source) => source.setupUnavailable)
+            ? "X isn't available in this setup"
+            : `X (${xUnavailable.map((source) => source.label).join(", ")}) couldn't be checked`,
+        ]
+      : []),
+    ...(unavailable.length > 0
+      ? [`${unavailable.join(", ")} unavailable`]
+      : []),
+  ];
+  if (coverage.length > 0) paragraphs.push(`${coverage.join(". ")}.`);
+  paragraphs.push(`As of ${reference}.`);
+  return paragraphs.join("\n\n");
+}
 export function clip(text: string, maxLength = 220): string {
   void maxLength;
   return toWellFormedUnicode(text.replace(/\s+/g, " ").trim());
 }
-
 function parseMs(value: string | null | undefined): number | null {
   if (!value) {
     return null;
@@ -246,7 +529,6 @@ function parseMs(value: string | null | undefined): number | null {
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? ms : null;
 }
-
 function toBoolean(value: unknown): boolean {
   if (typeof value === "boolean") {
     return value;
@@ -257,7 +539,6 @@ function toBoolean(value: unknown): boolean {
   const text = toText(value).toLowerCase();
   return text === "true" || text === "1" || text === "yes";
 }
-
 function summarizeCount(
   count: number,
   singular: string,
@@ -265,12 +546,19 @@ function summarizeCount(
 ): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
-
 function localDayWindow(
   date: Date,
   timezone: string,
-): { start: Date; end: Date; key: string } {
-  const parts = getZonedDateParts(date, timezone);
+  dayOffset = 0,
+): {
+  start: Date;
+  end: Date;
+  key: string;
+} {
+  const parts = addDaysToLocalDate(
+    getZonedDateParts(date, timezone),
+    dayOffset,
+  );
   const start = buildUtcDateFromLocalParts(timezone, {
     year: parts.year,
     month: parts.month,
@@ -280,9 +568,7 @@ function localDayWindow(
     second: 0,
   });
   const end = buildUtcDateFromLocalParts(timezone, {
-    year: parts.year,
-    month: parts.month,
-    day: parts.day + 1,
+    ...addDaysToLocalDate(parts, 1),
     hour: 0,
     minute: 0,
     second: 0,
@@ -294,6 +580,17 @@ function localDayWindow(
   };
 }
 
+/** All-day bounds are civil dates encoded at UTC midnight, not zoned instants. */
+function calendarDayPredicate(day: ReturnType<typeof localDayWindow>): string {
+  return `(
+    (is_all_day = true
+     AND LEFT(start_at, 10) <= ${sqlQuote(day.key)}
+     AND LEFT(end_at, 10) > ${sqlQuote(day.key)})
+    OR (is_all_day = false
+        AND start_at >= ${sqlQuote(day.start.toISOString())}
+        AND start_at < ${sqlQuote(day.end.toISOString())})
+  )`;
+}
 function unavailableSection(
   key: CheckinBriefingSection["key"],
   title: string,
@@ -307,12 +604,10 @@ function unavailableSection(
     error: message,
   };
 }
-
 interface CollectorResult<T> {
   readonly rows: T[];
   readonly error: string | null;
 }
-
 type HabitCollectorRow = {
   definition_id: unknown;
   definition_title: unknown;
@@ -324,18 +619,15 @@ type HabitCollectorRow = {
   occurrence_updated_at: unknown;
   occurrence_progress_total: unknown;
 };
-
 export type HabitOccurrence = {
   state: LifeOpsOccurrenceState;
   dueAtMs: number;
   updatedAtMs: number;
   progressTotal: number;
 };
-
 const LIFEOPS_OCCURRENCE_STATE_SET: ReadonlySet<string> = new Set(
   LIFEOPS_OCCURRENCE_STATES,
 );
-
 function parseHabitOccurrenceState(
   value: unknown,
 ): LifeOpsOccurrenceState | null {
@@ -344,7 +636,6 @@ function parseHabitOccurrenceState(
     ? (state as LifeOpsOccurrenceState)
     : null;
 }
-
 function asFiniteMs(value: string | null | undefined): number | null {
   if (typeof value !== "string") {
     return null;
@@ -352,7 +643,6 @@ function asFiniteMs(value: string | null | undefined): number | null {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
-
 function resolvePausedUntil(
   metadata: Record<string, unknown>,
   now: Date,
@@ -371,7 +661,6 @@ function resolvePausedUntil(
   }
   return new Date(pauseUntilMs).toISOString();
 }
-
 /**
  * Projects one definition's occurrences into the client-facing `HabitSummary`.
  * For `count_per_day` cadences the summary carries the server-derived quota
@@ -437,12 +726,13 @@ export function buildHabitSummary(args: {
         : null,
   };
 }
-
 async function collectHabitSummaries(
   runtime: IAgentRuntime,
   now: Date,
 ): Promise<
-  CollectorResult<HabitSummary> & { pausedDefinitionIds: Set<string> }
+  CollectorResult<HabitSummary> & {
+    pausedDefinitionIds: Set<string>;
+  }
 > {
   const agentId = String(runtime.agentId);
   try {
@@ -462,7 +752,6 @@ async function collectHabitSummaries(
     if (definitionRows.length === 0) {
       return { rows: [], error: null, pausedDefinitionIds: new Set() };
     }
-
     const occurrencesRows = await executeRawSql(
       runtime,
       `SELECT definition_id,
@@ -478,7 +767,6 @@ async function collectHabitSummaries(
           AND definition_id IN (${definitionRows.map((row) => sqlQuote(toText(row.definition_id))).join(", ")})
         ORDER BY definition_id ASC, due_at ASC, updated_at ASC`,
     );
-
     const occurrencesByDefinitionId = new Map<string, HabitOccurrence[]>();
     for (const row of occurrencesRows as HabitCollectorRow[]) {
       const definitionId = toText(row.definition_id);
@@ -512,7 +800,6 @@ async function collectHabitSummaries(
         occurrencesByDefinitionId.set(definitionId, [nextOccurrence]);
       }
     }
-
     const summaries: HabitSummary[] = [];
     const pausedDefinitionIds = new Set<string>();
     for (const row of definitionRows as HabitCollectorRow[]) {
@@ -538,9 +825,12 @@ async function collectHabitSummaries(
       if (summary.isPaused) {
         pausedDefinitionIds.add(definitionId);
       }
-      summaries.push(summary);
+      if (
+        resolveOwnerDefinitionSurface({ kind, metadata }) !== "OWNER_REMINDERS"
+      ) {
+        summaries.push(summary);
+      }
     }
-
     return { rows: summaries, error: null, pausedDefinitionIds };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -551,7 +841,6 @@ async function collectHabitSummaries(
     return { rows: [], error: message, pausedDefinitionIds: new Set() };
   }
 }
-
 async function collectOverdueTodos(
   runtime: IAgentRuntime,
   now: Date,
@@ -567,9 +856,11 @@ async function collectOverdueTodos(
               COALESCE(def.title, '') AS title,
               occ.due_at AS due_at
          FROM app_lifeops.life_task_occurrences occ
-         LEFT JOIN app_lifeops.life_task_definitions def ON def.id = occ.definition_id
+         JOIN app_lifeops.life_task_definitions def
+           ON def.id = occ.definition_id AND def.agent_id = occ.agent_id
         WHERE occ.agent_id = ${sqlQuote(agentId)}
-          AND occ.state IN ('pending', 'active', 'in_progress')
+          AND def.kind = 'task'
+          AND occ.state IN ('pending', 'visible')
           AND occ.due_at IS NOT NULL
           AND occ.due_at < ${sqlQuote(nowIso)}
         ORDER BY occ.due_at ASC
@@ -600,7 +891,6 @@ async function collectOverdueTodos(
     return { rows: [], error: message };
   }
 }
-
 async function collectTodaysMeetings(
   runtime: IAgentRuntime,
   now: Date,
@@ -611,11 +901,10 @@ async function collectTodaysMeetings(
   try {
     const rows = await executeRawSql(
       runtime,
-      `SELECT id, title, start_at, end_at
+      `SELECT id, title, start_at, end_at, status, is_all_day
          FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
-          AND start_at >= ${sqlQuote(day.start.toISOString())}
-          AND start_at < ${sqlQuote(day.end.toISOString())}
+          AND ${calendarDayPredicate(day)}
         ORDER BY start_at ASC
         LIMIT 50`,
     );
@@ -625,6 +914,8 @@ async function collectTodaysMeetings(
         title: toText(row.title) || "(untitled)",
         startAt: toText(row.start_at),
         endAt: toText(row.end_at),
+        status: toText(row.status),
+        isAllDay: toBoolean(row.is_all_day),
       })),
       error: null,
     };
@@ -637,7 +928,6 @@ async function collectTodaysMeetings(
     return { rows: [], error: message };
   }
 }
-
 async function collectCompletedWins(
   runtime: IAgentRuntime,
   kind: CheckinKind,
@@ -645,33 +935,41 @@ async function collectCompletedWins(
   timezone: string,
 ): Promise<CollectorResult<RecentWin>> {
   const agentId = String(runtime.agentId);
-  const day =
-    kind === "morning"
-      ? localDayWindow(new Date(now.getTime() - 24 * 60 * 60 * 1000), timezone)
-      : localDayWindow(now, timezone);
+  const day = localDayWindow(now, timezone, kind === "morning" ? -1 : 0);
   const start = day.start;
   const end = kind === "morning" ? day.end : now;
+  // Use the same canonical writer timestamp policy as dated owner recaps.
+  // This collector's existing joins/scopes differ from the overview repository.
+  const completedAt = `(occ.completion_payload_json::jsonb ->> 'completedAt')`;
   try {
     const rows = await executeRawSql(
       runtime,
       `SELECT occ.id AS id,
               COALESCE(def.title, '') AS title,
-              occ.updated_at AS completed_at
+              ${completedAt} AS completed_at
          FROM app_lifeops.life_task_occurrences occ
          LEFT JOIN app_lifeops.life_task_definitions def ON def.id = occ.definition_id
         WHERE occ.agent_id = ${sqlQuote(agentId)}
           AND occ.state = 'completed'
-          AND occ.updated_at >= ${sqlQuote(start.toISOString())}
-          AND occ.updated_at <= ${sqlQuote(end.toISOString())}
-        ORDER BY occ.updated_at DESC
+          AND jsonb_typeof(occ.completion_payload_json::jsonb -> 'completedAt') = 'string'
+          AND ${completedAt} ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9][.][0-9]{3}Z$'
+          AND ${completedAt} >= ${sqlQuote(start.toISOString())}
+          AND ${completedAt} ${kind === "morning" ? "<" : "<="} ${sqlQuote(end.toISOString())}
+        ORDER BY ${completedAt} DESC, occ.id ASC
         LIMIT 50`,
     );
     return {
-      rows: rows.map((row) => ({
-        id: toText(row.id),
-        title: toText(row.title) || "(untitled)",
-        completedAt: row.completed_at == null ? null : toText(row.completed_at),
-      })),
+      rows: rows
+        .filter((row) => {
+          const instant = toText(row.completed_at);
+          const ms = Date.parse(instant);
+          return Number.isFinite(ms) && new Date(ms).toISOString() === instant;
+        })
+        .map((row) => ({
+          id: toText(row.id),
+          title: toText(row.title) || "(untitled)",
+          completedAt: toText(row.completed_at),
+        })),
       error: null,
     };
   } catch (error) {
@@ -683,14 +981,12 @@ async function collectCompletedWins(
     return { rows: [], error: message };
   }
 }
-
 function clampEscalation(count: number): EscalationLevel {
   if (count <= 0) return 0;
   if (count === 1) return 1;
   if (count === 2) return 2;
   return 3;
 }
-
 function resolveHabitEscalationLevel(
   summaries: readonly HabitSummary[],
 ): EscalationLevel {
@@ -700,7 +996,6 @@ function resolveHabitEscalationLevel(
   );
   return clampEscalation(maxMissedStreak);
 }
-
 async function collectXDmSection(
   source: CheckinSourceService | undefined,
 ): Promise<CheckinBriefingSection> {
@@ -751,7 +1046,6 @@ async function collectXDmSection(
     return unavailableSection("x_dms", "X DMs", message);
   }
 }
-
 async function collectXFeedSection(
   source: CheckinSourceService | undefined,
   key: Extract<CheckinBriefingSection["key"], "x_timeline" | "x_mentions">,
@@ -771,7 +1065,9 @@ async function collectXFeedSection(
     const items = sortBriefingItems(
       feedItems.map((feedItem) => {
         const raw = (feedItem.metadata.raw ?? {}) as {
-          referenced_tweets?: Array<{ type?: string }>;
+          referenced_tweets?: Array<{
+            type?: string;
+          }>;
           public_metrics?: Record<string, number>;
         };
         const referenceTypes = (raw.referenced_tweets ?? [])
@@ -823,7 +1119,6 @@ async function collectXFeedSection(
     return unavailableSection(key, title, message);
   }
 }
-
 async function collectInboxSection(
   source: CheckinSourceService | undefined,
 ): Promise<CheckinBriefingSection> {
@@ -835,7 +1130,14 @@ async function collectInboxSection(
     );
   }
   try {
-    const inbox = await source.getInbox({ limit: 50 });
+    // Gmail/X have dedicated status-gated collectors. Keep other cached
+    // channels without re-reading those accounts through the aggregate inbox.
+    const inbox = await source.getInbox({
+      limit: 50,
+      channels: LIFEOPS_INBOX_CHANNELS.filter(
+        (channel) => channel !== "gmail" && channel !== "x_dm",
+      ),
+    });
     const counts = Object.entries(inbox.channelCounts)
       .filter(([, count]) => count.total > 0)
       .map(
@@ -879,60 +1181,110 @@ async function collectInboxSection(
     return unavailableSection("inbox", "Inbox", message);
   }
 }
-
 async function collectGmailSection(
   source: CheckinSourceService | undefined,
   now: Date,
-): Promise<CheckinBriefingSection> {
-  if (!source?.getGmailTriage) {
-    return unavailableSection(
-      "gmail",
-      "Gmail",
-      "Gmail triage reader is not registered on this runtime.",
-    );
-  }
+): Promise<CheckinBriefingSection | undefined> {
+  if (!source?.getGoogleConnectorAccounts) return undefined;
   try {
-    const feed = await source.getGmailTriage(
-      INTERNAL_URL,
-      { maxResults: 25 },
-      now,
+    const accounts = (
+      await source.getGoogleConnectorAccounts(INTERNAL_URL, "owner")
+    ).filter(
+      (account) =>
+        account.configured &&
+        (account.connected || account.reason === "needs_reauth") &&
+        account.grantedCapabilities.includes("google.gmail.triage"),
+    );
+    if (accounts.length === 0) return undefined;
+    if (!source.getGmailTriage)
+      return unavailableSection(
+        "gmail",
+        "Gmail",
+        "The configured Gmail triage reader is not registered.",
+      );
+    const getGmailTriage = source.getGmailTriage.bind(source);
+    const results = await Promise.all(
+      accounts.map(async (account) => {
+        try {
+          if (!account.grant?.id || !account.grant.connectorAccountId)
+            throw new ElizaError(
+              "The configured Gmail account reference is unavailable.",
+              { code: "CHECKIN_GMAIL_ACCOUNT_REFERENCE_UNAVAILABLE" },
+            );
+          return {
+            feed: await getGmailTriage(
+              INTERNAL_URL,
+              { maxResults: 25, side: "owner", grantId: account.grant.id },
+              now,
+            ),
+            error: null,
+          };
+        } catch (error) {
+          return {
+            feed: null,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }),
+    );
+    const feeds = results.flatMap((result) =>
+      result.feed ? [result.feed] : [],
+    );
+    const errors = results.flatMap((result) =>
+      result.error ? [result.error] : [],
     );
     const items = sortBriefingItems(
-      feed.messages.map((message) => {
-        const ranked = buildBriefingSignals({
-          occurredAt: message.receivedAt,
-          unread: message.isUnread,
-          inbound: true,
-          replyNeeded: message.likelyReplyNeeded,
-          important: message.isImportant,
-          sourcePriority: message.triageScore,
-        });
-        return {
-          title: `${message.from || "Unknown"}${
-            message.subject ? `: ${message.subject}` : ""
-          }`,
-          detail: clip(message.snippet || message.triageReason),
-          occurredAt: message.receivedAt,
-          href: message.htmlLink,
-          reason: ranked.reason ?? (message.triageReason || null),
-          signals: ranked.signals,
-          sort: { ...ranked.signals, occurredAt: message.receivedAt },
-        };
+      feeds
+        .flatMap((feed) => feed.messages)
+        .map((message) => {
+          const ranked = buildBriefingSignals({
+            occurredAt: message.receivedAt,
+            unread: message.isUnread,
+            inbound: true,
+            replyNeeded: message.likelyReplyNeeded,
+            important: message.isImportant,
+            sourcePriority: message.triageScore,
+          });
+          return {
+            title: `${message.from || "Unknown"}${message.subject ? `: ${message.subject}` : ""}`,
+            detail: clip(message.snippet || message.triageReason),
+            occurredAt: message.receivedAt,
+            href: message.htmlLink,
+            reason: ranked.reason ?? (message.triageReason || null),
+            signals: ranked.signals,
+            sort: { ...ranked.signals, occurredAt: message.receivedAt },
+          };
+        }),
+    );
+    const counts = feeds.reduce(
+      (sum, feed) => ({
+        unread: sum.unread + feed.summary.unreadCount,
+        important: sum.important + feed.summary.importantNewCount,
+        reply: sum.reply + feed.summary.likelyReplyNeededCount,
       }),
+      { unread: 0, important: 0, reply: 0 },
     );
     return {
       key: "gmail",
       title: "Gmail",
-      summary: `${feed.summary.unreadCount} unread, ${feed.summary.importantNewCount} important, ${feed.summary.likelyReplyNeededCount} likely needing reply.`,
+      summary:
+        feeds.length > 0
+          ? `${counts.unread} unread, ${counts.important} important, ${counts.reply} likely needing reply${errors.length ? "; some connected inboxes couldn't be checked" : ""}.`
+          : "Connected Gmail inboxes couldn't be checked.",
       items,
-      error: null,
+      error: errors.length ? errors.join("; ") : null,
+      ...(errors.length > 0 && feeds.length > 0
+        ? { coverage: "partial" as const }
+        : {}),
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return unavailableSection("gmail", "Gmail", message);
+    return unavailableSection(
+      "gmail",
+      "Gmail",
+      error instanceof Error ? error.message : String(error),
+    );
   }
 }
-
 async function collectCalendarChangeSection(
   runtime: IAgentRuntime,
   now: Date,
@@ -940,17 +1292,18 @@ async function collectCalendarChangeSection(
 ): Promise<CheckinBriefingSection> {
   const agentId = String(runtime.agentId);
   const day = localDayWindow(now, timezone);
+  const today = calendarDayPredicate(day);
   const sinceIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   try {
     const rows = await executeRawSql(
       runtime,
-      `SELECT title, start_at, end_at, status, html_link, updated_at
+      `SELECT id, title, start_at, end_at, status, is_all_day, html_link, updated_at,
+              ${today} AS is_today
          FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND side = 'owner'
           AND (
-            (start_at >= ${sqlQuote(day.start.toISOString())}
-             AND start_at < ${sqlQuote(day.end.toISOString())})
+            ${today}
             OR updated_at >= ${sqlQuote(sinceIso)}
           )
         ORDER BY
@@ -958,14 +1311,7 @@ async function collectCalendarChangeSection(
           start_at ASC
         LIMIT 40`,
     );
-    const todayCount = rows.filter((row) => {
-      const startMs = parseMs(toText(row.start_at));
-      return (
-        startMs !== null &&
-        startMs >= day.start.getTime() &&
-        startMs < day.end.getTime()
-      );
-    }).length;
+    const todayCount = rows.filter((row) => toBoolean(row.is_today)).length;
     const changedCount = rows.filter(
       (row) => (parseMs(toText(row.updated_at)) ?? 0) >= Date.parse(sinceIso),
     ).length;
@@ -987,9 +1333,14 @@ async function collectCalendarChangeSection(
         });
         return {
           title,
-          detail: `${toText(row.start_at)} - ${toText(row.end_at)}${
-            status ? ` (${status})` : ""
-          }`,
+          detail: `${toText(row.start_at)} - ${toText(row.end_at)}${status ? ` (${status})` : ""}`,
+          calendarEvent: {
+            id: toText(row.id),
+            startAt: toText(row.start_at),
+            endAt: toText(row.end_at),
+            status,
+            isAllDay: toBoolean(row.is_all_day),
+          },
           occurredAt: updatedAt ?? toText(row.start_at),
           href: toText(row.html_link) || null,
           reason,
@@ -1017,7 +1368,6 @@ async function collectCalendarChangeSection(
     );
   }
 }
-
 async function collectGitHubSection(
   runtime: IAgentRuntime,
   now: Date,
@@ -1089,9 +1439,7 @@ async function collectGitHubSection(
         engagement,
       });
       return {
-        title: `GitHub activity: ${
-          toText(row.display_name) || toText(row.identifier)
-        }`,
+        title: `GitHub activity: ${toText(row.display_name) || toText(row.identifier)}`,
         detail: `${Number.isFinite(minutes) && minutes > 0 ? minutes : 0}m active`,
         occurredAt: toText(row.start_at) || null,
         href: null,
@@ -1116,7 +1464,6 @@ async function collectGitHubSection(
     return unavailableSection("github", "GitHub", message);
   }
 }
-
 async function collectContactSection(
   runtime: IAgentRuntime,
   now: Date,
@@ -1166,9 +1513,7 @@ async function collectContactSection(
         const occurredAt = toText(row.occurred_at) || null;
         const ranked = buildBriefingSignals({ occurredAt });
         return {
-          title: `${nameFor(row) || "Unknown"} (${
-            toText(row.channel) || "unknown"
-          })`,
+          title: `${nameFor(row) || "Unknown"} (${toText(row.channel) || "unknown"})`,
           detail: clip(toText(row.summary) || toText(row.direction)),
           occurredAt,
           href: null,
@@ -1197,7 +1542,6 @@ async function collectContactSection(
     );
   }
 }
-
 async function collectPromiseSection(
   runtime: IAgentRuntime,
   now: Date,
@@ -1246,22 +1590,48 @@ async function collectPromiseSection(
     );
   }
 }
-
 async function collectBriefingSections(args: {
   runtime: IAgentRuntime;
   source: CheckinSourceService | undefined;
   now: Date;
   timezone: string;
 }): Promise<CheckinBriefingSection[]> {
-  return Promise.all([
-    collectXDmSection(args.source),
-    collectXFeedSection(
-      args.source,
-      "x_timeline",
-      "home_timeline",
-      "X timeline",
-    ),
-    collectXFeedSection(args.source, "x_mentions", "mentions", "X mentions"),
+  let xStatus: LifeOpsXConnectorStatus | undefined;
+  let xError: string | null = null;
+  if (args.source?.getXConnectorStatus) {
+    try {
+      xStatus = await args.source.getXConnectorStatus(
+        undefined,
+        "owner",
+        undefined,
+      );
+    } catch (error) {
+      xError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  if (xStatus?.probeError) xError = xStatus.probeError;
+  if (xStatus?.reason === "needs_reauth")
+    xError = "The configured X connection needs reauthorization.";
+  const readableX = xStatus?.connected;
+  const sections = await Promise.all([
+    ...(xError ? [Promise.resolve(unavailableSection("x", "X", xError))] : []),
+    ...(readableX && xStatus?.dmRead ? [collectXDmSection(args.source)] : []),
+    ...(readableX && xStatus?.feedRead
+      ? [
+          collectXFeedSection(
+            args.source,
+            "x_timeline",
+            "home_timeline",
+            "X timeline",
+          ),
+          collectXFeedSection(
+            args.source,
+            "x_mentions",
+            "mentions",
+            "X mentions",
+          ),
+        ]
+      : []),
     collectInboxSection(args.source),
     collectGmailSection(args.source, args.now),
     collectGitHubSection(args.runtime, args.now, args.timezone),
@@ -1269,26 +1639,25 @@ async function collectBriefingSections(args: {
     collectContactSection(args.runtime, args.now, args.timezone),
     collectPromiseSection(args.runtime, args.now),
   ]);
+  return sections.filter(
+    (section): section is CheckinBriefingSection => section !== undefined,
+  );
 }
-
 export class CheckinService {
   constructor(
     private readonly runtime: IAgentRuntime,
     private readonly options: CheckinServiceOptions = {},
   ) {}
-
   async runMorningCheckin(
     request: RunCheckinRequest = {},
   ): Promise<CheckinReport> {
     return this.runCheckin("morning", request);
   }
-
   async runNightCheckin(
     request: RunCheckinRequest = {},
   ): Promise<CheckinReport> {
     return this.runCheckin("night", request);
   }
-
   async getEscalationLevel(now: Date = new Date()): Promise<EscalationLevel> {
     const agentId = String(this.runtime.agentId);
     const windowStartMs = now.getTime() - ACK_WINDOW_MS;
@@ -1307,7 +1676,6 @@ export class CheckinService {
         : Number.parseInt(toText(countRaw), 10);
     return clampEscalation(Number.isFinite(count) ? count : 0);
   }
-
   async hasCheckinForLocalDay(args: {
     kind: CheckinKind;
     now: Date;
@@ -1327,7 +1695,6 @@ export class CheckinService {
     );
     return rows.length > 0;
   }
-
   async recordCheckinAcknowledgement(
     request: RecordAcknowledgementRequest,
   ): Promise<void> {
@@ -1346,7 +1713,6 @@ export class CheckinService {
           AND agent_id = ${sqlQuote(agentId)}`,
     );
   }
-
   private async runCheckin(
     kind: CheckinKind,
     request: RunCheckinRequest,
@@ -1384,6 +1750,7 @@ export class CheckinService {
       reportId: newReportId(),
       kind,
       generatedAt: now.toISOString(),
+      timezone,
       escalationLevel,
       overdueTodos: overdueTodos.rows,
       todaysMeetings: todaysMeetings.rows,
@@ -1393,6 +1760,7 @@ export class CheckinService {
       briefingSections,
       sleepRecap,
       collectorErrors: {
+        habitSummaries: habitCollector.error,
         overdueTodos: overdueTodos.error,
         todaysMeetings: todaysMeetings.error,
         yesterdaysWins: completedWins.error,
@@ -1407,59 +1775,42 @@ export class CheckinService {
     }
     return report;
   }
-
   public async persistCheckinReport(
     report: CheckinReport,
     now = new Date(report.generatedAt),
   ): Promise<void> {
     await this.persistReport(report, now);
   }
-
-  private fallbackSummary(report: Omit<CheckinReport, "summaryText">): string {
-    const prefix =
-      report.kind === "morning" ? "Morning check-in" : "Night check-in";
-    const winsLabel =
-      report.kind === "morning" ? "yesterday's wins" : "wins today";
-    const sourceLine = report.briefingSections
-      .map((section) =>
-        section.error
-          ? `${section.title}: unavailable`
-          : `${section.title}: ${section.summary}`,
-      )
-      .join(" ");
-    return `${prefix}: ${summarizeCount(report.overdueTodos.length, "overdue todo")}, ${summarizeCount(report.todaysMeetings.length, "meeting")} today, ${summarizeCount(report.yesterdaysWins.length, winsLabel, winsLabel)}, and ${summarizeCount(report.habitSummaries.length, "tracked habit")}. ${sourceLine}`.trim();
-  }
-
   private async renderSummary(
     report: Omit<CheckinReport, "summaryText">,
   ): Promise<string> {
-    const fallback = this.fallbackSummary(report);
+    if (report.kind === "morning") return renderMorningCheckinReport(report);
     if (typeof this.runtime.useModel !== "function") {
-      return fallback;
-    }
-    const prompt = buildCheckinSummaryPrompt(report);
-    try {
-      const response = await runWithTrajectoryPurpose(
-        getCheckinSummaryTrajectoryPurpose(report.kind),
-        () =>
-          this.runtime.useModel(ModelType.TEXT_LARGE, {
-            prompt,
-          }),
+      throw new ElizaError(
+        "Check-in summary requires a configured text model",
+        {
+          code: "CHECKIN_MODEL_UNAVAILABLE",
+        },
       );
-      const text = typeof response === "string" ? response.trim() : "";
-      return text.length > 0 ? text : fallback;
-    } catch (error) {
-      logMissingOnce(
-        "checkin-summary-model",
-        `summary model unavailable: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return fallback;
     }
+    const response = await runWithTrajectoryPurpose(
+      getCheckinSummaryTrajectoryPurpose(report.kind),
+      () =>
+        this.runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: buildCheckinSummaryPrompt(report),
+        }),
+    );
+    if (typeof response !== "string" || !response.trim()) {
+      throw new ElizaError("Check-in summary model returned no text", {
+        code: "CHECKIN_SUMMARY_EMPTY",
+      });
+    }
+    return response.trim();
   }
-
   private async persistReport(report: CheckinReport, now: Date): Promise<void> {
     const agentId = String(this.runtime.agentId);
     const payload = JSON.stringify({
+      timezone: report.timezone,
       overdueTodos: report.overdueTodos,
       todaysMeetings: report.todaysMeetings,
       yesterdaysWins: report.yesterdaysWins,
@@ -1467,6 +1818,8 @@ export class CheckinService {
       habitEscalationLevel: report.habitEscalationLevel,
       briefingSections: report.briefingSections,
       summaryText: report.summaryText,
+      collectorErrors: report.collectorErrors,
+      sleepRecap: report.sleepRecap,
     }).replace(/'/g, "''");
     await executeRawSql(
       this.runtime,

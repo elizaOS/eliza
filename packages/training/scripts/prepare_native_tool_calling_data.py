@@ -30,7 +30,6 @@ import csv
 import hashlib
 import json
 import logging
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -39,9 +38,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
-sys.path.insert(0, str(SCRIPTS))
 
-from lib.runtime_phases import PHASE_OOB, classify_phase  # noqa: E402
+from eliza_training.lib.runtime_phases import PHASE_OOB, classify_phase  # noqa: E402
 
 
 DATASETS_FILE = ROOT / "datasets.yaml"

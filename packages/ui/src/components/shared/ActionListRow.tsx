@@ -4,7 +4,7 @@
  */
 import type * as React from "react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 
@@ -95,7 +95,7 @@ function ActionListRowContent({
           {title}
         </span>
         {description ? (
-          <span className="line-clamp-2 text-xs leading-relaxed text-muted">
+          <span className="line-clamp-2 text-xs leading-relaxed text-muted-strong">
             {description}
           </span>
         ) : null}

@@ -1,0 +1,23 @@
+id: nft_transfer_001
+level: 1
+name: NFT Transfer
+description: 'Level 1 protocol interaction: NFT Transfer'
+category: nft
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 10.0
+    tokens:
+      USDC: 1000
+      BONK: 10000000
+tasks:
+- id: task_nft_transfer_001
+  type: analyze
+  parameters:
+    action: transfer
+    collection: test_collection
+  timeout_ms: 30000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

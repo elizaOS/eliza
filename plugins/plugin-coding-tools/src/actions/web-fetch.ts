@@ -13,6 +13,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { stripHtmlRawTextElements, toWellFormedUnicode } from "@elizaos/core";
+import { decodeHTML } from "entities";
 import {
   failureToActionResult,
   readStringParam,
@@ -33,14 +34,6 @@ export function isCodingWebFetchEnabled(): boolean {
 }
 
 function decodeHtmlEntity(entity: string): string {
-  const named: Record<string, string> = {
-    amp: "&",
-    apos: "'",
-    gt: ">",
-    lt: "<",
-    nbsp: " ",
-    quot: '"',
-  };
   if (entity.startsWith("#")) {
     const code = entity.startsWith("#x")
       ? Number.parseInt(entity.slice(2), 16)
@@ -52,9 +45,13 @@ function decodeHtmlEntity(entity: string): string {
       code >= 0 &&
       code <= 0x10ffff &&
       (code < 0xd800 || code > 0xdfff);
-    return isUnicodeScalarValue ? String.fromCodePoint(code) : `&${entity};`;
+    // The numeric spellings of U+00A0 (&#160; / &#xA0;) decode to the same
+    // character as &nbsp;, so they must become the same readable plain space.
+    return isUnicodeScalarValue
+      ? String.fromCodePoint(code).replace(/\u00a0/g, " ")
+      : `&${entity};`;
   }
-  return named[entity] ?? `&${entity};`;
+  return decodeHTML(`&${entity};`).replace(/\u00a0/g, " ");
 }
 
 function normalizeWhitespace(text: string): string {
@@ -213,11 +210,16 @@ export const webFetchAction: Action = {
 
     try {
       const response = await guardedTextHttpRequest(url);
+      const retrievedAt = new Date().toISOString();
       if (!response.ok) {
         const result = failureToActionResult(
           {
             reason: "io_error",
-            message: `HTTP ${response.status}`,
+            message: withUpstreamFallbackHint(
+              `HTTP ${response.status}`,
+              url,
+              response.status,
+            ),
           },
           {
             action: "WEB_FETCH",
@@ -241,16 +243,50 @@ export const webFetchAction: Action = {
         final_url: response.url,
         status: response.status,
         content_type: response.contentType,
+        retrieved_at: retrievedAt,
+        retrieved_at_basis:
+          "HTTP retrieval completed; not the source publication or market update time",
         kind: extracted.kind,
         truncated: false,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const result = failureToActionResult(
-        { reason: "io_error", message },
+        { reason: "io_error", message: withUpstreamFallbackHint(message, url) },
         { action: "WEB_FETCH", url },
       );
       return result;
     }
   },
 };
+
+/**
+ * Suggest another read source only when the requested endpoint is unavailable:
+ * a 5xx, a 429 or a transport error (including an aborted request timeout) is
+ * the endpoint's failure, not the request's, so the failure text names the
+ * fallback and the planner tries it before reporting. A 4xx other than 429
+ * (bad URL, blocked, gone) and a request rejected before it was sent (policy,
+ * malformed URL) carry no hint because retrying elsewhere with the same idea
+ * rarely helps.
+ */
+const TRANSPORT_FAILURE_PATTERN =
+  /timeout|timed out|aborted|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|socket|network|reset|refused|unreachable/i;
+
+function withUpstreamFallbackHint(
+  message: string,
+  url: string,
+  status?: number,
+): string {
+  const upstream =
+    status === undefined
+      ? TRANSPORT_FAILURE_PATTERN.test(message)
+      : status >= 500 || status === 429;
+  if (!upstream) return message;
+  let host = url;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    // error-policy:J3 An invalid URL remains visible as the failed request.
+  }
+  return `${message} — ${host} failed upstream; try another endpoint or WEB_SEARCH for the same value before telling the user it failed`;
+}

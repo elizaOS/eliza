@@ -1,12 +1,71 @@
+/**
+ * Atomic key/value writer for the on-disk `config.env` file.
+ *
+ * `config.env` lives under the resolved Eliza state directory. It is an
+ * escape hatch for sensitive process-env-only
+ * material (e.g. cloud-wallet client address keys, `WALLET_SOURCE_*`
+ * bindings) that must not be mirrored into `eliza.json` but still needs
+ * to survive restarts.
+ *
+ * ── Crash safety ────────────────────────────────────────────────────
+ * Every write performs three on-disk steps:
+ *   1. Snapshot existing contents to `config.env.bak`.
+ *   2. Serialise the new contents to `config.env.tmp` and fsync.
+ *   3. Rename `config.env.tmp` → `config.env` (atomic on POSIX).
+ *
+ * Failure modes:
+ *   - Step 2 fails → no `config.env` mutation. `.bak` may exist but the
+ *     live file is untouched.
+ *   - Step 3 fails → `.bak` still holds the pre-image. Recover manually
+ *     via the matching `config.env.bak` in the state dir or the
+ *     documented `bun run agent:repair-config` command.
+ *
+ * Agent, app vault bootstrap, and cloud-wallet writers import this module
+ * directly to share its mutex, spawn-env denylist, and state-dir permissions.
+ *
+ * Concurrent writes in-process are serialised via a promise chain mutex.
+ * Cross-process coordination is NOT provided — callers must ensure only
+ * one agent runtime owns a given state dir (the PGlite postmaster lock
+ * already enforces this).
+ */
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+
+import { ElizaError, isBlockedSpawnEnvKey, isProcessOnlyEnvKey } from "@elizaos/core";
+
 import { resolveStateDir } from "./state-paths";
 
 const CONFIG_ENV_FILENAME = "config.env";
 const BAK_SUFFIX = ".bak";
 const TMP_SUFFIX = ".tmp";
+
 const KEY_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 
+/**
+ * Keys we refuse to write even though `config.env` is the designated
+ * escape hatch for sensitive process-env-only material. These are
+ * shell/runtime hijack vectors — they must never be set from the
+ * application layer, regardless of provenance.
+ *
+ * `validateKey` checks this set *in addition to* `isBlockedSpawnEnvKey`,
+ * which carries the core spawn denylist and its prefix families. Two
+ * deliberate choices there:
+ *
+ * 1. It is a union, not a replacement. This list is not a subset of core's:
+ *    `DYLD_FALLBACK_FRAMEWORK_PATH` and `DYLD_FALLBACK_LIBRARY_PATH` are
+ *    blocked here and absent from core, so deferring entirely to the shared
+ *    predicate would silently unblock them.
+ * 2. It uses core's spawn predicate rather than the agent's
+ *    `isBlockedEnvKey`. The agent set is the spawn set plus thirteen agent
+ *    step-up secrets, and those secrets are exactly what `vault-bootstrap`
+ *    migrates *through this function* — it scans `config.env` for keys
+ *    matching `_TOKEN` / `_API_KEY` / `_PRIVATE_KEY` and rewrites each as a
+ *    vault reference. Ten of the thirteen match that heuristic
+ *    (`ELIZA_API_TOKEN`, `EVM_PRIVATE_KEY`, `GITHUB_TOKEN`, ...), so using the
+ *    agent predicate here would reject the very migration the vault bootstrap
+ *    exists to perform. Process-only authority families are guarded separately.
+ */
 const BLOCKED_CONFIG_ENV_KEYS: ReadonlySet<string> = new Set([
   "NODE_OPTIONS",
   "NODE_EXTRA_CA_CERTS",
@@ -32,16 +91,21 @@ const BLOCKED_CONFIG_ENV_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export interface PersistConfigEnvOptions {
+  /** Override state dir (mostly for tests). Defaults to `resolveStateDir()`. */
   stateDir?: string;
 }
 
 interface ParsedConfigEnv {
+  /** Ordered list of raw lines (comments, blanks, key=value). */
   lines: string[];
+  /** Map of key → index into `lines`, for in-place updates. */
   index: Map<string, number>;
 }
 
 function parseConfigEnv(contents: string): ParsedConfigEnv {
   const lines = contents.length === 0 ? [] : contents.split(/\r?\n/);
+  // `split` on trailing newline produces an empty final element — drop it
+  // so we don't re-emit a double blank at EOF on every rewrite.
   if (lines.length > 0 && lines[lines.length - 1] === "") {
     lines.pop();
   }
@@ -53,16 +117,22 @@ function parseConfigEnv(contents: string): ParsedConfigEnv {
     const eq = line.indexOf("=");
     if (eq <= 0) continue;
     const key = line.slice(0, eq).trim();
-    if (KEY_PATTERN.test(key)) index.set(key, i);
+    if (!KEY_PATTERN.test(key)) continue;
+    // Last definition wins (standard dotenv behaviour).
+    index.set(key, i);
   }
   return { lines, index };
 }
 
 function serialiseConfigEnv(parsed: ParsedConfigEnv): string {
-  return parsed.lines.length === 0 ? "" : `${parsed.lines.join("\n")}\n`;
+  if (parsed.lines.length === 0) return "";
+  return `${parsed.lines.join("\n")}\n`;
 }
 
 function encodeValue(value: string): string {
+  // Quote values that contain whitespace, `#`, or non-printable characters,
+  // and escape embedded quotes/backslashes/newlines so the file round-trips
+  // through standard dotenv parsers.
   if (value === "") return "";
   const needsQuoting = /[\s#"'\\]|^\s|\s$/.test(value) || /\n|\r/.test(value);
   if (!needsQuoting) return value;
@@ -76,13 +146,21 @@ function encodeValue(value: string): string {
 
 function validateKey(key: string): void {
   if (!KEY_PATTERN.test(key)) {
-    throw new Error(
-      `persistConfigEnv: invalid key "${key}" - must match /^[A-Z][A-Z0-9_]*$/`,
+    throw new ElizaError(
+      `persistConfigEnv: invalid key "${key}" — must match /^[A-Z][A-Z0-9_]*$/`,
+      { code: "CONFIG_ENV_INVALID_KEY" }
     );
   }
-  if (BLOCKED_CONFIG_ENV_KEYS.has(key)) {
-    throw new Error(
+  if (BLOCKED_CONFIG_ENV_KEYS.has(key) || isBlockedSpawnEnvKey(key)) {
+    throw new ElizaError(
       `persistConfigEnv: key "${key}" is a shell/runtime hijack vector and cannot be written`,
+      { code: "CONFIG_ENV_BLOCKED_KEY" }
+    );
+  }
+  if (isProcessOnlyEnvKey(key)) {
+    throw new ElizaError(
+      `persistConfigEnv: key "${key}" is process-environment only and cannot be written`,
+      { code: "CONFIG_ENV_PROCESS_ONLY_KEY" }
     );
   }
 }
@@ -90,9 +168,9 @@ function validateKey(key: string): void {
 async function readIfExists(filePath: string): Promise<string | null> {
   try {
     return await fs.readFile(filePath, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw err;
   }
 }
 
@@ -100,6 +178,8 @@ async function writeAtomic(filePath: string, contents: string): Promise<void> {
   const tmpPath = `${filePath}${TMP_SUFFIX}`;
   const handle = await fs.open(tmpPath, "w", 0o600);
   try {
+    // Creation mode does not change an existing file left by an older writer.
+    await handle.chmod(0o600);
     await handle.writeFile(contents, "utf8");
     await handle.sync();
   } finally {
@@ -108,43 +188,133 @@ async function writeAtomic(filePath: string, contents: string): Promise<void> {
   await fs.rename(tmpPath, filePath);
 }
 
+// In-process serialisation. Cross-process coordination is out of scope.
 let writeChain: Promise<unknown> = Promise.resolve();
 
 function serialise<T>(fn: () => Promise<T>): Promise<T> {
   const next = writeChain.then(fn, fn);
-  // error-policy:J5 the returned `next` is where the caller observes this
-  // rejection; the chain copy is swallowed only so one failed write does not
-  // poison the serialisation of subsequent writes.
   writeChain = next.catch(() => undefined);
   return next;
 }
 
-function resolveConfigEnvPath(stateDir?: string): string {
-  return path.join(stateDir ?? resolveStateDir(), CONFIG_ENV_FILENAME);
+export function resolveConfigEnvPath(stateDir: string | undefined): string {
+  const dir = stateDir ?? resolveStateDir();
+  return path.join(dir, CONFIG_ENV_FILENAME);
 }
 
+/**
+ * Read the on-disk `config.env` into a plain record. Does NOT touch
+ * `process.env`. Missing file → empty record.
+ */
+export async function readConfigEnv(stateDir?: string): Promise<Record<string, string>> {
+  const filePath = resolveConfigEnvPath(stateDir);
+  const raw = await readIfExists(filePath);
+  if (raw === null) return {};
+  const parsed = parseConfigEnv(raw);
+  const out: Record<string, string> = {};
+  for (const [key, idx] of parsed.index) {
+    const line = parsed.lines[idx] ?? "";
+    const eq = line.indexOf("=");
+    if (eq < 0) continue;
+    const rawValue = line.slice(eq + 1);
+    out[key] = decodeValue(rawValue);
+  }
+  return out;
+}
+
+/**
+ * Synchronous variant for early startup paths such as `loadElizaConfig()`.
+ * Missing file → empty record. Does NOT touch `process.env`.
+ */
+export function readConfigEnvSync(stateDir?: string): Record<string, string> {
+  const filePath = resolveConfigEnvPath(stateDir);
+  let raw: string;
+  try {
+    raw = fsSync.readFileSync(filePath, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return {};
+    }
+    throw err;
+  }
+
+  const parsed = parseConfigEnv(raw);
+  const out: Record<string, string> = {};
+  for (const [key, idx] of parsed.index) {
+    const line = parsed.lines[idx] ?? "";
+    const eq = line.indexOf("=");
+    if (eq < 0) continue;
+    out[key] = decodeValue(line.slice(eq + 1));
+  }
+  return out;
+}
+
+function decodeValue(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return "";
+  const first = trimmed[0];
+  if ((first === '"' || first === "'") && trimmed.endsWith(first) && trimmed.length >= 2) {
+    const inner = trimmed.slice(1, -1);
+    if (first === '"') {
+      // Decode once: an escaped backslash must not become a second escape.
+      return inner.replace(/\\([\\"nr])/g, (_match, escaped: string) => {
+        if (escaped === "n") return "\n";
+        if (escaped === "r") return "\r";
+        return escaped;
+      });
+    }
+    return inner;
+  }
+  return trimmed;
+}
+
+/**
+ * Atomically write `key=value` into `config.env`, preserving all other
+ * entries, comments, and blank lines. Also updates `process.env[key]` so
+ * the in-flight process observes the new value immediately.
+ *
+ * Pass empty string to delete the key. Missing file → created with 0600.
+ *
+ * @throws if `key` is malformed or in the hijack-vector blocklist.
+ */
 export async function persistConfigEnv(
   key: string,
   value: string,
-  opts: PersistConfigEnvOptions = {},
+  opts: PersistConfigEnvOptions = {}
 ): Promise<void> {
   validateKey(key);
 
   await serialise(async () => {
     const filePath = resolveConfigEnvPath(opts.stateDir);
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const dir = path.dirname(filePath);
+    // Owner-only dir (the file itself is written 0600 below); the chmod heals
+    // state dirs created world-readable by older installs.
+    await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+    try {
+      await fs.chmod(dir, 0o700);
+    } catch {
+      // error-policy:J6 best-effort heal for directories created by older
+      // installs; platforms without POSIX chmod semantics skip.
+    }
 
     const existing = (await readIfExists(filePath)) ?? "";
     const parsed = parseConfigEnv(existing);
-    const existingIdx = parsed.index.get(key);
+
     const isDelete = value === "";
+    const existingIdx = parsed.index.get(key);
 
     if (isDelete) {
       if (existingIdx === undefined) {
-        delete process.env[key];
+        // Nothing to delete — don't write a .bak for an unchanged file.
+        if (key in process.env) delete process.env[key];
         return;
       }
-      parsed.lines.splice(existingIdx, 1);
+      // Removing only the winning definition would restore an older value
+      // on the next read. Preserve unrelated entries and comments.
+      parsed.lines = parsed.lines.filter((line) => {
+        const eq = line.indexOf("=");
+        return eq <= 0 || line.slice(0, eq).trim() !== key;
+      });
     } else {
       const encoded = `${key}=${encodeValue(value)}`;
       if (existingIdx === undefined) {
@@ -154,14 +324,21 @@ export async function persistConfigEnv(
       }
     }
 
+    const nextContents = serialiseConfigEnv(parsed);
+
+    // Snapshot pre-image for manual recovery before touching the live file.
     if (existing.length > 0) {
-      await fs.writeFile(`${filePath}${BAK_SUFFIX}`, existing, {
-        encoding: "utf8",
-        mode: 0o600,
-      });
+      const backup = await fs.open(`${filePath}${BAK_SUFFIX}`, "w", 0o600);
+      try {
+        await backup.chmod(0o600);
+        await backup.writeFile(existing, "utf8");
+      } finally {
+        await backup.close();
+      }
     }
 
-    await writeAtomic(filePath, serialiseConfigEnv(parsed));
+    await writeAtomic(filePath, nextContents);
+
     if (isDelete) {
       delete process.env[key];
     } else {
@@ -169,3 +346,13 @@ export async function persistConfigEnv(
     }
   });
 }
+
+/** Exposed for tests and recovery tooling. */
+export const __testing = {
+  BLOCKED_CONFIG_ENV_KEYS,
+  CONFIG_ENV_FILENAME,
+  BAK_SUFFIX,
+  TMP_SUFFIX,
+  parseConfigEnv,
+  serialiseConfigEnv,
+};

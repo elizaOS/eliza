@@ -16,7 +16,7 @@
  * re-plan turn resolved against the Tokyo leg's dates/timezone from the earlier
  * itinerary, not a context-free guess.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

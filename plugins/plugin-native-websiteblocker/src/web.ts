@@ -82,6 +82,9 @@ function validateStartBlockOptions(
       throw new Error("durationMinutes must be a positive finite number");
     }
     durationMinutes = Math.trunc(parsed);
+    if (durationMinutes < 1) {
+      throw new Error("durationMinutes must be at least 1 minute");
+    }
   }
 
   return { websites, durationMinutes };

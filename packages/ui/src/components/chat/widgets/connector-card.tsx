@@ -27,8 +27,8 @@ import {
 } from "react";
 import { client } from "../../../api/client";
 import type { PluginInfo } from "../../../api/client-types-config";
-import { cn } from "../../../lib/utils";
-import { useAppSelectorShallow } from "../../../state";
+import { useAppSelectorShallow } from "../../../state/app-store";
+import { cn } from "../../../utils/cn";
 import { getBrandIcon } from "../../conversations/brand-icons";
 import { iconImageSource, resolveIcon } from "../../pages/plugin-list-utils";
 import { Button } from "../../ui/button";

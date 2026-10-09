@@ -22,8 +22,8 @@
  *                                     auto-authorize a real external spend;
  *   - other `mutating` / `paid`     → auto-authorize while the allowance is
  *     (state changes + revenue        active. These do not debit our balance
- *      ops the *payer* funds, e.g.    (e.g. `apps.charges.create` creates a
- *      `apps.charges.create`)         charge that someone else pays us).
+ *      ops the *payer* funds, e.g.    (e.g. `x402.requests.create` creates a
+ *      `x402.requests.create`)        request that someone else pays us).
  *
  * The cap is a SAFETY THROTTLE, not a durable accounting ledger: the running
  * total is tracked in-memory per child session and resets on process restart.
@@ -62,8 +62,8 @@ export const SPEND_HINT_PARAM = "spendEstimateUsd";
 /**
  * Cloud commands that debit the caller's OWN credits / wallet (true self-spend).
  * Only these are metered against the cap. Revenue/collection commands such as
- * `apps.charges.*` and `x402.requests.*` are `paid`-risk but funded by the
- * payer, so they are intentionally excluded.
+ * `x402.requests.*` are `paid`-risk but funded by the payer, so they are
+ * intentionally excluded.
  */
 export const SELF_SPEND_COMMANDS: ReadonlySet<string> = new Set([
   "domains.buy",

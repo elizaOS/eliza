@@ -1,7 +1,7 @@
 # certification-vast — dispatches an automated full-tier certification run on
 # a rented vast.ai GPU (#14548, epic #14541). Thin caller of
-# scripts/vast/run-certification.mjs: search offers → create from the
-# prebuilt certification image → onstart runs the packages/evidence chain
+# packages/scripts/vast/run-certification.ts: search offers → create from the
+# prebuilt certification image → onstart runs the packages/testing chain
 # (bundle:create → certify:rollup → certify:sign) → poll → pull the signed
 # certification.json → DESTROY the instance in the script's own finally.
 #
@@ -111,7 +111,7 @@ jobs:
           TIMEOUT_MINUTES: ${{ inputs.timeout_minutes || '120' }}
         run: |
           set -euo pipefail
-          node scripts/vast/run-certification.mjs \
+          node packages/scripts/vast/run-certification.ts \
             --sha "$CERT_SHA" --tier "$TIER" \
             --max-dph "$MAX_DPH" --max-attempts "$MAX_ATTEMPTS" \
             --timeout-minutes "$TIMEOUT_MINUTES" \
@@ -135,7 +135,7 @@ jobs:
           TIMEOUT_MINUTES: ${{ inputs.timeout_minutes || '120' }}
         run: |
           set -euo pipefail
-          node scripts/vast/run-certification.mjs \
+          node packages/scripts/vast/run-certification.ts \
             --sha "$CERT_SHA" --tier "$TIER" \
             --max-dph "$MAX_DPH" --max-attempts "$MAX_ATTEMPTS" \
             --timeout-minutes "$TIMEOUT_MINUTES" \
@@ -170,7 +170,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       # The documented fallback: same chain, same output, run by a human/agent
-      # holding the signing key. Kept in lockstep with scripts/vast/README.md.
+      # holding the signing key. Kept in lockstep with packages/scripts/vast/README.md.
       - name: Local certification required (vast run failed)
         if: failure()
         env:
@@ -186,9 +186,9 @@ jobs:
             echo ""
             echo '```bash'
             echo "git fetch origin $CERT_SHA && git checkout $CERT_SHA"
-            echo "node scripts/vast/local-certify.mjs --tier $TIER"
+            echo "node packages/scripts/vast/local-certify.ts --tier $TIER"
             echo '```'
             echo ""
-            echo "Runbook (costs, kill paths, storage push): [scripts/vast/README.md](https://github.com/${GITHUB_REPOSITORY}/blob/develop/scripts/vast/README.md)"
+            echo "Runbook (costs, kill paths, storage push): [packages/scripts/vast/README.md](https://github.com/${GITHUB_REPOSITORY}/blob/develop/packages/scripts/vast/README.md)"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "::error title=certification-vast::vast run failed — local certification required: node scripts/vast/local-certify.mjs --tier $TIER (see scripts/vast/README.md)"
+          echo "::error title=certification-vast::vast run failed — local certification required: node packages/scripts/vast/local-certify.ts --tier $TIER (see packages/scripts/vast/README.md)"

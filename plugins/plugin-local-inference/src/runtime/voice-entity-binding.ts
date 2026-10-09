@@ -25,10 +25,7 @@ import {
 	type VoiceEntityBoundPayload,
 	type VoiceSpeakerNameInferencePayload,
 } from "@elizaos/core";
-import {
-	AGENT_SELF_VOICE_THRESHOLD,
-	ECHO_WINDOW_MS,
-} from "@elizaos/shared/voice/respond-gate";
+import { AGENT_SELF_VOICE_THRESHOLD, ECHO_WINDOW_MS } from "@elizaos/voice";
 import type {
 	VoiceNextSpeaker,
 	VoiceTurnSignal,

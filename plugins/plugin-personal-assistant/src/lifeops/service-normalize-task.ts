@@ -3,10 +3,7 @@
  * and coerce definition drafts, cadence/progression rules, and calendar/Gmail/
  * health feed request params into the canonical shapes the domains trust.
  */
-import {
-  BROWSER_BRIDGE_ACTION_KINDS,
-  type BrowserBridgeAction,
-} from "@elizaos/plugin-browser";
+
 import type {
   CreateLifeOpsDefinitionRequest,
   GetLifeOpsCalendarFeedRequest,
@@ -21,8 +18,12 @@ import type {
   LifeOpsWindowPolicy,
   LifeOpsWorkflowAction,
   LifeOpsWorkflowActionPlan,
-} from "../contracts/index.js";
-import { LIFEOPS_DEFINITION_KINDS } from "../contracts/index.js";
+} from "@elizaos/contracts";
+import { LIFEOPS_DEFINITION_KINDS } from "@elizaos/contracts";
+import {
+  BROWSER_BRIDGE_ACTION_KINDS,
+  type BrowserBridgeAction,
+} from "@elizaos/plugin-browser";
 import { DAY_MINUTES } from "./service-constants.js";
 import {
   fail,

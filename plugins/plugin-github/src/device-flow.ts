@@ -3,7 +3,7 @@
  * (Settings → Coding Agents → GitHub).
  *
  * Port of the #15749 lifeops-dashboard primitive
- * (`scripts/lifeops/github-device-login.mjs`) into the plugin route surface,
+ * (`packages/scripts/lifeops/github-device-login.ts`) into the plugin route surface,
  * with one addition: every flow is bound to the agent that started it
  * (`agentKey`), so on a multi-agent host one agent's runtime can never poll —
  * and therefore never receive the token of — a flow another agent started.
@@ -109,10 +109,16 @@ async function postForm(
   form: Record<string, string>,
   label: string,
   fetchImpl: typeof fetch,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
+  signal = AbortSignal.any([
+    ...(signal ? [signal] : []),
+    AbortSignal.timeout(10_000),
+  ]);
   let response: Response;
   try {
     response = await fetchImpl(url, {
+      signal,
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -176,6 +182,7 @@ export async function startDeviceFlow(options: {
   /** Identity of the agent runtime that owns this flow (agentId). */
   agentKey: string;
   deps?: FlowDeps;
+  signal?: AbortSignal;
 }): Promise<DeviceFlowStart> {
   const { clientId, agentKey, deps } = options;
   const fetchImpl = deps?.fetchImpl ?? fetch;
@@ -187,6 +194,7 @@ export async function startDeviceFlow(options: {
     { client_id: clientId.trim(), scope: DEFAULT_SCOPE },
     "GitHub device-code request",
     fetchImpl,
+    options.signal,
   );
   // GitHub returns 200 for a bad/unregistered client id with an error body.
   if (typeof payload.error === "string") {
@@ -242,6 +250,7 @@ export async function pollDeviceFlow(options: {
   /** Must match the agentKey the flow was started with. */
   agentKey: string;
   deps?: FlowDeps;
+  signal?: AbortSignal;
 }): Promise<DeviceFlowPollResult> {
   const { flowId, agentKey, deps } = options;
   const fetchImpl = deps?.fetchImpl ?? fetch;
@@ -279,6 +288,7 @@ export async function pollDeviceFlow(options: {
     },
     "GitHub device-token request",
     fetchImpl,
+    options.signal,
   );
 
   if (

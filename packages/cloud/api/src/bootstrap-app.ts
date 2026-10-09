@@ -10,42 +10,46 @@
  * any dispatch that has no concrete request path).
  */
 
+import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
+import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  getPresentedMobileApiKeySecret,
+  mobileApiKeyIngressRateLimitKey,
+} from "@elizaos/cloud-shared/lib/auth/mobile-api-key";
+import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { corsMiddleware } from "@elizaos/cloud-shared/lib/cors/cloud-api-hono-cors";
+import {
+  rateLimit,
+  rateLimitConfigVerdict,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { observeCloudRequest } from "@elizaos/cloud-shared/lib/observability/cloud-backend-observability";
+import { resolveElizaTraceId } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { httpTelemetryMiddleware } from "@elizaos/cloud-shared/lib/observability/http-telemetry-hono";
+import {
+  getCloudAwareEnv,
+  runWithCloudBindingsAsync,
+} from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { runWithRequestContext } from "@elizaos/cloud-shared/lib/runtime/request-context";
+import { configureAppsDeprovisionTrigger } from "@elizaos/cloud-shared/lib/services/app-db-deprovision-job-service";
+import { configureAppsDeployTrigger } from "@elizaos/cloud-shared/lib/services/app-deploy-job-service";
+import { getProviderEnvDiagnostics } from "@elizaos/cloud-shared/lib/services/oauth/provider-registry";
+import {
+  SubscriptionCatalogError,
+  validateSubscriptionCatalogConfiguration,
+} from "@elizaos/cloud-shared/lib/services/subscription-catalog";
+import { setRuntimeR2Bucket } from "@elizaos/cloud-shared/lib/storage/r2-runtime-binding";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { describeUnhandledError } from "@elizaos/cloud-shared/lib/utils/unhandled-error-detail";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { normalizeLanguage, type UiLanguage } from "@elizaos/core/protocol";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { logger as honoLogger } from "hono/logger";
 import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
-import { runWithDbCacheAsync } from "@/db/client";
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
-import {
-  getPresentedMobileApiKeySecret,
-  mobileApiKeyIngressRateLimitKey,
-} from "@/lib/auth/mobile-api-key";
-import { buildRedisClient } from "@/lib/cache/redis-factory";
-import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
-import {
-  rateLimit,
-  rateLimitConfigVerdict,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
-import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
-import { httpTelemetryMiddleware } from "@/lib/observability/http-telemetry-hono";
-import {
-  getCloudAwareEnv,
-  runWithCloudBindingsAsync,
-} from "@/lib/runtime/cloud-bindings";
-import { runWithRequestContext } from "@/lib/runtime/request-context";
-import { configureAppsDeprovisionTrigger } from "@/lib/services/app-db-deprovision-job-service";
-import { configureAppsDeployTrigger } from "@/lib/services/app-deploy-job-service";
-import { getProviderEnvDiagnostics } from "@/lib/services/oauth/provider-registry";
-import {
-  SubscriptionCatalogError,
-  validateSubscriptionCatalogConfiguration,
-} from "@/lib/services/subscription-catalog";
-import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
-import { logger } from "@/lib/utils/logger";
-import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import jwksRoute from "../.well-known/jwks.json/route";
 import oidcJwksRoute from "../.well-known/oidc/jwks.json/route";
 import oidcDiscoveryRoute from "../.well-known/openid-configuration/route";
@@ -57,13 +61,6 @@ import { cookieMutationGuardMiddleware } from "./middleware/cookie-mutation-guar
 import { routeShardKey } from "./router-shards";
 import { initAuditDispatcher } from "./services/audit-dispatcher-singleton";
 import { embeddedStewardHandler } from "./steward/embedded";
-
-/**
- * Supported UI languages, mirrored from `packages/ui/src/i18n/messages.ts`.
- * Kept inline because cloud-api must not import the React UI package into the
- * Workers bundle.
- */
-type UiLanguage = "en" | "zh-CN" | "ko" | "ja" | "vi" | "tl" | "pt" | "es";
 
 const REDIS_INDEPENDENT_INFERENCE_ROUTES = [
   "/api/v1/chat",
@@ -132,16 +129,12 @@ const REGION_LANGUAGE: Record<string, UiLanguage> = {
   PR: "es",
 };
 
-const SUPPORTED = new Set<string>(Object.values(REGION_LANGUAGE).concat("en"));
-
 function matchSupported(tag: string): UiLanguage | null {
   if (!tag) return null;
   if (/^en(-|$)/i.test(tag)) return "en";
-  const lower = tag.toLowerCase();
-  if (SUPPORTED.has(lower)) return lower as UiLanguage;
-  const base = lower.split("-")[0];
-  if (SUPPORTED.has(base)) return base as UiLanguage;
-  return null;
+  const normalized = normalizeLanguage(tag);
+  // The canonical normalizer defaults unknown tags to English; negotiation must skip them.
+  return normalized === "en" ? null : normalized;
 }
 
 function languageFromAcceptLanguage(header: string | null): UiLanguage | null {
@@ -152,11 +145,15 @@ function languageFromAcceptLanguage(header: string | null): UiLanguage | null {
       const [tag, ...params] = part.trim().split(";");
       const q = params
         .map((p) => p.trim())
-        .find((p) => p.startsWith("q="))
+        .find((p) => p.toLowerCase().startsWith("q="))
         ?.slice(2);
       return { tag: tag.trim(), q: q ? Number.parseFloat(q) : 1 };
     })
-    .filter((entry) => entry.tag && entry.tag !== "*")
+    // `q=0` means "not acceptable" (RFC 9110 §12.4.2) — such tags must be
+    // excluded, not merely ranked last, or a lone `ja;q=0` would still select
+    // Japanese. Unparseable q-values are dropped with them (`NaN > 0` is false).
+    // Mirrors `languageFromAcceptLanguage` in `@elizaos/ui/i18n/region`.
+    .filter((entry) => entry.tag && entry.tag !== "*" && entry.q > 0)
     .sort((a, b) => b.q - a.q);
   for (const { tag } of ranked) {
     const matched = matchSupported(tag);

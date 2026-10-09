@@ -16,6 +16,7 @@ import {
   timingSafeEqual,
   verify as verifySignature,
 } from "node:crypto";
+import type { LifeOpsMicrosoftCapability } from "@elizaos/contracts";
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
   type ConnectorAccount,
@@ -29,10 +30,10 @@ import {
   type ConnectorOAuthStartRequest,
   type ConnectorOAuthStartResult,
   ElizaError,
+  type FetchLike,
   type IAgentRuntime,
   logger,
 } from "@elizaos/core";
-import type { LifeOpsMicrosoftCapability } from "@elizaos/shared";
 import { MICROSOFT_CALENDAR_PROVIDER } from "./accounts.js";
 
 const MICROSOFT_LOGIN_ROOT = "https://login.microsoftonline.com";
@@ -180,7 +181,7 @@ function member(value: unknown, key: string): unknown {
     : undefined;
 }
 
-function runtimeFetch(runtime: IAgentRuntime): typeof fetch {
+function runtimeFetch(runtime: IAgentRuntime): FetchLike {
   return runtime.fetch ? runtime.fetch.bind(runtime) : globalThis.fetch;
 }
 

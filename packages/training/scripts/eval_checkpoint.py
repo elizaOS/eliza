@@ -1,6 +1,6 @@
 """eval_checkpoint.py — score one local checkpoint against a small val set.
 
-Wraps `scripts/benchmark/native_tool_call_bench.py` via subprocess so we get
+Wraps `scripts/eval/native_tool_call_bench.py` via subprocess so we get
 bucketed native function-calling structure/content numbers without duplicating
 its scoring or model-loading logic. Reads the bench `summary.json` and emits a
 small per-checkpoint result JSON the eval-loop appends to `_progress.jsonl`.
@@ -213,8 +213,7 @@ def main() -> int:
             "--max-per-bucket",
             str(args.max_examples),
         ]
-        # native_tool_call_bench imports from scripts.format_for_training etc. via
-        # sys.path manipulation rooted at training/. Run it from there.
+        # Resolve operator resources relative to the training checkout.
         env = os.environ.copy()
         # Don't let an inherited HF_HOME redirect put weights on a tiny disk.
         env.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")

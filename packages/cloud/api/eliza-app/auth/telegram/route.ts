@@ -10,38 +10,38 @@
  * POST /api/eliza-app/auth/telegram
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import type { Organization } from "@/db/repositories/organizations";
-import type { User } from "@/db/repositories/users";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import type { Organization } from "@elizaos/cloud-shared/db/repositories/organizations";
+import type { User } from "@elizaos/cloud-shared/db/repositories/users";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   elizaAppSessionService,
   elizaAppUserService,
   type TelegramAuthData,
   telegramAuthService,
   type ValidatedSession,
-} from "@/lib/services/eliza-app";
+} from "@elizaos/cloud-shared/lib/services/eliza-app";
 import {
   claimTelegramOnboardingContinuation,
   completeTelegramOnboardingContinuationClaim,
   runOnboardingChat,
   type TelegramOnboardingContinuationClaim,
-} from "@/lib/services/eliza-app/onboarding-chat";
-import { invalidatePersonalDeliveryProjection } from "@/lib/services/eliza-app/personal-delivery-projection-contract";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-chat";
+import { invalidatePersonalDeliveryProjection } from "@elizaos/cloud-shared/lib/services/eliza-app/personal-delivery-projection-contract";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import {
   isValidE164,
   normalizePhoneNumber,
-} from "@/lib/utils/phone-normalization";
+} from "@elizaos/cloud-shared/lib/utils/phone-normalization";
 import type {
   AppEnv,
   RuntimeDurableObjectNamespace,
-} from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 /**
  * E.164 phone number validation (after normalization)

@@ -14,7 +14,7 @@
 
 import { Bell, CalendarClock, Check, Clock, X } from "lucide-react";
 import { useCallback, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import type { ScheduledTaskVerbName } from "../../api/client-scheduled-tasks";
 import type { AutomationItem } from "../../api/client-types-config";
 import { useTranslation } from "../../state/TranslationContext.hooks";
@@ -64,6 +64,45 @@ export function ScheduledTaskEditor({
     },
     [task, onApplied, t],
   );
+
+  // #31891: "Run now" must execute the task through the canonical fire API,
+  // not the acknowledge lifecycle verb. Acknowledging only changes state; it
+  // never dispatches, so the owner received no run.
+  const runNow = useCallback(async () => {
+    if (!task) return;
+    setBusy("acknowledge");
+    setError(null);
+    try {
+      const { fire } = await client.fireScheduledTask(task.taskId);
+      if (fire.kind === "fired") {
+        onApplied?.();
+        return;
+      }
+      if (fire.kind === "raced") {
+        // Another tick claimed the row first: the run is happening.
+        onApplied?.();
+        return;
+      }
+      // Typed non-fired outcomes are reported, never swallowed.
+      setError(
+        fire.reason ??
+          fire.error ??
+          t("scheduledtask.fireUnavailable", {
+            defaultValue: "The task could not be run right now.",
+          }),
+      );
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : t("scheduledtask.applyError", {
+              defaultValue: "Failed to update scheduled item.",
+            }),
+      );
+    } finally {
+      setBusy(null);
+    }
+  }, [task, onApplied, t]);
 
   if (!task) {
     return (
@@ -131,13 +170,13 @@ export function ScheduledTaskEditor({
       {error && <div className="text-sm text-danger">{error}</div>}
 
       <div className="flex flex-wrap gap-2">
-        {/* Run now = acknowledge (fire the task immediately for manual/paused
-            starters like the seeded weekly review). */}
+        {/* Run now executes the task through the canonical fire API (#31891);
+            acknowledging a delivered item remains its own operation. */}
         <Button
           variant="default"
           size="sm"
           disabled={busy !== null}
-          onClick={() => apply("acknowledge")}
+          onClick={isManual ? runNow : () => apply("acknowledge")}
         >
           <Bell className="mr-1  size-3.5" aria-hidden />
           {isManual

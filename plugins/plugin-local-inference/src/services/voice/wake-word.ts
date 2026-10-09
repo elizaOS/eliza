@@ -1,19 +1,9 @@
 /**
  * Wake-word detection (openWakeWord) — opt-in, local-mode only.
  *
- * Replaces the previous `onnxruntime-node`-backed implementation with a
- * pure GGML / llama.cpp path. The three-stage openWakeWord pipeline (mel
- * filterbank → speech embedding model → per-phrase classifier head) is
- * compiled into one combined GGUF
- * (`wake/openwakeword.gguf`, produced by
- * `packages/training/scripts/wakeword/convert_openwakeword_to_gguf.py`)
- * and executed natively by the fused `libelizainference` build via the
- * `eliza_inference_wakeword_*` FFI surface (ABI v5).
- *
- * The JS side is now a thin adapter over that surface — there is NO ONNX
- * fallback. When the fused library was built without the wake-word
- * runtime, the JS path throws a structured `WakeWordUnavailableError`
- * (AGENTS.md §3, §8 — no silent fallbacks).
+ * The fused native runtime loads three GGUFs from the active context bundle:
+ * `wake/<head>.{melspec,embedding,classifier}.gguf`. JavaScript feeds complete
+ * PCM frames through the existing eliza_inference_wakeword_* ABI.
  *
  * Per `packages/inference/AGENTS.md` §1 + the three-mode rules (§1, §5):
  *   - openWakeWord (Apache-2.0, ~3 MB) ships in the bundle but is
@@ -41,6 +31,7 @@ import type {
 	ElizaInferenceFfi,
 	NativeWakeWordHandle,
 } from "./ffi-bindings";
+import type { WakeWordModel } from "./types.js";
 import {
 	type BudgetReservation,
 	ensureSharedVoiceBudget,
@@ -52,22 +43,8 @@ import {
 	OpenWakeWordGgmlModel,
 	WakeWordGgmlUnavailableError,
 } from "./wake-word-ggml";
-
 /** Directory holding the bundled openWakeWord GGUF inside a bundle. */
 export const OPENWAKEWORD_DIR_REL_PATH = "wake";
-
-/**
- * Combined wake-word GGUF: contains the mel filterbank constants, the
- * speech embedding model weights, AND every per-phrase classifier head
- * (`head.<name>.*` tensors). The fused `libelizainference` build mmaps
- * this file from `<bundleRoot>/wake/openwakeword.gguf` (or the shared
- * cache at `<state-dir>/local-inference/wake/openwakeword.gguf`).
- */
-export const OPENWAKEWORD_GGUF_REL_PATH = path.join(
-	OPENWAKEWORD_DIR_REL_PATH,
-	"openwakeword.gguf",
-);
-
 /**
  * Default wake-phrase head shipped with a voice bundle. The documented
  * default Eliza-1 wake phrase is **"hey eliza"** — a two-word,
@@ -79,7 +56,6 @@ export const OPENWAKEWORD_GGUF_REL_PATH = path.join(
  * and re-point this constant.
  */
 export const OPENWAKEWORD_DEFAULT_HEAD = "hey-eliza";
-
 /**
  * Heads that are placeholders, not trained on the Eliza-1 wake phrase.
  *
@@ -98,7 +74,7 @@ export const OPENWAKEWORD_DEFAULT_HEAD = "hey-eliza";
  * The trained GGUFs are now PUBLISHED to `elizaos/eliza-1` at
  * `voice/wakeword/hey-eliza.{melspec,embedding,classifier}.gguf` and registered
  * in the voice catalog as `wakeword` v0.3.0 (`VOICE_MODEL_VERSIONS` in
- * `@elizaos/shared`). `hey-eliza` nonetheless STAYS in this set until that head
+ * `@elizaos/plugin-native-inference/model-catalog/voice-models`). `hey-eliza` nonetheless STAYS in this set until that head
  * ships in every tier BUNDLE's `wake/` dir — the gated `publish_all_eliza1.sh`
  * re-publish — because the bundles users currently download still carry the
  * renamed `hey_jarvis` placeholder; removing the flag before the bundle ships
@@ -111,11 +87,9 @@ export const OPENWAKEWORD_PLACEHOLDER_HEADS: ReadonlySet<string> = new Set([
 	"hey-eliza",
 	"hey_jarvis",
 ]);
-
 export function isPlaceholderWakeWordHead(head: string): boolean {
 	return OPENWAKEWORD_PLACEHOLDER_HEADS.has(head.trim());
 }
-
 /** Audio chunk the streaming pipeline consumes, in samples (80 ms @ 16 kHz). */
 const FRAME_SAMPLES = 1280;
 
@@ -132,9 +106,6 @@ const FRAME_SAMPLES = 1280;
  * matches the same shape the previous ONNX backend exposed to callers.
  */
 export type { WakeWordModel } from "./types.js";
-
-import type { WakeWordModel } from "./types.js";
-
 export interface WakeWordConfig {
 	/** P(wake) above this fires a detection. openWakeWord default ~0.5. */
 	threshold?: number;
@@ -151,13 +122,11 @@ export interface WakeWordConfig {
 	 */
 	refractoryFrames?: number;
 }
-
 const DEFAULTS: Required<WakeWordConfig> = {
 	threshold: 0.5,
 	minActivationFrames: 8,
 	refractoryFrames: 25, // ~2 s @ 80 ms frames
 };
-
 /**
  * Thrown when the native openWakeWord runtime cannot service this call:
  *   - `ffi-missing`: the FFI handle was not provided to the loader (the
@@ -178,15 +147,13 @@ export class WakeWordUnavailableError extends Error {
 		this.code = code;
 	}
 }
-
-/** Path to the combined wake-word GGUF and the name of the head to bind. */
+/** Model files resolved inside the active native context's bundle. */
 export interface WakeWordModelPaths {
-	/** Absolute path to `wake/openwakeword.gguf`. */
-	gguf: string;
-	/** Name of the classifier head inside the GGUF (e.g. "hey-eliza"). */
+	melspec: string;
+	embedding: string;
+	classifier: string;
 	head: string;
 }
-
 /**
  * The real openWakeWord streaming detector, backed by the native FFI.
  * Owns one `eliza_inference_wakeword_*` session; `scoreFrame` consumes
@@ -197,16 +164,14 @@ export interface WakeWordModelPaths {
  */
 export class GgmlWakeWordModel implements WakeWordModel {
 	readonly frameSamples = FRAME_SAMPLES;
-	readonly sampleRate = 16_000;
+	readonly sampleRate = 16000;
 	private closed = false;
-
 	private constructor(
 		private readonly ffi: ElizaInferenceFfi,
 		private readonly handle: NativeWakeWordHandle,
 		/** Voice-budget reservation held while the native session is open. */
 		private readonly reservation: BudgetReservation | null,
 	) {}
-
 	/**
 	 * True only when the fused `libelizainference` build exports the
 	 * wake-word ABI and advertises support at runtime. The wake-word
@@ -217,7 +182,6 @@ export class GgmlWakeWordModel implements WakeWordModel {
 		if (!ffi || typeof ffi.wakewordSupported !== "function") return false;
 		return ffi.wakewordSupported();
 	}
-
 	/**
 	 * Open a native wake-word session. Throws `WakeWordUnavailableError`
 	 * when the runtime is not present or rejects the head name. No silent
@@ -260,21 +224,18 @@ export class GgmlWakeWordModel implements WakeWordModel {
 		try {
 			handle = opts.ffi.wakewordOpen({
 				ctx,
-				sampleRateHz: 16_000,
+				sampleRateHz: 16000,
 				headName: opts.headName,
 			});
 		} catch (err) {
 			reservation.release();
 			throw new WakeWordUnavailableError(
 				"model-load-failed",
-				`[wake-word] failed to open native wake-word session for head '${opts.headName}': ${
-					err instanceof Error ? err.message : String(err)
-				}`,
+				`[wake-word] failed to open native wake-word session for head '${opts.headName}': ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 		return new GgmlWakeWordModel(opts.ffi, handle, reservation);
 	}
-
 	async scoreFrame(frame: Float32Array): Promise<number> {
 		if (this.closed) {
 			throw new Error(
@@ -292,7 +253,6 @@ export class GgmlWakeWordModel implements WakeWordModel {
 		}
 		return score({ wake: this.handle, pcm: frame });
 	}
-
 	reset(): void {
 		if (this.closed) return;
 		const reset = this.ffi.wakewordReset;
@@ -301,7 +261,6 @@ export class GgmlWakeWordModel implements WakeWordModel {
 		}
 		reset(this.handle);
 	}
-
 	close(): void {
 		if (this.closed) return;
 		this.closed = true;
@@ -309,41 +268,29 @@ export class GgmlWakeWordModel implements WakeWordModel {
 		this.reservation?.release();
 	}
 }
-
 /**
- * Resolve the bundled wake-word GGUF. Unlike the VAD model this is
- * *optional* — a missing file means "wake word unavailable for this
- * bundle", not "broken bundle". Returns null when the GGUF is absent so
- * callers keep voice mode working (push-to-talk / VAD-gated) without it.
- *
- * Search order:
- *   1. `<bundleRoot>/wake/openwakeword.gguf`
- *   2. `<state-dir>/local-inference/wake/openwakeword.gguf` (shared cache)
- *
- * `head` defaults to the bundle's default wake phrase. The head name is
- * resolved by the native runtime against tensors inside the GGUF, so it
- * is validated at open time, not here.
- *
- * MUST only be called in `local` mode. The cloud-mode router does not
- * reach this (the wake-word setting is rejected there) — see AGENTS.md §5
- * hide-not-disable.
+ * Resolve the exact three files opened by the fused native context. Shared
+ * cache files cannot make this bundle ready: the FFI open call receives only
+ * the context and head, not an alternate model path. Missing files leave the
+ * optional detector unavailable; malformed model contents fail at native open.
  */
 export function resolveWakeWordModel(opts: {
 	bundleRoot?: string;
 	head?: string;
 }): WakeWordModelPaths | null {
-	const headName = opts.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
-	const candidates: string[] = [];
-	if (opts.bundleRoot) {
-		candidates.push(path.join(opts.bundleRoot, OPENWAKEWORD_GGUF_REL_PATH));
-	}
-	candidates.push(path.join(localInferenceRoot(), OPENWAKEWORD_GGUF_REL_PATH));
-	for (const c of candidates) {
-		if (existsSync(c)) return { gguf: path.resolve(c), head: headName };
-	}
-	return null;
+	if (!opts.bundleRoot) return null;
+	const head = opts.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
+	const root = path.resolve(opts.bundleRoot, OPENWAKEWORD_DIR_REL_PATH);
+	const paths = {
+		melspec: path.join(root, `${head}.melspec.gguf`),
+		embedding: path.join(root, `${head}.embedding.gguf`),
+		classifier: path.join(root, `${head}.classifier.gguf`),
+		head,
+	};
+	return [paths.melspec, paths.embedding, paths.classifier].every(existsSync)
+		? paths
+		: null;
 }
-
 /**
  * Resolve the standalone wakeword-cpp library + three-GGUF bundle.
  * Returns `null` when any of the four files is missing — that means
@@ -353,14 +300,14 @@ export function resolveWakeWordModel(opts: {
  *   1. `$ELIZA_WAKEWORD_LIB` (operator override)
  *   2. `<bundleRoot>/wake/libwakeword.{so,dylib,dll}`
  *   3. `<state-dir>/local-inference/wake/libwakeword.{so,dylib,dll}`
- *   4. `packages/native/plugins/wakeword-cpp/build/libwakeword.{so,dylib,dll}`
+ *   4. `plugins/plugin-local-inference/native/wakeword-cpp/build/libwakeword.{so,dylib,dll}`
  *      (developer build tree)
  *
  * Search order for the three GGUFs (per kind in
  * {melspec, embedding, classifier}):
  *   1. `<bundleRoot>/wake/<head>.<kind>.gguf`
  *   2. `<state-dir>/local-inference/wake/<head>.<kind>.gguf`
- *   3. `packages/native/plugins/wakeword-cpp/build/wakeword/<head>.<kind>.gguf`
+ *   3. `plugins/plugin-local-inference/native/wakeword-cpp/build/wakeword/<head>.<kind>.gguf`
  */
 function libExtCandidates(): readonly string[] {
 	switch (process.platform) {
@@ -372,12 +319,10 @@ function libExtCandidates(): readonly string[] {
 			return [".so", ".dylib"] as const;
 	}
 }
-
 function firstExisting(paths: readonly string[]): string | null {
 	for (const p of paths) if (existsSync(p)) return path.resolve(p);
 	return null;
 }
-
 /** Resolved triple of standalone wakeword-cpp paths (library + 3 GGUFs). */
 export interface WakeWordStandalonePaths {
 	libraryPath: string;
@@ -386,14 +331,12 @@ export interface WakeWordStandalonePaths {
 	classifier: string;
 	head: string;
 }
-
 export function resolveWakeWordStandalonePaths(opts: {
 	bundleRoot?: string;
 	head?: string;
 }): WakeWordStandalonePaths | null {
 	const head = opts.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
 	const root = localInferenceRoot();
-
 	const libCandidates: string[] = [];
 	const envLib = process.env.ELIZA_WAKEWORD_LIB;
 	if (envLib && envLib.length > 0) libCandidates.push(envLib);
@@ -411,14 +354,13 @@ export function resolveWakeWordStandalonePaths(opts: {
 				"..",
 				"..",
 				"..",
-				"packages/native/plugins/wakeword-cpp/build",
+				"plugins/plugin-local-inference/native/wakeword-cpp/build",
 				`libwakeword${ext}`,
 			),
 		);
 	}
 	const libraryPath = firstExisting(libCandidates);
 	if (!libraryPath) return null;
-
 	const ggufCandidates = (
 		kind: "melspec" | "embedding" | "classifier",
 	): string[] => {
@@ -434,7 +376,7 @@ export function resolveWakeWordStandalonePaths(opts: {
 				"..",
 				"..",
 				"..",
-				"packages/native/plugins/wakeword-cpp/build/wakeword",
+				"plugins/plugin-local-inference/native/wakeword-cpp/build/wakeword",
 				fname,
 			),
 		);
@@ -444,10 +386,8 @@ export function resolveWakeWordStandalonePaths(opts: {
 	const embedding = firstExisting(ggufCandidates("embedding"));
 	const classifier = firstExisting(ggufCandidates("classifier"));
 	if (!melspec || !embedding || !classifier) return null;
-
 	return { libraryPath, melspec, embedding, classifier, head };
 }
-
 /**
  * Open a wake-word session, preferring the fused `libelizainference`
  * wake-word path (the single native engine the whole voice pipeline runs
@@ -457,11 +397,11 @@ export function resolveWakeWordStandalonePaths(opts: {
  *
  * Provider order:
  *   1. `GgmlWakeWordModel` (this file) — the fused-`libelizainference` path
- *      that consumes `wake/openwakeword.gguf` from the bundle cache via the
- *      `eliza_inference_wakeword_*` ABI. Tried first whenever the bundled GGUF
- *      is on disk; uses the same `ffi`/`ctx` as VAD / speaker / TTS / ASR.
+ *      that consumes the active bundle’s three head GGUFs via the
+ *      `eliza_inference_wakeword_*` ABI. Tried first whenever all three model files
+ *      are on disk; uses the same `ffi`/`ctx` as VAD / speaker / TTS / ASR.
  *   2. `OpenWakeWordGgmlModel` from `./wake-word-ggml.ts` — the standalone
- *      `packages/native/plugins/wakeword-cpp` build (three GGUFs). Guarded
+ *      `plugins/plugin-local-inference/native/wakeword-cpp` build (three GGUFs). Guarded
  *      fallback for paths where the fused build lacks the wake-word runtime.
  *
  * `ffi` and `ctx` come from the voice lifecycle — they are the same
@@ -485,7 +425,6 @@ export async function loadBundledWakeWordModel(opts: {
 			headName: paths.head,
 		});
 	}
-
 	// Fused build lacks the wake-word GGUF/runtime — fall back to the standalone
 	// wakeword-cpp build when its library + three GGUFs are present.
 	const standalone = resolveWakeWordStandalonePaths({
@@ -514,7 +453,6 @@ export async function loadBundledWakeWordModel(opts: {
 			}
 		}
 	}
-
 	// Last resort: the fused GGUF is present but the build did not advertise
 	// support — let GgmlWakeWordModel.load surface the structured
 	// runtime-not-ready error rather than silently returning null.
@@ -525,13 +463,11 @@ export async function loadBundledWakeWordModel(opts: {
 		headName: paths.head,
 	});
 }
-
 /** Carried to `onWake` on each fresh detection. */
 export interface WakeFireInfo {
 	/** The classifier probability that crossed threshold, in [0, 1]. */
 	confidence: number;
 }
-
 /**
  * Streaming wake-word detector. Feed frames; `onWake` fires once per
  * detected utterance (refractory-debounced) with the firing
@@ -549,7 +485,6 @@ export class OpenWakeWordDetector {
 	private cooldown = 0;
 	private activationStreak = 0;
 	private readonly onWake: (info: WakeFireInfo) => void;
-
 	constructor(args: {
 		model: WakeWordModel;
 		config?: WakeWordConfig;
@@ -563,7 +498,6 @@ export class OpenWakeWordDetector {
 		};
 		this.onWake = args.onWake;
 	}
-
 	/**
 	 * Score one PCM frame; fire `onWake` on a fresh detection. Resolves
 	 * to true when this frame fired the wake word.
@@ -594,7 +528,6 @@ export class OpenWakeWordDetector {
 		this.activationStreak = 0;
 		return false;
 	}
-
 	reset(): void {
 		this.model.reset();
 		this.cooldown = 0;

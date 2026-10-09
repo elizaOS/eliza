@@ -4,9 +4,9 @@
  */
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { startApiServer } from "../../../app-core/src/api/server.ts";
-import { useIsolatedConfigEnv as isolatedConfigEnv } from "../../../app-core/test/helpers/isolated-config.ts";
-import { createRealTestRuntime } from "../../../app-core/test/helpers/real-runtime.ts";
+import { startApiServer } from "../../src/api/server.ts";
+import { useIsolatedConfigEnv as isolatedConfigEnv } from "../helpers/isolated-config.ts";
+import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 
 export interface TestApiServerOptions {
   port?: number;

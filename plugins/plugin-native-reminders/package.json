@@ -10,20 +10,23 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
-      "bun": "./src/index.ts",
-      "development": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./android": {
+      "eliza-source": "./src/android.ts",
+      "types": "./dist/android.d.ts",
+      "import": "./dist/android.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "android/build.gradle",
+    "android/src/main",
+    "android/README.md",
+    "src"
   ],
   "engines": {
     "node": ">=24.0.0"
@@ -42,26 +45,24 @@
   ],
   "scripts": {
     "build": "tsc6 --noCheck -p tsconfig.json",
-    "test": "vitest run",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:android-package": "node test/packed-consumer/check.mjs"
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.3",
+    "@capacitor/core": "^8.3.1"
   },
   "author": "elizaOS",
   "license": "MIT",
   "eliza": {
-    "platforms": [
-      "darwin"
-    ],
     "runtime": "node",
     "platformDetails": {
       "darwin": "Shared Apple Reminders native bridge policy for macOS host runtimes."
@@ -69,5 +70,18 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "peerDependenciesMeta": {
+    "@capacitor/core": {
+      "optional": true
+    }
+  },
+  "elizaos": {
+    "platforms": [
+      "darwin"
+    ]
   }
 }

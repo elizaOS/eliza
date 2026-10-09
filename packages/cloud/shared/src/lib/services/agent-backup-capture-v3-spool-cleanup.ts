@@ -439,9 +439,9 @@ async function persistIntent(params: {
   await fsyncDirectory(params.outbox);
 }
 
-function sameTerminalIntent(
-  left: Readonly<TerminalCleanupIntent>,
-  right: Readonly<TerminalCleanupIntent>,
+function sameTerminalAuthority(
+  left: Readonly<TerminalCleanupIntent | TerminalCleanupCandidate>,
+  right: Readonly<TerminalCleanupIntent | TerminalCleanupCandidate>,
 ): boolean {
   return (
     left.organizationId === right.organizationId &&
@@ -474,7 +474,7 @@ async function persistTerminalIntent(params: {
   const finalPath = path.join(params.outbox, `${intent.operationId}.json`);
   try {
     const existing = await readTerminalIntent(finalPath);
-    if (!sameTerminalIntent(existing, intent)) {
+    if (!sameTerminalAuthority(existing, intent)) {
       throw new Error("Terminal backup spool cleanup operation already has different authority");
     }
     return;
@@ -512,29 +512,11 @@ async function persistTerminalIntent(params: {
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code !== "EEXIST") throw cause;
     const existing = await readTerminalIntent(finalPath);
-    if (!sameTerminalIntent(existing, intent)) throw cause;
+    if (!sameTerminalAuthority(existing, intent)) throw cause;
   } finally {
     await fs.promises.unlink(temporaryPath).catch(() => undefined);
   }
   await fsyncDirectory(params.outbox);
-}
-
-function sameTerminalCandidate(
-  left: Readonly<TerminalCleanupCandidate>,
-  right: Readonly<TerminalCleanupCandidate>,
-): boolean {
-  return (
-    left.organizationId === right.organizationId &&
-    left.agentId === right.agentId &&
-    left.backupId === right.backupId &&
-    left.operationId === right.operationId &&
-    left.activationGeneration === right.activationGeneration &&
-    left.lifecycleRevision === right.lifecycleRevision &&
-    left.requestSha256 === right.requestSha256 &&
-    left.authoritySha256 === right.authoritySha256 &&
-    left.runtimePrincipalSha256 === right.runtimePrincipalSha256 &&
-    left.terminalErrorCode === right.terminalErrorCode
-  );
 }
 
 async function persistTerminalCandidate(params: {
@@ -554,7 +536,7 @@ async function persistTerminalCandidate(params: {
   const finalPath = path.join(params.outbox, `${candidate.operationId}.json`);
   try {
     const existing = await readTerminalCandidate(finalPath);
-    if (!sameTerminalCandidate(existing, candidate)) {
+    if (!sameTerminalAuthority(existing, candidate)) {
       throw new Error("Terminal backup spool cleanup candidate already has different authority");
     }
     return;
@@ -592,7 +574,7 @@ async function persistTerminalCandidate(params: {
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code !== "EEXIST") throw cause;
     const existing = await readTerminalCandidate(finalPath);
-    if (!sameTerminalCandidate(existing, candidate)) throw cause;
+    if (!sameTerminalAuthority(existing, candidate)) throw cause;
   } finally {
     await fs.promises.unlink(temporaryPath).catch(() => undefined);
   }

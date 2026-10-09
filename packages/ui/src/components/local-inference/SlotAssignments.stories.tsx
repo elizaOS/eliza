@@ -1,10 +1,7 @@
 /** Storybook stories for SlotAssignments — all-auto, custom, single-model, unverified-bundle, and empty states. */
 
+import type { InstalledModel, ModelAssignments } from "@elizaos/contracts";
 import type { Meta, StoryObj } from "@storybook/react";
-import type {
-  InstalledModel,
-  ModelAssignments,
-} from "../../api/client-local-inference";
 import { TranslationProvider } from "../../state/TranslationProvider";
 import { SlotAssignments } from "./SlotAssignments";
 

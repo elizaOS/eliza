@@ -24,7 +24,12 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryPurpose } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  ModelType,
+  runWithTrajectoryPurpose,
+} from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   buildCommitmentRegretAudit,
@@ -97,8 +102,8 @@ export interface PrioritizeLoaderArgs {
 }
 
 /**
- * Per-subject loader hooks. Defaults read the production stores and degrade to
- * empty lists when an optional store is not installed.
+ * Per-subject loader hooks. Defaults read the production stores. An optional
+ * store that is not installed is empty; an installed store that fails throws.
  */
 export interface PrioritizeLoaders {
   loadTodos: (
@@ -214,10 +219,6 @@ function metadata(
   return result;
 }
 
-function errorDetail(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function getRuntimeService(
   runtime: IAgentRuntime,
   serviceName: string,
@@ -270,20 +271,15 @@ async function loadTodosFromRuntime({
   if (!entityId || !agentId) return [];
   const service = getRuntimeService(runtime, TODOS_SERVICE_TYPE);
   if (!isTodosService(service)) return [];
-  try {
-    const todos = await service.list({
-      entityId,
-      agentId,
-      status: ["pending", "in_progress"],
-      includeCompleted: false,
-    });
-    return todos
-      .map(mapTodoToRankable)
-      .filter((item): item is PrioritizeRankableItem => item !== null);
-  } catch (error) {
-    logger.warn(`[PRIORITIZE] rank_todos load failed: ${errorDetail(error)}`);
-    return [];
-  }
+  const todos = await service.list({
+    entityId,
+    agentId,
+    status: ["pending", "in_progress"],
+    includeCompleted: false,
+  });
+  return todos
+    .map(mapTodoToRankable)
+    .filter((item): item is PrioritizeRankableItem => item !== null);
 }
 
 async function loadThreadsFromRuntime({
@@ -292,32 +288,27 @@ async function loadThreadsFromRuntime({
 }: PrioritizeLoaderArgs): Promise<readonly PrioritizeRankableItem[]> {
   const ownerEntityId = ownerEntityIdFromMessage(message);
   if (!ownerEntityId) return [];
-  try {
-    const { createWorkThreadStore } = await import(
-      "../lifeops/work-threads/index.js"
-    );
-    const threads = await createWorkThreadStore(runtime).list({
-      statuses: ["active", "waiting", "paused"],
-      ownerEntityId,
-    });
-    return threads.map((thread) => ({
-      id: thread.id,
-      title: thread.title,
-      summary: thread.currentPlanSummary ?? thread.summary,
-      metadata: metadata([
-        ["source", "work_threads"],
-        ["status", thread.status],
-        ["connector", thread.primarySourceRef.connector],
-        ["channelName", thread.primarySourceRef.channelName],
-        ["lastActivityAt", thread.lastActivityAt],
-        ["currentScheduledTaskId", thread.currentScheduledTaskId],
-        ["approvalId", thread.approvalId],
-      ]),
-    }));
-  } catch (error) {
-    logger.warn(`[PRIORITIZE] rank_threads load failed: ${errorDetail(error)}`);
-    return [];
-  }
+  const { createWorkThreadStore } = await import(
+    "../lifeops/work-threads/index.js"
+  );
+  const threads = await createWorkThreadStore(runtime).list({
+    statuses: ["active", "waiting", "paused"],
+    ownerEntityId,
+  });
+  return threads.map((thread) => ({
+    id: thread.id,
+    title: thread.title,
+    summary: thread.currentPlanSummary ?? thread.summary,
+    metadata: metadata([
+      ["source", "work_threads"],
+      ["status", thread.status],
+      ["connector", thread.primarySourceRef.connector],
+      ["channelName", thread.primarySourceRef.channelName],
+      ["lastActivityAt", thread.lastActivityAt],
+      ["currentScheduledTaskId", thread.currentScheduledTaskId],
+      ["approvalId", thread.approvalId],
+    ]),
+  }));
 }
 
 function approvalPayloadTitle(request: ApprovalRequestLike): string {
@@ -355,40 +346,31 @@ async function loadDecisionsFromRuntime({
   const subjectUserId = ownerEntityIdFromMessage(message);
   const agentId = runtimeAgentId(runtime);
   if (!subjectUserId || !agentId) return [];
-  try {
-    const { createApprovalQueue } = await import(
-      "../lifeops/approval-queue.js"
-    );
-    const requests = await createApprovalQueue(runtime, { agentId }).list({
-      subjectUserId,
-      state: "pending",
-      action: null,
-      limit: null,
-    });
-    return requests.map((request): PrioritizeRankableItem => {
-      const approval = request as ApprovalRequestLike;
-      return {
-        id: approval.id,
-        title: approvalPayloadTitle(approval),
-        summary: approval.reason,
-        dueAt: approval.expiresAt.toISOString(),
-        metadata: metadata([
-          ["source", "approval_queue"],
-          ["action", approval.action],
-          ["channel", approval.channel],
-          ["state", approval.state],
-          ["requestedBy", approval.requestedBy],
-          ["createdAt", approval.createdAt.toISOString()],
-          ["expiresAt", approval.expiresAt.toISOString()],
-        ]),
-      };
-    });
-  } catch (error) {
-    logger.warn(
-      `[PRIORITIZE] rank_decisions load failed: ${errorDetail(error)}`,
-    );
-    return [];
-  }
+  const { createApprovalQueue } = await import("../lifeops/approval-queue.js");
+  const requests = await createApprovalQueue(runtime, { agentId }).list({
+    subjectUserId,
+    state: "pending",
+    action: null,
+    limit: null,
+  });
+  return requests.map((request): PrioritizeRankableItem => {
+    const approval = request as ApprovalRequestLike;
+    return {
+      id: approval.id,
+      title: approvalPayloadTitle(approval),
+      summary: approval.reason,
+      dueAt: approval.expiresAt.toISOString(),
+      metadata: metadata([
+        ["source", "approval_queue"],
+        ["action", approval.action],
+        ["channel", approval.channel],
+        ["state", approval.state],
+        ["requestedBy", approval.requestedBy],
+        ["createdAt", approval.createdAt.toISOString()],
+        ["expiresAt", approval.expiresAt.toISOString()],
+      ]),
+    };
+  });
 }
 
 /** Map one regret-audit item onto the generic rankable shape. */
@@ -424,23 +406,13 @@ async function loadCommitmentsFromLedgerAudit({
   if (!agentId) return [];
   const adapter = (runtime as { adapter?: { db?: unknown } }).adapter;
   if (!adapter?.db) return [];
-  try {
-    const records = await new LifeOpsRepository(
-      runtime,
-    ).listCommitmentLedgerRecords(agentId, { statuses: ["open", "tracked"] });
-    const audit = buildCommitmentRegretAudit(records, {
-      nowIso: new Date().toISOString(),
-    });
-    return audit.items.map(mapRegretAuditItemToRankable);
-  } catch (error) {
-    // error-policy:J4 same degrade contract as the sibling loaders — one
-    // broken ranking source returns designed-empty instead of killing the
-    // whole PRIORITIZE turn; the failure stays visible in the warn log.
-    logger.warn(
-      `[PRIORITIZE] rank_commitments load failed: ${errorDetail(error)}`,
-    );
-    return [];
-  }
+  const records = await new LifeOpsRepository(
+    runtime,
+  ).listCommitmentLedgerRecords(agentId, { statuses: ["open", "tracked"] });
+  const audit = buildCommitmentRegretAudit(records, {
+    nowIso: new Date().toISOString(),
+  });
+  return audit.items.map(mapRegretAuditItemToRankable);
 }
 
 const defaultLoaders: PrioritizeLoaders = {
@@ -719,7 +691,34 @@ export const prioritizeAction: Action & {
         ? Math.floor(params.topN)
         : 5;
 
-    const items = await loadItemsForSubaction(subaction, runtime, message);
+    let items: readonly PrioritizeRankableItem[];
+    try {
+      items = await loadItemsForSubaction(subaction, runtime, message);
+    } catch (cause) {
+      // error-policy:J1 the action boundary reports the typed source failure
+      // and returns an explicit failed result instead of fabricating emptiness.
+      const failure = new ElizaError(`Failed to load ${subject} for ranking`, {
+        code: "PRIORITIZE_SOURCE_LOAD_FAILED",
+        cause,
+        context: { subaction, subject },
+        severity: "ephemeral",
+      });
+      runtime.reportError("Prioritize.loadItems", failure, {
+        subaction,
+        subject,
+      });
+      const text = `I couldn't load your ${subject} to rank. Please try again.`;
+      await callback?.({ text, source: "action", action: ACTION_NAME });
+      return {
+        success: false,
+        text,
+        data: {
+          subaction,
+          subject,
+          error: failure.code,
+        },
+      };
+    }
     if (items.length === 0) {
       const text = `No open ${subject} to rank.`;
       logger.info(`[PRIORITIZE] ${subaction} empty topN=${topN}`);

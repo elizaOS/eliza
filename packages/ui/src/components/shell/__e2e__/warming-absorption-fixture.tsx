@@ -7,24 +7,22 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 
-import type {
-  Conversation,
-  ConversationMessage,
-  StreamEventEnvelope,
-} from "../../../api";
-import { client } from "../../../api";
+import type { Conversation, ConversationMessage } from "../../../api/client-types-chat";
+import type { StreamEventEnvelope } from "../../../api/client-types-core";
+import { client } from "../../../api/client";
 import type {
   AutonomyEventStore,
   AutonomyRunHealthMap,
 } from "../../../state/autonomy";
-import type { UseChatSendDeps } from "../../../state/useChatSend";
-import { useChatSend } from "../../../state/useChatSend";
-import type { DataLoadersDeps } from "../../../state/useDataLoaders";
-import { useDataLoaders } from "../../../state/useDataLoaders";
+import { type UseChatSendDeps, useChatSend } from "../../../state/useChatSend";
+
+import { type DataLoadersDeps, useDataLoaders } from "../../../state/useDataLoaders";
+
 import { MockAppProvider } from "../../../storybook/mock-providers";
 import { ChatOverlay } from "../ChatOverlay";
 import type { ShellMessage } from "../shell-state";
-import type { ConversationNav, ShellController } from "../useShellController";
+import type { ShellController } from "../useShellController";
+import type { ConversationNav } from "../conversation-nav";
 
 const scenario =
   new URLSearchParams(window.location.search).get("scenario") ?? "warming";

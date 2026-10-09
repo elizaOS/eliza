@@ -4,7 +4,7 @@ import {
   attestTelegramBotIdentity,
   TelegramIdentityAttestationError,
   type TelegramIdentityAttestationFailureReason,
-} from "@elizaos/cloud-services-common/telegram-connector";
+} from "@elizaos/cloud-services-common/telegram";
 import type { Hono } from "hono";
 import type { WebhookConfig } from "./adapters/types";
 import { resolveSharedWebhookConfig } from "./webhook-config";

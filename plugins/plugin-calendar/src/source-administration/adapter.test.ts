@@ -5,15 +5,16 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsCalendarFeed,
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSummary,
   SetLifeOpsCalendarIncludedRequest,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CalendarServiceError } from "../internal/errors.js";
 import { CalendarService } from "../service/CalendarService.js";
 import {
   getCalendarFeedPreference,
@@ -139,7 +140,21 @@ async function fixture(calendars: LifeOpsCalendarSummary[]) {
     getCalendarFeed: vi.fn(async () =>
       feed(calendars.map((calendar) => health(calendar))),
     ),
-    listCalendars: vi.fn(async () => calendars),
+    listCalendars: vi.fn(async () =>
+      Promise.all(
+        calendars.map(async (calendar) => {
+          const preference = await getCalendarFeedPreference(runtime, {
+            ...calendar,
+            initialIncluded: calendar.includeInFeed,
+          });
+          return {
+            ...calendar,
+            includeInFeed: preference.included,
+            selectionVersion: preference.version,
+          };
+        }),
+      ),
+    ),
     setCalendarIncluded: vi.fn(
       async (_url: URL, request: SetLifeOpsCalendarIncludedRequest) => {
         const calendar = calendars.find(
@@ -193,6 +208,116 @@ afterEach(async () => {
 });
 
 describe("calendar source administration adapter", { timeout: 30_000 }, () => {
+  it("uses the listed selection snapshots without reading each preference again", async () => {
+    const accountA = summary({ accountId: "account-a" });
+    const accountB = summary({ accountId: "account-b" });
+    const { runtime, service, pg } = await fixture([accountA, accountB]);
+    await service.listCalendars();
+    await setCalendarFeedIncluded(runtime, accountB, false, 0);
+    const query = vi.spyOn(pg, "query");
+
+    const snapshot = await listCalendarSourceAdministration(runtime);
+
+    expect(
+      snapshot.sources.map((source) => ({
+        account: source.key.connectorAccountId,
+        included: source.includeInFeed,
+        version: source.selectionVersion,
+      })),
+    ).toEqual([
+      { account: "account-a", included: true, version: 0 },
+      { account: "account-b", included: false, version: 1 },
+    ]);
+    const preferenceReads = query.mock.calls.filter(
+      ([statement]) =>
+        /^SELECT\s/u.test(statement) &&
+        statement.includes("FROM app_calendar.life_calendar_feed_preferences"),
+    );
+    expect(preferenceReads).toHaveLength(2);
+    query.mockRestore();
+  });
+
+  it("rejects a stale selection version before attempting a write", async () => {
+    const calendar = summary({ accountId: "account-a" });
+    const { runtime, service } = await fixture([calendar]);
+    await service.listCalendars();
+    await setCalendarFeedIncluded(runtime, calendar, false, 0);
+
+    await expect(
+      setCalendarSourceSelection(runtime, {
+        key: health(calendar).key,
+        includeInFeed: true,
+        expectedVersion: 0,
+      }),
+    ).rejects.toMatchObject({ code: "CALENDAR_SOURCE_SELECTION_CONFLICT" });
+    expect(service.setCalendarIncluded).not.toHaveBeenCalled();
+  });
+
+  it("propagates failed discovery without treating it as an empty source list", async () => {
+    const { runtime, service } = await fixture([
+      summary({ accountId: "account-a" }),
+    ]);
+    service.listCalendars.mockRejectedValue(new Error("discovery failed"));
+
+    await expect(listCalendarSourceAdministration(runtime)).rejects.toThrow(
+      "discovery failed",
+    );
+  });
+
+  it("preserves the durable conflict check when selection changes after listing", async () => {
+    const calendar = summary({ accountId: "account-a" });
+    const { runtime, service } = await fixture([calendar]);
+    service.setCalendarIncluded.mockImplementationOnce(
+      async (_url, request) => {
+        await setCalendarFeedIncluded(runtime, calendar, false, 0);
+        await setCalendarFeedIncluded(
+          runtime,
+          request,
+          request.includeInFeed,
+          request.expectedVersion,
+        );
+        throw new Error("stale write unexpectedly succeeded");
+      },
+    );
+
+    await expect(
+      setCalendarSourceSelection(runtime, {
+        key: health(calendar).key,
+        includeInFeed: true,
+        expectedVersion: 0,
+      }),
+    ).rejects.toMatchObject({ code: "CALENDAR_SOURCE_SELECTION_CONFLICT" });
+    await expect(
+      getCalendarFeedPreference(runtime, calendar),
+    ).resolves.toMatchObject({ included: false, version: 1 });
+  });
+
+  it("preserves unavailable discovery as health-only unselectable sources", async () => {
+    const calendar = summary({ accountId: "account-a" });
+    const { runtime, service } = await fixture([calendar]);
+    service.getCalendarFeed.mockResolvedValue(
+      feed([health(calendar, "disconnected")]),
+    );
+    service.listCalendars.mockRejectedValue(
+      new CalendarServiceError(
+        503,
+        "Unavailable",
+        "CALENDAR_SOURCES_UNAVAILABLE",
+      ),
+    );
+
+    const snapshot = await listCalendarSourceAdministration(runtime);
+
+    expect(snapshot.state).toBe("unavailable");
+    expect(snapshot.sources).toMatchObject([
+      {
+        includeInFeed: null,
+        selectionVersion: null,
+        health: { status: "disconnected" },
+      },
+    ]);
+  });
+
   it("keeps same-named primary calendars distinct by exact account and grant", async () => {
     const accountA = summary({ accountId: "account-a" });
     const accountB = summary({ accountId: "account-b" });

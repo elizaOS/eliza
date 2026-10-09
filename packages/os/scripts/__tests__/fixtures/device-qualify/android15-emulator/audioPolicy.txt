@@ -1,0 +1,12 @@
+  1. Port ID: 8; "Built-In Mic"; {AUDIO_DEVICE_IN_BUILTIN_MIC, @:bottom}
+  2. Port ID: 10; "Telephony Rx"; {AUDIO_DEVICE_IN_TELEPHONY_RX, @:}
+  3. Port ID: 14; "Remote Submix In"; {AUDIO_DEVICE_IN_REMOTE_SUBMIX, @:0}
+  4. Port ID: 12; "FM Tuner"; {AUDIO_DEVICE_IN_FM_TUNER, @:}
+        1. Port ID: 8; "Built-In Mic"; {AUDIO_DEVICE_IN_BUILTIN_MIC, @:bottom}
+        1. Port ID: 10; "Telephony Rx"; {AUDIO_DEVICE_IN_TELEPHONY_RX, @:}
+        1. Port ID: 12; "FM Tuner"; {AUDIO_DEVICE_IN_FM_TUNER, @:}
+    3. Port ID: 8; "Built-In Mic"; {AUDIO_DEVICE_IN_BUILTIN_MIC, @:bottom}
+    4. Port ID: 10; "Telephony Rx"; {AUDIO_DEVICE_IN_TELEPHONY_RX, @:}
+    5. Port ID: 12; "FM Tuner"; {AUDIO_DEVICE_IN_FM_TUNER, @:}
+        1. Port ID: 14; "Remote Submix In"; {AUDIO_DEVICE_IN_REMOTE_SUBMIX, @:0}
+    2. Port ID: 14; "Remote Submix In"; {AUDIO_DEVICE_IN_REMOTE_SUBMIX, @:0}

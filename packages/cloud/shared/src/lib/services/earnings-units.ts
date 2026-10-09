@@ -25,9 +25,10 @@
  * 100:1 integer ratio. Any rounding of earnings to 4dp happens where earnings
  * are CREDITED (see the container-billing / markup services), not here.
  */
+
+import { REDEMPTION_POINTS_PER_USD } from "@elizaos/cloud-sdk/redemption-contract";
 import { ElizaError } from "@elizaos/core";
 import { Decimal } from "decimal.js";
-import { REDEMPTION_POINTS_PER_USD } from "../../types/redemption-contract";
 
 export { REDEMPTION_POINTS_PER_USD };
 

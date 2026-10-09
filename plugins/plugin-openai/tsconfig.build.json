@@ -2,25 +2,18 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
-    "declaration": true,
-    "declarationMap": true,
-    "emitDeclarationOnly": true,
+    "rootDir": ".",
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
     "ignoreDeprecations": "6.0",
-    "noEmit": false,
     "paths": {
-      "@elizaos/core": [
-        "../../../packages/core/dist"
-      ]
     },
-    "types": [
-      "node",
-      "bun-types"
-    ]
+    "incremental": false,
+    "composite": false
   },
   "include": [
     "index.ts",
-    "index.node.ts",
-    "index.browser.ts"
+    "utils/config.ts"
   ],
   "exclude": [
     "node_modules",

@@ -1,20 +1,6 @@
-/**
- * Built-in Voice Workbench scenarios + a ground-truth mock services adapter
- * (#8785).
- *
- * The scenario set spans every {@link VoiceScenarioClass} so the headless runner
- * and the headful spec matrix exercise the whole surface from one source. The
- * mock adapter echoes each turn's ground truth, so the CI plumbing lane runs the
- * runner → scorers → report end-to-end and PASSES without any model — separate
- * from the gated real-backend lane.
- */
+/** Defines the shared voice scenarios consumed by the workbench and backend evaluations. */
 
-import type { CorpusTurnLabel } from "./corpus-generator";
 import type { VoiceScenario } from "./voice-scenario";
-import type {
-	VoiceTurnObservation,
-	VoiceWorkbenchServices,
-} from "./workbench-headless-runner";
 
 export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 	{
@@ -39,7 +25,7 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		],
 		// DER budget: VoxConverse offline 11.3% + 10 pp streaming headroom (parent
 		// decision #10). TTFA 800 ms is the real-lane time-to-first-audio ceiling;
-		// the model-free lanes report a fixed sub-budget latency.
+		// latency must come from the selected backend.
 		assertions: { maxWer: 0.2, maxDer: 0.213, maxFirstAudioMs: 800 },
 	},
 	{
@@ -770,73 +756,3 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		assertions: { maxDer: 0.288, minRespondAccuracy: 0.9 },
 	},
 ];
-
-/** A growing sequence of committed prefixes over `text`'s words (monotonic). */
-function monotonicPartials(text: string): string[] {
-	const words = text.split(/\s+/).filter(Boolean);
-	const out: string[] = [];
-	for (let i = 1; i <= words.length; i++) out.push(words.slice(0, i).join(" "));
-	return out;
-}
-
-/**
- * A services adapter that echoes each turn's ground truth — perfect ASR /
- * diarization / EOT / respond / entity / match, plus a clean barge-in / ERLE /
- * streaming-partial signal for the scenarios that assert them. Drives the CI
- * plumbing lane (runner → scorers → report) to a real PASS with no model. NOT a
- * stand-in for the real backend: it proves the wiring, not the models.
- */
-export function groundTruthMockServices(
-	opts: {
-		firstAudioMs?: number;
-		eotLatencyMs?: number;
-		bargeInCancelMs?: number;
-		erleDb?: number;
-	} = {},
-): VoiceWorkbenchServices {
-	return {
-		async observeTurn({
-			label,
-			groundTruth,
-		}: {
-			label: CorpusTurnLabel;
-			groundTruth: { classes: readonly string[] };
-		}): Promise<VoiceTurnObservation> {
-			const eotDecided = label.expectEndOfTurn ?? true;
-			// A barge-in that should cancel reports an in-budget latency; one that
-			// should hold reports `null` (no cancel) — the speaker-gating ground truth.
-			const bargeInCancelMs = label.bargeIn
-				? label.expectBargeInCancel
-					? (opts.bargeInCancelMs ?? 120)
-					: null
-				: undefined;
-			// AEC scenarios report a healthy ERLE on the echo turn; the decision-logic
-			// lane has no AEC and omits it (honest skip).
-			const erleDb =
-				groundTruth.classes.includes("desktop-aec") && label.isAgentEcho
-					? (opts.erleDb ?? 24)
-					: undefined;
-			const partialTranscripts =
-				groundTruth.classes.includes("streaming-partials") &&
-				label.expectRespond
-					? monotonicPartials(label.referenceTranscript)
-					: undefined;
-			return {
-				hypothesisTranscript: label.referenceTranscript,
-				predictedSpeakerLabel: label.speaker,
-				eotDecided,
-				...(eotDecided ? { eotLatencyMs: opts.eotLatencyMs ?? 80 } : {}),
-				responded: label.expectRespond,
-				inferredEntities: label.expectedEntity ? [label.expectedEntity] : [],
-				matchedEntityId: label.entityId ?? null,
-				predictedOwner: label.isOwner === true,
-				...(label.expectRespond
-					? { firstAudioMs: opts.firstAudioMs ?? 250 }
-					: {}),
-				...(bargeInCancelMs !== undefined ? { bargeInCancelMs } : {}),
-				...(erleDb !== undefined ? { erleDb } : {}),
-				...(partialTranscripts ? { partialTranscripts } : {}),
-			};
-		},
-	};
-}

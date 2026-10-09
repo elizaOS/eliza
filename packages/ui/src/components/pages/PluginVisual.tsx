@@ -3,9 +3,9 @@
  * brand icons through provider logos to deterministic monogram tiles.
  */
 import { useState } from "react";
-import type { PluginInfo } from "../../api";
-import { getProviderLogo } from "../../providers";
+import type { PluginInfo } from "../../api/client-types-config";
 import { getBrandIcon } from "../conversations/brand-icons";
+import { getProviderLogo } from "../settings/provider-logos";
 import { Card } from "../ui/card";
 import {
   iconImageSource,

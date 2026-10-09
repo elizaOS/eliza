@@ -6,8 +6,8 @@
  * a hostile response without being pre-reserved by every ordinary one.
  */
 
-import { boundedFetch } from "@elizaos/cloud-services-common/bounded-fetch";
-import { ElizaError } from "@elizaos/core/errors";
+import { boundedFetch } from "@elizaos/cloud-services-common/transport";
+import { ElizaError } from "@elizaos/core";
 
 // The largest legitimate shared-utils reply is a Cloudflare paged listing
 // (`/zones/<id>/dns_records?per_page=200`), on the order of a hundred kilobytes;

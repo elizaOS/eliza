@@ -1,30 +1,37 @@
 /** Proxies an authenticated Cloud agent's supported wallet operations to its mapped Steward wallet. */
-import { ElizaError } from "@elizaos/core";
+
+import {
+  readSessionCredential,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
+import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import { agentServerWallets } from "@elizaos/cloud-shared/db/schemas/agent-server-wallets";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { nextStyleParams } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import {
+  isPersonalSharedAgentId,
+  personalSharedAgentId,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import { createStewardClient } from "@elizaos/cloud-shared/lib/services/steward-client";
+import {
+  parseClampedLimit,
+  parseClampedOffset,
+} from "@elizaos/cloud-shared/lib/utils/clamp-limit";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type {
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletEntry,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
-import { dbWrite } from "@/db/helpers";
-import { agentServerWallets } from "@/db/schemas/agent-server-wallets";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { nextStyleParams } from "@/lib/api/hono-next-style-params";
-import {
-  readSessionCredential,
-  requireUserOrApiKeyWithOrg,
-} from "@/lib/auth/workers-hono-auth";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import {
-  isPersonalSharedAgentId,
-  personalSharedAgentId,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
-import { createStewardClient } from "@/lib/services/steward-client";
-import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { proxyLocalDedicatedOrNext } from "../../_local-dedicated-proxy";
 
 const CORS_METHODS = "GET, POST, PUT, OPTIONS";

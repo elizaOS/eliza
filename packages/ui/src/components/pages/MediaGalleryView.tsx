@@ -6,16 +6,25 @@
  * the Database page surface.
  */
 
+import type { TranslateFn } from "@elizaos/contracts";
 import { Download, Share2 } from "lucide-react";
-import type { ReactNode } from "react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client, type QueryResult } from "../../api";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useAppSelector } from "../../state";
+import {
+  memo,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import { PageLayout } from "../../layouts/page-layout";
+import { useAppSelector } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import type { TranslateFn } from "../../types";
-import { resolveAppAssetUrl } from "../../utils";
+import { resolveAppAssetUrl } from "../../utils/asset-url";
 import {
   canShareFiles,
   downloadAttachment,
@@ -26,8 +35,10 @@ import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import {
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "../composites/sidebar/sidebar-layout";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import {
@@ -57,6 +68,17 @@ const DATA_URI_VID = /^data:video\//i;
 const DATA_URI_AUD = /^data:audio\//i;
 const MEDIA_URL_PREFIX =
   /^(https?:|data:|blob:|file:|capacitor:|electrobun:|app:|\/|\.\/|\.\.\/)/i;
+const MEDIA_SCAN_PAGE_SIZE = 500;
+
+function mediaScanSortColumn(table: {
+  columns?: ReadonlyArray<{ name: string; isPrimaryKey?: boolean }>;
+}): string | undefined {
+  const primary = (table.columns ?? []).filter((column) => column.isPrimaryKey);
+  // The rows API accepts one sort column and then orders by the whole primary
+  // key. Sending only the first column of a composite key is not that order.
+  if (primary.length !== 1) return undefined;
+  return primary[0]?.name;
+}
 
 function classifyUrl(url: string): "image" | "video" | "audio" | null {
   if (IMAGE_EXTS.test(url) || DATA_URI_IMG.test(url)) return "image";
@@ -113,9 +135,9 @@ function isMediaType(value: string): value is MediaType {
 function extractMediaFromRows(
   rows: Record<string, unknown>[],
   tableName: string,
+  seen = new Set<string>(),
 ): MediaItem[] {
   const items: MediaItem[] = [];
-  const seen = new Set<string>();
 
   for (const row of rows) {
     const createdAt = String(
@@ -252,11 +274,14 @@ export function MediaGalleryView({
   contentHeader?: ReactNode;
 }) {
   const t = useAppSelector((s) => s.t);
+  const profileId = useAppSelector((s) => s.activeAgentProfile?.id);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
-  const mountedRef = useRef(true);
+  const loadGeneration = useRef(0);
+  const currentProfile = useRef(profileId);
+  currentProfile.current = profileId;
   const [filter, setFilter] = useState<MediaType>("all");
   const [search, setSearch] = useState("");
   const [selectedMediaUrl, setSelectedMediaUrl] = useState<string | null>(null);
@@ -283,54 +308,94 @@ export function MediaGalleryView({
   useRegisterViewChatBinding(chatBinding);
 
   const loadMedia = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    const authority = client.getAuthorityRevision();
+    const isCurrent = () =>
+      loadGeneration.current === generation &&
+      client.getAuthorityRevision() === authority &&
+      currentProfile.current === profileId;
     setLoading(true);
     setError("");
     try {
       // Discover tables
       const { tables: rawTables } = await client.getDatabaseTables();
+      if (!isCurrent()) return;
+      const failures: string[] = [];
       const tables = Array.isArray(rawTables) ? rawTables : [];
       const allMedia: MediaItem[] = [];
 
       // Scan tables likely to contain media: memories, messages, media, attachments, files
-      const mediaTableNames = tables
-        .map((t) => t.name)
-        .filter((name) => {
-          const n = name.toLowerCase();
-          return (
-            n.includes("memor") ||
-            n.includes("message") ||
-            n.includes("media") ||
-            n.includes("attach") ||
-            n.includes("file") ||
-            n.includes("asset") ||
-            n.includes("document")
-          );
-        });
+      const mediaTables = tables.filter((table) => {
+        const n = table.name.toLowerCase();
+        return (
+          n.includes("memor") ||
+          n.includes("message") ||
+          n.includes("media") ||
+          n.includes("attach") ||
+          n.includes("file") ||
+          n.includes("asset") ||
+          n.includes("document")
+        );
+      });
 
-      // If no likely tables found, scan all tables with modest limits
-      const tablesToScan =
-        mediaTableNames.length > 0
-          ? mediaTableNames
-          : tables.map((t) => t.name);
-      const scanLimit = mediaTableNames.length > 0 ? 500 : 100;
+      // If no likely tables are found, scan every table for media values.
+      const tablesToScan = mediaTables.length > 0 ? mediaTables : tables;
 
       // Scan the candidate tables concurrently — they are independent queries,
       // and the sequential loop made the gallery wait on up to 10 round-trips.
-      const scanResults = await Promise.all(
-        tablesToScan.slice(0, 10).map(async (tableName) => {
-          try {
-            const result: QueryResult = await client.executeDatabaseQuery(
-              `SELECT * FROM "${tableName}" LIMIT ${scanLimit}`,
-            );
-            const rows = Array.isArray(result.rows) ? result.rows : [];
-            return extractMediaFromRows(rows, tableName);
-          } catch {
-            // skip tables that fail
-            return [] as MediaItem[];
-          }
-        }),
-      );
-      for (const items of scanResults) allMedia.push(...items);
+      // Keep concurrency bounded while covering every candidate table. A
+      // fixed first-ten slice silently hid media in later plugin tables.
+      for (let offset = 0; offset < tablesToScan.length; offset += 10) {
+        if (!isCurrent()) return;
+        const scanResults = await Promise.all(
+          tablesToScan.slice(offset, offset + 10).map(async (table) => {
+            const tableName = table.name;
+            const sort = mediaScanSortColumn(table);
+            const items: MediaItem[] = [];
+            const seen = new Set<string>();
+            let rowOffset = 0;
+
+            try {
+              while (isCurrent()) {
+                const result = await client.getDatabaseRows(tableName, {
+                  offset: rowOffset,
+                  limit: MEDIA_SCAN_PAGE_SIZE,
+                  schema: table.schema,
+                  ...(sort ? { sort, order: "asc" as const } : {}),
+                });
+                if (!isCurrent()) return items;
+                if (
+                  !Array.isArray(result.rows) ||
+                  !Number.isSafeInteger(result.total) ||
+                  result.total < 0 ||
+                  result.offset !== rowOffset
+                ) {
+                  throw new Error("Invalid database page. Retry the scan.");
+                }
+                const rows = result.rows;
+                items.push(...extractMediaFromRows(rows, tableName, seen));
+                rowOffset += rows.length;
+
+                // An empty page cannot advance. Stop this table and keep the
+                // rows already read so the gallery does not spin.
+                if (rows.length === 0 && rowOffset < result.total) {
+                  throw new Error(
+                    "The table changed or returned an incomplete page. Retry the scan.",
+                  );
+                }
+                if (rows.length === 0 || rowOffset >= result.total) break;
+              }
+            } catch {
+              // Retain readable media and announce the incomplete scan without
+              // exposing SQL or transport diagnostics from the failed request.
+              failures.push(tableName);
+            }
+
+            return items;
+          }),
+        );
+        for (const items of scanResults) allMedia.push(...items);
+      }
 
       // Sort by date descending
       allMedia.sort((a, b) => {
@@ -340,10 +405,19 @@ export function MediaGalleryView({
         return b.createdAt.localeCompare(a.createdAt);
       });
 
-      if (!mountedRef.current) return;
+      if (!isCurrent()) return;
       setMedia(allMedia);
+      if (failures.length > 0) {
+        setError(
+          t("mediagalleryview.PartialLoadFailed", {
+            defaultValue:
+              "Some media could not be loaded from {{message}}. Retry the scan.",
+            message: failures.join("; "),
+          }),
+        );
+      }
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!isCurrent()) return;
       setError(
         t("mediagalleryview.LoadFailed", {
           message: err instanceof Error ? err.message : "error",
@@ -351,16 +425,23 @@ export function MediaGalleryView({
         }),
       );
     }
-    if (mountedRef.current) {
+    if (isCurrent()) {
       setLoading(false);
     }
-  }, [t]);
+  }, [t, profileId]);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    void loadMedia();
+  useLayoutEffect(() => {
+    const refresh = () => {
+      setMedia([]);
+      setSelectedMediaUrl(null);
+      setActionError("");
+      void loadMedia();
+    };
+    const unsubscribe = client.onAuthorityChange(refresh);
+    refresh();
     return () => {
-      mountedRef.current = false;
+      loadGeneration.current += 1;
+      unsubscribe();
     };
   }, [loadMedia]);
 
@@ -508,7 +589,7 @@ export function MediaGalleryView({
             <SidebarContent.EmptyState>
               {t("mediagalleryview.ScanningForMedia")}
             </SidebarContent.EmptyState>
-          ) : filtered.length === 0 ? (
+          ) : filtered.length === 0 && error ? null : filtered.length === 0 ? (
             <SidebarContent.EmptyState>
               {t("mediagalleryview.NoMediaFound")}
             </SidebarContent.EmptyState>
@@ -552,13 +633,21 @@ export function MediaGalleryView({
             className="mb-4 rounded-sm border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger"
           >
             {error}
+            <button
+              type="button"
+              className="ml-3 underline"
+              onClick={() => void loadMedia()}
+            >
+              {t("common.retry", { defaultValue: "Retry" })}
+            </button>
           </div>
-        ) : loading ? (
+        ) : null}
+        {loading ? (
           <PagePanel.Loading
             heading={t("mediagalleryview.ScanningForMedia")}
             className="flex-1"
           />
-        ) : !selectedItem ? (
+        ) : !selectedItem && error ? null : !selectedItem ? (
           <PagePanel.Empty
             variant="surface"
             className="min-h-[18rem] px-5 py-10"

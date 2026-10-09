@@ -2,7 +2,7 @@
  * Cloud connectors domain — the CLOUD-hosted connectors (OAuth-redirect +
  * token-credential). Mounted as the `cloud-connectors` Settings section, which
  * shows an upsell while Cloud is disconnected and the connectors surface when
- * it is connected. Legacy `/cloud/settings?tab=connections` deep links
+ * it is connected. Legacy `/cloud/connectors` deep links
  * (the OAuth-callback return target) resolve here via the CloudRouterShell
  * compat redirect.
  *

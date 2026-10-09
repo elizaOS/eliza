@@ -10,30 +10,33 @@
  * Protected by CRON_SECRET.
  */
 
-import { Hono } from "hono";
-import { usersRepository } from "@/db/repositories";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { usersRepository } from "@elizaos/cloud-shared/db/repositories";
 import {
   type BillableContainer,
   type ContainerBillingOrganization,
   containerBillingRepository,
-} from "@/db/repositories/container-billing";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/db/repositories/container-billing";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   CONTAINER_PRICING,
   calculateDailyContainerCost,
-} from "@/lib/constants/pricing";
-import { computeContainerBillingPlan } from "@/lib/services/container-billing-policy";
+} from "@elizaos/cloud-shared/lib/constants/pricing";
+import { computeContainerBillingPlan } from "@elizaos/cloud-shared/lib/services/container-billing-policy";
 import {
   enqueueContainerStopOnce,
   listRecoverableContainerStopIntents,
   rearmRecoverableContainerStopIntentOnce,
-} from "@/lib/services/container-stop-job-service";
-import { emailService } from "@/lib/services/email";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/container-stop-job-service";
+import { emailService } from "@elizaos/cloud-shared/lib/services/email";
+import { redeemableEarningsService } from "@elizaos/cloud-shared/lib/services/redeemable-earnings";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 interface BillingResult {
   containerId: string;
@@ -44,6 +47,8 @@ interface BillingResult {
   newBalance?: number;
   /** Portion of `amount` paid from owner's redeemable_earnings (pay-as-you-go). */
   paidFromEarnings?: number;
+  /** Subscription allowance left after this charge (allowance-first subscribers). */
+  allowanceRemaining?: number;
   error?: string;
 }
 
@@ -117,7 +122,13 @@ async function processContainerBilling(
     payAsYouGoFromEarnings: org.pay_as_you_go_from_earnings,
   });
   const earningsAvailable = plan.earningsEligible;
-  const totalAvailable = plan.totalAvailable;
+  // Allowance-first subscribers also fund compute from their subscription
+  // allowance; the repository re-derives the exact split under row locks.
+  const allowanceAvailable = Number(org.subscription_allowance_available);
+  if (!Number.isFinite(allowanceAvailable)) {
+    throw new Error("Container billing allowance is not a finite amount");
+  }
+  const totalAvailable = plan.totalAvailable + allowanceAvailable;
   logger.info(`[Container Billing] Processing ${containerName}`, {
     containerId,
     dailyCost,
@@ -204,11 +215,12 @@ async function processContainerBilling(
           organizationName: org.name,
           containerName: containerName,
           projectName: container.project_name,
-          dailyCost,
-          monthlyCost: CONTAINER_PRICING.MONTHLY_BASE_COST,
+          // Display full rates while requiredCredits retains the prorated shortfall.
+          dailyCost: dailyRate,
+          monthlyCost: Math.round(dailyRate * 30 * 100) / 100,
           currentBalance: totalAvailable,
           requiredCredits: dailyCost,
-          minimumRecommended: dailyCost * 7, // 1 week
+          minimumRecommended: Math.round(dailyRate * 7 * 100) / 100, // 1 week
           shutdownTime: shutdownTime.toLocaleString("en-US", {
             weekday: "long",
             year: "numeric",
@@ -234,7 +246,7 @@ async function processContainerBilling(
         amount: dailyCost,
         billingPeriodStart: periodStart,
         billingPeriodEnd: periodEnd,
-        errorMessage: `Insufficient funds: required $${dailyCost.toFixed(2)}, available $${totalAvailable.toFixed(4)} (credits $${currentBalance.toFixed(4)} + earnings $${earningsAvailable.toFixed(4)})`,
+        errorMessage: `Insufficient funds: required $${dailyCost.toFixed(2)}, available $${totalAvailable.toFixed(4)} (credits $${currentBalance.toFixed(4)} + earnings $${earningsAvailable.toFixed(4)} + allowance $${allowanceAvailable.toFixed(4)})`,
       });
 
       return {
@@ -341,6 +353,9 @@ async function processContainerBilling(
     amount: billedAmount,
     paidFromEarnings: billedFromEarnings,
     newBalance: billingResult.newBalance,
+    ...(billingResult.allowanceRemaining !== undefined
+      ? { allowanceRemaining: billingResult.allowanceRemaining }
+      : {}),
   };
 }
 
@@ -551,6 +566,10 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
             0,
             org.earnings_available - (result.paidFromEarnings ?? 0),
           );
+          if (result.allowanceRemaining !== undefined) {
+            org.subscription_allowance_available =
+              result.allowanceRemaining.toFixed(6);
+          }
         } else if (result.action === "warning_sent") {
           warningsSent++;
         } else if (result.action === "shutdown") {

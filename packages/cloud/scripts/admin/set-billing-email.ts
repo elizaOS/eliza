@@ -2,7 +2,7 @@
  * Script to set billing email for an organization
  * This is a one-time setup script to ensure billing emails are sent
  *
- * Usage: tsx packages/cloud/scripts/admin/set-billing-email.ts <org-id> <email>
+ * Usage: bun --conditions=eliza-source packages/cloud/scripts/admin/set-billing-email.ts <org-id> <email>
  */
 
 import { eq } from "drizzle-orm";
@@ -12,8 +12,8 @@ loadEnvFiles();
 
 async function setBillingEmail(orgId: string, email: string) {
   const [{ db }, { organizations }] = await Promise.all([
-    import("@/db/client"),
-    import("@/db/schemas/organizations"),
+    import("@elizaos/cloud-shared/db/client"),
+    import("@elizaos/cloud-shared/db/schemas/organizations"),
   ]);
 
   try {
@@ -48,11 +48,11 @@ const email = process.argv[3];
 
 if (!orgId || !email) {
   console.error(
-    "Usage: tsx packages/cloud/scripts/admin/set-billing-email.ts <org-id> <email>",
+    "Usage: bun --conditions=eliza-source packages/cloud/scripts/admin/set-billing-email.ts <org-id> <email>",
   );
   console.error("\nExample:");
   console.error(
-    "  tsx packages/cloud/scripts/admin/set-billing-email.ts 67e22ff7-257b-41a3-8773-513a4674d1bb user@example.com",
+    "  bun --conditions=eliza-source packages/cloud/scripts/admin/set-billing-email.ts 67e22ff7-257b-41a3-8773-513a4674d1bb user@example.com",
   );
   process.exit(1);
 }

@@ -43,6 +43,25 @@ export async function bootstrapPostgresRlsSchema(connectionString: string): Prom
       END $$;
     `);
 
+    // A prior suite may have created these functions as postgres. Reset authored
+    // functions as well as tables; extension-owned functions remain installed.
+    await superuserClient.query(`
+      DO $$ DECLARE routine RECORD;
+      BEGIN
+        FOR routine IN
+          SELECT p.oid::regprocedure AS signature
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND p.prokind = 'f'
+          AND NOT EXISTS (
+            SELECT 1 FROM pg_depend d
+            WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
+          )
+        LOOP
+          EXECUTE 'DROP FUNCTION IF EXISTS ' || routine.signature || ' CASCADE';
+        END LOOP;
+      END $$;
+    `);
+
     process.env.ENABLE_DATA_ISOLATION = "true";
 
     const db = drizzle(setupClient);

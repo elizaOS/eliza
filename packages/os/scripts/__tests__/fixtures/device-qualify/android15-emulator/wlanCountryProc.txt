@@ -1,0 +1,1 @@
+ls: /proc/net/wlan/country: No such file or directory

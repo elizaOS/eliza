@@ -1,49 +1,7 @@
-/**
- * Local types for the `/api/automations` response surface.
- *
- * These mirror the consumer-side shapes in @elizaos/ui's
- * `client-types-config.ts`. We can't import @elizaos/ui from plugin-workflow
- * (UI is a frontend package) and we can't import @elizaos/agent (would
- * create a dependency cycle). The producer just needs to emit the right
- * JSON; consumers retain their own view.
- */
+/** Types and projections for the `/api/automations` response. */
 
+import type { ConversationMetadata, ConversationScope, WorkbenchTask } from '@elizaos/contracts';
 import type { Task } from '@elizaos/core';
-
-// ---------------------------------------------------------------------------
-// Conversation metadata (mirrors @elizaos/agent server-types.ts)
-// ---------------------------------------------------------------------------
-
-export type ConversationScope =
-  | 'general'
-  | 'automation-coordinator'
-  | 'automation-workflow'
-  | 'automation-workflow-draft'
-  | 'automation-draft'
-  | 'page-character'
-  | 'page-apps'
-  | 'page-connectors'
-  | 'page-phone'
-  | 'page-plugins'
-  | 'page-settings'
-  | 'page-wallet'
-  | 'page-browser'
-  | 'page-automations';
-
-export type ConversationAutomationType = 'coordinator_text' | 'workflow';
-
-export interface ConversationMetadata {
-  scope?: ConversationScope;
-  automationType?: ConversationAutomationType;
-  taskId?: string;
-  triggerId?: string;
-  workflowId?: string;
-  workflowName?: string;
-  draftId?: string;
-  pageId?: string;
-  sourceConversationId?: string;
-  terminalBridgeConversationId?: string;
-}
 
 export function isAutomationConversationMetadata(
   metadata: ConversationMetadata | null | undefined
@@ -239,90 +197,6 @@ export function taskToTriggerSummary(task: Task): TriggerSummary | null {
 }
 
 // ---------------------------------------------------------------------------
-// Workbench task (mirrors @elizaos/agent workbench-helpers.ts)
-// ---------------------------------------------------------------------------
-
-const WORKBENCH_TASK_TAG = 'workbench-task';
-export const WORKBENCH_TODO_TAG = 'workbench-todo';
-
-export interface WorkbenchTaskView {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  isCompleted: boolean;
-  updatedAt?: number;
-}
-
-export function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-export function normalizeStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is string => typeof item === 'string')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-}
-
-function normalizeTimestamp(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (value instanceof Date) return value.getTime();
-  if (typeof value === 'string') {
-    const asNumber = Number(value);
-    if (Number.isFinite(asNumber)) return asNumber;
-    const parsed = Date.parse(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
-}
-
-export function readTaskMetadata(task: Task): Record<string, unknown> {
-  return isObject(task.metadata) ? task.metadata : {};
-}
-
-export function readTaskCompleted(task: Task): boolean {
-  const metadata = readTaskMetadata(task);
-  if (typeof metadata.isCompleted === 'boolean') return metadata.isCompleted;
-  const todoMeta =
-    (isObject(metadata.workbenchTodo) ? metadata.workbenchTodo : null) ??
-    (isObject(metadata.todo) ? metadata.todo : null);
-  if (todoMeta && typeof todoMeta.isCompleted === 'boolean') {
-    return todoMeta.isCompleted;
-  }
-  return false;
-}
-
-export function isWorkbenchTodoTask(task: Task): boolean {
-  if (readTriggerConfig(task)) return false;
-  const tags = new Set(normalizeStringArray(task.tags));
-  if (tags.has(WORKBENCH_TODO_TAG) || tags.has('todo')) return true;
-  const metadata = readTaskMetadata(task);
-  return isObject(metadata.workbenchTodo) || isObject(metadata.todo);
-}
-
-/**
- * Mirrors `toWorkbenchTask` in @elizaos/agent workbench-helpers.ts.
- */
-export function toWorkbenchTaskView(task: Task): WorkbenchTaskView | null {
-  if (!task.tags?.includes(WORKBENCH_TASK_TAG)) return null;
-  if (readTriggerConfig(task) || isWorkbenchTodoTask(task)) return null;
-  const id = typeof task.id === 'string' && task.id.trim().length > 0 ? task.id : null;
-  if (!id) return null;
-  const metadata = readTaskMetadata(task);
-  const updatedAt = normalizeTimestamp(task.updatedAt) ?? normalizeTimestamp(metadata.updatedAt);
-  return {
-    id,
-    name: typeof task.name === 'string' && task.name.trim().length > 0 ? task.name : 'Task',
-    description: typeof task.description === 'string' ? task.description : '',
-    tags: normalizeStringArray(task.tags),
-    isCompleted: readTaskCompleted(task),
-    ...(updatedAt !== undefined ? { updatedAt } : {}),
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Automation response (mirrors @elizaos/ui client-types-config.ts)
 // ---------------------------------------------------------------------------
 
@@ -347,7 +221,7 @@ export interface AutomationRoomBinding {
 }
 
 export interface AutomationLastExecution {
-  status: 'success' | 'error' | 'running' | 'waiting' | 'unknown';
+  status: 'success' | 'error' | 'cancelled' | 'running' | 'waiting' | 'unknown';
   startedAt: string;
   stoppedAt?: string | null;
   errorMessage?: string;
@@ -369,7 +243,7 @@ export interface AutomationItem {
   triggerId?: string;
   workflowId?: string;
   draftId?: string;
-  task?: WorkbenchTaskView;
+  task?: WorkbenchTask;
   trigger?: TriggerSummary;
   workflow?: unknown;
   schedules: TriggerSummary[];

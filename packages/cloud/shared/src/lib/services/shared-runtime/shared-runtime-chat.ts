@@ -1,3 +1,4 @@
+import type { OwnerModelCapture } from "./shared-owner-model-capture";
 /**
  * Cache-only shared-tier chat execution for Cloudflare Workers.
  *
@@ -13,8 +14,8 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core/edge";
-import { parseSharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
+} from "@elizaos/core";
+import { parseSharedReminderDelivery } from "@elizaos/plugin-scheduling";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import { sharedTurnTracesRepository } from "../../../db/repositories/shared-turn-traces";
 import {
@@ -40,14 +41,13 @@ import {
   billUsage,
   estimateInputTokens,
   InsufficientCreditsError,
-  recordUsageAnalytics,
 } from "../ai-billing";
-import { aiBillingRecordsService } from "../ai-billing-records";
+import { recordSettledInferenceBilling } from "../ai-billing-settled";
 import { getSupportedVideoModelDefinition } from "../ai-pricing-definitions";
 import { chatSseFrame } from "../chat-sse-frames";
 import { contentSafetyService } from "../content-safety";
 import type { CreditReconciliationResult, CreditReservation } from "../credits";
-import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox";
 import { generationsService } from "../generations";
 import {
   executeImageGeneration,
@@ -70,6 +70,16 @@ import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
 } from "../organization-inference-admission";
+import { hydrationSettledWithin, SHARED_TURN_HYDRATION_WAIT_MS } from "./bounded-hydration";
+import {
+  formatNetworkSharedTurnForModel,
+  type NetworkSharedTurnObservation,
+  networkSharedTurnMatches,
+} from "./network-shared-context";
+import {
+  formatPersonalSharedFallbackAccountContext,
+  type PersonalSharedFallbackAccountState,
+} from "./personal-fallback-account-state";
 import { isCanonicalPersonalSharedAgent } from "./personal-shared-identity";
 import {
   estimatePersonalSharedSeedanceCostUsd,
@@ -274,7 +284,11 @@ function turnActionResults(
     RunSharedAgentTurnResult,
     "actionResults" | "capabilityWall" | "blockedSecondaryCapabilities"
   >,
-  context: { agentId: string; originalIntent: string; clientMessageId?: string },
+  context: {
+    agentId: string;
+    originalIntent: string;
+    clientMessageId?: string;
+  },
 ): unknown[] | undefined {
   const results: unknown[] = [...(turn.actionResults ?? [])];
   if (turn.capabilityWall) {
@@ -336,6 +350,8 @@ export interface SharedTurnClaimStore {
 }
 
 export interface SharedRuntimeChatOptions {
+  /** Server-only capability reserved by the owning Personal Shared DO. */
+  ownerCapture?: OwnerModelCapture;
   /** Standard request trace propagated through the conversation coordinator. */
   traceId?: string;
   abortSignal?: AbortSignal;
@@ -354,6 +370,14 @@ export interface SharedRuntimeChatOptions {
   trustedUserUtterance?: string;
   /** Server-resolved transport semantics; untrusted RPC params never populate this. */
   channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"];
+  /**
+   * Server-resolved Dedicated fallback account state (#25146). Present only on
+   * a scoped fallback journal turn: adds the account provider block and denies
+   * agent-scoped facts that converge with Dedicated memory.
+   */
+  trustedAccountState?: PersonalSharedFallbackAccountState;
+  /** Server-resolved Network observation; RPC params cannot supply it. */
+  trustedNetworkContext?: NetworkSharedTurnObservation;
   mobilePushDispatch?: NonNullable<
     NonNullable<RunSharedAgentTurnInput["execution"]>["mobilePush"]
   >["dispatch"];
@@ -582,7 +606,7 @@ function sharedElizaRuntimeExecution(
   turnKey: string | undefined,
   params: Record<string, unknown>,
   funding: SharedRuntimeChatOptions["funding"],
-  executionCtx: BridgeExecutionContext | undefined,
+  _executionCtx: BridgeExecutionContext | undefined,
   mobilePushDispatch?: SharedRuntimeChatOptions["mobilePushDispatch"],
   channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"],
 ): NonNullable<RunSharedAgentTurnInput["execution"]> {
@@ -600,6 +624,9 @@ function sharedElizaRuntimeExecution(
     // Personal funding is selected by the server-owned coordinator only after
     // account/tenant resolution; RPC params cannot grant this attestation.
     ...(personalShared ? { authenticatedPersonalSharedUser: true as const } : {}),
+    ...(personalShared && runtimeChannel.type === ChannelType.DM && agent.owner_name
+      ? { participantName: agent.owner_name }
+      : {}),
     todos: {
       scope: sharedTodoStorageScope({
         sourceAgentId: agent.id,
@@ -729,7 +756,11 @@ async function sharedTurnRecallContext(
  */
 async function sharedTurnFactsContext(
   store: SharedMemoryStore | null,
+  accountState?: PersonalSharedFallbackAccountState,
 ): Promise<string | undefined> {
+  // Facts are agent-scoped and converge with Dedicated knowledge. A fallback
+  // turn (#25146) has zero Dedicated memory access, so it never reads them.
+  if (accountState) return undefined;
   if (!store || !sharedFactsEnabled()) return undefined;
   try {
     const facts = await store.listFacts();
@@ -746,12 +777,16 @@ async function sharedTurnFactsContext(
   }
 }
 
-/** Joins the facts and recall provider blocks into one runtime context block. */
+/** Joins the account, facts and recall provider blocks into one runtime context block. */
 function combinedTurnContext(
   factsContext: string | undefined,
   recallContext: string | undefined,
+  accountState?: PersonalSharedFallbackAccountState,
 ): string | undefined {
-  const parts = [factsContext, recallContext].filter(
+  const accountContext = accountState
+    ? formatPersonalSharedFallbackAccountContext(accountState)
+    : undefined;
+  const parts = [accountContext, factsContext, recallContext].filter(
     (part): part is string => typeof part === "string" && part.length > 0,
   );
   return parts.length ? parts.join("\n\n") : undefined;
@@ -765,7 +800,7 @@ function stableUuid(raw: string): string {
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
 
-/** Content identity for conflict detection: same key + different text is rejected. */
+/** Client content identity; server observations can change between retries. */
 function sharedTurnPayloadHash(text: string): string {
   return crypto.createHash("sha256").update(text).digest("hex");
 }
@@ -950,9 +985,33 @@ async function characterFor(
         });
       });
     options.executionCtx.waitUntil(hydration);
+    // Join the authoritative fill for a bounded time before failing the turn.
+    if (await hydrationSettledWithin(hydration)) {
+      const hydrated = linkedCharacterMemoryCache.get(characterId);
+      if (hydrated) return projectSharedAgentCharacter(agent, hydrated);
+    }
     throw new SharedRuntimeCacheWarmingError("Character cache is warming. Retry shortly.");
   }
   return projectSharedAgentCharacter(agent, linked);
+}
+
+/** Adds the complete approved self-context only to its account/app/room character. */
+function networkContextCharacter(
+  agent: SharedRuntimeAgent,
+  params: Record<string, unknown>,
+  character: SharedAgentCharacter,
+  network: SharedRuntimeChatOptions["trustedNetworkContext"],
+): SharedAgentCharacter {
+  if (!network) return character;
+  if (!networkSharedTurnMatches(agent, params.roomId, network)) {
+    throw new ElizaError("Network self-context does not match this Shared turn scope", {
+      code: "NETWORK_SHARED_CONTEXT_SCOPE_INVALID",
+    });
+  }
+  return {
+    ...character,
+    system: [character.system, formatNetworkSharedTurnForModel(network)].join("\n\n"),
+  };
 }
 
 function billingPrompt(
@@ -1045,6 +1104,7 @@ async function admitTurn(
       admissionSnapshot = await getInferenceAdmissionSnapshotCacheOnly(
         agent.organization_id,
         executionCtx,
+        { awaitHydrationMs: SHARED_TURN_HYDRATION_WAIT_MS },
       );
     } catch (error) {
       // error-policy:J1 a combined policy miss remains a retryable warmup and
@@ -1137,20 +1197,13 @@ async function finishBilling(
       billing.reservation,
     );
     const reconciliation = await billing.settle(result.totalCost);
-    const record = await recordUsageAnalytics(billing.context, result, {
-      type: "chat",
-      content: reply,
-      prompt,
+    await recordSettledInferenceBilling({
+      context: billing.context,
+      billing: result,
+      reconciliation,
+      idempotencyKey: billing.idempotencyKey,
+      analytics: { type: "chat", content: reply, prompt },
     });
-    if (record) {
-      await aiBillingRecordsService.record({
-        context: billing.context,
-        billing: result,
-        usageRecord: record,
-        idempotencyKey: billing.idempotencyKey,
-        reconciliation,
-      });
-    }
   } catch (error) {
     // error-policy:J1 the reply may already be delivered, so an unavailable
     // meter is not evidence of zero provider work. Preserve the admitted
@@ -1361,6 +1414,14 @@ export class SharedRuntimeChatService {
     }
     const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
     const messageRole = options.trustedMessageRole ?? "user";
+    if (
+      options.trustedNetworkContext &&
+      !networkSharedTurnMatches(agent, params.roomId, options.trustedNetworkContext)
+    ) {
+      throw new ElizaError("Network context does not match this Personal conversation", {
+        code: "NETWORK_SHARED_CONTEXT_SCOPE_INVALID",
+      });
+    }
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
       const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
@@ -1375,13 +1436,19 @@ export class SharedRuntimeChatService {
         };
       }
     }
-    const [character, loadedHistory] = await Promise.all([
+    const [loadedCharacter, loadedHistory] = await Promise.all([
       characterFor(agent, {
         cacheOnly: Boolean(options.historyStore),
         executionCtx: options.executionCtx,
       }),
       loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
+    const character = networkContextCharacter(
+      agent,
+      params,
+      loadedCharacter,
+      options.trustedNetworkContext,
+    );
     const history = constrainTrustedLifecycleHistory(loadedHistory, options);
     let billing: BillingTurn | null;
     try {
@@ -1413,15 +1480,21 @@ export class SharedRuntimeChatService {
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     const memoryStore = options.transientInput ? null : sharedTurnMemoryStore(agent, roomId);
     const [factsContext, recallBlock] = await Promise.all([
-      sharedTurnFactsContext(memoryStore),
+      sharedTurnFactsContext(memoryStore, options.trustedAccountState),
       sharedTurnRecallContext(memoryStore, text, history),
     ]);
-    const recallContext = combinedTurnContext(factsContext, recallBlock);
+    const recallContext = combinedTurnContext(
+      factsContext,
+      recallBlock,
+      options.trustedAccountState,
+    );
     const turnStartedAtEpochMs = Date.now();
     let terminalTiming: SharedRuntimeTimingReceipt | undefined;
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
+        ownerCapture: options.ownerCapture,
+        abortSignal: options.abortSignal,
         character,
         history,
         message: text,
@@ -1581,6 +1654,14 @@ export class SharedRuntimeChatService {
     if (!text) return sseError("message.send requires params.text");
     const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
     const messageRole = options.trustedMessageRole ?? "user";
+    if (
+      options.trustedNetworkContext &&
+      !networkSharedTurnMatches(agent, params.roomId, options.trustedNetworkContext)
+    ) {
+      throw new ElizaError("Network context does not match this Personal conversation", {
+        code: "NETWORK_SHARED_CONTEXT_SCOPE_INVALID",
+      });
+    }
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
       const claimStartedAt = performance.now();
@@ -1612,13 +1693,19 @@ export class SharedRuntimeChatService {
       }
     }
     const hydrateStartedAt = performance.now();
-    const [character, loadedHistory] = await Promise.all([
+    const [loadedCharacter, loadedHistory] = await Promise.all([
       characterFor(agent, {
         cacheOnly: Boolean(options.historyStore),
         executionCtx: options.executionCtx,
       }),
       loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
+    const character = networkContextCharacter(
+      agent,
+      params,
+      loadedCharacter,
+      options.trustedNetworkContext,
+    );
     const history = constrainTrustedLifecycleHistory(loadedHistory, options);
     timings.turn_hydrate = elapsedTurnMs(hydrateStartedAt);
     let billing: BillingTurn | null;
@@ -1708,11 +1795,15 @@ export class SharedRuntimeChatService {
     try {
       const [streamFactsContext, streamRecallBlock] = await withinTerminalDeadline(
         Promise.all([
-          sharedTurnFactsContext(streamMemoryStore),
+          sharedTurnFactsContext(streamMemoryStore, options.trustedAccountState),
           sharedTurnRecallContext(streamMemoryStore, text, history),
         ]),
       );
-      const streamRecallContext = combinedTurnContext(streamFactsContext, streamRecallBlock);
+      const streamRecallContext = combinedTurnContext(
+        streamFactsContext,
+        streamRecallBlock,
+        options.trustedAccountState,
+      );
       const providerSetupStartedAt = performance.now();
       turn = await withinTerminalDeadline(
         runSharedAgentTurnStream({
@@ -1869,7 +1960,14 @@ export class SharedRuntimeChatService {
       const sentAt = Date.now();
       const messages: SharedTurnMessage[] = options.transientInput
         ? []
-        : [{ id: messageIds.user, role: messageRole, content: text, createdAt: sentAt }];
+        : [
+            {
+              id: messageIds.user,
+              role: messageRole,
+              content: text,
+              createdAt: sentAt,
+            },
+          ];
       const assistantText = reply.trim();
       if (assistantText) {
         messages.push({
@@ -2197,7 +2295,11 @@ export class SharedRuntimeChatService {
           });
           if (!consumerCanceled) {
             controller.enqueue(
-              encoder.encode(chatSseFrame("error", { message: "Shared runtime stream failed" })),
+              encoder.encode(
+                chatSseFrame("error", {
+                  message: "Shared runtime stream failed",
+                }),
+              ),
             );
           }
         } finally {

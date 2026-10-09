@@ -4,14 +4,29 @@
  * Covers: autonomy event merge / replay / append, conversation loaders,
  * BSC trade + steward wrappers, loadInventory, ownerName hydration,
  * character language sync, loadWorkbench, loadUpdateStatus,
- * checkExtensionStatus.
  */
 
-import { logger } from "@elizaos/logger";
+import type {
+  BscTradeExecuteRequest,
+  BscTradeExecuteResponse,
+  BscTradePreflightResponse,
+  BscTradeQuoteRequest,
+  BscTradeQuoteResponse,
+  BscTradeTxStatusResponse,
+  BscTransferExecuteRequest,
+  BscTransferExecuteResponse,
+  StewardWebhookEventType,
+  WalletTradingProfileResponse,
+  WalletTradingProfileSourceFilter,
+  WalletTradingProfileWindow,
+} from "@elizaos/contracts";
+import type { UiLanguage } from "@elizaos/core/protocol";
+import type { StylePreset } from "@elizaos/host/protocol";
+
 import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetByName,
-} from "@elizaos/shared";
+} from "@elizaos/host/protocol";
 import {
   type RefObject,
   useCallback,
@@ -19,35 +34,25 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  type AgentStatus,
-  type BscTradeExecuteRequest,
-  type BscTradeExecuteResponse,
-  type BscTradePreflightResponse,
-  type BscTradeQuoteRequest,
-  type BscTradeQuoteResponse,
-  type BscTradeTxStatusResponse,
-  type BscTransferExecuteRequest,
-  type BscTransferExecuteResponse,
-  type CharacterData,
-  type Conversation,
-  type ConversationMessage,
-  client,
-  type ExtensionStatus,
-  type StewardWebhookEventType,
-  type StreamEventEnvelope,
-  type StylePreset,
-  type UpdateStatus,
-  type WalletTradingProfileResponse,
-  type WalletTradingProfileSourceFilter,
-  type WalletTradingProfileWindow,
-  type WorkbenchOverview,
-} from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
+import type {
+  Conversation,
+  ConversationMessage,
+} from "../api/client-types-chat";
+import type {
+  CharacterData,
+  UpdateStatus,
+  WorkbenchOverview,
+} from "../api/client-types-config";
+import type {
+  AgentStatus,
+  StreamEventEnvelope,
+} from "../api/client-types-core";
 import { restoreCapabilityHandoffs } from "../capability-handoff";
 import { useIsAuthenticated } from "../hooks/useAuthStatus";
-import type { UiLanguage } from "../i18n";
-import { normalizeOwnerName } from "../utils/owner-name";
+import { logger } from "../logger.ts";
+import { normalizeOwnerName } from "../utils/owner-name.js";
 import {
   type AutonomyRunHealthMap,
   buildAutonomyGapReplayRequests,
@@ -58,17 +63,16 @@ import {
 import { normalizeConversationList } from "./chat-conversation-guards";
 import { markConversationHistoryApplied } from "./conversation-hydration-readiness";
 import {
-  applyStreamingTextModification,
   filterRenderableConversationMessages,
-  type LoadConversationMessagesResult,
-  type StreamingTextModification,
   shouldKeepConversationMessage,
-} from "./internal";
+} from "./conversation-message-filter";
 import { clearSettledPendingChatTurns } from "./pending-chat-turns";
 import { subscribeRuntimeAuthoritySwitch } from "./switch-runtime";
+import type { LoadConversationMessagesResult } from "./types";
+import type { StreamingTextModification } from "./useStreamingText";
+import { applyStreamingTextModification } from "./useStreamingText";
 
 // ── Helpers (module-level, no React deps) ────────────────────────────
-
 function hasConversationBootstrapMessage(
   messages: ConversationMessage[],
 ): boolean {
@@ -77,7 +81,39 @@ function hasConversationBootstrapMessage(
       message.role === "assistant" && shouldKeepConversationMessage(message),
   );
 }
-
+const STORE_MESSAGE_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Keep local rows in their arrival slots while ordering durable UUIDs within each timestamp. */
+function orderStreamedConversationMessages(
+  messages: readonly ConversationMessage[],
+): ConversationMessage[] {
+  const ordered = [...messages].sort(
+    (left, right) => left.timestamp - right.timestamp,
+  );
+  for (let start = 0; start < ordered.length; ) {
+    let end = start + 1;
+    while (
+      end < ordered.length &&
+      ordered[end].timestamp === ordered[start].timestamp
+    )
+      end++;
+    const durable = ordered
+      .slice(start, end)
+      .filter((message) => STORE_MESSAGE_ID_RE.test(message.id))
+      .sort((left, right) => {
+        const leftId = left.id.toLowerCase(),
+          rightId = right.id.toLowerCase();
+        return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+      });
+    let next = 0;
+    for (let index = start; index < end; index++) {
+      if (STORE_MESSAGE_ID_RE.test(ordered[index].id))
+        ordered[index] = durable[next++];
+    }
+    start = end;
+  }
+  return ordered;
+}
 function localConversationMessageLineage(
   message: ConversationMessage,
 ): string | null {
@@ -86,7 +122,6 @@ function localConversationMessageLineage(
   }
   return message.id.startsWith("temp-") ? message.id : null;
 }
-
 interface ConversationMessageOverlayRecord {
   /** Latest visible form of this explicitly registered local lineage. */
   message: ConversationMessage | null;
@@ -105,9 +140,7 @@ interface ConversationMessageOverlayRecord {
   /** Survives retirement/re-homing while a queued successor still references us. */
   resolvedServerUserId?: string;
 }
-
 type ConversationMessageOverlay = Map<string, ConversationMessageOverlayRecord>;
-
 export type ConversationMessageStateMutation =
   | {
       mode: "delete-exact";
@@ -119,7 +152,6 @@ export type ConversationMessageStateMutation =
       /** Exact visible prefix captured before the server-side truncate. */
       preservedMessages: readonly ConversationMessage[];
     };
-
 interface ConversationMessageLoadFence {
   conversationId: string;
   controller: AbortController;
@@ -129,7 +161,6 @@ interface ConversationMessageLoadFence {
   /** Only overlay revisions that existed before this GET may be retired by it. */
   overlayRevisionsAtStart: Map<string, number>;
 }
-
 function indexConversationMessagesByLineage(
   messages: readonly ConversationMessage[],
 ): Map<string, ConversationMessage> {
@@ -140,7 +171,6 @@ function indexConversationMessagesByLineage(
   }
   return indexed;
 }
-
 function captureRegisteredConversationMessageOverlay(
   overlay: ConversationMessageOverlay,
   currentMessages: readonly ConversationMessage[],
@@ -166,7 +196,6 @@ function captureRegisteredConversationMessageOverlay(
     }
   }
 }
-
 function rememberResolvedOverlayUser(
   record: ConversationMessageOverlayRecord,
   message: ConversationMessage,
@@ -177,7 +206,6 @@ function rememberResolvedOverlayUser(
   // Release the chain while successors retain this small identity record.
   record.precedingUserRecords = undefined;
 }
-
 function overlayMessages(
   overlay: ConversationMessageOverlay | undefined,
 ): ConversationMessage[] {
@@ -186,7 +214,6 @@ function overlayMessages(
     .map((record) => record.message)
     .filter((message): message is ConversationMessage => message !== null);
 }
-
 function snapshotOverlayRevisions(
   overlay: ConversationMessageOverlay | undefined,
 ): Map<string, number> {
@@ -196,14 +223,14 @@ function snapshotOverlayRevisions(
       : [],
   );
 }
-
-const LOCAL_TURN_MATCH_SLACK_MS = 60_000;
-
+const LOCAL_TURN_MATCH_SLACK_MS = 60000;
 function findMatchingServerMessageIndex(
   serverMessages: ConversationMessage[],
   localMessage: ConversationMessage,
   usedIndexes: Set<number>,
-  options?: { afterIndex?: number },
+  options?: {
+    afterIndex?: number;
+  },
 ): number {
   const text = localMessage.text.trim();
   if (!text) return -1;
@@ -230,7 +257,6 @@ function findMatchingServerMessageIndex(
   }
   return bestIndex;
 }
-
 function isLocalOverlayMessage(
   message: ConversationMessage,
   overlayLineages: ReadonlySet<string>,
@@ -238,7 +264,6 @@ function isLocalOverlayMessage(
   const lineage = localConversationMessageLineage(message);
   return lineage !== null && overlayLineages.has(lineage);
 }
-
 function findNearestPriorLocalOverlayUser(
   messages: ConversationMessage[],
   fromIndex: number,
@@ -257,7 +282,6 @@ function findNearestPriorLocalOverlayUser(
   }
   return null;
 }
-
 function findNearestPriorUser(
   messages: ConversationMessage[],
   fromIndex: number,
@@ -268,7 +292,6 @@ function findNearestPriorUser(
   }
   return null;
 }
-
 function resolvedLocalOverlayServerIndexes(
   serverMessages: ConversationMessage[],
   currentMessages: ConversationMessage[],
@@ -294,7 +317,6 @@ function resolvedLocalOverlayServerIndexes(
     }
   });
   const serverUserIndexByLocalId = new Map<string, number>();
-
   currentMessages.forEach((message) => {
     if (
       message.role !== "user" ||
@@ -338,7 +360,6 @@ function resolvedLocalOverlayServerIndexes(
     serverUserIndexByLocalId.set(message.id, serverIndex);
     resolvedServerIndexes.set(message.id, serverIndex);
   });
-
   currentMessages.forEach((message, index) => {
     if (
       message.role !== "assistant" ||
@@ -371,15 +392,12 @@ function resolvedLocalOverlayServerIndexes(
     usedServerAssistantIndexes.add(serverIndex);
     resolvedServerIndexes.set(message.id, serverIndex);
   });
-
   return resolvedServerIndexes;
 }
-
 // A single newest-history response can still trail a terminal direct reply.
 // Keep an unchanged overlay through two consecutive omissions; the third
 // independent snapshot is the bounded confirmation that the row was removed.
 const OVERLAY_NEWEST_MISS_RETIREMENT_COUNT = 3;
-
 function mergeMessagesChronologically(
   serverMessages: ConversationMessage[],
   localOverlay: ConversationMessage[],
@@ -390,6 +408,9 @@ function mergeMessagesChronologically(
     message: ConversationMessage;
     serverIndex: number | null;
   }> = serverMessages.map((message, serverIndex) => ({ message, serverIndex }));
+  // Overlay rows are client-local and not yet in the store, so the store's
+  // same-millisecond UUID tiebreak does not apply: a request and its reply are
+  // often stamped in the same millisecond, and the stable sort keeps send order.
   const orderedOverlay = [...localOverlay].sort(
     (left, right) => left.timestamp - right.timestamp,
   );
@@ -398,11 +419,24 @@ function mergeMessagesChronologically(
       (candidate) => candidate.message.timestamp > message.timestamp,
     );
     if (insertionIndex < 0) insertionIndex = merged.length;
-
+    // A terminal receipt is stronger ordering evidence than client/server
+    // clocks. An ephemeral reply must never precede its recorded request.
+    const replyToPosition =
+      message.role === "assistant" && message.replyToMessageId
+        ? merged.findIndex(
+            (candidate) =>
+              candidate.message.role === "user" &&
+              candidate.message.id === message.replyToMessageId,
+          )
+        : -1;
+    if (replyToPosition >= 0) {
+      insertionIndex = Math.max(insertionIndex, replyToPosition + 1);
+    }
     const lineage = localConversationMessageLineage(message);
-    const predecessorServerIndex = lineage
-      ? causalServerPredecessors?.get(lineage)
-      : undefined;
+    const predecessorServerIndex =
+      lineage && !message.replyToMessageId
+        ? causalServerPredecessors?.get(lineage)
+        : undefined;
     if (typeof predecessorServerIndex === "number") {
       const predecessorPosition = merged.findIndex(
         (candidate) => candidate.serverIndex === predecessorServerIndex,
@@ -415,7 +449,6 @@ function mergeMessagesChronologically(
   }
   return merged.map((entry) => entry.message);
 }
-
 function reconcileConversationMessagesWithOverlay(
   serverMessages: ConversationMessage[],
   overlay: ConversationMessageOverlay | undefined,
@@ -463,7 +496,6 @@ function reconcileConversationMessagesWithOverlay(
       }
     });
   }
-
   const fullNewestRequestRevisions = options?.overlayRevisionsAtRequestStart;
   const matchedLineages = new Set<string>();
   let visibleServerMessages = serverMessages;
@@ -509,7 +541,6 @@ function reconcileConversationMessagesWithOverlay(
       }
       continue;
     }
-
     const fallbackServerIndex = resolvedOverlayServerIndexes.get(message.id);
     if (typeof fallbackServerIndex === "number") {
       // Text/time matching is weaker than exact durable-id evidence. A newest
@@ -536,7 +567,6 @@ function reconcileConversationMessagesWithOverlay(
       }
       continue;
     }
-
     if (
       !record.terminalDurable ||
       revisionAtRequestStart === undefined ||
@@ -544,7 +574,6 @@ function reconcileConversationMessagesWithOverlay(
     ) {
       continue;
     }
-
     // Client timestamps are not comparable with the server window and retries
     // deliberately retain the original turn timestamp. Only repeated newest
     // responses that began after this exact revision may retire it.
@@ -555,7 +584,6 @@ function reconcileConversationMessagesWithOverlay(
       overlay.delete(lineage);
     }
   }
-
   return mergeMessagesChronologically(
     visibleServerMessages,
     overlayMessages(overlay).filter((message) => {
@@ -565,7 +593,6 @@ function reconcileConversationMessagesWithOverlay(
     causalServerPredecessors,
   );
 }
-
 function buildLocalizedCharacterPayload(
   preset: StylePreset,
   name?: string | null,
@@ -591,14 +618,11 @@ function buildLocalizedCharacterPayload(
     postExamples: [...preset.postExamples],
   };
 }
-
 // ── Hook deps ─────────────────────────────────────────────────────────────
-
 // Upper bound on the in-memory conversation-message prefetch cache. Holds the
 // active conversation plus several neighbors in each swipe direction; oldest
 // entries are evicted first.
 const CONVERSATION_MESSAGE_CACHE_MAX = 16;
-
 export interface DataLoadersDeps {
   // Autonomy refs + setters (from useChatState)
   autonomousStoreRef: RefObject<
@@ -611,7 +635,6 @@ export interface DataLoadersDeps {
   setAutonomousEvents: (v: StreamEventEnvelope[]) => void;
   setAutonomousLatestEventId: (v: string | null) => void;
   setAutonomousRunHealthByRunId: (v: AutonomyRunHealthMap) => void;
-
   // Conversation refs + setters (from useChatState)
   activeConversationIdRef: RefObject<string | null>;
   conversationMessagesRef: RefObject<ConversationMessage[]>;
@@ -619,10 +642,8 @@ export interface DataLoadersDeps {
   setConversations: (v: Conversation[]) => void;
   setActiveConversationId: (v: string | null) => void;
   setConversationMessages: (v: ConversationMessage[]) => void;
-
   // Wallet
   loadWalletConfig: () => Promise<void>;
-
   // Character
   agentStatus: AgentStatus | null;
   characterData: CharacterData | null;
@@ -631,13 +652,10 @@ export interface DataLoadersDeps {
   selectedVrmIndex: number;
   firstRunComplete: boolean;
   uiLanguage: UiLanguage;
-
   // Owner name
   setOwnerNameState: (v: string | null) => void;
 }
-
 // ── Hook ──────────────────────────────────────────────────────────────────
-
 export function useDataLoaders(deps: DataLoadersDeps) {
   const {
     autonomousStoreRef,
@@ -664,14 +682,11 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     uiLanguage,
     setOwnerNameState,
   } = deps;
-
   // Auth gate (#11084): AppProvider mounts these loaders before the auth probe
   // resolves, so the shell one-shot fetches must stay dormant until the
   // session is authenticated — an unauthenticated shell makes none of them.
   const authenticated = useIsAuthenticated();
-
   // ── Autonomy ────────────────────────────────────────────────────────
-
   const applyAutonomyEventMerge = useCallback(
     (incomingEvents: StreamEventEnvelope[], replay = false) => {
       const merged = mergeAutonomyEvents({
@@ -684,11 +699,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       autonomousEventsRef.current = merged.events;
       autonomousLatestEventIdRef.current = merged.latestEventId;
       autonomousRunHealthByRunIdRef.current = merged.runHealthByRunId;
-
       setAutonomousEvents(merged.events);
       setAutonomousLatestEventId(merged.latestEventId);
       setAutonomousRunHealthByRunId(merged.runHealthByRunId);
-
       return merged;
     },
     [
@@ -701,7 +714,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       setAutonomousRunHealthByRunId,
     ],
   );
-
   // biome-ignore lint/correctness/useExhaustiveDependencies: autonomousStoreRef is a ref — its .current is read at call-time (always latest) and must NOT be a dependency, or this callback's identity churns on every autonomy merge and cascades into useStartupCoordinator's deps.
   const fetchAutonomyReplay = useCallback(async () => {
     if (autonomousReplayInFlightRef.current) return;
@@ -712,16 +724,13 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         afterEventId,
         limit: 300,
       });
-
       if (replay.events.length > 0) {
         applyAutonomyEventMerge(replay.events);
       }
-
       const gapReplays = buildAutonomyGapReplayRequests(
         autonomousRunHealthByRunIdRef.current,
         autonomousStoreRef.current,
       ).slice(0, 4);
-
       // All gap requests are independent — run them in parallel to collapse the
       // serial round-trips into a single wall-clock wait. allSettled so one
       // failed gap replay doesn't discard the others' results.
@@ -746,7 +755,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           applyAutonomyEventMerge(result.value.events);
         }
       }
-
       if (hasPendingAutonomyGaps(autonomousRunHealthByRunIdRef.current)) {
         const partial = markPendingAutonomyGapsPartial(
           autonomousRunHealthByRunIdRef.current,
@@ -777,7 +785,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     autonomousRunHealthByRunIdRef,
     setAutonomousRunHealthByRunId,
   ]);
-
   const appendAutonomousEvent = useCallback(
     (event: StreamEventEnvelope) => {
       const merged = applyAutonomyEventMerge([event]);
@@ -787,9 +794,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     },
     [applyAutonomyEventMerge, fetchAutonomyReplay],
   );
-
   // ── Conversations ───────────────────────────────────────────────────
-
   // Cache the exact visible merge for each conversation. The overlay registry
   // remains the ownership/retirement authority, while the cache guarantees an
   // A -> B -> A paint never flashes the stale server-only snapshot.
@@ -852,13 +857,11 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   // messages silently deleted real conversations. `null` = holder unknown.
   // Every `conversationMessagesRef.current` write below updates it in lockstep.
   const loadedConversationIdRef = useRef<string | null>(null);
-
   const beginConversationMessageCacheRequest = useCallback((id: string) => {
     const token = ++conversationMessageCacheRequestSequenceRef.current;
     conversationMessageCacheRequestTokenRef.current.set(id, token);
     return token;
   }, []);
-
   const invalidateConversationMessageCacheRequest = useCallback(
     (id: string) => {
       conversationMessageCacheRequestSequenceRef.current += 1;
@@ -866,7 +869,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     },
     [],
   );
-
   const finishConversationMessageCacheRequest = useCallback(
     (id: string, requestToken: number) => {
       if (
@@ -877,7 +879,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     },
     [],
   );
-
   const cacheConversationMessages = useCallback(
     (
       id: string,
@@ -901,7 +902,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     },
     [],
   );
-
   const captureVisibleConversationMessageOverlay = useCallback(
     (owner: string | null) => {
       if (visibleConversationMessagesOwnerRef.current !== owner) return;
@@ -921,7 +921,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     },
     [conversationMessagesRef],
   );
-
   const isCurrentConversationMessageFence = useCallback(
     (fence: ConversationMessageLoadFence): boolean =>
       activeMessageLoadFenceRef.current === fence &&
@@ -933,7 +932,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         fence.visibleRequestGeneration,
     [activeConversationIdRef],
   );
-
   const invalidateConversationMessageFence = useCallback(() => {
     const fence = activeMessageLoadFenceRef.current;
     if (!fence) return;
@@ -946,12 +944,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     captureVisibleConversationMessageOverlay,
     isCurrentConversationMessageFence,
   ]);
-
   // biome-ignore lint/correctness/useExhaustiveDependencies: conversationMessagesRef is a stable ref whose current value is intentionally read at claim time.
   const claimConversationMessagesOwnership = useCallback(
     (conversationId: string | null): number => {
       const previousOwner = visibleConversationMessagesOwnerRef.current;
-
       // Capture/release the old owner before changing generation. The active-id
       // check prevents an already-switched view from being attributed back to
       // an old owner.
@@ -959,7 +955,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         captureVisibleConversationMessageOverlay(previousOwner);
       }
       invalidateConversationMessageFence();
-
       const targetOverlay =
         conversationId === null
           ? unownedConversationMessageOverlayRef.current
@@ -975,7 +970,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           ([lineage, message]) =>
             targetOverlay?.get(lineage)?.message === message,
         );
-
       if (
         previousOwner === null &&
         conversationId !== null &&
@@ -991,7 +985,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         setConversationMessages([]);
         visibleConversationMessagesContentOwnerRef.current = undefined;
       }
-
       // Same-id persisted claims are resyncs, not navigation. Keep the owner
       // token stable so an async command or greeting already scoped to this
       // conversation remains valid while the reload gets its own request token.
@@ -1005,7 +998,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       if (loadedConversationIdRef.current !== conversationId) {
         loadedConversationIdRef.current = null;
       }
-
       if (previousOwner === conversationId) {
         // Same-id claims are still semantic transitions (notably null → null
         // new-chat/reset while a cold create is pending). Give callers a fresh
@@ -1021,7 +1013,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         }
         return conversationMessageOwnerGenerationRef.current;
       }
-
       if (targetOwnsVisibleRegisteredRows) {
         // A cold-open send re-homes only its exact registered lineages before
         // claiming the id returned by createConversation. Those same objects
@@ -1051,7 +1042,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       setConversationMessages,
     ],
   );
-
   const registerConversationMessageOverlay = useCallback(
     (
       conversationId: string | null,
@@ -1063,7 +1053,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           ? unownedConversationMessageOverlayRef.current
           : (conversationMessageOverlayRef.current.get(conversationId) ??
             new Map<string, ConversationMessageOverlayRecord>());
-
       if (conversationId !== null) {
         // A first send can receive its created id after the user has selected a
         // different conversation. Re-home only the exact lineages that the send
@@ -1080,7 +1069,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           conversationMessageOverlayRef.current.set(conversationId, overlay);
         }
       }
-
       // Capture the newest window before registering these rows. Reconnect can
       // temporarily paint a durable copy beside its optimistic lineage; that
       // newly seen id must not become an exclusion for its own pending send.
@@ -1131,7 +1119,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
             : new Set(precedingServerUserIds),
         precedingUserRecords,
       });
-
       // Some exact rows are born only after an awaited create (action sends and
       // 404 replay). If their destination is already off-screen there is no
       // visible store to capture. Seed only the caller-supplied objects and
@@ -1166,7 +1153,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       if (conversationId !== null && overlay.size > 0) {
         conversationMessageOverlayRef.current.set(conversationId, overlay);
       }
-
       if (visibleConversationMessagesOwnerRef.current !== conversationId) {
         return;
       }
@@ -1192,25 +1178,107 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     },
     [conversationMessagesRef],
   );
-
+  const getConversationMessagesSnapshot = useCallback(
+    (conversationId: string): ConversationMessage[] | undefined => {
+      if (
+        activeConversationIdRef.current !== conversationId ||
+        visibleConversationMessagesOwnerRef.current !== conversationId ||
+        visibleConversationMessagesContentOwnerRef.current !== conversationId
+      )
+        return undefined;
+      return conversationMessagesRef.current;
+    },
+    [activeConversationIdRef, conversationMessagesRef],
+  );
+  // Startup/recovery hydration fetches history outside the newest-load fence,
+  // so its snapshot may lag a send that is still warming or has just received
+  // its receipts. Merge that snapshot with the owned overlay exactly like a
+  // cache paint: server rows win for older history, exact ids dedupe, and the
+  // unfenced response can never retire the registered local turn.
+  const reconcileRestoredConversationMessages = useCallback(
+    (
+      conversationId: string,
+      serverMessages: ConversationMessage[],
+    ): ConversationMessage[] => {
+      if (visibleConversationMessagesOwnerRef.current !== conversationId) {
+        return serverMessages;
+      }
+      captureVisibleConversationMessageOverlay(conversationId);
+      const overlay = conversationMessageOverlayRef.current.get(conversationId);
+      const ownsVisibleContent =
+        visibleConversationMessagesContentOwnerRef.current === conversationId;
+      return reconcileConversationMessagesWithOverlay(serverMessages, overlay, {
+        ...(ownsVisibleContent
+          ? { localContext: conversationMessagesRef.current }
+          : {}),
+        allowTextFallback:
+          ownsVisibleContent &&
+          canonicalNewestConversationMessageContentOwnerRef.current ===
+            conversationId &&
+          !textFallbackBlockedConversationIdsRef.current.has(conversationId),
+      });
+    },
+    [captureVisibleConversationMessageOverlay, conversationMessagesRef],
+  );
+  const applyConversationMessageStream = useCallback(
+    (
+      conversationId: string,
+      changed: ConversationMessage[],
+      removed: string[],
+    ) => {
+      const previous = getConversationMessagesSnapshot(conversationId);
+      if (!previous) return;
+      const removedIds = new Set(removed);
+      const rows = new Map(
+        previous
+          .filter((row) => !removedIds.has(row.id))
+          .map((row) => [row.id, row]),
+      );
+      for (const row of changed) rows.set(row.id, row);
+      // Streamed durable rows follow the store's UUID tie-break order. Local
+      // optimistic rows retain insertion order in mergeMessagesChronologically.
+      const orderedRows = orderStreamedConversationMessages([...rows.values()]);
+      setConversationMessages(
+        mergeMessagesChronologically(
+          orderedRows.filter((row) => row.assistantEphemeral !== true),
+          orderedRows.filter((row) => row.assistantEphemeral === true),
+        ),
+      );
+      // Relayed optimistic and ephemeral rows need the same history-refresh
+      // protection as locally sent rows. Durable history is not an overlay.
+      registerConversationMessageOverlay(
+        conversationId,
+        changed.flatMap((row) => {
+          const lineage = localConversationMessageLineage(row);
+          return lineage ? [lineage] : [];
+        }),
+        changed,
+      );
+    },
+    [
+      getConversationMessagesSnapshot,
+      registerConversationMessageOverlay,
+      setConversationMessages,
+    ],
+  );
   const isConversationMessagesOwnershipCurrent = useCallback(
     (conversationId: string | null, generation: number): boolean =>
       visibleConversationMessagesOwnerRef.current === conversationId &&
       conversationMessageOwnerGenerationRef.current === generation,
     [],
   );
-
   const getConversationMessagesOwnershipGeneration = useCallback(
     (): number => conversationMessageOwnerGenerationRef.current,
     [],
   );
-
   const applyConversationMessageOverlayModification = useCallback(
     (
       conversationId: string | null,
       lineage: string,
       modification: StreamingTextModification,
-      options?: { onlyIfEmpty?: boolean },
+      options?: {
+        onlyIfEmpty?: boolean;
+      },
     ) => {
       const overlay =
         conversationId === null
@@ -1225,7 +1293,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       ) {
         return;
       }
-
       let nextMessages = [record.message];
       const ownedModification = {
         ...modification,
@@ -1250,7 +1317,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         }
         return;
       }
-
       record.message = nextMessage;
       record.revision += 1;
       record.consecutiveNewestMisses = 0;
@@ -1261,7 +1327,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     },
     [],
   );
-
   const removeConversationMessageStateMessages = useCallback(
     (conversationId: string, mutation: ConversationMessageStateMutation) => {
       const { removedMessages } = mutation;
@@ -1278,7 +1343,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       ) {
         return;
       }
-
       const fence = activeMessageLoadFenceRef.current;
       if (fence?.conversationId === conversationId) {
         fence.controller.abort();
@@ -1290,7 +1354,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       if (prefetchAbortRef.current.get(conversationId) === prefetch) {
         prefetchAbortRef.current.delete(conversationId);
       }
-
       // A successful mutation makes the preceding server snapshot
       // non-canonical. The first newest response after it must reconcile by
       // exact ids only; otherwise a stale row with repeated text can consume a
@@ -1305,7 +1368,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       ) {
         canonicalNewestConversationMessageContentOwnerRef.current = null;
       }
-
       if (mutation.mode === "truncate") {
         // A centered around window can omit newer rows that the server just
         // truncated. No exact patch can make that cached newest snapshot safe.
@@ -1323,7 +1385,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           );
         }
       }
-
       const overlay = conversationMessageOverlayRef.current.get(conversationId);
       if (overlay) {
         const truncateCutoff =
@@ -1347,7 +1408,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           conversationMessageOverlayRef.current.delete(conversationId);
         }
       }
-
       if (visibleConversationMessagesOwnerRef.current === conversationId) {
         if (mutation.mode === "truncate") {
           // A GET may have committed a pre-truncate tail while the mutation was
@@ -1383,7 +1443,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       setConversationMessages,
     ],
   );
-
   const discardConversationMessageState = useCallback(
     (conversationId?: string) => {
       if (conversationId === undefined) {
@@ -1413,7 +1472,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         setConversations([]);
         return;
       }
-
       if (
         activeMessageLoadFenceRef.current?.conversationId === conversationId
       ) {
@@ -1450,7 +1508,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       setConversations,
     ],
   );
-
   useEffect(() => {
     // Only explicit runtime/profile switches are authority boundaries. Raw
     // setBaseUrl/repointBaseUrl also power temporary probes and the
@@ -1461,7 +1518,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       }
     });
   }, [discardConversationMessageState]);
-
   const loadConversations = useCallback(async (): Promise<
     Conversation[] | null
   > => {
@@ -1474,7 +1530,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       return null;
     }
   }, [setConversations]);
-
   const loadConversationMessages = useCallback(
     async function loadNewestConversationMessages(
       convId: string,
@@ -1499,10 +1554,8 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       captureVisibleConversationMessageOverlay(convId);
       const visibleRequestGeneration =
         ++visibleConversationMessageRequestGenerationRef.current;
-
       const controller = new AbortController();
       const { signal } = controller;
-
       // Instant paint from the prefetch cache (a swiped-to neighbor) so the
       // thread never flashes empty mid-swipe; the fetch below still revalidates.
       const cached = conversationMessageCacheRef.current.get(convId);
@@ -1558,7 +1611,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           loadedConversationIdRef.current === convId) &&
         visibleConversationMessagesContentOwnerRef.current === convId &&
         !textFallbackBlockedConversationIdsRef.current.has(convId);
-
       const fence: ConversationMessageLoadFence = {
         conversationId: convId,
         controller,
@@ -1570,7 +1622,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         ),
       };
       activeMessageLoadFenceRef.current = fence;
-
       try {
         const { messages } = await client.getConversationMessages(convId, {
           signal,
@@ -1641,7 +1692,11 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         // thread, so report success and let the caller skip its error path.
         if (
           signal.aborted ||
-          (err as { name?: string }).name === "AbortError"
+          (
+            err as {
+              name?: string;
+            }
+          ).name === "AbortError"
         ) {
           return { ok: true };
         }
@@ -1652,7 +1707,11 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         // A transient error still closes this request generation. Materialize
         // any registered terminal rekey before finally clears the fence.
         captureVisibleConversationMessageOverlay(convId);
-        const status = (err as { status?: number }).status;
+        const status = (
+          err as {
+            status?: number;
+          }
+        ).status;
         if (status === 404) {
           // error-policy:J4 the 404 already settled the thread's fate (gone);
           // this refresh only re-syncs the sidebar list. Its failure degrades to
@@ -1736,7 +1795,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       setConversations,
     ],
   );
-
   // Replace the active thread with a window CENTERED on a specific message so a
   // keyword-search jump can scroll to a hit older than the most-recent window
   // (#9955). The conversation must already be selected (the jump path awaits
@@ -1744,7 +1802,13 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   // user navigated away before it landed. Best-effort — a failure leaves the
   // current thread untouched and the caller simply doesn't scroll.
   const loadConversationMessagesAround = useCallback(
-    async (convId: string, messageId: string): Promise<boolean> => {
+    async (
+      convId: string,
+      messageId: string,
+      options?: {
+        onMessages: (messages: readonly ConversationMessage[]) => void;
+      },
+    ): Promise<boolean> => {
       if (
         activeConversationIdRef.current !== convId ||
         visibleConversationMessagesOwnerRef.current !== convId
@@ -1777,6 +1841,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         if (!isCurrentConversationMessageFence(fence)) return false;
         captureVisibleConversationMessageOverlay(convId);
         const serverMessages = filterRenderableConversationMessages(messages);
+        options?.onMessages(serverMessages);
         const nextMessages = reconcileConversationMessagesWithOverlay(
           serverMessages,
           conversationMessageOverlayRef.current.get(convId),
@@ -1799,7 +1864,11 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       } catch (error) {
         if (
           controller.signal.aborted ||
-          (error as { name?: string }).name === "AbortError"
+          (
+            error as {
+              name?: string;
+            }
+          ).name === "AbortError"
         ) {
           return false;
         }
@@ -1827,7 +1896,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       setConversationMessages,
     ],
   );
-
   // Warm the prefetch cache for adjacent conversations so a horizontal swipe
   // paints instantly. Best-effort + abortable: an id already cached or already
   // in flight is skipped, and a miss just means the eventual select does a
@@ -1868,75 +1936,61 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       finishConversationMessageCacheRequest,
     ],
   );
-
   // ── BSC trade / steward wrappers ────────────────────────────────────
-
   const getBscTradePreflight = useCallback(
     async (tokenAddress?: string): Promise<BscTradePreflightResponse> =>
       client.getBscTradePreflight(tokenAddress),
     [],
   );
-
   const getBscTradeQuote = useCallback(
     async (request: BscTradeQuoteRequest): Promise<BscTradeQuoteResponse> =>
       client.getBscTradeQuote(request),
     [],
   );
-
   const getBscTradeTxStatus = useCallback(
     async (hash: string): Promise<BscTradeTxStatusResponse> =>
       client.getBscTradeTxStatus(hash),
     [],
   );
-
   const getStewardStatus = useCallback(
     async () => client.getStewardStatus(),
     [],
   );
-
   const getStewardAddresses = useCallback(
     async () => client.getStewardAddresses(),
     [],
   );
-
   const getStewardBalance = useCallback(
     async (chainId?: number) => client.getStewardBalance(chainId),
     [],
   );
-
   const getStewardTokens = useCallback(
     async (chainId?: number) => client.getStewardTokens(chainId),
     [],
   );
-
   const getStewardWebhookEvents = useCallback(
     async (opts?: { event?: StewardWebhookEventType; since?: number }) =>
       client.getStewardWebhookEvents(opts),
     [],
   );
-
   const getStewardHistory = useCallback(
     async (opts?: { status?: string; limit?: number; offset?: number }) =>
       client.getStewardHistory(opts),
     [],
   );
-
   const getStewardPending = useCallback(
     async () => client.getStewardPending(),
     [],
   );
-
   const approveStewardTx = useCallback(
     async (txId: string) => client.approveStewardTx(txId),
     [],
   );
-
   const rejectStewardTx = useCallback(
     async (txId: string, reason?: string) =>
       client.rejectStewardTx(txId, reason),
     [],
   );
-
   const loadWalletTradingProfile = useCallback(
     async (
       window: WalletTradingProfileWindow = "30d",
@@ -1945,13 +1999,11 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       client.getWalletTradingProfile(window, source),
     [],
   );
-
   const executeBscTrade = useCallback(
     async (request: BscTradeExecuteRequest): Promise<BscTradeExecuteResponse> =>
       client.executeBscTrade(request),
     [],
   );
-
   const executeBscTransfer = useCallback(
     async (
       request: BscTransferExecuteRequest,
@@ -1959,13 +2011,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       client.executeBscTransfer(request),
     [],
   );
-
   const loadInventory = useCallback(async () => {
     await loadWalletConfig();
   }, [loadWalletConfig]);
-
   // ── ownerName hydration ─────────────────────────────────────────────
-
   // Owner name lives in agent config, so it can only be read once the agent API
   // is reachable. Gating on agent readiness (rather than firing on mount) avoids
   // issuing the request during first-run / early startup, where it would block
@@ -1973,12 +2022,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   // reconnects. The boolean keeps the effect from re-running on every status
   // poll, which only changes the AgentStatus object reference.
   const agentReachable = agentStatus !== null;
-
   useEffect(() => {
     if (!agentReachable || !authenticated) {
       return;
     }
-
     let cancelled = false;
     void client
       .getConfig()
@@ -1986,7 +2033,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         if (cancelled) {
           return;
         }
-
         const persisted = normalizeOwnerName(cfg.ui?.ownerName);
         if (persisted) {
           setOwnerNameState(persisted);
@@ -1998,32 +2044,25 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         }
         logger.debug({ error }, "[useDataLoaders] owner-name hydration failed");
       });
-
     return () => {
       cancelled = true;
     };
   }, [agentReachable, authenticated, setOwnerNameState]);
-
   // ── Character language sync ─────────────────────────────────────────
-
   const localizedCharacterLanguageRef = useRef<UiLanguage>(uiLanguage);
-
   useEffect(() => {
     const previousLanguage = localizedCharacterLanguageRef.current;
     localizedCharacterLanguageRef.current = uiLanguage;
-
     if (previousLanguage === uiLanguage) {
       return;
     }
     if (!firstRunComplete || selectedVrmIndex <= 0) {
       return;
     }
-
     const characterName =
       characterData?.name?.trim() ||
       characterDraft?.name?.trim() ||
       agentStatus?.agentName?.trim();
-
     // Resolve the persona by name first: avatarIndex is a VRM art-asset index
     // that several personas can share (Eliza and Chen both render asset 1), so
     // the index alone would relocalize a named persona to its sibling.
@@ -2033,9 +2072,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     if (!preset) {
       return;
     }
-
     const resolvedName = characterName || preset.name;
-
     void (async () => {
       try {
         await client.updateCharacter(
@@ -2055,20 +2092,15 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     selectedVrmIndex,
     uiLanguage,
   ]);
-
   // ── Workbench / update / extension ──────────────────────────────────
-
   const [workbenchLoading, setWorkbenchLoading] = useState(false);
   const [workbench, setWorkbench] = useState<WorkbenchOverview | null>(null);
-  const [workbenchTasksAvailable, setWorkbenchTasksAvailable] = useState(false);
   const [workbenchTriggersAvailable, setWorkbenchTriggersAvailable] =
     useState(false);
   const [workbenchTodosAvailable, setWorkbenchTodosAvailable] = useState(false);
-
   const loadWorkbench = useCallback(async () => {
     if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
       setWorkbench(null);
-      setWorkbenchTasksAvailable(false);
       setWorkbenchTriggersAvailable(false);
       setWorkbenchTodosAvailable(false);
       setWorkbenchLoading(false);
@@ -2078,19 +2110,16 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     try {
       const result = await client.getWorkbenchOverview();
       setWorkbench(result);
-      setWorkbenchTasksAvailable(result.tasksAvailable ?? false);
       setWorkbenchTriggersAvailable(result.triggersAvailable ?? false);
       setWorkbenchTodosAvailable(result.todosAvailable ?? false);
     } catch {
       setWorkbench(null);
-      setWorkbenchTasksAvailable(false);
       setWorkbenchTriggersAvailable(false);
       setWorkbenchTodosAvailable(false);
     } finally {
       setWorkbenchLoading(false);
     }
   }, [authenticated]);
-
   // The workbench load normally fires on the agent-state "running" edge
   // (useAgentGreetingEffects). When that edge lands before the auth probe
   // resolves the load is suppressed by the gate above, so fire it once the
@@ -2103,12 +2132,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       void loadWorkbench();
     }
   }, [agentReachable, authenticated, loadWorkbench]);
-
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [updateChannelSaving, setUpdateChannelSaving] = useState(false);
   const updateChannelSavingRef = useRef(false);
-
   const loadUpdateStatus = useCallback(async (force = false) => {
     setUpdateLoading(true);
     try {
@@ -2119,33 +2146,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     }
     setUpdateLoading(false);
   }, []);
-
-  const [extensionStatus, setExtensionStatus] =
-    useState<ExtensionStatus | null>(null);
-  const [extensionChecking, setExtensionChecking] = useState(false);
-
-  const checkExtensionStatus = useCallback(async () => {
-    setExtensionChecking(true);
-    try {
-      const ext = await client.getExtensionStatus();
-      setExtensionStatus(ext);
-    } catch {
-      setExtensionStatus({
-        relayReachable: false,
-        relayPort: 18792,
-        extensionPath: null,
-        chromeBuildPath: null,
-        chromePackagePath: null,
-        safariWebExtensionPath: null,
-        safariAppPath: null,
-        safariPackagePath: null,
-      });
-    }
-    setExtensionChecking(false);
-  }, []);
-
   // ── Channel change ──────────────────────────────────────────────────
-
   const handleChannelChange = useCallback(
     async (channel: "stable" | "beta" | "nightly") => {
       if (updateChannelSavingRef.current || updateChannelSaving) return;
@@ -2164,7 +2165,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     },
     [updateChannelSaving, updateStatus, loadUpdateStatus],
   );
-
   return {
     // Autonomy
     applyAutonomyEventMerge,
@@ -2179,6 +2179,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     isConversationMessagesOwnershipCurrent,
     getConversationMessagesOwnershipGeneration,
     registerConversationMessageOverlay,
+    reconcileRestoredConversationMessages,
+    getConversationMessagesSnapshot,
+    applyConversationMessageStream,
     applyConversationMessageOverlayModification,
     removeConversationMessageStateMessages,
     discardConversationMessageState,
@@ -2203,7 +2206,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     // Workbench
     workbenchLoading,
     workbench,
-    workbenchTasksAvailable,
     workbenchTriggersAvailable,
     workbenchTodosAvailable,
     loadWorkbench,
@@ -2214,8 +2216,5 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     loadUpdateStatus,
     handleChannelChange,
     // Extension
-    extensionStatus,
-    extensionChecking,
-    checkExtensionStatus,
   };
 }

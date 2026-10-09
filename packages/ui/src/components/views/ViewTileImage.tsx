@@ -10,14 +10,15 @@
  * it only muddies the legible glyph. The catalog branch keeps the image/fallback
  * order.
  */
-import { useState } from "react";
-import { client } from "../../api";
+
+import { useEffect, useState } from "react";
 import {
   isLimitedCloudAgentApiResourceUrl,
   supportsFullAppShellRoutes,
 } from "../../api/app-shell-capabilities";
+import { client } from "../../api/client";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { resolveApiUrl } from "../../utils/asset-url";
+import { resolveApiUrl } from "../../utils/asset-url.js";
 import { emitViewInteraction } from "../../view-telemetry";
 import { LauncherAppIcon } from "./LauncherAppIcon";
 import { ViewIcon } from "./ViewIcon";
@@ -45,7 +46,6 @@ function resolveTileImageUrl(url: string | undefined): string | undefined {
   }
   return resolveApiUrl(url);
 }
-
 /**
  * The shared visual core for view launch surfaces.
  *
@@ -75,7 +75,10 @@ export function ViewTileImage({
   imageTestId?: string;
 }) {
   const [failure, setFailure] = useState<"none" | "primary" | "all">("none");
-
+  // biome-ignore lint/correctness/useExhaustiveDependencies: New image URLs must reset the previous image's failure state.
+  useEffect(() => {
+    setFailure("none");
+  }, [entry.imageUrl, entry.fallbackImageUrl]);
   // Launcher tiles never composite a hero image, they read the glyph directly,
   // so the image-URL resolution below is scoped to the catalog card surface.
   if (source === "launcher") {
@@ -92,14 +95,12 @@ export function ViewTileImage({
       />
     );
   }
-
   const primaryUrl =
     failure === "none" ? resolveTileImageUrl(entry.imageUrl) : undefined;
   const fallbackUrl =
     failure !== "all" ? resolveTileImageUrl(entry.fallbackImageUrl) : undefined;
   const url = primaryUrl ?? fallbackUrl;
   const hasFallback = Boolean(fallbackUrl && fallbackUrl !== primaryUrl);
-
   if (url) {
     return (
       <div className={containerClassName}>
@@ -126,7 +127,6 @@ export function ViewTileImage({
       </div>
     );
   }
-
   return (
     <div className={containerClassName} data-view-visual={entry.id}>
       <ViewIcon

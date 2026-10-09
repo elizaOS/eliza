@@ -10,16 +10,19 @@
  * Protected by CRON_SECRET.
  */
 
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { dbRead } from "@elizaos/cloud-shared/db/client";
+import type { App } from "@elizaos/cloud-shared/db/repositories/apps";
+import { apps } from "@elizaos/cloud-shared/db/schemas";
+import {
+  type AppConfig,
+  appConfig,
+} from "@elizaos/cloud-shared/db/schemas/app-config";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { eq, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { dbRead } from "@/db/client";
-import type { App } from "@/db/repositories/apps";
-import { apps } from "@/db/schemas";
-import { type AppConfig, appConfig } from "@/db/schemas/app-config";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 /** App combined with its config for automation processing */
 interface AppWithConfig {

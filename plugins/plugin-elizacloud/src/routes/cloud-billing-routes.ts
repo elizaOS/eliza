@@ -492,7 +492,7 @@ function mirrorPaymentHeaders(
 
 function isAllowedAppMoneyPath(pathname: string): boolean {
   const appMoneyPath =
-    /^\/api\/cloud\/billing\/apps\/[^/]+\/(charges|earnings|monetization)(?:\/|$)/;
+    /^\/api\/cloud\/billing\/apps\/[^/]+\/(earnings|monetization)(?:\/|$)/;
   return appMoneyPath.test(pathname);
 }
 

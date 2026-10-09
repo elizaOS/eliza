@@ -23,13 +23,14 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "../../../bridge/toast";
-// Deep primitive/brand imports per the packages/ui extension rules — the
-// root cloud-ui barrel would drag the entire kit into this chunk graph.
-import { Button, Skeleton } from "../../../cloud-ui/components/primitives";
 import { SettingsInputRow } from "../../../components/settings/settings-agent-rows";
 import { SettingsRow } from "../../../components/settings/settings-layout";
 import { Alert } from "../../../components/ui/alert";
+// Deep primitive/brand imports per the packages/ui extension rules — the
+// root cloud-ui barrel would drag the entire kit into this chunk graph.
+import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import { Skeleton } from "../../../components/ui/skeleton";
 import { TextLink } from "../../../components/ui/text-link";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
@@ -37,7 +38,7 @@ import {
   buildReferralInviteLoginUrl,
   copyTextToClipboard,
   useCopyFeedback,
-} from "../lib/clipboard";
+} from "../clipboard";
 import { useDashboardReferralMe } from "./use-dashboard-referral-me";
 
 interface AffiliateData {
@@ -553,7 +554,7 @@ export function AffiliatesPageClient() {
             </strong>{" "}
             {t("cloud.affiliates.pricingExampleBody", {
               defaultValue:
-                "If an API normally costs 10 credits and you set a 20% markup, your user pays 12 credits. You will earn exactly 2 credits which drops instantly into your redeemable token balance.",
+                "If an API normally costs 10 credits and you set a 20% markup, your user pays 12 credits. You earn exactly 2 credits, which are added to your affiliate earnings.",
             })}
           </div>
         </Alert>

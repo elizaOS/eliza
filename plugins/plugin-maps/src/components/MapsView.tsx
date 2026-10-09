@@ -2,11 +2,14 @@
  * Renders the provider-neutral Maps workspace and keeps every domain read on
  * the authenticated view broker while persistent actions hand off to Eliza.
  */
+import {
+  Button,
+  dispatchChatPrefill,
+  Input,
+  useAgentElement,
+  useAppSelector,
+} from "@elizaos/ui";
 
-import { Button, Input } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { dispatchChatPrefill } from "@elizaos/ui/events";
-import { useAppSelector } from "@elizaos/ui/state";
 import {
   Bike,
   Bus,
@@ -394,7 +397,9 @@ function RouteChoice({ route, active, onSelect }: RouteChoiceProps) {
       <span className="mt-2 block text-sm font-bold text-text">
         {formatDuration(route.durationSeconds)}
       </span>
-      <span className="text-xs text-muted-foreground">
+      <span
+        className={`text-xs ${active ? "text-inherit" : "text-muted-foreground"}`}
+      >
         {formatDistance(route.distanceMeters)}
       </span>
     </Button>

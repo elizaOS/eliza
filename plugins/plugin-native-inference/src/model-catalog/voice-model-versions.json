@@ -1,0 +1,612 @@
+[
+  {
+    "id": "wakeword",
+    "version": "0.3.0",
+    "parentVersion": "0.2.0",
+    "publishedToHfAt": "2026-06-19T18:05:39Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "c544bb4c78a601a0da8372b9399dfe668fbadb1e",
+    "ggufAssets": [
+      {
+        "filename": "voice/wakeword/hey-eliza.melspec.gguf",
+        "sha256": "98bd2d5e3cc09e416626cd1a6a758cb92bb8096766d25ecf57d4c99927db682d",
+        "sizeBytes": 543584,
+        "quant": "fp16"
+      },
+      {
+        "filename": "voice/wakeword/hey-eliza.embedding.gguf",
+        "sha256": "9cfcb0d9f1939c68cc9e63f5ac9e0f09b8e8568ee1085dbb50e7391e874a1dc5",
+        "sizeBytes": 659904,
+        "quant": "fp16"
+      },
+      {
+        "filename": "voice/wakeword/hey-eliza.classifier.gguf",
+        "sha256": "4502c92664b18d598753114f09925921ddd065d72871607c3a842fa70510a350",
+        "sizeBytes": 315456,
+        "quant": "fp16"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.3.0 - real hey-eliza head (no-mel-rescale, ~98pct TA / ~4-7pct FA held-out)",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "turn-detector-intl",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-15T11:15:08Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "e7ef6204cbede995cc1ff740ed448ce1b6fe93d2",
+    "preferredBackend": "ggml",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/turn/intl/model_q8.onnx",
+        "sha256": "af70f5b5e815f6baf11dad252fbc80400964c6589cea02115187139f6ccf9d66",
+        "sizeBytes": 262031196,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/turn/intl/turn-detector-intl-q8.gguf",
+        "sha256": "5dbcba3fb490217b10ec898003dd0905f9d81b8b7e24378029cff921ab7f9e79",
+        "sizeBytes": 281016768,
+        "quant": "q8_0"
+      }
+    ],
+    "evalDeltas": {
+      "f1Delta": 0.09,
+      "netImprovement": true
+    },
+    "changelogEntry": "LiveKit v0.4.1-intl fine-tuned on multilingual EOU (OASST1 12-lang prompter, prefix-augmented), APOLLO-Mini, F1=0.9308",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "turn-detector",
+    "version": "0.2.0",
+    "parentVersion": "0.1.0",
+    "publishedToHfAt": "2026-05-15T05:17:55Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "preferredBackend": "ggml",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/turn-detector/onnx/model_q8.onnx",
+        "sha256": "52a132ed9c53fe41381cd97a800a9d36b7494d5ea608183de03adfc0723662f8",
+        "sizeBytes": 37736316,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/turn-detector/onnx/turn-detector-en-q8.gguf",
+        "sha256": "04bc18aeec5f59a94ae338aa66a48e204fc02785a6217d9055145f95d2192980",
+        "sizeBytes": 41275296,
+        "quant": "q8_0"
+      }
+    ],
+    "evalDeltas": {
+      "f1Delta": 0.1411,
+      "netImprovement": true
+    },
+    "changelogEntry": "LiveKit v1.2.2-en fine-tuned on DailyDialog (prefix-augmented EOU corpus, APOLLO-Mini, F1=0.9811 vs 0.84 baseline)",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "speaker-encoder",
+    "version": "0.2.0",
+    "parentVersion": "0.1.0",
+    "publishedToHfAt": "2026-05-19T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "1dc9cf5467a6539a8d8289afefac63f28ce53f9c",
+    "preferredBackend": "ffi",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/speaker-encoder/wespeaker-resnet34-lm.gguf",
+        "sha256": "ad066730b125f61a305c949f7f196d23681f387f3e3f916be7a4cd003aae6ae3",
+        "sizeBytes": 26525824,
+        "quant": "gguf-fp32"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.2.0 — GGUF conversion via voice_speaker_to_gguf.py; ONNX file removed from HF. GGUF published to HF.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "speaker-encoder",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-15T07:15:30Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/speaker-encoder/wespeaker-resnet34-lm.onnx",
+        "sha256": "7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068",
+        "sizeBytes": 26530309,
+        "quant": "onnx-fp16"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — WeSpeaker ResNet34-LM 256-dim ONNX (deprecated; GGUF in 0.2.0).",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "diarizer",
+    "version": "0.3.0",
+    "parentVersion": "0.2.0",
+    "publishedToHfAt": "2026-07-03T03:24:18Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "a89e5615ad616f7bf6c4982cd9eed2805b90370f",
+    "preferredBackend": "ffi",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/diarizer/pyannote-segmentation-3.0-ifgo-epoch2.gguf",
+        "sha256": "100a5dbfd480b0cd6b0e01f0a9974ba836412721dfa0e36b7c1bb5a041abfbde",
+        "sizeBytes": 5976032,
+        "quant": "gguf-fp32"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.3.0 — epoch-2 IFGO re-bake (#11377): converter_epoch=2 + lstm_gate_order=IFGO metadata; pairs with the IFGO fused reader (fail-closed guard rejects gate-order skew). New filename; 0.2.0 IOFC artifact kept on HF for older fused libs.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "diarizer",
+    "version": "0.2.0",
+    "parentVersion": "0.1.0",
+    "publishedToHfAt": "2026-05-19T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "1dc9cf5467a6539a8d8289afefac63f28ce53f9c",
+    "preferredBackend": "ffi",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/diarizer/pyannote-segmentation-3.0.gguf",
+        "sha256": "30983eba41c0a99ab7eada564739ae8be74faeb21a31da759c870b5173cbd8a5",
+        "sizeBytes": 5975424,
+        "quant": "gguf-fp32"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.2.0 — GGUF conversion via voice_diarizer_to_gguf.py; ONNX files removed from HF. GGUF published to HF.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "diarizer",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-15T07:15:30Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/diarizer/pyannote-segmentation-3.0-int8.onnx",
+        "sha256": "465d0975bf70fbf14fb77c0589a5d346a9c07c2170345f529cf774678446db76",
+        "sizeBytes": 1542304,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/diarizer/pyannote-segmentation-3.0-fp32.onnx",
+        "sha256": "057ee564753071c0b09b5b611648b50ac188d50846bff5f01e9f7bbf1591ea25",
+        "sizeBytes": 5986908,
+        "quant": "onnx-fp16"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — Pyannote-segmentation-3.0 ONNX int8 (deprecated; GGUF in 0.2.0).",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "turn-detector",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-14T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "ggufAssets": [
+      {
+        "filename": "voice/turn-detector/turn-detector-en-int8.onnx",
+        "sha256": "fdd695a99bda01155fb0b5ce71d34cb9fd3902c62496db7a6c2c7bdeac310ac7",
+        "sizeBytes": 65712276,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/turn-detector/turn-detector-intl-int8.onnx",
+        "sha256": "bd2c30776882138a1d95a07faddc13756fe1a35bef6323505f1124fca349bc9c",
+        "sizeBytes": 396316457,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/turn-detector/turnsense-fallback-int8.onnx",
+        "sha256": "a423adf55f5f33cf4ee9e3fe73ec133d0106affae3aa14693417b4a1c79e2df8",
+        "sizeBytes": 176072860,
+        "quant": "onnx-int8"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — LiveKit turn-detector (135M + intl).",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "voice-emotion",
+    "version": "0.3.0",
+    "parentVersion": "0.2.0",
+    "publishedToHfAt": "2026-05-19T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "pending",
+    "preferredBackend": "ffi",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [],
+    "missingAssets": [
+      {
+        "filename": "voice/voice-emotion/wav2small-msp-dim.gguf",
+        "quant": "gguf-fp32",
+        "expectedSizeBytes": 1200000,
+        "reason": "missing-from-hf-repo"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.3.0 — GGUF conversion via voice_emotion_to_gguf.py; ONNX files removed from HF.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "voice-emotion",
+    "version": "0.2.0",
+    "publishedToHfAt": "2026-05-15T07:20:39Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/emotion/wav2small-cls7-int8.onnx",
+        "sha256": "cba2c4e49707ac20da8b1420814b80735f700e917905c46d8cb880b95d97c953",
+        "sizeBytes": 524750,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/voice-emotion/wav2small-msp-dim-int8.onnx",
+        "sha256": "2fcde4aa2a6881b0e7407a3a706fab1889b69233139ee10b8669795b02b06efc",
+        "sizeBytes": 516877,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/voice-emotion/wav2small-msp-dim-fp32.onnx",
+        "sha256": "3f5a8bf8f035132798b170c57ab61b90d52bb0cb0dd1ef95fd40a97f466f65f7",
+        "sizeBytes": 1211917,
+        "quant": "onnx-fp32"
+      },
+      {
+        "filename": "voice/voice-emotion/wav2small-msp-dim-fp32.onnx.data",
+        "sha256": "5a3a84e879c786317570b551ee6240294c8deded27856a52d872c03b12c63d01",
+        "sizeBytes": 989472,
+        "quant": "onnx-fp32"
+      }
+    ],
+    "evalDeltas": {
+      "f1Delta": 0.0042,
+      "netImprovement": true
+    },
+    "changelogEntry": "v0.2.0 — Wav2Small cls7 head shipped (macro-F1=0.355 > 0.35 gate). ONNX files deprecated; GGUF in 0.3.0.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "kokoro",
+    "version": "0.3.0",
+    "parentVersion": "0.2.0",
+    "publishedToHfAt": "2026-05-15T05:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "4b8809b197aa90ae486f83c1e0a5dc7effb6b285",
+    "preferredBackend": "llama-server",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/kokoro/voices/af_sam.bin",
+        "sha256": "6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b",
+        "sizeBytes": 522240,
+        "quant": "fp16"
+      }
+    ],
+    "missingAssets": [
+      {
+        "filename": "voice/kokoro/kokoro-v1.0-q4_k_m.gguf",
+        "quant": "q4_k_m",
+        "expectedSizeBytes": 60000000,
+        "reason": "missing-from-local-staging"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": false
+    },
+    "changelogEntry": "0.3.0 — J2: fork-side Kokoro inference path (LLM_ARCH_KOKORO graph + tools/kokoro/). Runtime selector defaults to KOKORO_BACKEND=fork → llama-server /v1/audio/speech. ONNX path retained for one release. Quality gap vs ONNX baseline documented; compute-gated follow-up for full per-tensor weight mapping.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "kokoro",
+    "version": "0.2.0",
+    "parentVersion": "0.1.0",
+    "publishedToHfAt": "2026-05-15T11:27:44Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "e7ef6204cbede995cc1ff740ed448ce1b6fe93d2",
+    "ggufAssets": [
+      {
+        "filename": "voice/kokoro/voices/af_sam.bin",
+        "sha256": "6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b",
+        "sizeBytes": 522240,
+        "quant": "fp16"
+      }
+    ],
+    "evalDeltas": {
+      "mosDelta": -1.88,
+      "werDelta": 1,
+      "netImprovement": false
+    },
+    "changelogEntry": "0.2.0 — af_sam shipped per user override (I2); eval WER=1.0/UTMOS=2.32/SpkSim=0.15, gate=FAIL. OmniVoice preset remains production sam voice. compute-gated: needs ≥3h corpus for real quality.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "kokoro",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-14T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/kokoro/kokoro-v1.0-q4.onnx",
+        "sha256": "04cf570cf9c4153694f76347ed4b9a48c1b59ff1de0999e6605d123966b197c7",
+        "sizeBytes": 305215966,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/kokoro/voices/af_bella.bin",
+        "sha256": "f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b",
+        "sizeBytes": 522240,
+        "quant": "fp16"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — kokoro 82M voice-embedding af_bella preset (ONNX deprecated; fork GGUF path in 0.3.0).",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "vad",
+    "version": "0.2.0",
+    "parentVersion": "0.1.0",
+    "publishedToHfAt": "2026-05-19T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "1dc9cf5467a6539a8d8289afefac63f28ce53f9c",
+    "preferredBackend": "ffi",
+    "ggufAssets": [
+      {
+        "filename": "voice/vad/silero-vad-v5.1.2.ggml.bin",
+        "sha256": "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+        "sizeBytes": 885098,
+        "quant": "gguf-fp32"
+      },
+      {
+        "filename": "bundles/2b/vad/silero-vad-v5.gguf",
+        "sha256": "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+        "sizeBytes": 620736,
+        "quant": "gguf-fp32"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.2.0 — ONNX file removed from HF; GGUF-only release.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "vad",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-15T07:15:30Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "preferredBackend": "ffi",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/vad/silero-vad-v5.gguf",
+        "sha256": "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+        "sizeBytes": 620736,
+        "quant": "gguf-fp32"
+      },
+      {
+        "filename": "voice/vad/silero-vad-int8.onnx",
+        "sha256": "90b026c95f054d59d7bf79387b0ed93c8950f35a4d8b741cd78d4bb23a7d2776",
+        "sizeBytes": 639383,
+        "quant": "onnx-int8"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — Silero VAD v5 GGUF (ONNX file deprecated; removed in 0.2.0).",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "wakeword",
+    "version": "0.2.0",
+    "parentVersion": "0.1.0",
+    "publishedToHfAt": "2026-05-19T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "pending",
+    "preferredBackend": "ffi",
+    "ggufAssets": [],
+    "missingAssets": [
+      {
+        "filename": "voice/wakeword/openwakeword.gguf",
+        "quant": "gguf-fp32",
+        "expectedSizeBytes": 3000000,
+        "reason": "missing-from-hf-repo"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.2.0 — ONNX files removed from HF; combined openwakeword.gguf target.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "wakeword",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-15T07:15:30Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "preferredBackend": "ffi",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/wakeword/melspectrogram.onnx",
+        "sha256": "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f",
+        "sizeBytes": 1087958,
+        "quant": "onnx-fp32"
+      },
+      {
+        "filename": "voice/wakeword/embedding_model.onnx",
+        "sha256": "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f",
+        "sizeBytes": 1326578,
+        "quant": "onnx-fp32"
+      },
+      {
+        "filename": "voice/wakeword/hey-eliza-int8.onnx",
+        "sha256": "e565952901cd4203baacef7cb8700891c9bee4e6f42fc9bc0aa03b9c39a2da92",
+        "sizeBytes": 630032,
+        "quant": "onnx-int8"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — hey-eliza wake-word head ONNX (deprecated; removed in 0.2.0).",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "embedding",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-15T07:15:30Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "ggufAssets": [
+      {
+        "filename": "voice/embedding/eliza-1-embedding-q8_0.gguf",
+        "sha256": "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
+        "sizeBytes": 639150592,
+        "quant": "q8_0"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — Eliza-1 BPE-vocab embedding tier.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "asr",
+    "version": "0.3.0",
+    "parentVersion": "0.2.0",
+    "publishedToHfAt": "2026-06-25T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "pending",
+    "ggufAssets": [],
+    "missingAssets": [
+      {
+        "filename": "voice/asr/eliza-1-gemma-asr-q4_0.gguf",
+        "quant": "q4_0",
+        "reason": "missing-from-hf-repo"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Gemma ASR cutover placeholder — pre-Gemma ASR assets retired; downloads stay disabled until Gemma ASR artifacts are published.",
+    "minBundleVersion": "1.0.0"
+  },
+  {
+    "id": "asr",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-14T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "ggufAssets": [
+      {
+        "filename": "voice/asr/eliza-1-asr-q8_0.gguf",
+        "sha256": "58e22d0532d4eacaf034cfac17a6fed159f37c41390c710186783be439d1fc57",
+        "sizeBytes": 2165034944,
+        "quant": "q8_0"
+      },
+      {
+        "filename": "voice/asr/eliza-1-asr-mmproj.gguf",
+        "sha256": "46c1d533af3f354ceb37ce855dbceff7da7fa7cf1e6a523df3b13440bd164c0d",
+        "sizeBytes": 355709344,
+        "quant": "q8_0"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Retired pre-Gemma ASR release — streaming transcriber Q8_0.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "asr",
+    "version": "0.2.0",
+    "publishedToHfAt": "2026-05-15T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "50cffb075ae3c24a4b0cd3a8ccdfaa92506f70d4",
+    "ggufAssets": [
+      {
+        "filename": "voice/asr/eliza-1-asr-q3_k_m.gguf",
+        "sha256": "80c046bf44cf52699bcef0f5a10d9774a0415c127432a0d0f428e6f1634d7f12",
+        "sizeBytes": 1073237952,
+        "quant": "q3_k_m"
+      },
+      {
+        "filename": "voice/asr/eliza-1-asr-q4_k_m.gguf",
+        "sha256": "de11f7110e6faddc277088262cffe8adc3228220a1cfd133c49420bb8bd3c3c5",
+        "sizeBytes": 1282435008,
+        "quant": "q4_k_m"
+      },
+      {
+        "filename": "voice/asr/eliza-1-asr-q5_k_m.gguf",
+        "sha256": "dcffc861bc968202a6ca1107f3335c3dfcd89d6945ca87569596d6a9f551207a",
+        "sizeBytes": 1471801280,
+        "quant": "q5_k_m"
+      },
+      {
+        "filename": "voice/asr/eliza-1-asr-q6_k.gguf",
+        "sha256": "b0f6f2d610dfcc95c4147271855d1aadf78d298d193666834912eb600c5eaf0b",
+        "sizeBytes": 1673002944,
+        "quant": "q6_k"
+      },
+      {
+        "filename": "voice/asr/eliza-1-asr-mmproj.gguf",
+        "sha256": "46c1d533af3f354ceb37ce855dbceff7da7fa7cf1e6a523df3b13440bd164c0d",
+        "sizeBytes": 355709344,
+        "quant": "q8_0"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Retired pre-Gemma ASR K-quant ladder: Q3_K_M, Q4_K_M, Q5_K_M, Q6_K. Kept only as historical release metadata; active downloads remain on the Gemma ASR placeholder until verified artifacts are hosted.",
+    "minBundleVersion": "0.0.0"
+  }
+]

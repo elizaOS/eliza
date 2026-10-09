@@ -11,50 +11,14 @@
  */
 import crypto from "node:crypto";
 import {
+  AUTONOMY_NOTIFICATION_DELIVERY,
+  type AutonomyNotificationDelivery,
   loadOwnerContactRoutingHints,
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
   registerEscalationChannel,
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
-import {
-  ElizaError,
-  type IAgentRuntime,
-  inspectSendHandlerResult,
-  logger,
-  ModelType,
-  parseJsonModelRecord,
-  resolveOptimizedPromptForRuntime,
-  runWithTrajectoryPurpose,
-  ServiceType,
-} from "@elizaos/core";
-import {
-  getSelfControlStatus,
-  startSelfControlBlock,
-  stopSelfControlBlock,
-} from "@elizaos/plugin-blocker/services/website-blocker/engine";
-import type {
-  SyncLifeOpsScheduleObservationInput,
-  SyncLifeOpsScheduleObservationsRequest,
-  SyncLifeOpsScheduleObservationsResponse,
-} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
-import {
-  buildSleepRecapFromSchedule,
-  deriveSleepWakeEvents,
-  type LifeOpsDerivedEvent,
-  normalizeHealthSignal,
-  shouldRunMorningCheckinFromSleepCycle,
-  shouldRunNightCheckinFromSleepCycle,
-} from "@elizaos/plugin-health";
-import {
-  readTwilioCredentialsFromEnv,
-  sendTwilioSms,
-  sendTwilioVoiceCall,
-} from "@elizaos/plugin-phone/twilio";
-import { renderOwnerNotificationTitle } from "@elizaos/plugin-scheduling";
-import type { LifeOpsScheduleMealLabel } from "@elizaos/shared";
-import { readProfileFromMetadata } from "../../activity-profile/profile-metadata.js";
-import type { ActivityProfile } from "../../activity-profile/types.js";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -78,6 +42,7 @@ import type {
   LifeOpsReminderProcessingResult,
   LifeOpsReminderStep,
   LifeOpsReminderUrgency,
+  LifeOpsScheduleMealLabel,
   LifeOpsSubjectType,
   LifeOpsTaskDefinition,
   LifeOpsWorkflowDefinition,
@@ -85,13 +50,60 @@ import type {
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
   UpsertLifeOpsChannelPolicyRequest,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   LIFEOPS_CHANNEL_TYPES,
   LIFEOPS_CIRCADIAN_STATES,
   LIFEOPS_MANUAL_OVERRIDE_KINDS,
   LIFEOPS_UNCLEAR_REASONS,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import {
+  ChannelType,
+  conversationClientUserMemoryId,
+  createReminderPresentation,
+  ElizaError,
+  extractUserText,
+  hashStableJson,
+  type IAgentRuntime,
+  inspectSendHandlerResult,
+  logger,
+  type Memory,
+  ModelType,
+  normalizeEffectReceipts,
+  parseJsonModelRecord,
+  type ReminderPresentation,
+  readDurableConversationChatMarker,
+  resolveOptimizedPromptForRuntime,
+  runWithTrajectoryPurpose,
+  ServiceType,
+  unwrapUserMessageText,
+  validateUuid,
+} from "@elizaos/core";
+import {
+  getSelfControlStatus,
+  startSelfControlBlock,
+  stopSelfControlBlock,
+} from "@elizaos/plugin-blocker/services/website-blocker/engine";
+import type {
+  SyncLifeOpsScheduleObservationInput,
+  SyncLifeOpsScheduleObservationsRequest,
+  SyncLifeOpsScheduleObservationsResponse,
+} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import {
+  buildSleepRecapFromSchedule,
+  deriveSleepWakeEvents,
+  type LifeOpsDerivedEvent,
+  normalizeHealthSignal,
+  shouldRunNightCheckinFromSleepCycle,
+} from "@elizaos/plugin-health";
+import {
+  readTwilioCredentialsFromEnv,
+  sendTwilioSms,
+  sendTwilioVoiceCall,
+} from "@elizaos/plugin-native-phone/twilio";
+import { renderOwnerNotificationTitle } from "@elizaos/plugin-scheduling";
+import { readProfileFromMetadata } from "../../activity-profile/profile-metadata.js";
+import type { ActivityProfile } from "../../activity-profile/types.js";
 import {
   buildNativeAppleReminderMetadata,
   createNativeAppleReminderLikeItem,
@@ -119,14 +131,17 @@ import {
   windowPolicyMatchesDefaults,
 } from "../defaults.js";
 import { materializeDefinitionOccurrences } from "../engine.js";
+import { createFamilySchedulingStores } from "../family-workflows/scheduled-store.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { REMINDER_DISPATCH_INSTRUCTIONS } from "../optimized-prompt-instructions.js";
 import {
+  ownerFactsToView,
   resolveOwnerFactStore,
   resolveOwnerTimeZone,
 } from "../owner/fact-store.js";
 import { getSignalSourceRegistry } from "../registries/signal-source-registry.js";
 import { refreshLifeOpsRelativeTime } from "../relative-time.js";
+import { nextReminderWakeAt } from "../reminder-wake.js";
 import {
   createLifeOpsActivitySignal,
   createLifeOpsAuditEvent,
@@ -147,7 +162,11 @@ import {
   resolveScheduleDeviceIdentity,
   SCHEDULE_CLOUD_SYNC_TTL_MS,
   SCHEDULE_OBSERVATION_LOOKBACK_MS,
+  scheduleObservationSyncInput,
 } from "../schedule-state.js";
+import { DOSSIER_ACTIVITY_METADATA_KEY } from "../scheduled-task/dossier-activity-policy.js";
+import { admitOwnerDossierActivity } from "../scheduled-task/dossier-activity-runtime.js";
+import { classifyDossierActivitySignal } from "../scheduled-task/dossier-activity-signal.js";
 import {
   type ProcessDueScheduledTasksResult,
   processDueScheduledTasks,
@@ -204,6 +223,7 @@ import {
   buildReminderResponseClaim,
   classifyReminderOwnerResponse,
   decideReminderReviewTransition,
+  hasExplicitReminderEscalationProfile,
   isReminderChannel,
   isReminderReviewClosed,
   normalizeActivitySignalSource as normalizeReminderActivitySignalSource,
@@ -248,7 +268,6 @@ import {
   getZonedDateParts,
 } from "../time.js";
 import {
-  callerDefinitionScopes,
   getCallerDefinition,
   getCallerOccurrence,
   getCallerOccurrenceView,
@@ -256,6 +275,105 @@ import {
   nextMutationRevision,
 } from "./definition-authorization.js";
 import { resolveReminderNotificationPriority } from "./reminder-notification-priority.js";
+
+/** Host-owned current request outcome, never assistant prose or creation alone. */
+function foregroundRequestHandling(
+  memory: Memory,
+  agentId: string,
+  ownerId: string,
+): "pending" | "single_create" | undefined {
+  if (
+    !memory.id ||
+    memory.agentId !== agentId ||
+    memory.entityId !== ownerId ||
+    ownerId === agentId ||
+    memory.content.source !== "client_chat" ||
+    (memory.content.channelType !== ChannelType.DM &&
+      memory.content.channelType !== ChannelType.VOICE_DM)
+  )
+    return undefined;
+  const marker = readDurableConversationChatMarker(
+    memory.content.chatIdempotency,
+  );
+  const scope = `${agentId}:${memory.roomId}:${ownerId}`;
+  if (
+    !marker ||
+    marker.scope !== scope ||
+    conversationClientUserMemoryId(scope, marker.clientMessageId) !== memory.id
+  )
+    return undefined;
+  if (marker.outcomeJson === undefined) return "pending";
+  try {
+    const outcome: unknown = JSON.parse(marker.outcomeJson);
+    if (
+      !isRecord(outcome) ||
+      outcome.userMessageId !== memory.id ||
+      !Array.isArray(outcome.actionResults)
+    )
+      return undefined;
+    let result: Record<string, unknown> | undefined;
+    for (const actionResult of outcome.actionResults) {
+      if (!isRecord(actionResult)) return undefined;
+      // Discovery loads the existing tool catalog without performing domain
+      // work. Its successful receipt-free host summary may accompany the one
+      // certified create; failed discovery and every other action stay open
+      // to semantic review rather than granting creation-only ownership.
+      if (
+        actionResult.actionName === "DISCOVER_ACTIONS" &&
+        actionResult.success === true &&
+        actionResult.error === undefined &&
+        actionResult.values === undefined &&
+        (actionResult.effectReceipts === undefined ||
+          (Array.isArray(actionResult.effectReceipts) &&
+            actionResult.effectReceipts.length === 0))
+      )
+        continue;
+      if (
+        result !== undefined ||
+        actionResult.actionName !== "OWNER_REMINDERS_CREATE"
+      )
+        return undefined;
+      result = actionResult;
+    }
+    if (
+      result?.success !== true ||
+      result.actionName !== "OWNER_REMINDERS_CREATE" ||
+      !isRecord(result.values)
+    )
+      return undefined;
+    const handling = result.values.ownerRequestHandling;
+    if (
+      !isRecord(handling) ||
+      handling.kind !== "single_create" ||
+      handling.sourceMessageId !== memory.id ||
+      !validateUuid(handling.definitionId) ||
+      Object.keys(handling).length !== 3
+    )
+      return undefined;
+    const receipts = normalizeEffectReceipts(result.effectReceipts);
+    if (
+      hashStableJson(result.effectReceipts) !== hashStableJson(receipts) ||
+      receipts.length !== 1
+    )
+      return undefined;
+    const receipt = receipts[0];
+    if (
+      receipt.operation !== "lifeops.definition.create" ||
+      receipt.resource?.kind !== "lifeops.definition" ||
+      receipt.resource.id !== handling.definitionId ||
+      receipt.receiptId !==
+        `OWNER_LIFE:lifeops.owner.create:${memory.id}:${handling.definitionId}` ||
+      receipt.outcome !== "applied" ||
+      receipt.idempotency.replayed !== false ||
+      receipt.commit?.kind !== "durable" ||
+      !validateUuid(receipt.commit.id)
+    )
+      return undefined;
+    return "single_create";
+  } catch {
+    return undefined;
+  }
+}
 
 export { REMINDER_DISPATCH_INSTRUCTIONS } from "../optimized-prompt-instructions.js";
 
@@ -405,37 +523,30 @@ type ScheduledWorkflowRunner = {
   }): Promise<LifeOpsWorkflowRun[]>;
 };
 
-function reminderChoiceId(args: {
-  ownerType: "occurrence" | "calendar_event";
-  ownerId: string;
-  scheduledFor: string;
-}): string {
-  const digest = crypto
-    .createHash("sha1")
-    .update(`${args.ownerType}:${args.ownerId}:${args.scheduledFor}`)
-    .digest("hex")
-    .slice(0, 12);
-  return `reminder-${digest}`;
+/** A check-in is delivered only after transport acceptance and report persistence. */
+export type SleepCycleCheckinDispatchFailure = Extract<
+  DispatchResult,
+  { ok: false }
+>["reason"];
+
+export interface SleepCycleCheckinDeliveryReport {
+  kind: "morning" | "night";
+  status:
+    | "delivered"
+    | "skipped_already_sent"
+    | SleepCycleCheckinDispatchFailure;
+  reportId: string | null;
+  messageId: string | null;
+  reason: string | null;
+  message: string | null;
+  persisted: boolean;
 }
 
-function appendReminderChoiceChips(
-  text: string,
-  args: {
-    ownerType: "occurrence" | "calendar_event";
-    ownerId: string;
-    scheduledFor: string;
-  },
-): string {
-  const choiceId = reminderChoiceId(args);
-  return [
-    text.trim(),
-    "",
-    `[CHOICE:lifeops-reminder id=${choiceId}]`,
-    "done=Done",
-    "10 minutes=Snooze 10m",
-    "skip=Skip",
-    "[/CHOICE]",
-  ].join("\n");
+/** Supplied by authenticated owner ingress, independently of the request body. */
+export interface AuthenticatedDossierActivityContext {
+  principalId: string;
+  ownerPrincipalId: string;
+  receivedAtIso: string;
 }
 
 export interface LifeOpsReminderService {
@@ -447,6 +558,7 @@ export interface LifeOpsReminderService {
   ): Promise<LifeOpsReminderPreference>;
   captureActivitySignal(
     request: CaptureLifeOpsActivitySignalRequest,
+    ownerActivity?: AuthenticatedDossierActivityContext,
   ): Promise<LifeOpsActivitySignal>;
   captureManualOverride(
     request: CaptureLifeOpsManualOverrideRequest,
@@ -478,6 +590,7 @@ export interface LifeOpsReminderService {
     workflowRuns: LifeOpsWorkflowRun[];
     scheduledTaskFires: Array<Record<string, unknown>>;
     scheduledTaskCompletionTimeouts: Array<Record<string, unknown>>;
+    sleepCycleCheckins: SleepCycleCheckinDeliveryReport[];
     subsystemFailures: LifeOpsScheduledWorkSubsystemFailure[];
   }>;
   relockWebsiteAccessGroup(groupKey: string, now?: Date): Promise<{ ok: true }>;
@@ -714,24 +827,15 @@ export function readLadderRungTitle(
 
 export function buildReminderBody(args: {
   title: string;
-  scheduledFor: string;
-  dueAt: string | null;
-  channel: LifeOpsReminderStep["channel"];
-  lifecycle: ReminderAttemptLifecycle;
-  nearbyReminderTitles?: string[];
+  body?: string | null;
   derivedTarget?: Record<string, unknown> | null;
 }): string {
-  const focus = readLadderRungTitle(args.derivedTarget) ?? args.title;
-  const parts: string[] = [];
-  if (args.lifecycle === "escalation") {
-    parts.push(`Follow-up reminder: ${focus}`);
-  } else {
-    parts.push(`Reminder: ${focus}`);
-  }
-  if (args.dueAt) {
-    parts.push(`Due: ${new Date(args.dueAt).toLocaleString()}`);
-  }
-  return parts.join("\n");
+  // Timing and delivery identity remain on the saved occurrence and receipts.
+  // The alert itself is the owner's message, including the current ladder rung.
+  return (
+    readLadderRungTitle(args.derivedTarget) ??
+    (args.body?.trim() ? args.body : args.title)
+  );
 }
 
 // Stretch cadence + walk-out / weekend / late-evening rules live as
@@ -942,6 +1046,8 @@ export function buildReminderDispatchPrompt(args: {
   urgency: LifeOpsReminderUrgency;
   recentConversation: readonly string[];
   nearbyReminderTitles?: string[];
+  /** Owner's IANA zone; the model must anchor spoken times to it, not the host. */
+  timezone?: string;
 }): string {
   const instructions = resolveOptimizedPromptForRuntime(
     args.runtime,
@@ -956,7 +1062,7 @@ export function buildReminderDispatchPrompt(args: {
     "",
     "Current reminder:",
     `- title: ${args.title}`,
-    `- due: ${new Date(args.reminderAt).toLocaleString()}`,
+    `- due: ${args.timezone ? new Date(args.reminderAt).toLocaleString("en-US", { timeZone: args.timezone }) : new Date(args.reminderAt).toLocaleString()}`,
     `- channel: ${args.channel}`,
     `- urgency: ${args.urgency}`,
     `- lifecycle: ${args.lifecycle}`,
@@ -1130,6 +1236,7 @@ export type RemindersDeps = {
     occurrenceId: string,
     request: SnoozeLifeOpsOccurrenceRequest,
     now?: Date,
+    options?: { expectedDefinitionUpdatedAt: string },
   ) => Promise<LifeOpsOccurrenceView>;
   checkinSource: CheckinSourceService;
 };
@@ -1150,6 +1257,7 @@ export class RemindersDomain {
 
   protected async emitInAppReminderNudge(args: {
     text: string;
+    presentation?: ReminderPresentation;
     ownerType: "occurrence" | "calendar_event";
     ownerId: string;
     subjectType: LifeOpsSubjectType;
@@ -1163,8 +1271,8 @@ export class RemindersDomain {
       scheduledFor: args.scheduledFor,
       dueAt: args.dueAt,
     };
-    const chatText = appendReminderChoiceChips(args.text, args);
-    this.ctx.emitAssistantEvent(chatText, "reminder", metadata);
+    const chatText = args.text.trim();
+    let notificationDelivery: AutonomyNotificationDelivery | undefined;
     // Also push onto the unified notification rail so the reminder lands in
     // the notification center and reaches desktop/mobile (focus-gated) — not
     // just the in-app assistant stream. groupKey collapses repeat nudges for
@@ -1174,32 +1282,39 @@ export class RemindersDomain {
     } | null;
     if (notifier?.notify) {
       try {
-        const title = await renderOwnerNotificationTitle(this.ctx.runtime, {
-          body: args.text,
-          fallbackTitle: "Reminder",
-          firedAtIso: args.scheduledFor,
-          errorContext: {
-            ownerType: args.ownerType,
-            ownerId: args.ownerId,
-          },
-        });
-        await notifier.notify({
-          title,
-          body: args.text,
-          category: "reminder",
-          // Tier calendar reminders by lead time (#10697): "starting soon" → high,
-          // "tomorrow / further" → low, subsequent-today → normal (non-calendar stays
-          // normal). dueAt is the event start for a calendar_event.
-          priority: resolveReminderNotificationPriority({
-            ownerType: args.ownerType,
-            dueAt: args.dueAt,
-            nowMs: Date.now(),
-          }),
-          source: "lifeops",
-          deepLink: "/chat",
-          groupKey: `reminder:${args.ownerType}:${args.ownerId}`,
-          data: metadata,
-        });
+        const title =
+          args.presentation?.title ??
+          (await renderOwnerNotificationTitle(this.ctx.runtime, {
+            body: args.text,
+            fallbackTitle: "Reminder",
+            firedAtIso: args.scheduledFor,
+            errorContext: {
+              ownerType: args.ownerType,
+              ownerId: args.ownerId,
+            },
+          }));
+        const notify = notifier.notify.bind(notifier);
+        let published: Promise<unknown> | undefined;
+        notificationDelivery = {
+          publish: (target) =>
+            (published ??= notify({
+              title,
+              body: args.text,
+              category: "reminder",
+              // Tier calendar reminders by lead time (#10697): "starting soon" → high,
+              // "tomorrow / further" → low, subsequent-today → normal. Occurrence
+              // alerts use high. dueAt is the event start for a calendar_event.
+              priority: resolveReminderNotificationPriority({
+                ownerType: args.ownerType,
+                dueAt: args.dueAt,
+                nowMs: Date.now(),
+              }),
+              source: "lifeops",
+              deepLink: "/chat",
+              groupKey: `reminder:${args.ownerType}:${args.ownerId}`,
+              data: { ...metadata, ...target },
+            })),
+        };
       } catch (error) {
         // error-policy:J4 the assistant stream already accepted the same body;
         // report notification/title degradation without failing the reminder.
@@ -1209,6 +1324,46 @@ export class RemindersDomain {
           { ownerType: args.ownerType, ownerId: args.ownerId },
         );
       }
+    }
+    const handoff: AutonomyNotificationDelivery | undefined =
+      args.ownerType === "occurrence" && args.subjectType === "owner"
+        ? (notificationDelivery ?? {
+            // The host supplies this target only after committing the chat
+            // message. Without a notifier, a route with no conversation must
+            // still reject rather than fabricate delivery acceptance.
+            publish: async (target?: {
+              conversationId: string;
+              messageId: string;
+            }) => {
+              if (!target)
+                throw new ElizaError(
+                  "In-app reminder has no accepting conversation or notification surface.",
+                  { code: "LIFEOPS_REMINDER_NO_DELIVERY_SURFACE" },
+                );
+            },
+          })
+        : undefined;
+    this.ctx.emitAssistantEvent(
+      args.presentation?.chatText ?? chatText,
+      "reminder",
+      {
+        ...metadata,
+        ...(args.presentation
+          ? { reminderPresentation: args.presentation }
+          : {}),
+        ...(handoff ? { [AUTONOMY_NOTIFICATION_DELIVERY]: handoff } : {}),
+      },
+    );
+    try {
+      if (handoff?.routed) await handoff.routed;
+      else await (handoff ?? notificationDelivery)?.publish();
+    } catch (error) {
+      this.ctx.runtime.reportError(
+        "lifeops:reminder:notification-delivery",
+        error,
+        { ownerType: args.ownerType, ownerId: args.ownerId },
+      );
+      throw error;
     }
   }
 
@@ -1286,11 +1441,11 @@ export class RemindersDomain {
       "",
       "Allowed decisions:",
       "- explicit_resolution: the reply clearly completes, acknowledges, skips, or snoozes this reminder",
-      "- needs_clarification: the owner intends to act but the snooze/meaning is underspecified",
+      "- needs_clarification: the owner clearly intends to act on this specific reminder, but its snooze timing or requested resolution is underspecified",
       "- unrelated: the reply is about something else",
       "- abstain: ambiguous, context-heavy, or not confidently bound to this reminder",
       "",
-      "Use abstain when the reply is ambiguous, context-heavy, or you cannot confidently bind it to the reminder.",
+      "A clearly separate new task or native alarm request is unrelated; not resolving this reminder does not itself require clarification. Use abstain when the reply is ambiguous, context-heavy, or you cannot confidently bind it to this specific reminder.",
       "Only resolve standalone replies like done/yes/later when the context says standalone resolution is allowed.",
       "For snoozed, set snoozeMinutes to a positive integer or snoozePreset to 15m, 30m, 1h, tonight, or tomorrow_morning; otherwise ask for clarification.",
       "",
@@ -1355,6 +1510,8 @@ export class RemindersDomain {
       classifierSource: "none",
       semanticReason: null,
     } satisfies ReminderReviewResponseEvidence;
+    // A closed observation remains evidence; never rejudge or rewrite it.
+    if (isReminderReviewClosed(args.attempt)) return noResponse;
     if (
       args.subjectType !== "owner" ||
       typeof this.ctx.runtime.getRoomsForParticipants !== "function" ||
@@ -1372,6 +1529,27 @@ export class RemindersDomain {
       (await this.ctx.ownerRoutingEntityId()) ?? this.ctx.ownerEntityId();
     const agentId = this.ctx.agentId();
     try {
+      if (args.attempt.ownerType === "occurrence") {
+        const plan = await this.ctx.repository.getReminderPlan(
+          agentId,
+          args.attempt.planId,
+        );
+        const definition =
+          plan?.ownerType === "definition"
+            ? await getCallerDefinition(
+                this.ctx.repository,
+                this.ctx,
+                plan.ownerId,
+              )
+            : null;
+        if (definition && definition.status !== "active") {
+          await this.closeInactiveDefinitionReview(
+            args.attempt,
+            definition.status,
+          );
+          return { ...noResponse, reason: "definition_inactive" };
+        }
+      }
       const roomIds = await this.ctx.runtime.getRoomsForParticipants([
         ownerEntityId,
         agentId,
@@ -1387,22 +1565,82 @@ export class RemindersDomain {
         return noResponse;
       }
       const nowMs = args.now.getTime();
+      const metadata = args.attempt.deliveryMetadata;
+      const observedAt = metadata[REMINDER_REVIEW_RESPONDED_AT_METADATA_KEY];
+      const observedMs =
+        typeof observedAt === "string" ? Date.parse(observedAt) : Number.NaN;
+      const observedDecision = metadata[REMINDER_REVIEW_DECISION_METADATA_KEY];
+      const cachedObservation: ReminderReviewResponseEvidence | null =
+        Number.isFinite(observedMs) &&
+        (observedDecision === "unrelated" ||
+          observedDecision === "needs_clarification")
+          ? {
+              decision: observedDecision,
+              resolution: null,
+              snoozeRequest: null,
+              respondedAt: observedAt as string,
+              responseText:
+                typeof metadata[REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY] ===
+                "string"
+                  ? (metadata[
+                      REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY
+                    ] as string)
+                  : null,
+              confidence:
+                typeof metadata.reviewConfidence === "number"
+                  ? metadata.reviewConfidence
+                  : 0,
+              reason:
+                typeof metadata.reviewReason === "string"
+                  ? metadata.reviewReason
+                  : "observed_owner_response",
+              classifierSource: metadata[
+                REMINDER_REVIEW_CLASSIFIER_SOURCE_METADATA_KEY
+              ] as ReminderReviewResponseEvidence["classifierSource"],
+              semanticReason:
+                typeof metadata[
+                  REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY
+                ] === "string"
+                  ? (metadata[
+                      REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY
+                    ] as string)
+                  : null,
+            }
+          : null;
+      const memoriesById = new Map(
+        memories.map((memory) => [memory.id, memory]),
+      );
       const ownerResponses = memories
         .filter((memory) => memory.entityId === ownerEntityId)
         .map((memory) => {
           const createdAt = readMemoryCreatedAtMs(memory);
-          const text =
-            typeof memory.content.text === "string"
-              ? memory.content.text.trim()
-              : "";
+          const text = extractUserText(unwrapUserMessageText(memory));
           const roomId =
             typeof memory.roomId === "string" ? memory.roomId : null;
-          return { createdAt, roomId, text };
+          return {
+            foregroundHandling: foregroundRequestHandling(
+              memory,
+              agentId,
+              ownerEntityId,
+            ),
+            memoryId: memory.id ?? null,
+            inReplyTo:
+              typeof memory.content.inReplyTo === "string"
+                ? memory.content.inReplyTo
+                : null,
+            metadata: isRecord(memory.content.metadata)
+              ? memory.content.metadata
+              : null,
+            createdAt,
+            roomId,
+            text,
+          };
         })
         .filter(
           (response): response is typeof response & { createdAt: number } =>
             response.createdAt !== null &&
             response.createdAt > attemptedMs &&
+            (!cachedObservation || response.createdAt > observedMs) &&
             response.createdAt <= nowMs &&
             response.text.length > 0,
         )
@@ -1420,7 +1658,7 @@ export class RemindersDomain {
           return l - r;
         });
       if (ownerResponses.length === 0) {
-        return noResponse;
+        return cachedObservation ?? noResponse;
       }
       const title =
         typeof args.attempt.deliveryMetadata.title === "string"
@@ -1432,6 +1670,96 @@ export class RemindersDomain {
           : [args.attempt];
       let latestUnrelated: ReminderReviewResponseEvidence | null = null;
       for (const response of ownerResponses) {
+        let foregroundHandling = response.foregroundHandling;
+        if (foregroundHandling === "pending" && response.roomId) {
+          if (
+            this.ctx.runtime.roomHandlerQueue.pendingFor(response.roomId) > 0
+          ) {
+            return { ...noResponse, reason: "foreground_request_pending" };
+          }
+          // The snapshot may precede outcome persistence and queue release.
+          // Refresh only this exact host-owned request before classifying it.
+          try {
+            const fresh = response.memoryId
+              ? await this.ctx.runtime.getMemoryById(response.memoryId)
+              : null;
+            const priorMarker = readDurableConversationChatMarker(
+              response.memoryId
+                ? memoriesById.get(response.memoryId)?.content.chatIdempotency
+                : undefined,
+            );
+            const freshMarker = readDurableConversationChatMarker(
+              fresh?.content.chatIdempotency,
+            );
+            if (
+              !fresh ||
+              fresh.id !== response.memoryId ||
+              fresh.agentId !== agentId ||
+              fresh.entityId !== ownerEntityId ||
+              fresh.roomId !== response.roomId ||
+              !freshMarker ||
+              !priorMarker ||
+              freshMarker.scope !== priorMarker.scope ||
+              freshMarker.clientMessageId !== priorMarker.clientMessageId ||
+              freshMarker.fingerprint !== priorMarker.fingerprint
+            ) {
+              return {
+                ...noResponse,
+                reason: "foreground_request_refresh_unknown",
+              };
+            }
+            foregroundHandling = foregroundRequestHandling(
+              fresh,
+              agentId,
+              ownerEntityId,
+            );
+            if (
+              foregroundHandling === "pending" &&
+              this.ctx.runtime.roomHandlerQueue.pendingFor(response.roomId) > 0
+            ) {
+              return { ...noResponse, reason: "foreground_request_pending" };
+            }
+          } catch {
+            return {
+              ...noResponse,
+              reason: "foreground_request_refresh_unknown",
+            };
+          }
+        }
+        const source = response.inReplyTo
+          ? memoriesById.get(response.inReplyTo as Memory["id"])
+          : null;
+        const reference =
+          source && isRecord(source.content.metadata)
+            ? source.content.metadata
+            : null;
+        const explicitlyBoundToThisReminder =
+          source?.entityId === agentId &&
+          source.agentId === agentId &&
+          source.roomId === response.roomId &&
+          source.content.source === "reminder" &&
+          reference?.ownerType === args.attempt.ownerType &&
+          reference.ownerId === args.attempt.ownerId;
+        const skipReason =
+          foregroundHandling === "single_create" &&
+          !explicitlyBoundToThisReminder
+            ? "foreground_single_create_owned"
+            : response.metadata &&
+                Object.hasOwn(response.metadata, "reminderChoiceId")
+              ? "typed_reply_owned_by_action_pipeline"
+              : source?.entityId === agentId &&
+                  source.agentId === agentId &&
+                  source.roomId === response.roomId &&
+                  source.content.source === "reminder" &&
+                  reference &&
+                  ["occurrence", "calendar_event"].includes(
+                    String(reference.ownerType),
+                  ) &&
+                  typeof reference.ownerId === "string" &&
+                  (reference.ownerType !== args.attempt.ownerType ||
+                    reference.ownerId !== args.attempt.ownerId)
+                ? "reply_targets_other_reminder"
+                : null;
         const responseClaim = buildReminderResponseClaim({
           attempt: args.attempt,
           competingAttempts,
@@ -1439,27 +1767,48 @@ export class RemindersDomain {
             text: response.text,
             createdAt: response.createdAt,
             roomId: response.roomId,
+            memoryId: response.memoryId,
           },
           roomIds,
         });
-        const classification = await classifyReminderOwnerResponse({
-          text: response.text,
-          context: {
-            title,
-            attemptedAt,
-            respondedAt: response.createdAt,
-            channel: args.attempt.channel,
-            allowStandaloneResolution: responseClaim.allowStandaloneResolution,
-          },
-          semanticClassifier: (input) =>
-            this.classifyReminderOwnerResponseSemantically(input),
-        });
+        const respondedAt = new Date(response.createdAt).toISOString();
+        const classification: Awaited<
+          ReturnType<typeof classifyReminderOwnerResponse>
+        > = skipReason
+          ? {
+              decision: "unrelated",
+              resolution: null,
+              snoozeRequest: null,
+              confidence: 1,
+              reason: skipReason,
+              classifierSource: "deterministic",
+            }
+          : await classifyReminderOwnerResponse({
+              text: response.text,
+              context: {
+                title,
+                attemptedAt,
+                respondedAt,
+                channel: args.attempt.channel,
+                allowStandaloneResolution:
+                  responseClaim.allowStandaloneResolution,
+              },
+              semanticClassifier: (input) =>
+                this.classifyReminderOwnerResponseSemantically(input),
+            });
+        if (
+          classification.classifierSource === "none" &&
+          classification.reason === "no_semantic_verdict"
+        ) {
+          // Unknown evidence must remain retryable; do not advance past it.
+          return { ...noResponse, reason: classification.reason };
+        }
         if (classification.decision === "explicit_resolution") {
           return {
             decision: "explicit_resolution",
             resolution: classification.resolution,
             snoozeRequest: classification.snoozeRequest,
-            respondedAt: new Date(response.createdAt).toISOString(),
+            respondedAt,
             responseText: response.text,
             confidence: classification.confidence,
             reason: classification.reason,
@@ -1467,30 +1816,29 @@ export class RemindersDomain {
             semanticReason: classification.semanticReason ?? null,
           };
         }
-        if (classification.decision === "needs_clarification") {
-          return {
-            decision: "needs_clarification",
-            resolution: null,
-            snoozeRequest: null,
-            respondedAt: new Date(response.createdAt).toISOString(),
-            responseText: response.text,
-            confidence: classification.confidence,
-            reason: classification.reason,
-            classifierSource: classification.classifierSource,
-            semanticReason: classification.semanticReason ?? null,
-          };
-        }
-        latestUnrelated = {
-          decision: "unrelated",
+        const observation = {
+          ...classification,
+          decision:
+            classification.decision === "needs_clarification"
+              ? "needs_clarification"
+              : "unrelated",
           resolution: null,
           snoozeRequest: null,
-          respondedAt: new Date(response.createdAt).toISOString(),
+          respondedAt,
           responseText: response.text,
           confidence: classification.confidence,
           reason: classification.reason,
           classifierSource: classification.classifierSource,
           semanticReason: classification.semanticReason ?? null,
-        };
+        } satisfies ReminderReviewResponseEvidence;
+        // Consume non-resolving evidence even when the caller has no due review
+        // transition; the existing observed timestamp survives service restart.
+        await this.markReminderReviewObservedResponse({
+          ...observation,
+          attempt: args.attempt,
+        });
+        if (observation.decision === "needs_clarification") return observation;
+        latestUnrelated = observation;
       }
       return (
         latestUnrelated ?? {
@@ -1520,6 +1868,7 @@ export class RemindersDomain {
     subjectType: LifeOpsSubjectType;
     nearbyReminderTitles?: string[];
     derivedTarget?: Record<string, unknown> | null;
+    timezone?: string;
   }): Promise<string> {
     // The laddered rung, when present, is the small step the reminder should be
     // about — both the deterministic fallback and the model prompt lead with it
@@ -1528,11 +1877,6 @@ export class RemindersDomain {
     const reminderFocusTitle = rungTitle ?? args.title;
     const fallback = buildReminderBody({
       title: args.title,
-      scheduledFor: args.scheduledFor,
-      dueAt: args.dueAt,
-      channel: args.channel,
-      lifecycle: args.lifecycle,
-      nearbyReminderTitles: args.nearbyReminderTitles,
       derivedTarget: args.derivedTarget,
     });
     if (typeof this.ctx.runtime.useModel !== "function") {
@@ -1552,6 +1896,7 @@ export class RemindersDomain {
       urgency: args.urgency,
       recentConversation,
       nearbyReminderTitles: args.nearbyReminderTitles,
+      timezone: args.timezone,
     });
 
     try {
@@ -1949,30 +2294,7 @@ export class RemindersDomain {
   serializeScheduleObservationForSync(
     observation: LifeOpsScheduleObservationRecord,
   ): SyncLifeOpsScheduleObservationInput {
-    const metadata = isRecord(observation.metadata)
-      ? observation.metadata
-      : null;
-    const rawSnapshot = metadata?.snapshot;
-    const snapshot = isRecord(rawSnapshot) ? { ...rawSnapshot } : undefined;
-    const extraMetadata =
-      metadata && typeof metadata === "object"
-        ? Object.fromEntries(
-            Object.entries(metadata).filter(
-              ([key]) => key !== "snapshot" && key !== "source",
-            ),
-          )
-        : {};
-    return {
-      circadianState: observation.circadianState,
-      stateConfidence: observation.stateConfidence,
-      uncertaintyReason: observation.uncertaintyReason,
-      windowStartAt: observation.windowStartAt,
-      windowEndAt: observation.windowEndAt,
-      mealLabel: observation.mealLabel,
-      snapshot,
-      metadata:
-        Object.keys(extraMetadata).length > 0 ? extraMetadata : undefined,
-    };
+    return scheduleObservationSyncInput(observation);
   }
 
   public async refreshLocalMergedScheduleState(args?: {
@@ -2075,6 +2397,11 @@ export class RemindersDomain {
         fail(400, `observations[${index}].stateConfidence must be a number`);
       }
       return {
+        observedAt:
+          normalizeOptionalIsoString(
+            record.observedAt,
+            `observations[${index}].observedAt`,
+          ) ?? undefined,
         circadianState: normalizeEnumValue(
           record.circadianState,
           `observations[${index}].circadianState`,
@@ -3394,6 +3721,40 @@ export class RemindersDomain {
     classifierSource?: string | null;
     semanticReason?: string | null;
   }): Promise<void> {
+    let admission:
+      | { occurrence: LifeOpsOccurrence; definition: LifeOpsTaskDefinition }
+      | undefined;
+    if (args.ownerType === "occurrence") {
+      // Classification may have awaited a model while the owner cancelled.
+      // Revalidate current scoped policy before any acknowledgement or snooze.
+      const occurrence = await getCallerOccurrence(
+        this.ctx.repository,
+        this.ctx,
+        args.ownerId,
+      );
+      const plan = occurrence
+        ? null
+        : await this.ctx.repository.getReminderPlan(
+            this.ctx.agentId(),
+            args.attempt.planId,
+          );
+      const definitionId =
+        occurrence?.definitionId ??
+        (plan?.ownerType === "definition" ? plan.ownerId : null);
+      const definition = definitionId
+        ? await getCallerDefinition(this.ctx.repository, this.ctx, definitionId)
+        : null;
+      if (!definition) return;
+      if (definition.status !== "active") {
+        await this.closeInactiveDefinitionReview(
+          args.attempt,
+          definition.status,
+        );
+        return;
+      }
+      if (!occurrence) return;
+      admission = { occurrence, definition };
+    }
     if (args.resolution === "snoozed") {
       if (args.ownerType !== "occurrence" || !args.snoozeRequest) {
         await this.markReminderReviewObservedResponse({
@@ -3423,29 +3784,67 @@ export class RemindersDomain {
     const acknowledgementNote = args.responseText
       ? `Owner replied: ${args.responseText}`
       : args.reason;
-    if (args.resolution === "snoozed") {
-      if (!args.snoozeRequest) {
-        // Unreachable: the resolution-validation block above early-returns
-        // when a snoozed resolution lacks a snoozeRequest. Re-assert so the
-        // type system narrows it to non-null for snoozeOccurrence.
-        throw new Error(
-          "snoozeRequest is required to snooze a reminder occurrence",
-        );
+    if (admission) {
+      try {
+        if (args.resolution === "snoozed") {
+          if (!args.snoozeRequest)
+            throw new Error(
+              "snoozeRequest is required to snooze a reminder occurrence",
+            );
+          await this.deps.snoozeOccurrence(
+            args.ownerId,
+            args.snoozeRequest,
+            new Date(args.respondedAt ?? args.reviewedAt),
+            {
+              expectedDefinitionUpdatedAt: admission.definition.updatedAt,
+            },
+          );
+        } else {
+          await this.ctx.repository.updateOccurrence(
+            {
+              ...admission.occurrence,
+              metadata: {
+                ...admission.occurrence.metadata,
+                reminderAcknowledgedAt: args.respondedAt ?? args.reviewedAt,
+                reminderAcknowledgedNote: acknowledgementNote,
+                reminderAcknowledgedResolution: args.resolution,
+              },
+              updatedAt: nextMutationRevision(admission.occurrence.updatedAt),
+            },
+            {
+              definitionScope: {
+                domain: admission.definition.domain,
+                subjectType: admission.definition.subjectType,
+                subjectId: admission.definition.subjectId,
+              },
+              expectedUpdatedAt: admission.occurrence.updatedAt,
+              expectedDefinitionUpdatedAt: admission.definition.updatedAt,
+            },
+          );
+        }
+      } catch (error) {
+        if (
+          error instanceof ElizaError &&
+          error.code === "LIFEOPS_OCCURRENCE_CONFLICT"
+        ) {
+          const definition = await getCallerDefinition(
+            this.ctx.repository,
+            this.ctx,
+            admission.definition.id,
+          );
+          if (definition && definition.status !== "active") {
+            await this.closeInactiveDefinitionReview(
+              args.attempt,
+              definition.status,
+            );
+            return;
+          }
+        }
+        throw error;
       }
-      await this.deps.snoozeOccurrence(
-        args.ownerId,
-        args.snoozeRequest,
-        new Date(args.respondedAt ?? args.reviewedAt),
-      );
-      await this.ctx.repository.updateReminderAttemptOutcome(
-        args.attempt.id,
-        args.attempt.outcome,
-        reviewMetadata,
-      );
-      Object.assign(args.attempt.deliveryMetadata, reviewMetadata);
-      args.attempt.reviewStatus = "resolved";
-      return;
     }
+    // A rejected CAS is not a resolved owner response. Commit job success only
+    // after the admitted occurrence mutation has actually completed.
     await this.ctx.repository.updateReminderAttemptOutcome(
       args.attempt.id,
       args.attempt.outcome,
@@ -3453,24 +3852,8 @@ export class RemindersDomain {
     );
     Object.assign(args.attempt.deliveryMetadata, reviewMetadata);
     args.attempt.reviewStatus = "resolved";
-    if (args.ownerType === "occurrence") {
-      const occurrence = await this.ctx.repository.getOccurrence(
-        this.ctx.agentId(),
-        args.ownerId,
-      );
-      if (occurrence) {
-        await this.ctx.repository.updateOccurrence({
-          ...occurrence,
-          metadata: {
-            ...occurrence.metadata,
-            reminderAcknowledgedAt: args.respondedAt ?? args.reviewedAt,
-            reminderAcknowledgedNote: acknowledgementNote,
-            reminderAcknowledgedResolution: args.resolution,
-          },
-          updatedAt: nextMutationRevision(occurrence.updatedAt),
-        });
-      }
-    } else {
+    if (args.resolution === "snoozed") return;
+    if (args.ownerType === "calendar_event") {
       const event = (
         await this.ctx.repository.listCalendarEvents(
           this.ctx.agentId(),
@@ -3497,6 +3880,26 @@ export class RemindersDomain {
       resolution: args.resolution,
       note: acknowledgementNote,
     });
+  }
+
+  /** Close the review job only; cancellation is not an owner acknowledgement. */
+  private async closeInactiveDefinitionReview(
+    attempt: LifeOpsReminderAttempt,
+    status: LifeOpsTaskDefinition["status"],
+  ): Promise<void> {
+    const metadata = {
+      [REMINDER_REVIEW_STATUS_METADATA_KEY]: "resolved",
+      [REMINDER_REVIEW_DECISION_METADATA_KEY]: "no_response",
+      [REMINDER_REVIEW_REASON_METADATA_KEY]: "definition_inactive",
+      reviewReason: `definition_${status}`,
+    };
+    await this.ctx.repository.updateReminderAttemptOutcome(
+      attempt.id,
+      attempt.outcome,
+      metadata,
+    );
+    Object.assign(attempt.deliveryMetadata, metadata);
+    attempt.reviewStatus = "resolved";
   }
 
   public async markReminderReviewResolvedFromState(args: {
@@ -3582,6 +3985,7 @@ export class RemindersDomain {
     reason: string;
     classifierSource?: string | null;
     semanticReason?: string | null;
+    confidence?: number;
   }): Promise<void> {
     const reviewMetadata = {
       [REMINDER_REVIEW_STATUS_METADATA_KEY]: args.decision,
@@ -3589,6 +3993,9 @@ export class RemindersDomain {
       [REMINDER_REVIEW_RESPONDED_AT_METADATA_KEY]: args.respondedAt,
       [REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY]: args.responseText,
       reviewReason: args.reason,
+      ...(args.confidence !== undefined
+        ? { reviewConfidence: args.confidence }
+        : {}),
       [REMINDER_REVIEW_CLASSIFIER_SOURCE_METADATA_KEY]:
         args.classifierSource ?? null,
       [REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY]:
@@ -3663,6 +4070,21 @@ export class RemindersDomain {
       }
 
       if (reviewAttempt.ownerType === "occurrence") {
+        const definition =
+          plan.ownerType === "definition"
+            ? await getCallerDefinition(
+                this.ctx.repository,
+                this.ctx,
+                plan.ownerId,
+              )
+            : null;
+        if (definition && definition.status !== "active") {
+          await this.closeInactiveDefinitionReview(
+            reviewAttempt,
+            definition.status,
+          );
+          continue;
+        }
         const occurrence = await getCallerOccurrenceView(
           this.ctx.repository,
           this.ctx,
@@ -3692,13 +4114,18 @@ export class RemindersDomain {
           });
           continue;
         }
-        const definition = await getCallerDefinition(
-          this.ctx.repository,
-          this.ctx,
-          occurrence.definitionId,
+        const occurrenceDefinition =
+          definition?.id === occurrence.definitionId
+            ? definition
+            : await getCallerDefinition(
+                this.ctx.repository,
+                this.ctx,
+                occurrence.definitionId,
+              );
+        if (!occurrenceDefinition) continue;
+        const preference = await this.getReminderPreference(
+          occurrenceDefinition.id,
         );
-        if (!definition) continue;
-        const preference = await this.getReminderPreference(definition.id);
         const attempt = await this.dispatchDueReminderEscalation({
           plan,
           ownerType: "occurrence",
@@ -3712,6 +4139,7 @@ export class RemindersDomain {
             priority: occurrence.priority,
           }),
           intensity: preference?.effective.intensity ?? args.defaultIntensity,
+          intensitySource: preference?.effective.source,
           quietHours: plan.quietHours,
           attemptedAt: nowIso,
           now: args.now,
@@ -3722,7 +4150,7 @@ export class RemindersDomain {
           acknowledged: false,
           nearbyReminderTitles: [],
           timezone: args.timezone,
-          definition,
+          definition: occurrenceDefinition,
           reviewAttempt,
         });
         if (attempt) {
@@ -3802,6 +4230,7 @@ export class RemindersDomain {
     dueAt: string | null;
     urgency: LifeOpsReminderUrgency;
     intensity: LifeOpsReminderIntensity;
+    intensitySource?: LifeOpsReminderPreference["effective"]["source"];
     quietHours: LifeOpsReminderPlan["quietHours"];
     attemptedAt: string;
     now: Date;
@@ -3820,7 +4249,10 @@ export class RemindersDomain {
     acknowledged: boolean;
     nearbyReminderTitles?: string[];
     timezone: string;
-    definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata"> | null;
+    definition:
+      | (Pick<LifeOpsTaskDefinition, "kind" | "metadata"> &
+          Partial<Pick<LifeOpsTaskDefinition, "cadence" | "description">>)
+      | null;
     reviewAttempt?: LifeOpsReminderAttempt | null;
   }): Promise<LifeOpsReminderAttempt | null> {
     if (!shouldDeliverReminderForIntensity(args.intensity, args.urgency)) {
@@ -3864,6 +4296,53 @@ export class RemindersDomain {
     );
     const nowMs = args.now.getTime();
     const planExhausted = nowMs >= lastScheduledPlanTime;
+    let suppressDefaultEscalation = false;
+    const persistentOptIn =
+      args.intensity === "persistent" &&
+      args.intensitySource !== undefined &&
+      args.intensitySource !== "default";
+    if (
+      planExhausted &&
+      args.ownerType === "occurrence" &&
+      args.subjectType === "owner" &&
+      args.definition?.cadence?.kind === "once" &&
+      args.definition.metadata?.ownerSurface === "OWNER_REMINDERS" &&
+      !persistentOptIn &&
+      !hasExplicitReminderEscalationProfile(args.definition)
+    ) {
+      const deliveredPlanSteps = new Set(
+        ownerAttempts
+          .filter(
+            (attempt) =>
+              readReminderAttemptLifecycle(attempt) === "plan" &&
+              isDeliveredReminderOutcome(attempt.outcome),
+          )
+          .map((attempt) =>
+            JSON.stringify([
+              attempt.planId,
+              attempt.stepIndex,
+              attempt.channel,
+              attempt.scheduledFor,
+            ]),
+          ),
+      );
+      if (
+        schedule.every((entry) =>
+          deliveredPlanSteps.has(
+            JSON.stringify([
+              args.plan.id,
+              entry.stepIndex,
+              entry.channel,
+              entry.scheduledFor,
+            ]),
+          ),
+        )
+      ) {
+        // Delivery completion suppresses only the automatic follow-up. Owner
+        // replies and due review bookkeeping must still run below.
+        suppressDefaultEscalation = true;
+      }
+    }
     const reviewAttempt =
       args.reviewAttempt ??
       readLatestPendingReminderReviewAttempt(ownerAttempts);
@@ -3897,6 +4376,13 @@ export class RemindersDomain {
     if (!previousAttempt) {
       return null;
     }
+    if (
+      previousAttempt.channel === "in_app" &&
+      previousAttempt.outcome === "blocked_connector" &&
+      previousAttempt.deliveryMetadata.reason ===
+        "runtime_send_acceptance_unknown"
+    )
+      return null;
     const escalationProfile = readReminderEscalationProfile(args.definition);
     const enforcementState = buildReminderEnforcementState(
       args.now,
@@ -3944,6 +4430,17 @@ export class RemindersDomain {
           now: args.now,
         },
       );
+      if (
+        responseReview.classifierSource === "none" &&
+        (responseReview.reason === "no_semantic_verdict" ||
+          responseReview.reason === "foreground_request_pending" ||
+          responseReview.reason === "foreground_request_refresh_unknown" ||
+          responseReview.reason === "definition_inactive")
+      ) {
+        // Unknown evidence stays retryable. Inactive definitions already closed
+        // their review job and cannot authorize an owner transition.
+        return null;
+      }
       const reviewTransition = decideReminderReviewTransition({
         reviewDue,
         ownerType: args.ownerType,
@@ -4023,6 +4520,34 @@ export class RemindersDomain {
           semanticReason: reviewTransition.observation.semanticReason,
         });
       }
+    }
+
+    if (suppressDefaultEscalation) {
+      if (
+        reviewDue &&
+        reviewAttempt &&
+        !isReminderReviewClosed(reviewAttempt)
+      ) {
+        // Close the review job, not the occurrence. A delivered/read notification
+        // does not mean the owner acknowledged or completed the reminder.
+        const reviewMetadata = {
+          [REMINDER_REVIEW_STATUS_METADATA_KEY]: "resolved",
+          ...(reviewAttempt.deliveryMetadata[
+            REMINDER_REVIEW_DECISION_METADATA_KEY
+          ] === undefined
+            ? { [REMINDER_REVIEW_DECISION_METADATA_KEY]: "no_response" }
+            : {}),
+          [REMINDER_REVIEW_REASON_METADATA_KEY]: "one_shot_plan_delivered",
+        };
+        await this.ctx.repository.updateReminderAttemptOutcome(
+          reviewAttempt.id,
+          reviewAttempt.outcome,
+          reviewMetadata,
+        );
+        Object.assign(reviewAttempt.deliveryMetadata, reviewMetadata);
+        reviewAttempt.reviewStatus = "resolved";
+      }
+      return null;
     }
 
     if (
@@ -4323,6 +4848,7 @@ export class RemindersDomain {
     stepIndex: number;
     scheduledFor: string;
     dueAt: string | null;
+    snoozedUntil?: string | null;
     urgency: LifeOpsReminderUrgency;
     quietHours: LifeOpsReminderPlan["quietHours"];
     acknowledged: boolean;
@@ -4333,26 +4859,18 @@ export class RemindersDomain {
     activityProfile?: ReminderActivityProfileSnapshot | null;
     nearbyReminderTitles?: string[];
     timezone: string;
-    definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata"> | null;
+    definition:
+      | (Pick<LifeOpsTaskDefinition, "kind" | "metadata"> &
+          Partial<Pick<LifeOpsTaskDefinition, "cadence" | "description">>)
+      | null;
     derivedTarget?: Record<string, unknown> | null;
     bodyOverride?: string;
   }): Promise<LifeOpsReminderAttempt> {
     const attemptedAt = args.attemptedAt;
     const attemptedAtDate = new Date(attemptedAt);
     const lifecycle = args.lifecycle ?? "plan";
-    const reminderBody =
-      args.bodyOverride ??
-      (await this.renderReminderBody({
-        title: args.title,
-        scheduledFor: args.scheduledFor,
-        dueAt: args.dueAt,
-        channel: args.channel,
-        lifecycle,
-        urgency: args.urgency,
-        subjectType: args.subjectType,
-        nearbyReminderTitles: args.nearbyReminderTitles,
-        derivedTarget: args.derivedTarget,
-      }));
+    let reminderBody = "";
+    let presentation: ReminderPresentation | undefined;
     let outcome: LifeOpsReminderAttemptOutcome = "delivered";
     let connectorRef: string | null = null;
     const deliveryMetadata: Record<string, unknown> = {
@@ -4389,7 +4907,23 @@ export class RemindersDomain {
       },
     );
 
-    if (args.acknowledged) {
+    // Background dispatch is agent-wide; refresh the exact linked definition
+    // without narrowing it to the service's synthetic default owner.
+    const definition =
+      args.ownerType === "occurrence" && args.plan.ownerType === "definition"
+        ? await this.ctx.repository.getDefinition(
+            this.ctx.agentId(),
+            args.plan.ownerId,
+          )
+        : null;
+    if (
+      args.ownerType === "occurrence" &&
+      args.plan.ownerType === "definition" &&
+      definition?.status !== "active"
+    ) {
+      outcome = "blocked_policy";
+      deliveryMetadata.reason = "definition_inactive";
+    } else if (args.acknowledged) {
       outcome = "blocked_acknowledged";
       deliveryMetadata.reason = "owner_acknowledged";
     } else if (
@@ -4415,174 +4949,208 @@ export class RemindersDomain {
     ) {
       outcome = "blocked_quiet_hours";
       deliveryMetadata.reason = "quiet_hours";
-    } else if (args.channel === "in_app") {
-      connectorRef = "system:in_app";
-      deliveryMetadata.message = reminderBody;
-    } else {
-      const policy = await this.resolvePrimaryChannelPolicy(args.channel);
-      const runtimeTarget =
-        args.channel === "sms" || args.channel === "voice"
-          ? null
-          : await this.resolveRuntimeReminderTarget(args.channel, policy);
-      const requiresEscalationPermission = args.stepIndex > 0;
-      if (policy && !policy.allowReminders) {
-        outcome = "blocked_policy";
-        deliveryMetadata.reason = "channel_policy";
-      } else if (
-        (lifecycle === "escalation" || requiresEscalationPermission) &&
-        policy &&
-        !policy.allowEscalation
-      ) {
-        outcome = "blocked_policy";
-        deliveryMetadata.reason = "channel_escalation_policy";
-      } else if (
-        (args.channel === "sms" || args.channel === "voice") &&
-        !policy
-      ) {
-        outcome = "blocked_policy";
-        deliveryMetadata.reason = "channel_policy";
-      } else if (args.channel === "sms" || args.channel === "voice") {
-        const credentials = readTwilioCredentialsFromEnv();
-        const twilioPolicy = policy;
-        if (!credentials) {
-          outcome = "blocked_connector";
-          deliveryMetadata.reason = "twilio_missing";
-        } else if (!twilioPolicy) {
+    }
+    if (outcome === "delivered") {
+      const exactReminder =
+        args.ownerType === "occurrence" &&
+        args.subjectType === "owner" &&
+        args.channel === "in_app" &&
+        lifecycle === "plan" &&
+        args.definition?.cadence?.kind === "once" &&
+        args.definition.metadata?.ownerSurface === "OWNER_REMINDERS" &&
+        args.bodyOverride === undefined;
+      reminderBody = exactReminder
+        ? buildReminderBody({
+            title: args.title,
+            body: args.definition?.description,
+            derivedTarget: args.derivedTarget,
+          })
+        : (args.bodyOverride ??
+          (await this.renderReminderBody({
+            title: args.title,
+            scheduledFor: args.scheduledFor,
+            dueAt: args.dueAt,
+            channel: args.channel,
+            lifecycle,
+            urgency: args.urgency,
+            subjectType: args.subjectType,
+            nearbyReminderTitles: args.nearbyReminderTitles,
+            derivedTarget: args.derivedTarget,
+            timezone: args.timezone,
+          })));
+      if (exactReminder)
+        presentation = createReminderPresentation(
+          reminderBody,
+          reminderBody,
+          "Reminder",
+        );
+      if (args.channel === "in_app") {
+        connectorRef = "system:in_app";
+        deliveryMetadata.message = reminderBody;
+      } else {
+        const policy = await this.resolvePrimaryChannelPolicy(args.channel);
+        const runtimeTarget =
+          args.channel === "sms" || args.channel === "voice"
+            ? null
+            : await this.resolveRuntimeReminderTarget(args.channel, policy);
+        const requiresEscalationPermission = args.stepIndex > 0;
+        if (policy && !policy.allowReminders) {
           outcome = "blocked_policy";
           deliveryMetadata.reason = "channel_policy";
         } else if (
           (lifecycle === "escalation" || requiresEscalationPermission) &&
-          !twilioPolicy.allowEscalation
+          policy &&
+          !policy.allowEscalation
         ) {
           outcome = "blocked_policy";
           deliveryMetadata.reason = "channel_escalation_policy";
-        } else {
-          connectorRef = `twilio:${twilioPolicy.channelRef}`;
-          if (args.channel === "sms") {
-            const result = await sendTwilioSms({
-              credentials,
-              to: twilioPolicy.channelRef,
-              body: reminderBody,
-            });
-            if (!result.ok) {
-              outcome = "blocked_connector";
-              deliveryMetadata.error = result.error ?? "sms delivery failed";
-              deliveryMetadata.status = result.status;
-            } else {
-              deliveryMetadata.sid = result.sid ?? null;
-              deliveryMetadata.status = result.status;
-            }
+        } else if (
+          (args.channel === "sms" || args.channel === "voice") &&
+          !policy
+        ) {
+          outcome = "blocked_policy";
+          deliveryMetadata.reason = "channel_policy";
+        } else if (args.channel === "sms" || args.channel === "voice") {
+          const credentials = readTwilioCredentialsFromEnv();
+          const twilioPolicy = policy;
+          if (!credentials) {
+            outcome = "blocked_connector";
+            deliveryMetadata.reason = "twilio_missing";
+          } else if (!twilioPolicy) {
+            outcome = "blocked_policy";
+            deliveryMetadata.reason = "channel_policy";
+          } else if (
+            (lifecycle === "escalation" || requiresEscalationPermission) &&
+            !twilioPolicy.allowEscalation
+          ) {
+            outcome = "blocked_policy";
+            deliveryMetadata.reason = "channel_escalation_policy";
           } else {
-            const result = await sendTwilioVoiceCall({
-              credentials,
-              to: twilioPolicy.channelRef,
-              message: reminderBody,
-            });
-            if (!result.ok) {
-              outcome = "blocked_connector";
-              deliveryMetadata.error = result.error ?? "voice delivery failed";
-              deliveryMetadata.status = result.status;
+            connectorRef = `twilio:${twilioPolicy.channelRef}`;
+            if (args.channel === "sms") {
+              const result = await sendTwilioSms({
+                credentials,
+                to: twilioPolicy.channelRef,
+                body: reminderBody,
+              });
+              if (!result.ok) {
+                outcome = "blocked_connector";
+                deliveryMetadata.error = result.error ?? "sms delivery failed";
+                deliveryMetadata.status = result.status;
+              } else {
+                deliveryMetadata.sid = result.sid ?? null;
+                deliveryMetadata.status = result.status;
+              }
             } else {
-              deliveryMetadata.sid = result.sid ?? null;
-              deliveryMetadata.status = result.status;
+              const result = await sendTwilioVoiceCall({
+                credentials,
+                to: twilioPolicy.channelRef,
+                message: reminderBody,
+              });
+              if (!result.ok) {
+                outcome = "blocked_connector";
+                deliveryMetadata.error =
+                  result.error ?? "voice delivery failed";
+                deliveryMetadata.status = result.status;
+              } else {
+                deliveryMetadata.sid = result.sid ?? null;
+                deliveryMetadata.status = result.status;
+              }
             }
           }
-        }
-      } else if (runtimeTarget) {
-        connectorRef = runtimeTarget.connectorRef;
-        deliveryMetadata.routeSource = runtimeTarget.source;
-        deliveryMetadata.routeResolution = runtimeTarget.resolution;
-        deliveryMetadata.routeEndpoint =
-          runtimeTarget.target.channelId ??
-          runtimeTarget.target.roomId ??
-          runtimeTarget.target.entityId ??
-          null;
-        deliveryMetadata.deliveryRoomId = runtimeTarget.target.roomId ?? null;
-        deliveryMetadata.deliveryChannelId =
-          runtimeTarget.target.channelId ?? null;
-        deliveryMetadata.deliveryEntityId =
-          runtimeTarget.target.entityId ?? null;
-        const sendPayload = {
-          text: reminderBody,
-          source: runtimeTarget.source,
-          metadata: {
-            channelType: args.channel,
-            lifeopsReminder: true,
-            ownerType: args.ownerType,
-            ownerId: args.ownerId,
-            urgency: args.urgency,
-            scheduledFor: args.scheduledFor,
-            routeSource: runtimeTarget.source,
-            routeEndpoint:
-              runtimeTarget.target.channelId ??
-              runtimeTarget.target.roomId ??
-              runtimeTarget.target.entityId ??
-              null,
-            routeResolution: runtimeTarget.resolution,
-          },
-        };
-        const acceptRuntimeSendResult = (
-          result: Awaited<
-            ReturnType<typeof this.ctx.runtime.sendMessageToTarget>
-          >,
-        ): boolean => {
-          const disposition = inspectSendHandlerResult(result);
-          if (
-            disposition.kind === "delivered" &&
-            (!disposition.receipt ||
-              disposition.receipt.persistence.status === "persisted" ||
-              disposition.receipt.persistence.status === "not_attempted")
-          ) {
-            deliveryMetadata.responseMessageId =
-              disposition.providerMessageId ?? null;
-            deliveryMetadata.replayed = disposition.replayed;
-            return true;
+        } else if (runtimeTarget) {
+          connectorRef = runtimeTarget.connectorRef;
+          deliveryMetadata.routeSource = runtimeTarget.source;
+          deliveryMetadata.routeResolution = runtimeTarget.resolution;
+          deliveryMetadata.routeEndpoint =
+            runtimeTarget.target.channelId ??
+            runtimeTarget.target.roomId ??
+            runtimeTarget.target.entityId ??
+            null;
+          deliveryMetadata.deliveryRoomId = runtimeTarget.target.roomId ?? null;
+          deliveryMetadata.deliveryChannelId =
+            runtimeTarget.target.channelId ?? null;
+          deliveryMetadata.deliveryEntityId =
+            runtimeTarget.target.entityId ?? null;
+          const sendPayload = {
+            text: reminderBody,
+            source: runtimeTarget.source,
+            metadata: {
+              channelType: args.channel,
+              lifeopsReminder: true,
+              ownerType: args.ownerType,
+              ownerId: args.ownerId,
+              urgency: args.urgency,
+              scheduledFor: args.scheduledFor,
+              routeSource: runtimeTarget.source,
+              routeEndpoint:
+                runtimeTarget.target.channelId ??
+                runtimeTarget.target.roomId ??
+                runtimeTarget.target.entityId ??
+                null,
+              routeResolution: runtimeTarget.resolution,
+            },
+          };
+          const acceptRuntimeSendResult = (
+            result: Awaited<ReturnType<IAgentRuntime["sendMessageToTarget"]>>,
+          ): boolean => {
+            const disposition = inspectSendHandlerResult(result);
+            if (
+              disposition.kind === "delivered" &&
+              (!disposition.receipt ||
+                disposition.receipt.persistence.status === "persisted" ||
+                disposition.receipt.persistence.status === "not_attempted")
+            ) {
+              deliveryMetadata.responseMessageId =
+                disposition.providerMessageId ?? null;
+              deliveryMetadata.replayed = disposition.replayed;
+              return true;
+            }
+            outcome = "blocked_connector";
+            deliveryMetadata.reason =
+              disposition.kind === "partially_delivered"
+                ? "runtime_send_partially_delivered"
+                : disposition.kind === "delivered"
+                  ? "runtime_send_persistence_failed"
+                  : `runtime_send_${disposition.kind}`;
+            deliveryMetadata.error =
+              disposition.kind === "delivered"
+                ? `Provider acceptance was confirmed, but local persistence is ${disposition.receipt?.persistence.status ?? "unknown"}. Do not retry blindly.`
+                : disposition.message;
+            if (
+              disposition.kind === "partially_delivered" ||
+              disposition.kind === "delivered"
+            ) {
+              deliveryMetadata.providerMessageIds =
+                disposition.receipt?.providerMessageIds ?? [];
+              deliveryMetadata.persistenceStatus =
+                disposition.receipt?.persistence.status ?? null;
+            }
+            return false;
+          };
+          try {
+            acceptRuntimeSendResult(
+              await this.ctx.runtime.sendMessageToTarget(
+                runtimeTarget.target,
+                sendPayload,
+              ),
+            );
+          } catch (error) {
+            // error-policy:J1 reminder dispatch boundary treats a thrown
+            // connector result as acceptance-unknown. Retrying without an
+            // explicit zero-accept receipt can duplicate an external message.
+            outcome = "blocked_connector";
+            deliveryMetadata.error = `${lifeOpsErrorMessage(error)} Provider acceptance is unknown; do not retry blindly.`;
+            deliveryMetadata.reason = "runtime_send_acceptance_unknown";
           }
+        } else {
           outcome = "blocked_connector";
-          deliveryMetadata.reason =
-            disposition.kind === "partially_delivered"
-              ? "runtime_send_partially_delivered"
-              : disposition.kind === "delivered"
-                ? "runtime_send_persistence_failed"
-                : `runtime_send_${disposition.kind}`;
-          deliveryMetadata.error =
-            disposition.kind === "delivered"
-              ? `Provider acceptance was confirmed, but local persistence is ${disposition.receipt?.persistence.status ?? "unknown"}. Do not retry blindly.`
-              : disposition.message;
-          if (
-            disposition.kind === "partially_delivered" ||
-            disposition.kind === "delivered"
-          ) {
-            deliveryMetadata.providerMessageIds =
-              disposition.receipt?.providerMessageIds ?? [];
-            deliveryMetadata.persistenceStatus =
-              disposition.receipt?.persistence.status ?? null;
-          }
-          return false;
-        };
-        try {
-          acceptRuntimeSendResult(
-            await this.ctx.runtime.sendMessageToTarget(
-              runtimeTarget.target,
-              sendPayload,
-            ),
-          );
-        } catch (error) {
-          // error-policy:J1 reminder dispatch boundary treats a thrown
-          // connector result as acceptance-unknown. Retrying without an
-          // explicit zero-accept receipt can duplicate an external message.
-          outcome = "blocked_connector";
-          deliveryMetadata.error = `${lifeOpsErrorMessage(error)} Provider acceptance is unknown; do not retry blindly.`;
-          deliveryMetadata.reason = "runtime_send_acceptance_unknown";
+          deliveryMetadata.reason = policy
+            ? "target_missing"
+            : "unconfigured_channel";
         }
-      } else {
-        outcome = "blocked_connector";
-        deliveryMetadata.reason = policy
-          ? "target_missing"
-          : "unconfigured_channel";
       }
     }
-
     if (
       outcome === "delivered" &&
       (args.urgency === "high" || args.urgency === "critical")
@@ -4605,6 +5173,13 @@ export class RemindersDomain {
       }
     }
 
+    const awaitInAppAcceptance =
+      outcome === "delivered" &&
+      args.channel === "in_app" &&
+      args.ownerType === "occurrence" &&
+      args.subjectType === "owner";
+    // Persist the owner in-app claim before any handoff. Unknown acceptance
+    // stays non-delivered and cannot authorize a retry after process restart.
     const attempt = createLifeOpsReminderAttempt({
       agentId: this.ctx.agentId(),
       planId: args.plan.id,
@@ -4615,11 +5190,53 @@ export class RemindersDomain {
       stepIndex: args.stepIndex,
       scheduledFor: args.scheduledFor,
       attemptedAt,
-      outcome,
+      outcome: awaitInAppAcceptance ? "blocked_connector" : outcome,
       connectorRef,
-      deliveryMetadata,
+      deliveryMetadata: awaitInAppAcceptance
+        ? {
+            ...deliveryMetadata,
+            reason: "runtime_send_acceptance_unknown",
+            error:
+              "In-app handoff acceptance is pending. Do not retry blindly.",
+          }
+        : deliveryMetadata,
     });
     await this.ctx.repository.createReminderAttempt(attempt);
+    let deliveryError: unknown;
+    if (awaitInAppAcceptance) {
+      try {
+        await this.emitInAppReminderNudge({
+          text: reminderBody,
+          presentation,
+          ownerType: args.ownerType,
+          ownerId: args.ownerId,
+          subjectType: args.subjectType,
+          scheduledFor: args.scheduledFor,
+          dueAt: args.dueAt,
+        });
+        Object.assign(attempt.deliveryMetadata, { reason: null, error: null });
+        await this.ctx.repository.updateReminderAttemptOutcome(
+          attempt.id,
+          "delivered",
+          attempt.deliveryMetadata,
+        );
+        attempt.outcome = "delivered";
+      } catch (error) {
+        deliveryError = error ?? Error("In-app delivery acceptance unknown");
+        outcome = "blocked_connector";
+        attempt.outcome = outcome;
+        Object.assign(attempt.deliveryMetadata, {
+          reason: "runtime_send_acceptance_unknown",
+          error: `${lifeOpsErrorMessage(deliveryError)} Acceptance is unknown; do not retry blindly.`,
+        });
+        await this.ctx.repository.updateReminderAttemptOutcome(
+          attempt.id,
+          outcome,
+          attempt.deliveryMetadata,
+        );
+      }
+      Object.assign(deliveryMetadata, attempt.deliveryMetadata);
+    }
     await this.recordReminderAudit(
       outcome === "delivered" ? "reminder_delivered" : "reminder_blocked",
       args.ownerType,
@@ -4664,9 +5281,15 @@ export class RemindersDomain {
         },
       );
     }
-    if (outcome === "delivered" && args.channel === "in_app") {
+    if (deliveryError !== undefined) throw deliveryError;
+    if (
+      outcome === "delivered" &&
+      args.channel === "in_app" &&
+      !awaitInAppAcceptance
+    ) {
       await this.emitInAppReminderNudge({
         text: reminderBody,
+        presentation,
         ownerType: args.ownerType,
         ownerId: args.ownerId,
         subjectType: args.subjectType,
@@ -4829,8 +5452,16 @@ export class RemindersDomain {
 
   async captureActivitySignal(
     request: CaptureLifeOpsActivitySignalRequest,
+    ownerActivity?: AuthenticatedDossierActivityContext,
   ): Promise<LifeOpsActivitySignal> {
     const health = normalizeHealthSignal(request.health, "health");
+    const metadata =
+      request.metadata !== undefined
+        ? requireRecord(request.metadata, "metadata")
+        : {};
+    if (Object.hasOwn(metadata, DOSSIER_ACTIVITY_METADATA_KEY)) {
+      fail(400, "Dossier activity admission metadata is server-owned");
+    }
     const registeredSources = getSignalSourceRegistry(
       this.ctx.runtime,
     )?.sources();
@@ -4854,12 +5485,30 @@ export class RemindersDomain {
       onBattery:
         normalizeOptionalBoolean(request.onBattery, "onBattery") ?? null,
       health,
-      metadata:
-        request.metadata !== undefined
-          ? requireRecord(request.metadata, "metadata")
-          : {},
+      metadata,
     });
     await this.ctx.repository.createActivitySignal(signal);
+    const activityKind = classifyDossierActivitySignal(signal);
+    if (ownerActivity && activityKind !== "other") {
+      await admitOwnerDossierActivity(
+        createFamilySchedulingStores(this.ctx.runtime, this.ctx.agentId())
+          .store,
+        {
+          ...ownerActivity,
+          authenticated: true,
+          signalId: signal.id,
+          kind: activityKind,
+        },
+        {
+          timezone:
+            ownerFactsToView(
+              await resolveOwnerFactStore(this.ctx.runtime).read(),
+              new Date(ownerActivity.receivedAtIso),
+            ).timezone ?? resolveDefaultTimeZone(),
+          boundaryMinutes: 240,
+        },
+      );
+    }
     return signal;
   }
 
@@ -5121,15 +5770,17 @@ export class RemindersDomain {
   async processDueReminderDeliveries(args: {
     now: Date;
     limit: number;
+    includeCalendar: boolean;
     ownerTimezone: string;
     policies: LifeOpsChannelPolicy[];
     globalReminderPreference: LifeOpsReminderPreference;
     existingAttempts: LifeOpsReminderAttempt[];
     activityProfile: ReminderActivityProfileSnapshot | null;
-  }): Promise<LifeOpsReminderAttempt[]> {
+  }): Promise<{ attempts: LifeOpsReminderAttempt[]; nextWakeAt?: number }> {
     const {
       now,
       limit,
+      includeCalendar,
       ownerTimezone,
       policies,
       globalReminderPreference,
@@ -5138,13 +5789,15 @@ export class RemindersDomain {
     } = args;
     const dueAttempts: LifeOpsReminderAttempt[] = [];
     if (limit <= 0) {
-      return dueAttempts;
+      return { attempts: dueAttempts };
     }
 
-    const definitions = await listCallerDefinitions(
-      this.ctx.repository,
-      this.ctx,
-      { activeOnly: true },
+    // This is a background scheduler boundary, not a caller-facing read. A
+    // chat-created owner definition may belong to any owner entity under the
+    // agent, so filtering through the service's default synthetic owner would
+    // silently drop real reminders created from another room or connector.
+    const definitions = await this.ctx.repository.listActiveDefinitions(
+      this.ctx.agentId(),
     );
     for (const definition of definitions) {
       await this.refreshDefinitionOccurrences(definition, now);
@@ -5158,7 +5811,6 @@ export class RemindersDomain {
       await this.ctx.repository.listOccurrenceViewsForOverview(
         this.ctx.agentId(),
         horizon,
-        callerDefinitionScopes(this.ctx),
       )
     ).filter((occurrence) => definitionsById.has(occurrence.definitionId));
     const occurrencePlans =
@@ -5189,12 +5841,14 @@ export class RemindersDomain {
       now,
       OVERVIEW_HORIZON_MINUTES,
     ).toISOString();
-    const calendarEvents = await this.ctx.repository.listCalendarEvents(
-      this.ctx.agentId(),
-      "google",
-      now.toISOString(),
-      eventWindowEnd,
-    );
+    const calendarEvents = includeCalendar
+      ? await this.ctx.repository.listCalendarEvents(
+          this.ctx.agentId(),
+          "google",
+          now.toISOString(),
+          eventWindowEnd,
+        )
+      : [];
     const eventPlans = await this.ctx.repository.listReminderPlansForOwners(
       this.ctx.agentId(),
       "calendar_event",
@@ -5236,9 +5890,25 @@ export class RemindersDomain {
       stepIndex: number,
       scheduledFor: string,
     ) => `${planId}:${stepIndex}:${scheduledFor}`;
-    const deliveredAttempts = new Set(
+    const nextWakeAt = nextReminderWakeAt(
+      occurrenceViews,
+      [...plansByDefinitionId.values()],
+      existingAttempts,
+      now.getTime(),
+      calendarEvents,
+      [...plansByEventId.values()],
+    );
+
+    const consumedAttempts = new Set(
       existingAttempts
-        .filter((attempt) => isDeliveredReminderOutcome(attempt.outcome))
+        .filter(
+          (attempt) =>
+            isDeliveredReminderOutcome(attempt.outcome) ||
+            (attempt.channel === "in_app" &&
+              attempt.outcome === "blocked_connector" &&
+              attempt.deliveryMetadata.reason ===
+                "runtime_send_acceptance_unknown"),
+        )
         .map((attempt) =>
           attemptKey(attempt.planId, attempt.stepIndex, attempt.scheduledFor),
         ),
@@ -5288,7 +5958,7 @@ export class RemindersDomain {
           occurrence.state === "completed",
       );
       if (
-        deliveredAttempts.has(key) ||
+        consumedAttempts.has(key) ||
         (acknowledged && blockedAckAttempts.has(key))
       ) {
         continue;
@@ -5314,6 +5984,7 @@ export class RemindersDomain {
         stepIndex: reminder.stepIndex,
         scheduledFor: reminder.scheduledFor,
         dueAt: occurrence.dueAt,
+        snoozedUntil: occurrence.snoozedUntil,
         urgency,
         quietHours: plan.quietHours,
         acknowledged,
@@ -5331,7 +6002,7 @@ export class RemindersDomain {
       });
       dueAttempts.push(attempt);
       if (isDeliveredReminderOutcome(attempt.outcome)) {
-        deliveredAttempts.add(key);
+        consumedAttempts.add(key);
       }
     }
 
@@ -5365,7 +6036,7 @@ export class RemindersDomain {
       );
       const acknowledged = Boolean(event.metadata.reminderAcknowledgedAt);
       if (
-        deliveredAttempts.has(key) ||
+        consumedAttempts.has(key) ||
         (acknowledged && blockedAckAttempts.has(key))
       ) {
         continue;
@@ -5400,7 +6071,7 @@ export class RemindersDomain {
       });
       dueAttempts.push(attempt);
       if (isDeliveredReminderOutcome(attempt.outcome)) {
-        deliveredAttempts.add(key);
+        consumedAttempts.add(key);
       }
     }
 
@@ -5434,6 +6105,9 @@ export class RemindersDomain {
         intensity:
           definitionPreferencesById.get(occurrence.definitionId)?.effective
             ?.intensity ?? globalReminderPreference.effective.intensity,
+        intensitySource:
+          definitionPreferencesById.get(occurrence.definitionId)?.effective
+            .source ?? globalReminderPreference.effective.source,
         quietHours: plan.quietHours,
         attemptedAt: now.toISOString(),
         now,
@@ -5495,11 +6169,15 @@ export class RemindersDomain {
       reminderAttemptsForEscalation.push(attempt);
     }
 
-    return dueAttempts;
+    return { attempts: dueAttempts, nextWakeAt };
   }
 
   async processReminders(
-    request: { now?: string; limit?: number } = {},
+    request: {
+      now?: string;
+      limit?: number;
+      scope?: "all" | "definitions";
+    } = {},
   ): Promise<LifeOpsReminderProcessingResult> {
     return this.withReminderProcessingLock(async () => {
       const now =
@@ -5510,6 +6188,13 @@ export class RemindersDomain {
         request.limit === undefined
           ? DEFAULT_REMINDER_PROCESS_LIMIT
           : normalizePositiveInteger(request.limit, "limit");
+      const scope =
+        request.scope === undefined
+          ? "all"
+          : normalizeEnumValue(request.scope, "scope", [
+              "all",
+              "definitions",
+            ] as const);
       // Anchor reminder window/dueness math to the owner's stored timezone
       // fact (travel-aware) rather than the host clock. On shared-server /
       // TZ=UTC topologies `resolveDefaultTimeZone()` is the SERVER zone, which
@@ -5552,20 +6237,21 @@ export class RemindersDomain {
         };
       }
 
-      dueAttempts.push(
-        ...(await this.processDueReminderDeliveries({
-          now,
-          limit: limit - dueAttempts.length,
-          ownerTimezone,
-          policies,
-          globalReminderPreference,
-          existingAttempts: [...existingAttempts, ...dueAttempts],
-          activityProfile,
-        })),
-      );
+      const deliveries = await this.processDueReminderDeliveries({
+        now,
+        limit: limit - dueAttempts.length,
+        includeCalendar: scope === "all",
+        ownerTimezone,
+        policies,
+        globalReminderPreference,
+        existingAttempts: [...existingAttempts, ...dueAttempts],
+        activityProfile,
+      });
+      dueAttempts.push(...deliveries.attempts);
 
       return {
         now: now.toISOString(),
+        nextWakeAt: deliveries.nextWakeAt,
         attempts: dueAttempts,
       };
     });
@@ -5580,11 +6266,13 @@ export class RemindersDomain {
       sleepCycleCheckins?: boolean;
     } = {},
   ): Promise<{
+    nextWakeAt?: number;
     now: string;
     reminderAttempts: LifeOpsReminderAttempt[];
     workflowRuns: LifeOpsWorkflowRun[];
     scheduledTaskFires: Array<Record<string, unknown>>;
     scheduledTaskCompletionTimeouts: Array<Record<string, unknown>>;
+    sleepCycleCheckins: SleepCycleCheckinDeliveryReport[];
     subsystemFailures: LifeOpsScheduledWorkSubsystemFailure[];
   }> {
     const now =
@@ -5779,7 +6467,7 @@ export class RemindersDomain {
       },
     );
 
-    const reminderResult = await runSubsystem(
+    const reminderResult = await runSubsystem<LifeOpsReminderProcessingResult>(
       "reminders",
       { now: now.toISOString(), attempts: [] as LifeOpsReminderAttempt[] },
       () =>
@@ -5834,18 +6522,34 @@ export class RemindersDomain {
           limit: scheduledTaskLimit,
         }),
     );
-    if (request.sleepCycleCheckins !== false) {
-      await runSubsystem("sleep_cycle_checkins", undefined, () =>
-        this.processSleepCycleCheckins({
-          now,
-          currentSchedule,
-        }),
-      );
+    const sleepCycleCheckins: SleepCycleCheckinDeliveryReport[] =
+      request.sleepCycleCheckins !== false
+        ? await runSubsystem("sleep_cycle_checkins", [], () =>
+            this.processSleepCycleCheckins({
+              now,
+              currentSchedule,
+            }),
+          )
+        : [];
+    for (const checkin of sleepCycleCheckins) {
+      if (
+        checkin.status !== "delivered" &&
+        checkin.status !== "skipped_already_sent"
+      ) {
+        subsystemFailures.push({
+          subsystem: "sleep_cycle_checkins",
+          error:
+            "Sleep-cycle check-in delivery failed; report not persisted " +
+            `(${checkin.kind} report ${checkin.reportId ?? "?"}: ` +
+            `${checkin.reason ?? "unknown"})`,
+        });
+      }
     }
     await this.runTelemetryMaintenanceIfDue(now);
     return {
       now: now.toISOString(),
       reminderAttempts: reminderResult.attempts,
+      nextWakeAt: reminderResult.nextWakeAt,
       workflowRuns: [...workflowRuns, ...eventWorkflowRuns],
       scheduledTaskFires: scheduledTaskResult.fires.map((fire) => ({
         ...fire,
@@ -5854,6 +6558,7 @@ export class RemindersDomain {
         scheduledTaskResult.completionTimeouts.map((timeout) => ({
           ...timeout,
         })),
+      sleepCycleCheckins,
       subsystemFailures,
     };
   }
@@ -5872,11 +6577,9 @@ export class RemindersDomain {
    *     provisional record (tagged via `TZ_PROVISIONAL_TRAVEL_NOTE`) so a real
    *     booking or spoken statement is never dropped on a coincidental match.
    *
-   * On shared-server topology `resolveDefaultTimeZone()` returns the SERVER's
-   * zone, not the owner's device — so leg (2) is effectively a no-op there
-   * (device zone == home zone, or the home-zone fact is absent). That is the
-   * intended graceful degradation: we never fabricate a home zone or infer
-   * travel from the server's own zone.
+   * Host timezone is device evidence only for a recognized personal device.
+   * Cloud and unknown hosts still expire travel windows, but cannot infer
+   * owner travel or a return home from their own timezone.
    */
   private async reconcileTravelActive(now: Date): Promise<void> {
     const store = resolveOwnerFactStore(this.ctx.runtime);
@@ -5898,6 +6601,11 @@ export class RemindersDomain {
         );
         return;
       }
+    }
+
+    const { deviceKind } = resolveScheduleDeviceIdentity();
+    if (deviceKind === "cloud" || deviceKind === "unknown") {
+      return;
     }
 
     const homeTz = facts.timezone?.value;
@@ -5950,10 +6658,10 @@ export class RemindersDomain {
   private async processSleepCycleCheckins(args: {
     now: Date;
     currentSchedule: LifeOpsScheduleMergedStateRecord | null;
-  }): Promise<void> {
+  }): Promise<SleepCycleCheckinDeliveryReport[]> {
     const currentSchedule = args.currentSchedule;
     if (!currentSchedule) {
-      return;
+      return [];
     }
     const service = new CheckinService(this.ctx.runtime, {
       sources: this.deps.checkinSource,
@@ -5964,7 +6672,9 @@ export class RemindersDomain {
     // the dispatcher just consumed for trigger decisions. Morning runs
     // ignore this field; the assignment below is night-only by design.
     const sleepRecap = buildSleepRecapFromSchedule(currentSchedule);
-    const dispatch = async (kind: "morning" | "night"): Promise<void> => {
+    const dispatch = async (
+      kind: "morning" | "night",
+    ): Promise<SleepCycleCheckinDeliveryReport> => {
       const alreadySent = await service.hasCheckinForLocalDay({
         kind,
         now: args.now,
@@ -5987,7 +6697,15 @@ export class RemindersDomain {
             });
           }
         }
-        return;
+        return {
+          kind,
+          status: "skipped_already_sent",
+          reportId: null,
+          messageId: null,
+          reason: null,
+          message: null,
+          persisted: false,
+        };
       }
       const report =
         kind === "morning"
@@ -6039,19 +6757,31 @@ export class RemindersDomain {
             message: delivery.message,
           },
         );
-        return;
+        return {
+          kind,
+          status: delivery.reason,
+          reportId: report.reportId,
+          messageId: null,
+          reason: delivery.reason,
+          message: delivery.message ?? null,
+          persisted: false,
+        };
       }
       await service.persistCheckinReport(report, args.now);
+      return {
+        kind,
+        status: "delivered",
+        reportId: report.reportId,
+        messageId: delivery.messageId ?? null,
+        reason: null,
+        message: null,
+        persisted: true,
+      };
     };
+    const results: SleepCycleCheckinDeliveryReport[] = [];
 
-    if (
-      shouldRunMorningCheckinFromSleepCycle({
-        state: currentSchedule,
-        now: args.now,
-      })
-    ) {
-      await dispatch("morning");
-    }
+    // Automatic morning briefs are admitted and claimed by the activity-driven
+    // ScheduledTask; sleep projections must not start a second generation.
     // For irregular-schedule owners, the relative-time resolver leaves
     // `bedtimeTargetAt` null because no projection is trustworthy. Read the
     // owner's configured `nightCheckinTime` (HH:MM local) and pass it as a
@@ -6065,8 +6795,9 @@ export class RemindersDomain {
         nightFallbackBedtimeLocal: profileSchedule.nightCheckinTime,
       })
     ) {
-      await dispatch("night");
+      results.push(await dispatch("night"));
     }
+    return results;
   }
 
   /**

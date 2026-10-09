@@ -1,13 +1,13 @@
 /**
- * Post-call processing for MCP results: flattens tool output (text, base64 image
- * attachments, embedded resources) and resource contents into text, then drives
+ * Post-call processing for MCP results: retains tool text, image/audio
+ * attachments and resource contents, then drives
  * the model to synthesize a user-facing reply, persists the exchange as memory,
  * and invokes the callback. Also sends the initial acknowledgement.
  */
+import { isDeepStrictEqual } from "node:util";
 import {
   type Content,
   ContentType,
-  composePromptFromState,
   createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
@@ -16,115 +16,158 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { resourceAnalysisTemplate } from "../templates/resourceAnalysisTemplate";
-import { toolReasoningTemplate } from "../templates/toolReasoningTemplate";
+import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { resourceAnalysisTemplate, toolReasoningTemplate } from "../protocol-utils/prompts.js";
 import type { McpProviderData, McpResourceContent } from "../types";
 import { createMcpMemory } from "./mcp";
 
 function getMimeTypeToContentType(mimeType: string | undefined): ContentType | undefined {
   if (!mimeType) return undefined;
-
   if (mimeType.startsWith("image/")) return ContentType.IMAGE;
   if (mimeType.startsWith("video/")) return ContentType.VIDEO;
   if (mimeType.startsWith("audio/")) return ContentType.AUDIO;
   if (mimeType.includes("pdf") || mimeType.includes("document")) return ContentType.DOCUMENT;
-
   return undefined;
+}
+function resourceAttachment(
+  resource: McpResourceContent,
+  runtime: IAgentRuntime,
+  source: string,
+  messageEntityId: string,
+  index: number
+): Media {
+  const mimeType = resource.mimeType ?? "application/octet-stream";
+  return {
+    id: createUniqueUuid(
+      runtime,
+      `${messageEntityId}:${source}:${index}:${resource.uri}:${resource.blob}`
+    ),
+    url: `data:${mimeType};base64,${resource.blob}`,
+    mimeType,
+    contentType: getMimeTypeToContentType(mimeType),
+    title: resource.uri,
+    source: resource.uri,
+    description: `MCP resource from ${source}`,
+  };
 }
 
 interface ResourceResult {
   readonly contents: readonly McpResourceContent[];
 }
-
 export function processResourceResult(
   result: ResourceResult,
-  uri: string
-): { resourceContent: string; resourceMeta: string } {
+  uri: string,
+  runtime: IAgentRuntime,
+  serverName: string,
+  messageEntityId: string
+): {
+  resourceContent: string;
+  resourceMeta: string;
+  attachments: Media[];
+} {
   let resourceContent = "";
   let resourceMeta = "";
-
+  const attachments: Media[] = [];
   for (const content of result.contents) {
     if (content.text) {
       resourceContent += content.text;
-    } else if (content.blob) {
+    } else if (typeof content.blob === "string") {
+      attachments.push(
+        resourceAttachment(content, runtime, serverName, messageEntityId, attachments.length)
+      );
       resourceContent += `[Binary data${content.mimeType ? ` - ${content.mimeType}` : ""}]`;
     }
-
     resourceMeta += `Resource: ${content.uri ?? uri}\n`;
     if (content.mimeType) {
       resourceMeta += `Type: ${content.mimeType}\n`;
     }
   }
-
-  return { resourceContent, resourceMeta };
+  return { resourceContent, resourceMeta, attachments };
 }
-
-interface ToolContentItem {
-  readonly type: string;
-  readonly text?: string;
-  readonly mimeType?: string;
-  readonly data?: string;
-  readonly resource?: {
-    readonly uri: string;
-    readonly text?: string;
-    readonly blob?: string;
-  };
-}
-
-interface ToolResult {
-  readonly content: readonly ToolContentItem[];
-  readonly isError?: boolean;
-}
-
 export function processToolResult(
-  result: ToolResult,
+  result: Pick<CallToolResult, "content" | "structuredContent" | "isError">,
   serverName: string,
   toolName: string,
   runtime: IAgentRuntime,
   messageEntityId: string
-): { toolOutput: string; hasAttachments: boolean; attachments: Media[]; isError: boolean } {
+): {
+  toolOutput: string;
+  hasAttachments: boolean;
+  attachments: Media[];
+  isError: boolean;
+} {
   let toolOutput = "";
   let hasAttachments = false;
   const attachments: Media[] = [];
-  // Distinguishes each image within one tool result so its `Media.id` is
+  // Distinguishes each media block within one tool result so its `Media.id` is
   // unique even when several attachments share identical bytes.
-  let imageIndex = 0;
-
+  let mediaIndex = 0;
   for (const content of result.content) {
     if (content.type === "text" && content.text) {
       toolOutput += content.text;
-    } else if (content.type === "image" && content.data && content.mimeType) {
+    } else if (content.type === "resource_link") {
+      toolOutput += `\n\nResource link:\n${JSON.stringify(content)}`;
+    } else if (
+      (content.type === "image" || content.type === "audio") &&
+      content.data &&
+      content.mimeType
+    ) {
       hasAttachments = true;
-      // Seed the deterministic UUID with values that vary per attachment (the
+      const mediaKind = content.type === "audio" ? "audio" : "image";
+      // Seed the deterministic UUID with values that vary per media attachment (the
       // base64 bytes plus a positional index) rather than the constant
       // `messageEntityId`. A constant seed gave every image in a batch — and
       // every tool call by the same user — the same `Media.id`, which the UI
       // treats as a unique handle for React keys and download filenames
       // (packages/ui/src/components/chat/MessageAttachments.tsx).
-      const attachmentSeed = `${messageEntityId}:${serverName}/${toolName}:${imageIndex}:${content.data}`;
-      imageIndex += 1;
+      const attachmentSeed = `${messageEntityId}:${serverName}/${toolName}:${mediaIndex}:${content.data}`;
+      mediaIndex += 1;
       attachments.push({
         contentType: getMimeTypeToContentType(content.mimeType),
         url: `data:${content.mimeType};base64,${content.data}`,
         id: createUniqueUuid(runtime, attachmentSeed),
-        title: "Generated image",
+        title: `Generated ${mediaKind}`,
         source: `${serverName}/${toolName}`,
-        description: "Tool-generated image",
-        text: "Generated image",
+        description: `Tool-generated ${mediaKind}`,
+        text: `Generated ${mediaKind}`,
       });
     } else if (content.type === "resource" && content.resource) {
       const resource = content.resource;
       if ("text" in resource && resource.text) {
         toolOutput += `\n\nResource (${resource.uri}):\n${resource.text}`;
-      } else if ("blob" in resource) {
+      } else if ("blob" in resource && typeof resource.blob === "string") {
+        attachments.push(
+          resourceAttachment(
+            resource,
+            runtime,
+            `${serverName}/${toolName}`,
+            messageEntityId,
+            mediaIndex++
+          )
+        );
+        hasAttachments = true;
         toolOutput += `\n\nResource (${resource.uri}): [Binary data]`;
       }
     }
   }
-
+  if (result.structuredContent !== undefined) {
+    const serialized = JSON.stringify(result.structuredContent);
+    const hasTextCopy = result.content.some((content) => {
+      if (content.type !== "text") return false;
+      try {
+        return isDeepStrictEqual(JSON.parse(content.text), result.structuredContent);
+      } catch {
+        // error-policy:J3 text blocks need not be JSON; keep their text and add the result.
+        return false;
+      }
+    });
+    if (!hasTextCopy) {
+      toolOutput += `${toolOutput ? "\n\n" : ""}Structured result:\n${serialized}`;
+    }
+  }
   return { toolOutput, hasAttachments, attachments, isError: result.isError === true };
 }
-
 export async function handleResourceAnalysis(
   runtime: IAgentRuntime,
   message: Memory,
@@ -132,38 +175,47 @@ export async function handleResourceAnalysis(
   serverName: string,
   resourceContent: string,
   resourceMeta: string,
+  attachments: readonly Media[],
   callback?: HandlerCallback
 ): Promise<void> {
-  await createMcpMemory(runtime, message, "resource", serverName, resourceContent, {
-    uri,
-    isResourceAccess: true,
-  });
-
+  await createMcpMemory(
+    runtime,
+    message,
+    "resource",
+    serverName,
+    resourceContent,
+    {
+      uri,
+      isResourceAccess: true,
+    },
+    attachments
+  );
   const analysisPrompt = createAnalysisPrompt(
     uri,
     message.content.text ?? "",
     resourceContent,
     resourceMeta
   );
-
   const analyzedResponse = (await runtime.useModel(ModelType.TEXT_SMALL, {
     prompt: analysisPrompt,
   })) as string;
-
   if (callback) {
     await callback({
       text: analyzedResponse,
+      attachments: attachments.length ? [...attachments] : undefined,
       actions: ["READ_MCP_RESOURCE"],
     });
   }
 }
-
 interface McpProviderArg {
-  readonly values: { readonly mcp: McpProviderData };
-  readonly data: { readonly mcp: McpProviderData };
+  readonly values: {
+    readonly mcp: McpProviderData;
+  };
+  readonly data: {
+    readonly mcp: McpProviderData;
+  };
   readonly text: string;
 }
-
 export async function handleToolResponse(
   runtime: IAgentRuntime,
   message: Memory,
@@ -178,12 +230,19 @@ export async function handleToolResponse(
   callback?: HandlerCallback,
   isError = false
 ): Promise<Memory> {
-  await createMcpMemory(runtime, message, "tool", serverName, toolOutput, {
-    toolName,
-    arguments: toolArgs,
-    isToolCall: true,
-  });
-
+  await createMcpMemory(
+    runtime,
+    message,
+    "tool",
+    serverName,
+    toolOutput,
+    {
+      toolName,
+      arguments: toolArgs,
+      isToolCall: true,
+    },
+    attachments
+  );
   const reasoningPrompt = createReasoningPrompt(
     state,
     mcpProvider,
@@ -194,11 +253,9 @@ export async function handleToolResponse(
     hasAttachments,
     isError
   );
-
   const reasonedResponse = (await runtime.useModel(ModelType.TEXT_SMALL, {
     prompt: reasoningPrompt,
   })) as string;
-
   const agentId = message.agentId ?? runtime.agentId;
   const replyMemory: Memory = {
     entityId: agentId,
@@ -210,9 +267,7 @@ export async function handleToolResponse(
       attachments: hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
     },
   };
-
   await runtime.createMemory(replyMemory, "messages");
-
   if (callback) {
     await callback({
       text: reasonedResponse,
@@ -220,10 +275,8 @@ export async function handleToolResponse(
       attachments: hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
     });
   }
-
   return replyMemory;
 }
-
 export async function sendInitialResponse(callback?: HandlerCallback): Promise<void> {
   if (callback) {
     const responseContent: Content = {
@@ -233,7 +286,6 @@ export async function sendInitialResponse(callback?: HandlerCallback): Promise<v
     await callback(responseContent);
   }
 }
-
 function createAnalysisPrompt(
   uri: string,
   userMessage: string,
@@ -250,13 +302,11 @@ function createAnalysisPrompt(
       resourceMeta,
     },
   };
-
   return composePromptFromState({
     state: enhancedState,
     template: resourceAnalysisTemplate,
   });
 }
-
 function createReasoningPrompt(
   state: State,
   mcpProvider: McpProviderArg,
@@ -280,7 +330,6 @@ function createReasoningPrompt(
       toolErrored,
     },
   };
-
   return composePromptFromState({
     state: enhancedState,
     template: toolReasoningTemplate,

@@ -6,15 +6,16 @@
  */
 
 import path from "node:path";
-import { ElizaError } from "@elizaos/core";
 import {
   createKmsClient,
   KmsAeadOperationKeyBundleProvider,
   type KmsClient,
-} from "@elizaos/core/security/kms";
-import { AGENT_BACKUP_CAPTURE_V2_LIMITS } from "@elizaos/shared";
+} from "@elizaos/auth/kms";
+import { AGENT_BACKUP_CAPTURE_V2_LIMITS } from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { recordCapturedAgentBackupManifest } from "../../db/repositories/agent-backup-catalog";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
+import { logger } from "../utils/logger";
 import { createAccountDeletionBackupAuthority } from "./account-deletion-backup-authority";
 import { createAccountDeletionProviderAdapters } from "./account-deletion-provider-adapters";
 import { processIrreversibleAccountDeletionSaga } from "./account-deletion-saga";
@@ -23,6 +24,10 @@ import {
   type AgentBackupCaptureV3LegacyWriterDrainReceipt,
   createAgentBackupCaptureV2CatalogExecutor,
 } from "./agent-backup-capture-v2-catalog-executor";
+import {
+  DEFAULT_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS,
+  MAX_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS,
+} from "./agent-backup-capture-v2-failure-disposition";
 import type { AgentBackupCaptureV3SpoolConfig } from "./agent-backup-capture-v2-spool";
 import { createAgentBackupCaptureV3PublicationSourceResolver } from "./agent-backup-capture-v3-publication-source";
 import { createAgentBackupCaptureV3RuntimeContextResolver } from "./agent-backup-capture-v3-runtime-context";
@@ -34,8 +39,18 @@ import {
   readAgentBackupCatalogRuntimeConfig,
   runAgentBackupCatalogRuntimeCycle,
 } from "./agent-backup-catalog-runtime";
-import type { AgentBackupCatalogWorkerComposition } from "./agent-backup-catalog-worker-composition";
+import {
+  type AgentBackupCatalogWorkerComposition,
+  runAgentBackupCatalogCycleStage,
+} from "./agent-backup-catalog-worker-composition";
 import { createAgentBackupCatalogPublicationExecutor } from "./agent-backup-publication-executor";
+import {
+  type AgentBackupRestoreCoordinatorStreamer,
+  createProductionCoordinatorDependencies,
+  runAgentBackupRestoreCoordinatorCycle,
+} from "./agent-backup-restore-coordinator";
+import { readAgentBackupRestoreCoordinatorConfig } from "./agent-backup-restore-coordinator-runtime";
+import { streamAgentBackupRestoreV3FromCatalogue } from "./agent-backup-restore-v3-catalogue-stream";
 
 const MAX_SPOOL_BYTES = 1024 ** 4;
 const MAX_TOKEN_BYTES = 16 * 1024;
@@ -61,6 +76,8 @@ export interface AgentBackupCatalogWorkerEnabledConfig {
   spool: AgentBackupCaptureV3SpoolConfig;
   spoolCleanupBatchSize: number;
   captureDeadlineMs: number;
+  /** Claims of one capture operation before a retryable failure escalates (#23235). */
+  captureEscalationAttempts: number;
   publication: {
     scope: string;
     primaryEndpointAlias: string;
@@ -381,6 +398,16 @@ export function readAgentBackupCatalogWorkerEnabledConfig(
       max: 100,
     }),
     captureDeadlineMs,
+    captureEscalationAttempts:
+      env.AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS === undefined ||
+      env.AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS === ""
+        ? DEFAULT_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS
+        : boundedInteger({
+            env,
+            name: "AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS",
+            min: 1,
+            max: MAX_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS,
+          }),
     publication: {
       scope,
       primaryEndpointAlias,
@@ -484,7 +511,9 @@ export async function createAccountDeletionBackupAuthorityComposition(input: {
     enabled: true,
     accountDeletionAuthorities,
     async runCycle() {
-      await dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities);
+      await runAgentBackupCatalogCycleStage("account-deletion-authority", () =>
+        dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities),
+      );
       return accountDeletionAuthoritySummary();
     },
   });
@@ -513,6 +542,7 @@ export async function createAgentBackupCatalogWorkerEnabledComposition(input: {
       resolveContext,
       recordCaptured: recordCapturedAgentBackupManifest,
       captureDeadlineMs: config.captureDeadlineMs,
+      captureEscalationAttempts: config.captureEscalationAttempts,
     },
     config.legacyWriterDrain,
   );
@@ -530,19 +560,72 @@ export async function createAgentBackupCatalogWorkerEnabledComposition(input: {
     backup: dependencies.createAccountDeletionBackup(registry),
     spool: dependencies.createAccountDeletionSpool(config.spool),
   });
+  // The restore coordinator shares this worker's KMS key bundle and storage
+  // registry. It is disabled-first and validated with the rest of the config.
+  const restoreConfig = readAgentBackupRestoreCoordinatorConfig(input.env);
+  const restoreStreamer: AgentBackupRestoreCoordinatorStreamer = {
+    async stream(streamInput) {
+      const streamed = await streamAgentBackupRestoreV3FromCatalogue({
+        enabled: true,
+        source: streamInput.source,
+        registry,
+        keyBundle,
+        quarantine: streamInput.quarantine,
+        signal: streamInput.signal,
+        deadlineEpochMs: streamInput.deadlineEpochMs,
+        reportDetachedFailure: (event) => {
+          logger.error("[AgentBackupRestoreCoordinator] Detached restore stream failure", {
+            operationId: streamInput.source.operationId,
+            restoreAttemptId: streamInput.source.restoreAttemptId,
+            event,
+          });
+        },
+      });
+      if (!("sealed" in streamed)) {
+        throw new ElizaError("Restore catalogue stream did not run", {
+          code: "AGENT_BACKUP_RESTORE_STREAM_DISABLED",
+          severity: "fatal",
+        });
+      }
+      return streamed;
+    },
+  };
+  const restoreDependencies = restoreConfig.enabled
+    ? createProductionCoordinatorDependencies(restoreStreamer)
+    : null;
   return Object.freeze({
     enabled: true,
     accountDeletionAuthorities,
     async runCycle(signal?: AbortSignal) {
-      const summary = await dependencies.runCycle({
-        config: config.runtime,
-        registry,
-        captureExecutor,
-        publicationExecutor,
-        spoolCleanupJanitor,
-        signal,
-      });
-      await dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities);
+      const summary = await runAgentBackupCatalogCycleStage("catalog-runtime", () =>
+        dependencies.runCycle({
+          config: config.runtime,
+          registry,
+          captureExecutor,
+          publicationExecutor,
+          spoolCleanupJanitor,
+          signal,
+        }),
+      );
+      await runAgentBackupCatalogCycleStage("account-deletion-authority", () =>
+        dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities),
+      );
+      if (restoreConfig.enabled && restoreDependencies) {
+        const restore = await runAgentBackupCatalogCycleStage("restore-coordinator", () =>
+          runAgentBackupRestoreCoordinatorCycle({
+            config: restoreConfig,
+            dependencies: restoreDependencies,
+            signal,
+          }),
+        );
+        if (restore.examined > 0 || restore.terminalCleanups > 0 || restore.failures > 0) {
+          logger.info("[AgentBackupRestoreCoordinator] Restore cycle", {
+            examined: restore.examined,
+            failures: restore.failures,
+            results: restore.results,
+          });
+        }
+      }
       return summary;
     },
   });

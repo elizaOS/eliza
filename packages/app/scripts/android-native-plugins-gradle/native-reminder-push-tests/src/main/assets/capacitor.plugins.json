@@ -1,0 +1,5 @@
+[
+  {
+    "classpath": "com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin"
+  }
+]

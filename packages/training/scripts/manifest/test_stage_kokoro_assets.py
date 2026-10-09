@@ -4,16 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest import stage_kokoro_assets as stage  # noqa: E402
-from scripts.manifest.eliza1_manifest import REQUIRED_KERNELS_BY_TIER  # noqa: E402
+from eliza_training.manifest import stage_kokoro_assets as stage  # noqa: E402
+from eliza_training.manifest.eliza1_manifest import REQUIRED_KERNELS_BY_TIER  # noqa: E402
 
 
 def _sha(data: bytes) -> str:

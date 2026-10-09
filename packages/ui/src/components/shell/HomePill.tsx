@@ -19,9 +19,9 @@ import { AudioWaveform, Plus, Square } from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import * as React from "react";
 
-import { useBranding } from "../../config/branding";
-import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
-import { cn } from "../../lib/utils";
+import { useBranding } from "../../config/branding-react.hooks";
+import { cn } from "../../utils/cn";
+import { Z_SHELL_OVERLAY } from "../../utils/floating-layers";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

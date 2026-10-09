@@ -13,7 +13,7 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-sql$/,
         replacement: fileURLToPath(
-          new URL("../plugin-sql/src/index.node.ts", import.meta.url),
+          new URL("../plugin-sql/src/index.ts", import.meta.url),
         ),
       },
       {

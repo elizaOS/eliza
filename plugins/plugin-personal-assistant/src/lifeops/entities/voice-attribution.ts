@@ -8,7 +8,7 @@
  * module exists to implement.
  */
 
-import type { EntityStore } from "./store.js";
+import type { EntityStore } from "@elizaos/plugin-relationships";
 import type { SELF_ENTITY_ID } from "./types.js";
 
 /**
@@ -31,14 +31,26 @@ import type { SELF_ENTITY_ID } from "./types.js";
 // casing variants explicitly. The captured name stays anchored on an uppercase
 // first letter to filter lowercased noise; JavaScript RegExp does not support
 // scoped flag groups such as `(?-i:...)`.
-const NAME_PATTERN =
-  "[A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2}";
+const NAME_TOKEN_PATTERN = "(?!I['’](?:m|ve|ll|d)\\b)[A-Z][A-Za-z'.-]{1,40}";
+const NAME_PATTERN = `${NAME_TOKEN_PATTERN}(?:\\s+${NAME_TOKEN_PATTERN}){0,2}`;
+// A curly apostrophe is outside the name class, so "Jill’s" ends the name
+// at Jill. Reject possessives and prevent fallback to a shorter name prefix.
 const NAME_CLAIM_PATTERNS: RegExp[] = [
-  new RegExp(`\\b[Mm]y\\s+name\\s+is\\s+(${NAME_PATTERN})\\b`),
-  new RegExp(`\\b[Ii]\\s+am\\s+(${NAME_PATTERN})\\b`),
-  new RegExp(`\\b[Ii]['’]?m\\s+(${NAME_PATTERN})\\b`),
-  new RegExp(`\\b[Tt]his\\s+is\\s+(${NAME_PATTERN})\\b`),
-  new RegExp(`\\b[Ii]t['’]?s\\s+(${NAME_PATTERN})\\b`),
+  new RegExp(
+    `\\b[Mm]y\\s+name\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+${NAME_TOKEN_PATTERN})`,
+  ),
+  new RegExp(
+    `\\b[Ii]\\s+am\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+${NAME_TOKEN_PATTERN})`,
+  ),
+  new RegExp(
+    `\\b[Ii]['’]?m\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+${NAME_TOKEN_PATTERN})`,
+  ),
+  new RegExp(
+    `\\b[Tt]his\\s+is\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+${NAME_TOKEN_PATTERN})`,
+  ),
+  new RegExp(
+    `\\b[Ii]t['’]?s\\s+(${NAME_PATTERN})\\b(?!['’]s\\b|\\s+${NAME_TOKEN_PATTERN})`,
+  ),
 ];
 
 export function extractSelfNameClaim(
@@ -49,7 +61,12 @@ export function extractSelfNameClaim(
     const m = pattern.exec(text);
     if (m?.[1]) {
       const cleaned = m[1].replace(/[.,;:!?]+$/, "").trim();
-      if (cleaned.length > 0) return cleaned;
+      // The name class includes `'`, so "Jill's" is captured whole. A token
+      // ending in `'s` is a possessive, not the speaker's name.
+      const possessive = cleaned
+        .split(/\s+/)
+        .some((token) => /['’]s$/u.test(token));
+      if (cleaned.length > 0 && !possessive) return cleaned;
     }
   }
   return null;
@@ -94,6 +111,11 @@ function kinTypeForLabel(label: string): KinClaimType {
   return SIBLING_LABELS.includes(label) ? "sibling_of" : "partner_of";
 }
 
+// Preserve name casing while accepting sentence-case relationship labels.
+const KIN_LABEL_PATTERN = KIN_LABELS.map((label) =>
+  label.replace(/^./, (first) => `[${first.toUpperCase()}${first}]`),
+).join("|");
+
 export interface KinClaim {
   name: string;
   label: string;
@@ -107,16 +129,14 @@ const KIN_CLAIM_PATTERNS: ReadonlyArray<{
 }> = [
   {
     pattern: new RegExp(
-      `\\b([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s+is\\s+my\\s+(${KIN_LABELS.join("|")})\\b`,
-      "i",
+      `\\b([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s+[Ii]s\\s+[Mm]y\\s+(${KIN_LABEL_PATTERN})\\b(?!['’]s\\b)`,
     ),
     nameGroup: 1,
     labelGroup: 2,
   },
   {
     pattern: new RegExp(
-      `\\bthis\\s+is\\s+([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s*,\\s*my\\s+(${KIN_LABELS.join("|")})\\b`,
-      "i",
+      `\\b[Tt]his\\s+[Ii]s\\s+([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s*,\\s*[Mm]y\\s+(${KIN_LABEL_PATTERN})\\b(?!['’]s\\b)`,
     ),
     nameGroup: 1,
     labelGroup: 2,
@@ -126,8 +146,7 @@ const KIN_CLAIM_PATTERNS: ReadonlyArray<{
   // following verb ("my husband Bob just called" → "Bob", not "Bob just").
   {
     pattern: new RegExp(
-      `\\b(?:this\\s+is\\s+)?my\\s+(${KIN_LABELS.join("|")})\\s+([A-Z][A-Za-z'.-]{1,40})\\b`,
-      "i",
+      `\\b(?:[Tt]his\\s+[Ii]s\\s+)?[Mm]y\\s+(${KIN_LABEL_PATTERN})\\s+([A-Z][A-Za-z'.-]{1,40})\\b`,
     ),
     nameGroup: 2,
     labelGroup: 1,
@@ -135,9 +154,9 @@ const KIN_CLAIM_PATTERNS: ReadonlyArray<{
 ];
 
 // Words that a name regex can capture but that never denote a real person.
-// Applied to the captured NAME so a matched-but-invalid candidate (e.g.
-// "this is my wife Jill" matching name="this" via the "<name> is my <label>"
-// pattern) is skipped and the loop continues to a better pattern.
+// Applied to each token of the captured name so a matched-but-invalid
+// candidate (e.g. "this is my wife Jill" matching name="this", or "The
+// update is my husband") is skipped and the loop continues.
 const NAME_STOPWORDS = new Set([
   "this",
   "that",
@@ -165,7 +184,11 @@ export function extractKinClaim(
     if (m?.[nameGroup] && m[labelGroup]) {
       const name = m[nameGroup].replace(/[.,;:!?]+$/, "").trim();
       const label = m[labelGroup].toLowerCase();
-      if (name.length > 0 && !NAME_STOPWORDS.has(name.toLowerCase())) {
+      const nameTokens = name.split(/\s+/);
+      if (
+        name.length > 0 &&
+        nameTokens.every((token) => !NAME_STOPWORDS.has(token.toLowerCase()))
+      ) {
         return { name, label, type: kinTypeForLabel(label) };
       }
     }
@@ -233,6 +256,14 @@ function cleanOrganization(raw: string): string | null {
   );
   if (clauseBreak > 0) cleaned = cleaned.slice(0, clauseBreak).trim();
   cleaned = cleaned.replace(/[.,;:!?]+$/, "").trim();
+  // "I work at Acme today" captures "Acme today". A trailing "today" is not
+  // part of the organization, and it also hides a one-word department
+  // ("accounting today" no longer counts as a single department token).
+  const orgWords = cleaned.split(" ");
+  if (orgWords.length > 1 && orgWords[orgWords.length - 1] === "today") {
+    orgWords.pop();
+    cleaned = orgWords.join(" ");
+  }
   if (cleaned.length < 2) return null;
   if (NAME_STOPWORDS.has(cleaned.toLowerCase())) return null;
   // Cap runaway captures: an org phrase longer than five words is almost

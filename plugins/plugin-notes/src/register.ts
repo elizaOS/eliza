@@ -6,20 +6,26 @@
  * metadata, capabilities, and durable state.
  */
 
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+import { registerAppShellPage } from "@elizaos/ui";
 import { NOTES_SURFACE } from "./surface.js";
 
-registerAppShellPage({
-  id: "notes",
-  pluginId: "@elizaos/plugin-notes",
-  label: "Notes",
-  icon: "StickyNote",
-  path: "/notes",
-  order: 920,
-  viewKind: "release",
-  surface: NOTES_SURFACE,
-  loader: () =>
-    import("./views/NotesPage.tsx").then((module) => ({
-      default: module.NotesPage,
-    })),
-});
+let registered = false;
+
+export function registerNotesApp(): void {
+  if (registered) return;
+  registerAppShellPage({
+    id: "notes",
+    pluginId: "@elizaos/plugin-notes",
+    label: "Notes",
+    icon: "StickyNote",
+    path: "/notes",
+    order: 920,
+    viewKind: "release",
+    surface: NOTES_SURFACE,
+    loader: () =>
+      import("./components/NotesPage.tsx").then((module) => ({
+        default: module.NotesPage,
+      })),
+  });
+  registered = true;
+}

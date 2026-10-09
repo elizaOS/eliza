@@ -1,24 +1,25 @@
 /** Reconciles signed invoice-paid deliveries through current platform provider objects and a single paid-renewal transaction; it never initiates a payment. */
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { dbWrite } from "../../db/helpers";
 import { subscriptionBillingOperationsRepository as operations } from "../../db/repositories/subscription-billing-operations";
 import { subscriptionEntitlementsRepository } from "../../db/repositories/subscription-entitlements";
+import { recordOriginalInvoiceEvent } from "../../db/repositories/subscription-invoice-event-evidence";
 import {
   finalizePaidRenewal,
+  finalizeRecordedPaidRenewal,
   PAID_RENEWAL_DISPOSITION,
 } from "../../db/repositories/subscription-renewal-finalization";
 import { billingSubscriptions } from "../../db/schemas/billing-subscriptions";
 import type { StripeEventMessage } from "../../types/stripe-queue-message";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
-import { renewalInvoiceSchema, renewalUnavailable } from "./stripe-paid-renewal-validation";
-import {
-  resolveSubscriptionPlanDefinition,
-  resolveSubscriptionProviderBinding,
-} from "./subscription-catalog";
+import { assertOrganizationSubscription } from "./organization-subscription-source";
+import { reconcileOrganizationUpgradesBeforeRenewal } from "./organization-upgrade-renewal-ordering";
+import { retrievePaidRenewalObjects } from "./stripe-paid-renewal-objects";
+import { renewalUnavailable } from "./stripe-paid-renewal-validation";
+import { createSubscriptionInvoiceEventEvidence } from "./subscription-invoice-event-evidence";
 
 const eventSchema = z.object({
   id: z.string().regex(/^evt_[A-Za-z0-9]+$/),
@@ -31,10 +32,24 @@ const eventSchema = z.object({
     object: z.object({
       id: z.string().regex(/^in_[A-Za-z0-9]+$/),
       object: z.literal("invoice"),
-      subscription: z.string().regex(/^sub_[A-Za-z0-9]+$/),
+      billing_reason: z.string().optional(),
     }),
   }),
 });
+const subscriptionId = z.string().regex(/^sub_[A-Za-z0-9]+$/);
+/**
+ * Basil and later signed payloads omit `invoice.subscription`; the client is
+ * pinned to Acacia, so the retrieved invoice always carries it (string or
+ * expanded object). The payload only supplies the invoice identity.
+ */
+function invoiceSubscriptionId(invoice: object): string {
+  const value = "subscription" in invoice ? invoice.subscription : undefined;
+  const id =
+    typeof value === "object" && value !== null && "id" in value ? value.id : (value ?? null);
+  const parsed = subscriptionId.safeParse(id);
+  if (!parsed.success) renewalUnavailable("invoice_subscription_unavailable");
+  return parsed.data;
+}
 export async function reconcileStripePaidRenewal(message: StripeEventMessage): Promise<void> {
   const parsed = eventSchema.safeParse(message.event);
   if (!parsed.success) renewalUnavailable("unsupported_event_shape");
@@ -46,17 +61,108 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     message.eventType !== event.type
   )
     renewalUnavailable("event_identity_mismatch");
-  const [source] = await dbWrite
+  const fetchedInvoice = await requireStripe().invoices.retrieve(event.data.object.id);
+  const stripeSubscriptionId = invoiceSubscriptionId(fetchedInvoice);
+  let [source] = await dbWrite
     .select()
     .from(billingSubscriptions)
     .where(
       and(
+        isNull(billingSubscriptions.billing_scope_id),
         eq(billingSubscriptions.provider, "stripe"),
         eq(billingSubscriptions.provider_environment, event.livemode ? "live" : "test"),
-        eq(billingSubscriptions.stripe_subscription_id, event.data.object.subscription),
+        eq(billingSubscriptions.stripe_subscription_id, stripeSubscriptionId),
       ),
     );
-  if (!source) renewalUnavailable("unknown_subscription");
+  if (!source) {
+    const stripe = requireStripe();
+    const invoice = fetchedInvoice;
+    if (invoice.billing_reason !== "subscription_create")
+      renewalUnavailable("unknown_subscription");
+    const sessions = await stripe.checkout.sessions.list({
+      subscription: stripeSubscriptionId,
+      limit: 2,
+    });
+    if (sessions.has_more || sessions.data.length !== 1)
+      renewalUnavailable("initial_checkout_ambiguous");
+    const session = sessions.data[0];
+    if (!session || session.invoice !== invoice.id)
+      renewalUnavailable("initial_checkout_invoice_mismatch");
+    const { reconcileSubscriptionCheckout } = await import("./subscription-checkout");
+    await reconcileSubscriptionCheckout(session.id);
+    return;
+  }
+  assertOrganizationSubscription(source);
+  // The first invoice can arrive after Checkout already published its allowance.
+  if (
+    event.data.object.billing_reason === "subscription_create" ||
+    fetchedInvoice.billing_reason === "subscription_create"
+  ) {
+    const canonicalInvoice = fetchedInvoice;
+    if (canonicalInvoice.billing_reason !== "subscription_create")
+      renewalUnavailable("initial_invoice_reason_mismatch");
+    const sessions = await requireStripe().checkout.sessions.list({
+      subscription: source.stripe_subscription_id,
+      limit: 2,
+    });
+    const session = sessions.data[0];
+    if (
+      sessions.has_more ||
+      sessions.data.length !== 1 ||
+      !session ||
+      session.invoice !== canonicalInvoice.id
+    )
+      renewalUnavailable("initial_checkout_ambiguous");
+    const { reconcileSubscriptionCheckout } = await import("./subscription-checkout");
+    await reconcileSubscriptionCheckout(session.id, source.organization_id);
+    return;
+  }
+  // Preserve authenticated original debit observations before any grant or plan recovery.
+  // Current provider state locates the owner; it must never replace the signed invoice body.
+  const originalBalances = z
+    .object({
+      data: z.object({
+        object: z.object({
+          starting_balance: z.number().optional(),
+          ending_balance: z.number().optional(),
+        }),
+      }),
+    })
+    .safeParse(message.event);
+  const hasDebit = (value: { starting_balance?: number | null; ending_balance?: number | null }) =>
+    (value.starting_balance ?? 0) > 0 || (value.ending_balance ?? 0) > 0;
+  if (
+    hasDebit(fetchedInvoice) ||
+    (originalBalances.success && hasDebit(originalBalances.data.data.object))
+  ) {
+    const providerAccountId = (await requireStripe().accounts.retrieve(null)).id;
+    const observation = createSubscriptionInvoiceEventEvidence(message.event, {
+      organizationId: source.organization_id,
+      subscriptionId: source.id,
+      providerAccountId,
+      customerId: source.stripe_customer_id,
+      providerSubscriptionId: source.stripe_subscription_id,
+      invoiceId: event.data.object.id,
+      providerEventId: event.id,
+      livemode: event.livemode,
+    });
+    await recordOriginalInvoiceEvent(
+      {
+        organizationId: source.organization_id,
+        subscriptionId: source.id,
+        providerEventId: event.id,
+        eventType: event.type,
+        providerObjectType: "invoice",
+        providerObjectId: event.data.object.id,
+        livemode: event.livemode,
+        eventCreatedAt: created,
+        payloadDigest: createHash("sha256").update(JSON.stringify(message.event)).digest("hex"),
+        now: new Date(),
+      },
+      observation,
+    );
+    renewalUnavailable("deferred_invoice_observation_retained");
+  }
   const recorded = await operations.recordEvent({
     organizationId: source.organization_id,
     subscriptionId: source.id,
@@ -74,6 +180,25 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     recorded.value.disposition === PAID_RENEWAL_DISPOSITION
   )
     return;
+  await reconcileOrganizationUpgradesBeforeRenewal({
+    organizationId: source.organization_id,
+    subscriptionId: source.id,
+  });
+  // Recovery can publish the original target. Capture the renewed plan/revision only afterwards.
+  const originalSourceId = source.id;
+  const originalOrganizationId = source.organization_id;
+  [source] = await dbWrite
+    .select()
+    .from(billingSubscriptions)
+    .where(
+      and(
+        eq(billingSubscriptions.id, originalSourceId),
+        eq(billingSubscriptions.organization_id, originalOrganizationId),
+        isNull(billingSubscriptions.billing_scope_id),
+      ),
+    );
+  if (!source) renewalUnavailable("source_unavailable_after_upgrade_recovery");
+  assertOrganizationSubscription(source);
   const lease = {
     organizationId: source.organization_id,
     receiptId: recorded.value.id,
@@ -83,45 +208,22 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     renewalUnavailable("receipt_lease_unavailable");
   try {
     const projection = await subscriptionEntitlementsRepository.find(source.organization_id);
-    const stripe = requireStripe();
-    const invoice = await stripe.invoices.retrieve(event.data.object.id);
-    const invoiceParsed = renewalInvoiceSchema.safeParse(invoice);
-    if (!invoiceParsed.success) renewalUnavailable("unsupported_canonical_invoice");
-    const binding = resolveSubscriptionProviderBinding(
-      getCloudAwareEnv(),
-      source.plan_key,
-      source.catalog_version,
-    );
-    const plan = resolveSubscriptionPlanDefinition(source.plan_key, source.catalog_version);
-    const [subscription, customer, paymentIntent, charge, price, product] = await Promise.all([
-      stripe.subscriptions.retrieve(source.stripe_subscription_id),
-      stripe.customers.retrieve(source.stripe_customer_id),
-      stripe.paymentIntents.retrieve(invoiceParsed.data.payment_intent),
-      stripe.charges.retrieve(invoiceParsed.data.charge),
-      stripe.prices.retrieve(binding.priceId),
-      stripe.products.retrieve(binding.productId),
-    ]);
-    // Archiving a historical price prevents new purchases, not renewal of existing subscriptions.
+    // A distinct delivery of an already-funded invoice needs no current price, schedule or payment reads.
+    // The transaction validates the original invoice, paid revision, grant and this delivery's live lease.
     if (
-      price.id !== binding.priceId ||
-      price.product !== binding.productId ||
-      price.livemode !== binding.expectedLivemode ||
-      price.currency !== "usd" ||
-      price.unit_amount !== plan.amountCents ||
-      price.type !== "recurring" ||
-      price.billing_scheme !== "per_unit" ||
-      price.transform_quantity !== null ||
-      !price.recurring ||
-      price.recurring.interval !== "month" ||
-      price.recurring.interval_count !== 1 ||
-      price.recurring.usage_type !== "licensed" ||
-      price.recurring.trial_period_days !== null ||
-      product.id !== binding.productId ||
-      ("deleted" in product && product.deleted) ||
-      !("livemode" in product) ||
-      product.livemode !== binding.expectedLivemode
+      await finalizeRecordedPaidRenewal({
+        ...lease,
+        subscriptionId: source.id,
+        invoiceId: event.data.object.id,
+        invoice: fetchedInvoice,
+        expectedSubscriptionRevision: source.lifecycle_revision,
+        expectedProjectionRevision: projection?.projection_revision ?? null,
+        providerEventId: event.id,
+        eventCreatedAt: created,
+      })
     )
-      renewalUnavailable("historical_catalog_binding_mismatch");
+      return;
+    const objects = await retrievePaidRenewalObjects(source, event.data.object.id, requireStripe());
     await finalizePaidRenewal({
       ...lease,
       subscriptionId: source.id,
@@ -130,11 +232,7 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
       expectedProjectionRevision: projection?.projection_revision ?? null,
       providerEventId: event.id,
       eventCreatedAt: created,
-      invoice,
-      subscription,
-      customer,
-      paymentIntent,
-      charge,
+      ...objects,
     });
   } catch (error) {
     // error-policy:J2 Release only this delivery's lease and preserve its retryable failure.

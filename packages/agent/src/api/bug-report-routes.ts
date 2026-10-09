@@ -8,14 +8,15 @@
  * opens itself.
  */
 import os from "node:os";
+import { PostBugReportRequestSchema } from "@elizaos/contracts";
 import {
   logger,
-  type RouteRequestContext,
   redactSensitiveText,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { PostBugReportRequestSchema } from "@elizaos/shared";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
+import { sweepExpiredEntries } from "./memory-bounds.ts";
 
 export const DEFAULT_BUG_REPORT_REPO = "elizaOS/eliza";
 export const BUG_REPORT_REPO_ENV_KEY = "ELIZA_BUG_REPORT_REPO";
@@ -78,17 +79,6 @@ function getGithubNewIssueUrl(repo: string): string {
 const BUG_REPORT_WINDOW_MS = 10 * 60 * 1000;
 const BUG_REPORT_MAX_SUBMISSIONS = 5;
 const bugReportAttempts = new Map<string, { count: number; resetAt: number }>();
-
-function sweepExpiredEntries(
-  map: Map<string, { count: number; resetAt: number }>,
-  now: number,
-  threshold: number,
-): void {
-  if (map.size <= threshold) return;
-  for (const [key, value] of map) {
-    if (now > value.resetAt) map.delete(key);
-  }
-}
 
 export function rateLimitBugReport(ip: string | null): boolean {
   const key = ip ?? "unknown";
@@ -340,15 +330,20 @@ async function submitToRemoteBugIntake(
       url?: string;
       accepted?: boolean;
     };
+    // Only an explicit confirmation counts: a missing or false flag leaves
+    // acceptance unknown, so reject instead of reporting fabricated success.
+    if (data.accepted !== true) {
+      throw new Error("Remote intake did not confirm acceptance");
+    }
     return {
-      accepted: data.accepted ?? true,
+      accepted: true,
       id: data.id,
       url: data.url,
       destination: "remote" as const,
     };
   }
 
-  return { accepted: true, destination: "remote" as const };
+  throw new Error("Unexpected response from remote intake");
 }
 
 export async function handleBugReportRoutes(
@@ -452,9 +447,11 @@ export async function handleBugReportRoutes(
 
       const issueData = (await issueRes.json()) as { html_url?: string };
       const url = issueData.html_url;
+      const expectedUrlPrefix =
+        `https://github.com/${bugReportRepo}/issues/`.toLowerCase();
       if (
         typeof url !== "string" ||
-        !url.startsWith(`https://github.com/${bugReportRepo}/issues/`)
+        !url.toLowerCase().startsWith(expectedUrlPrefix)
       ) {
         error(res, "Unexpected response from GitHub API", 502);
         return true;

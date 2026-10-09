@@ -28,10 +28,10 @@ type ViewId =
   | "stream"
   | "character"
   | "wallets"
-  | "knowledge"
+  | "documents"
   | "connectors"
   | "settings"
-  | "triggers"
+  | "automations"
   | "advanced";
 type ViewStateId =
   | "default"
@@ -261,12 +261,12 @@ const views: ViewSpec[] = [
     readyChecks: [{ selector: '[data-testid="settings-sidebar"]' }],
   },
   {
-    id: "triggers",
-    label: "Triggers",
-    path: "/triggers",
+    id: "automations",
+    label: "Automations",
+    path: "/automations",
     shellMode: "native",
-    lastNativeTab: "triggers",
-    readyChecks: [{ text: "New Heartbeat" }],
+    lastNativeTab: "automations",
+    readyChecks: [{ selector: '[data-testid="automations-layout"]' }],
   },
   {
     id: "advanced",

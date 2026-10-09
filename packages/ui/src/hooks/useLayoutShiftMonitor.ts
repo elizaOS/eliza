@@ -26,7 +26,7 @@ import { useEffect } from "react";
 import {
   cumulativeLayoutShift,
   type LayoutShiftSample,
-} from "../testing/layout-stability";
+} from "../perf/layout-stability";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import {
   currentRoute,

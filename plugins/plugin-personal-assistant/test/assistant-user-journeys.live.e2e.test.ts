@@ -15,7 +15,6 @@ import {
   listTriggerTasks,
   type PluginModuleShape,
   readTriggerConfig,
-  resolveOAuthDir,
 } from "@elizaos/agent";
 import {
   AgentRuntime,
@@ -25,16 +24,17 @@ import {
   logger,
   type Memory,
   type Plugin,
+  resolveOAuthDir,
   type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../packages/app/test/helpers/conditional-tests.ts";
 import {
   saveEnv,
   sleep,
   withTimeout,
-} from "../../../packages/app-core/test/helpers/test-utils";
+} from "../../../packages/app/test/helpers/test-utils";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,

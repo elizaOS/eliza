@@ -17,9 +17,9 @@
  * AGENT_APP_ORIGIN is absent or invalid rather than exposing the OAuth code.
  */
 
+import { normalizePostMessageTargetOrigin } from "@elizaos/cloud-shared/lib/services/agent-github-return";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { normalizePostMessageTargetOrigin } from "@/lib/services/agent-github-return";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

@@ -21,6 +21,145 @@ export interface AgentBackupCatalogWorkerComposition {
   runCycle(signal?: AbortSignal): Promise<AgentBackupCatalogRuntimeSummary>;
 }
 
+/** Closed names for the cycle stages a daemon may report without values. */
+export type AgentBackupCatalogCycleStage =
+  | "catalog-runtime"
+  | "account-deletion-authority"
+  | "restore-coordinator";
+
+const CYCLE_STAGES: ReadonlySet<string> = new Set<AgentBackupCatalogCycleStage>([
+  "catalog-runtime",
+  "account-deletion-authority",
+  "restore-coordinator",
+]);
+
+/**
+ * Attributes a cycle failure to one closed stage name. The original failure is
+ * retained only as `cause`; the message never reflects its text.
+ */
+export class AgentBackupCatalogCycleStageError extends Error {
+  readonly stage: AgentBackupCatalogCycleStage;
+
+  constructor(stage: AgentBackupCatalogCycleStage, cause: unknown) {
+    super(`Backup catalogue ${stage} stage failed`, { cause });
+    this.name = "AgentBackupCatalogCycleStageError";
+    this.stage = stage;
+  }
+}
+
+/**
+ * Value-free failure classification: stage, error class names, stable
+ * machine codes (SQLSTATE, Node/TLS, typed application codes), and an HTTP
+ * status. Messages, queries, parameters, hosts, buckets, keys, and provider
+ * text are never read.
+ */
+export interface AgentBackupCatalogCycleFailureDiagnostic {
+  stage: AgentBackupCatalogCycleStage | "unclassified";
+  errorClasses: readonly string[];
+  codes: readonly string[];
+  httpStatus: number | null;
+}
+
+const MAX_DIAGNOSTIC_CAUSE_DEPTH = 8;
+const DIAGNOSTIC_CLASS_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/;
+const DIAGNOSTIC_CODE_PATTERN = /^[A-Z0-9][A-Z0-9_]{1,63}$/;
+
+function ownDataValue(value: unknown, property: string): unknown {
+  if (!value || (typeof value !== "object" && typeof value !== "function")) return undefined;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(value, property);
+    return descriptor && "value" in descriptor ? descriptor.value : undefined;
+  } catch {
+    // error-policy:J1 hostile thrown values (e.g. revoked proxies) become
+    // absent metadata; getters are never invoked.
+    return undefined;
+  }
+}
+
+function diagnosticClassName(value: unknown): string {
+  if (!value || (typeof value !== "object" && typeof value !== "function")) {
+    return "NonErrorValue";
+  }
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    const constructor = ownDataValue(prototype, "constructor");
+    const name = ownDataValue(constructor, "name");
+    return typeof name === "string" && DIAGNOSTIC_CLASS_PATTERN.test(name) ? name : "Unnamed";
+  } catch {
+    // error-policy:J1 an unreadable prototype is reported as a closed label.
+    return "Unnamed";
+  }
+}
+
+function diagnosticHttpStatus(value: unknown): number | null {
+  const candidates = [
+    ownDataValue(ownDataValue(value, "$metadata"), "httpStatusCode"),
+    ownDataValue(value, "statusCode"),
+  ];
+  for (const candidate of candidates) {
+    if (
+      typeof candidate === "number" &&
+      Number.isInteger(candidate) &&
+      candidate >= 100 &&
+      candidate <= 599
+    ) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/** Classify a cycle failure without reflecting any message or provider value. */
+export function agentBackupCatalogCycleFailureDiagnostic(
+  error: unknown,
+): AgentBackupCatalogCycleFailureDiagnostic {
+  let stage: AgentBackupCatalogCycleFailureDiagnostic["stage"] = "unclassified";
+  const errorClasses: string[] = [];
+  const codes: string[] = [];
+  let httpStatus: number | null = null;
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  for (let depth = 0; depth < MAX_DIAGNOSTIC_CAUSE_DEPTH; depth += 1) {
+    if (current === undefined || current === null || seen.has(current)) break;
+    seen.add(current);
+    errorClasses.push(diagnosticClassName(current));
+    const candidateStage = ownDataValue(current, "stage");
+    if (
+      stage === "unclassified" &&
+      typeof candidateStage === "string" &&
+      CYCLE_STAGES.has(candidateStage)
+    ) {
+      stage = candidateStage as AgentBackupCatalogCycleStage;
+    }
+    const code = ownDataValue(current, "code");
+    if (typeof code === "string" && DIAGNOSTIC_CODE_PATTERN.test(code) && !codes.includes(code)) {
+      codes.push(code);
+    }
+    httpStatus ??= diagnosticHttpStatus(current);
+    current = ownDataValue(current, "cause");
+  }
+  return Object.freeze({
+    stage,
+    errorClasses: Object.freeze(errorClasses),
+    codes: Object.freeze(codes),
+    httpStatus,
+  });
+}
+
+/** Run one stage, attributing any failure to its closed stage name. */
+export async function runAgentBackupCatalogCycleStage<T>(
+  stage: AgentBackupCatalogCycleStage,
+  run: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    // error-policy:J1 fail closed: rethrow with the original failure as cause
+    // so the daemon boundary can report which stage failed.
+    throw new AgentBackupCatalogCycleStageError(stage, error);
+  }
+}
+
 export interface AgentBackupCatalogWorkerEnabledCompositionModule {
   createAgentBackupCatalogWorkerEnabledComposition(input: {
     env: NodeJS.ProcessEnv;

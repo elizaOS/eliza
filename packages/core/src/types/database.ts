@@ -23,8 +23,15 @@ import type {
 	PairingRequest,
 	PairingRequestQuery,
 } from "./pairing";
-import type { JsonValue, Metadata, UUID } from "./primitives";
-import type { Task } from "./task";
+import type { Content, JsonValue, Metadata, UUID } from "./primitives";
+import type { Task, TaskMetadataPatch } from "./task";
+
+/** A vector is valid only for this exact persisted source snapshot. */
+export interface MemoryEmbeddingUpdate {
+	id: UUID;
+	embedding: number[];
+	expected: { agentId: UUID; entityId: UUID; roomId: UUID; text: string };
+}
 
 /**
  * One ranked hit from {@link IDatabaseAdapter.searchMessages}. `ftsRank` is the
@@ -39,6 +46,89 @@ export interface MessageSearchHit {
 	ftsRank: number;
 	trigramSimilarity: number;
 }
+
+/** Selects one immutable source stored under a message parent. */
+export interface MessageContentSourceSelector {
+	kind: "message-text" | "attachment-text";
+	attachmentIdHash?: string;
+}
+
+/** Storage-enforced bounded read that reauthorizes its parent on every call. */
+export interface MessageContentRangeReadParams {
+	agentId: UUID;
+	messageId: UUID;
+	authorizedRoomId: UUID;
+	accessContext: AccessContext;
+	source: MessageContentSourceSelector;
+	offset: number;
+	limit: number;
+	expectedRevision?: string;
+}
+
+export interface MessageContentRangePage {
+	text: string;
+	start: number;
+	end: number;
+	total: number;
+	revision: string;
+	sourceSha256: string;
+	sliceSha256: string;
+	returnedSegments: number;
+	returnedBytes: number;
+	sourceQueryCount: number;
+}
+
+export type MessageContentRangeReadResult =
+	| { status: "ok"; parent: Memory; page: MessageContentRangePage }
+	| { status: "inline"; parent: Memory; text: string }
+	| { status: "not_found" }
+	| { status: "forbidden" };
+
+/** Atomic manifest-last create or compare-and-swap parent-content replacement. */
+export type MessageContentPublicationParams =
+	| {
+			mode: "create";
+			parent: Memory & { id: UUID };
+			segments: Memory[];
+	  }
+	| {
+			mode: "replace";
+			agentId: UUID;
+			messageId: UUID;
+			expectedContent: Content;
+			replacementContent: Content;
+			segments: Memory[];
+			removeSegmentIds: UUID[];
+	  };
+
+export type MessageContentPublicationResult =
+	| {
+			status: "created" | "updated";
+			parent: Memory;
+			removedSegmentIds: UUID[];
+	  }
+	| { status: "not_found" | "conflict" };
+
+/** One immutable row that must exist before an atomic head becomes visible. */
+export interface AtomicMemoryDependency {
+	memory: Memory;
+	tableName: string;
+}
+
+/**
+ * Atomically inserts immutable dependencies and publishes a mutable head with
+ * compare-and-swap semantics. `expectedRevision: null` means the head must not
+ * exist; otherwise the stored head metadata must carry that exact revision.
+ */
+export interface AtomicMemoryPublicationParams {
+	head: AtomicMemoryDependency;
+	dependencies: AtomicMemoryDependency[];
+	expectedRevision: string | null;
+}
+
+export type AtomicMemoryPublicationResult =
+	| { status: "published"; head: Memory }
+	| { status: "conflict" };
 
 /**
  * Stable newest-first cursor for document-list pagination. New cursors carry
@@ -95,6 +185,8 @@ export interface DocumentListQueryParams extends DocumentRequesterContext {
 	timeRangeStart?: number;
 	timeRangeEnd?: number;
 	tags?: string[];
+	/** Restrict the storage scan to documents explicitly pinned for provider context. */
+	pinnedOnly?: boolean;
 }
 
 /** Authorized single-document lookup. */
@@ -102,27 +194,27 @@ export interface DocumentGetQueryParams extends DocumentRequesterContext {
 	documentId: UUID;
 }
 
-/** Exact unit used by an authorized document read. */
-export type DocumentRangeUnit = "line" | "fragment";
+/** Exact unit used by an authorized bounded document read. */
+export type DocumentRangeUnit = "line" | "fragment" | "byte";
 
 /**
- * Authorized document read. Offsets and caller-requested limits count exact
- * retained line or paragraph-like fragment units, never JavaScript string code
- * units. Omitting `limit` returns the complete remainder of the source.
+ * Authorized bounded document read. Offsets and limits count exact retained
+ * line or paragraph-like fragment units, never JavaScript string code units.
  */
 export interface DocumentRangeReadParams extends DocumentRequesterContext {
 	documentId: UUID;
 	unit: DocumentRangeUnit;
 	offset: number;
-	limit?: number;
+	limit: number;
 }
 
 /**
- * Source projection returned by a native adapter. The source
+ * Bounded source projection returned by a native adapter. The source
  * fingerprint is an adapter-internal change detector and must be wrapped in an
  * opaque public revision before it leaves DocumentService.
  */
 export interface DocumentRangeReadResult {
+	unit: DocumentRangeUnit;
 	text: string;
 	start: number;
 	end: number;
@@ -130,6 +222,10 @@ export interface DocumentRangeReadResult {
 	documentRevision: number;
 	revisionAttemptId?: string;
 	sourceFingerprint: string;
+	examinedSourceSegments: number;
+	sourceQueryCount: number;
+	returnedSourceSegments: number;
+	returnedSourceBytes: number;
 }
 
 /**
@@ -152,6 +248,8 @@ export interface DocumentFragmentQueryParams extends DocumentRequesterContext {
  * adapters compare them in the same statement that writes or deletes.
  */
 export interface DocumentMutationSnapshot {
+	/** Exact persisted pin state fences metadata edits independently of content revisions. */
+	pinState?: string;
 	scope: DocumentListScope;
 	roomId: UUID;
 	entityId: UUID;
@@ -197,7 +295,7 @@ export interface DocumentDeleteParams extends DocumentRequesterContext {
 
 /**
  * Durable audit row committed in the SAME adapter transaction as an
- * authorization-role write (#23100). A committed role change must never be
+ * authorization-role write. A committed role change must never be
  * separable from its audit record, so the audit insert rides the CAS
  * transaction rather than a follow-up `createLogs` call.
  */
@@ -218,7 +316,7 @@ export interface RoleWriteAuditRecord {
 
 /**
  * Compare-and-swap replacement of a world's whole `metadata` JSON under the
- * exact prior snapshot (#23100 role-write atomicity). Mirrors the document
+ * exact prior snapshot. Mirrors the document
  * mutation contract: the adapter compares `expectedMetadata` against the
  * stored value in the same transaction that writes `replacementMetadata`,
  * commits the audit row only on success, and reports a typed conflict so a
@@ -730,32 +828,25 @@ export interface AgentRunSummaryResult {
 }
 
 /**
- * Interface for database operations.
- *
- * **Design: Batch-First CRUD**
- *
- * All create/read-by-ID/update/delete methods accept and return arrays.
- * This is intentional and non-negotiable for adapter implementations.
- *
- * WHY: elizaOS agents process events that frequently touch multiple DB rows
- * in a single tick -- load entity + room, store memory + log, clean up tasks.
- * Under the old single-item API, each was a separate round-trip. At scale
- * (multiple agents, concurrent conversations), this saturated connection pools
- * and made network latency the bottleneck. Batch methods let SQL adapters use
- * `IN (...)` clauses, multi-row inserts, and transactions -- actual DB-level
- * batching instead of application-level loops.
- *
- * Single-item convenience wrappers (e.g. `getAgent(id)`) live on `AgentRuntime`
- * and `IAgentRuntime`, NOT here. They delegate to batch methods internally.
- * This keeps the adapter contract simple: implement batch, get single-item free.
- *
- * **Query methods** (complex filter params, not ID lookups) remain singular because
- * batching `searchMemories` would mean "run N different searches" -- a fundamentally
- * different operation than "look up N items by their IDs."
- *
- * See DATABASE_BATCH_API.md for the full design rationale and migration guide.
+ * Optional durable records in the adapter's own agent database. Domain plugins
+ * own their namespace and schema versions; transactions serialize all callers,
+ * remain atomic across awaits and reject overlapping nested scopes. Records
+ * are trusted plugin data, not an authorization boundary or raw SQL executor.
  */
+export interface DurableRecordStore {
+	readonly version: 1;
+	readonly agentId: UUID;
+	transaction<T>(operation: () => Promise<T>): Promise<T>;
+	get<T>(namespace: string, key: string): Promise<T | null>;
+	getAll<T>(namespace: string): Promise<T[]>;
+	set<T>(namespace: string, key: string, value: T): Promise<void>;
+	delete(namespace: string, key: string): Promise<boolean>;
+}
+
+/** Database adapters implement batch CRUD; runtime wrappers provide single-item convenience methods. Filtered queries remain individual operations and must enforce authorization before ordering or pagination. */
 export interface IDatabaseAdapter<DB extends object = object> {
+	/** Optional transactional domain records in this same agent database. */
+	readonly recordStore?: DurableRecordStore;
 	/** Database instance */
 	db: DB;
 
@@ -853,9 +944,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * Returning UUID[] suggests creation, which is misleading for updates.
 	 *
 	 * IMPLEMENTATION NOTES:
-	 * - PostgreSQL: INSERT ... ON CONFLICT (id) DO UPDATE SET ...
-	 * - MySQL: INSERT ... ON DUPLICATE KEY UPDATE ...
-	 * - InMemory: map.has(id) ? map.set(id, merged) : map.set(id, agent)
+	 * - PostgreSQL: INSERT... ON CONFLICT (id) DO UPDATE SET...
+	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE...
+	 * - InMemory: map.has(id) ? map.set(id, merged): map.set(id, agent)
 	 *
 	 * @param agents Agents to upsert (ID is required for each)
 	 */
@@ -885,6 +976,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
 	ensureEmbeddingDimension(dimension: number): Promise<void>;
 
+	/** Select an explicit vector representation and return source memories needing re-embedding. */
+	ensureEmbeddingSpace?(spaceId: string): Promise<UUID[]>;
+
 	/**
 	 * Delete every stored embedding whose vector width does not match the
 	 * currently-active embedding dimension, returning the ids of the memories
@@ -905,8 +999,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * EXAMPLE: Create entity + its components atomically:
 	 * ```
 	 * await adapter.transaction(async (tx) => {
-	 *   await tx.createEntities([entity]);
-	 *   await tx.createComponents(components);
+	 * await tx.createEntities([entity]);
+	 * await tx.createComponents(components);
 	 * });
 	 * ```
 	 *
@@ -920,13 +1014,24 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 *
 	 * @param callback Function that receives a transactional adapter proxy
 	 * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), runs callback under RLS for this entity.
-	 *        WHY optional: System paths (migrations, boot, admin) run without a user entity; required would break them.
+	 * WHY optional: System paths (migrations, boot, admin) run without a user entity; required would break them.
 	 * @returns Promise resolving to callback's return value
 	 * @throws Error if any operation in the callback fails (SQL: rolls back, InMemory: does NOT)
 	 */
 	transaction<T>(
 		callback: (tx: IDatabaseAdapter<DB>) => Promise<T>,
 		options?: { entityContext?: UUID },
+	): Promise<T>;
+
+	/**
+	 * Runs a trusted lifecycle operation with a separate agent-bound adapter.
+	 * Must retain the connection's tenant/entity authority and leave the caller's
+	 * scope unchanged. Single-agent stores may reject a different agent id.
+	 * The callback must not close or retain the temporary adapter.
+	 */
+	withAgentScope?<T>(
+		agentId: UUID,
+		callback: (scoped: IDatabaseAdapter<DB>) => Promise<T>,
 	): Promise<T>;
 
 	/** Get entities for multiple rooms (one entry per roomId, same order). */
@@ -952,8 +1057,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * new IDs - they're idempotent operations where the ID is the lookup key.
 	 *
 	 * IMPLEMENTATION NOTES:
-	 * - PostgreSQL: INSERT ... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, ...
-	 * - MySQL: INSERT ... ON DUPLICATE KEY UPDATE name = VALUES(name), ...
+	 * - PostgreSQL: INSERT... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name,...
+	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE name = VALUES(name),...
 	 * - InMemory: entities.set(id, merged)
 	 * - Conflict resolution: Last write wins (update all fields from input)
 	 *
@@ -1022,10 +1127,10 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * - int_spartan.ts: master registry becomes unnecessary
 	 *
 	 * TWO-QUERY APPROACH (critical for correctness):
-	 * 1. Query 1: SELECT DISTINCT entity_id FROM components WHERE ... LIMIT N
+	 * 1. Query 1: SELECT DISTINCT entity_id FROM components WHERE... LIMIT N
 	 * 2. Query 2: SELECT entities.*, components.* WHERE entity_id IN (...)
 	 *
-	 * WHY two queries: A single SELECT DISTINCT ... JOIN ... LIMIT can return fewer
+	 * WHY two queries: A single SELECT DISTINCT... JOIN... LIMIT can return fewer
 	 * than LIMIT entities if entities have multiple components (DISTINCT dedupes AFTER
 	 * LIMIT). Two queries ensures LIMIT applies to entity count, not row count.
 	 *
@@ -1046,7 +1151,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * @param params.limit Non-negative safe-integer maximum (applies to distinct entities, not rows)
 	 * @param params.offset Non-negative safe-integer count to skip for pagination
 	 * @param params.includeAllComponents If false (default): return only matched component type.
-	 *                                     If true: return all components for matched entities.
+	 * If true: return all components for matched entities.
 	 * @returns Entities with their components (filtered by includeAllComponents)
 	 */
 	queryEntities(params: {
@@ -1116,11 +1221,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * - Do NOT update: createdAt (preserve original timestamp)
 	 *
 	 * IMPLEMENTATION NOTES:
-	 * - PostgreSQL: INSERT ... ON CONFLICT (entity_id, type, world_id, source_entity_id)
-	 *   DO UPDATE SET data = EXCLUDED.data, ...
-	 *   Requires unique_component_natural_key constraint with NULLS NOT DISTINCT
-	 * - MySQL: INSERT ... ON DUPLICATE KEY UPDATE data = VALUES(data), ...
-	 *   Requires UNIQUE KEY on (entity_id, type, world_id, source_entity_id)
+	 * - PostgreSQL: INSERT... ON CONFLICT (entity_id, type, world_id, source_entity_id)
+	 * DO UPDATE SET data = EXCLUDED.data,...
+	 * Requires unique_component_natural_key constraint with NULLS NOT DISTINCT
+	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE data = VALUES(data),...
+	 * Requires UNIQUE KEY on (entity_id, type, world_id, source_entity_id)
 	 * - InMemory: Find by natural key, update if found, insert if not
 	 *
 	 * TRAP: If input contains duplicate natural keys, dedupe first (last-wins).
@@ -1144,25 +1249,10 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		options?: { entityContext?: UUID },
 	): Promise<void>;
 
-	/**
-	 * Get memories matching criteria
-	 *
-	 * WHY metadata parameter: Eliminates the "fetch 50K rows, filter in JS" antipattern
-	 * seen in the legacy knowledge implementation. Database-level JSON filtering is 50-100x faster:
-	 * - PostgreSQL: Uses GIN-indexed @> operator on jsonb columns
-	 * - MySQL: Uses JSON_CONTAINS() function
-	 * - InMemory: Deep equality check (less efficient but correct)
-	 *
-	 * WHY limit/offset: Standard pagination naming (limit = max results, offset = skip N).
-	 *
-	 * @param params.metadata Filter by metadata fields (partial object match)
-	 * @param params.limit Max results to return
-	 * @param params.offset Skip first N results for pagination
-	 * @param params.cursor Exclusive keyset cursor in the requested order. When
-	 * provided, results start strictly after `(createdAt, id)` and `offset` must
-	 * not be used. This keeps multi-query scans stable when earlier rows mutate.
-	 * @param params.tableName Memory type/table (required)
-	 */
+	/** Complete distinct memory-type inventory for this adapter's agent; used by trusted exports. */
+	listMemoryTypes?(): Promise<string[]>;
+
+	/** Queries memories with storage-side metadata filtering. An exclusive (createdAt, id) cursor cannot be combined with offset; authorization precedes pagination. */
 	getMemories(params: {
 		entityId?: UUID;
 		/** Restrict returned rows by author while `entityId` remains the RLS principal. */
@@ -1213,16 +1303,10 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
 
-	/**
-	 * Required native document-store contract. Version 4 covers canonical
-	 * visibility for list/lookup/search plus atomic revision replacement. Adapter
-	 * authors migrating from version 2 must implement all six methods; there is
-	 * deliberately no bounded compatibility scan because it cannot preserve
-	 * authorization, counts, or pagination guarantees.
-	 */
+	/** Required document-store v4 contract: authorized list/lookup/search, atomic revision replacement, and compare-and-swap mutations. A bounded fallback scan cannot preserve authorization, counts, or pagination. */
 	readonly documentListQueryCapability: 4;
-	/** Native source projection with optional caller-requested pagination. */
-	readonly documentRangeReadCapability?: 1;
+	/** Native bounded source projection; absent adapters must fail explicitly. */
+	readonly documentRangeReadCapability?: 1 | 2;
 	queryDocuments(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult>;
@@ -1249,7 +1333,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	/**
 	 * Atomic compare-and-swap replacement of a world's whole metadata under the
 	 * exact prior snapshot, committing the audit row in the same transaction
-	 * (#23100 role-write atomicity). Authorization role writes MUST go through
+	 *. Authorization role writes MUST go through
 	 * this operation and fail closed when an adapter omits the optional
 	 * capability; they never fall back to a blind `updateWorlds` overwrite.
 	 */
@@ -1259,6 +1343,15 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
 	getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
 
+	/** Native immutable MESSAGE/ATTACHMENT source storage and bounded reads. */
+	readonly messageContentSegmentCapability?: 1;
+	publishMessageContentSegments?(
+		params: MessageContentPublicationParams,
+	): Promise<MessageContentPublicationResult>;
+	readMessageContentRange?(
+		params: MessageContentRangeReadParams,
+	): Promise<MessageContentRangeReadResult>;
+
 	/**
 	 * Full-text + trigram message search across a set of rooms, ranked
 	 * corpus-wide (not truncated by recency before ranking). SQL adapters run a
@@ -1267,7 +1360,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * apply the same folded-token semantics in JS. Rows come back ranked:
 	 * `ftsRank` desc, then `trigramSimilarity` desc, then recency, so multi-word
 	 * non-adjacent queries and hits older than any recency window are both found
-	 * and correctly ordered (#13534).
+	 * and correctly ordered.
 	 */
 	searchMessages(params: {
 		roomIds: UUID[];
@@ -1381,8 +1474,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		entityId?: UUID;
 	}): Promise<AgentRunSummaryResult>;
 
+	/** Adapters own retrieval and optional query reranking. Scope and paginate
+	 * vector candidates before reranking; retain semantic-only candidates. */
 	searchMemories(params: {
 		embedding: number[];
+		/** Omit returned vectors when only message content and scores are needed. */
+		includeEmbedding?: boolean;
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
@@ -1391,6 +1488,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		tableName: string;
 		query?: string;
 		roomId?: UUID;
+		/** Exclude these rooms before vector ranking and pagination. */
+		excludeRoomIds?: UUID[];
 		worldId?: UUID;
 		entityId?: UUID;
 		/**
@@ -1418,6 +1517,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]>;
+
+	/** Optional first-party atomic dependency publication capability. */
+	compareAndSwapMemoryPublication?(
+		params: AtomicMemoryPublicationParams,
+	): Promise<AtomicMemoryPublicationResult>;
 	/**
 	 * Batch update memories
 	 *
@@ -1426,17 +1530,21 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * processing after a failed update. Now failures are exceptional, not expected.
 	 *
 	 * WHY batch: SQL adapters use CASE expressions for single UPDATE statement:
-	 *   UPDATE memories SET content = CASE
-	 *     WHEN id = $1 THEN $2
-	 *     WHEN id = $3 THEN $4
-	 *     ...
-	 *   WHERE id IN ($1, $3, ...)
+	 * UPDATE memories SET content = CASE
+	 * WHEN id = $1 THEN $2
+	 * WHEN id = $3 THEN $4
+	 *...
+	 * WHERE id IN ($1, $3,...)
 	 *
 	 * @throws Error if any update fails (transaction rolls back)
 	 */
 	updateMemories(
 		memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
 	): Promise<void>;
+	/** Atomically compare source identity/text and persist its vector. False means
+	 * the source changed or was deleted; no write occurred. Never implement with
+	 * an unprotected read followed by updateMemories. */
+	updateMemoryEmbedding(update: MemoryEmbeddingUpdate): Promise<boolean>;
 	deleteMemories(memoryIds: UUID[]): Promise<void>;
 
 	/**
@@ -1505,8 +1613,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * UUIDs based on world name/type). No need to return IDs.
 	 *
 	 * IMPLEMENTATION NOTES:
-	 * - PostgreSQL: INSERT ... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, ...
-	 * - MySQL: INSERT ... ON DUPLICATE KEY UPDATE name = VALUES(name), ...
+	 * - PostgreSQL: INSERT... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name,...
+	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE name = VALUES(name),...
 	 * - InMemory: worlds.set(id, world)
 	 *
 	 * @param worlds Worlds to upsert (ID required for each)
@@ -1556,8 +1664,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * is often deterministic (hash of participant IDs). No need to return IDs.
 	 *
 	 * IMPLEMENTATION NOTES:
-	 * - PostgreSQL: INSERT ... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, ...
-	 * - MySQL: INSERT ... ON DUPLICATE KEY UPDATE name = VALUES(name), ...
+	 * - PostgreSQL: INSERT... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name,...
+	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE name = VALUES(name),...
 	 * - InMemory: rooms.set(id, room)
 	 * - Partial updates: Full replacement (all fields updated)
 	 *
@@ -1676,20 +1784,18 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	getCaches<T>(keys: string[]): Promise<Map<string, T>>;
 	setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean>;
 	deleteCaches(keys: string[]): Promise<boolean>;
+	/** Atomically insert when expected is undefined, otherwise replace only an
+	 * equal JSON value. Null is a stored value, not absence. False means conflict;
+	 * storage failures throw and must never be retried as ordinary conflicts.
+	 */
+	compareAndSetCache<T>(
+		key: string,
+		expected: unknown,
+		replacement: T,
+	): Promise<boolean>;
 
 	// Only task instance methods - definitions are in-memory
-	/**
-	 * Get tasks matching criteria
-	 *
-	 * WHY limit/offset added: Previously returned ALL matching tasks, which could
-	 * be thousands of records. Task queues grow unbounded over time, causing:
-	 * - Memory exhaustion when loading full queue
-	 * - Slow queries without limits
-	 * - UI freeze when rendering thousands of tasks
-	 *
-	 * @param params.limit Max results (default: unlimited, use with caution)
-	 * @param params.offset Skip first N results for pagination
-	 */
+	/** Queries tasks with optional limit and offset. Omitted limit is unbounded. */
 	getTasks(params: {
 		roomId?: UUID;
 		worldId?: UUID;
@@ -1708,12 +1814,17 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	// getTasksByName() are query methods (filter by room, tags, name).
 	createTasks(tasks: Task[]): Promise<UUID[]>;
 	getTasksByIds(taskIds: UUID[]): Promise<Task[]>;
-	/**
-	 * Atomically updates a queued task only while its lifecycle status is
-	 * pending (or absent for legacy rows). The queue tag and status predicate
-	 * are evaluated by storage in the same mutation that applies `task`.
-	 */
+	/** Atomically updates a queued task only while status is pending or absent. Storage evaluates the queue tag and lifecycle predicate in the same mutation. */
 	updatePendingTask?(id: UUID, task: Partial<Task>): Promise<boolean>;
+	/**
+	 * Atomically merges `patch.set` into the task's metadata and removes
+	 * `patch.unset` keys in the same storage mutation. Returns false when no
+	 * task matched. Adapters without an atomic merge leave this undefined and
+	 * callers fall back to a whole-metadata update.
+	 */
+	/** True only for atomic earliest wake + revision-conditional consumption. */
+	supportsAtomicTaskWake?: boolean;
+	patchTaskMetadata?(id: UUID, patch: TaskMetadataPatch): Promise<boolean>;
 	updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>;
 	deleteTasks(taskIds: UUID[]): Promise<void>;
 
@@ -1866,8 +1977,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * if (!store) throw new Error('Plugin storage not available');
 	 *
 	 * const goals = await store.query<Goal>('goals', {
-	 *   agentId: runtime.agentId,
-	 *   isCompleted: false
+	 * agentId: runtime.agentId,
+	 * isCompleted: false
 	 * });
 	 * ```
 	 */
@@ -1979,8 +2090,8 @@ export interface MemorySearchParams extends StandardMemoryOptions {
  * ```typescript
  * // In a PostgreSQL adapter:
  * interface PgConnection extends DbConnection {
- *   pool: Pool;
- *   query: <T>(sql: string, params?: unknown[]) => Promise<T>;
+ * pool: Pool;
+ * query: <T>(sql: string, params?: unknown[]) => Promise<T>;
  * }
  * ```
  */

@@ -61,7 +61,10 @@ test.describe("monetization permissioning", () => {
         amount: 25,
       },
     );
-    expect([403, 404], "cross-org withdraw denied").toContain(withdraw.status);
+    // Withdrawals are retired for everyone (#23022): 410 before any app lookup.
+    expect([403, 404, 410], "cross-org withdraw denied").toContain(
+      withdraw.status,
+    );
 
     const monetize = await attacker(
       "PUT",
@@ -115,8 +118,8 @@ test.describe("monetization permissioning", () => {
     });
     expect(
       withSecret.status,
-      "cron with the correct secret is authorized (no approved redemptions → no-op 200)",
-    ).toBe(200);
+      "cron with the correct secret is authorized but payouts are retired (#23022)",
+    ).toBe(410);
   });
 
   test("bootstrap-callback is reachable past the gate and governed by its own secret", async ({

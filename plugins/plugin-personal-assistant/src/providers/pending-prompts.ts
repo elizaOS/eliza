@@ -17,7 +17,6 @@
  * Open prompts retained `expiresAt + reopenWindowHours` (default 24h).
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -25,12 +24,12 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { hasRoleAccess, logger } from "@elizaos/core";
 import {
   type PendingPrompt,
   type PendingPromptsStore,
   resolvePendingPromptsStore,
-} from "../lifeops/pending-prompts/store.js";
+} from "@elizaos/plugin-assistant";
 
 export type { PendingPrompt };
 
@@ -96,7 +95,7 @@ export const pendingPromptsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return EMPTY;
     }
     const roomId = typeof message.roomId === "string" ? message.roomId : null;

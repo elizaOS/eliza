@@ -8,6 +8,7 @@
 import type { BrowserWorker } from "@cloudflare/playwright";
 import type { Context } from "hono";
 import type { KvNamespaceLike } from "../lib/cache/adapters/kv-cache-adapter";
+import type { CloudflareEmbeddingBinding } from "../lib/providers/cloudflare-embeddings";
 import type { RuntimeR2Bucket } from "../lib/storage/r2-runtime-binding";
 
 export interface RuntimeRateLimitBinding {
@@ -23,13 +24,15 @@ export interface RuntimeDurableObjectNamespace {
 }
 
 export interface Bindings {
-  /** Registered Outreachr app, narrow BFF client secret digest, and exact hosted origin. */
-  OUTREACHR_APP_ID?: string;
-  OUTREACHR_CLIENT_SECRET_SHA256?: string;
-  OUTREACHR_ORIGIN?: string;
-  OUTREACHR_STRIPE_SOL_PRICE?: string;
-  OUTREACHR_STRIPE_ASTRA_PRICE?: string;
-  OUTREACHR_STRIPE_WEBHOOK_SECRET?: string;
+  /** Explicit per-turn Network context; absent disables the integration. */
+  NETWORK_SHARED_ENABLED?: string;
+  /** Private server-owned Network HTTP service binding; no public fetch fallback. */
+  NETWORK_MEMBERSHIP?: import("../lib/services/shared-runtime/network-membership-client").NetworkMembershipFetcher;
+  NETWORK_MEMBERSHIP_SERVER_TOKEN?: string;
+  /** Trusted execution environment for app inference; must match the registered app client mode. */
+  APP_INFERENCE_EXECUTION_ENVIRONMENT?: "test" | "live";
+  /** Inactive by default: reviewed server-owned owner/room capture policy JSON. */
+  SHARED_OWNER_MODEL_CAPTURE_POLICY?: string;
   // ---- Deployment environment ----
   /**
    * Wrangler environment name (`"production"` | `"staging"`); unset in local
@@ -91,6 +94,12 @@ export interface Bindings {
   // ---- Cloudflare R2 ----
   /** Object storage for voice samples, avatars, and other binary blobs. */
   BLOB: RuntimeR2Bucket;
+  /**
+   * Optional dedicated PRIVATE bucket for recorded model-call payloads. `BLOB`
+   * has a public host and is never used for them; without this binding the
+   * encrypted payloads stay inline in Postgres.
+   */
+  TRAJECTORY_BLOB?: RuntimeR2Bucket;
 
   // ---- Cloudflare KV (Worker cache backend) ----
   /**
@@ -144,7 +153,11 @@ export interface Bindings {
   MOBILE_API_KEY_INGRESS_LIMITER?: RuntimeRateLimitBinding;
 
   // ---- Cloudflare Registrar/DNS ----
+  /** Native Workers AI binding for the canonical BGE CLS embedding representation. */
+  AI?: CloudflareEmbeddingBinding;
   CLOUDFLARE_ACCOUNT_ID?: string;
+  /** Workers AI credential for the canonical BGE embedding model. */
+  CLOUDFLARE_EMBEDDING_API_TOKEN?: string;
   CLOUDFLARE_API_TOKEN?: string;
   ELIZA_CF_REGISTRAR_DEV_STUB?: string;
 
@@ -334,10 +347,13 @@ export interface Bindings {
    * below 1024 are ignored.
    */
   SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES?: string;
-  LLM_TRAJECTORY_STORAGE?: string;
+  /** `on` / `off`; unset = off in production, on elsewhere. */
+  LLM_TRAJECTORY_CAPTURE?: string;
+  /** Days recorded model calls are kept (default 90). */
+  LLM_TRAJECTORY_RETENTION_DAYS?: string;
 
   // ---- First-party login ----
-  /** Authoritative base URL of the owned @elizaos/login service. */
+  /** Authoritative base URL of the owned @elizaos/auth service. */
   LOGIN_API_URL?: string;
   /** Legacy upstream binding accepted during deployment migration. */
   STEWARD_API_URL?: string;
@@ -432,9 +448,21 @@ export interface Bindings {
 
   // ---- Stripe ----
   STRIPE_SECRET_KEY?: string;
+  /** Browser-safe key returned with in-app subscription checkout; pk_live_ only in production, else pk_test_. */
+  STRIPE_PUBLISHABLE_KEY?: string;
   /** Explicit approved per-revision notice dispatches; omission leaves durable notices policy-unavailable. */
   SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON?: string;
+  /** Explicit default app billing mode; live is accepted only in production. */
+  APP_BILLING_ENVIRONMENT?: "test" | "live";
+  /** Trusted hosted UI origin used for server-built billing and onboarding returns. */
+  APP_BILLING_UI_ORIGIN?: string;
+  /** Optional separate test key for sandbox app registrations in production. */
+  STRIPE_TEST_SECRET_KEY?: string;
+  /** Server-owned organization allowed to register the first-party platform merchant. */
+  STRIPE_PLATFORM_BILLING_ORGANIZATION_ID?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  /** Signing secret for app billing test-mode events when production also serves test registrations. */
+  STRIPE_TEST_WEBHOOK_SECRET?: string;
   /**
    * Test-only Stripe-compatible loopback origin. The Stripe client accepts it
    * only under the explicit CLOUD_E2E + NODE_ENV=test gates and never in prod.
@@ -610,6 +638,13 @@ export interface Bindings {
   INFERENCE_AUTH_CACHE_ENABLED?: string;
   /** Strong Durable Object boundary required before positive auth caching can activate. */
   INFERENCE_STRONG_REVOCATION_ENABLED?: string;
+  /**
+   * "true" serves warm Worker admission from the published admission snapshot:
+   * no policy or dispatch-policy transaction runs before provider dispatch. The
+   * organization Durable Object fences the snapshot's policy generation and
+   * balance revision. Requires INFERENCE_DEFERRED_ADMISSION.
+   */
+  INFERENCE_SNAPSHOT_ADMISSION_ENABLED?: string;
   // Pass-through streaming fast path (#15428): "true" pipes qualifying
   // streamed chat completions (OpenAI-compatible direct upstream, no
   // tools/response_format/web-search) byte-for-byte from the provider instead

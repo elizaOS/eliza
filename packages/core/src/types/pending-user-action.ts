@@ -1,15 +1,6 @@
 /**
- * Pending user-action types — the canonical "the agent is waiting on you" shape.
- *
- * elizaOS grew several overlapping abstractions for "needs a human response":
- * task-based approvals (`ApprovalService`), the LifeOps approval queue, pending
- * planner prompts, and in-chat credential requests. Each surfaced through a
- * different path with no shared contract, so there was no single inbox a client
- * could render. `PendingUserAction` is that shared contract: every source maps
- * its own shape onto this one interface, and consumers (a needs-attention UI,
- * the home-attention ranker, a provider) read only this. See #9449 (Pillar C).
- *
- * Leaf producers map FROM their own state TO this type; they never reshape it.
+ * Read-model contracts for user actions blocking agent progress. Hosts route each kind to
+ * its owning approval, prompt, or credential workflow.
  */
 
 import type { JsonValue, UUID } from "./primitives.ts";

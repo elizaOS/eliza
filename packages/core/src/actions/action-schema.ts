@@ -1,16 +1,24 @@
-/**
- * Converts an Action's `parameters` contract (the `ActionParameter[]` /
- * `ActionParameterSchema` shape) into JSON Schema. Emits a local `JsonSchema`
- * type for tool-calling and normalizes it to the core `JSONSchema` from
- * `types/model.ts` that the runtime's grammar / structured-output plumbing
- * (GBNF, planner grammar) speaks. Tolerates legacy parameter shapes (`enum` /
- * `enumValues` / `options`, `required` as a boolean or a name list,
- * `defaultValue`). Consumed by `to-tool.ts` (planner / tool definitions) and
- * `validate-tool-args.ts`.
- */
-import type { Action, ActionParameter, ActionParameterSchema } from "../types";
+/** Converts action parameters into tool JSON Schema. Accepts declared enum, enumValues, options, required, and defaultValue representations. */
+import { ElizaError } from "../errors";
+import type {
+	Action,
+	ActionParameter,
+	ActionParameterSchema,
+} from "../types/components.js";
 import type { JSONSchema } from "../types/model";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
+
+/** Pure unions may carry descriptions and parent-required markers only. */
+export function untypedUnionConstraintKeys(schema: object): string[] {
+	return Object.entries(schema)
+		.filter(
+			([key, value]) =>
+				value !== undefined &&
+				!["type", "anyOf", "oneOf", "description"].includes(key) &&
+				!(key === "required" && typeof value === "boolean"),
+		)
+		.map(([key]) => key);
+}
 
 export type JsonSchemaPrimitiveType =
 	| "string"
@@ -18,12 +26,13 @@ export type JsonSchemaPrimitiveType =
 	| "integer"
 	| "boolean"
 	| "object"
-	| "array";
+	| "array"
+	| "null";
 
 export interface JsonSchema {
 	type?: JsonSchemaPrimitiveType;
 	description?: string;
-	enum?: Array<string | number | boolean>;
+	enum?: Array<string | number | boolean | null>;
 	default?: unknown;
 	properties?: Record<string, JsonSchema>;
 	required?: string[];
@@ -33,6 +42,7 @@ export interface JsonSchema {
 	maximum?: number;
 	minLength?: number;
 	maxLength?: number;
+	maxItems?: number;
 	pattern?: string;
 	oneOf?: JsonSchema[];
 	anyOf?: JsonSchema[];
@@ -52,6 +62,7 @@ const SUPPORTED_SCHEMA_TYPES = new Set<string>([
 	"boolean",
 	"object",
 	"array",
+	"null",
 ]);
 
 type LegacyActionParameterSchema = Omit<
@@ -67,7 +78,7 @@ type LegacyActionParameterSchema = Omit<
 
 function readEnumValues(
 	source: ActionParameter | ActionParameterSchema,
-): Array<string | number | boolean> | undefined {
+): Array<string | number | boolean | null> | undefined {
 	const schema: LegacyActionParameterSchema =
 		"schema" in source ? source.schema : source;
 	const candidates = [
@@ -87,7 +98,8 @@ function readEnumValues(
 				if (
 					typeof entry === "string" ||
 					typeof entry === "number" ||
-					typeof entry === "boolean"
+					typeof entry === "boolean" ||
+					entry === null
 				) {
 					return entry;
 				}
@@ -96,7 +108,8 @@ function readEnumValues(
 					if (
 						typeof value === "string" ||
 						typeof value === "number" ||
-						typeof value === "boolean"
+						typeof value === "boolean" ||
+						value === null
 					) {
 						return value;
 					}
@@ -104,7 +117,8 @@ function readEnumValues(
 				return undefined;
 			})
 			.filter(
-				(entry): entry is string | number | boolean => entry !== undefined,
+				(entry): entry is string | number | boolean | null =>
+					entry !== undefined,
 			);
 
 		if (values.length > 0) {
@@ -168,37 +182,45 @@ export function actionParameterSchemaToJsonSchema(
 		options.description,
 	);
 
-	if (schema.anyOf?.length) {
-		return {
-			...(descriptionFromSchema ? { description: descriptionFromSchema } : {}),
-			anyOf: schema.anyOf.map((branch, index) =>
+	const unionSchema: JsonSchema = {};
+	for (const keyword of ["anyOf", "oneOf"] as const) {
+		if (schema[keyword]?.length) {
+			unionSchema[keyword] = schema[keyword].map((branch, index) =>
 				actionParameterSchemaToJsonSchema(branch, {
-					path: `${path}.anyOf[${index}]`,
+					path: `${path}.${keyword}[${index}]`,
 				}),
-			),
-		};
+			);
+		}
 	}
-
-	if (schema.oneOf?.length) {
-		return {
-			...(descriptionFromSchema ? { description: descriptionFromSchema } : {}),
-			oneOf: schema.oneOf.map((branch, index) =>
-				actionParameterSchemaToJsonSchema(branch, {
-					path: `${path}.oneOf[${index}]`,
-				}),
-			),
-		};
-	}
-
 	const schemaType = schema.type;
-	if (!schemaType) {
+	if (!schemaType && !unionSchema.anyOf && !unionSchema.oneOf) {
 		throw new Error(
 			`Action parameter schema at '${path}' must include a 'type' or use 'oneOf' / 'anyOf'`,
 		);
 	}
+	if (!schemaType) {
+		const unsupported = untypedUnionConstraintKeys(schema);
+		if (options.enumValues?.length) unsupported.push("enumValues");
+		if (unsupported.length)
+			throw new ElizaError(
+				`Union schema at '${path}' needs an explicit type for sibling constraints: ${unsupported.join(", ")}. Put constraints in each applicable typed branch or declare the common type.`,
+				{
+					code: "ACTION_SCHEMA_UNTYPED_UNION_CONSTRAINT",
+					context: { path, constraints: unsupported },
+				},
+			);
+		return {
+			...unionSchema,
+			...(descriptionFromSchema ? { description: descriptionFromSchema } : {}),
+		};
+	}
 	assertSupportedSchemaType(schemaType, path);
 
-	const jsonSchema: JsonSchema = { type: schemaType };
+	// A union is an additional constraint, not a replacement for its siblings.
+	const jsonSchema: JsonSchema = {
+		...unionSchema,
+		type: schemaType,
+	};
 	const description = descriptionFromSchema;
 	if (description) {
 		jsonSchema.description = description;
@@ -206,10 +228,11 @@ export function actionParameterSchemaToJsonSchema(
 
 	const enumValues =
 		options.enumValues?.filter(
-			(entry): entry is string | number | boolean =>
+			(entry): entry is string | number | boolean | null =>
 				typeof entry === "string" ||
 				typeof entry === "number" ||
-				typeof entry === "boolean",
+				typeof entry === "boolean" ||
+				entry === null,
 		) ?? readEnumValues(schema);
 	if (enumValues && enumValues.length > 0) {
 		jsonSchema.enum = enumValues;
@@ -344,9 +367,8 @@ export function actionToJsonSchema(action: Action): ActionParametersJsonSchema {
 	});
 }
 
-// ---------------------------------------------------------------------------
 // Normalization to the core `JSONSchema` shape
-// ---------------------------------------------------------------------------
+
 //
 // `actionToJsonSchema` emits the LOCAL `JsonSchema` type (defined above). The
 // runtime's grammar / structured-output plumbing speaks the core `JSONSchema`
@@ -370,6 +392,7 @@ function jsonSchemaFromLocal(local: JsonSchema): JSONSchema {
 	if (local.maximum !== undefined) out.maximum = local.maximum;
 	if (local.minLength !== undefined) out.minLength = local.minLength;
 	if (local.maxLength !== undefined) out.maxLength = local.maxLength;
+	if (local.maxItems !== undefined) out.maxItems = local.maxItems;
 	if (local.pattern !== undefined) out.pattern = local.pattern;
 	if (local.required !== undefined) out.required = local.required;
 	if (local.properties) {

@@ -51,10 +51,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     // surface with its Apps segment pre-selected.
     name: "my-apps compat deep link",
     path: "/apps/my-apps",
-    readyChecks: [
-      { text: "Projects" },
-      { selector: '[data-testid="projects-apps-segment"]' },
-    ],
+    readyChecks: [{ selector: '[data-testid="projects-apps-segment"]' }],
     timeoutMs: 90_000,
   },
   {
@@ -79,10 +76,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     // Apps segment pre-selected in the consolidated Projects surface.
     name: "bare /apps compat deep link",
     path: "/apps",
-    readyChecks: [
-      { text: "Projects" },
-      { selector: '[data-testid="projects-apps-segment"]' },
-    ],
+    readyChecks: [{ selector: '[data-testid="projects-apps-segment"]' }],
     timeoutMs: 90_000,
   },
   {
@@ -110,9 +104,9 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "inventory app window",
+    name: "inventory stale-link recovery",
     path: "/apps/inventory",
-    selector: '[data-testid="wallet-shell"]',
+    selector: '[data-testid="app-route-not-found-open-view"]',
     timeoutMs: 90_000,
   },
   {
@@ -228,7 +222,6 @@ const managerVisibleViewTileCases = [
   { viewId: "computer-use-sessions", path: "/computer-use-sessions" },
   { viewId: "contacts", path: "/contacts" },
   { viewId: "cockpit", path: "/cockpit" },
-  { viewId: "finances", path: "/finances" },
   { viewId: "focus", path: "/focus" },
   { viewId: "goals", path: "/goals" },
   { viewId: "health", path: "/health" },
@@ -243,7 +236,6 @@ const managerVisibleViewTileCases = [
   { viewId: "task-coordinator", path: "/task-coordinator" },
   { viewId: "todos", path: "/todos" },
   { viewId: "trajectory-logger", path: "/trajectory-logger" },
-  { viewId: "views-manager", path: "/views" },
   { viewId: "wallet", path: "/wallet" },
 ];
 

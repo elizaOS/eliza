@@ -8,22 +8,26 @@
  * description cache (keyed on the same hash), and only a compact served URL —
  * never raw base64 — lands in the message record or the agent's context.
  *
- * The sha256 filename is an unguessable capability, so media is served before
- * the auth gate (like static assets); `<img>`/`<audio>` requests carry no auth
- * header. `serveMediaFile` only ever serves names matching the strict
- * content-addressed pattern from the dedicated media directory.
+ * The sha256 filename is an unguessable capability, so on ordinary hosts media
+ * is served before the auth gate (like static assets); `<img>`/`<audio>`
+ * requests carry no auth header. Under the protected profile
+ * (`isMediaAuthRequired`) a capability URL is not enough: media is served only
+ * after the auth gate, where same-origin `<img>`/`<audio>` GETs authenticate
+ * with the session cookie. `serveMediaFile` only ever serves names matching
+ * the strict content-addressed pattern from the dedicated media directory.
  */
-
 import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
 import {
+  ElizaError,
+  logger,
   MAX_CHAT_MEDIA_BASE64_BYTES,
   MAX_CHAT_MEDIA_RAW_BYTES,
-} from "@elizaos/shared/chat-upload-limits";
-import { resolveStateDir } from "../config/paths.ts";
+  resolveStateDir,
+} from "@elizaos/core";
+import { isProtectedProfileSelected } from "../security/protected-profile-state.ts";
 import { generateThumbnailBytes } from "./media-thumbnail.ts";
 
 const EXT_BY_MIME: Record<string, string> = {
@@ -55,7 +59,6 @@ const EXT_BY_MIME: Record<string, string> = {
   "text/markdown": "md",
   "application/json": "json",
 };
-
 const MIME_BY_EXT: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -84,19 +87,15 @@ const MIME_BY_EXT: Record<string, string> = {
   json: "application/json; charset=utf-8",
   bin: "application/octet-stream",
 };
-
 /** Strict content-addressed name: 64-hex sha256 + short alphanumeric extension. */
 const MEDIA_FILE_NAME = /^[a-f0-9]{64}\.[a-z0-9]{1,8}$/;
 const PRIVATE_MEDIA_FILE_NAME =
   /^[a-f0-9]{64}\.private-[a-f0-9]{16}\.[a-z0-9]{1,8}$/;
-
 /** Validate the only filename shape accepted by the content-addressed store. */
 export function isValidStoredMediaFileName(fileName: string): boolean {
   return MEDIA_FILE_NAME.test(fileName);
 }
-
 const MEDIA_URL_PREFIX = "/api/media/";
-
 /**
  * Matches served media URLs embedded in free text (e.g. a message body that
  * re-shares an image by pasting its capability URL). Shared by the export
@@ -104,7 +103,6 @@ const MEDIA_URL_PREFIX = "/api/media/";
  * text reference; matches are re-validated through `mediaFileNameFromUrl`.
  */
 export const MEDIA_URL_IN_TEXT_RE = /\/api\/media\/[a-f0-9]{64}\.[a-z0-9]+/gi;
-
 /**
  * MIME types that are safe to render inline in a browser context. Everything
  * else — notably `image/svg+xml`, `application/pdf`, `text/html`, and
@@ -124,7 +122,6 @@ export function isInlineSafeMime(mime: string): boolean {
     m.startsWith("video/")
   );
 }
-
 /**
  * Sniff the leading bytes for active XML/HTML markup. Returns the TRUE dangerous
  * mime when the content is SVG or HTML, else null. Used to reconcile a declared
@@ -166,7 +163,6 @@ export function sniffMarkupMime(buffer: Buffer): string | null {
   }
   return null;
 }
-
 /**
  * Build the security headers for a served media response. Always sets
  * `X-Content-Type-Options: nosniff` (so a mislabelled image is never sniffed to
@@ -188,9 +184,7 @@ function mediaSecurityHeaders(
       "default-src 'none'; style-src 'unsafe-inline'; sandbox",
   };
 }
-
 let cachedMediaDir: string | null = null;
-
 function mediaDir(): string {
   const dir = path.join(resolveStateDir(), "media");
   if (cachedMediaDir !== dir) {
@@ -199,22 +193,29 @@ function mediaDir(): string {
   fs.mkdirSync(cachedMediaDir, { recursive: true });
   return cachedMediaDir;
 }
-
 function extForMime(mimeType: string): string {
   return EXT_BY_MIME[mimeType.trim().toLowerCase()] ?? "bin";
 }
-
+function effectiveMediaMime(
+  declaredMime: string,
+  leadingBytes: Buffer,
+): string {
+  if (!isInlineSafeMime(declaredMime)) return declaredMime;
+  const sniffed = sniffMarkupMime(leadingBytes);
+  if (!sniffed) return declaredMime;
+  logger.warn(
+    `[media-store] declared ${declaredMime} but content sniffed as ${sniffed}; storing as ${sniffed} (served as download)`,
+  );
+  return sniffed;
+}
 // ---------------------------------------------------------------------------
 // Size-capped eviction
 // ---------------------------------------------------------------------------
-
 export const DEFAULT_MEDIA_STORE_MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
-const EVICT_INTERVAL_MS = 30_000;
+const EVICT_INTERVAL_MS = 30000;
 let lastEvictAt = 0;
-
 /** Complete positive decimal: reject `1e9`, `8abc`, hex, leading zeros, fractions. */
 const CANONICAL_POSITIVE_DECIMAL = /^[1-9]\d*$/;
-
 /**
  * Resolve `ELIZA_MEDIA_STORE_MAX_BYTES`. Unset/empty/invalid tokens keep the
  * 2 GiB default so a silent `Number.parseInt("1e9") === 1` cannot evict the
@@ -233,17 +234,14 @@ export function resolveMediaStoreMaxBytes(raw: string | undefined): number {
   }
   return parsed;
 }
-
 function maxStoreBytes(): number {
   return resolveMediaStoreMaxBytes(process.env.ELIZA_MEDIA_STORE_MAX_BYTES);
 }
-
 export interface MediaFileStat {
   name: string;
   size: number;
   mtimeMs: number;
 }
-
 /**
  * Pure eviction policy: given the current files and a byte cap, return the
  * names to delete (oldest-by-mtime first) so the store drops to 90% of the
@@ -270,7 +268,6 @@ export function selectMediaToEvict(
   }
   return evict;
 }
-
 /**
  * Best-effort FIFO eviction so the local media store never grows without
  * bound. Throttled to once per {@link EVICT_INTERVAL_MS}; when the directory
@@ -316,13 +313,10 @@ function maybeEvict(): void {
     // housekeeping throttled off the write path; a failed scan must not fail
     // the write that triggered it. Surfaced via warn.
     logger.warn(
-      `[media-store] eviction scan failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[media-store] eviction scan failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
-
 export interface PersistedMedia {
   /** Served URL (`/api/media/<sha256>.<ext>`) for the stored bytes. */
   url: string;
@@ -330,12 +324,10 @@ export interface PersistedMedia {
   hash: string;
   fileName: string;
 }
-
 export interface PersistedPrivateMedia {
   hash: string;
   fileName: string;
 }
-
 /**
  * Persist sensitive bytes in the canonical media directory under a filename
  * shape the pre-authenticated `/api/media` route deliberately rejects.
@@ -350,10 +342,9 @@ export function persistPrivateMediaBytes(
   const nonce = crypto.randomBytes(8).toString("hex");
   const fileName = `${hash}.private-${nonce}.${extForMime(mimeType)}`;
   const filePath = path.join(mediaDir(), fileName);
-  if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, buffer);
+  writeMediaFileAtomic(filePath, buffer);
   return { hash, fileName };
 }
-
 /** Read private media bytes; public media names and traversal are rejected. */
 export function readPrivateMediaBytes(fileName: string): Buffer | null {
   if (!PRIVATE_MEDIA_FILE_NAME.test(fileName)) return null;
@@ -363,7 +354,6 @@ export function readPrivateMediaBytes(fileName: string): Buffer | null {
   }
   return fs.readFileSync(filePath);
 }
-
 /** Delete private media bytes after expiry, revocation, or single-use access. */
 export function deletePrivateMediaFile(fileName: string): boolean {
   if (!PRIVATE_MEDIA_FILE_NAME.test(fileName)) return false;
@@ -374,7 +364,28 @@ export function deletePrivateMediaFile(fileName: string): boolean {
   fs.unlinkSync(filePath);
   return true;
 }
-
+/**
+ * Write a media file so its final name is only ever observed complete: bytes go
+ * to a private `.pending-*` sibling that is renamed into place. An existing file
+ * of the right size is kept; one of the wrong size (an interrupted earlier
+ * write) is replaced. Returns whether the file was written.
+ */
+function writeMediaFileAtomic(filePath: string, bytes: Buffer): boolean {
+  const existing = fs.statSync(filePath, { throwIfNoEntry: false });
+  if (existing?.isFile() && existing.size === bytes.byteLength) return false;
+  const pendingPath = path.join(
+    path.dirname(filePath),
+    `.pending-${crypto.randomUUID()}`,
+  );
+  try {
+    fs.writeFileSync(pendingPath, bytes, { flag: "wx", mode: 0o600 });
+    fs.renameSync(pendingPath, filePath);
+  } catch (err) {
+    fs.rmSync(pendingPath, { force: true });
+    throw err;
+  }
+  return true;
+}
 /** Write bytes to the content-addressed store (idempotent) and return the served URL. */
 export function persistMediaBytes(
   buffer: Buffer,
@@ -384,26 +395,117 @@ export function persistMediaBytes(
   // markup (SVG/HTML), so the store records the truthful type and the serve path
   // forces an attachment download instead of inline rendering. Truthful active
   // types declared up front are left as-is (still served as attachments).
-  let effectiveMime = mimeType;
-  if (isInlineSafeMime(mimeType)) {
-    const sniffed = sniffMarkupMime(buffer);
-    if (sniffed) {
-      logger.warn(
-        `[media-store] declared ${mimeType} but content sniffed as ${sniffed}; storing as ${sniffed} (served as download)`,
-      );
-      effectiveMime = sniffed;
-    }
-  }
+  const effectiveMime = effectiveMediaMime(mimeType, buffer.subarray(0, 512));
   const hash = crypto.createHash("sha256").update(buffer).digest("hex");
   const fileName = `${hash}.${extForMime(effectiveMime)}`;
   const filePath = path.join(mediaDir(), fileName);
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, buffer);
-    maybeEvict();
-  }
+  if (writeMediaFileAtomic(filePath, buffer)) maybeEvict();
   return { url: `${MEDIA_URL_PREFIX}${fileName}`, hash, fileName };
 }
-
+/**
+ * Stream bytes into the canonical media store without retaining the complete
+ * attachment in memory. The pending file is private and becomes visible only
+ * after its content identity and truthful extension are known.
+ */
+export async function persistMediaStream(
+  chunks: AsyncIterable<Uint8Array>,
+  mimeType: string,
+): Promise<PersistedMedia> {
+  const root = mediaDir();
+  const pendingPath = path.join(root, `.pending-${crypto.randomUUID()}`);
+  const handle = await fs.promises.open(pendingPath, "wx", 0o600);
+  const digest = crypto.createHash("sha256");
+  const sniffChunks: Buffer[] = [];
+  let sniffBytes = 0;
+  let writeOffset = 0;
+  let handleClosed = false;
+  let finalized = false;
+  try {
+    for await (const value of chunks) {
+      if (!(value instanceof Uint8Array)) {
+        throw new TypeError("media stream chunks must be Uint8Array values");
+      }
+      if (value.byteLength === 0) continue;
+      const chunk = Buffer.from(
+        value.buffer,
+        value.byteOffset,
+        value.byteLength,
+      );
+      digest.update(chunk);
+      let chunkOffset = 0;
+      while (chunkOffset < chunk.byteLength) {
+        const result = await handle.write(
+          chunk,
+          chunkOffset,
+          chunk.byteLength - chunkOffset,
+          writeOffset,
+        );
+        if (result.bytesWritten === 0) {
+          throw new Error("media stream write made no progress");
+        }
+        chunkOffset += result.bytesWritten;
+        writeOffset += result.bytesWritten;
+      }
+      if (sniffBytes < 512) {
+        const retained = chunk.subarray(0, 512 - sniffBytes);
+        sniffChunks.push(Buffer.from(retained));
+        sniffBytes += retained.byteLength;
+      }
+    }
+    await handle.sync();
+    await handle.close();
+    handleClosed = true;
+    const hash = digest.digest("hex");
+    const effectiveMime = effectiveMediaMime(
+      mimeType,
+      Buffer.concat(sniffChunks, sniffBytes),
+    );
+    const fileName = `${hash}.${extForMime(effectiveMime)}`;
+    const filePath = path.join(root, fileName);
+    try {
+      await fs.promises.link(pendingPath, filePath);
+    } catch (error) {
+      // error-policy:J3 EEXIST is an explicit content-addressed dedup result.
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    await fs.promises.unlink(pendingPath);
+    finalized = true;
+    maybeEvict();
+    return { url: `${MEDIA_URL_PREFIX}${fileName}`, hash, fileName };
+  } catch (cause) {
+    // error-policy:J2 stream publication failure remains distinct from absence.
+    throw new ElizaError("media stream persistence failed", {
+      code: "MEDIA_STORE_WRITE_FAILED",
+      cause,
+      context: { mimeType },
+    });
+  } finally {
+    if (!handleClosed) {
+      try {
+        await handle.close();
+      } catch (error) {
+        // error-policy:J6 cleanup is best effort after the primary result is fixed.
+        logger.debug(
+          { error },
+          "[media-store] pending stream handle close failed",
+        );
+      }
+    }
+    if (!finalized) {
+      await fs.promises
+        .unlink(pendingPath)
+        .catch((error: NodeJS.ErrnoException) => {
+          // error-policy:J6 failed-publication cleanup ignores only absence.
+          if (error.code !== "ENOENT") {
+            logger.warn(
+              { error },
+              "[media-store] failed to remove pending stream artifact",
+            );
+          }
+        });
+    }
+  }
+}
 /**
  * Read a stored media file's raw bytes by its `<sha256>.<ext>` name, or null if
  * absent. Only the strict content-addressed name pattern is accepted — anything
@@ -431,7 +533,63 @@ export function readStoredMediaBytes(fileName: string): Buffer | null {
     });
   }
 }
-
+export interface StoredMediaByteRange {
+  bytes: Buffer;
+  start: number;
+  end: number;
+  total: number;
+  complete: boolean;
+}
+/** Read at most 64 KiB from one content-addressed media object without loading its parent. */
+export function readStoredMediaByteRange(
+  fileName: string,
+  offset: number,
+  limit: number,
+): StoredMediaByteRange | null {
+  if (
+    !MEDIA_FILE_NAME.test(fileName) ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > 64 * 1024
+  ) {
+    return null;
+  }
+  const root = mediaDir();
+  const filePath = path.join(root, fileName);
+  if (path.dirname(filePath) !== root || !fs.existsSync(filePath)) return null;
+  let descriptor: number | undefined;
+  try {
+    descriptor = fs.openSync(
+      filePath,
+      fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0),
+    );
+    const stat = fs.fstatSync(descriptor);
+    if (!stat.isFile() || stat.nlink !== 1) return null;
+    const start = Math.min(offset, stat.size);
+    const length = Math.min(limit, stat.size - start);
+    const bytes = Buffer.allocUnsafe(length);
+    const bytesRead = fs.readSync(descriptor, bytes, 0, length, start);
+    const end = start + bytesRead;
+    return {
+      bytes: bytes.subarray(0, bytesRead),
+      start,
+      end,
+      total: stat.size,
+      complete: end >= stat.size,
+    };
+  } catch (err) {
+    // error-policy:J2 context-adding rethrow — range I/O failure is not absence.
+    throw new ElizaError(`media range read failed for ${fileName}`, {
+      code: "MEDIA_STORE_READ_FAILED",
+      cause: err,
+      context: { fileName, offset, limit },
+    });
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+}
 /**
  * Write raw bytes to a stored media file by its `<sha256>.<ext>` name (the name
  * is the content hash, so this is idempotent). Only the strict content-addressed
@@ -449,7 +607,7 @@ export function writeStoredMediaFile(fileName: string, bytes: Buffer): boolean {
   if (path.dirname(filePath) !== mediaDir()) return false;
   try {
     fs.mkdirSync(mediaDir(), { recursive: true });
-    if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, bytes);
+    writeMediaFileAtomic(filePath, bytes);
     return true;
   } catch (err) {
     // error-policy:J2 context-adding rethrow — a failed restore write is data
@@ -461,7 +619,6 @@ export function writeStoredMediaFile(fileName: string, bytes: Buffer): boolean {
     });
   }
 }
-
 /**
  * Content-integrity check for a stored media file: the store is content-addressed
  * (`<sha256>.<ext>`, the sha256 of the bytes — see how filenames are minted
@@ -481,14 +638,12 @@ export function storedMediaContentMatchesName(
   const actual = crypto.createHash("sha256").update(bytes).digest("hex");
   return actual === expected;
 }
-
 // Header (everything between `data:` and the first comma) + payload. The
 // header is parsed token-wise below because RFC 2397 allows media-type
 // parameters before the `;base64` flag (`data:text/plain;charset=utf-8;base64,…`)
 // — a regex that only accepted `mime(;base64)?,` silently rejected those
 // valid URLs, so their raw base64 stayed inline in the message record.
 const DATA_URL_RE = /^data:([^,]*),([\s\S]*)$/;
-
 /** Persist a `data:` URL's bytes to the store; returns null for non-data URLs. */
 export function persistDataUrl(dataUrl: string): PersistedMedia | null {
   const match = DATA_URL_RE.exec(dataUrl.trim());
@@ -517,19 +672,16 @@ export function persistDataUrl(dataUrl: string): PersistedMedia | null {
   if (buffer.length > MAX_CHAT_MEDIA_RAW_BYTES) return null;
   return persistMediaBytes(buffer, mimeType);
 }
-
 /** True when a URL already points at this store (no need to re-persist). */
 export function isStoredMediaUrl(url: string): boolean {
   return url.startsWith(MEDIA_URL_PREFIX);
 }
-
 /** Extract the stored filename (`<sha256>.<ext>`) from a served media URL, else null. */
 export function mediaFileNameFromUrl(url: string): string | null {
   if (typeof url !== "string" || !url.startsWith(MEDIA_URL_PREFIX)) return null;
   const name = url.slice(MEDIA_URL_PREFIX.length).split(/[?#]/)[0] ?? "";
   return MEDIA_FILE_NAME.test(name) ? name : null;
 }
-
 // ── Background-wallpaper pins ────────────────────────────────────────────────
 // The active wallpaper (generated or uploaded via the background routes) is
 // referenced only from the CLIENT's persisted config — no message or document
@@ -538,15 +690,12 @@ export function mediaFileNameFromUrl(url: string): string | null {
 // append-only exemption list the GC unions into its reference set: not a
 // refcount engine, just a named "still in use" ledger for the one media class
 // with no server-side referent. Capped so replaced wallpapers eventually GC.
-
 const BACKGROUND_PINS_FILE = "background-pins.json";
 /** Keep the last N wallpapers pinned — covers the 10-deep client undo history. */
 const MAX_BACKGROUND_PINS = 12;
-
 function backgroundPinsPath(): string {
   return path.join(mediaDir(), BACKGROUND_PINS_FILE);
 }
-
 /** Stored filenames (`<sha256>.<ext>`) of pinned wallpapers, newest last. */
 export function readBackgroundPins(): string[] {
   try {
@@ -565,7 +714,6 @@ export function readBackgroundPins(): string[] {
     return [];
   }
 }
-
 /** Pin a served wallpaper URL so the orphan GC never collects it. */
 export function pinBackgroundMedia(url: string): void {
   const name = mediaFileNameFromUrl(url);
@@ -581,17 +729,13 @@ export function pinBackgroundMedia(url: string): void {
     // error-policy:J6 best-effort — the pin ledger is a GC hint, not a source of
     // truth; a failed write only risks an early GC of a replaced wallpaper.
     logger.warn(
-      `[media-store] could not pin background media ${name}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[media-store] could not pin background media ${name}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
-
 // Orphan GC grace: never delete files younger than this, so media that was just
 // persisted but not yet referenced by a saved message (or just served) survives.
 const GC_MIN_AGE_MS = 60 * 60 * 1000;
-
 /**
  * Delete stored media files not referenced by any live attachment. `referenced`
  * is the set of `<sha256>.<ext>` filenames still in use (built from message
@@ -628,9 +772,7 @@ export function gcUnreferencedMedia(referenced: Set<string>): {
     // error-policy:J6 best-effort — orphan GC is opportunistic housekeeping; a
     // failed directory scan must not fail the caller. Surfaced via warn.
     logger.warn(
-      `[media-store] GC scan failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[media-store] GC scan failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
   if (removed > 0) {
@@ -640,12 +782,10 @@ export function gcUnreferencedMedia(referenced: Set<string>): {
   }
   return { removed, scanned };
 }
-
 function mimeForFile(fileName: string): string {
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "bin";
   return MIME_BY_EXT[ext] ?? "application/octet-stream";
 }
-
 /** Mime type a stored `<sha256>.<ext>` name serves as (derived, no index). */
 export function mimeForStoredMediaFile(fileName: string): string {
   if (!isValidStoredMediaFileName(fileName)) {
@@ -656,14 +796,12 @@ export function mimeForStoredMediaFile(fileName: string): string {
   }
   return mimeForFile(fileName);
 }
-
 /** True when a validated content-addressed name exists in the one media store. */
 export function storedMediaFileExists(fileName: string): boolean {
   if (!isValidStoredMediaFileName(fileName)) return false;
   const filePath = path.join(mediaDir(), fileName);
   return fs.existsSync(filePath);
 }
-
 export interface MediaFileInfo {
   fileName: string;
   url: string;
@@ -672,7 +810,6 @@ export interface MediaFileInfo {
   size: number;
   createdAt: number;
 }
-
 /**
  * List every stored media file with derived metadata (size, mime, mtime) for
  * the Files surface. Read-only directory scan; never throws (returns [] on
@@ -706,14 +843,11 @@ export function listMediaFiles(): MediaFileInfo[] {
     // an empty list when the store dir is unreadable rather than erroring the
     // whole dashboard; the failure is surfaced via warn.
     logger.warn(
-      `[media-store] list failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[media-store] list failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
   return out;
 }
-
 /**
  * Delete a stored media file by its strict content-addressed name. Returns true
  * when removed. Validates the name + dir to defend against traversal.
@@ -741,13 +875,11 @@ export function deleteMediaFile(fileName: string): boolean {
     });
   }
 }
-
 // Touch-on-serve → LRU: bump the file's mtime when it's served so eviction
 // (oldest-mtime-first) keeps frequently-viewed media and drops the truly cold
 // files. Throttled per file so a burst of range requests doesn't thrash the fs.
-const TOUCH_THROTTLE_MS = 60_000;
+const TOUCH_THROTTLE_MS = 60000;
 const lastTouchedAt = new Map<string, number>();
-
 function touchOnServe(filePath: string): void {
   const now = Date.now();
   if (now - (lastTouchedAt.get(filePath) ?? 0) < TOUCH_THROTTLE_MS) return;
@@ -760,22 +892,22 @@ function touchOnServe(filePath: string): void {
     // touch (read-only fs, unsupported utimes) only degrades eviction ordering.
   }
 }
-
 interface ResolvedMediaFile {
   filePath: string;
   size: number;
   contentType: string;
   name: string;
 }
-
 /**
  * Validate a `/api/media/<name>` path and stat the file, bumping its mtime for
  * LRU. Returns the resolved file or an HTTP status (400 bad name, 404 missing).
  * Shared by the HTTP serve path and the in-process (iOS IPC) route handler.
  */
-function resolveMediaFile(
-  pathname: string,
-): ResolvedMediaFile | { error: number } {
+function resolveMediaFile(pathname: string):
+  | ResolvedMediaFile
+  | {
+      error: number;
+    } {
   let name: string;
   try {
     name = decodeURIComponent(pathname.slice(MEDIA_URL_PREFIX.length));
@@ -801,7 +933,6 @@ function resolveMediaFile(
   touchOnServe(filePath);
   return { filePath, size: stat.size, contentType: mimeForFile(name), name };
 }
-
 /**
  * Parse a single-range `Range: bytes=<start>-<end>` header against a known file
  * size. Returns the resolved inclusive `[start, end]` byte window, `null` when
@@ -818,7 +949,15 @@ function resolveMediaFile(
 function parseByteRange(
   rangeHeader: string | undefined,
   size: number,
-): { start: number; end: number } | { unsatisfiable: true } | null {
+):
+  | {
+      start: number;
+      end: number;
+    }
+  | {
+      unsatisfiable: true;
+    }
+  | null {
   if (!rangeHeader) return null;
   const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
   if (!match) return null;
@@ -849,7 +988,89 @@ function parseByteRange(
   end = Math.min(end, size - 1);
   return { start, end };
 }
-
+const MEDIA_TEXT_HEADERS = { "Content-Type": "text/plain; charset=utf-8" };
+type MediaResponsePlan =
+  | {
+      kind: "text";
+      status: number;
+      headers: Record<string, string>;
+      text: string;
+    }
+  | { kind: "head"; status: 200; headers: Record<string, string> }
+  | {
+      kind: "file";
+      status: 200 | 206;
+      headers: Record<string, string>;
+      filePath: string;
+      name: string;
+      range?: { start: number; end: number };
+    };
+/**
+ * The single response decision for a GET/HEAD media request, shared by the
+ * HTTP route and the native IPC route so status, headers and byte ranges
+ * cannot drift between transports. Bytes are read by each transport.
+ */
+function planMediaResponse(
+  pathname: string,
+  method: "GET" | "HEAD",
+  rangeHeader: string | undefined,
+): MediaResponsePlan {
+  const resolved = resolveMediaFile(pathname);
+  if ("error" in resolved) {
+    return {
+      kind: "text",
+      status: resolved.error,
+      headers: MEDIA_TEXT_HEADERS,
+      text: resolved.error === 400 ? "Bad media name" : "Not found",
+    };
+  }
+  // Bytes are immutable (content-addressed) so they carry a long immutable
+  // Cache-Control; `private` keeps shared/proxy caches from persisting bytes
+  // reachable through the pre-auth capability URL.
+  const headers: Record<string, string> = {
+    "Content-Type": resolved.contentType,
+    "Cache-Control": "private, max-age=31536000, immutable",
+    "Accept-Ranges": "bytes",
+    ...mediaSecurityHeaders(resolved.name, resolved.contentType),
+  };
+  const range =
+    method === "GET" ? parseByteRange(rangeHeader, resolved.size) : null;
+  if (range && "unsatisfiable" in range) {
+    return {
+      kind: "text",
+      status: 416,
+      headers: {
+        ...MEDIA_TEXT_HEADERS,
+        "Content-Range": `bytes */${resolved.size}`,
+        "Accept-Ranges": "bytes",
+      },
+      text: "Range not satisfiable",
+    };
+  }
+  if (range) {
+    return {
+      kind: "file",
+      status: 206,
+      headers: {
+        ...headers,
+        "Content-Range": `bytes ${range.start}-${range.end}/${resolved.size}`,
+        "Content-Length": String(range.end - range.start + 1),
+      },
+      filePath: resolved.filePath,
+      name: resolved.name,
+      range,
+    };
+  }
+  headers["Content-Length"] = String(resolved.size);
+  if (method === "HEAD") return { kind: "head", status: 200, headers };
+  return {
+    kind: "file",
+    status: 200,
+    headers,
+    filePath: resolved.filePath,
+    name: resolved.name,
+  };
+}
 /**
  * Serve a media file for the IN-PROCESS route path (iOS/desktop/Android native
  * scheme handlers, where the WebView reaches the on-device agent over IPC with
@@ -866,87 +1087,68 @@ export function handleMediaRouteRequest(
   pathname: string,
   method: string,
   rangeHeader?: string,
-): { status: number; headers: Record<string, string>; body?: Buffer } {
-  const TEXT = { "Content-Type": "text/plain; charset=utf-8" };
+): {
+  status: number;
+  headers: Record<string, string>;
+  body?: Buffer;
+} {
   if (method !== "GET" && method !== "HEAD") {
     return {
       status: 405,
-      headers: TEXT,
+      headers: MEDIA_TEXT_HEADERS,
       body: Buffer.from("Method not allowed"),
     };
   }
-  const resolved = resolveMediaFile(pathname);
-  if ("error" in resolved) {
+  const plan = planMediaResponse(pathname, method, rangeHeader);
+  if (plan.kind === "text") {
     return {
-      status: resolved.error,
-      headers: TEXT,
-      body: Buffer.from(
-        resolved.error === 400 ? "Bad media name" : "Not found",
-      ),
+      status: plan.status,
+      headers: plan.headers,
+      body: Buffer.from(plan.text),
     };
   }
-  const headers: Record<string, string> = {
-    "Content-Type": resolved.contentType,
-    "Cache-Control": "private, max-age=31536000, immutable",
-    "Accept-Ranges": "bytes",
-    ...mediaSecurityHeaders(resolved.name, resolved.contentType),
-  };
-
-  const range =
-    method === "GET" ? parseByteRange(rangeHeader, resolved.size) : null;
-  if (range && "unsatisfiable" in range) {
+  if (plan.kind === "head") return { status: 200, headers: plan.headers };
+  const { range } = plan;
+  if (!range) {
     return {
-      status: 416,
-      headers: {
-        ...TEXT,
-        "Content-Range": `bytes */${resolved.size}`,
-        "Accept-Ranges": "bytes",
-      },
-      body: Buffer.from("Range not satisfiable"),
+      status: 200,
+      headers: plan.headers,
+      body: fs.readFileSync(plan.filePath),
     };
   }
-  if (range) {
-    const length = range.end - range.start + 1;
-    // Avoid loading the full file for a tiny Range (e.g., bytes=0-0 on a 2 GB video) — read only the requested slice.
-    let body: Buffer;
+  // Avoid loading the full file for a tiny Range (e.g., bytes=0-0 on a 2 GB video) — read only the requested slice.
+  const length = range.end - range.start + 1;
+  let body: Buffer;
+  try {
+    const fd = fs.openSync(plan.filePath, "r");
     try {
-      const fd = fs.openSync(resolved.filePath, "r");
-      try {
-        body = Buffer.alloc(length);
-        fs.readSync(fd, body, 0, length, range.start);
-      } finally {
-        fs.closeSync(fd);
-      }
-    } catch (err) {
-      // error-policy:J2 — unreadable slice is a real I/O failure, not a 404.
-      throw new ElizaError(`media range read failed for ${resolved.name}`, {
-        code: "MEDIA_STORE_READ_FAILED",
-        cause: err,
-        context: { name: resolved.name, range },
-      });
+      body = Buffer.alloc(length);
+      fs.readSync(fd, body, 0, length, range.start);
+    } finally {
+      fs.closeSync(fd);
     }
-    return {
-      status: 206,
-      headers: {
-        ...headers,
-        "Content-Range": `bytes ${range.start}-${range.end}/${resolved.size}`,
-        "Content-Length": String(length),
-      },
-      body,
-    };
+  } catch (err) {
+    // error-policy:J2 — unreadable slice is a real I/O failure, not a 404.
+    throw new ElizaError(`media range read failed for ${plan.name}`, {
+      code: "MEDIA_STORE_READ_FAILED",
+      cause: err,
+      context: { name: plan.name, range },
+    });
   }
-
-  headers["Content-Length"] = String(resolved.size);
-  if (method === "HEAD") return { status: 200, headers };
-  return { status: 200, headers, body: fs.readFileSync(resolved.filePath) };
+  return { status: 206, headers: plan.headers, body };
 }
-
+/**
+ * Whether stored media requires an authenticated request. True only under the
+ * protected profile, where a leaked capability URL must not disclose bytes;
+ * ordinary hosts keep pre-auth capability serving.
+ */
+export function isMediaAuthRequired(): boolean {
+  return isProtectedProfileSelected();
+}
 /**
  * Serve a stored media file for `GET/HEAD /api/media/<name>`. Returns true when
  * the request was handled (including 404/400). Supports HTTP Range so `<video>`
- * / `<audio>` seeking works. Bytes are immutable (content-addressed) so they
- * carry a long immutable Cache-Control; `private` keeps shared/proxy caches
- * from persisting bytes reachable through the pre-auth capability URL.
+ * / `<audio>` seeking works.
  */
 export function serveMediaFile(
   req: http.IncomingMessage,
@@ -956,105 +1158,48 @@ export function serveMediaFile(
   if (!pathname.startsWith(MEDIA_URL_PREFIX)) return false;
   const method = req.method ?? "GET";
   if (method !== "GET" && method !== "HEAD") return false;
-
-  const resolved = resolveMediaFile(pathname);
-  if ("error" in resolved) {
-    res.writeHead(resolved.error, {
-      "Content-Type": "text/plain; charset=utf-8",
-    });
-    res.end(resolved.error === 400 ? "Bad media name" : "Not found");
+  const plan = planMediaResponse(pathname, method, req.headers.range);
+  if (plan.kind === "text") {
+    res.writeHead(plan.status, plan.headers);
+    res.end(plan.text);
     return true;
   }
-  const { filePath, size, contentType } = resolved;
-
-  const baseHeaders: Record<string, string | number> = {
-    "Content-Type": contentType,
-    "Cache-Control": "private, max-age=31536000, immutable",
-    "Accept-Ranges": "bytes",
-    ...mediaSecurityHeaders(resolved.name, contentType),
-  };
-
-  const range =
-    method === "GET" ? parseByteRange(req.headers.range, size) : null;
-  if (range && "unsatisfiable" in range) {
-    res.writeHead(416, {
-      "Content-Range": `bytes */${size}`,
-      "Content-Type": "text/plain; charset=utf-8",
-    });
-    res.end("Range not satisfiable");
-    return true;
-  }
-  if (range) {
-    const stream = fs.createReadStream(filePath, {
-      start: range.start,
-      end: range.end,
-    });
-    stream.on("error", (err) => {
-      logger.error({ err, filePath }, "[media-store] stream error");
-      if (!res.headersSent) {
-        res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
-        res.end("Internal Server Error");
-      } else {
-        res.destroy();
-      }
-    });
-    res.once("close", () => stream.destroy());
-    stream.once("open", () => {
-      if (res.destroyed || res.headersSent || res.writableEnded) return;
-      try {
-        res.writeHead(206, {
-          ...baseHeaders,
-          "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
-          "Content-Length": range.end - range.start + 1,
-        });
-      } catch (error) {
-        stream.destroy();
-        // error-policy:J1 A client can close between the state check and the
-        // transport write; only that expected HTTP boundary race is consumed.
-        if ((error as NodeJS.ErrnoException).code === "ERR_STREAM_DESTROYED")
-          return;
-        throw error;
-      }
-      stream.pipe(res);
-    });
-    return true;
-  }
-
-  if (method === "HEAD") {
-    res.writeHead(200, { ...baseHeaders, "Content-Length": size });
+  if (plan.kind === "head") {
+    res.writeHead(200, plan.headers);
     res.end();
     return true;
   }
-  {
-    const stream = fs.createReadStream(filePath);
-    stream.on("error", (err) => {
-      logger.error({ err, filePath }, "[media-store] stream error");
-      if (!res.headersSent) {
-        res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
-        res.end("Internal Server Error");
-      } else {
-        res.destroy();
-      }
-    });
-    res.once("close", () => stream.destroy());
-    stream.once("open", () => {
-      if (res.destroyed || res.headersSent || res.writableEnded) return;
-      try {
-        res.writeHead(200, { ...baseHeaders, "Content-Length": size });
-      } catch (error) {
-        stream.destroy();
-        // error-policy:J1 A client can close between the state check and the
-        // transport write; only that expected HTTP boundary race is consumed.
-        if ((error as NodeJS.ErrnoException).code === "ERR_STREAM_DESTROYED")
-          return;
-        throw error;
-      }
-      stream.pipe(res);
-    });
-  }
+  const { filePath } = plan;
+  const stream = fs.createReadStream(
+    filePath,
+    plan.range ? { start: plan.range.start, end: plan.range.end } : undefined,
+  );
+  stream.on("error", (err) => {
+    logger.error({ err, filePath }, "[media-store] stream error");
+    if (!res.headersSent) {
+      res.writeHead(500, MEDIA_TEXT_HEADERS);
+      res.end("Internal Server Error");
+    } else {
+      res.destroy();
+    }
+  });
+  res.once("close", () => stream.destroy());
+  stream.once("open", () => {
+    if (res.destroyed || res.headersSent || res.writableEnded) return;
+    try {
+      res.writeHead(plan.status, plan.headers);
+    } catch (error) {
+      stream.destroy();
+      // error-policy:J1 A client can close between the state check and the
+      // transport write; only that expected HTTP boundary race is consumed.
+      if ((error as NodeJS.ErrnoException).code === "ERR_STREAM_DESTROYED")
+        return;
+      throw error;
+    }
+    stream.pipe(res);
+  });
   return true;
 }
-
 /**
  * Generate a downscaled thumbnail from raw image bytes and persist it as its
  * own store entry. Returns the thumbnail's served URL, or null when the image
@@ -1075,7 +1220,6 @@ export async function persistImageThumbnail(
     return null;
   }
 }
-
 /**
  * Pre-compute a thumbnail for an already-stored image file (e.g. an
  * agent-generated image just persisted from a data: URL). Reads the stored
@@ -1098,7 +1242,6 @@ export async function ensureThumbnailForStoredFile(
   }
   return persistImageThumbnail(buffer, srcMime);
 }
-
 /** Best-effort: convert a `data:` URL on an attachment to a stored served URL. */
 export function persistAttachmentUrlIfInline(url: string): string {
   if (!url.startsWith("data:")) return url;
@@ -1110,9 +1253,7 @@ export function persistAttachmentUrlIfInline(url: string): string {
     // be moved into the store, the original functional data: URL is returned
     // (the attachment still renders inline); the failure is surfaced via warn.
     logger.warn(
-      `[media-store] failed to persist inline data URL: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[media-store] failed to persist inline data URL: ${err instanceof Error ? err.message : String(err)}`,
     );
     return url;
   }

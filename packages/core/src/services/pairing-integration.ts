@@ -6,9 +6,9 @@
  * across different messaging platforms.
  */
 
-import type { IAgentRuntime } from "../types";
 import type { PairingChannel } from "../types/pairing";
 import { getPairingIdLabel } from "../types/pairing";
+import type { IAgentRuntime } from "../types/runtime.js";
 import { ServiceType } from "../types/service";
 import type { PairingService } from "./pairing";
 
@@ -62,16 +62,16 @@ export async function getPairingService(
  * @example
  * ```typescript
  * const result = await checkPairingAllowed(runtime, {
- *   channel: "whatsapp",
- *   senderId: "+14155551234",
- *   metadata: { name: "John Doe" },
+ * channel: "whatsapp",
+ * senderId: "+14155551234",
+ * metadata: { name: "John Doe" },
  * });
  *
  * if (!result.allowed) {
- *   if (result.replyMessage) {
- *     await sendMessage(result.replyMessage);
- *   }
- *   return; // Block the message
+ * if (result.replyMessage) {
+ * await sendMessage(result.replyMessage);
+ * }
+ * return; // Block the message
  * }
  * // Process the message...
  * ```
@@ -89,7 +89,7 @@ export async function checkPairingAllowed(
 		// policy is "pairing", and the eliza plugin registers PairingService, so
 		// a missing service means a mis-wired host. reportError surfaces it to
 		// the agent (RECENT_ERRORS) and escalates to the owner on repetition —
-		// a logger.warn per denied DM never reaches anyone (#14710).
+		// a logger.warn per denied DM never reaches anyone.
 		runtime.reportError(
 			"pairing-integration",
 			new Error(

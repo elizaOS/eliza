@@ -1,0 +1,27 @@
+{
+  "name": "@elizaos/cloud-tools",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@elizaos/auth": "workspace:*",
+    "@elizaos/cloud-shared": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/cloud-services-common": "workspace:*"
+  },
+  "scripts": {
+    "sms-gateway:continue": "node ./gateway/continue-sms-gateway-work.ts",
+    "sms-gateway:deploy:cloud-prod": "node ./gateway/deploy-cloud-api-production-gateway.ts",
+    "sms-gateway:homepage": "node ./gateway/check-homepage-public-readiness.ts",
+    "sms-gateway:homepage:dns": "node ./gateway/sync-homepage-porkbun-dns.ts",
+    "sms-gateway:maintain:cloud-prod": "node ./gateway/maintain-cloud-api-production-gateway.ts",
+    "sms-gateway:verify:cloud-onboarding": "node ./gateway/verify-cloud-sms-onboarding-flow.ts",
+    "sms-gateway:verify:cloud-prod": "node ./gateway/verify-cloud-api-production-deploy.ts"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}

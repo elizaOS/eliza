@@ -1,11 +1,6 @@
-/**
- * Types for the widget registry: slots, plugin widget declarations, and the
- * WidgetProps the host passes to each widget component.
- */
 import type { PluginWidgetDeclaration as CorePluginWidgetDeclaration } from "@elizaos/core";
-import type { ComponentType } from "react";
+import type { UiSpec } from "@elizaos/host/protocol";
 import type { PluginInfo } from "../api/client-types-config";
-import type { UiSpec } from "../config/ui-spec";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 
 /** Named injection points where plugin widgets can render. */
@@ -15,9 +10,7 @@ export const WIDGET_SLOTS = [
   "nav-page",
   "home",
 ] as const;
-
 export type WidgetSlot = (typeof WIDGET_SLOTS)[number];
-
 /**
  * Show-once-then-retire lifecycle for a transient home-slot widget (for example, connector nudges). A widget with `sunset` is filtered out of the
  * home grid once its condition is met; the per-key lifecycle state is persisted
@@ -33,12 +26,11 @@ export interface HomeWidgetSunset {
   /** Render a dismiss control; retire permanently once dismissed. */
   dismissible?: boolean;
 }
-
 /**
  * Serializable widget metadata declared by a plugin.
  *
  * The canonical shape lives in `@elizaos/core` (`PluginWidgetDeclaration`)
- * so plugins can self-declare without depending on app-core. The client
+ * so plugins can self-declare without depending on app. The client
  * surface adds an optional `uiSpec` for plugins without bundled React
  * components.
  */
@@ -48,7 +40,6 @@ export interface PluginWidgetDeclaration extends CorePluginWidgetDeclaration {
   /** Show-once-then-retire lifecycle (home slot only). See {@link HomeWidgetSunset}. */
   sunset?: HomeWidgetSunset;
 }
-
 /** Props passed to every widget React component. */
 export interface WidgetProps {
   pluginId: string;
@@ -70,15 +61,4 @@ export interface WidgetProps {
   spanClassName?: string;
 }
 
-/**
- * Client-side registration mapping a widget declaration to a React component.
- * Bundled plugins register these statically; third-party plugins rely on uiSpec.
- */
-export interface WidgetRegistration {
-  /** Must match `PluginWidgetDeclaration.id`. */
-  declarationId: string;
-  /** Must match `PluginWidgetDeclaration.pluginId`. */
-  pluginId: string;
-  /** The React component to render. */
-  Component: ComponentType<WidgetProps>;
-}
+export const WIDGET_UI_ACTION_EVENT = "eliza:widget-ui-action" as const;

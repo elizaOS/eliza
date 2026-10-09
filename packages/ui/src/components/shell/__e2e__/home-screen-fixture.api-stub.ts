@@ -26,8 +26,18 @@ export const client = {
   // (installed in the fixture) intercepts.
   getBaseUrl: () => "",
   getRestAuthToken: () => null,
-  // This fixture has one fixed authority; subscribers still receive a disposer.
-  onAuthorityChange: (_listener: () => void) => () => undefined,
+  // The LifeOps activity-signal capture (started by the shell's renderer
+  // service after first paint) subscribes to base-URL authority changes and
+  // compares revisions before re-probing. The fixture never rebinds its host,
+  // so the revision is constant and the subscription is inert.
+  getAuthorityRevision: () => 0,
+  onAuthorityChange: (_listener: () => void) => () => {},
+  // The fixture can signal a transport restoration while retaining real
+  // subscription teardown when the model-route observer unmounts.
+  onReconnect: (listener: () => void) => {
+    window.addEventListener("eliza-fixture:reconnect", listener);
+    return () => window.removeEventListener("eliza-fixture:reconnect", listener);
+  },
   // Typed widget requests still pass through the fixture's window.fetch mock;
   // mirror the production client's JSON boundary so constructor-based imports
   // and the shared singleton observe the same seeded responses.
@@ -51,9 +61,7 @@ export const client = {
   getRelationshipsCandidates: async () => [],
   getWalletBalances: async () => walletBalancesResponse(),
   getWalletMarketOverview: async () => walletMarketOverviewResponse(),
-  // Today (todo) home card: attention mode seeds one open todo so the merged
-  // card renders with a todo row alongside its flagged at-risk goal row
-  // (spec §E item 5). Quiet mode returns zero work so the card self-hides.
+  // Retain workbench fixture data; Home no longer projects it as Today cards.
   listWorkbenchTodos: async () => homeWidgetTodosResponse(),
   // Notification store hydrate + live subscription.
   listNotifications: async () => homeWidgetNotificationsResponse(),

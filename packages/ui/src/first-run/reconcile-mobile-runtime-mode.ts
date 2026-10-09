@@ -21,13 +21,16 @@
  * `resolveAndroidRuntimeMode` (platform/android-runtime.ts) read the
  * `VITE_ELIZA_{IOS,ANDROID,MOBILE}_RUNTIME_MODE` / `..._API_BASE` values the
  * mobile build lanes stamp into the renderer bundle
- * (packages/app-core/scripts/run-mobile-build.mjs).
+ * (packages/app/scripts/run-mobile-build.ts).
  */
 
-import { logger } from "@elizaos/logger";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { logger } from "../logger.ts";
 import { resolveAndroidRuntimeMode } from "../platform/android-runtime";
-import { resolveIosRuntimeConfig } from "../platform/ios-runtime";
+import {
+  resolveIosRuntimeConfig,
+  resolveMobileApiConnection,
+} from "../platform/ios-runtime";
 import { loadPersistedActiveServer } from "../state/persistence";
 import {
   type MobileRuntimeMode,
@@ -72,7 +75,7 @@ export type MobileRuntimeModeReconcilePlan =
  * - Persisted `local` is UNUSABLE only when this build physically cannot host
  *   the on-device agent (e.g. an iOS store/cloud bundle without the full-Bun
  *   engine, or the Play-Store `android-cloud` APK).
- * - `remote-mac` / `tunnel-to-mobile` target user-configured EXTERNAL
+ * - `remote-mac` target user-configured EXTERNAL
  *   endpoints the build truth cannot invalidate — never reconciled here.
  */
 export function planMobileRuntimeModeReconcile(args: {
@@ -133,30 +136,25 @@ function isDevBuildEnv(env: RuntimeEnvRecord): boolean {
   );
 }
 
-/**
- * Read the build's native runtime truth via the existing per-platform
- * accessors. `resolveIosRuntimeConfig` reads the full
- * `VITE_ELIZA_{IOS,MOBILE,ANDROID}_*` key set, so its `apiBase` is the
- * build-stamped endpoint for either platform; Android's mode has its own
- * dedicated accessor.
- */
 export function readMobileRuntimeBuildTruth(
   platform: MobileNativePlatform,
   env: RuntimeEnvRecord = viteEnv(),
 ): MobileRuntimeBuildTruth {
-  const iosConfig = resolveIosRuntimeConfig(env);
   if (platform === "android") {
     const buildMode = resolveAndroidRuntimeMode(env);
     return {
       platform,
       buildMode,
-      hasBuildApiBase: Boolean(iosConfig.apiBase),
+      hasBuildApiBase: Boolean(
+        resolveMobileApiConnection(platform, env).apiBase,
+      ),
       // The sideload/system APKs bundle the on-device agent runtime; the
       // Play-Store `android-cloud` APK ships without it (see
       // platform/android-runtime.ts).
       hasLocalEngine: buildMode === "local",
     };
   }
+  const iosConfig = resolveIosRuntimeConfig(env);
   return {
     platform,
     buildMode: iosConfig.mode,

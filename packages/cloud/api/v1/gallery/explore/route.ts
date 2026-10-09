@@ -7,15 +7,15 @@
  * Mirrors `_legacy_actions/gallery.ts → listExploreImages`.
  */
 
-import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { generationsService } from "@/lib/services/generations";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
+import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

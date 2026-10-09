@@ -20,7 +20,7 @@ Per Apache 2.0 §4(b), the changes made on top of upstream
 * **Added `__init__.py`** so the vendored directory functions as a
   regular Python package. Upstream ships these files in a flat
   directory and expects callers to add it to `sys.path`; we wanted
-  clean `from scripts.quantization.qjl import ...` imports.
+  clean `from eliza_training.quantization.qjl import ...` imports.
 
 * **Parameterized `EMB_DIM` (head_dim) as a C++ template parameter.**
   Upstream hard-codes `#define EMB_DIM 128` at the top of every kernel.
@@ -39,11 +39,6 @@ Per Apache 2.0 §4(b), the changes made on top of upstream
       bindings. The upstream `GQA_GROUP_SIZE=4` constant is unchanged —
       it gates the static `__shared__` query buffer's first dim and is
       independent of head_dim.
-    - `csrc/qjl_quant_values_kernel.cu`: templated for source
-      consistency. NOTE: this file has multiple unrelated upstream bugs
-      (typo `sketched_vaues`, missing `quantize_value_kernel` symbol,
-      wrong return tensors) and is not built by `setup.py`. Fixing those
-      bugs is out of scope.
     - Each templated host wrapper adds a `TORCH_CHECK(emb_dim == EMB_DIM,
       ...)` guard so a wrong dispatch fails loud at the boundary instead
       of silently writing garbage.
@@ -68,8 +63,16 @@ Per Apache 2.0 §4(b), the changes made on top of upstream
   and exercises the CUDA kernel for both head_dim instantiations when
   the extension built (SKIPs cleanly with apt commands otherwise).
 
-No other source-level changes were made to `csrc/*.cu`, `matmul.py`,
-`new_pack.py`, or `setup.py` (the latter only gained a docstring).
+* **Package-relative compiled imports.** `qjl_kernel.py` and `matmul.py`
+  resolve extensions beside the installed `eliza_training.quantization.qjl`
+  package instead of relying on global path mutation.
+
+* **Removed unused `csrc/qjl_quant_values_kernel.cu`.** It was never included
+  in `setup.py`, had no consumers, and contained unresolved upstream symbols
+  and incorrect return values. The four built CUDA extensions are unchanged.
+
+`new_pack.py` retains its upstream implementation; `setup.py` only gained
+its build documentation.
 
 ## Citation
 

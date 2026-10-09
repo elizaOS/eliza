@@ -20,7 +20,7 @@ import {
 	type ResponseSkeleton,
 	ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/shared";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import {
 	bundleHasAsrModelFiles,

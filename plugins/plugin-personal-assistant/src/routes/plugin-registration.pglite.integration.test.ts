@@ -66,6 +66,35 @@ it("serves owner definition CRUD from the normally registered personal-assistant
     const service = new LifeOpsService(runtime, {
       ownerEntityId: resolveOwnerEntityIdOrDefault(runtime),
     });
+    const reminder = await service.createDefinition({
+      title: "Notification history",
+      kind: "habit",
+      cadence: {
+        kind: "once",
+        dueAt: new Date(Date.now() + 120000).toISOString(),
+      },
+      timezone: "UTC",
+      metadata: {
+        ownerSurface: "OWNER_REMINDERS",
+        nativeProjection: "in_app_only",
+      },
+      reminderPlan: {
+        steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
+      },
+    });
+    const reminderResponse = await fetch(`${base}/api/lifeops/reminders`);
+    expect(reminderResponse.status).toBe(200);
+    const reminderRows = (await reminderResponse.json()).reminders;
+    expect(
+      reminderRows.map(
+        (row: { definition: { id: string } }) => row.definition.id,
+      ),
+    ).toContain(reminder.definition.id);
+    expect(
+      reminderRows.map(
+        (row: { definition: { id: string } }) => row.definition.id,
+      ),
+    ).not.toContain(id);
     const todos = await (await fetch(`${base}/api/lifeops/todos`)).json();
     expect(
       todos.todos.find((todo: { id: string }) => todo.id === id),
@@ -136,6 +165,14 @@ it("serves owner definition CRUD from the normally registered personal-assistant
     const foreign = new LifeOpsService(runtime, {
       ownerEntityId: crypto.randomUUID(),
     });
+    expect(
+      (await foreign.listReminders()).some(
+        (row) => row.definition.id === reminder.definition.id,
+      ),
+    ).toBe(false);
+    await expect(
+      foreign.updateDefinition(reminder.definition.id, { status: "archived" }),
+    ).rejects.toThrow();
     await expect(foreign.completeTodo(id)).rejects.toThrow();
     expect((await foreign.getTodos()).some((todo) => todo.id === id)).toBe(
       false,

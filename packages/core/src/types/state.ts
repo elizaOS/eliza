@@ -57,6 +57,7 @@ export interface ActionPlan {
  */
 export interface ProviderCacheEntry {
 	text?: string;
+	discoveryText?: string;
 	overflowText?: string;
 	values?: Record<string, StateValue>;
 	data?: Record<string, StateValue>;
@@ -127,41 +128,10 @@ export interface State {
 	[key: string]: StateValue | StateValues | StateData | undefined;
 }
 
-// ============================================================================
 // Dynamic Prompt Execution Types
-// ============================================================================
 
 /**
- * Schema row for dynamic prompt execution.
- *
- * WHY: dynamicPromptExecFromState generates structured prompts that ask the LLM
- * to output specific fields. Each SchemaRow defines one field the LLM must produce.
- * The schema also controls validation behavior for streaming scenarios.
- *
- * Schema rows are intentionally backwards-compatible with the original flat shape,
- * but now also support nested objects and arrays so callers can describe structured
- * payloads without embedding pseudo-schemas in prose strings.
- *
- * @example
- * ```ts
- * const schema: SchemaRow[] = [
- *   { field: 'thought', description: 'Your internal reasoning' },
- *   { field: 'text', description: 'Response to user', required: true },
- *   {
- *     field: 'facts',
- *     description: 'Facts extracted from the conversation',
- *     type: 'array',
- *     items: {
- *       description: 'One fact entry',
- *       type: 'object',
- *       properties: [
- *         { field: 'claim', description: 'Fact claim', required: true },
- *         { field: 'type', description: 'fact|opinion|preference', required: true },
- *       ],
- *     },
- *   },
- * ];
- * ```
+ * Schema for one dynamic-prompt output field, including validation and streaming behavior.
  */
 export type SchemaValueType =
 	| "string"
@@ -212,7 +182,7 @@ export type SchemaRow = SchemaValueSpec & {
 	 * - Level 0 (Trusted): default false. Set to true to opt-in to per-field codes.
 	 * - Level 1 (Progressive): default true. Set to false to opt-out of codes.
 	 * - Levels 2-3: ignored for per-field wrapping. Those levels can use optional
-	 *   checkpoint codes instead.
+	 * checkpoint codes instead.
 	 *
 	 * Note: Only top-level schema rows use this today. Nested `properties` are still
 	 * validated structurally, but they do not get their own streaming/validation wires.

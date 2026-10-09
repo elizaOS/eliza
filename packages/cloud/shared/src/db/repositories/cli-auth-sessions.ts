@@ -40,8 +40,10 @@ export class CliAuthSessionsRepository {
    * Finds an active (non-expired) CLI auth session by session ID.
    */
   async findActiveBySessionId(sessionId: string): Promise<CliAuthSession | undefined> {
+    // Polling immediately follows primary creation/completion. A replica miss
+    // is terminal (HTTP404) to clients, so eligibility must use the primary.
     const now = new Date();
-    const [session] = await dbRead
+    const [session] = await dbWrite
       .select()
       .from(cliAuthSessions)
       .where(and(eq(cliAuthSessions.session_id, sessionId), gt(cliAuthSessions.expires_at, now)))

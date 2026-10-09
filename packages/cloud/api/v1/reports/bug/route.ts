@@ -1,23 +1,24 @@
 /** Validates and delivers authenticated client bug reports. */
 
 import { escapeHtml } from "@elizaos/cloud-shared/lib/utils/html";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+
 /**
  * POST /api/v1/reports/bug
  * Receives structured bug reports from clients (Agent) and forwards them
  * via the existing email service.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { emailService } from "@/lib/services/email";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { emailService } from "@elizaos/cloud-shared/lib/services/email";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const bugReportSchema = z.object({
   source: z.string().max(120).default("unknown-client"),

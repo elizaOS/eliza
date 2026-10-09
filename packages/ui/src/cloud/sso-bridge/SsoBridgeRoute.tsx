@@ -24,8 +24,8 @@
  * keeps Back from re-entering a completed bridge leg.
  */
 
-import { ElizaError } from "@elizaos/core";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import { ElizaError } from "@elizaos/core/protocol";
+import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Card } from "../../components/ui/card";
@@ -44,45 +44,9 @@ import {
   mintSsoCode,
   pairedAppOrigin,
   performSsoExchange,
-  SSO_BRIDGE_PATH,
   sanitizeBridgeReturnTo,
   ssoBridgeRoleForHostname,
 } from "./sso-bridge";
-
-const MINT_INTENT_PREFIX = "eliza.sso.mint-intent.";
-
-function mintIntentKey(state: string): string {
-  return `${MINT_INTENT_PREFIX}${state}`;
-}
-
-function rememberMintIntent(state: string): boolean {
-  try {
-    sessionStorage.setItem(mintIntentKey(state), "1");
-    return true;
-  } catch {
-    // error-policy:J4 a browser that cannot retain the referrer-approved
-    // intent cannot safely resume minting after a same-origin login.
-    return false;
-  }
-}
-
-function hasRememberedMintIntent(state: string): boolean {
-  try {
-    return sessionStorage.getItem(mintIntentKey(state)) === "1";
-  } catch {
-    // error-policy:J4 unreadable storage fails the referrer gate closed.
-    return false;
-  }
-}
-
-function forgetMintIntent(state: string): void {
-  try {
-    sessionStorage.removeItem(mintIntentKey(state));
-  } catch {
-    // error-policy:J6 the intent is scoped to this tab and nonce and expires
-    // with the tab even when best-effort cleanup is unavailable.
-  }
-}
 
 function BridgeNotice({ label }: { label: string }): React.JSX.Element {
   return (
@@ -166,9 +130,7 @@ async function runMintLegOperation(
   if (!appOrigin) return { kind: "not-initiated" };
 
   const referrer = document.referrer;
-  const appInitiated = referrerIsPairedAppOrigin(appOrigin, referrer);
-  const remembered = hasRememberedMintIntent(state);
-  if (!appInitiated && !remembered) {
+  if (!referrerIsPairedAppOrigin(appOrigin, referrer)) {
     if (!referrer) {
       // Referrer-stripping privacy settings make a legitimate app handoff
       // indistinguishable from a direct visit. Keep minting fail-closed, but
@@ -181,23 +143,13 @@ async function runMintLegOperation(
     return { kind: "not-initiated" };
   }
 
-  if (appInitiated && !remembered && !rememberMintIntent(state)) {
+  if (!hasHydratableStewardToken()) {
+    // No session exists here to share. Login stays on the host the user
+    // started on (#19214): return straight to the paired app origin's own
+    // login with the sanitized destination, never this origin's /login.
     return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
   }
 
-  if (!hasHydratableStewardToken()) {
-    // Login is owned by this public/auth origin. Preserve the exact bridge
-    // leg as a same-origin returnTo; once Steward succeeds, the remembered
-    // referrer-approved intent permits minting and sends the user back to
-    // the managed app. No credential is ever entered on the app host.
-    const bridgeReturnTo = `${SSO_BRIDGE_PATH}?state=${encodeURIComponent(state)}&challenge=${encodeURIComponent(challenge)}&returnTo=${encodeURIComponent(returnTo)}`;
-    return {
-      kind: "redirect",
-      url: `/login?returnTo=${encodeURIComponent(bridgeReturnTo)}`,
-    };
-  }
-
-  forgetMintIntent(state);
   const mintingToken = readStoredStewardToken();
   let mintedCode: string | null = null;
   const burnMintedCodeOnce = (): void => {

@@ -9,11 +9,11 @@
  * memoized lazy imports so they stay out of the static boot graph.
  */
 import type http from "node:http";
+import { createIntegrationTelemetrySpan } from "@elizaos/core";
 import {
   createDevCloudConfigAuthorityView,
   materializeDevCloudConfigAuthorityView,
 } from "../config/dev-cloud-env-authority.ts";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { handleApprovalRoute } from "./approval-routes.ts";
 import { handleChatRoutes } from "./chat-routes.ts";

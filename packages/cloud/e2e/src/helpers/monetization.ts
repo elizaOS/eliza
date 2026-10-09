@@ -1,8 +1,6 @@
 /**
- * Shared helpers for the creator-monetization e2e specs.
+ * Shared authenticated API client helpers for the cloud e2e specs.
  */
-
-import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 
 export interface AuthedResponse<T> {
   status: number;
@@ -47,37 +45,6 @@ export function authedClient(api: string, apiKey: string) {
 }
 
 /**
- * Open the app review gate after a monetization spec has proved drafts are
- * rejected. Use the service boundary so its read caches cannot retain the
- * draft row after this deterministic test-only approval.
- */
-export async function approveAppForMonetizationTest(
-  appId: string,
-  client: AuthedClient,
-): Promise<void> {
-  const approved = await appsService.update(appId, {
-    review_status: "approved",
-    review_content_hash: null,
-    reviewed_at: new Date(),
-  });
-
-  if (!approved) {
-    throw new Error(`Cannot approve missing monetization test app: ${appId}`);
-  }
-
-  // The e2e test and API Worker are separate processes. Cross the API boundary
-  // with a benign update so the Worker's appsService evicts its cached draft.
-  const cacheBust = await client("PATCH", `/api/v1/apps/${appId}`, {
-    logo_url: "https://example.com/monetization-test-app.png",
-  });
-  if (cacheBust.status !== 200) {
-    throw new Error(
-      `Cannot invalidate monetization test app cache: ${appId} (${cacheBust.status})`,
-    );
-  }
-}
-
-/**
  * Retry only the gateway's explicit cache-warming response. A cold Worker can
  * hydrate several independent inference caches in sequence; provider failures
  * and every other 503 remain immediate test failures.
@@ -115,25 +82,14 @@ function isInferenceCacheWarming(response: AuthedResponse<unknown>): boolean {
   );
 }
 
-/**
- * The cloud's DEFAULT text model — routed natively to Cerebras
- * (`CEREBRAS_DEFAULT_TEXT_SMALL_MODEL`). The `cerebras/` prefix makes
- * `resolveAiProviderSource` bill it to the `cerebras` source and the language
- * model layer call `api.cerebras.ai/v1`. No Ollama / local-OpenAI shim.
- */
-export const REAL_LLM_MODEL = "cerebras/gemma-4-31b";
+/** Live Cerebras model used to prove the paid inference and creator ledger path. */
+export const REAL_LLM_MODEL = "cerebras/gpt-oss-120b";
 
 /** Billing source + provider for {@link REAL_LLM_MODEL} (seed-pricing). */
 export const REAL_LLM_BILLING_SOURCE = "cerebras";
 
-/**
- * The model's max output tokens (gemma-4-31b on Cerebras: 40000 on the paid
- * tier, per the `CEREBRAS_DEFAULT_TEXT_SMALL_MODEL` catalog entry in
- * cloud/shared/lib/models/catalog.ts). gemma-4-31b is non-reasoning by default
- * (reasoning only via `reasoning_effort`), but still give it the model's full
- * output budget so long completions are never truncated.
- */
-export const REAL_LLM_MAX_TOKENS = 40000;
+/** Full output budget from the GPT OSS 120B catalog entry, including reasoning. */
+export const REAL_LLM_MAX_TOKENS = 40960;
 
 /**
  * Whether the cloud's default inference provider (Cerebras) is configured.

@@ -309,7 +309,15 @@ export async function extractUpdateFieldsWithLlm(args: {
     prompt,
     parser: (raw) => {
       const parsedObject = parseStructuredRecord(raw);
-      return parsedObject ? buildUpdateFields(parsedObject) : null;
+      if (!parsedObject) return null;
+      const fields = buildUpdateFields(parsedObject);
+      if (
+        (fields.cadenceKind ?? currentCadenceKind) === "once" &&
+        typeof parsedObject.description === "string" &&
+        parsedObject.description.trim().length > 0
+      )
+        fields.description = parsedObject.description;
+      return fields;
     },
     buildRepairPrompt: (rawFirstPass) =>
       buildRepairPrompt({

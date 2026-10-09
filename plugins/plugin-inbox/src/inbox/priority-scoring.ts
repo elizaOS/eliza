@@ -15,6 +15,8 @@
  *   message instead of fabricating priorities.
  * Nested `flags` arrays are bounded in `priority-flags.ts`.
  */
+
+import type { LifeOpsInboxMessage } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
@@ -22,7 +24,6 @@ import {
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import type { LifeOpsInboxMessage } from "@elizaos/shared";
 import { parseFlags } from "./priority-flags.ts";
 
 export type PriorityCategory = "important" | "planning" | "casual";

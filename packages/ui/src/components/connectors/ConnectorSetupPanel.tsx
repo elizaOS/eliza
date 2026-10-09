@@ -5,7 +5,6 @@
  * account-management panel for plugin-managed connectors.
  */
 
-import { getBootConfig } from "../../config/boot-config";
 import { ConnectorAccountSetupScope } from "./ConnectorAccountSetupScope";
 import {
   connectorSetupRegistry,
@@ -77,12 +76,6 @@ export function ConnectorSetupPanel({
 
   // Fall back to the built-in panels resolved from the setup-panel registry.
   switch (resolveConnectorSetupPanelToken(normalized)) {
-    case "lifeops-browser": {
-      // The registry only yields this token while the host has supplied the
-      // panel (its rule's `available` gate), so the component is present here.
-      const BrowserBridgeSetupPanel = getBootConfig().lifeOpsBrowserSetupPanel;
-      return BrowserBridgeSetupPanel ? <BrowserBridgeSetupPanel /> : null;
-    }
     case "telegram-account":
       return <TelegramAccountConnectorPanel />;
     case "telegram-bot":

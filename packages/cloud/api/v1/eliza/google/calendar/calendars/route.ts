@@ -1,7 +1,8 @@
 // Handles v1 cloud API v1 eliza google calendar calendars route traffic with route-local auth expectations.
+
+import { agentGoogleRouteDeps } from "@elizaos/cloud-shared/lib/services/agent-google-route-deps";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { agentGoogleRouteDeps } from "@/lib/services/agent-google-route-deps";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 async function __hono_GET(request: Request) {
   try {

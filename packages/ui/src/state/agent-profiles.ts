@@ -5,8 +5,9 @@
  * localStorage so users can manage and switch between multiple agents.
  */
 
-import { logger } from "@elizaos/logger";
+import { ElizaError } from "@elizaos/core/protocol";
 import { setStorageValue } from "../bridge/storage-bridge";
+import { logger } from "../logger.ts";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
 import type { AgentProfile, AgentProfileRegistry } from "./agent-profile-types";
@@ -44,10 +45,7 @@ function emptyRegistry(): AgentProfileRegistry {
   return { version: 1, activeProfileId: null, profiles: [] };
 }
 
-/**
- * Attempt to migrate a single-agent `PersistedActiveServer` entry into a
- * profile registry.  Returns null if no prior server is found.
- */
+// Retain the saved connection on first upgrade; an existing registry always wins.
 function migrateFromPersistedActiveServer(): AgentProfileRegistry | null {
   const raw = localStorage.getItem(ACTIVE_SERVER_KEY);
   if (!raw) return null;
@@ -93,8 +91,6 @@ function migrateFromPersistedActiveServer(): AgentProfileRegistry | null {
   return registry;
 }
 
-/* ── Public API ──────────────────────────────────────────────────────── */
-
 export function loadAgentProfileRegistry(): AgentProfileRegistry {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -104,7 +100,6 @@ export function loadAgentProfileRegistry(): AgentProfileRegistry {
         return parsed;
       }
     }
-    // No registry yet — try migrating from legacy single-server entry.
     return migrateFromPersistedActiveServer() ?? emptyRegistry();
   }, emptyRegistry());
 }
@@ -122,6 +117,14 @@ export function saveAgentProfileRegistry(
       `[agent-profiles] failed to save registry: ${describePersistenceError(cause)}`,
     );
     return false;
+  }
+}
+
+function persistRegistryOrThrow(registry: AgentProfileRegistry): void {
+  if (!saveAgentProfileRegistry(registry)) {
+    throw new ElizaError("Could not save agent profiles", {
+      code: "AGENT_PROFILE_PERSISTENCE_FAILED",
+    });
   }
 }
 
@@ -218,7 +221,7 @@ export function addAgentProfile(
   };
   registry.profiles.push(full);
   if (options.activate !== false) registry.activeProfileId = full.id;
-  saveAgentProfileRegistry(registry);
+  persistRegistryOrThrow(registry);
   return full;
 }
 
@@ -278,7 +281,7 @@ export function upsertAndActivateAgentProfile(
   };
   registry.profiles[existingIdx] = merged;
   registry.activeProfileId = merged.id;
-  saveAgentProfileRegistry(registry);
+  persistRegistryOrThrow(registry);
   return merged;
 }
 
@@ -299,7 +302,7 @@ export function removeManagedSharedCloudAgentProfiles(): void {
   const activeStillPresent = profiles.some(
     (profile) => profile.id === registry.activeProfileId,
   );
-  saveAgentProfileRegistry({
+  persistRegistryOrThrow({
     version: 1,
     activeProfileId: activeStillPresent ? registry.activeProfileId : null,
     profiles,
@@ -337,7 +340,7 @@ export function removeAgentProfile(id: string): void {
   if (registry.activeProfileId === id) {
     registry.activeProfileId = registry.profiles[0]?.id ?? null;
   }
-  saveAgentProfileRegistry(registry);
+  persistRegistryOrThrow(registry);
 }
 
 /**
@@ -356,7 +359,7 @@ export function scrubPersistedAgentProfileTokens(): void {
     const { accessToken, ...rest } = profile;
     return rest;
   });
-  if (changed) saveAgentProfileRegistry(registry);
+  if (changed) persistRegistryOrThrow(registry);
 }
 
 export function updateAgentProfile(
@@ -367,5 +370,5 @@ export function updateAgentProfile(
   const idx = registry.profiles.findIndex((p) => p.id === id);
   if (idx === -1) return;
   registry.profiles[idx] = { ...registry.profiles[idx], ...updates };
-  saveAgentProfileRegistry(registry);
+  persistRegistryOrThrow(registry);
 }

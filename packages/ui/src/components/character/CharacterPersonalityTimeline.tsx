@@ -78,14 +78,16 @@ function TimelineEntry({ entry }: { entry: CharacterPersonalityHistoryItem }) {
         <div className="flex flex-wrap gap-2 text-2xs text-muted">
           <span>{scopeLabel(entry.scope)}</span>
           {entry.relatedEntityName ? (
-            <span className="text-muted/90">· {entry.relatedEntityName}</span>
+            <span className="text-muted-strong">
+              · {entry.relatedEntityName}
+            </span>
           ) : null}
         </div>
         {entry.summary ? (
           <p className="text-sm text-muted">{entry.summary}</p>
         ) : null}
         {entry.reason ? (
-          <p className="text-2xs text-muted/90">{entry.reason}</p>
+          <p className="text-2xs text-muted-strong">{entry.reason}</p>
         ) : null}
         {hasDiff ? (
           <div>

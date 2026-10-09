@@ -2,7 +2,7 @@
  * Steward integration for Eliza Cloud.
  *
  * Two layers:
- *   1. `getStewardClient()` — returns a `@elizaos/login` StewardClient for
+ *   1. `getStewardClient()` — returns a `@elizaos/auth` StewardClient for
  *      provisioning and signing (used by server-wallets.ts).
  *   2. Read-only helpers (`getStewardAgent`, `getStewardWalletInfo`) that
  *      hit the Steward REST API directly for the API/dashboard layer.
@@ -10,7 +10,7 @@
  *      simple reads that only need a subset of the response.
  */
 
-import { LoginClient } from "@elizaos/login";
+import { LoginClient } from "@elizaos/auth";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import type { StewardUrlEnv } from "../steward-url";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
@@ -89,7 +89,7 @@ function warnMissingStewardTenantApiKey(apiKey?: string) {
 }
 
 /**
- * Returns a configured `@elizaos/login` StewardClient instance (singleton).
+ * Returns a configured `@elizaos/auth` StewardClient instance (singleton).
  *
  * Used by `server-wallets.ts` for wallet provisioning and RPC execution.
  */

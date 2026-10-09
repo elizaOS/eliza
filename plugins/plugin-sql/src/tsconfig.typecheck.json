@@ -1,10 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "paths": {
-      "@elizaos/core": ["../../../packages/core/dist/index.d.ts"],
-      "@elizaos/shared": ["../../../packages/shared/dist/index.d.ts"],
-      "@elizaos/shared/*": ["../../../packages/shared/dist/*"]
-    }
+    "customConditions": ["eliza-source"],
+    "paths": {}
   }
 }

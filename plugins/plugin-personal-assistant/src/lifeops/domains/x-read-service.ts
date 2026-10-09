@@ -4,13 +4,13 @@
  * DTOs. Read-only counterpart to the write-side x-service.
  */
 import crypto from "node:crypto";
-import type { Memory } from "@elizaos/core";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsXDm,
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { Memory } from "@elizaos/core";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   fetchXDirectMessagesWithRuntimeService,
@@ -329,7 +329,7 @@ export class XReadDomain {
   }
 
   async getXDms(
-    opts: { conversationId?: string; limit?: number } = {},
+    opts: { conversationId?: string; limit?: number; inbound?: boolean } = {},
   ): Promise<LifeOpsXDm[]> {
     return this.ctx.repository.listXDms(this.ctx.agentId(), opts);
   }
@@ -346,9 +346,13 @@ export class XReadDomain {
   }
 
   async readXInboundDms(opts: { limit?: number } = {}): Promise<LifeOpsXDm[]> {
-    await this.syncXDms(opts);
-    const all = await this.ctx.repository.listXDms(this.ctx.agentId(), opts);
-    return all.filter((dm) => dm.isInbound);
+    // The connector already reads available history before slicing. Retain all
+    // directions in the cache, then apply the limit to inbound messages only.
+    await this.syncXDms();
+    return this.ctx.repository.listXDms(this.ctx.agentId(), {
+      ...opts,
+      inbound: true,
+    });
   }
 
   private async hasCachedXDms(opts: XReadOpts): Promise<boolean> {

@@ -1,3 +1,4 @@
+/** Defines the native phone bridge, call-history records and complete agent-authored transcript payloads. */
 export interface PlaceCallOptions {
   number: string;
 }
@@ -38,6 +39,7 @@ export interface CallLogEntry {
 }
 
 export interface ListRecentCallsOptions {
+  /** Positive safe integer; omission returns every matching call. */
   limit?: number;
   number?: string;
 }
@@ -59,9 +61,9 @@ export interface PhonePlugin {
     updatedAt: number;
   }>;
   /** Current phone (CALL_PHONE/READ_CALL_LOG/READ_PHONE_STATE) permission state.
-   *  Web: granted. */
+   *  Web: unavailable. */
   checkPermissions(): Promise<PhonePermissionStatus>;
-  /** Prompt for phone access (no-op grant on web). Feature-gated to the Phone
+  /** Prompt for phone access (unavailable on web). Feature-gated to the Phone
    *  view; never requested at launch. */
   requestPermissions(): Promise<PhonePermissionStatus>;
 }

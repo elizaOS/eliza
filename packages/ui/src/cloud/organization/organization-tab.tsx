@@ -21,8 +21,7 @@ import {
   BrandTabsContent,
   BrandTabsList,
   BrandTabsTrigger,
-  CornerBrackets,
-} from "../../cloud-ui";
+} from "../../cloud-ui/components/brand/brand-tabs";
 import {
   SettingsGroup,
   SettingsRow,
@@ -30,6 +29,7 @@ import {
 } from "../../components/settings/settings-layout";
 import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
+import { CornerBrackets } from "../../components/ui/corner-brackets";
 import { CredentialsTab } from "./credentials-tab";
 import type { UserWithOrganizationDto } from "./data/cloud-org-types";
 import { MembersTab } from "./members-tab";

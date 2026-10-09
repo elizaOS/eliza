@@ -11,6 +11,14 @@ const sub = "62000000-0000-4000-8000-000000000001";
 beforeAll(async () => {
   database = await import("../client");
   await createBillingSnapshotFixture((query) => database.getPgliteClientForTests().exec(query), "");
+  // Cash-only funding after termination writes real purchased-credit rows.
+  await database.getPgliteClientForTests().exec(`
+    ALTER TABLE credit_transactions ALTER COLUMN id SET DEFAULT gen_random_uuid();
+    ALTER TABLE credit_transactions ADD COLUMN user_id uuid;
+    ALTER TABLE credit_transactions ADD COLUMN description text;
+    ALTER TABLE credit_transactions ADD COLUMN created_at timestamp DEFAULT now();
+    ALTER TABLE credit_transactions ADD COLUMN settled_at timestamp;
+  `);
 }, 120000);
 afterAll(async () => {
   await database.closeDatabaseConnectionsForTests();
@@ -73,6 +81,11 @@ async function reserve(amount = "1.000000") {
   });
 }
 test("funding and primary snapshot agree on positive, denied and exhausted allowance without rewriting ledger values", async () => {
+  const { readAgentFundingAccount } = await import("../../lib/services/agent-funding-account");
+  const { checkAgentTierUpgradeCreditGate } = await import("../../lib/services/agent-billing-gate");
+  await database
+    .getPgliteClientForTests()
+    .query("UPDATE organizations SET credit_balance=0 WHERE id=$1", [org]);
   const current = await advance({
     current_period_start: new Date(Date.now() - 86400000),
     current_period_end: new Date(Date.now() + 86400000),
@@ -87,7 +100,10 @@ test("funding and primary snapshot agree on positive, denied and exhausted allow
     status: "available",
     value: "25.000001",
   });
+  expect((await readAgentFundingAccount(org))?.eligible_subscription_allowance).toBe("25.000001");
+  expect((await checkAgentTierUpgradeCreditGate(org)).allowed).toBe(true);
   await reserve();
+  expect((await readAgentFundingAccount(org))?.eligible_subscription_allowance).toBe("24.000001");
   expect((await snapshot()).effectiveRemaining).toMatchObject({
     status: "available",
     value: "24.000001",
@@ -108,6 +124,10 @@ test("funding and primary snapshot agree on positive, denied and exhausted allow
     const before = await snapshot();
     expect(before.unreserved).toBe("23.000001");
     expect(before.effectiveRemaining.status).toBe("unavailable");
+    expect((await checkAgentTierUpgradeCreditGate(org)).allowed).toBe(false);
+    await expect(readAgentFundingAccount(org)).rejects.toMatchObject({
+      code: "SUBSCRIPTION_FUNDING_AUTHORITY_UNAVAILABLE",
+    });
     await expect(reserve()).rejects.toMatchObject({
       code: "SUBSCRIPTION_FUNDING_AUTHORITY_UNAVAILABLE",
     });
@@ -159,6 +179,8 @@ test("funding and primary snapshot agree on positive, denied and exhausted allow
     status: "available",
     value: "0.000000",
   });
+  expect((await readAgentFundingAccount(org))?.eligible_subscription_allowance).toBe("0.000000");
+  expect((await checkAgentTierUpgradeCreditGate(org)).allowed).toBe(false);
   const { subscriptionFundingService } = await import("../../lib/services/subscription-funding");
   await subscriptionFundingService.settle({
     organizationId: org,
@@ -173,9 +195,21 @@ test("funding and primary snapshot agree on positive, denied and exhausted allow
   expect(terminal.reserved).toBe("2.000000");
   expect(terminal.unreserved).toBe("23.000001");
   expect(terminal.effectiveRemaining.status).toBe("unavailable");
-  await expect(reserve()).rejects.toMatchObject({
-    code: "SUBSCRIPTION_FUNDING_AUTHORITY_UNAVAILABLE",
-  });
+  // A terminated subscription is cash-only: new work never spends the retained
+  // allowance, and with no purchased credit it is refused as insufficient.
+  await expect(reserve()).rejects.toMatchObject({ code: "SUBSCRIPTION_FUNDING_INSUFFICIENT" });
+  await database
+    .getPgliteClientForTests()
+    .query("UPDATE organizations SET credit_balance=5 WHERE id=$1", [org]);
+  const cash = await reserve();
+  const { rows } = await database
+    .getPgliteClientForTests()
+    .query<{ source: string }>(
+      "SELECT source FROM billing_funding_allocations WHERE reservation_id=$1",
+      [cash.reservation.id],
+    );
+  expect(rows).toEqual([{ source: "purchased_credit" }]);
+  expect((await snapshot()).unreserved).toBe("23.000001");
 }, 120000);
 
 test("legacy purchased-only organization retains an observable balance and no subscription", async () => {

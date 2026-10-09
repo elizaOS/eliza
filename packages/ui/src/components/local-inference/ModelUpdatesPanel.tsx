@@ -3,7 +3,7 @@
  * (R5-versioning §5 + I10-app-ux). Mounts inside `LocalInferencePanel.tsx`.
  *
  * Data flow:
- * - Reads `VOICE_MODEL_VERSIONS` directly from `@elizaos/shared` for the
+ * - Reads `VOICE_MODEL_VERSIONS` directly from `@elizaos/plugin-native-inference/model-catalog/voice-models` for the
  *   in-binary catalog. The runtime `VoiceModelUpdater` adds remote sources
  *   (Cloud + GitHub + HF) on top; when the live API surface is wired the
  *   `installedVersions` and `pinned` sets come from that API. Until the
@@ -24,7 +24,7 @@ import {
   VOICE_MODEL_VERSIONS,
   type VoiceModelId,
   type VoiceModelVersion,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-native-inference/model-catalog/voice-models";
 import { useId, useMemo } from "react";
 import {
   type TranslationContextValue,
@@ -34,20 +34,17 @@ import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 
 type TranslateFn = TranslationContextValue["t"];
-
 export interface VoiceModelInstallationView {
   readonly id: VoiceModelId;
   readonly installedVersion: string | null;
   readonly pinned: boolean;
   readonly lastError?: string | null;
 }
-
 export interface VoiceUpdatePreferencesView {
   readonly autoUpdateOnWifi: boolean;
   readonly autoUpdateOnCellular: boolean;
   readonly autoUpdateOnMetered: boolean;
 }
-
 export interface ModelUpdatesPanelProps {
   /**
    * Per-id installation state (installed version + pin flag). Caller wires
@@ -65,19 +62,16 @@ export interface ModelUpdatesPanelProps {
   readonly onTogglePin: (id: VoiceModelId, pinned: boolean) => void;
   readonly onSetPreferences: (next: VoiceUpdatePreferencesView) => void;
 }
-
 /** Format bytes as MB (1 decimal). Used for the per-asset size hint. */
 function formatMb(bytes: number, t: TranslateFn): string {
   if (bytes <= 0)
     return t("modelupdates.unpublished", { defaultValue: "(unpublished)" });
-  return `${(bytes / 1_048_576).toFixed(1)} MB`;
+  return `${(bytes / 1048576).toFixed(1)} MB`;
 }
-
 function totalBytes(latest: VoiceModelVersion | undefined): number {
   if (!latest) return 0;
   return latest.ggufAssets.reduce((s, a) => s + a.sizeBytes, 0);
 }
-
 function formatLastChecked(
   iso: string | null | undefined,
   t: TranslateFn,
@@ -88,7 +82,6 @@ function formatLastChecked(
     return t("modelupdates.unknown", { defaultValue: "unknown" });
   return date.toLocaleString();
 }
-
 export function ModelUpdatesPanel({
   installations,
   preferences,
@@ -125,7 +118,6 @@ export function ModelUpdatesPanel({
       };
     });
   }, [installations]);
-
   return (
     <section className="rounded-sm border border-border p-4 text-sm">
       <header className="flex flex-wrap items-center justify-between gap-3 pb-3">
@@ -209,7 +201,6 @@ export function ModelUpdatesPanel({
     </section>
   );
 }
-
 interface ModelUpdateCardProps {
   row: {
     id: VoiceModelId;
@@ -224,7 +215,6 @@ interface ModelUpdateCardProps {
   onTogglePin: ModelUpdatesPanelProps["onTogglePin"];
   t: TranslateFn;
 }
-
 function ModelUpdateCard({
   row,
   onUpdateNow,
@@ -290,7 +280,6 @@ function ModelUpdateCard({
     </article>
   );
 }
-
 interface ToggleRowProps {
   label: string;
   checked: boolean;
@@ -298,7 +287,6 @@ interface ToggleRowProps {
   hint?: string;
   onChange: (next: boolean) => void;
 }
-
 function ToggleRow({
   label,
   checked,
@@ -320,5 +308,4 @@ function ToggleRow({
     </div>
   );
 }
-
 export default ModelUpdatesPanel;

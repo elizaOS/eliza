@@ -20,15 +20,18 @@
  * actual owner.
  */
 
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key-hono-worker";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { notifyAgentReply } from "@elizaos/cloud-shared/lib/web-push";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { logger } from "@/lib/utils/logger";
-import { notifyAgentReply } from "@/lib/web-push";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const messageRequestSchema = z.object({
   text: z.string().min(1).max(8000),

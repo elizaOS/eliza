@@ -19,11 +19,24 @@ import type {
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+import type { ContextProviderEvent } from "./context-object";
+import type { DirectActionRoutingRule } from "./direct-action-routing";
 
 export interface ResponseHandlerPatch {
 	processMessage?: MessageHandlerAction;
 	requiresTool?: boolean;
+	/** Mark a terminal refusal without granting a completed-effect claim. */
+	replyEffectStatus?: "non_applied";
 	setContexts?: readonly AgentContext[];
+	/** Atomically replace derived intents and invalidate declared inferred-scope fields. */
+	replaceIntentScope?: {
+		intents: readonly string[];
+		invalidateFields: readonly string[];
+		/** Registered, admitted owner; retained only during this evaluator run. */
+		owner?: DirectActionRoutingRule;
+	};
+	/** Complete canonical sources authored by trusted evaluators, outside model plans. */
+	contextSources?: readonly ContextProviderEvent[];
 	addContexts?: readonly AgentContext[];
 	addCandidateActions?: readonly string[];
 	addParentActionHints?: readonly string[];
@@ -39,6 +52,10 @@ export interface ResponseHandlerPatch {
 type ResponseHandlerEvaluatorResult = ResponseHandlerPatch | undefined;
 
 export interface ResponseHandlerEvaluatorContext {
+	/** Runtime-only invalidations from earlier applied patches in this run.
+	 * Never populated from model output, plan extensions, or stored history. */
+	invalidatedScopeFields?: ReadonlySet<string>;
+	wholeRequestOwner?: DirectActionRoutingRule;
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
@@ -68,6 +85,7 @@ export interface ResponseHandlerPatchTrace {
 }
 
 export interface ResponseHandlerEvaluationRunResult {
+	contextSources?: ContextProviderEvent[];
 	activeEvaluators: string[];
 	appliedPatches: ResponseHandlerPatchTrace[];
 	candidateActionsAddedByEvaluators: string[];
@@ -76,6 +94,7 @@ export interface ResponseHandlerEvaluationRunResult {
 }
 
 type AppliedResponseHandlerPatch = {
+	invalidatedScopeFields: readonly string[];
 	trace: ResponseHandlerPatchTrace;
 	candidateActionsAdded: string[];
 };
@@ -173,15 +192,97 @@ function filterAvailableContexts(
 	return result;
 }
 
+// Core routing and source evidence have dedicated contracts; they are not
+// inferred operation-scope extensions a plugin may invalidate by name.
+const PROTECTED_SCOPE_FIELDS = new Set(
+	[
+		"contexts",
+		"reply",
+		"replyeffectstatus",
+		"requirestool",
+		"contextSlices",
+		"completioncontext",
+		"candidateactions",
+		"intents",
+		"parentactionhints",
+		"requiredtoolmissbudget",
+		"requiredtoolevidence",
+		"deterministictoolcall",
+		"simple",
+		"metadata",
+		"data",
+		"state",
+		"messages",
+		"originalmessages",
+		"originalrequest",
+		"history",
+		"receipts",
+		"effectreceipts",
+		"source",
+		"sources",
+		"sourcecontext",
+		"sourcesetid",
+		"sourceselection",
+		"currentsourcerevisions",
+		"invalidatedscopefields",
+		"constructor",
+		"prototype",
+		"__proto__",
+	].map((field) => field.toLowerCase()),
+);
+
 function applyResponseHandlerPatch(
 	messageHandler: MessageHandlerResult,
 	patch: ResponseHandlerPatch,
 	availableContexts: readonly ContextDefinition[],
 ): AppliedResponseHandlerPatch | null {
+	const scope = patch.replaceIntentScope;
+	// Validate the whole replacement before applying any other patch field.
+	// Extension fields cannot name core routing, context or source fields.
+	if (
+		scope &&
+		(!Array.isArray(scope.intents) ||
+			scope.intents.length === 0 ||
+			scope.intents.some(
+				(intent) => typeof intent !== "string" || !intent.trim(),
+			) ||
+			!Array.isArray(scope.invalidateFields) ||
+			scope.invalidateFields.some(
+				(field) =>
+					typeof field !== "string" ||
+					!/^[A-Za-z][A-Za-z0-9_]*$/u.test(field) ||
+					PROTECTED_SCOPE_FIELDS.has(field.toLowerCase()),
+			))
+	) {
+		throw new ElizaError("Invalid response-handler intent scope replacement", {
+			code: "RESPONSE_HANDLER_INTENT_SCOPE_INVALID",
+		});
+	}
 	const changed: string[] = [];
 	const debug = uniqueStrings(patch.debug);
 	const available = availableContextSet(availableContexts);
 	let candidateActionsAdded: string[] | undefined;
+	if (scope) {
+		messageHandler.plan.intents = [...scope.intents];
+		changed.push("intents:replace");
+		for (const field of new Set(scope.invalidateFields)) {
+			delete messageHandler.plan[field];
+			// Record even staged fields stored by their owner outside the plan.
+			changed.push(`intentField:invalidate:${field}`);
+		}
+		// Execution choices and relaxation budgets derived from the old intent
+		// cannot survive replacement. Source context and prior receipts do.
+		for (const field of [
+			"deterministicToolCall",
+			"requiredToolEvidence",
+			"requiredToolMissBudget",
+		] as const) {
+			if (Object.hasOwn(messageHandler.plan, field)) {
+				delete messageHandler.plan[field];
+				changed.push(`${field}:clear`);
+			}
+		}
+	}
 
 	if (patch.processMessage) {
 		messageHandler.processMessage = patch.processMessage;
@@ -190,6 +291,10 @@ function applyResponseHandlerPatch(
 	if (typeof patch.requiresTool === "boolean") {
 		messageHandler.plan.requiresTool = patch.requiresTool;
 		changed.push("requiresTool");
+	}
+	if (patch.replyEffectStatus === "non_applied") {
+		messageHandler.plan.replyEffectStatus = "non_applied";
+		changed.push("replyEffectStatus:non_applied");
 	}
 	if (patch.setContexts) {
 		messageHandler.plan.contexts = filterAvailableContexts(
@@ -260,6 +365,7 @@ function applyResponseHandlerPatch(
 			changed,
 		},
 		candidateActionsAdded: candidateActionsAdded ?? [],
+		invalidatedScopeFields: [...new Set(scope?.invalidateFields ?? [])],
 	};
 }
 
@@ -291,8 +397,12 @@ export async function runResponseHandlerEvaluators(args: {
 		return result;
 	}
 
+	const invalidatedScopeFields = new Set<string>();
+	let wholeRequestOwner: DirectActionRoutingRule | undefined;
 	for (const evaluator of candidates) {
 		const context: ResponseHandlerEvaluatorContext = {
+			invalidatedScopeFields,
+			wholeRequestOwner,
 			runtime: args.runtime,
 			message: args.message,
 			state: args.state,
@@ -311,15 +421,19 @@ export async function runResponseHandlerEvaluators(args: {
 				continue;
 			}
 			assertDeterministicToolCallAllowed(evaluator, patch);
-			if (patch.clearCandidateActions === true) {
-				result.candidateActionsClearedByEvaluators = true;
-			}
 			const applied = applyResponseHandlerPatch(
 				args.messageHandler,
 				patch,
 				args.availableContexts,
 			);
 			if (applied) {
+				if (patch.replaceIntentScope)
+					wholeRequestOwner = patch.replaceIntentScope.owner;
+				for (const field of applied.invalidatedScopeFields)
+					invalidatedScopeFields.add(field);
+				if (patch.clearCandidateActions === true) {
+					result.candidateActionsClearedByEvaluators = true;
+				}
 				const { trace } = applied;
 				trace.evaluatorName = evaluator.name;
 				result.appliedPatches.push(trace);
@@ -327,6 +441,10 @@ export async function runResponseHandlerEvaluators(args: {
 					result.candidateActionsAddedByEvaluators,
 					applied.candidateActionsAdded,
 				);
+			}
+			if (patch.contextSources?.length) {
+				result.contextSources ??= [];
+				result.contextSources.push(...patch.contextSources);
 			}
 		} catch (error) {
 			// error-policy:J7 Evaluators are independent Stage-1 enrichers; collect and

@@ -64,6 +64,51 @@ describe("PGliteClientManager file lock", () => {
     }
   });
 
+  it("closes immediately after construction without blocking initialization", async () => {
+    const dataDir = mkdtempSync(path.join(tmpdir(), "eliza-pglite-close-init-"));
+    tempDirs.push(dataDir);
+    const manager = new PGliteClientManager({ dataDir });
+    const client = manager.getConnection();
+    await manager.close();
+    expect(client.closed).toBe(true);
+    expect(existsSync(lockPathFor(dataDir))).toBe(false);
+  }, 15_000);
+
+  it("drains admitted writes and retains the lock until an export releases", async () => {
+    const dataDir = mkdtempSync(path.join(tmpdir(), "eliza-pglite-close-drain-"));
+    tempDirs.push(dataDir);
+    const manager = new PGliteClientManager({ dataDir });
+    const client = manager.getConnection();
+    await client.waitReady;
+    await client.exec("CREATE TABLE close_receipt (id integer PRIMARY KEY)");
+    const write = client.exec("INSERT INTO close_receipt VALUES (1)");
+    await manager.close();
+    await write;
+    expect(client.closed).toBe(true);
+
+    const reopened = new PGliteClientManager({ dataDir });
+    const next = reopened.getConnection();
+    await next.waitReady;
+    expect((await next.query("SELECT id FROM close_receipt")).rows).toEqual([{ id: 1 }]);
+    const exported = await reopened.dumpDataDirAfterPreflight(async () => "bounded fixture");
+    let closed = false;
+    const closing = reopened.close().then(() => {
+      closed = true;
+    });
+    try {
+      await Promise.resolve();
+      expect(closed).toBe(false);
+      expect(next.closed).toBe(false);
+      expect(existsSync(lockPathFor(dataDir))).toBe(true);
+      expect(() => new PGliteClientManager({ dataDir })).toThrow();
+    } finally {
+      exported.release();
+      await closing;
+    }
+    expect(next.closed).toBe(true);
+    expect(existsSync(lockPathFor(dataDir))).toBe(false);
+  }, 15_000);
+
   it("rejects a second manager for the same file-backed data dir", async () => {
     const dataDir = mkdtempSync(path.join(tmpdir(), "eliza-pglite-lock-"));
     tempDirs.push(dataDir);

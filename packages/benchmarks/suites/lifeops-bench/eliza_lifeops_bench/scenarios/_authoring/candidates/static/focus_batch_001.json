@@ -1,0 +1,801 @@
+[
+  {
+    "id": "focus.block_social_media_1hour",
+    "name": "Block Facebook and TikTok for 1 hour",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "block facebook.com and tiktok.com for 1 hour",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block facebook.com and tiktok.com for 60 minutes",
+          "hostnames": ["facebook.com", "tiktok.com"],
+          "durationMinutes": 60,
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "60"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, go ahead and block them for an hour.",
+      "applies_when": "agent asks for confirmation before blocking"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Simple block of two social websites with explicit confirmation."
+  },
+  {
+    "id": "focus.unblock_reddit_website",
+    "name": "Unblock Reddit website",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "please remove the block on reddit.com",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_UNBLOCK",
+        "kwargs": {
+          "subaction": "unblock",
+          "intent": "unblock reddit.com",
+          "hostnames": ["reddit.com"]
+        }
+      }
+    ],
+    "required_outputs": ["unblocked", "reddit"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Unblocking a previously blocked website without needing confirmation."
+  },
+  {
+    "id": "focus.request_permission_youtube",
+    "name": "Request permission to block YouTube",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Can you ask for permission to block youtube.com for 30 minutes?",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_REQUEST_PERMISSION",
+        "kwargs": {
+          "subaction": "request_permission",
+          "intent": "request permission to block youtube.com for 30 minutes",
+          "hostnames": ["youtube.com"],
+          "durationMinutes": 30
+        }
+      }
+    ],
+    "required_outputs": ["permission"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Triggers a permission request flow before blocking a popular site."
+  },
+  {
+    "id": "focus.block_music_apps_2hr",
+    "name": "Block Spotify and Netflix apps for 2 hours",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Block Spotify and Netflix for two hours while I code.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block Spotify and Netflix for 120 minutes",
+          "packageNames": ["com.spotify.music", "com.netflix.ninja"],
+          "durationMinutes": 120,
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "120"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, confirmed \u2014 block them for two hours.",
+      "applies_when": "agent asks for confirmation before blocking"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "App\u2011level block with explicit confirmation."
+  },
+  {
+    "id": "focus.block_news_sites_15min_clarify",
+    "name": "Clarify duration before blocking news sites",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "block hackernews.com and reddit.com",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block hackernews.com and reddit.com for 15 minutes",
+          "hostnames": ["news.ycombinator.com", "reddit.com"],
+          "durationMinutes": 15,
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "15"],
+    "first_question_fallback": {
+      "canned_answer": "Just 15 minutes is fine.",
+      "applies_when": "agent asks which duration"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Tests clarifying question handling for missing duration."
+  },
+  {
+    "id": "focus.unblock_spotify_app",
+    "name": "Unblock Spotify app after study session",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Please remove the block on the Spotify app.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_UNBLOCK",
+        "kwargs": {
+          "subaction": "unblock",
+          "intent": "unblock Spotify app",
+          "packageNames": ["com.spotify.music"]
+        }
+      }
+    ],
+    "required_outputs": ["unblocked", "Spotify"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Unblocking an app without confirmation."
+  },
+  {
+    "id": "focus.block_with_reason_study",
+    "name": "Block YouTube with reason and rule ID",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "Block youtube.com for 45 minutes because I need to study, and tag the rule as rule_001.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block youtube.com for 45 minutes for study",
+          "hostnames": ["youtube.com"],
+          "durationMinutes": 45,
+          "reason": "study session",
+          "ruleId": "rule_001",
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "45", "study"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, please go ahead.",
+      "applies_when": "agent asks for confirmation before blocking"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Block with custom reason and rule identifier."
+  },
+  {
+    "id": "focus.check_block_status",
+    "name": "Check status of current block rules",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Give me the status of all active block rules.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_STATUS",
+        "kwargs": {
+          "subaction": "status",
+          "intent": "status of active block rules",
+          "includeLiveStatus": true,
+          "includeManagedRules": false
+        }
+      }
+    ],
+    "required_outputs": ["status"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read\u2011only status request."
+  },
+  {
+    "id": "focus.release_all_blocks",
+    "name": "Release (clear) all focus blocks",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "clear all my current focus blocks",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_RELEASE",
+        "kwargs": {
+          "subaction": "release",
+          "intent": "release all active focus blocks",
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["released"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, clear everything.",
+      "applies_when": "agent asks for confirmation before releasing"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Destructive release of all blocks, requires confirmation."
+  },
+  {
+    "id": "focus.block_multiple_websites_30min",
+    "name": "Block multiple websites for 30 minutes",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Block twitter.com, instagram.com, and linkedin.com for half an hour.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block twitter.com, instagram.com, linkedin.com for 30 minutes",
+          "hostnames": ["twitter.com", "instagram.com", "linkedin.com"],
+          "durationMinutes": 30,
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "30"],
+    "first_question_fallback": {
+      "canned_answer": "Yep, go ahead.",
+      "applies_when": "agent asks for confirmation before blocking"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Multi\u2011site block with explicit duration."
+  },
+  {
+    "id": "focus.unblock_specific_app",
+    "name": "Unblock a specific app",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "remove the block on com.instagram.android",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_UNBLOCK",
+        "kwargs": {
+          "subaction": "unblock",
+          "intent": "unblock Instagram app",
+          "packageNames": ["com.instagram.android"]
+        }
+      }
+    ],
+    "required_outputs": ["unblocked", "Instagram"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Targeted unblocking of a single app."
+  },
+  {
+    "id": "focus.block_news_45min_no_confirm",
+    "name": "Block news sites for 45 minutes without extra confirmation",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Block cnn.com and bbc.com for 45 minutes.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block cnn.com and bbc.com for 45 minutes",
+          "hostnames": ["cnn.com", "bbc.com"],
+          "durationMinutes": 45
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "45"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Standard block where confirmation is not required by persona."
+  },
+  {
+    "id": "focus.block_with_app_tokens",
+    "name": "Block app with token for authentication",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Block the internal testing app com.example.testapp for 10 minutes using the provided token.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block com.example.testapp for 10 minutes with token",
+          "packageNames": ["com.example.testapp"],
+          "durationMinutes": 10,
+          "appTokens": ["token_abc123"],
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "10"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, go ahead with the token.",
+      "applies_when": "agent asks for confirmation before blocking"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Block that requires an authentication token."
+  },
+  {
+    "id": "focus.unblock_all_sites",
+    "name": "Unblock all currently blocked websites",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "please remove all website blocks",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_UNBLOCK",
+        "kwargs": {
+          "subaction": "unblock",
+          "intent": "unblock all websites",
+          "hostnames": []
+        }
+      }
+    ],
+    "required_outputs": ["unblocked", "all"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Bulk unblock operation using empty hostnames list."
+  },
+  {
+    "id": "focus.block_short_break_5min",
+    "name": "Block distracting sites for a short 5\u2011minute break",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Block youtube.com and twitch.tv for 5 minutes while I take a quick break.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block youtube.com and twitch.tv for 5 minutes",
+          "hostnames": ["youtube.com", "twitch.tv"],
+          "durationMinutes": 5,
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "5"],
+    "first_question_fallback": {
+      "canned_answer": "Sure, block them for five minutes.",
+      "applies_when": "agent asks for confirmation before blocking"
+    },
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Very short block to test low\u2011duration handling."
+  },
+  {
+    "id": "focus.request_permission_multiple",
+    "name": "Request permission to block multiple sites",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Can you ask for permission to block pinterest.com, tumblr.com, and flickr.com for 20 minutes?",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_REQUEST_PERMISSION",
+        "kwargs": {
+          "subaction": "request_permission",
+          "intent": "request permission to block pinterest.com, tumblr.com, flickr.com for 20 minutes",
+          "hostnames": ["pinterest.com", "tumblr.com", "flickr.com"],
+          "durationMinutes": 20
+        }
+      }
+    ],
+    "required_outputs": ["permission"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Permission request for a set of sites."
+  },
+  {
+    "id": "focus.block_app_with_reason",
+    "name": "Block a gaming app with reason",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Block the game app com.example.game for 90 minutes because I need to focus on my project.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block com.example.game for 90 minutes to focus",
+          "packageNames": ["com.example.game"],
+          "durationMinutes": 90,
+          "reason": "focus on project",
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "90"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, please block it.",
+      "applies_when": "agent asks for confirmation before blocking"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "App block with explicit reason and longer duration."
+  },
+  {
+    "id": "focus.unblock_after_timer",
+    "name": "Unblock after timer expires",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Unblock the site reddit.com now that the 15\u2011minute timer is over.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_UNBLOCK",
+        "kwargs": {
+          "subaction": "unblock",
+          "intent": "unblock reddit.com after timer",
+          "hostnames": ["reddit.com"]
+        }
+      }
+    ],
+    "required_outputs": ["unblocked", "reddit"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Unblocking triggered by timer expiry."
+  },
+  {
+    "id": "focus.block_with_rule_id",
+    "name": "Block with explicit rule ID",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Block medium.com for 25 minutes and tag the rule as rule_42.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block medium.com for 25 minutes with rule_42",
+          "hostnames": ["medium.com"],
+          "durationMinutes": 25,
+          "ruleId": "rule_42",
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "25", "rule_42"],
+    "first_question_fallback": {
+      "canned_answer": "Sure, go ahead.",
+      "applies_when": "agent asks for confirmation before blocking"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Block that includes a custom rule identifier."
+  },
+  {
+    "id": "focus.check_status_specific",
+    "name": "Check status of a specific block rule",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Give me the status of rule rule_001.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_STATUS",
+        "kwargs": {
+          "subaction": "status",
+          "intent": "status of rule_001",
+          "ruleId": "rule_001",
+          "includeLiveStatus": true
+        }
+      }
+    ],
+    "required_outputs": ["status"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Targeted status query for a known rule."
+  },
+  {
+    "id": "focus.block_multiple_apps_45min",
+    "name": "Block several apps for 45 minutes",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Block the apps com.slack.app, com.zoom.us, and com.discord for 45 minutes while I work on the client proposal.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block Slack, Zoom, Discord for 45 minutes",
+          "packageNames": ["com.slack.app", "com.zoom.us", "com.discord"],
+          "durationMinutes": 45,
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "45"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, confirm the block.",
+      "applies_when": "agent asks for confirmation before blocking"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Multi\u2011app block with confirmation."
+  },
+  {
+    "id": "focus.unblock_all_apps",
+    "name": "Unblock all currently blocked apps",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Please clear all app blocks I have.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_UNBLOCK",
+        "kwargs": {
+          "subaction": "unblock",
+          "intent": "unblock all apps",
+          "packageNames": []
+        }
+      }
+    ],
+    "required_outputs": ["unblocked", "all"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Bulk app unblock using empty package list."
+  },
+  {
+    "id": "focus.block_news_sites_10min",
+    "name": "Block news sites for 10 minutes",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Block nytimes.com and theguardian.com for 10 minutes while I help my kid with homework.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block nytimes.com and theguardian.com for 10 minutes",
+          "hostnames": ["nytimes.com", "theguardian.com"],
+          "durationMinutes": 10,
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "10"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, block them for ten minutes.",
+      "applies_when": "agent asks for confirmation before blocking"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Short news site block with parental context."
+  },
+  {
+    "id": "focus.request_permission_complex",
+    "name": "Request permission for complex block set",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "Could you ask for permission to block facebook.com, instagram.com, and snapchat.com for 40 minutes?",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_REQUEST_PERMISSION",
+        "kwargs": {
+          "subaction": "request_permission",
+          "intent": "request permission to block facebook.com, instagram.com, snapchat.com for 40 minutes",
+          "hostnames": ["facebook.com", "instagram.com", "snapchat.com"],
+          "durationMinutes": 40
+        }
+      }
+    ],
+    "required_outputs": ["permission"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Permission flow for multiple social sites."
+  },
+  {
+    "id": "focus.block_with_no_duration",
+    "name": "Clarify missing duration before blocking",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "block instagram.com",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block instagram.com for 20 minutes",
+          "hostnames": ["instagram.com"],
+          "durationMinutes": 20,
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "20"],
+    "first_question_fallback": {
+      "canned_answer": "Just 20 minutes is fine.",
+      "applies_when": "agent asks which duration"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Tests clarifying missing duration with a fallback answer."
+  },
+  {
+    "id": "focus.unblock_specific_website",
+    "name": "Unblock a single website",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "please unblock twitter.com",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_UNBLOCK",
+        "kwargs": {
+          "subaction": "unblock",
+          "intent": "unblock twitter.com",
+          "hostnames": ["twitter.com"]
+        }
+      }
+    ],
+    "required_outputs": ["unblocked", "twitter"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Simple unblocking of a single website."
+  },
+  {
+    "id": "focus.block_multiple_websites_60min",
+    "name": "Block a set of news sites for 60 minutes",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Block reuters.com, aljazeera.com, and bloomberg.com for an hour.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block reuters.com, aljazeera.com, bloomberg.com for 60 minutes",
+          "hostnames": ["reuters.com", "aljazeera.com", "bloomberg.com"],
+          "durationMinutes": 60,
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "60"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, go ahead.",
+      "applies_when": "agent asks for confirmation before blocking"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Longer duration block of multiple news sites."
+  },
+  {
+    "id": "focus.status_all_rules",
+    "name": "Get status of all block rules",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "What is the current status of all my block rules?",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_STATUS",
+        "kwargs": {
+          "subaction": "status",
+          "intent": "status of all block rules",
+          "includeLiveStatus": true,
+          "includeManagedRules": true
+        }
+      }
+    ],
+    "required_outputs": ["status"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Comprehensive status request covering every rule."
+  },
+  {
+    "id": "focus.release_specific_rule",
+    "name": "Release a specific block rule",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Please release rule rule_007.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_RELEASE",
+        "kwargs": {
+          "subaction": "release",
+          "intent": "release rule rule_007",
+          "ruleId": "rule_007",
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["released", "rule_007"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, release it.",
+      "applies_when": "agent asks for confirmation before releasing"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Targeted release of a single rule with confirmation."
+  },
+  {
+    "id": "focus.block_with_no_confirm_needed",
+    "name": "Block without requiring confirmation",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Block the site example.com for 30 minutes.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_BLOCK",
+        "kwargs": {
+          "subaction": "block",
+          "intent": "block example.com for 30 minutes",
+          "hostnames": ["example.com"],
+          "durationMinutes": 30
+        }
+      }
+    ],
+    "required_outputs": ["blocked", "30"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Simple block where confirmation is not required by persona."
+  },
+  {
+    "id": "focus.unblock_all_rules",
+    "name": "Unblock all block rules",
+    "domain": "focus",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Remove every block I have set.",
+    "ground_truth_actions": [
+      {
+        "name": "BLOCK_UNBLOCK",
+        "kwargs": {
+          "subaction": "unblock",
+          "intent": "unblock all rules",
+          "hostnames": [],
+          "packageNames": []
+        }
+      }
+    ],
+    "required_outputs": ["unblocked", "all"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Bulk removal of both website and app blocks using empty lists."
+  }
+]

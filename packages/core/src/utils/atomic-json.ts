@@ -1,17 +1,6 @@
 /**
- * Atomic JSON read/write helpers (node-only).
- *
- * Consolidates the write-tmp + rename pattern duplicated across the agent
- * package for tokens, ledgers, config snapshots, and runtime operations.
- *
- * Defaults:
- *   - mode 0o600 on the written file (secret-grade)
- *   - dir mode 0o700 when the parent has to be created
- *   - JSON 2-space indent, no trailing newline
- *   - tmp filename `${filePath}.tmp-${pid}-${Date.now()}-${sequence}`
- *   - parent directory created with mkdir recursive
- *
- * On failure, the temp file is best-effort removed.
+ * Atomic JSON writes use a sibling temporary file and rename. Defaults are file mode 0600,
+ * directory mode 0700, and two-space JSON without a trailing newline.
  */
 
 import fs from "node:fs";
@@ -62,6 +51,9 @@ function tmpPathFor(filePath: string): string {
 
 function serialize(value: unknown, opts: NormalizedWriteOptions): string {
 	const body = JSON.stringify(value, null, opts.indent);
+	if (body === undefined) {
+		throw new TypeError(`Cannot serialize ${typeof value} to JSON`);
+	}
 	return opts.trailingNewline ? `${body}\n` : body;
 }
 
@@ -98,8 +90,14 @@ export async function writeJsonAtomic(
 	opts?: WriteJsonAtomicOptions,
 ): Promise<void> {
 	assertFilePath(filePath);
+	const o = normalizeOptions(opts);
+	// Serialize before any filesystem work so top-level undefined/function/
+	// symbol (the only values JSON.stringify maps to undefined) reject with a
+	// descriptive TypeError before mkdir or temp-file creation. Nested
+	// function/symbol values keep standard stringify semantics and are not
+	// rejected here.
+	const body = serialize(value, o);
 	await serializeAsyncWrite(filePath, async () => {
-		const o = normalizeOptions(opts);
 		if (!o.skipMkdir) {
 			await fsp.mkdir(path.dirname(filePath), {
 				recursive: true,
@@ -108,7 +106,7 @@ export async function writeJsonAtomic(
 		}
 		const tmp = tmpPathFor(filePath);
 		try {
-			await fsp.writeFile(tmp, serialize(value, o), {
+			await fsp.writeFile(tmp, body, {
 				encoding: "utf-8",
 				mode: o.mode,
 				flag: "wx",
@@ -139,6 +137,9 @@ export function writeJsonAtomicSync(
 ): void {
 	assertFilePath(filePath);
 	const o = normalizeOptions(opts);
+	// Serialize before mkdir for the same fail-fast ordering as the async
+	// path: a top-level unserializable value must not create its parent.
+	const body = serialize(value, o);
 	if (!o.skipMkdir) {
 		fs.mkdirSync(path.dirname(filePath), {
 			recursive: true,
@@ -147,7 +148,7 @@ export function writeJsonAtomicSync(
 	}
 	const tmp = tmpPathFor(filePath);
 	try {
-		fs.writeFileSync(tmp, serialize(value, o), {
+		fs.writeFileSync(tmp, body, {
 			encoding: "utf-8",
 			mode: o.mode,
 			flag: "wx",

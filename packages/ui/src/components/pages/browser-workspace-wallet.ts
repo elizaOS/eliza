@@ -6,7 +6,7 @@
  * capability flags) that embedded iframes read to talk to the host wallet.
  */
 
-import type { WalletAddresses, WalletConfigStatus } from "@elizaos/shared";
+import type { WalletAddresses, WalletConfigStatus } from "@elizaos/contracts";
 import type { StewardStatusResponse } from "../../api/client-types-steward";
 
 export type {
@@ -15,7 +15,6 @@ export type {
   BrowserWorkspaceWalletMessageSignatureResult,
   BrowserWorkspaceWalletTransactionResult,
 } from "../../api/client-types-wallet";
-
 export const BROWSER_WALLET_REQUEST_TYPE = "ELIZA_BROWSER_WALLET_REQUEST";
 export const BROWSER_WALLET_RESPONSE_TYPE = "ELIZA_BROWSER_WALLET_RESPONSE";
 export const BROWSER_WALLET_READY_TYPE = "ELIZA_BROWSER_WALLET_READY";
@@ -23,17 +22,14 @@ export const DEFAULT_BROWSER_WORKSPACE_EVM_CHAIN_ID = 1;
 export const SUPPORTED_BROWSER_WORKSPACE_EVM_CHAIN_IDS = [
   1, 10, 56, 137, 8453, 42161,
 ] as const;
-
 const SUPPORTED_BROWSER_WORKSPACE_EVM_CHAIN_ID_SET = new Set<number>(
   SUPPORTED_BROWSER_WORKSPACE_EVM_CHAIN_IDS,
 );
-
 export type BrowserWorkspaceWalletMode =
   | "steward"
   | "local"
   | "blocked"
   | "none";
-
 export interface BrowserWorkspaceWalletState {
   address: string | null;
   connected: boolean;
@@ -51,7 +47,6 @@ export interface BrowserWorkspaceWalletState {
   solanaMessageSigningAvailable: boolean;
   solanaTransactionSigningAvailable: boolean;
 }
-
 export type BrowserWorkspaceWalletRpcMethod =
   | "eth_accounts"
   | "eth_requestAccounts"
@@ -63,38 +58,29 @@ export type BrowserWorkspaceWalletRpcMethod =
   | "eth_signTypedData_v3"
   | "eth_signTypedData_v4"
   | "wallet_switchEthereumChain";
-
 export type BrowserWorkspaceSolanaMethod =
   | "solana_connect"
   | "solana_signMessage"
   | "solana_signTransaction"
   | "solana_signAndSendTransaction";
-
 export type BrowserWorkspaceWalletMethod =
   | "getState"
   | "requestAccounts"
   | "sendTransaction"
   | BrowserWorkspaceWalletRpcMethod
   | BrowserWorkspaceSolanaMethod;
-
 export interface BrowserWorkspaceWalletRequest {
   type: typeof BROWSER_WALLET_REQUEST_TYPE;
   requestId: string;
   method: BrowserWorkspaceWalletMethod;
   params?: unknown;
 }
-
 export interface BrowserWorkspaceWalletResponse {
   type: typeof BROWSER_WALLET_RESPONSE_TYPE;
   requestId: string;
   ok: boolean;
   result?: unknown;
   error?: string;
-}
-
-export interface BrowserWorkspaceWalletReadyPayload {
-  type: typeof BROWSER_WALLET_READY_TYPE;
-  state: BrowserWorkspaceWalletState;
 }
 
 export const EMPTY_BROWSER_WORKSPACE_WALLET_STATE: BrowserWorkspaceWalletState =
@@ -115,7 +101,6 @@ export const EMPTY_BROWSER_WORKSPACE_WALLET_STATE: BrowserWorkspaceWalletState =
     solanaMessageSigningAvailable: false,
     solanaTransactionSigningAvailable: false,
   };
-
 export function getBrowserWorkspaceWalletAddress(
   walletAddresses: WalletAddresses | null,
   walletConfig: WalletConfigStatus | null,
@@ -129,7 +114,6 @@ export function getBrowserWorkspaceWalletAddress(
     null
   );
 }
-
 export function getBrowserWorkspaceSolanaAddress(
   walletAddresses: WalletAddresses | null,
   walletConfig: WalletConfigStatus | null,
@@ -142,7 +126,6 @@ export function getBrowserWorkspaceSolanaAddress(
     null
   );
 }
-
 export function resolveBrowserWorkspaceWalletMode(
   stewardStatus: StewardStatusResponse | null,
   evmAddress: string | null,
@@ -170,7 +153,6 @@ export function resolveBrowserWorkspaceWalletMode(
   }
   return "none";
 }
-
 export function buildBrowserWorkspaceWalletState(params: {
   pendingApprovals: number;
   stewardStatus: StewardStatusResponse | null;
@@ -207,7 +189,6 @@ export function buildBrowserWorkspaceWalletState(params: {
   const solanaMessageSigningAvailable = Boolean(
     solanaAddress && walletConfig?.solanaSigningAvailable,
   );
-
   if (mode === "steward") {
     return {
       address,
@@ -227,7 +208,6 @@ export function buildBrowserWorkspaceWalletState(params: {
       solanaTransactionSigningAvailable: solanaConnected,
     };
   }
-
   if (mode === "local") {
     const solanaTransactionSigningAvailable = Boolean(
       solanaAddress && walletConfig?.solanaSigningAvailable,
@@ -254,7 +234,6 @@ export function buildBrowserWorkspaceWalletState(params: {
       solanaTransactionSigningAvailable,
     };
   }
-
   if (mode === "blocked") {
     return {
       address,
@@ -278,7 +257,6 @@ export function buildBrowserWorkspaceWalletState(params: {
       solanaTransactionSigningAvailable: false,
     };
   }
-
   return {
     ...EMPTY_BROWSER_WORKSPACE_WALLET_STATE,
     mode,
@@ -288,7 +266,6 @@ export function buildBrowserWorkspaceWalletState(params: {
         : "No wallet configured.",
   };
 }
-
 export function isBrowserWorkspaceWalletRequest(
   value: unknown,
 ): value is BrowserWorkspaceWalletRequest {
@@ -302,34 +279,22 @@ export function isBrowserWorkspaceWalletRequest(
     typeof entry.method === "string"
   );
 }
-
 export function parseBrowserWorkspaceEvmChainId(value: unknown): number | null {
-  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
-    return value;
-  }
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parsed = trimmed.startsWith("0x")
-    ? Number.parseInt(trimmed.slice(2), 16)
-    : Number(trimmed);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  const parsed = typeof value === "string" ? Number(value.trim()) : value;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
-
 export function formatBrowserWorkspaceEvmChainId(chainId: number): string {
   return `0x${chainId.toString(16)}`;
 }
-
 export function isBrowserWorkspaceEvmChainSupported(chainId: number): boolean {
   return SUPPORTED_BROWSER_WORKSPACE_EVM_CHAIN_ID_SET.has(chainId);
 }
-
 export function getUnsupportedBrowserWorkspaceEvmChainError(
   chainId: number,
 ): string {
   return `Unsupported EVM chain ${chainId}. Supported chain IDs: ${SUPPORTED_BROWSER_WORKSPACE_EVM_CHAIN_IDS.join(", ")}.`;
 }
-
 export function resolveBrowserWorkspaceSignMessage(
   params: unknown,
   address: string | null,
@@ -343,4 +308,66 @@ export function resolveBrowserWorkspaceSignMessage(
     if (second.toLowerCase() === normalizedAddress) return first;
   }
   return typeof first === "string" ? first : null;
+}
+
+export type BrowserWorkspaceSolanaCluster = "mainnet" | "devnet" | "testnet";
+
+function matchBrowserWorkspaceSolanaCluster(
+  value: unknown,
+): BrowserWorkspaceSolanaCluster | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/^solana:/, "");
+  if (normalized === "mainnet" || normalized === "mainnet-beta")
+    return "mainnet";
+  if (normalized === "devnet" || normalized === "testnet") return normalized;
+  if (URL.canParse(value)) {
+    const endpoint = new URL(value);
+    if (
+      endpoint.protocol === "https:" &&
+      !endpoint.port &&
+      !endpoint.username &&
+      !endpoint.password
+    ) {
+      if (endpoint.hostname === "api.mainnet-beta.solana.com") return "mainnet";
+      if (endpoint.hostname === "api.devnet.solana.com") return "devnet";
+      if (endpoint.hostname === "api.testnet.solana.com") return "testnet";
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resolve the Solana cluster a dApp expressed for signTransaction /
+ * signAndSendTransaction. `cluster` wins over the legacy `chain` fallback.
+ * An absent value (undefined/null on both) returns `{ cluster: null }` so
+ * the request omits the field and the server's documented mainnet default
+ * applies. A sent-but-unrecognizable value ("localnet", "mainent", 123)
+ * returns `{ error }`: the bridge must reply with that error and never
+ * forward the request, because omitting the field would silently route a
+ * dApp that asked for some other network to mainnet.
+ */
+export function resolveBrowserWorkspaceSolanaCluster(
+  params: unknown,
+): { cluster: BrowserWorkspaceSolanaCluster | null } | { error: string } {
+  const raw =
+    params && typeof params === "object" && !Array.isArray(params)
+      ? (params as Record<string, unknown>)
+      : undefined;
+  const requested =
+    raw && raw.cluster !== undefined && raw.cluster !== null
+      ? raw.cluster
+      : raw && raw.chain !== undefined && raw.chain !== null
+        ? raw.chain
+        : undefined;
+  if (requested === undefined) return { cluster: null };
+  const cluster = matchBrowserWorkspaceSolanaCluster(requested);
+  if (!cluster) {
+    return {
+      error: `Unsupported Solana cluster ${JSON.stringify(String(requested))}: expected mainnet, devnet, or testnet.`,
+    };
+  }
+  return { cluster };
 }

@@ -33,14 +33,18 @@
  *     digest-verified and materialized on Dedicated before the route flips.
  */
 
+import {
+  DEDICATED_COMPUTE_PRICE_HEADER,
+  getDedicatedComputePriceAcceptance,
+} from "@elizaos/cloud-sdk/browser-contracts";
+
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
-import { ElizaClient } from "@elizaos/ui/api";
-import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
+import { ElizaClient, getBootConfig, setBootConfig } from "@elizaos/ui";
 // Playwright spec marker: `test`/`expect` arrive via the shared fixtures
 // below, but the coverage gate classifies a changed *.spec.ts by grepping for
 // a DIRECT @playwright/test import — without one it would run this file under
@@ -68,6 +72,9 @@ test.use({
 interface DedicatedQuote {
   action: "activate_dedicated";
   quoteId: string;
+  minimumActivationChargeUsd: number;
+  minimumBalanceUsd: number;
+  minimumRunwayDays: number;
 }
 
 async function setOrgBalance(orgId: string, balance: string): Promise<void> {
@@ -248,10 +255,20 @@ test.describe("shared→dedicated tier upgrade", () => {
         ],
       });
 
-      // ── 3. Runway credit gate: refused BELOW 3 days of hosting. ────────
-      // $0.50 clears the $0.10 create minimum — the gate the create/provision
-      // routes use — so this proves upgrade-tier enforces the STRICTER runway.
-      await setOrgBalance(seededUser.organizationId, "0.50");
+      // The upgrade runway must reject a balance that covers the ordinary activation charge.
+      const activationQuote = await c<{ data?: DedicatedQuote }>(
+        "GET",
+        `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`,
+      );
+      expect(activationQuote.status).toBe(200);
+      if (!activationQuote.json.data)
+        throw new Error("activation quote is missing");
+      const activationBalance =
+        activationQuote.json.data.minimumActivationChargeUsd;
+      await setOrgBalance(
+        seededUser.organizationId,
+        activationBalance.toFixed(6),
+      );
       const gatedQuote = await c<{ data?: DedicatedQuote }>(
         "GET",
         `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`,
@@ -264,17 +281,28 @@ test.describe("shared→dedicated tier upgrade", () => {
         requiredBalance?: number;
         currentBalance?: number;
         error?: string;
-      }>("POST", `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`, {
-        action: gatedQuote.json.data?.action,
-        quoteId: gatedQuote.json.data?.quoteId,
-      });
+      }>(
+        "POST",
+        `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`,
+        {
+          action: gatedQuote.json.data?.action,
+          quoteId: gatedQuote.json.data?.quoteId,
+          minimumActivationChargeUsd:
+            gatedQuote.json.data?.minimumActivationChargeUsd,
+        },
+        {
+          [DEDICATED_COMPUTE_PRICE_HEADER]:
+            getDedicatedComputePriceAcceptance(),
+        },
+      );
       expect(gated.status, "runway gate refuses with 402").toBe(402);
       expect(gated.json.code).toBe("insufficient_credits");
-      expect(
-        gated.json.requiredBalance,
-        "402 carries the enforced runway threshold (3 × $0.24/day)",
-      ).toBe(0.72);
-      expect(gated.json.currentBalance).toBe(0.5);
+      // Assert the observable tariff independently of the quote being checked.
+      expect(gatedQuote.json.data?.minimumRunwayDays).toBe(3);
+      expect(gatedQuote.json.data?.minimumBalanceUsd).toBeCloseTo(0.72, 6);
+      expect(gated.json.requiredBalance).toBeCloseTo(0.72, 6);
+      expect(gated.json.requiredBalance).toBeGreaterThan(activationBalance);
+      expect(gated.json.currentBalance).toBe(activationBalance);
       expect(gated.json.error).toContain("3 days of hosting");
 
       // ── 4. Cross-org denial: another org's key reads the agent as 404. ──
@@ -307,10 +335,20 @@ test.describe("shared→dedicated tier upgrade", () => {
           executionTier?: string;
         };
         polling?: { endpoint?: string };
-      }>("POST", `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`, {
-        action: fundedQuote.json.data?.action,
-        quoteId: fundedQuote.json.data?.quoteId,
-      });
+      }>(
+        "POST",
+        `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`,
+        {
+          action: fundedQuote.json.data?.action,
+          quoteId: fundedQuote.json.data?.quoteId,
+          minimumActivationChargeUsd:
+            fundedQuote.json.data?.minimumActivationChargeUsd,
+        },
+        {
+          [DEDICATED_COMPUTE_PRICE_HEADER]:
+            getDedicatedComputePriceAcceptance(),
+        },
+      );
       expect(started.status, "funded upgrade is accepted").toBe(202);
       expect(started.json.created).toBe(true);
       const dedicatedAgentId = started.json.data?.dedicatedAgentId;
@@ -348,10 +386,20 @@ test.describe("shared→dedicated tier upgrade", () => {
         created?: boolean;
         alreadyInProgress?: boolean;
         data?: { dedicatedAgentId?: string };
-      }>("POST", `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`, {
-        action: fundedQuote.json.data?.action,
-        quoteId: fundedQuote.json.data?.quoteId,
-      });
+      }>(
+        "POST",
+        `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`,
+        {
+          action: fundedQuote.json.data?.action,
+          quoteId: fundedQuote.json.data?.quoteId,
+          minimumActivationChargeUsd:
+            fundedQuote.json.data?.minimumActivationChargeUsd,
+        },
+        {
+          [DEDICATED_COMPUTE_PRICE_HEADER]:
+            getDedicatedComputePriceAcceptance(),
+        },
+      );
       expect([200, 202]).toContain(retried.status);
       expect(retried.json.created).toBe(false);
       expect(retried.json.alreadyInProgress).toBe(true);
@@ -665,13 +713,27 @@ test.describe("shared→dedicated tier upgrade", () => {
         splitTurn.status,
         `stale Shared turn must fail: ${JSON.stringify(splitTurn.json)}`,
       ).not.toBe(200);
+      // The personal surface no longer serves the sealed Shared transcript:
+      // Dedicated ownership is a typed 409 naming the agent to switch to
+      // (#25146), and the refused turn never reached the imported room.
       const archivedHistory = await c<{
-        messages?: Array<{ role: string; text: string }>;
+        code?: string;
+        activeAgentId?: string;
       }>("GET", convoUrl);
       expect(
-        archivedHistory.json.messages?.length,
+        archivedHistory.status,
+        "a stale client is sent to the Dedicated owner",
+      ).toBe(409);
+      expect(archivedHistory.json).toMatchObject({
+        code: "personal_eliza_dedicated",
+        activeAgentId: dedicatedAgentId,
+      });
+      expect(
+        stack.mocks.controlPlane.store
+          .getConversationByAgent(dedicatedAgentId, sharedAgentId)
+          .map((message) => message.text),
         "a stale client cannot append to the sealed Shared transcript",
-      ).toBe(4);
+      ).not.toContain("This must not create a new Shared turn.");
     } finally {
       setBootConfig(prevBoot);
       if (prevToken === null) {

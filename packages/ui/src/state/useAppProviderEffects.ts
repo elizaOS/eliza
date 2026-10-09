@@ -4,7 +4,8 @@
  * greeting. Kept out of the provider body so the render stays declarative.
  */
 import { type RefObject, useEffect, useRef, useSyncExternalStore } from "react";
-import { type ConversationMessage, client } from "../api";
+import { client } from "../api/client";
+import type { ConversationMessage } from "../api/client-types-chat";
 import {
   getAppShellPageRegistrySnapshot,
   subscribeAppShellPages,
@@ -12,13 +13,10 @@ import {
 import {
   getWindowNavigationPath,
   isRouteRootPath,
-  resolveLegacyBuiltinRoute,
-  shouldUseHashNavigation,
   type Tab,
   tabFromPath,
 } from "../navigation";
-import { shellHistory } from "../surface-realm-channel";
-import type { AppState } from "./internal";
+import type { AppState } from "./types";
 
 function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
   try {
@@ -60,15 +58,6 @@ export function useNavigationPathSync({
 
     const reconcileNavigationPath = () => {
       const navPath = getWindowNavigationPath();
-      const legacyRoute = resolveLegacyBuiltinRoute(navPath);
-      if (legacyRoute) {
-        const nextUrl = shouldUseHashNavigation()
-          ? `${window.location.pathname}${window.location.search}#${legacyRoute.canonicalPath}`
-          : `${legacyRoute.canonicalPath}${window.location.search}${window.location.hash}`;
-        shellHistory.replaceState(window.history.state, "", nextUrl);
-        window.dispatchEvent(new PopStateEvent("popstate"));
-        return;
-      }
       if (isRouteRootPath(navPath)) return;
       const routeTab = tabFromPath(navPath);
       if (routeTab && routeTab !== tab) {

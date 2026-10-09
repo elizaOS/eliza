@@ -2,11 +2,10 @@
  * Bridges the chat avatar's mouth/speaking animation to voice events, driving
  * lip-sync from the CHAT_AVATAR_VOICE_EVENT stream.
  */
+
+import type { ChatAvatarVoiceEventDetail } from "@elizaos/core/protocol";
 import { useEffect, useRef } from "react";
-import {
-  CHAT_AVATAR_VOICE_EVENT,
-  type ChatAvatarVoiceEventDetail,
-} from "../events";
+import { CHAT_AVATAR_VOICE_EVENT } from "../events";
 
 export interface UseChatAvatarVoiceBridgeOptions {
   mouthOpen: number;

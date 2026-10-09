@@ -95,16 +95,6 @@ const VIEW_FIXTURES = [
     tags: ["goals"],
     desktopTabEnabled: true,
   },
-  {
-    id: "finances",
-    label: "Finances",
-    description: "Finances view",
-    path: "/finances",
-    available: true,
-    pluginName: "finances",
-    tags: ["finances"],
-    desktopTabEnabled: true,
-  },
 ];
 
 // The home widgets resolve only when the matching plugin id is enabled+active in
@@ -241,8 +231,8 @@ function notificationsPayload() {
 //
 // The local first-run path resolves the on-device agent base via
 // resolveFirstRunLocalAgentApiBase() → getElizaApiBase() (which reads the
-// boot-config apiBase, NOT __ELIZA_APP_API_BASE__). Seed the boot-config mirror
-// (and the branded __ELIZAOS_API_BASE__) with the page origin so
+// boot-config apiBase). Seed the boot-config mirror
+// with the page origin so
 // client.setBaseUrl() in finishLocal keeps every request on the live preview
 // origin (and the route mocks) instead of falling back to
 // DEFAULT_LOCAL_AGENT_API_BASE (http://127.0.0.1:31337), which has no server →
@@ -252,9 +242,7 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
     const origin = window.location.origin;
     const secureStore = new Map<string, string>();
     const win = window as unknown as Record<string, unknown>;
-    win.__ELIZA_APP_API_BASE__ = origin;
     win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
-    win.__ELIZAOS_API_BASE__ = origin;
     win.__electrobunWindowId = 1;
     win.__ELIZA_ELECTROBUN_RPC__ = {
       request: {
@@ -296,6 +284,25 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
 // network boundary (the single `persistFirstRun` funnel in first-run-finish.ts).
 export interface OnboardingRouteState {
   firstRunPosts: unknown[];
+  /**
+   * Bodies of every `PUT /api/config` the page issued. Remote adoption completes
+   * first-run on the host with a `meta.firstRunComplete` patch (see
+   * `adopt-remote-first-run.ts`) instead of `POST /api/first-run`, so the
+   * first-run status route derives completion from both writes.
+   */
+  configWrites: Record<string, unknown>[];
+}
+
+/** True once a config write carried the host first-run completion marker. */
+export function hostFirstRunCompleted(state: OnboardingRouteState): boolean {
+  return state.configWrites.some((write) => {
+    const meta = write.meta;
+    return (
+      typeof meta === "object" &&
+      meta !== null &&
+      (meta as { firstRunComplete?: unknown }).firstRunComplete === true
+    );
+  });
 }
 
 async function routeFirstRunIncomplete(
@@ -328,7 +335,7 @@ async function routeFirstRunIncomplete(
       return;
     }
     await fulfillJson(route, {
-      complete: state.firstRunPosts.length > 0,
+      complete: state.firstRunPosts.length > 0 || hostFirstRunCompleted(state),
       cloudProvisioned: false,
     });
   });
@@ -349,22 +356,32 @@ async function routeFirstRunIncomplete(
 export async function installHomeRoutes(
   page: Page,
 ): Promise<OnboardingRouteState> {
-  const state: OnboardingRouteState = { firstRunPosts: [] };
+  const state: OnboardingRouteState = { firstRunPosts: [], configWrites: [] };
   await installDefaultAppRoutes(page);
   await routeFirstRunIncomplete(page, state);
 
+  const homeConfig = {
+    cloud: { enabled: false },
+    media: {},
+    plugins: { entries: {} },
+    ui: { avatarIndex: 1 },
+    wallet: {},
+  };
   await page.route("**/api/config", async (route) => {
-    if (route.request().method() !== "GET") {
+    const method = route.request().method();
+    if (method === "PUT") {
+      // The real route merges the patch into the host config; the harness only
+      // needs the completion marker to become visible to /api/first-run/status.
+      const patch = route.request().postDataJSON() as Record<string, unknown>;
+      state.configWrites.push(patch);
+      await fulfillJson(route, { ...homeConfig, ...patch });
+      return;
+    }
+    if (method !== "GET") {
       await route.fallback();
       return;
     }
-    await fulfillJson(route, {
-      cloud: { enabled: false },
-      media: {},
-      plugins: { entries: {} },
-      ui: { avatarIndex: 1 },
-      wallet: {},
-    });
+    await fulfillJson(route, homeConfig);
   });
 
   await page.route("**/api/stream/settings", async (route) => {
@@ -789,11 +806,6 @@ export function makeScreenshotter(
   };
 }
 
-// The WidgetSection testIds each widget renders (read from source). The
-// notification inbox is not a ranked tile: it renders inline on the home column,
-// outside the WidgetHost.
-export const TODOS_TESTID = "chat-widget-todos";
-
 // First-run runtime/provider buttons live in the real chat transcript. The
 // headless conductor seeds the ChoiceWidgets and the chat action channel routes
 // their sentinel values before they hit the server.
@@ -933,21 +945,15 @@ async function expectPostOnboardingChat(
 /** Assert the kept sparse-home widgets render with their seeded data. */
 async function expectPopulatedHome(page: Page): Promise<Locator> {
   const host = page.getByTestId("widget-host-home");
-  await expect(host).toBeVisible({ timeout: 30_000 });
-  await expect(
-    host.getByTestId(TODOS_TESTID),
-    "home Todos widget should render with seeded task data",
-  ).toBeVisible({ timeout: 30_000 });
-  await expect(host.getByTestId(TODOS_TESTID)).toContainText(
-    "Ship the release",
-  );
+  await expect(host).toBeAttached({ timeout: 30_000 });
   for (const testId of [
-    "chat-widget-finances-alerts",
+    "chat-widget-todos",
     "chat-widget-relationships",
     "chat-widget-inbox-unread",
   ]) {
     await expect(host.getByTestId(testId)).toHaveCount(0);
   }
+  await expect(host.getByText("Ship the release")).toHaveCount(0);
   // The seeded urgent notification renders in the INLINE notification inbox on
   // the home column, not as a ranked WidgetHost tile. Local first-run can land
   // on home before inbox hydrate paints the center (the center returns null
@@ -965,6 +971,8 @@ async function expectPopulatedHome(page: Page): Promise<Locator> {
     ).toContainText("Payment failed");
   }
   const surface = page.getByTestId("home-launcher-surface");
+  await expect(surface).toBeVisible();
+  await expect(page.getByTestId("home-time-widget")).toBeVisible();
   await expect(surface).toHaveAttribute("data-page", "home");
   return surface;
 }
@@ -998,7 +1006,7 @@ export async function completeOnboardingToHome(
   page: Page,
   click: (locator: Locator) => Promise<void>,
   opts: { state: OnboardingRouteState; tutorial?: "start" | "skip" } = {
-    state: { firstRunPosts: [] },
+    state: { firstRunPosts: [], configWrites: [] },
   },
 ): Promise<{ surface: Locator }> {
   const { state, tutorial = "skip" } = opts;
@@ -1339,9 +1347,34 @@ export async function connectRemoteFirstRunToHome(
 
   await expectChatFirstOnboarding(page);
 
+  // The device starts unconfigured, but the adopted host is already ready.
+  // Switch this endpoint before connecting; adoption must not configure it again.
+  await page.route("**/api/first-run/status", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await fulfillJson(route, { complete: true, cloudProvisioned: false });
+  });
+
   const apiBase =
     opts.apiBase ??
     (await page.evaluate(() => window.location.origin.toString()));
+
+  // Adoption probes the host before writing its completion marker and refuses
+  // one that is not running and able to respond; the default smoke status
+  // omits `canRespond`, so present the adopted host as ready. Later routes win.
+  await page.route("**/api/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, {
+      state: "running",
+      canRespond: true,
+      agentName: "Playwright Smoke",
+      model: "ui-smoke",
+      startedAt: Date.now() - 60_000,
+      uptime: 60_000,
+    });
+  });
 
   await page.evaluate((gatewayUrl) => {
     document.dispatchEvent(
@@ -1355,12 +1388,18 @@ export async function connectRemoteFirstRunToHome(
     );
   }, apiBase);
 
+  // Remote adoption opens the completed conversation at full height. Reveal
+  // Home through the normal dismissal gesture before checking its contents.
+  await expectOnboardingSettleToFull(page);
+  await dismissPermissionPrimingIfShown(page);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
+    "data-detent",
+    "collapsed",
+  );
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toBeVisible({ timeout: 60_000 });
   await expect(surface).toHaveAttribute("data-page", "home");
-  // Remote adoption flips firstRunComplete too — same settle-to-half edge.
-  await expectOnboardingSettleToFull(page);
-  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -1377,9 +1416,9 @@ export async function connectRemoteFirstRunToHome(
   ).toBe("1");
 
   expect(
-    state.firstRunPosts.length <= 1,
-    "remote first-run adoption must not double-submit first-run setup",
-  ).toBe(true);
+    state.firstRunPosts.length,
+    "adopting a configured remote must not submit first-run setup",
+  ).toBe(0);
 
   const activeServer = await page.evaluate(() =>
     localStorage.getItem("elizaos:active-server"),

@@ -6,7 +6,7 @@ import {
   type IAgentRuntime,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setupEnv, type TestEnv } from "./_test-helpers.js";
+import { setupEnv, type TestEnv } from "./__tests__/helpers.js";
 import { editFileHandler } from "./edit.js";
 
 describe("EDIT", () => {
@@ -161,6 +161,24 @@ describe("EDIT", () => {
     expect(result.success).toBe(false);
     expect(result.text).toContain("invalid_param");
     expect(result.text).toContain("identical");
+  });
+
+  it("preserves multiline source containing intentional newline escapes", async () => {
+    const file = await seedFile(
+      "join-lines.ts",
+      "const content = textParts.join(' ');\n",
+    );
+    const replacement =
+      'const content = textParts.join("\\n\\n");\nconst lines = content.split("\\r\\n");\n';
+    const result = await editFileHandler(env.runtime, env.message, undefined, {
+      parameters: {
+        file_path: file,
+        old_string: "const content = textParts.join(' ');\n",
+        new_string: replacement,
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(await fs.readFile(file, "utf8")).toBe(replacement);
   });
 
   it("rejects accidental literal newline escapes unless explicitly allowed", async () => {

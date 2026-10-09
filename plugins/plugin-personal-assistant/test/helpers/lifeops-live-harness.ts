@@ -3,18 +3,18 @@
  * waits on the HTTP API, selects a live model provider, and posts conversation turns. Gated
  * on ELIZA_LIVE_TEST.
  */
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { getFreePort, waitForChildExit } from "@elizaos/testing/fixtures";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../packages/app-core/test/helpers/http.ts";
-import { createLiveRuntimeChildEnv } from "../../../../packages/app-core/test/helpers/live-child-env.ts";
+} from "@elizaos/testing/runtime";
+import { createLiveRuntimeChildEnv } from "../../../../packages/app/test/helpers/live-child-env.ts";
 
 export const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 export const LIVE_PROVIDER_OVERRIDE =
@@ -22,13 +22,7 @@ export const LIVE_PROVIDER_OVERRIDE =
 export const LIVE_CHAT_TEST_TIMEOUT_MS = 300_000;
 export const LIVE_RUNTIME_BOOT_TIMEOUT_MS = 180_000;
 /** Monorepo root. */
-export const REPO_ROOT = path.resolve(
-  import.meta.dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-);
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const ENV_PATH = path.join(REPO_ROOT, ".env");
 const LIVE_HTTP_REQUEST_TIMEOUT_MS = 120_000;
 const LIVE_BOOT_HTTP_TIMEOUT_MS = 15_000;
@@ -59,11 +53,6 @@ const LIVE_PROVIDER_CANDIDATES = [
     name: "openrouter",
     plugin: "@elizaos/plugin-openrouter",
     keys: ["OPENROUTER_API_KEY"],
-  },
-  {
-    name: "google",
-    plugin: "@elizaos/plugin-google-genai",
-    keys: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
   },
   {
     name: "anthropic",
@@ -467,56 +456,6 @@ async function loadBaseLiveConfig(): Promise<Record<string, unknown>> {
   }
 }
 
-async function getFreePort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close();
-        reject(new Error("Could not allocate a loopback port"));
-        return;
-      }
-
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve(address.port);
-      });
-    });
-  });
-}
-
-async function waitForChildExit(
-  child: ChildProcessWithoutNullStreams,
-  timeoutMs: number,
-): Promise<boolean> {
-  if (child.exitCode != null) {
-    return true;
-  }
-
-  return await new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve(false);
-    }, timeoutMs);
-
-    const handleExit = () => {
-      cleanup();
-      resolve(true);
-    };
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      child.off("exit", handleExit);
-      child.off("close", handleExit);
-    };
-
-    child.once("exit", handleExit);
-    child.once("close", handleExit);
-  });
-}
-
 export async function waitForJsonPredicate<T>(
   url: string,
   predicate: (value: T) => boolean,
@@ -709,14 +648,6 @@ export async function startLifeOpsLiveRuntime(options?: {
         cloud: {
           ...baseCloud,
           enabled: false,
-          inferenceMode: "local",
-          services: {
-            inference: false,
-            tts: false,
-            media: false,
-            embeddings: false,
-            rpc: false,
-          },
         },
       },
       null,

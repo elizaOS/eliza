@@ -7,7 +7,7 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 
 export interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
   density?: "default" | "compact" | "dense";
@@ -31,7 +31,8 @@ TableFrame.displayName = "TableFrame";
 
 const Table = React.forwardRef<HTMLTableElement, TableProps>(
   ({ className, density = "default", layout = "auto", ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
+    // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users must be able to focus and scroll overflowing tables.
+    <div className="relative w-full overflow-auto" tabIndex={0}>
       <table
         ref={ref}
         className={cn(
@@ -153,7 +154,7 @@ const TableHead = React.forwardRef<HTMLTableCellElement, TableHeadProps>(
     <th
       ref={ref}
       className={cn(
-        "h-10 px-3 text-left align-middle text-[11px] font-medium uppercase tracking-[0.24em] text-muted [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "h-10 px-3 text-left align-middle text-[11px] font-medium uppercase tracking-[0.24em] text-muted-strong [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         tableHeadVariants({ divider, interactive }),
         className,
       )}

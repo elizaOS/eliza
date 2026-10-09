@@ -12,6 +12,10 @@ import type { ElevenLabs } from "@elevenlabs/elevenlabs-js";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { ElizaError } from "@elizaos/core";
 import { logger } from "../utils/logger";
+import { createTimedSpeechStream } from "./timed-speech-stream";
+import { TtsSynthesisOptions } from "./tts-synthesis-options";
+
+export { hasTtsSynthesisOptions, TtsSynthesisOptions } from "./tts-synthesis-options";
 
 /**
  * Configuration for ElevenLabs service.
@@ -50,7 +54,7 @@ function envValue(env: ElevenLabsEnv | undefined, key: keyof ElevenLabsEnv): str
 /**
  * Options for text-to-speech conversion.
  */
-export interface TTSOptions {
+export interface TTSOptions extends TtsSynthesisOptions {
   text: string;
   voiceId?: string;
   modelId?: string;
@@ -105,7 +109,7 @@ function parseTtsOutputFormat(
  */
 export interface STTOptions {
   audioFile: File | Blob;
-  modelId?: ElevenLabs.SpeechToTextConvertRequestModelId;
+  modelId?: Parameters<ElevenLabsClient["speechToText"]["convert"]>[0]["modelId"];
   languageCode?: string;
 }
 
@@ -153,35 +157,61 @@ export class ElevenLabsService {
   /**
    * Convert text to speech (streaming)
    */
-  async textToSpeech(options: TTSOptions): Promise<ReadableStream<Uint8Array>> {
-    const voiceId = options.voiceId || this.config.voiceId || "EXAVITQu4vr4xnSDxMaL";
-    const modelId = options.modelId || this.config.modelId || "eleven_flash_v2_5";
-
-    logger.info(
-      `[ElevenLabs TTS] Generating speech: voice=${voiceId}, model=${modelId}, length=${options.text.length}`,
-    );
-
-    const audioStream = await this.client.textToSpeech.stream(voiceId, {
+  private speechRequest(options: TTSOptions): ElevenLabs.StreamTextToSpeechRequest {
+    const rendering = TtsSynthesisOptions.parse(options);
+    return {
       text: options.text,
-      modelId,
+      modelId: options.modelId || this.config.modelId || "eleven_flash_v2_5",
       outputFormat: options.outputFormat ?? this.config.outputFormat,
-      optimizeStreamingLatency: this.config.optimizeStreamingLatency,
+      // Legacy level 4 disables normalization. Explicit rendering policy wins.
+      optimizeStreamingLatency:
+        rendering.applyTextNormalization !== undefined
+          ? undefined
+          : this.config.optimizeStreamingLatency,
+      previousText: rendering.previousText,
+      nextText: rendering.nextText,
+      applyTextNormalization: rendering.applyTextNormalization,
       voiceSettings: {
+        speed: rendering.speed,
         stability: this.config.voiceStability,
         similarityBoost: this.config.voiceSimilarityBoost,
         style: this.config.voiceStyle,
         useSpeakerBoost: this.config.voiceUseSpeakerBoost,
       },
-    });
+    };
+  }
 
-    return audioStream;
+  async textToSpeech(options: TTSOptions): Promise<ReadableStream<Uint8Array>> {
+    const voiceId = options.voiceId || this.config.voiceId || "EXAVITQu4vr4xnSDxMaL";
+    return this.client.textToSpeech.stream(voiceId, this.speechRequest(options));
+  }
+
+  /** Streaming audio with provider character timing; no implicit synthesis retry. */
+  async textToSpeechWithTimestamps(
+    options: Omit<TTSOptions, "outputFormat">,
+    signal?: AbortSignal,
+  ): Promise<ReadableStream<Uint8Array>> {
+    const voiceId = options.voiceId || this.config.voiceId || "EXAVITQu4vr4xnSDxMaL";
+    const controller = new AbortController();
+    const source = await this.client.textToSpeech.streamWithTimestamps(
+      voiceId,
+      {
+        ...this.speechRequest(options),
+        outputFormat: "mp3_44100_128",
+      },
+      {
+        maxRetries: 0,
+        abortSignal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
+      },
+    );
+    return createTimedSpeechStream(source, () => controller.abort());
   }
 
   /**
    * Convert speech to text
    */
   async speechToText(options: STTOptions): Promise<string> {
-    const modelId: ElevenLabs.SpeechToTextConvertRequestModelId =
+    const modelId: Parameters<ElevenLabsClient["speechToText"]["convert"]>[0]["modelId"] =
       options.modelId === "scribe_v2" ? "scribe_v2" : "scribe_v1";
 
     const FileConstructor = globalThis.File;

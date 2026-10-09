@@ -9,11 +9,21 @@
  * are set. Every method returns a concrete DTO — no `unknown` in public signatures.
  */
 
+import {
+  type AppBillingApplicationProduct,
+  AppBillingClient,
+  type AppBillingClientOptions,
+  type AppBillingResult,
+} from "./app-billing.js";
 import type {
   AppBillingAccountResponse,
   AppBillingEnvironment,
   AppBillingRegistrationResponse,
 } from "./app-billing-account.js";
+import {
+  AppInferenceClient,
+  type AppInferenceClientOptions,
+} from "./app-inference.js";
 import { isCliLoginSessionId } from "./cli-login.js";
 import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
 import { pollUntil } from "./poll.js";
@@ -69,12 +79,6 @@ import {
   type CreateAdSlotResponse,
   type CreateAgentRequest,
   type CreateAgentResponse,
-  type CreateAppChargeCheckoutRequest,
-  type CreateAppChargeCheckoutResponse,
-  type CreateAppChargeRequest,
-  type CreateAppChargeResponse,
-  type CreateAppCreditsCheckoutRequest,
-  type CreateAppCreditsCheckoutResponse,
   type CreateAppInput,
   type CreateAppResponse,
   type CreateBookingInput,
@@ -111,7 +115,6 @@ import {
   type GatewayRelayResponse,
   type GenerateImageRequest,
   type GenerateImageResponse,
-  type GetAppChargeResponse,
   type GetCampaignPerformanceReportOptions,
   type GetPressReleaseResponse,
   type GetX402PaymentRequestResponse,
@@ -121,7 +124,6 @@ import {
   type LinkAffiliateRequest,
   type LinkAffiliateResponse,
   type ListAdSlotsResponse,
-  type ListAppChargesResponse,
   type ListAppDomainsResponse,
   type ListAppFrontendDeploymentsResponse,
   type ListAppsResponse,
@@ -133,7 +135,19 @@ import {
   type OpenApiSpec,
   type OrganizationSubscriptionCancellationRequest,
   type OrganizationSubscriptionCancellationResponse,
+  type OrganizationSubscriptionDowngradeCommandResponse,
+  type OrganizationSubscriptionDowngradeConfirmRequest,
+  type OrganizationSubscriptionDowngradeQuoteRequest,
+  type OrganizationSubscriptionDowngradeQuoteResponse,
+  type OrganizationSubscriptionRenewalReviewResponse,
+  type OrganizationSubscriptionReviewedUndoRequest,
+  type OrganizationSubscriptionUpgradeCommandResponse,
+  type OrganizationSubscriptionUpgradeConfirmRequest,
+  type OrganizationSubscriptionUpgradePaymentResponse,
+  type OrganizationSubscriptionUpgradeQuoteRequest,
+  type OrganizationSubscriptionUpgradeQuoteResponse,
   type PairingTokenResponse,
+  type PendingOrganizationPlanChangeCommandsResponse,
   type PendingSubscriptionCommandsResponse,
   type PollGatewayRelayResponse,
   type RedemptionBalanceResponse,
@@ -148,7 +162,11 @@ import {
   type SnapshotType,
   type SubmitPressReleaseInput,
   type SubmitPressReleaseResponse,
+  type SubscriptionCheckoutConfirmationResponse,
+  type SubscriptionCheckoutRequest,
+  type SubscriptionCheckoutResponse,
   type SubscriptionPlansResponse,
+  type SubscriptionPortalResponse,
   type UpdateAppInput,
   type UpdateAppMonetizationInput,
   type UpdateCampaignDaypartingInput,
@@ -157,7 +175,6 @@ import {
   type UpdatePressReleaseResponse,
   type UpsertAffiliateCodeRequest,
   type UserProfileResponse,
-  type VerifyAppCreditsCheckoutResponse,
   type VoiceSttRequest,
   type VoiceSttResponse,
   type WithdrawAppEarningsRequest,
@@ -308,6 +325,7 @@ function createCliLoginRequestId(): string {
 }
 
 export class ElizaCloudClient {
+  private readonly appInferenceFetch: typeof fetch;
   readonly http: ElizaCloudHttpClient;
   readonly v1: CloudApiClient;
   readonly routes: ElizaCloudPublicRoutesClient;
@@ -315,6 +333,7 @@ export class ElizaCloudClient {
   readonly apiBaseUrl: string;
 
   constructor(options: ElizaCloudClientOptions = {}) {
+    this.appInferenceFetch = options.fetchImpl ?? fetch;
     this.baseUrl = normalizeBaseUrl(
       options.baseUrl,
       DEFAULT_ELIZA_CLOUD_BASE_URL,
@@ -335,6 +354,7 @@ export class ElizaCloudClient {
       baseUrl: apiOrigin,
     });
     this.v1 = new CloudApiClient(this.apiBaseUrl, options.apiKey, {
+      nativeApplicationSlot: options.nativeApplicationSlot,
       bearerToken: options.bearerToken,
       defaultHeaders: options.defaultHeaders,
       fetchImpl: options.fetchImpl,
@@ -531,6 +551,29 @@ export class ElizaCloudClient {
     );
   }
 
+  /** Requires a current organization owner/admin session; starts or resumes one Plus/Pro checkout. */
+  startSubscriptionCheckout(
+    input: SubscriptionCheckoutRequest,
+  ): Promise<SubscriptionCheckoutResponse> {
+    return this.v1.requestData("POST", "/subscriptions/checkout", {
+      json: input,
+    });
+  }
+
+  /** Confirms a Checkout return from provider payment evidence; the session id is never payment authority. */
+  confirmSubscriptionCheckout(
+    sessionId: string,
+  ): Promise<SubscriptionCheckoutConfirmationResponse> {
+    return this.v1.requestData("POST", "/subscriptions/checkout/confirm", {
+      json: { sessionId },
+    });
+  }
+
+  /** Requires a current organization owner/admin session; opens the locked Stripe Customer Portal. */
+  createSubscriptionPortalSession(): Promise<SubscriptionPortalResponse> {
+    return this.v1.requestData("POST", "/subscriptions/portal", { json: {} });
+  }
+
   /** Requires a current organization owner/admin session; schedules cancellation at period end. */
   submitOrganizationSubscriptionCancellation(
     input: OrganizationSubscriptionCancellationRequest,
@@ -559,6 +602,97 @@ export class ElizaCloudClient {
     });
   }
 
+  /** Persists a current manager's upgrade review; no charge or subscription change occurs. */
+  createOrganizationSubscriptionUpgradeQuote(
+    input: OrganizationSubscriptionUpgradeQuoteRequest,
+  ): Promise<OrganizationSubscriptionUpgradeQuoteResponse> {
+    return this.v1.requestData("POST", "/subscriptions/upgrade/review", {
+      json: input,
+    });
+  }
+
+  /** Reviews a lower plan at the current period boundary; creates no provider schedule or charge. */
+  createOrganizationSubscriptionDowngradeQuote(
+    input: OrganizationSubscriptionDowngradeQuoteRequest,
+  ): Promise<OrganizationSubscriptionDowngradeQuoteResponse> {
+    return this.v1.requestData("POST", "/subscriptions/downgrade/review", {
+      json: input,
+    });
+  }
+
+  /** Confirms the original lower-plan quote; retries retain its original durable command. */
+  confirmOrganizationSubscriptionDowngrade(
+    input: OrganizationSubscriptionDowngradeConfirmRequest,
+  ): Promise<OrganizationSubscriptionDowngradeCommandResponse> {
+    return this.v1.requestData("POST", "/subscriptions/downgrade/confirm", {
+      json: input,
+    });
+  }
+
+  /** Reads configuration status only; APPLIED is pending-plan state, not payment. */
+  readOrganizationSubscriptionDowngrade(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionDowngradeCommandResponse> {
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/downgrade/${encodeURIComponent(commandId)}`,
+    );
+  }
+
+  /** Confirms the original reviewed quote; retries retain its original durable command. */
+  confirmOrganizationSubscriptionUpgrade(
+    input: OrganizationSubscriptionUpgradeConfirmRequest,
+  ): Promise<OrganizationSubscriptionUpgradeCommandResponse> {
+    return this.v1.requestData("POST", "/subscriptions/upgrade/confirm", {
+      json: input,
+    });
+  }
+  /** Reads durable status only; an unknown result never authorizes a new intent. */
+  readOrganizationSubscriptionUpgrade(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionUpgradeCommandResponse> {
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/upgrade/${encodeURIComponent(commandId)}`,
+    );
+  }
+
+  /** Obtains a fresh private original-invoice payment URL; call again after return to reconcile. */
+  continueOrganizationSubscriptionUpgradePayment(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionUpgradePaymentResponse> {
+    return this.v1.requestData(
+      "POST",
+      `/subscriptions/upgrade/${encodeURIComponent(commandId)}/payment`,
+    );
+  }
+
+  /** Reads a short-lived next-renewal estimate for the current manager's scheduled cancellation. */
+  readOrganizationSubscriptionRenewalReview(
+    input: Pick<
+      OrganizationSubscriptionCancellationRequest,
+      "subscriptionId" | "expectedSubscriptionRevision"
+    >,
+  ): Promise<OrganizationSubscriptionRenewalReviewResponse> {
+    const query = new URLSearchParams({
+      subscriptionId: input.subscriptionId,
+      expectedSubscriptionRevision: String(input.expectedSubscriptionRevision),
+    });
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/cancel/undo/review?${query}`,
+    );
+  }
+
+  /** Confirms the exact reviewed terms; replay reads the recorded outcome without redispatch. */
+  submitReviewedOrganizationSubscriptionCancellationUndo(
+    input: OrganizationSubscriptionReviewedUndoRequest,
+  ): Promise<OrganizationSubscriptionCancellationResponse> {
+    return this.v1.requestData("POST", "/subscriptions/cancel/undo/confirm", {
+      json: input,
+    });
+  }
+
   /** Reads the durable command outcome without repeating a provider mutation. */
   readOrganizationSubscriptionCancellationUndo(
     commandId: string,
@@ -579,12 +713,55 @@ export class ElizaCloudClient {
     return this.v1.requestData("GET", `/subscriptions/commands?${query}`);
   }
 
+  /** Rediscovers this manager's original pending plan changes without submitting or recovering them. */
+  listPendingOrganizationPlanChangeCommands(input: {
+    limit: number;
+    cursor?: string;
+  }): Promise<PendingOrganizationPlanChangeCommandsResponse> {
+    const query = new URLSearchParams({ limit: String(input.limit) });
+    if (input.cursor !== undefined) query.set("cursor", input.cursor);
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/plan-change/commands?${query}`,
+    );
+  }
+
   getSubscriptionPlans(): Promise<SubscriptionPlansResponse> {
     return this.v1.requestData<SubscriptionPlansResponse>(
       "GET",
       "/subscriptions/plans",
       { skipAuth: true },
     );
+  }
+
+  /** Resolves native product configuration without starting a trial or requiring an existing subscription. */
+  getApplicationBillingProduct(
+    slotKey: string,
+  ): Promise<AppBillingResult<AppBillingApplicationProduct>> {
+    return this.v1.requestData(
+      "GET",
+      `/billing/application-slots/${encodeURIComponent(slotKey)}`,
+    );
+  }
+
+  /** Binds purchaser subscription operations to an independently registered app. */
+  appBilling(
+    appId: string,
+    options?: AppBillingClientOptions,
+  ): AppBillingClient {
+    return new AppBillingClient(this.v1, appId, options);
+  }
+
+  /** Binds app customer usage to delegated consent and independent developer infrastructure funding. */
+  appInference(
+    appId: string,
+    options: AppInferenceClientOptions,
+  ): AppInferenceClient {
+    return new AppInferenceClient(appId, {
+      ...options,
+      apiBaseUrl: this.apiBaseUrl,
+      fetchImpl: this.appInferenceFetch,
+    });
   }
 
   createResponse(
@@ -695,30 +872,6 @@ export class ElizaCloudClient {
     );
   }
 
-  createAppCreditsCheckout(
-    request: CreateAppCreditsCheckoutRequest,
-  ): Promise<CreateAppCreditsCheckoutResponse> {
-    return this.requestData<CreateAppCreditsCheckoutResponse>(
-      "POST",
-      "/api/v1/app-credits/checkout",
-      {
-        json: request,
-      },
-    );
-  }
-
-  verifyAppCreditsCheckout(
-    sessionId: string,
-  ): Promise<VerifyAppCreditsCheckoutResponse> {
-    return this.requestData<VerifyAppCreditsCheckoutResponse>(
-      "GET",
-      "/api/v1/app-credits/verify",
-      {
-        query: { session_id: sessionId },
-      },
-    );
-  }
-
   getX402Supported(): Promise<X402SupportedResponse> {
     return this.requestData<X402SupportedResponse>("GET", "/api/v1/x402", {
       skipAuth: true,
@@ -778,51 +931,6 @@ export class ElizaCloudClient {
       "POST",
       `/api/v1/x402/requests/${encodePathParam(id)}/settle`,
       { json: { paymentPayload }, skipAuth: true },
-    );
-  }
-
-  createAppCharge(
-    appId: string,
-    request: CreateAppChargeRequest,
-  ): Promise<CreateAppChargeResponse> {
-    return this.requestData<CreateAppChargeResponse>(
-      "POST",
-      `/api/v1/apps/${encodePathParam(appId)}/charges`,
-      { json: request },
-    );
-  }
-
-  listAppCharges(
-    appId: string,
-    options: { limit?: number } = {},
-  ): Promise<ListAppChargesResponse> {
-    return this.requestData<ListAppChargesResponse>(
-      "GET",
-      `/api/v1/apps/${encodePathParam(appId)}/charges`,
-      {
-        query:
-          options.limit === undefined ? undefined : { limit: options.limit },
-      },
-    );
-  }
-
-  getAppCharge(appId: string, chargeId: string): Promise<GetAppChargeResponse> {
-    return this.requestData<GetAppChargeResponse>(
-      "GET",
-      `/api/v1/apps/${encodePathParam(appId)}/charges/${encodePathParam(chargeId)}`,
-      { skipAuth: true },
-    );
-  }
-
-  createAppChargeCheckout(
-    appId: string,
-    chargeId: string,
-    request: CreateAppChargeCheckoutRequest,
-  ): Promise<CreateAppChargeCheckoutResponse> {
-    return this.requestData<CreateAppChargeCheckoutResponse>(
-      "POST",
-      `/api/v1/apps/${encodePathParam(appId)}/charges/${encodePathParam(chargeId)}/checkout`,
-      { json: request },
     );
   }
 

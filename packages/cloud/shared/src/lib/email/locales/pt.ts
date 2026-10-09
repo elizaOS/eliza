@@ -48,6 +48,9 @@ export const emailMessages: EmailMessages = {
   containerShutdownWarning: {
     subject: '🚨 URGENTE: o container "{{containerName}}" será desligado em 48 horas',
   },
+  agentRetentionDeletionNotice: {
+    subject: 'Seu agente "{{agentName}}" será excluído em {{daysRemaining}} dia(s)',
+  },
   footer: {
     copyright: "© {{year}} Eliza Cloud. Todos os direitos reservados.",
   },

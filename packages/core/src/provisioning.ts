@@ -1,19 +1,12 @@
-/**
- * Agent provisioning: migrations, agent/entity/room setup, embedding dimension.
- * Runs once at deploy/daemon boot; not part of runtime.initialize().
- * Export from node entry point only (not browser/edge).
- *
- * WHY this module exists:
- * - Keeps the runtime a lean request handler; heavy one-time setup lives here.
- * - Edge and ephemeral runtimes can skip provisioning entirely (they don't import this).
- * - Daemon entry points call provisionAgent() once after initialize().
- */
+/** One-time agent provisioning: schema migrations, agent/entity/room setup, and embedding dimensions. Hosts invoke it after runtime initialization. */
 
 import { createLogger } from "./logger";
-import type { Agent, Character, JsonValue, UUID } from "./types";
-import { ChannelType } from "./types";
+import type { Agent, Character } from "./types/agent.js";
 import type { IDatabaseAdapter } from "./types/database";
+import type { JsonValue, UUID } from "./types/primitives.js";
+import { ChannelType } from "./types/primitives.js";
 import type { IAgentRuntime } from "./types/runtime";
+import { isExactTrueEnvFlag } from "./utils/env";
 
 const logger = createLogger({ namespace: "provisioning", level: "info" });
 
@@ -35,14 +28,11 @@ function hasAgentProvisioningRuntime(
 	);
 }
 
-/**
- * Run plugin migrations (DDL) using the runtime's adapter and registered plugins.
- * WHY standalone: Migrations are a one-time basic-capabilities step; not part of initialize()
- * so ephemeral/edge runtimes never run them. process.env guards allow safe use in Node only.
- */
+/** Runs registered plugin schema migrations through the adapter. Hosts opt into this provisioning step separately from runtime initialization. */
 export async function runPluginMigrations(
 	runtime: IAgentRuntime,
 ): Promise<void> {
+	const logger = runtime.logger;
 	const adapter = runtime.adapter;
 	if (!adapter) {
 		logger.warn(
@@ -86,11 +76,10 @@ export async function runPluginMigrations(
 		return;
 	}
 
-	const isProduction =
-		typeof process !== "undefined" && process.env.NODE_ENV === "production";
-	const forceDestructive =
-		typeof process !== "undefined" &&
-		process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true";
+	const isProduction = process.env.NODE_ENV === "production";
+	const forceDestructive = isExactTrueEnvFlag(
+		process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS,
+	);
 
 	await adapter.runPluginMigrations(pluginsWithSchemas, {
 		verbose: !isProduction,
@@ -238,12 +227,7 @@ export async function ensureEmbeddingDimension(
 	);
 }
 
-/**
- * Orchestrator: run migrations (optional), ensure agent/entity/room/participant, set embedding dimension.
- * Call after runtime.initialize() in daemon mode.
- * WHY separate from initialize(): Ephemeral and edge runtimes do not call this;
- * only long-lived daemons run it once at boot.
- */
+/** Provisions a long-lived agent after runtime initialization, with optional schema migrations. */
 export async function provisionAgent(
 	runtime: IAgentRuntime,
 	options: ProvisionAgentOptions = {},

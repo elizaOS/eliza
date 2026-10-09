@@ -30,15 +30,12 @@ import argparse
 import asyncio
 import json
 import logging
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
-sys.path.insert(0, str(PYTHON_ROOT))
-sys.path.insert(0, str(SCRIPT_DIR))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,8 +68,8 @@ def parse_args():
 
 async def run_training_cycle(cycle: int, args: argparse.Namespace) -> dict:
     """Run one cycle of shared-model continuous RL training."""
-    from src.training.shared_model_rl import SharedModelConfig, run_shared_model_training
-    from src.training.simulation_bridge import SimulationBridge
+    from eliza_training.rl.shared_model_rl import SharedModelConfig, run_shared_model_training
+    from eliza_training.rl.simulation_bridge import SimulationBridge
 
     cycle_start = time.time()
     logger.info(f"=== Cycle {cycle} starting ===")
@@ -91,7 +88,7 @@ async def run_training_cycle(cycle: int, args: argparse.Namespace) -> dict:
 
     if args.mock:
         # Use a mock bridge that returns synthetic scenarios
-        from src.training.simulation_bridge import SimulationBridge
+        from eliza_training.rl.simulation_bridge import SimulationBridge
 
         bridge = SimulationBridge(base_url=args.bridge_url, mock=True)
     else:
@@ -104,7 +101,7 @@ async def run_training_cycle(cycle: int, args: argparse.Namespace) -> dict:
     adversarial_metrics = {}
     if args.adversarial:
         logger.info("Running adversarial evaluation...")
-        from src.training.attacker_trainer import AttackerConfig, AttackerTrainer
+        from eliza_training.rl.attacker_trainer import AttackerConfig, AttackerTrainer
 
         atk_config = AttackerConfig(
             base_model=args.model,

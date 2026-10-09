@@ -3,7 +3,7 @@
  * mixin that composes the whatsapp domain's fetch/send methods onto the
  * LifeOpsService base.
  */
-import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
+import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/contracts";
 import type {
   WhatsAppMessage,
   WhatsAppSendRequest,

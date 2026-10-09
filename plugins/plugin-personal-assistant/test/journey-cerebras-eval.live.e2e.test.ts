@@ -11,7 +11,7 @@
  *
  * The suite gates on `CEREBRAS_API_KEY` so absent-credential CI runs skip
  * the entire file. The `.live.e2e.test.ts` suffix excludes this file from
- * `bun run test`; use `scripts/run-cerebras-journey-eval.mjs` to invoke.
+ * `bun run test`; use `scripts/run-cerebras-journey-eval.ts` to invoke.
  */
 
 import fs from "node:fs";

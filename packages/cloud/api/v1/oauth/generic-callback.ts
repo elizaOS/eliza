@@ -1,23 +1,23 @@
 // Handles v1 cloud API v1 oauth generic callback route traffic with route-local auth expectations.
-import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
+import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
   getDefaultPlatformRedirectOrigins,
   LOOPBACK_REDIRECT_ORIGINS,
   resolveOAuthSuccessRedirectUrl,
-} from "@/lib/security/redirect-validation";
-import { connectionEnforcementService } from "@/lib/services/eliza-app";
-import { invalidateOAuthState } from "@/lib/services/oauth/invalidation";
+} from "@elizaos/cloud-shared/lib/security/redirect-validation";
+import { connectionEnforcementService } from "@elizaos/cloud-shared/lib/services/eliza-app";
+import { invalidateOAuthState } from "@elizaos/cloud-shared/lib/services/oauth/invalidation";
 import {
   getProvider,
   isProviderConfigured,
-} from "@/lib/services/oauth/provider-registry";
-import { handleOAuth2Callback } from "@/lib/services/oauth/providers";
+} from "@elizaos/cloud-shared/lib/services/oauth/provider-registry";
+import { handleOAuth2Callback } from "@elizaos/cloud-shared/lib/services/oauth/providers";
 import {
   clearOAuthSuccessParams,
   isOAuthSuccessLandingPath,
   mintOAuthSuccessProof,
-} from "@/lib/services/oauth/success-proof";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/oauth/success-proof";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 
 function appendParam(url: string, param: string): string {
   return url.includes("?") ? `${url}&${param}` : `${url}?${param}`;
@@ -33,7 +33,7 @@ export async function handleGenericOAuthCallback(
 
   const baseUrl =
     getCloudAwareEnv().NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
-  const defaultRedirect = `${baseUrl}/cloud/settings?tab=connections`;
+  const defaultRedirect = `${baseUrl}/cloud/connectors`;
 
   // Get provider configuration
   const provider = getProvider(platformLower);
@@ -103,7 +103,7 @@ export async function handleGenericOAuthCallback(
       {
         value: result.redirectUrl,
         baseUrl,
-        fallbackPath: "/cloud/settings?tab=connections",
+        fallbackPath: "/cloud/connectors",
         allowedAbsoluteOrigins,
       },
     );

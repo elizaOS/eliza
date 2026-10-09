@@ -1,55 +1,60 @@
 // Exercises cloud API test e2e run e2e batches behavior with deterministic Worker route fixtures.
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { readdirSync } from "node:fs";
-import { createConnection } from "node:net";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runCommandWithWatchdog } from "../../../../scripts/test-cloud-run.ts";
+import {
+  acquirePortLease,
+  cleanupRunContext,
+  createIsolatedRunState,
+  createOwnedChildRegistry,
+  installSignalTeardown,
+  spawnOwnedChild,
+  startOwnedPGlite,
+  stopOwnedChild,
+} from "../../../scripts/admin/integration-harness-lifecycle.ts";
+import { createE2eDatabaseStore } from "../../../scripts/api/e2e-database-store.ts";
 import { waitForWorkerHealth } from "./_helpers/worker-health.ts";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(testDir, "..", "..");
 const repoRoot = join(appRoot, "..", "..", "..");
 const cloudSharedRoot = join(repoRoot, "packages", "cloud", "shared");
-const rmRecursiveScript = join(
-  repoRoot,
-  "packages",
-  "scripts",
-  "rm-path-recursive.mjs",
-);
 const bun = process.env.BUN || process.env.npm_execpath || "bun";
 const extraArgs = process.argv.slice(2);
 
-// Per-run unique port offset. Self-hosted CI runners share one host/localhost,
-// so concurrent e2e runs (a production deploy + a develop-push staging deploy,
-// say) used to collide on the fixed apiPort/pglitePort — and the orphan-port
-// reclaim then KILLED the other live run's PGlite server, surfacing as
-// `connect ECONNREFUSED 127.0.0.1:55433` on the second migrate. Derive a stable
-// offset from the CI run id (unique per workflow run + attempt) or the pid
-// locally, so concurrent runs never share a port. Explicit env still wins.
-const runSeed =
-  Number(process.env.GITHUB_RUN_ID) * 13 +
-    Number(process.env.GITHUB_RUN_ATTEMPT || 1) || process.pid;
-const portOffset = Math.abs(runSeed) % 4000;
-const apiPort = process.env.API_DEV_PORT || String(41000 + portOffset);
+// Explicit ports are leased or rejected; automatic ports are collision checked.
+let apiPort = process.env.API_DEV_PORT || "41000";
 const configuredBaseUrl =
   process.env.TEST_API_BASE_URL || process.env.TEST_BASE_URL || "";
-const baseUrl = configuredBaseUrl || `http://localhost:${apiPort}`;
+let baseUrl = configuredBaseUrl || `http://localhost:${apiPort}`;
 const ownsLocalServer =
   process.env.REQUIRE_E2E_SERVER !== "0" && !configuredBaseUrl;
 const e2eRunReceipt =
   process.env.CLOUD_E2E_RUN_RECEIPT || (ownsLocalServer ? randomUUID() : "");
 const configuredDatabaseUrl =
   process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || "";
-const pglitePort = process.env.TEST_PGLITE_PORT || String(46000 + portOffset);
+let pglitePort = process.env.TEST_PGLITE_PORT || "46000";
 const pgliteHost = process.env.PGLITE_HOST || "127.0.0.1";
-const pgliteDataDir =
-  process.env.TEST_PGLITE_DATA_DIR || ".eliza/.pgdata-cloud-api-e2e";
+let databaseStore;
+let runContext;
+const children = createOwnedChildRegistry();
+let teardownPromise;
+function teardown() {
+  return (teardownPromise ??= (async () => {
+    await children.stopAll();
+    databaseStore?.cleanup();
+    cleanupRunContext(runContext);
+  })());
+}
 const pgliteMaxConnections =
   process.env.TEST_PGLITE_MAX_CONNECTIONS ||
   process.env.PGLITE_MAX_CONNECTIONS ||
   "16";
-const databaseUrl =
+let databaseUrl =
   configuredDatabaseUrl ||
   `postgresql://postgres@${pgliteHost}:${pglitePort}/postgres`;
 const e2eEnv = {
@@ -140,41 +145,6 @@ function parsePGliteDataDir(url) {
   return dataDir;
 }
 
-async function tcpOk(host, port) {
-  return new Promise((resolveOk) => {
-    const socket = createConnection({ host, port: Number(port) });
-    socket.setTimeout(1_000);
-    socket.once("connect", () => {
-      socket.end();
-      resolveOk(true);
-    });
-    socket.once("timeout", () => {
-      socket.destroy();
-      resolveOk(false);
-    });
-    socket.once("error", () => {
-      socket.destroy();
-      resolveOk(false);
-    });
-  });
-}
-
-async function waitForTcp(processRef, host, port) {
-  const deadline = Date.now() + 90_000;
-  while (Date.now() < deadline) {
-    if (await tcpOk(host, port)) return;
-    if (processRef.exitCode !== null) {
-      throw new Error(
-        `[api-e2e] PGlite TCP server exited before becoming reachable (code ${processRef.exitCode})`,
-      );
-    }
-    await new Promise((resolveWait) => setTimeout(resolveWait, 500));
-  }
-  throw new Error(
-    `[api-e2e] timed out waiting for PGlite TCP server at ${host}:${port}`,
-  );
-}
-
 function listenerPidsOnPort(port) {
   const lsof = spawnSync("lsof", ["-ti", `tcp:${port}`, "-sTCP:LISTEN"], {
     encoding: "utf8",
@@ -188,97 +158,38 @@ function listenerPidsOnPort(port) {
   return fuserOut.match(/\b\d+\b/g) ?? [];
 }
 
-// Reclaim a port held by an orphaned listener. Self-hosted CI runners are
-// persistent: when Actions cancels a run mid-flight it SIGKILLs the job, so the
-// `finally` release below never runs and the spawned pglite-server child is left
-// holding the port — wedging every subsequent run with "already running".
-// Kill the orphan and wait for the port to free so the next run self-heals.
-async function reclaimPort(host, port) {
-  const pids = listenerPidsOnPort(port);
-  for (const pid of pids) {
-    const numeric = Number(pid);
-    if (!Number.isInteger(numeric) || numeric <= 0) continue;
-    try {
-      process.kill(numeric, "SIGKILL");
-      console.log(
-        `[api-e2e] killed orphan PGlite listener pid=${numeric} on ${host}:${port}`,
-      );
-    } catch (error) {
-      console.warn(
-        `[api-e2e] could not kill pid=${numeric} on ${host}:${port}: ${error?.message ?? error}`,
-      );
-    }
-  }
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    if (!(await tcpOk(host, port))) return true;
-    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
-  }
-  return false;
-}
-
-function rmRecursive(targetPath) {
-  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
-    cwd: repoRoot,
-    stdio: "inherit",
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(
-      `[api-e2e] recursive cleanup failed for ${targetPath} with exit code ${result.status ?? "unknown"}`,
-    );
-  }
-}
-
 async function ensurePGliteBridge() {
   const usingPGliteBridge =
     !configuredDatabaseUrl || configuredDatabaseUrl.startsWith("pglite://");
   if (!usingPGliteBridge) return null;
 
-  const dataDir = parsePGliteDataDir(configuredDatabaseUrl) || pgliteDataDir;
-  const shouldResetDefaultPGlite =
-    !configuredDatabaseUrl &&
-    process.env.TEST_PGLITE_PERSIST !== "1" &&
-    Boolean(dataDir);
-  let alreadyRunning = await tcpOk(pgliteHost, pglitePort);
-
-  if (shouldResetDefaultPGlite) {
-    if (alreadyRunning) {
-      console.warn(
-        `[api-e2e] default PGlite server already running at ${pgliteHost}:${pglitePort}; reclaiming the port before reset`,
-      );
-      alreadyRunning = !(await reclaimPort(pgliteHost, pglitePort));
-      if (alreadyRunning) {
-        throw new Error(
-          `[api-e2e] default PGlite server is already running at ${pgliteHost}:${pglitePort} and could not be reclaimed; stop it before running isolated tests, or set TEST_PGLITE_PERSIST=1 to reuse it.`,
-        );
-      }
-    }
-    rmRecursive(resolve(repoRoot, dataDir));
-  }
-
-  if (alreadyRunning) return null;
+  databaseStore = createE2eDatabaseStore({
+    root: repoRoot,
+    directory:
+      parsePGliteDataDir(configuredDatabaseUrl) ||
+      process.env.TEST_PGLITE_DATA_DIR,
+    persistent: process.env.TEST_PGLITE_PERSIST === "1",
+  });
+  const dataDir = databaseStore.directory;
 
   console.log(
     `[api-e2e] START PGlite TCP server at ${pgliteHost}:${pglitePort}`,
   );
-  const child = spawn(
-    bun,
-    ["run", "packages/cloud/scripts/admin/dev/pglite-server.ts"],
+  return startOwnedPGlite(
     {
-      cwd: repoRoot,
-      stdio: ["ignore", "inherit", "inherit"],
-      env: {
-        ...e2eEnv,
-        PGLITE_HOST: pgliteHost,
-        PGLITE_PORT: pglitePort,
-        PGLITE_MAX_CONNECTIONS: pgliteMaxConnections,
-        ...(dataDir ? { PGLITE_DATA_DIR: dataDir } : {}),
-      },
+      ...runContext,
+      host: pgliteHost,
+      pglitePort: Number(pglitePort),
+      pgliteDataDir: dataDir,
+    },
+    {
+      bun,
+      repoRoot,
+      env: { ...e2eEnv, PGLITE_MAX_CONNECTIONS: pgliteMaxConnections },
+      signal: children.signal,
+      onSpawn: (child) => children.publish("PGlite", child),
     },
   );
-  await waitForTcp(child, pgliteHost, pglitePort);
-  return child;
 }
 
 async function ensureServer() {
@@ -296,32 +207,50 @@ async function ensureServer() {
   }
 
   console.log(`[api-e2e] START dev server at ${baseUrl}`);
-  const child = spawn(bun, ["run", process.env.TEST_SERVER_SCRIPT || "dev"], {
-    cwd: appRoot,
-    stdio: "inherit",
-    env: e2eEnv,
-  });
-  await waitForHealth(child);
-  return child;
+  children.signal.throwIfAborted();
+  const child = spawnOwnedChild(
+    bun,
+    ["run", process.env.TEST_SERVER_SCRIPT || "dev"],
+    {
+      cwd: appRoot,
+      stdio: "inherit",
+      env: e2eEnv,
+    },
+  );
+  try {
+    if (!children.publish("API", child)) children.signal.throwIfAborted();
+    await once(child, "spawn");
+    await waitForHealth(child);
+    return child;
+  } catch (error) {
+    await stopOwnedChild(child, "API");
+    throw error;
+  }
 }
 
-function stopServer(child) {
-  if (!child || child.exitCode !== null) return;
-  child.kill("SIGTERM");
-}
-
-function ensureDatabase() {
-  const result = spawnSync(bun, ["run", "db:migrate:drizzle"], {
-    cwd: cloudSharedRoot,
-    stdio: "inherit",
+async function runBounded(commandArgs, cwd) {
+  const result = await runCommandWithWatchdog(bun, commandArgs, {
+    cwd,
     env: e2eEnv,
+    writeOut: (text) => process.stdout.write(text),
+    writeErr: (text) => process.stderr.write(text),
   });
   if (result.error) throw result.error;
-  if (result.status !== 0) {
+  if (result.terminationError) throw result.terminationError;
+  if (result.timedOut || result.parentSignal)
+    throw new Error("[api-e2e] child interrupted or timed out");
+  return result;
+}
+
+async function ensureDatabase() {
+  const result = await runBounded(
+    ["run", "db:migrate:drizzle"],
+    cloudSharedRoot,
+  );
+  if (result.status !== 0)
     throw new Error(
       `[api-e2e] database migration failed with exit code ${result.status ?? "unknown"}`,
     );
-  }
 }
 
 const onlyFilter = (process.env.E2E_ONLY || "")
@@ -337,21 +266,55 @@ const testFiles = readdirSync(testDir)
   .sort()
   .map((name) => relative(appRoot, join(testDir, name)));
 
-const pgliteServer = await ensurePGliteBridge();
-ensureDatabase();
-const server = await ensureServer();
-if (server?.pid) {
-  e2eEnv.CLOUD_E2E_SERVER_PID = String(server.pid);
-  const listenerPids = listenerPidsOnPort(apiPort);
-  console.log(
-    `[api-e2e] OWNED Worker wrapper pid=${server.pid} listener pid=${listenerPids.join(",") || "unknown"} port=${apiPort} receipt=${e2eRunReceipt}`,
-  );
-}
+if (testFiles.length === 0) throw new Error("[api-e2e] no test files matched");
+const removeSignalHandlers = installSignalTeardown(teardown);
 try {
+  runContext = createIsolatedRunState();
+  if (ownsLocalServer) {
+    runContext.apiLease = await acquirePortLease({
+      runId: runContext.runId,
+      label: "API",
+      preferredPort: process.env.API_DEV_PORT,
+    });
+    apiPort = String(runContext.apiLease.port);
+    baseUrl = `http://127.0.0.1:${apiPort}`;
+  }
+  if (!configuredDatabaseUrl || configuredDatabaseUrl.startsWith("pglite://")) {
+    runContext.pgliteLease = await acquirePortLease({
+      runId: runContext.runId,
+      label: "PGlite",
+      preferredPort: process.env.TEST_PGLITE_PORT,
+      host: pgliteHost,
+    });
+    pglitePort = String(runContext.pgliteLease.port);
+    databaseUrl = `postgresql://postgres@${pgliteHost}:${pglitePort}/postgres`;
+  }
+  Object.assign(e2eEnv, {
+    API_DEV_PORT: apiPort,
+    TEST_API_BASE_URL: baseUrl,
+    TEST_BASE_URL: baseUrl,
+    DATABASE_URL: databaseUrl,
+    TEST_DATABASE_URL: databaseUrl,
+    ELIZA_API_DEV_VARS_PATH: runContext.devVarsPath,
+    DEV_CLOUD_WRANGLER_PERSIST_TO: runContext.wranglerPersistPath,
+    WRANGLER_CACHE_DIR: runContext.wranglerCachePath,
+    WRANGLER_LOG_PATH: runContext.wranglerLogPath,
+    MINIFLARE_CACHE_DIR: runContext.miniflareCachePath,
+    ELIZA_STATE_DIR: runContext.stateDir,
+  });
+  await ensurePGliteBridge();
+  await ensureDatabase();
+  const server = await ensureServer();
+  if (server?.pid) {
+    e2eEnv.CLOUD_E2E_SERVER_PID = String(server.pid);
+    const listenerPids = listenerPidsOnPort(apiPort);
+    console.log(
+      `[api-e2e] OWNED Worker wrapper pid=${server.pid} listener pid=${listenerPids.join(",") || "unknown"} port=${apiPort} receipt=${e2eRunReceipt}`,
+    );
+  }
   for (const testFile of testFiles) {
     console.log(`[api-e2e] START ${testFile}`);
-    const result = spawnSync(
-      bun,
+    const result = await runBounded(
       [
         "test",
         "--max-concurrency=1",
@@ -362,11 +325,7 @@ try {
         "120000",
         ...extraArgs,
       ],
-      {
-        cwd: appRoot,
-        stdio: "inherit",
-        env: e2eEnv,
-      },
+      appRoot,
     );
 
     if (result.error) {
@@ -380,6 +339,9 @@ try {
     console.log(`[api-e2e] PASS ${testFile}`);
   }
 } finally {
-  stopServer(server);
-  stopServer(pgliteServer);
+  try {
+    await teardown();
+  } finally {
+    removeSignalHandlers();
+  }
 }

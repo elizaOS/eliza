@@ -1,23 +1,20 @@
 // Meeting-URL parsing for the calendar VIEW BUNDLE.
 //
-// This is a browser-only copy of `@elizaos/shared`'s `parseMeetingUrl`. View
-// bundles externalize `@elizaos/shared` (see packages/scripts/view-bundle-vite.config.ts)
+// This is a browser-only copy of `@elizaos/core`'s `parseMeetingUrl`. View
+// bundles externalize `@elizaos/core` (see packages/scripts/view-bundle-vite.config.ts)
 // and the DynamicViewLoader does not provide it, so a runtime
-// `import { parseMeetingUrl } from "@elizaos/shared"` in CalendarView left an
+// `import { parseMeetingUrl } from "@elizaos/core"` in CalendarView left an
 // unresolvable bare specifier and broke the calendar view bundle load. The
 // logic is a small, stable pure function, so the view carries its own copy
 // rather than pulling the shared runtime into the bundle. Keep in sync with
-// packages/shared/src/meetings.ts.
-
+// packages/core/src/meetings.ts.
 export type MeetingPlatform = "google_meet" | "teams" | "zoom" | "discord";
-
 export interface ParsedMeetingUrl {
   platform: MeetingPlatform;
   /** Canonical URL the bot should navigate to. */
   meetingUrl: string;
   nativeMeetingId: string;
 }
-
 /**
  * Percent-decode a URL segment, returning null (never throwing) on a malformed
  * escape like a lone `%`. `decodeURIComponent` throws `URIError` on such input.
@@ -29,7 +26,6 @@ function safeDecodeUriComponent(value: string): string | null {
     return null;
   }
 }
-
 const MEET_URL_RE =
   /^https?:\/\/meet\.google\.com\/([a-z]{3}-?[a-z]{4}-?[a-z]{3})(?:\?.*)?$/i;
 const TEAMS_URL_RE =
@@ -39,7 +35,6 @@ const TEAMS_SHORT_RE =
 const ZOOM_URL_RE =
   /^https?:\/\/(?:[\w-]+\.)?zoom\.us\/(?:j|w|wc)\/(?:join\/)?(\d{9,12})(?:[/?]|$)/i;
 const ZOOM_APP_RE = /^https?:\/\/app\.zoom\.us\/wc\/(\d{9,12})\/join/i;
-
 /**
  * Classify a meeting URL and extract the platform-native id. Returns null for
  * URLs that are not a recognizable Meet/Teams/Zoom meeting link.

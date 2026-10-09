@@ -1,0 +1,7 @@
+out/
+artifacts/
+.build.lock
+mkosi/mkosi.cache/
+mkosi/mkosi.builddir/
+mkosi/mkosi.output/
+mkosi/.mkosi-*/

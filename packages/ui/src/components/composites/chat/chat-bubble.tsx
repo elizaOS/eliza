@@ -10,13 +10,10 @@
  */
 import type * as React from "react";
 
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import { WALLPAPER_FLOAT_SHADOW } from "../../shell/wallpaper-idiom";
 import { Card } from "../../ui/card";
 import { normalizeChatSourceKey } from "./chat-source.helpers";
-
-/** @deprecated Use WALLPAPER_FLOAT_SHADOW from shell/wallpaper-idiom instead. */
-export const GLASS_FLOAT_SHADOW = WALLPAPER_FLOAT_SHADOW;
 
 /** The overlay's shared easing for cheap (opacity/translate-only) motion. */
 export const GLASS_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];

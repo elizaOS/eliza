@@ -3,9 +3,21 @@
  * Shared without sending private-state requests to a public search provider.
  */
 
-import { type ActionResult, isBlockedHostname, isPrivateIpAddress } from "@elizaos/core/edge";
+import {
+  type ActionResult,
+  ElizaError,
+  isBlockedHostname,
+  isPrivateIpAddress,
+} from "@elizaos/core";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
+import {
+  currentNwsObservationSource,
+  isCurrentWeatherUnavailableReason,
+  isVerifiedCurrentNwsObservation,
+  parseCurrentWeatherSourceDiagnostics,
+  parseExplicitUsWeatherQuery,
+} from "./shared-current-weather";
 import { sharedSelectedGroundingMetadata } from "./shared-runtime-history-policy";
 
 export type SharedRealtimeDomain = "markets" | "weather" | "news" | "sports" | "mutable_fact";
@@ -37,7 +49,8 @@ const NETWORK_TARGET_LITERAL =
   /(?:https?:\/\/[^\s<>'"]+)|(?:\blocalhost\b)|(?:\b(?:\d{1,3}\.){3}\d{1,3}\b)|(?:\[[0-9a-f:]+\])|(?:\b[0-9a-f]{0,4}:[0-9a-f:]+\b)|(?:\b(?:[a-z0-9-]+\.)+[a-z]{2,63}\b)/iu;
 const MARKETS =
   /\b(?:price|quote|exchange rate|market cap|market price|stock|share price|crypto|cryptocurrency|bitcoin|btc|ethereum|eth|forex|bond yield|commodity|gold price|oil price)\b/i;
-const NEWS = /\b(?:news|headline|breaking|announcement|announced|release today|current events)\b/i;
+const NEWS =
+  /\b(?:news|headlines?|breaking|announcement|announced|release today|current events)\b/i;
 const SPORTS = /\b(?:score|standings|fixture|match result|game result|playoffs|season record)\b/i;
 const PUBLIC_MUTABLE_FACT =
   /\b(?:president|prime minister|governor|mayor|senator|representative|ceo|chief executive|officeholder|software version|release version|public outage|public traffic)\b/i;
@@ -62,7 +75,7 @@ const NAMED_TEAM_SCORE = /\b\p{Lu}[\p{L}\p{N}.'’-]*(?:\s+\p{Lu}[\p{L}\p{N}.'�
 const SOURCE_MARKER = /\[\[SOURCE_URL:(https?:\/\/[^\]\s]+)\]\]/giu;
 const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
 const CLAIM_UNIT =
-  /(?:[$€£¥%])|\b(?:USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH|dollars?|euros?|pounds?|yen|percent(?:age)?|celsius|fahrenheit|kelvin|mph|kph|km\/h|m\/s|mm|cm|km|meters?|metres?|miles?|feet|ft|inches?|degrees?)\b/giu;
+  /(?:[$€£¥%])|°\s*[CF]\b|\b(?:USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH|dollars?|euros?|pounds?|yen|percent(?:age)?|celsius|fahrenheit|kelvin|mph|kph|km\/h|m\/s|mm|cm|km|meters?|metres?|miles?|feet|ft|inches?|degrees?)\b/giu;
 const ATTRIBUTION = /\b(?:according to|reported by)\s+([^,.;\n]{1,80})/giu;
 const NEGATION =
   /\b(?:no|not|never|neither|nor|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|hasn['’]t|haven['’]t|hadn['’]t|won['’]t|wouldn['’]t|didn['’]t|doesn['’]t|don['’]t)\b/iu;
@@ -187,6 +200,22 @@ function publicSubjectWords(value: string | undefined): string | undefined {
   return /^[\p{L}\p{N}.'’&-]+(?:\s+[\p{L}\p{N}.'’&-]+){0,3}$/u.test(subject) ? subject : undefined;
 }
 
+/** Keep an explicit public city/region together while excluding follow-on instructions. */
+function publicWeatherLocation(value: string | undefined): string | undefined {
+  if (!value || value.length > 240) return undefined;
+  // A period ends the location sentence, except common place-name abbreviations.
+  const sentence = value.split(/(?<!\bSt)(?<!\bMt)\.(?:\s|$)/iu, 1)[0];
+  const location = sentence
+    .split(/(?:\s+and)?\s+(?=(?:include|provide|return|answer|respond)\b|text\s+only\b)/iu, 1)[0]
+    .trim();
+  if (!location || location.length > 80) return undefined;
+  const parts = location.split(",");
+  if (parts.length > 3) return undefined;
+  const normalized = parts.map(publicSubjectWords);
+  if (normalized.some((part) => !part)) return undefined;
+  return normalized.join(", ");
+}
+
 function publicProviderQuery(domain: SharedRealtimeDomain, text: string): string | undefined {
   if (domain === "markets") {
     const recognized = [
@@ -203,18 +232,25 @@ function publicProviderQuery(domain: SharedRealtimeDomain, text: string): string
     return `${recognized.join(" ")} ${metric} current`;
   }
   if (domain === "weather") {
-    const location = publicSubjectWords(
+    const location = publicWeatherLocation(
       text.match(
-        /\b(?:weather|forecast|temperature|rain|snow|wind)\b[^,;\n]*?\b(?:in|at|for|near|around)\s+([^,;?!\n]{1,80})/iu,
+        /\b(?:weather|forecast|temperature|rain|snow|wind)\b[^,;\n]*?\b(?:in|at|for|near|around)\s+([^;?!\n]{1,240})(?=[;?!\n]|$)/iu,
       )?.[1],
     );
     return location ? `current public weather in ${location}` : undefined;
   }
   if (domain === "news") {
-    const before = text.match(/\b(?:latest|current|breaking)\s+([^,;?!\n]{1,60}?)\s+news\b/iu)?.[1];
-    const after = text.match(/\b(?:news|headlines?)\s+(?:about|on|for)\s+([^,;?!\n]{1,60})/iu)?.[1];
-    const subject = publicSubjectWords(before ?? after);
-    return subject ? `latest public ${subject} news` : "latest public news";
+    const before = text.match(
+      /\b(?:latest|current|breaking)\s+([^;?!\n]+?)\s+(?:news|headlines?)\b/iu,
+    )?.[1];
+    const after = text.match(
+      /\b(?:news|headlines?)\s+(?:about|on|for)\s+([^;?!\n]+)(?=[;?!\n]|$)/iu,
+    )?.[1];
+    const rawSubject = before ?? after;
+    const subject = boundedPublicSearchTopic(rawSubject);
+    if (rawSubject !== undefined && !subject) return undefined;
+    const query = subject ? `latest public ${subject} news` : "latest public news";
+    return boundedPublicSearchTopic(query);
   }
   if (domain === "sports") {
     const league = text.match(/\b(?:NBA|WNBA|NFL|NHL|MLB|EPL|IPL)\b/iu)?.[0]?.toUpperCase();
@@ -234,6 +270,59 @@ function publicProviderQuery(domain: SharedRealtimeDomain, text: string): string
     )?.[1],
   );
   return role && entity ? `current public ${role} of ${entity}` : undefined;
+}
+
+/** Freshness preflight is an optimization; it is not the entire public-search capability. */
+export type SharedPublicSearchIntent =
+  | { kind: "prefetched"; requirement: SharedRealtimeRequirement }
+  | { kind: "general"; topic: string };
+const EXPLICIT_PUBLIC_SEARCH =
+  /^\s*(?:(?:please|can you|could you|would you)\s+)?(?:search(?:\s+(?:the\s+)?(?:web|internet|online))?(?:\s+for)?|look\s+up|find(?:\s+me)?)\s+(.+)$/iu;
+const GENERAL_PUBLIC_RESEARCH =
+  /\b(?:research|papers?|studies|documentation|reviews?|recommendations?|best|compare|comparison|products?|prices?|versions?|models?|context limits?|benchmarks?)\b/iu;
+function boundedPublicSearchTopic(value: string | undefined): string | undefined {
+  const topic = value
+    ?.trim()
+    .replace(/[.!?]+$/u, "")
+    .trim()
+    .replace(/\s+/gu, " ");
+  if (!topic || !isSharedPublicSearchSafe(topic)) return undefined;
+  if ([...topic].length > 2048) {
+    throw new ElizaError("Public search topics must not exceed 2048 characters", {
+      code: "PUBLIC_SEARCH_QUERY_TOO_LARGE",
+    });
+  }
+  return topic;
+}
+/** Authority comes only from a standalone authenticated public utterance, never history text. */
+export function resolveSharedPublicSearchIntent(
+  message: string,
+  history: readonly SharedTurnMessage[],
+): SharedPublicSearchIntent | undefined {
+  const normalized = message.normalize("NFKC").trim();
+  if (!isSharedPublicSearchSafe(normalized)) return undefined;
+  const requirement = resolveSharedRealtimeRequirement(normalized, history);
+  if (requirement) return { kind: "prefetched", requirement };
+  // Preserve unsupported/missing-location current-data gates instead of broadening them.
+  if (classifyPublicIntent(normalized)) return undefined;
+  const explicitTopic = normalized.match(EXPLICIT_PUBLIC_SEARCH)?.[1];
+  if (
+    !explicitTopic &&
+    (!FACTUAL_REQUEST.test(normalized) ||
+      NON_FACTUAL_REQUEST.test(normalized) ||
+      (!FRESHNESS.test(normalized) && !GENERAL_PUBLIC_RESEARCH.test(normalized)))
+  )
+    return undefined;
+  const topic = boundedPublicSearchTopic(explicitTopic ?? normalized.replace(/[?!]+$/u, ""));
+  // A bare reference cannot authorize a history-derived public query.
+  if (
+    !topic ||
+    /^(?:(?:it|that|this|those|these|above|earlier|previous|same|thing|things|stuff|for|the|a|an|please|again|more)\s*)+$/iu.test(
+      topic,
+    )
+  )
+    return undefined;
+  return { kind: "general", topic };
 }
 
 /** Detects mutable-public intent without granting provider-dispatch authority. */
@@ -320,15 +409,26 @@ export function requireTraceableRealtimeSearch(
   result: ActionResult,
   query: string,
   observedAt = Date.now(),
+  domain?: SharedRealtimeDomain,
 ): ActionResult {
   const data = result.data && typeof result.data === "object" ? result.data : {};
   const sources = sourceEvidence(data.sources);
   const receiptObservedAt = data.observedAt;
+  const sourceDiagnostics = parseCurrentWeatherSourceDiagnostics(data.sourceDiagnostics);
+  const weather =
+    (domain === "weather" || query.startsWith("current public weather in ")) &&
+    parseExplicitUsWeatherQuery(query) !== undefined;
+  const nws =
+    data.provider === "nws" &&
+    isVerifiedCurrentNwsObservation(data.weatherObservation, query, observedAt) &&
+    sources?.length === 1 &&
+    sources[0].url === data.weatherObservation.sourceUrl &&
+    sources[0].text === currentNwsObservationSource(data.weatherObservation).text;
   if (
     result.success === true &&
     data.actionName === "WEB_SEARCH" &&
     normalizedRealtimeQuery(data.query) === normalizedRealtimeQuery(query) &&
-    (data.provider === "parallel" || data.provider === "exa") &&
+    (weather ? nws : data.provider === "parallel") &&
     typeof receiptObservedAt === "number" &&
     Number.isSafeInteger(receiptObservedAt) &&
     Math.abs(receiptObservedAt - observedAt) <= 5 * 60 * 1000 &&
@@ -349,17 +449,31 @@ export function requireTraceableRealtimeSearch(
     success: false,
     text: "Live public data is temporarily unavailable from complete, source-bound evidence.",
     error: "Live public data is temporarily unavailable from complete, source-bound evidence.",
-    data: { actionName: "WEB_SEARCH", query, observedAt },
+    data: {
+      actionName: "WEB_SEARCH",
+      query,
+      observedAt,
+      ...(sourceDiagnostics ? { sourceDiagnostics } : {}),
+      ...(isCurrentWeatherUnavailableReason(data.unavailableReason)
+        ? { unavailableReason: data.unavailableReason }
+        : weather
+          ? { unavailableReason: "CURRENT_WEATHER_RECEIPT_UNTRACEABLE" }
+          : {}),
+    },
   };
 }
 
 /** A successful current-data receipt must retain at least one complete source result. */
 export function hasTraceableRealtimeGrounding(
   grounding: SharedRuntimePublicGrounding | undefined,
-): grounding is AvailableGrounding & { sources: [SourceEvidence, ...SourceEvidence[]] } {
+): grounding is AvailableGrounding & {
+  sources: [SourceEvidence, ...SourceEvidence[]];
+} {
   return Boolean(
     grounding?.kind === "web_search" &&
       grounding.truncated === false &&
+      (grounding.provider !== "nws" ||
+        isVerifiedCurrentNwsObservation(grounding.weatherObservation, grounding.query)) &&
       grounding.sources &&
       grounding.sources.length > 0,
   );
@@ -399,8 +513,8 @@ function canonicalClaimUnit(unit: string): string {
   if (normalized === "cad" || normalized === "aud") return `currency:${normalized}`;
   if (normalized === "btc" || normalized === "eth") return `asset:${normalized}`;
   if (normalized === "%" || /^percent(?:age)?$/u.test(normalized)) return "ratio:percent";
-  if (/^celsius$/u.test(normalized)) return "temperature:celsius";
-  if (/^fahrenheit$/u.test(normalized)) return "temperature:fahrenheit";
+  if (/^(?:celsius|°\s*c)$/u.test(normalized)) return "temperature:celsius";
+  if (/^(?:fahrenheit|°\s*f)$/u.test(normalized)) return "temperature:fahrenheit";
   if (/^kelvin$/u.test(normalized)) return "temperature:kelvin";
   if (/^degrees?$/u.test(normalized)) return "temperature:degree-unspecified";
   if (normalized === "mph") return "speed:mph";
@@ -424,7 +538,7 @@ type NumericUnitTuple = { value: number; unit: string };
 
 function numericUnitTuples(value: string): NumericUnitTuple[] {
   const unit =
-    "[$€£¥%]|USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH|dollars?|euros?|pounds?|yen|percent(?:age)?|celsius|fahrenheit|kelvin|mph|kph|km\\/h|m\\/s|mm|cm|km|meters?|metres?|miles?|feet|ft|inches?|degrees?";
+    "[$€£¥%]|°\\s*[CF]\\b|USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH|dollars?|euros?|pounds?|yen|percent(?:age)?|celsius|fahrenheit|kelvin|mph|kph|km\\/h|m\\/s|mm|cm|km|meters?|metres?|miles?|feet|ft|inches?|degrees?";
   const pattern = new RegExp(
     `(?:(${unit})\\s*)?(-?\\d[\\d,]*(?:\\.\\d+)?)(?:\\s*(${unit}))?`,
     "giu",
@@ -544,13 +658,34 @@ function sourceForUrl(
   return grounding.sources?.find((source) => canonicalPublicUrl(source.url) === canonical);
 }
 
-function claimSupported(claim: string, source: SourceEvidence): boolean {
+export interface SharedRealtimeBindingDiagnostic {
+  reason: "marker_missing" | "source_not_in_receipt" | "claim_not_supported";
+  markerCount: number;
+  knownSourceMarkerCount: number;
+  /** Bits: negation1, numbers2, numericUnits4, units8, attribution16, words32, url64, empty128. */
+  failedPredicateMask: number;
+}
+
+function claimSupported(
+  claim: string,
+  source: SourceEvidence,
+  diagnostic?: { failedPredicateMask: number },
+): boolean {
   const normalized = claim.trim();
-  if (!normalized || /^[\s?!.,-]{1,12}$/u.test(normalized)) return false;
+  if (!normalized || /^[\s?!.,-]{1,12}$/u.test(normalized)) {
+    if (diagnostic) diagnostic.failedPredicateMask |= 128;
+    return false;
+  }
   const urls = replyUrls(normalized);
-  if (!urls) return false;
+  if (!urls) {
+    if (diagnostic) diagnostic.failedPredicateMask |= 64;
+    return false;
+  }
   for (const url of urls) {
-    if (url !== canonicalPublicUrl(source.url)) return false;
+    if (url !== canonicalPublicUrl(source.url)) {
+      if (diagnostic) diagnostic.failedPredicateMask |= 64;
+      return false;
+    }
   }
   const claimNumbers = numericValues(normalized);
   const units = claimUnits(normalized);
@@ -560,18 +695,35 @@ function claimSupported(claim: string, source: SourceEvidence): boolean {
   );
   const words = claimWords(normalized);
   return evidenceClauses(source.text).some((clause) => {
-    if (NEGATION.test(normalized) !== NEGATION.test(clause)) return false;
-    if (!orderedNumbersSupported(claimNumbers, numericValues(clause))) return false;
-    if (!orderedNumericUnitsSupported(numericUnits, numericUnitTuples(clause))) return false;
+    if (NEGATION.test(normalized) !== NEGATION.test(clause)) {
+      if (diagnostic) diagnostic.failedPredicateMask |= 1;
+      return false;
+    }
+    if (!orderedNumbersSupported(claimNumbers, numericValues(clause))) {
+      if (diagnostic) diagnostic.failedPredicateMask |= 2;
+      return false;
+    }
+    if (!orderedNumericUnitsSupported(numericUnits, numericUnitTuples(clause))) {
+      if (diagnostic) diagnostic.failedPredicateMask |= 4;
+      return false;
+    }
     const evidenceUnits = new Set(claimUnits(clause));
-    if (units.some((unit) => !evidenceUnits.has(unit))) return false;
+    if (units.some((unit) => !evidenceUnits.has(unit))) {
+      if (diagnostic) diagnostic.failedPredicateMask |= 8;
+      return false;
+    }
     const lowerClause = clause.toLowerCase();
-    if (attributions.some((attribution) => !lowerClause.includes(attribution))) return false;
-    return orderedWordsSupported(words, claimWords(clause));
+    if (attributions.some((attribution) => !lowerClause.includes(attribution))) {
+      if (diagnostic) diagnostic.failedPredicateMask |= 16;
+      return false;
+    }
+    const supported = orderedWordsSupported(words, claimWords(clause));
+    if (!supported && diagnostic) diagnostic.failedPredicateMask |= 32;
+    return supported;
   });
 }
 
-function normalizedRealtimeQuery(value: unknown): string | undefined {
+export function normalizedRealtimeQuery(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US");
   return normalized || undefined;
@@ -624,17 +776,27 @@ export function validateSharedRealtimeReply(reply: string, grounding: AvailableG
 function supportedRealtimeReply(
   reply: string,
   grounding: AvailableGrounding,
+  onRefusal?: (diagnostic: SharedRealtimeBindingDiagnostic) => void,
 ): { reply: string; selectedUrls: string[]; omittedUnsupported: boolean } | undefined {
   if (!hasTraceableRealtimeGrounding(grounding)) return undefined;
   SOURCE_MARKER.lastIndex = 0;
   let cursor = 0;
   let omittedUnsupported = false;
+  const diagnostic = {
+    markerCount: 0,
+    knownSourceMarkerCount: 0,
+    failedPredicateMask: 0,
+  };
   const segments: string[] = [];
   const selectedUrls: string[] = [];
   for (const marker of reply.matchAll(SOURCE_MARKER)) {
+    diagnostic.markerCount = Math.min(1000, diagnostic.markerCount + 1);
     const source = sourceForUrl(grounding, marker[1]);
+    if (source) {
+      diagnostic.knownSourceMarkerCount = Math.min(1000, diagnostic.knownSourceMarkerCount + 1);
+    }
     const claim = reply.slice(cursor, marker.index).trim();
-    if (source && claimSupported(claim, source)) {
+    if (source && claimSupported(claim, source, diagnostic)) {
       segments.push(claim);
       selectedUrls.push(marker[1]);
     } else {
@@ -643,6 +805,21 @@ function supportedRealtimeReply(
     cursor = (marker.index ?? 0) + marker[0].length;
   }
   if (reply.slice(cursor).trim()) omittedUnsupported = true;
+  if (segments.length === 0 && onRefusal) {
+    try {
+      onRefusal({
+        ...diagnostic,
+        reason:
+          diagnostic.markerCount === 0
+            ? "marker_missing"
+            : diagnostic.knownSourceMarkerCount === 0
+              ? "source_not_in_receipt"
+              : "claim_not_supported",
+      });
+    } catch {
+      // Diagnostic delivery must not change the existing refusal outcome.
+    }
+  }
   return segments.length > 0
     ? { reply: segments.join("\n"), selectedUrls, omittedUnsupported }
     : undefined;
@@ -652,18 +829,23 @@ function supportedRealtimeReply(
 export function finalizeSharedRealtimeReply(
   reply: string,
   grounding: SharedRuntimePublicGrounding | undefined,
+  onRefusal?: (diagnostic: SharedRealtimeBindingDiagnostic) => void,
 ): string {
   if (!hasTraceableRealtimeGrounding(grounding)) {
     return "I can’t verify the current value from a complete, traceable live source right now, so I won’t guess. Please try again shortly.";
   }
-  const supported = supportedRealtimeReply(reply, grounding);
+  const supported = supportedRealtimeReply(reply, grounding, onRefusal);
   if (!supported) {
     return `I found live public results, but I couldn’t safely bind the requested claim to one complete source, so I won’t guess.\n\nSource provider: ${grounding.provider} (checked ${new Date(grounding.observedAt).toISOString()})`;
   }
   const sources = [...new Set(supported.selectedUrls)].map((url) => {
     const canonical = canonicalPublicUrl(url);
     if (!canonical) throw new TypeError("Validated Shared realtime source became invalid");
-    return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}, checked ${new Date(grounding.observedAt).toISOString()})`;
+    const observed =
+      grounding.provider === "nws" && grounding.weatherObservation
+        ? `, observation ${grounding.weatherObservation.timestamp}`
+        : "";
+    return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}${observed}, checked ${new Date(grounding.observedAt).toISOString()})`;
   });
   const omission = supported.omittedUnsupported
     ? "\n\nI left out part of the draft because it was not supported by the live source."
@@ -672,7 +854,12 @@ export function finalizeSharedRealtimeReply(
 }
 
 /** System-only policy; actual provider results remain untrusted data messages. */
-export function sharedRealtimePromptPolicy(grounding: SharedRuntimePublicGrounding): string {
+export function sharedRealtimePromptPolicy(
+  grounding: SharedRuntimePublicGrounding | undefined,
+): string {
+  if (!grounding) {
+    return "Public-search grounding policy:\n- WEB_SEARCH is available for this turn; do not claim a search has run until its action result confirms success.\n- After a successful search, use only its structured current-turn source objects for public factual claims. Append [[SOURCE_URL:https://exact-supporting-url]] immediately after every supported claim segment, using the exact URL from that result. Never combine a claim from one result with another result's URL.\n- If the action fails or the sources do not support the requested answer, say what you could not verify. Never invent a search, article, attribution, numeric value, or source. Do not repeat the same completed query.";
+  }
   return grounding.kind === "web_search"
     ? "Current-data grounding policy:\n- A complete live public read already ran for this turn. Use only its structured current-turn source objects for mutable factual claims.\n- Keep each claim with its own source: append [[SOURCE_URL:https://exact-supporting-url]] immediately after every claim segment. Never combine a value from one result with another result’s URL.\n- Preserve the source value, timestamp, units or currency. If evidence conflicts or omits the requested value, say you cannot verify it.\n- Never invent a search, article, source, attribution, or numeric value. Do not run a duplicate search for the same query."
     : "Current-data grounding policy:\n- The required live public read failed or lacked complete source-bound evidence. Say you cannot verify the current value and do not provide a number, source, article, or claimed search result.\n- Recover conversationally from corrections; never answer with punctuation alone.";

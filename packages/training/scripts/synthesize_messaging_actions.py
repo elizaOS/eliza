@@ -33,10 +33,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.eliza_record import build, stable_id  # noqa: E402
-from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
+from eliza_training.lib.eliza_record import build, stable_id  # noqa: E402
+from eliza_training.lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 ACTIONS_PATH = ROOT / "data" / "prompts" / "actions-catalog.json"
 OUT_PATH = ROOT / "data" / "synthesized" / "action_examples" / "messaging.jsonl"

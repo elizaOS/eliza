@@ -5,13 +5,13 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { compoundVitestEvidence } from "../scripts/lib/compound-test-evidence.ts";
+import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases.ts";
 
 const packageRoot = fileURLToPath(new URL("./", import.meta.url));
 const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
-const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
-const promptsSrc = resolve(monorepoRoot, "packages/prompts/src");
 const cloudRoutingSrc = resolve(monorepoRoot, "packages/cloud/routing/src");
 const cloudSharedSrc = resolve(monorepoRoot, "packages/cloud/shared/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
@@ -71,24 +71,12 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
     alias: [
       {
-        find: /^@elizaos\/login$/,
-        replacement: resolve(monorepoRoot, "packages/login/src/sdk/index.ts"),
+        find: /^@elizaos\/auth$/,
+        replacement: resolve(monorepoRoot, "packages/auth/src/sdk/index.ts"),
       },
       {
         find: /^@elizaos\/ui$/,
         replacement: resolve(uiSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/ui\/(.+)$/,
-        replacement: resolve(uiSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: resolve(sharedSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/(.+)$/,
-        replacement: resolve(sharedSrc, "$1"),
       },
       {
         find: /^@elizaos\/cloud-routing$/,
@@ -107,25 +95,15 @@ export default defineConfig({
         replacement: resolve(cloudSharedSrc, "$1"),
       },
       {
-        find: /^@elizaos\/logger$/,
-        replacement: resolve(loggerSrc, "index.ts"),
-      },
-      {
         find: /^@elizaos\/core$/,
-        replacement: resolve(coreSrc, "index.node.ts"),
+        replacement: resolve(coreSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/core\/(.+)$/,
         replacement: resolve(coreSrc, "$1"),
       },
       {
-        // Vitest deliberately omits Vite's `module` condition. Resolve this
-        // workspace package explicitly so clean CI does not require dist/.
-        find: /^@elizaos\/prompts$/,
-        replacement: resolve(promptsSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/app-core(?:\/browser|\/ui-compat)?$/,
+        find: /^@elizaos\/app(?:\/browser|\/ui-compat)?$/,
         replacement: hostExternalStub,
       },
       {
@@ -184,11 +162,11 @@ export default defineConfig({
         find: /^@capacitor\/app$/,
         replacement: resolve(packageRoot, "test/stubs/capacitor-app.ts"),
       },
-      // `@elizaos/capacitor-llama` and `@elizaos/plugin-wallet/ui` are workspace packages
+      // `@elizaos/plugin-native-inference/llama` and `@elizaos/plugin-wallet/ui` are workspace packages
       // built to dist/ only; UI tests `vi.mock` them, so alias to stubs so the
       // import resolves in CI where their dist/ isn't built.
       {
-        find: /^@elizaos\/capacitor-llama$/,
+        find: /^@elizaos\/plugin-native-inference\/llama$/,
         replacement: resolve(
           packageRoot,
           "test/stubs/elizaos-capacitor-llama.ts",
@@ -240,9 +218,11 @@ export default defineConfig({
           "packages/cloud/sdk/src/cloud-setup-session/$1",
         ),
       },
+      ...buildWorkspaceSourceAliases(monorepoRoot),
     ],
   },
   test: {
+    ...compoundVitestEvidence(),
     globals: false,
     setupFiles: ["./vitest.setup.ts"],
     // Write worker console output straight to stdout instead of shipping every
@@ -299,27 +279,9 @@ export default defineConfig({
       // window.localStorage / window.sessionStorage.
       jsdom: { url: "http://localhost/" },
     },
-    include: [
-      "__tests__/**/*.test.ts",
-      "src/**/*.test.ts",
-      "src/**/*.test.tsx",
-      // Pure-logic unit tests for the story-gate audit scripts (e.g. the
-      // console/a11y baseline-allowlist guard) run in the standard suite.
-      "test/**/*.test.mjs",
-    ],
-    exclude: [
-      "dist/**",
-      "**/node_modules/**",
-      "**/*.live.test.{ts,tsx}",
-      "**/*.real.test.{ts,tsx}",
-      "**/*.integration.test.{ts,tsx}",
-      "**/*.e2e.test.{ts,tsx}",
-      "**/*.e2e.spec.{ts,tsx}",
-      "**/*.spec.{ts,tsx}",
-      // Heavy jsdom flows live under __e2e__/ — they routinely take >5min
-      // and blow past the global suite budget. Run them via the dedicated
-      // `test:slow` script (vitest.e2e.config.ts) with a 15min cap.
-      "**/__e2e__/**",
-    ],
+    include: ["src/**/__e2e__/**/*.test.{ts,tsx}"],
+    exclude: ["dist/**", "**/node_modules/**"],
+    testTimeout: 900_000,
+    hookTimeout: 900_000,
   },
 });

@@ -3,8 +3,10 @@
  * their hour ranges, per-platform activity records, activity signals, the
  * assembled ActivityProfile, and the proactive-action shape.
  */
-import type { LifeOpsActivitySignalSourceName } from "@elizaos/shared";
-import type { LifeOpsHealthSignal } from "../contracts/index.js";
+import type {
+  LifeOpsActivitySignalSourceName,
+  LifeOpsHealthSignal,
+} from "@elizaos/contracts";
 
 export type TimeBucket =
   | "EARLY_MORNING" // 5-7

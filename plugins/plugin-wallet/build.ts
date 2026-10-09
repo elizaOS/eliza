@@ -2,11 +2,11 @@
 /**
  * Build script for @elizaos/plugin-wallet (Node, multi-entrypoint).
  * Orchestration lives in the shared driver (plugins/plugin-build.ts); this
- * lists only what differs. The emitted `dist/` is byte-identical to the
- * previous hand-rolled build.
+ * lists only what differs. Node entrypoints share chunks so stateful policies
+ * have one instance across root and lightweight imports.
  *
  * Notable specifics reproduced here:
- * - Five entrypoints are bundled together under `dist/` with Bun's default
+ * - Node entrypoints are bundled together under `dist/` with Bun's default
  *   `[dir]/[name].[ext]` naming, so `src/sdk/index.ts` etc. keep their tree.
  * - Only the primary `index.js`/`index.js.map` are renamed to `.mjs`/`.mjs.map`
  *   (the package `main`/`exports` point at `dist/index.mjs`); the secondary
@@ -28,12 +28,18 @@ await buildPlugin({
   targets: [
     {
       label: "Node",
+      splitting: true,
+      root: "src",
       entry: [
         "src/index.ts",
         "src/diagnostic.ts",
+        "src/read.ts",
+        "src/transactions.ts",
+        "src/watcher.ts",
         "src/sdk/index.ts",
         "src/wallet-action.ts",
         "src/lib/server-wallet-trade.ts",
+        "src/lib/market-overview.ts",
       ],
       outSubdir: "",
       target: "node",

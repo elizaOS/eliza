@@ -6,28 +6,32 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import type {
-  Action,
-  ActionExample,
-  EffectReceipt,
-  HandlerOptions,
-  IAgentRuntime,
-  JsonValue,
-  Media,
-  Memory,
-} from "@elizaos/core";
 import {
+  type Action,
+  type ActionExample,
   buildReadView,
-  buildStoreVariantBlockedMessage,
   ContentType,
+  type EffectReceipt,
   ElizaError,
-  isLocalCodeExecutionAllowed,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type JsonValue,
   logger,
+  type Media,
+  type Memory,
   redactSensitiveText,
   stringToUuid,
 } from "@elizaos/core";
-import { readAliasedEnv, resolveServerOnlyPort } from "@elizaos/shared";
-import { capturedTerminalOutputIsSafe } from "../api/terminal-output-contract.ts";
+import {
+  buildStoreVariantBlockedMessage,
+  isLocalCodeExecutionAllowed,
+} from "@elizaos/host";
+import { readAliasedEnv, resolveSelfApiBaseUrl } from "@elizaos/host/protocol";
+import {
+  capturedTerminalOutputIsSafe,
+  TERMINAL_REJECTIONS,
+  type TerminalRejectionCode,
+} from "../api/terminal-output-contract.ts";
 import { resolveTerminalRunLimits } from "../api/terminal-run-limits.ts";
 import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
 
@@ -585,12 +589,13 @@ export const terminalAction: Action = {
   description:
     "Run a single explicit shell command that the user provided directly. " +
     "Only use when the user gives a specific command like 'run ls -la' or 'execute npm install'. " +
-    "Do NOT use for building projects, creating websites, or multi-step work — use START_CODING_TASK instead. " +
+    "Do NOT use for building projects, creating websites, or multi-step work — discover the appropriate coding-task action instead. " +
+    "The command must be one line (maximum 4096 characters), with no literal newline, carriage return or NUL; use escaped newlines or coding tools for scripts. " +
     "The command output is captured as a document attachment for native planner follow-up. After the run, decide whether to reply, stay silent, continue with another action, or save the attachment via the clipboard plugin.",
   descriptionCompressed:
-    "run one explicit shell command; not build/create/multi-step -> START_CODING_TASK",
+    "run one explicit shell command; discover coding-task actions for multi-step development",
   routingHint:
-    "run ONE explicit user-provided command and capture its output as an attachment in the terminal view -> TERMINAL_SHELL; general shell/build/history or scripted commands -> SHELL (coding-tools); multi-step dev work -> START_CODING_TASK; MCP tools -> MCP",
+    "run ONE explicit user-provided command and capture its output as an attachment in the terminal view -> TERMINAL_SHELL; general shell/build/history or scripted commands -> SHELL (coding-tools); multi-step dev work -> discover coding-task actions; MCP tools -> MCP",
 
   validate: async () => isLocalCodeExecutionAllowed(),
 
@@ -640,7 +645,7 @@ export const terminalAction: Action = {
     let response: Response;
     try {
       response = await fetch(
-        `http://localhost:${resolveServerOnlyPort(process.env)}/api/terminal/run`,
+        `${resolveSelfApiBaseUrl(process.env)}/api/terminal/run`,
         {
           method: "POST",
           headers,
@@ -670,15 +675,67 @@ export const terminalAction: Action = {
     }
 
     if (!response.ok) {
-      await cancelResponseBody(
-        response.body,
-        `Terminal request rejected with HTTP ${response.status}`,
+      // Trust only the host's typed pre-dispatch contract, never raw error prose.
+      // Untyped/proxy errors can follow an accepted command: retain its identity
+      // and forbid automatic retry until the effect has been reconciled.
+      let rejected: JsonValue;
+      try {
+        rejected = await readTerminalResponseJson(response, requestSignal);
+      } catch {
+        // A malformed rejection cannot prove non-execution. Fall through to the
+        // typed unknown-outcome failure below, preserving the run ID for reconciliation.
+        rejected = null;
+      }
+      callerSignal?.throwIfAborted();
+      if (
+        rejected &&
+        typeof rejected === "object" &&
+        !Array.isArray(rejected) &&
+        typeof rejected.code === "string" &&
+        Object.hasOwn(TERMINAL_REJECTIONS, rejected.code) &&
+        rejected.acceptance === "rejected" &&
+        rejected.executionStatus === "not_started"
+      ) {
+        const code = rejected.code as TerminalRejectionCode;
+        const definition = TERMINAL_REJECTIONS[code];
+        const statusMatches =
+          response.status === definition.status ||
+          (code === "TERMINAL_AUTHORIZATION_REQUIRED" &&
+            response.status === 401);
+        if (statusMatches)
+          return {
+            success: false,
+            error: code,
+            text: definition.message,
+            modelReplyRequired: true,
+            failureProvenance: {
+              kind: "handler_error",
+              boundary: "handler",
+              code,
+              retryable: definition.retryable,
+            },
+            data: {
+              actionName: TERMINAL_ACTION_NAME,
+              runId,
+              status: response.status,
+              acceptance: "rejected",
+              executionStatus: "not_started",
+            },
+          };
+      }
+      throw new ElizaError(
+        "Terminal execution outcome is unknown; reconcile the run before retrying",
+        {
+          code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+          context: {
+            status: response.status,
+            acceptance: "unknown",
+            executionStatus: "unknown",
+            runId,
+          },
+          severity: "fatal",
+        },
       );
-      throw new ElizaError("Terminal execution request was rejected", {
-        code: "TERMINAL_REQUEST_FAILED",
-        context: { status: response.status },
-        severity: "ephemeral",
-      });
     }
 
     let responseBody: JsonValue;
@@ -776,13 +833,26 @@ export const terminalAction: Action = {
         outputAttachmentMemoryId: outputAttachment?.memoryId,
         suppressVisibleCallback: true,
       },
+      // Complete command/stdout/stderr remain in text; data and attachments stay
+      // intact in recordings. The model receives their identities once.
+      promptDataMode: "replace-data",
       promptData: {
+        actionName: TERMINAL_ACTION_NAME,
+        ...(outputAttachment
+          ? { outputAttachmentId: outputAttachment.attachment.id }
+          : {}),
+        ...(outputAttachment?.memoryId
+          ? { outputAttachmentMemoryId: outputAttachment.memoryId }
+          : {}),
         ...(readView ? { readView } : {}),
         terminal: {
           runId: capturedRun.runId,
           exitCode: capturedRun.exitCode,
           timedOut: capturedRun.timedOut,
           truncated: capturedRun.truncated,
+          ...(capturedRun.maxDurationMs !== undefined
+            ? { maxDurationMs: capturedRun.maxDurationMs }
+            : {}),
           outputReferenceAvailable: Boolean(readView),
         },
       },
@@ -792,7 +862,8 @@ export const terminalAction: Action = {
   parameters: [
     {
       name: "command",
-      description: "The shell command to execute in the terminal",
+      description:
+        "One shell command, at most 4096 characters; no literal newline, carriage return or NUL. Use escaped newlines or coding tools for scripts.",
       required: true,
       schema: { type: "string" as const },
     },

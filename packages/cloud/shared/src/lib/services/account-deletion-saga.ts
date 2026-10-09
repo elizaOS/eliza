@@ -30,7 +30,7 @@ export type AccountDeletionProviderPhase =
   | "other_grants"
   | "steward_deletion";
 
-export interface AccountDeletionProviderContext {
+interface AccountDeletionSubjectContext {
   requestId: string;
   requestDigest: string;
   userId: string;
@@ -38,6 +38,11 @@ export interface AccountDeletionProviderContext {
   stewardUserId: string;
   lifecycleRevision: number;
   blob: RuntimeR2Bucket;
+}
+
+export interface AccountDeletionProviderContext extends AccountDeletionSubjectContext {
+  phaseReceiptId: string;
+  phaseGeneration: number;
 }
 
 export type AccountDeletionProviderInspection =
@@ -83,7 +88,7 @@ function requireActionCode(value: string): string {
 function providerContext(
   request: AccountDeletionRequest,
   blob: RuntimeR2Bucket,
-): AccountDeletionProviderContext | null {
+): AccountDeletionSubjectContext | null {
   if (
     !request.request_digest ||
     !DIGEST_PATTERN.test(request.request_digest) ||
@@ -238,7 +243,7 @@ async function processProviderPhase(input: {
   request: AccountDeletionRequest;
   phase: AccountDeletionProviderPhase;
   adapter: AccountDeletionProviderAdapter;
-  context: AccountDeletionProviderContext;
+  context: AccountDeletionSubjectContext;
   now: Date;
 }): Promise<"progressed" | "stale" | "reconciling" | "action_required"> {
   const lease = await accountDeletionRequestsRepository.leasePhase({
@@ -250,9 +255,14 @@ async function processProviderPhase(input: {
   });
   if (!lease) return "stale";
 
+  const context: AccountDeletionProviderContext = {
+    ...input.context,
+    phaseReceiptId: lease.receipt.id,
+    phaseGeneration: lease.generation,
+  };
   let inspection: AccountDeletionProviderInspection;
   try {
-    inspection = await input.adapter.inspect(input.context);
+    inspection = await input.adapter.inspect(context);
   } catch {
     // error-policy:J1 Inspection happens before a provider mutation. A phase
     // already reconciling stays reconciling so an outage cannot authorize a
@@ -336,11 +346,8 @@ async function processProviderPhase(input: {
   if (!started) return "stale";
 
   try {
-    await input.adapter.execute(
-      input.context,
-      `account-deletion:${input.request.id}:${input.phase}`,
-    );
-    const reconciled = await input.adapter.inspect(input.context);
+    await input.adapter.execute(context, `account-deletion:${input.request.id}:${input.phase}`);
+    const reconciled = await input.adapter.inspect(context);
     if (reconciled.state === "complete") {
       const committed = await completeInspectedPhase({
         requestId: input.request.id,

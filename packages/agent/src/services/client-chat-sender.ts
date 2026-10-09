@@ -14,11 +14,18 @@ import {
   createMessageMemory,
   ElizaError,
   type IAgentRuntime,
+  isMessageMetadata,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  MESSAGE_SOURCE_OWNER_CHAT,
   type Memory,
+  type SendHandlerOutcome,
+  stringToUuid,
   type TargetInfo,
   type UUID,
+  validateUuid,
 } from "@elizaos/core";
+import { ensureOwnerConversation } from "../api/conversation-routes.ts";
+import { compareConversationsByRecency } from "../api/conversation-sort.ts";
 import type { ConversationMeta, ServerState } from "../api/server-types.ts";
 
 /**
@@ -121,7 +128,7 @@ function resolveConversation(
 
   // 3. Most recently updated conversation
   const sorted = Array.from(state.conversations.values()).sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    compareConversationsByRecency,
   );
   return sorted[0];
 }
@@ -137,7 +144,7 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
       _rt: IAgentRuntime,
       target: TargetInfo,
       content: Content,
-    ): Promise<Memory> => {
+    ): Promise<Memory | SendHandlerOutcome> => {
       const conv = resolveConversation(
         state,
         target.roomId as UUID | undefined,
@@ -152,19 +159,45 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
         );
       }
 
-      const messageId = crypto.randomUUID() as UUID;
+      const responseMemoryId = target.responseMemoryId;
+      const processorResponse = responseMemoryId !== undefined;
+      if (
+        processorResponse &&
+        (source !== MESSAGE_SOURCE_CLIENT_CHAT ||
+          target.roomId !== conv.roomId ||
+          content.simple !== true ||
+          !validateUuid(responseMemoryId) ||
+          content.responseId !== responseMemoryId)
+      ) {
+        throw new ElizaError("Invalid processor-owned dashboard response", {
+          code: "CLIENT_CHAT_RESPONSE_OWNERSHIP_INVALID",
+        });
+      }
+      const messageId = responseMemoryId ?? (crypto.randomUUID() as UUID);
+      const failure =
+        content.systemNotice === "model-unavailable" ||
+        content.systemNotice === "model-and-runtime-error"
+          ? { failureKind: "no_provider" as const }
+          : {};
 
-      const agentMessage = createMessageMemory({
-        id: messageId,
-        entityId: runtime.agentId,
-        roomId: conv.roomId,
-        content: {
-          ...content,
-          text: content.text ?? "",
-          source: MESSAGE_SOURCE_CLIENT_CHAT,
-        },
-      });
-      await runtime.createMemory(agentMessage, "messages");
+      let agentMessage: Memory | undefined;
+      if (!processorResponse) {
+        agentMessage = createMessageMemory({
+          id: messageId,
+          entityId: runtime.agentId,
+          roomId: conv.roomId,
+          content: {
+            ...content,
+            ...failure,
+            text: content.text ?? "",
+            source: MESSAGE_SOURCE_CLIENT_CHAT,
+          },
+        });
+        await runtime.createMemory(agentMessage, "messages");
+      }
+      // The simple message processor publishes its exact canonical row and
+      // propagates persistence failure. A second writer would change its
+      // metadata/createdAt and race that immutable publication boundary.
 
       conv.updatedAt = new Date().toISOString();
 
@@ -174,13 +207,122 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
         message: {
           id: messageId,
           role: "assistant",
+          ...failure,
           text: content.text ?? "",
           timestamp: Date.now(),
           source: MESSAGE_SOURCE_CLIENT_CHAT,
         },
       });
+      if (!agentMessage) {
+        return {
+          kind: "delivered",
+          receipt: {
+            providerMessageIds: [messageId],
+            evidenceKind: "local-effect",
+            acceptedAt: Date.now(),
+            persistence: {
+              status: "not_attempted",
+              reason:
+                "Canonical response persistence is owned by the message processor.",
+            },
+          },
+          memories: [],
+        };
+      }
       return agentMessage;
     };
+}
+
+/**
+ * Durable owner-addressed delivery (`owner_chat`): persist into the owner's
+ * canonical conversation, creating it when the agent has none yet, before
+ * resolving, so a message sent while no client is connected is in history
+ * when one connects. A `deliveryIdempotencyKey` derives the message id, so a
+ * redelivery after an unrecorded success returns the stored row instead of
+ * writing a second one.
+ */
+function makeOwnerChatDeliver(runtime: IAgentRuntime, state: ServerState) {
+  return async (
+    _rt: IAgentRuntime,
+    target: TargetInfo,
+    content: Content,
+  ): Promise<Memory> => {
+    const hostRuntime = state.runtime;
+    if (!hostRuntime || hostRuntime.agentId !== runtime.agentId) {
+      throw new ElizaError("owner_chat send failed: agent runtime changed", {
+        code: "OWNER_CHAT_RUNTIME_UNAVAILABLE",
+        context: { agentId: runtime.agentId },
+      });
+    }
+    if (target.roomId) {
+      throw new ElizaError(
+        "owner_chat targets the owner's canonical conversation; use client_chat for a specific room",
+        { code: "OWNER_CHAT_ROOM_TARGET_UNSUPPORTED" },
+      );
+    }
+    const text = typeof content.text === "string" ? content.text : "";
+    if (!text.trim()) {
+      throw new ElizaError("owner_chat send failed: message text is empty", {
+        code: "OWNER_CHAT_EMPTY_MESSAGE",
+      });
+    }
+    const idempotencyKey =
+      typeof content.deliveryIdempotencyKey === "string" &&
+      content.deliveryIdempotencyKey.trim()
+        ? content.deliveryIdempotencyKey.trim()
+        : null;
+    const messageId = idempotencyKey
+      ? stringToUuid(`owner-chat:${runtime.agentId}:${idempotencyKey}`)
+      : (crypto.randomUUID() as UUID);
+    if (idempotencyKey) {
+      const existing = await runtime.getMemoryById(messageId);
+      if (existing) {
+        if (!existing.metadata || !isMessageMetadata(existing.metadata))
+          return existing;
+        const conversation = findConversationByRoomId(state, existing.roomId);
+        return {
+          ...existing,
+          metadata: {
+            ...existing.metadata,
+            conversationId: conversation?.id ?? null,
+          },
+        };
+      }
+    }
+    const conv = await ensureOwnerConversation(state, hostRuntime);
+    const source =
+      typeof content.source === "string" && content.source.trim()
+        ? content.source.trim()
+        : MESSAGE_SOURCE_CLIENT_CHAT;
+    const agentMessage = createMessageMemory({
+      id: messageId,
+      entityId: runtime.agentId,
+      roomId: conv.roomId,
+      content: { ...content, text, source },
+    });
+    if (!agentMessage.metadata || !isMessageMetadata(agentMessage.metadata))
+      throw new ElizaError("owner_chat message metadata is unavailable", {
+        code: "OWNER_CHAT_MESSAGE_METADATA_INVALID",
+      });
+    agentMessage.metadata = {
+      ...agentMessage.metadata,
+      conversationId: conv.id,
+    };
+    await runtime.createMemory(agentMessage, "messages");
+    conv.updatedAt = new Date().toISOString();
+    state.broadcastWs?.({
+      type: "proactive-message",
+      conversationId: conv.id,
+      message: {
+        id: messageId,
+        role: "assistant",
+        text,
+        timestamp: Date.now(),
+        source,
+      },
+    });
+    return agentMessage;
+  };
 }
 
 type RuntimeWithFallbackMarker = IAgentRuntime & {
@@ -212,7 +354,7 @@ function installDashboardFallbackSend(
     rt: IAgentRuntime,
     target: TargetInfo,
     content: Content,
-  ) => Promise<Memory>,
+  ) => Promise<Memory | SendHandlerOutcome>,
 ): void {
   if (typeof runtime.sendMessageToTarget !== "function") return;
   const tagged = runtime as RuntimeWithFallbackMarker;
@@ -243,6 +385,7 @@ function installDashboardFallbackSend(
     // A registered connector / explicit relay source owns its own delivery.
     if (
       !source ||
+      source === MESSAGE_SOURCE_OWNER_CHAT ||
       RELAY_SOURCES.some((relaySource) => relaySource === source) ||
       hasRegisteredHandler(source)
     ) {
@@ -280,6 +423,11 @@ export function registerClientChatSendHandler(
   for (const source of RELAY_SOURCES) {
     runtime.registerInternalSendHandler(source, deliver(source));
   }
+
+  runtime.registerInternalSendHandler(
+    MESSAGE_SOURCE_OWNER_CHAT,
+    makeOwnerChatDeliver(runtime, state),
+  );
 
   // Safety net for arbitrary/unknown dashboard-origin sources.
   installDashboardFallbackSend(runtime, deliver);

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import package_voice_for_release  # type: ignore  # noqa: E402
+from eliza_training.kokoro import package_voice_for_release  # type: ignore  # noqa: E402
 
 
 def test_package_voice_only_release_synthesizes_canonical_fragment(tmp_path: Path) -> None:

@@ -4,10 +4,7 @@
  * Renders nothing when no model is loaded.
  */
 
-import type {
-  ActiveModelState,
-  InstalledModel,
-} from "../../api/client-local-inference";
+import type { ActiveModelState, InstalledModel } from "@elizaos/contracts";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { displayModelName } from "./hub-utils";

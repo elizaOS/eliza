@@ -18,10 +18,10 @@ import {
   formatHourlyRate,
   formatUSD,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
+import { STEWARD_SESSION_CHANGE_EVENT } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import type {
   DedicatedAdoptionConfirmationQuote,
   DedicatedAdoptionConfirmationRequester,
@@ -30,6 +30,7 @@ import type {
   DedicatedActivationConfirmationQuote,
   DedicatedActivationConfirmationRequester,
 } from "../../api/dedicated-activation-confirmation";
+import { BRAND_PATHS, LOGO_FILES } from "../../brand/index.js";
 import { Button } from "../../components/ui/button";
 import {
   savePersistedActiveServer,
@@ -38,6 +39,7 @@ import {
 import { appModeNavigation } from "../app-mode/app-mode";
 import { publishPersonalEntryHandoff } from "../app-mode/use-personal-entry";
 import { openCloudBillingConsole } from "../billing-console";
+import { decodeJwtPayload } from "../lib/jwt";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   redirectToSsoBridge,
@@ -95,6 +97,22 @@ function describeJoinError(err: unknown): JoinFailure {
   return { kind: "generic", message };
 }
 
+/**
+ * Stable account identity of a session token. A refresh rotates the JWT but
+ * keeps its subject, so only a real account change (sign-out, switch, or
+ * another tab's login) invalidates a join attempt.
+ */
+function joinSessionIdentity(token: string | null): string | null {
+  if (!token) return null;
+  const subject = decodeJwtPayload(token)?.sub;
+  return typeof subject === "string" && subject
+    ? `sub:${subject}`
+    : `token:${token}`;
+}
+
+const SESSION_CHANGED_MESSAGE =
+  "Your Eliza Cloud sign-in changed while your agent was opening. Nothing was started. Try again.";
+
 function readableDedicatedStatus(status: string): string {
   return status.replaceAll(/[_-]+/g, " ");
 }
@@ -106,6 +124,8 @@ export default function JoinPage(): React.JSX.Element {
   const [detail, setDetail] = useState<string>("");
   const [error, setError] = useState<JoinFailure | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  // A ref, not state: two clicks in one frame must not issue two logouts.
+  const signOutPendingRef = useRef(false);
   const [openingBilling, setOpeningBilling] = useState(false);
   const [billingError, setBillingError] = useState<string | null>(null);
   const billingOpeningRef = useRef(false);
@@ -229,6 +249,51 @@ export default function JoinPage(): React.JSX.Element {
       new DOMException("Join attempt superseded", "AbortError"),
     );
     const controller = new AbortController();
+    // Session revalidation: the attempt is bound to the account that started
+    // it. A sign-out, account switch, or another tab's login during a quote or
+    // confirmation aborts the attempt before any billable request is sent.
+    const attemptIdentity = joinSessionIdentity(authToken);
+    let sessionChanged = false;
+    const revalidateSession = () => {
+      if (controller.signal.aborted) return;
+      if (joinSessionIdentity(resolveJoinAuthToken()) === attemptIdentity) {
+        return;
+      }
+      sessionChanged = true;
+      controller.abort(
+        new DOMException("The signed-in session changed", "AbortError"),
+      );
+    };
+    const sessionEvents = [
+      STEWARD_SESSION_CHANGE_EVENT,
+      "steward-token-sync",
+      "storage",
+    ] as const;
+    for (const eventName of sessionEvents) {
+      window.addEventListener(eventName, revalidateSession);
+    }
+    // Revalidate synchronously when a visible decision resolves, so a change
+    // that raced the dialog cannot slip past a missed event.
+    const revalidatedActivation: DedicatedActivationConfirmationRequester =
+      async (quote, context) => {
+        const decision = await requestDedicatedActivationConfirmation(
+          quote,
+          context,
+        );
+        revalidateSession();
+        return controller.signal.aborted ? null : decision;
+      };
+    const revalidatedAdoption: DedicatedAdoptionConfirmationRequester = async (
+      quote,
+      context,
+    ) => {
+      const decision = await requestDedicatedAdoptionConfirmation(
+        quote,
+        context,
+      );
+      revalidateSession();
+      return controller.signal.aborted ? null : decision;
+    };
     const attempt = (async () => {
       try {
         const result = await runJoinFlow({
@@ -240,8 +305,8 @@ export default function JoinPage(): React.JSX.Element {
           cloudApiBase: resolveJoinCloudApiBase(),
           authToken,
           signal: controller.signal,
-          requestDedicatedAdoptionConfirmation,
-          requestDedicatedActivationConfirmation,
+          requestDedicatedAdoptionConfirmation: revalidatedAdoption,
+          requestDedicatedActivationConfirmation: revalidatedActivation,
           onProgress: (_status, progressDetail) => {
             if (progressDetail) setDetail(progressDetail);
           },
@@ -253,9 +318,19 @@ export default function JoinPage(): React.JSX.Element {
         // binding. Its session-bound handoff receipt lets app-mode consume the
         // same authoritative result without a duplicate identity request.
       } catch (err) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) {
+          if (sessionChanged) {
+            setError({ kind: "generic", message: SESSION_CHANGED_MESSAGE });
+            setPhase("error");
+          }
+          return;
+        }
         setError(describeJoinError(err));
         setPhase("error");
+      } finally {
+        for (const eventName of sessionEvents) {
+          window.removeEventListener(eventName, revalidateSession);
+        }
       }
     })();
     activeAttemptRef.current = { controller, promise: attempt };
@@ -337,7 +412,8 @@ export default function JoinPage(): React.JSX.Element {
   }, [t]);
 
   const handleSignOut = useCallback(async () => {
-    if (signingOut) return;
+    if (signOutPendingRef.current) return;
+    signOutPendingRef.current = true;
     setSigningOut(true);
     const active = activeAttemptRef.current;
     active?.controller.abort(
@@ -360,9 +436,10 @@ export default function JoinPage(): React.JSX.Element {
         }),
       });
       setPhase("sign-out-error");
+      signOutPendingRef.current = false;
       setSigningOut(false);
     }
-  }, [signingOut, t]);
+  }, [t]);
 
   const signOutButton = (
     <Button
@@ -443,6 +520,13 @@ export default function JoinPage(): React.JSX.Element {
                 minimum: formatUSD(activationReview.minimumBalanceUsd),
               })}
             </p>
+            <p className="text-sm leading-relaxed text-white/72">
+              {t("cloud.join.dedicatedActivationMinimum", {
+                defaultValue:
+                  "Minimum charge per successful start: {{minimum}}. Applies again after stopping and restarting.",
+                minimum: formatUSD(activationReview.minimumActivationChargeUsd),
+              })}
+            </p>
             <div className="flex w-full flex-col gap-3">
               <Button
                 variant="surface"
@@ -507,6 +591,17 @@ export default function JoinPage(): React.JSX.Element {
                         "Dedicated hosting is already active; confirming does not start another server.",
                     })}
               </p>
+              {adoptionReview.quote.startsCompute && (
+                <p>
+                  {t("cloud.join.dedicatedActivationMinimum", {
+                    defaultValue:
+                      "Minimum charge per successful start: {{minimum}}. Applies again after stopping and restarting.",
+                    minimum: formatUSD(
+                      adoptionReview.quote.minimumActivationChargeUsd,
+                    ),
+                  })}
+                </p>
+              )}
               <p>
                 {t("cloud.join.dedicatedAdoptionBalance", {
                   defaultValue:

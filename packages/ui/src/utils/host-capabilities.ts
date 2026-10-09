@@ -1,34 +1,184 @@
 /**
- * Narrows the shared host-capability probe to the fields UI code branches on
- * (long-running, mobile, browser, label).
+ * Detects the runtime host kind (Cloudflare Worker, Capacitor background/
+ * foreground, browser, node) from an environment probe, so callers can gate
+ * behavior on what the current host actually supports.
  */
-import { detectHostCapabilities, type HostCapabilities } from "@elizaos/shared";
+export type HostCapabilityKind =
+  | "cloudflare-worker"
+  | "capacitor-background-runner"
+  | "capacitor-foreground-only"
+  | "browser"
+  | "node";
+
+export interface HostCapabilityProbe {
+  /** User agent string, when the host exposes one. */
+  userAgent?: string;
+  /** Whether a browser-style window global is present. */
+  hasWindow?: boolean;
+  /** Whether a Node/Bun-style process global is present. */
+  hasProcess?: boolean;
+  /** Capacitor global, when running inside a native shell. */
+  capacitor?: unknown;
+}
+
+export interface HostCapabilities {
+  /** Stable host classification used by tests and callers that need branching. */
+  kind: HostCapabilityKind;
+  /** Read/write filesystem via node:fs or equivalent. */
+  fs: boolean;
+  /** Can receive inbound HTTP from the public internet. */
+  inbound: boolean;
+  /** Host process stays alive across schedule firings. */
+  longRunning: boolean;
+  /** Spawns child processes via node:child_process. */
+  childProcess: boolean;
+  /** Raw TCP/UDP sockets via node:net, not just fetch. */
+  net: boolean;
+  /** True when running inside a Capacitor iOS/Android shell. */
+  isMobile: boolean;
+  /** True for a pure browser tab with no Capacitor or Node/Bun process. */
+  isBrowser: boolean;
+  /** Human-readable host label for UI banners and engine errors. */
+  label: string;
+}
+
+interface NavigatorLike {
+  userAgent?: string;
+}
+
+declare const navigator: NavigatorLike | undefined;
+
+function readDefaultHostCapabilityProbe(): HostCapabilityProbe {
+  return {
+    userAgent:
+      typeof navigator !== "undefined" &&
+      typeof navigator?.userAgent === "string"
+        ? navigator.userAgent
+        : undefined,
+    hasWindow: typeof window !== "undefined",
+    hasProcess: typeof process !== "undefined",
+    capacitor: Reflect.get(globalThis, "Capacitor"),
+  };
+}
+
+/**
+ * The Capacitor WEB shim is present in EVERY browser tab — including a desktop
+ * or web app that runs a local agent in-page — where `getPlatform()` is `"web"`
+ * and `isNativePlatform()` is `false`. That is NOT a mobile host: classifying it
+ * as `capacitor-foreground-only` (no fs, short-lived) wrongly refuses to start
+ * long-running/fs workflows + scheduled tasks on desktop web. Only a real iOS/
+ * Android shell counts as mobile. A bare probe object with no platform methods
+ * (test fixtures, and any shell that doesn't expose them) keeps the prior
+ * mobile classification so existing native detection is unchanged.
+ */
+function isNativeCapacitorShell(capacitor: unknown): boolean {
+  if (!capacitor || typeof capacitor !== "object") return false;
+  const cap = capacitor as {
+    isNativePlatform?: () => boolean;
+    getPlatform?: () => string;
+  };
+  if (typeof cap.isNativePlatform === "function") return cap.isNativePlatform();
+  if (typeof cap.getPlatform === "function") {
+    const platform = cap.getPlatform();
+    return platform === "ios" || platform === "android";
+  }
+  return true;
+}
+
+function hasCapacitorBackgroundRunner(capacitor: unknown): boolean {
+  if (!capacitor || typeof capacitor !== "object") {
+    return false;
+  }
+  const plugins: unknown = Reflect.get(capacitor as object, "Plugins");
+  const bgRunner: unknown =
+    plugins && typeof plugins === "object"
+      ? Reflect.get(plugins as object, "BackgroundRunner")
+      : undefined;
+  return typeof bgRunner === "object" && bgRunner !== null;
+}
+
+export function detectHostCapabilities(
+  probe: HostCapabilityProbe = readDefaultHostCapabilityProbe(),
+): HostCapabilities {
+  if (probe.userAgent?.includes("Cloudflare-Workers")) {
+    return {
+      kind: "cloudflare-worker",
+      fs: false,
+      inbound: true,
+      longRunning: false,
+      childProcess: false,
+      net: false,
+      isMobile: false,
+      isBrowser: false,
+      label: "Cloudflare Worker",
+    };
+  }
+
+  if (
+    probe.capacitor &&
+    typeof probe.capacitor === "object" &&
+    isNativeCapacitorShell(probe.capacitor)
+  ) {
+    const hasBgRunner = hasCapacitorBackgroundRunner(probe.capacitor);
+    return {
+      kind: hasBgRunner
+        ? "capacitor-background-runner"
+        : "capacitor-foreground-only",
+      fs: false,
+      inbound: false,
+      longRunning: hasBgRunner,
+      childProcess: false,
+      net: false,
+      isMobile: true,
+      isBrowser: false,
+      label: hasBgRunner
+        ? "Mobile (Capacitor + BackgroundRunner)"
+        : "Mobile (Capacitor, foreground-only)",
+    };
+  }
+
+  if (probe.hasWindow && !probe.hasProcess) {
+    return {
+      kind: "browser",
+      fs: false,
+      inbound: false,
+      longRunning: false,
+      childProcess: false,
+      net: false,
+      isMobile: false,
+      isBrowser: true,
+      label: "Browser",
+    };
+  }
+
+  return {
+    kind: "node",
+    fs: true,
+    inbound: true,
+    longRunning: true,
+    childProcess: true,
+    net: true,
+    isMobile: false,
+    isBrowser: false,
+    label: "Node",
+  };
+}
 
 export type UiHostCapabilities = Pick<
   HostCapabilities,
   "longRunning" | "isMobile" | "isBrowser" | "label"
 >;
-
 export function detectUiHostCapabilities(): UiHostCapabilities {
   const { longRunning, isMobile, isBrowser, label } = detectHostCapabilities();
   return { longRunning, isMobile, isBrowser, label };
 }
-
-/**
- * Short cadence threshold below which mobile and browser hosts cannot
- * keep up. iOS/Android background-runner wakes are bounded to ~15 minutes
- * (WorkManager floor; BGTaskScheduler is opportunistic and typically wakes
- * less often). Anything tighter than this is misleading on those hosts.
- */
 export const SHORT_INTERVAL_THRESHOLD_MS = 15 * 60 * 1000;
-
 export interface IntervalHostWarning {
   /** Translation-ready message body. */
   message: string;
   /** Whether to surface the warning at all. */
   show: boolean;
 }
-
 export function intervalHostWarning(
   host: UiHostCapabilities,
   intervalMs: number,

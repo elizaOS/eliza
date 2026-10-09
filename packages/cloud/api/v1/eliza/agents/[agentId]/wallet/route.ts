@@ -1,7 +1,7 @@
 // Handles v1 cloud API v1 eliza agents agentid wallet route traffic with route-local auth expectations.
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * GET /api/v1/eliza/agents/[agentId]/wallet
@@ -10,15 +10,18 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * All Docker-node agents use Steward for wallet management.
  */
 
+import { db } from "@elizaos/cloud-shared/db/client";
+import { agentServerWallets } from "@elizaos/cloud-shared/db/schemas/agent-server-wallets";
+import { errorToResponse } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { getStewardWalletInfo } from "@elizaos/cloud-shared/lib/services/steward-client";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { eq } from "drizzle-orm";
-import { db } from "@/db/client";
-import { agentServerWallets } from "@/db/schemas/agent-server-wallets";
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { getStewardWalletInfo } from "@/lib/services/steward-client";
-import { logger } from "@/lib/utils/logger";
 
 const CORS_METHODS = "GET, OPTIONS";
 

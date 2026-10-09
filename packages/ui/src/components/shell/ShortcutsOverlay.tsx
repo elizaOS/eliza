@@ -4,10 +4,12 @@
  * Escape, and lists the `COMMON_SHORTCUTS` table with platform-formatted keys.
  */
 import { useEffect, useState } from "react";
-import { reportShortcutFired } from "../../chat/useSlashCommandController";
-import { COMMON_SHORTCUTS } from "../../hooks";
-import { SHORTCUT_SHOW_KEYBOARD_SHORTCUTS } from "../../hooks/useKeyboardShortcuts";
-import { useTranslation } from "../../state";
+import { reportShortcutFired } from "../../chat/shortcut-report";
+import {
+  COMMON_SHORTCUTS,
+  SHORTCUT_SHOW_KEYBOARD_SHORTCUTS,
+} from "../../hooks/useKeyboardShortcuts";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
 function formatKey(shortcut: (typeof COMMON_SHORTCUTS)[number]): string {
@@ -107,7 +109,7 @@ export function ShortcutsOverlay() {
                       style={{
                         background: "var(--bg-hover)",
                         border: "1px solid var(--border)",
-                        color: "var(--muted)",
+                        color: "var(--muted-strong)",
                       }}
                     >
                       {formatKey(shortcut)}

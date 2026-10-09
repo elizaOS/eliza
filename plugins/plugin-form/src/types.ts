@@ -637,8 +637,8 @@ export interface FieldState {
 export interface FieldHistoryEntry {
   /** Which field was changed */
   field: string;
-  /** Previous value (to restore) */
-  oldValue: JsonValue;
+  /** Previous value (to restore); absent when the change was the field's first answer. */
+  oldValue?: JsonValue;
   /** New value (for audit) */
   newValue: JsonValue;
   /** When the change happened */

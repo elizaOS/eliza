@@ -24,34 +24,43 @@
  * token-family revocation obligation.
  */
 
-import { Hono } from "hono";
 import {
   getIpKey,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { buildOidcClaims } from "@/lib/oidc/claims";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { buildOidcClaims } from "@elizaos/cloud-shared/lib/oidc/claims";
 import {
   getOidcClient,
   type OidcClient,
   verifyOidcClientSecret,
-} from "@/lib/oidc/clients";
-import { consumeOidcAuthorizationCode } from "@/lib/oidc/codes";
+} from "@elizaos/cloud-shared/lib/oidc/clients";
+import { consumeOidcAuthorizationCode } from "@elizaos/cloud-shared/lib/oidc/codes";
 import {
   describeOidcConfigFailure,
   isOidcEnabled,
   type OidcConfig,
   resolveOidcConfig,
-} from "@/lib/oidc/config";
-import { sha256Base64Url } from "@/lib/oidc/crypto";
-import { oidcTokenErrorBody } from "@/lib/oidc/errors";
-import { isOidcSigningConfigured } from "@/lib/oidc/keys";
-import { assertOidcSubjectEligible, loadOidcSubject } from "@/lib/oidc/subject";
-import { mintOidcAccessToken, mintOidcIdToken } from "@/lib/oidc/tokens";
-import { resolveOidcUsername } from "@/lib/oidc/username";
-import { isBlockedBySsoBridgeLogout } from "@/lib/services/sso-bridge-codes";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/oidc/config";
+import { sha256Base64Url } from "@elizaos/cloud-shared/lib/oidc/crypto";
+import { oidcTokenErrorBody } from "@elizaos/cloud-shared/lib/oidc/errors";
+import { isOidcSigningConfigured } from "@elizaos/cloud-shared/lib/oidc/keys";
+import {
+  assertOidcSubjectEligible,
+  loadOidcSubject,
+} from "@elizaos/cloud-shared/lib/oidc/subject";
+import {
+  mintOidcAccessToken,
+  mintOidcIdToken,
+} from "@elizaos/cloud-shared/lib/oidc/tokens";
+import { resolveOidcUsername } from "@elizaos/cloud-shared/lib/oidc/username";
+import { isBlockedBySsoBridgeLogout } from "@elizaos/cloud-shared/lib/services/sso-bridge-codes";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { emitOidcAudit } from "../audit";
 
 const app = new Hono<AppEnv>();

@@ -7,7 +7,6 @@ import {
   ChannelType,
   type Content,
   createUniqueUuid,
-  DefaultMessageService,
   elizaLogger,
   type Media,
   Memory,
@@ -17,11 +16,12 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import { DefaultMessageService } from "@elizaos/plugin-assistant";
 import { v4 as uuidv4 } from "uuid";
 import { roomsRepository } from "../../db/repositories";
 import { connectionCache } from "../cache/connection-cache";
 import { anonymousSessionsService } from "../services/anonymous-sessions";
-import { charactersService } from "../services/characters/characters";
+import { charactersService } from "../services/characters";
 import { discordService } from "../services/discord";
 import { generateRoomTitle } from "../services/room-title";
 import type { DialogueMetadata } from "../types/message-content";

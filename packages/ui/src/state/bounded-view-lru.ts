@@ -110,13 +110,8 @@ export function isHeapUnderPressure(): boolean {
 }
 
 /**
- * The bounded view caches shrink under EITHER a static low-memory device hint OR
- * live JS-heap pressure (#10196). Previously only the static `deviceMemory` hint
- * tiered the caps, so a roomy device whose heap was climbing toward its limit
- * right now kept the larger caps until an OS `memorypressure`/visibility event
- * fired. Now a near-limit live heap tightens the caps proactively. Engines
- * without `performance.memory` (Safari/Firefox) fall back to the device hint
- * alone, exactly as before.
+ * Shrink view caches under a low-memory device hint or live heap pressure.
+ * Engines without performance.memory use the device hint.
  */
 export function isUnderMemoryPressure(): boolean {
   return isLowMemoryDevice() || isHeapUnderPressure();
@@ -211,18 +206,14 @@ export interface ModuleCacheEvictionPlanOptions {
 }
 
 /**
- * Pure eviction planner shared by the two bounded module caches
- * (`retained-lazy.tsx`, `components/views/DynamicViewLoader.tsx`), which
- * previously each carried a byte-identical copy of this TTL-sweep + LRU-cap loop
- * (#10196 — "the eviction policy is not centralized or independently testable").
- *
- * It reproduces that loop exactly: first every idle (`refCount === 0`) entry
+ * Shared eviction planner for retained and dynamic view modules.
+ * First, every idle (`refCount === 0`) entry
  * older than `ttlMs` (all of them when `force`) is selected oldest-first as a
  * `"ttl"` eviction; then, if the cache would still exceed `maxEntries` after
  * those, additional idle entries are selected oldest-first as `"lru"` evictions
  * until the total is within the cap. Active (`refCount > 0`) entries are never
  * selected. The caller maps each phase to its telemetry reason and runs its own
- * `cleanup`, so behavior — including emit order — is unchanged.
+ * `cleanup`.
  */
 export function planModuleCacheEvictions<E extends ModuleCacheEntryLike>(
   entries: readonly E[],

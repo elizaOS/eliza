@@ -1,3 +1,4 @@
+import { GoogleIcon } from "../../../../login/icons";
 /**
  * Steward login section for the app-hosted login page.
  *
@@ -17,13 +18,15 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import type {
-  LoginAuthResult,
-  LoginMfaRequiredResult,
-  LoginProviders,
-  LoginTelegramLoginPayload,
-} from "@elizaos/login";
-import { LoginApiError, LoginAuth } from "@elizaos/login";
+import {
+  LoginApiError,
+  LoginAuth,
+  type LoginAuthResult,
+  type LoginMfaRequiredResult,
+  type LoginProviders,
+  type LoginTelegramLoginPayload,
+} from "@elizaos/auth";
+
 import {
   buildStewardOAuthAuthorizeUrl as buildStewardOAuthAuthorizeUrlCore,
   clearStoredStewardToken,
@@ -31,9 +34,11 @@ import {
   hasStewardAuthedCookie,
   peekStewardOAuthState,
   readStoredStewardToken,
+  type StewardOAuthProvider,
   StewardSessionError,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
+
 import type { CountryCode } from "libphonenumber-js/min";
 import { AlertCircle, Phone } from "lucide-react";
 import {
@@ -56,7 +61,7 @@ import {
   DiscordIcon,
   TelegramIcon,
 } from "../../../../cloud-ui/components/icons";
-import { Alert, AlertDescription } from "../../../../components/primitives";
+import { Alert, AlertDescription } from "../../../../components/ui/alert";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
 import {
@@ -73,7 +78,10 @@ import {
   DEFAULT_STEWARD_TENANT_ID,
 } from "../../../shell/steward-config";
 import { resolveBrowserStewardApiUrl } from "../../../shell/steward-url";
-import { clearSsoLoggedOut } from "../../../sso-bridge/sso-bridge";
+import {
+  clearSsoLoggedOut,
+  isSsoLoggedOut,
+} from "../../../sso-bridge/sso-bridge";
 import { getErrorMessage } from "../../lib/error-message";
 import {
   consumePendingOAuthReturnTo,
@@ -93,7 +101,6 @@ import {
   buildStewardOAuthRedirectUri,
   consumeStewardPkceVerifier,
   createStewardPkcePair,
-  type StewardOAuthProvider,
   storeStewardPkceVerifier,
 } from "../../lib/steward-oauth-url";
 import {
@@ -636,6 +643,7 @@ export default function StewardLoginSection() {
   }, [stewardApiUrl]);
 
   const emailInputRef = useRef<HTMLInputElement>(null);
+  const phoneInputRef = useRef<HTMLInputElement>(null);
 
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -658,6 +666,13 @@ export default function StewardLoginSection() {
   const [step, setStep] = useState<AuthStep>("idle");
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Client-side validation belongs to the field that failed: it renders next
+  // to that field, is linked through aria-describedby, and moves focus there
+  // instead of landing below every other provider (#27241).
+  const [fieldError, setFieldError] = useState<{
+    field: "phone" | "email";
+    message: string;
+  } | null>(null);
   const [accountSwitchError, setAccountSwitchError] = useState<string | null>(
     null,
   );
@@ -1100,6 +1115,11 @@ export default function StewardLoginSection() {
         }
 
         if (hasStewardAuthedCookie()) {
+          // An explicit sign-out on this origin stays signed out until the
+          // next explicit sign-in. A refresh cookie that survived it (a
+          // session clear raced the sign-out navigation) must not silently
+          // restore the ended account and send the user back to /join.
+          if (isSsoLoggedOut()) return;
           const refreshed = await recoverStewardSessionViaCookie();
           if (cancelled) return;
           if (refreshed?.token) {
@@ -1449,9 +1469,12 @@ export default function StewardLoginSection() {
       return false;
     }
     if (!email.trim()) {
-      setError("Enter your email first");
+      setError(null);
+      setFieldError({ field: "email", message: "Enter your email first" });
+      emailInputRef.current?.focus();
       return false;
     }
+    setFieldError(null);
     return true;
   }
 
@@ -1579,11 +1602,14 @@ export default function StewardLoginSection() {
 
   async function handleEmail() {
     if (!email.trim()) {
-      setError("Enter your email");
+      setError(null);
+      setFieldError({ field: "email", message: "Enter your email" });
+      emailInputRef.current?.focus();
       return;
     }
     setLoading("email");
     setError(null);
+    setFieldError(null);
     setPasskeyEmailGrant(null);
     setShowPasskeyEnrollmentRecovery(false);
     try {
@@ -1614,18 +1640,22 @@ export default function StewardLoginSection() {
       const selectedCountry = PHONE_COUNTRY_OPTIONS.find(
         (option) => option.code === phoneCountry,
       );
-      setError(
-        t("cloud.login.error.invalidPhone", {
+      setError(null);
+      setFieldError({
+        field: "phone",
+        message: t("cloud.login.error.invalidPhone", {
           defaultValue:
             "Enter a valid phone number for {{country}}, or include + and the country code.",
           country: selectedCountry?.name ?? phoneCountry,
         }),
-      );
+      });
+      phoneInputRef.current?.focus();
       return;
     }
 
     setLoading("sms");
     setError(null);
+    setFieldError(null);
     try {
       await auth.sendSmsOtp(normalizedPhone);
       setPhone(normalizedPhone);
@@ -1746,10 +1776,11 @@ export default function StewardLoginSection() {
       // blocked, or completes without notifying its opener (#20334).
       setLoading(provider);
       setError(null);
-      const host = window.location.hostname.toLowerCase();
-      const oauthOrigin = host.endsWith(".pages.dev")
-        ? "https://staging.eliza.app"
-        : window.location.origin;
+      // PKCE verifier, state and session authority are origin-local, so the
+      // callback must land on this origin; a preview host bounced to another
+      // origin could never consume this launch. Tenant redirect allowlisting
+      // remains enforced by Steward.
+      const oauthOrigin = window.location.origin;
       let codeChallenge: string;
       let state: string;
       try {
@@ -2046,7 +2077,7 @@ export default function StewardLoginSection() {
               )
             }
           >
-            {t("cloud.emailCallback.continue", { defaultValue: "Continue" })}
+            {t("common.continue", { defaultValue: "Continue" })}
           </Button>
         </div>
       </ReservedLoginFrame>
@@ -2576,7 +2607,14 @@ export default function StewardLoginSection() {
               <Input
                 variant="embeddedSearch"
                 density="relaxed"
+                ref={phoneInputRef}
                 id="steward-login-phone"
+                aria-invalid={fieldError?.field === "phone" || undefined}
+                aria-describedby={
+                  fieldError?.field === "phone"
+                    ? "steward-login-phone-error"
+                    : undefined
+                }
                 type="tel"
                 name="phone"
                 inputMode="tel"
@@ -2585,7 +2623,10 @@ export default function StewardLoginSection() {
                   defaultValue: "Phone number",
                 })}
                 value={phone}
-                onChange={(event) => setPhone(event.target.value)}
+                onChange={(event) => {
+                  setPhone(event.target.value);
+                  if (fieldError?.field === "phone") setFieldError(null);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") handleSendSms();
                 }}
@@ -2593,6 +2634,15 @@ export default function StewardLoginSection() {
                 className="hosted-signin-focus-emphasis flex-1"
               />
             </div>
+            {fieldError?.field === "phone" ? (
+              <p
+                id="steward-login-phone-error"
+                role="alert"
+                className="text-center text-sm text-destructive"
+              >
+                {fieldError.message}
+              </p>
+            ) : null}
           </div>
           <Button
             variant="default"
@@ -2632,6 +2682,12 @@ export default function StewardLoginSection() {
           density="relaxed"
           ref={emailInputRef}
           id="steward-login-email"
+          aria-invalid={fieldError?.field === "email" || undefined}
+          aria-describedby={
+            fieldError?.field === "email"
+              ? "steward-login-email-error"
+              : undefined
+          }
           type="email"
           name="email"
           placeholder={t("cloud.login.emailPlaceholder", {
@@ -2640,6 +2696,7 @@ export default function StewardLoginSection() {
           value={email}
           onChange={(e) => {
             setEmail(e.target.value);
+            if (fieldError?.field === "email") setFieldError(null);
             setPasskeyEmailGrant(null);
             setShowPasskeyEnrollmentRecovery(false);
           }}
@@ -2662,6 +2719,15 @@ export default function StewardLoginSection() {
           // Port of Steward PR #690.
           autoComplete="email"
         />
+        {fieldError?.field === "email" ? (
+          <p
+            id="steward-login-email-error"
+            role="alert"
+            className="text-center text-sm text-destructive"
+          >
+            {fieldError.message}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex gap-2">
@@ -3007,7 +3073,7 @@ function stewardOAuthProviderLabel(provider: StewardOAuthProvider): string {
 function StewardOAuthIcon({ provider }: { provider: StewardOAuthProvider }) {
   switch (provider) {
     case "google":
-      return <GoogleIcon />;
+      return <GoogleIcon size={16} />;
     case "discord":
       return <DiscordIcon className="size-4" />;
     case "github":
@@ -3041,29 +3107,6 @@ function XIcon() {
       aria-hidden="true"
     >
       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
-    </svg>
-  );
-}
-
-function GoogleIcon() {
-  return (
-    <svg className="size-4" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        fill="#4285F4"
-        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-      />
     </svg>
   );
 }

@@ -7,7 +7,7 @@ import {
   PagePanelContentArea,
   PagePanelContentRail,
   PagePanelFrame,
-} from "./page-panel-frame";
+} from "./page-panel-layout";
 
 const SCROLL_ROWS = Array.from({ length: 30 }, (_, i) => ({
   id: `scroll-row-${i + 1}`,
@@ -98,7 +98,7 @@ export const SplitLayout: Story = {
 export const EmptyFrame: Story = {
   args: {
     children: (
-      <PagePanelContentArea className="flex items-center justify-center rounded-md border border-dashed border-border/70 bg-muted/20 p-6 text-sm text-muted-foreground">
+      <PagePanelContentArea className="flex items-center justify-center rounded-md border border-dashed border-border/70 bg-muted/20 p-6 text-sm text-muted-strong">
         Nothing here yet
       </PagePanelContentArea>
     ),

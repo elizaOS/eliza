@@ -44,6 +44,7 @@
  * under the user's finger; groups inherit the position of their highest-ranked
  * row.
  */
+
 import type {
   AgentNotification,
   PendingUserAction,
@@ -62,18 +63,19 @@ import {
   useState,
 } from "react";
 import { dispatchChatOpen, dispatchChatPrefill } from "../../events";
+import type { MomentumSample } from "../../gestures/momentum";
 import {
   getMomentumReleaseVelocity,
   getVelocityAwareSettleDuration,
   MOMENTUM_RELEASE_WINDOW_MS,
-  type MomentumSample,
   shouldCommitMomentumDetent,
-  useRafCoalescer,
-} from "../../gestures";
-import { cn } from "../../lib/utils";
+} from "../../gestures/momentum";
+import { useRafCoalescer } from "../../gestures/useRafCoalescer";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import {
   isSafeDeepLink,
   navigateDeepLink,
+  readNotificationChatTarget,
 } from "../../state/notifications/navigate-deep-link";
 import {
   removeNotification,
@@ -81,6 +83,7 @@ import {
   retryNotificationHydration,
   useNotifications,
 } from "../../state/notifications/notification-store";
+import { cn } from "../../utils/cn";
 import { isInteractiveGestureTarget } from "../../utils/interactive-gesture-target";
 import {
   ClearConfirmationContent,
@@ -441,41 +444,6 @@ function isChatGestureTarget(target: EventTarget | null): boolean {
   );
 }
 
-function usePrefersReducedMotion(): boolean {
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof window.matchMedia !== "function"
-    ) {
-      return false;
-    }
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  });
-
-  useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof window.matchMedia !== "function"
-    ) {
-      return undefined;
-    }
-
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setPrefersReducedMotion(mediaQuery.matches);
-    update();
-
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", update);
-      return () => mediaQuery.removeEventListener("change", update);
-    }
-
-    mediaQuery.addListener(update);
-    return () => mediaQuery.removeListener(update);
-  }, []);
-
-  return prefersReducedMotion;
-}
-
 export function __setNotificationsHomeCenterRenderObserverForTests(
   observer: (() => void) | null,
 ): void {
@@ -590,7 +558,7 @@ export function NotificationsHomeCenter({
   const surfaceReady = hasNotifications || (hydrated && pendingActionsLoaded);
   const showHydrationFailure =
     hydrationStatus === "failed" && pendingActions.length === 0;
-  const reduceMotion = usePrefersReducedMotion();
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
   // Producer groups stay stacked until individually fanned out.
   const [shadeExpanded, setShadeExpanded] = useState(true);
@@ -1514,7 +1482,14 @@ export function NotificationsHomeCenter({
       const home = emptyGestureTargetRef?.current;
       if (home && target instanceof Node && !home.contains(target)) return;
       const center = centerRef.current;
-      if (target instanceof Node && center && !center.contains(target)) {
+      // A reduced-motion fold can remove its button before document bubbling.
+      // Preserve containment from dispatch, when that button was still inside.
+      if (
+        target instanceof Node &&
+        center &&
+        !center.contains(target) &&
+        !event.composedPath().includes(center)
+      ) {
         requestShadeCollapse();
       }
     };
@@ -1708,6 +1683,7 @@ export function NotificationsHomeCenter({
         ? emptyGestureTargetRef.current
         : list;
     const usesEmptyBackground = gestureTarget !== list;
+    let scrollTarget = gestureTarget;
     let start: { identifier: number; x: number; y: number } | null = null;
     // clientY where the drag first reached the top; the pull is measured from
     // here so a continuous drag that scrolled the list up to its top doesn't
@@ -1731,6 +1707,16 @@ export function NotificationsHomeCenter({
         abortTouchPull();
         return;
       }
+      // List-origin listeners stay on the cards. In short layouts their
+      // natural-height list delegates scrolling to the dashboard frame.
+      const outer = list.closest<HTMLElement>("[data-home-scroll-frame]");
+      scrollTarget =
+        !usesEmptyBackground &&
+        outer &&
+        getComputedStyle(list).overflowY === "visible" &&
+        /^(auto|scroll)$/.test(getComputedStyle(outer).overflowY)
+          ? outer
+          : gestureTarget;
       start = {
         identifier: t.identifier,
         x: t.clientX,
@@ -1739,17 +1725,17 @@ export function NotificationsHomeCenter({
       // Already at the top → anchor at the touch start so the whole drag counts
       // as pull. Started scrolled down → leave null; the move handler anchors at
       // the instant scrollTop first reaches 0 (the top crossing).
-      expandAnchorY = start && gestureTarget.scrollTop <= 0 ? start.y : null;
+      expandAnchorY = start && scrollTarget.scrollTop <= 0 ? start.y : null;
 
       const maxScrollTop = Math.max(
         0,
-        gestureTarget.scrollHeight - gestureTarget.clientHeight,
+        scrollTarget.scrollHeight - scrollTarget.clientHeight,
       );
-      const atBottom = gestureTarget.scrollTop >= maxScrollTop - 1;
+      const atBottom = scrollTarget.scrollTop >= maxScrollTop - 1;
       const viewportBottom =
         window.visualViewport?.height ?? window.innerHeight;
       const visibleBottom = Math.min(
-        gestureTarget.getBoundingClientRect().bottom,
+        scrollTarget.getBoundingClientRect().bottom,
         viewportBottom,
       );
       closeFromBottomEdge = Boolean(
@@ -1794,9 +1780,9 @@ export function NotificationsHomeCenter({
         // toward the close threshold.
         const maxScrollTop = Math.max(
           0,
-          gestureTarget.scrollHeight - gestureTarget.clientHeight,
+          scrollTarget.scrollHeight - scrollTarget.clientHeight,
         );
-        const atBottom = gestureTarget.scrollTop >= maxScrollTop - 1;
+        const atBottom = scrollTarget.scrollTop >= maxScrollTop - 1;
         if (
           canCollapse &&
           (usesEmptyBackground ||
@@ -1820,13 +1806,13 @@ export function NotificationsHomeCenter({
       }
       if (
         canExpand &&
-        (expandAnchorY !== null || gestureTarget.scrollTop <= 0)
+        (expandAnchorY !== null || scrollTarget.scrollTop <= 0)
       ) {
         if (expandAnchorY === null) expandAnchorY = t.clientY;
         const pull = t.clientY - expandAnchorY;
         if (pull > PULL_SLOP_PX) {
           event?.preventDefault();
-          if (gestureTarget.scrollTop !== 0) gestureTarget.scrollTop = 0;
+          if (scrollTarget.scrollTop !== 0) scrollTarget.scrollTop = 0;
           setPullPx(dampenPull(pull));
         } else if (pullPxRef.current !== 0) {
           // Finger reversed back above the anchor — the pull is withdrawn, so
@@ -2359,7 +2345,16 @@ export function NotificationsHomeCenter({
       // event acts on it AND removes it. State-backed pending actions above
       // remain until their canonical request resolves.
       if (n.deepLink && isSafeDeepLink(n.deepLink)) {
-        navigateDeepLink(n.deepLink);
+        const applied =
+          readNotificationChatTarget(n.data) === undefined
+            ? navigateDeepLink(n.deepLink)
+            : navigateDeepLink(n.deepLink, n.data);
+        if (applied) {
+          void applied.then((accepted) => {
+            if (accepted) void removeNotification(n.id);
+          });
+          return;
+        }
       }
       void removeNotification(n.id);
     },

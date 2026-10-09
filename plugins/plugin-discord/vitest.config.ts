@@ -19,18 +19,8 @@ const baseTestAliases = Array.isArray(baseConfig.test?.alias)
 	? baseConfig.test.alias
 	: [];
 
-// @elizaos/plugin-commands and @elizaos/plugin-meetings publish only built
-// `dist/` entries and are outside the base config's alias set; resolve them
-// from source so the suite needs no prebuild of either.
+// Resolve the meetings workspace from source without requiring a prebuild.
 const pluginSourceAliases = [
-	{
-		find: /^@elizaos\/plugin-commands$/,
-		replacement: path.join(repoRoot, "plugins/plugin-commands/src/index.ts"),
-	},
-	{
-		find: /^@elizaos\/plugin-commands\/(.+)$/,
-		replacement: path.join(repoRoot, "plugins/plugin-commands/src/$1"),
-	},
 	{
 		find: /^@elizaos\/plugin-meetings$/,
 		replacement: path.join(repoRoot, "plugins/plugin-meetings/src/index.ts"),

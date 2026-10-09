@@ -1,0 +1,2 @@
+# Upstream commit d771eb21b5dd3228bc3f567293d2ccfc423fc900; no training-stack extras.
+gepa @ https://codeload.github.com/gepa-ai/gepa/tar.gz/d771eb21b5dd3228bc3f567293d2ccfc423fc900 --hash=sha256:73c61c6a1793dcfc38fa1f2c0323dd961b575b464facf43161ad5daea9ed0c8d

@@ -10,8 +10,8 @@
  * cycle with `./index`.
  */
 
+import type { UiLanguage } from "@elizaos/core/protocol";
 import { normalizeLanguage } from "./index";
-import type { UiLanguage } from "./messages";
 
 /**
  * ISO 3166-1 alpha-2 country code → best-supported UI language. Only countries

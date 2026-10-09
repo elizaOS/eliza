@@ -4,11 +4,11 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsConnectorGrant,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import {
@@ -28,6 +28,7 @@ import {
   CalendarService,
   ensureCalendarFeedPreferenceTable,
 } from "../src/service/index.js";
+import { ensureLinkedCalendarControlTable } from "../src/service/migration.js";
 
 const INTERNAL_URL = new URL("http://internal.local/api/calendar");
 const AGENT_ID = "agent-rrule-test";
@@ -264,6 +265,10 @@ beforeAll(async () => {
   await db.execute(sql.raw(CREATE_EVENTS_TABLE));
   await db.execute(sql.raw(CREATE_SYNC_TABLE));
   await ensureCalendarFeedPreferenceTable(
+    async (statement) =>
+      (await pg.query<Record<string, unknown>>(statement)).rows,
+  );
+  await ensureLinkedCalendarControlTable(
     async (statement) =>
       (await pg.query<Record<string, unknown>>(statement)).rows,
   );

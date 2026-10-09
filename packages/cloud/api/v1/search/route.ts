@@ -1,4 +1,21 @@
 // Handles v1 cloud API v1 search route traffic with route-local auth expectations.
+
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  getErrorStatusCode,
+  getSafeErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { executeHostedGoogleSearch } from "@elizaos/cloud-shared/lib/services/google-search";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -6,16 +23,6 @@ import {
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getErrorStatusCode, getSafeErrorMessage } from "@/lib/api/errors";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { executeHostedGoogleSearch } from "@/lib/services/google-search";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const searchRequestSchema = z.object({
   query: z.string().trim().min(1).max(2_000),

@@ -1,0 +1,20 @@
+id: cu_budget_003
+level: 2
+name: CU Budgeting 3
+description: Execute within strict CU limits 3/5
+category: optimization
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 1.0
+tasks:
+- id: task_3
+  type: analyze
+  parameters:
+    action: cu_check
+    limit: 50000
+  timeout_ms: 30000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

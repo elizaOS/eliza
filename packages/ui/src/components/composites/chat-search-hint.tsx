@@ -3,9 +3,8 @@
  * floating chat rather than a local search box. Lives in the view's own header.
  */
 import type * as React from "react";
-
-import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { cn } from "../../utils/cn";
 
 interface ChatSearchHintProps {
   /**

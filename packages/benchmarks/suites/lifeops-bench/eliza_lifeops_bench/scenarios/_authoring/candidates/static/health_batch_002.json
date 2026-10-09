@@ -1,0 +1,604 @@
+[
+  {
+    "id": "health.weight_log_morning",
+    "name": "Log morning weight",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Log my weight this morning: 68.2 kg.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Morning weight",
+          "details": {
+            "kind": "health_metric",
+            "metric": "weight_kg",
+            "value": 68.2,
+            "occurredAtIso": "2026-05-10T08:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["68.2"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Simple weight logging via LIFE_CREATE."
+  },
+  {
+    "id": "health.steps_today_query",
+    "name": "Query steps today",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "How many steps have I taken so far today?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "steps",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": ["steps"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 3,
+    "description": "Read\u2011only step count for the current day."
+  },
+  {
+    "id": "health.heart_rate_trend_14_days",
+    "name": "Heart\u2011rate trend two weeks",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Show my resting heart\u2011rate trend over the past two weeks.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "heart_rate",
+          "days": 14
+        }
+      }
+    ],
+    "required_outputs": ["heart"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Two\u2011week heart\u2011rate trend reading."
+  },
+  {
+    "id": "health.log_morning_yoga",
+    "name": "Log morning yoga session",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Log a yoga session I did this morning: 45 minutes, moderate intensity.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Morning yoga",
+          "details": {
+            "kind": "workout",
+            "workoutType": "yoga",
+            "durationMinutes": 45,
+            "intensity": "moderate",
+            "occurredAtIso": "2026-05-10T06:30:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["yoga"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Capture a yoga workout using LIFE_CREATE."
+  },
+  {
+    "id": "health.sleep_average_last_30_days",
+    "name": "Average sleep last month",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "What\u2019s my average sleep duration over the last month?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "sleep_hours",
+          "days": 30
+        }
+      }
+    ],
+    "required_outputs": ["average"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "30\u2011day sleep\u2011hours trend to compute average."
+  },
+  {
+    "id": "health.log_evening_walk",
+    "name": "Log evening walk",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "I walked 3\u202fkm in the evening, took me 35 minutes. Please log it.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Evening walk",
+          "details": {
+            "kind": "workout",
+            "distanceKm": 3.0,
+            "durationMinutes": 35,
+            "occurredAtIso": "2026-05-10T18:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["3 km"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Log a short evening walking session."
+  },
+  {
+    "id": "health.weight_trend_7_days",
+    "name": "Weight change last week",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Give me a quick view of my weight change over the past week.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "weight_kg",
+          "days": 7
+        }
+      }
+    ],
+    "required_outputs": ["kg"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "7\u2011day weight trend reading."
+  },
+  {
+    "id": "health.steps_goal_progress",
+    "name": "Check steps toward daily goal",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "How close am I to my daily step goal of 10,000 steps?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "steps",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": ["steps"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Read current step count; the agent must compute progress against 10k goal."
+  },
+  {
+    "id": "health.log_night_run",
+    "name": "Log night run",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Log a night run: 10\u202fkm, 55 minutes, fast pace, started at 10\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Night run",
+          "details": {
+            "kind": "workout",
+            "distanceKm": 10.0,
+            "durationMinutes": 55,
+            "intensity": "fast",
+            "occurredAtIso": "2026-05-09T22:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["10 km"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Log a long evening run."
+  },
+  {
+    "id": "health.heart_rate_today",
+    "name": "Average resting heart\u2011rate today",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "What was my average resting heart\u2011rate today?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "heart_rate",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": ["heart"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Read\u2011only daily heart\u2011rate metric."
+  },
+  {
+    "id": "health.log_meditation",
+    "name": "Log evening meditation",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Add a meditation session: 20 minutes, mindfulness, done at 8\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Evening meditation",
+          "details": {
+            "kind": "workout",
+            "workoutType": "meditation",
+            "durationMinutes": 20,
+            "occurredAtIso": "2026-05-10T20:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["meditation"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Capture a mindfulness meditation session."
+  },
+  {
+    "id": "health.get_sleep_last_night",
+    "name": "Query last night sleep hours",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "How many hours did I sleep last night?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "sleep_hours",
+          "date": "2026-05-09"
+        }
+      }
+    ],
+    "required_outputs": ["hours"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 3,
+    "description": "Read\u2011only sleep\u2011hours metric for the previous day."
+  },
+  {
+    "id": "health.log_weight_evening",
+    "name": "Log evening weight",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Log my weight this evening: 67.9 kg.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Evening weight",
+          "details": {
+            "kind": "health_metric",
+            "metric": "weight_kg",
+            "value": 67.9,
+            "occurredAtIso": "2026-05-10T20:30:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["67.9"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Record a second daily weight measurement."
+  },
+  {
+    "id": "health.steps_average_last_week",
+    "name": "Average daily steps last week",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "What\u2019s my average daily steps over the past week?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "steps",
+          "days": 7
+        }
+      }
+    ],
+    "required_outputs": ["average"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "7\u2011day steps trend to derive average."
+  },
+  {
+    "id": "health.log_swim",
+    "name": "Log swimming workout",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Log a swimming workout: 30 minutes, freestyle, 1\u202fkm distance.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Swim",
+          "details": {
+            "kind": "workout",
+            "workoutType": "swim",
+            "distanceKm": 1.0,
+            "durationMinutes": 30,
+            "style": "freestyle",
+            "occurredAtIso": "2026-05-10T07:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["swim"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Log a short freestyle swimming session."
+  },
+  {
+    "id": "health.get_weight_today",
+    "name": "Current day's weight",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "What is my current weight recorded for today?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "weight_kg",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": ["kg"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 3,
+    "description": "Read\u2011only weight metric for today."
+  },
+  {
+    "id": "health.log_cycling",
+    "name": "Log afternoon cycling",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Add a cycling session: 20\u202fkm, 60 minutes, moderate effort, this afternoon.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Afternoon cycling",
+          "details": {
+            "kind": "workout",
+            "distanceKm": 20.0,
+            "durationMinutes": 60,
+            "intensity": "moderate",
+            "occurredAtIso": "2026-05-10T15:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["20 km"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Log a moderate cycling activity."
+  },
+  {
+    "id": "health.sleep_trend_90_days",
+    "name": "Three\u2011month sleep trend",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Show my sleep duration trend for the last three months.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "sleep_hours",
+          "days": 90
+        }
+      }
+    ],
+    "required_outputs": ["sleep"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Long\u2011range sleep\u2011hours trend."
+  },
+  {
+    "id": "health.log_body_fat",
+    "name": "Log body fat percentage",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Record my body fat percentage: 22.5% measured at 10\u202fam.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Body fat",
+          "details": {
+            "kind": "health_metric",
+            "metric": "body_fat_percent",
+            "value": 22.5,
+            "occurredAtIso": "2026-05-10T10:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["22.5"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Capture a body\u2011fat metric."
+  },
+  {
+    "id": "health.heart_rate_trend_7_days",
+    "name": "Heart\u2011rate trend last week",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Give me the heart rate trend for the past week.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "heart_rate",
+          "days": 7
+        }
+      }
+    ],
+    "required_outputs": ["heart"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "7\u2011day heart\u2011rate trend."
+  },
+  {
+    "id": "health.log_hike",
+    "name": "Log morning hike",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Log a hike: 8\u202fkm, 4 hours, moderate, started at 9\u202fam.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Morning hike",
+          "details": {
+            "kind": "workout",
+            "distanceKm": 8.0,
+            "durationMinutes": 240,
+            "intensity": "moderate",
+            "occurredAtIso": "2026-05-10T09:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["hike"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Log a longer outdoor activity."
+  },
+  {
+    "id": "health.steps_yesterday",
+    "name": "Steps yesterday",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "How many steps did I take yesterday?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "steps",
+          "date": "2026-05-09"
+        }
+      }
+    ],
+    "required_outputs": ["steps"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 3,
+    "description": "Read\u2011only step count for the previous day."
+  },
+  {
+    "id": "health.log_morning_run_with_pace",
+    "name": "Log morning run with pace",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Log a run I did this morning: 5\u202fkm in 28 minutes, average pace 5:36 min/km.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Morning run",
+          "details": {
+            "kind": "workout",
+            "distanceKm": 5.0,
+            "durationMinutes": 28,
+            "paceMinPerKm": "5:36",
+            "occurredAtIso": "2026-05-10T07:30:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["5 km"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Capture a run with explicit pace information."
+  }
+]

@@ -1,63 +1,25 @@
 /**
- * Min-over-members audience admission: the pure policy core that joins the
- * attested delivery-audience census (`TrustedDeliveryAudience`, the full
- * participant list minted at ingress and revalidated at egress) with the
- * per-viewer disclosure vocabulary (`ArtifactDisclosure`: full / redacted /
- * none, per-entity grants) that until now only served read-side artifact DTOs.
- *
- * One question, answered deterministically: given a disclosure subject (what
- * the data requires) and an attested audience (who is verifiably in the room),
- * what disclosure level does the audience AS A WHOLE admit? The answer is the
- * MINIMUM over the non-agent members — one ungranted participant caps the whole
- * room, exactly like one stranger at the table caps what gets said out loud.
- *
- * This module is PURE and performs no I/O. It does not consult rooms, entities,
- * or clocks. Attestation validity (expiry, actor/room binding, membership
- * drift) is the caller's contract: evaluate/revalidate the audience through
- * `trusted-delivery-audience` FIRST, then compute admission over the surviving
- * evidence. Nothing here is wired into any gate or egress path yet; the
- * owner-exclusive gate remains the sole enforced disclosure decision until the
- * `audience_admission` gate variant lands.
- *
- * Fail-closed rules, in order:
- *  - malformed subject (unrecognized scope) → every member "none";
- *  - missing/malformed audience evidence → level "none", no members admitted;
- *  - empty census (no non-agent members) → level "none";
- *  - a viewer resolver that throws or returns a non-level value → that member
- *    is "none" (a broken lookup grants nothing, mirroring the malformed-grant
- *    rule in `artifact-disclosure`).
- *
- * Per-member evaluation MUST follow the same tier order as
- * `resolveArtifactDisclosure` (agent-self/OWNER/ADMIN full; explicit grant
- * beats the scope ladder in BOTH directions; owner-private default fails
- * closed). Callers get that for free by wrapping `resolveArtifactDisclosure`
- * over `disclosureSubjectRecord(subject)` — this module deliberately does not
- * re-apply grants on top of the resolver, because tier 2 (OWNER/ADMIN full)
- * outranks grants and re-narrowing here would diverge from the artifact
- * matrix.
- *
- * `owner_exclusive` stays the degenerate case: an owner-private subject with no
- * grants admits "full" only when every non-agent member resolves full — in a
- * two-party owner DM that is the owner alone, which is byte-equivalent to what
- * `decisionFromAudience` allows (see the parity tests).
+ * Computes audience disclosure as the minimum admitted level across non-agent members.
+ * Callers must first verify audience freshness and binding. Missing, malformed, or empty
+ * evidence and resolver failures grant nothing. Per-viewer policy preserves artifact-
+ * disclosure precedence: owner/admin authority, then explicit grants, then scope.
  */
+
 import type { TrustedDeliveryAudience } from "../security/trusted-delivery-audience";
-import type {
-	AccessContext,
-	DisclosureSubject,
-	MemoryScope,
-	UUID,
-} from "../types";
+import type { AccessContext } from "../types/access-context.js";
+import type { DisclosureSubject } from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
 import type {
 	ArtifactDisclosure,
 	ArtifactDisclosureRecord,
 } from "./artifact-disclosure";
 import { resolveArtifactDisclosure } from "./artifact-disclosure";
+import { isMemoryScope } from "./memory-scope.js";
 
 // The subject shape lives in the types layer so the `DisclosureGate` contract
 // (also in the types layer) can reference it without a barrel cycle. Re-export
 // it here so this module's original public surface is unchanged.
-export type { DisclosureSubject } from "../types";
+export type { DisclosureSubject } from "../types/memory.js";
 
 /**
  * The universal disclosure level. Deliberately the SAME type as the artifact
@@ -97,21 +59,6 @@ function isDisclosureLevel(value: unknown): value is DisclosureLevel {
 	return value === "full" || value === "redacted" || value === "none";
 }
 
-function isMemoryScope(value: unknown): value is MemoryScope {
-	switch (value) {
-		case "shared":
-		case "private":
-		case "room":
-		case "global":
-		case "owner-private":
-		case "user-private":
-		case "agent-private":
-			return true;
-		default:
-			return false;
-	}
-}
-
 /** The lower of two disclosure levels (none < redacted < full). */
 export function minDisclosureLevel(
 	a: DisclosureLevel,
@@ -121,11 +68,8 @@ export function minDisclosureLevel(
 }
 
 /**
- * Map a subject onto the artifact-disclosure record shape so callers can build
- * the per-viewer resolver directly over `resolveArtifactDisclosure` and inherit
- * the exact tier order (agent/OWNER/ADMIN full → grant → scope ladder →
- * fail closed). Keeping the mapping here means PR2+ gate callers cannot
- * hand-roll a divergent record shape.
+ * Maps a subject to the artifact-disclosure record so per-viewer evaluation uses the shared
+ * role/grant/scope precedence.
  */
 export function disclosureSubjectRecord(
 	subject: DisclosureSubject,

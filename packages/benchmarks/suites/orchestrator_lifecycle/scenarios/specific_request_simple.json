@@ -1,0 +1,13 @@
+{
+  "scenario_id": "specific_request_simple",
+  "title": "Specific Request Simple",
+  "category": "intake",
+  "required_capabilities": ["orchestration.status_reporting"],
+  "turns": [
+    {
+      "actor": "user",
+      "message": "In the current workspace, fix login sessions that remain active past the configured timeout. Preserve valid sessions, add or update regression tests for expiry, run the relevant test suite, and keep me updated.",
+      "expected_behaviors": ["spawn_subagent"]
+    }
+  ]
+}

@@ -7,6 +7,8 @@
  * the file. See per-export JSDoc for the cloud-voice availability ordering.
  */
 
+import type { ElizaCloudStatusUpdatedDetail } from "@elizaos/core/protocol";
+import { buildVoiceTurnSignal } from "@elizaos/voice";
 import {
   useCallback,
   useEffect,
@@ -19,7 +21,6 @@ import type {
   ConversationChannelType,
   ConversationMessage,
 } from "../../api/client-types-chat";
-import type { ElizaCloudStatusUpdatedDetail } from "../../events";
 import { ELIZA_CLOUD_STATUS_UPDATED_EVENT } from "../../events";
 import {
   type ContinuousChatLatency,
@@ -53,7 +54,6 @@ import {
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import type { VoiceTraceMark } from "../../voice/voice-session-client";
 import type { VoiceSessionMintResponse } from "../../voice/voice-session-protocol";
-import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 
 /* ── Shared constants ──────────────────────────────────────────────── */
 
@@ -73,6 +73,8 @@ export function mapUiLanguageToSpeechLocale(uiLanguage: string): string {
   switch (uiLanguage) {
     case "zh-CN":
       return "zh-CN";
+    case "ja":
+      return "ja-JP";
     case "ko":
       return "ko-KR";
     case "es":
@@ -1134,10 +1136,6 @@ export function useChatVoiceController(options: {
     voiceSpeaker,
   };
 }
-
-export type UseChatVoiceControllerReturn = ReturnType<
-  typeof useChatVoiceController
->;
 
 export type { ContinuousChatState, ContinuousVoiceSessionState };
 

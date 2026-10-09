@@ -13,13 +13,6 @@ import { TwitterInteractionClient } from "./interactions";
 import type { TwitterClientState } from "./types";
 import { sendTweet } from "./utils";
 
-// The plugin test shim for `@elizaos/core` omits prompt helpers the mention flow
-// depends on. Use the node source entry, matching the sibling interactions suites.
-vi.mock("@elizaos/core", async () => {
-  const node = await import("@elizaos/core/node");
-  return node;
-});
-
 const PROFILE_ID = "bot-user";
 
 function createRuntime(settings: Record<string, string> = {}) {

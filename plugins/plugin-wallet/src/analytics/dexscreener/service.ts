@@ -7,9 +7,10 @@
  * direct `DEXSCREENER_API_URL` is configured, and self rate-limits between
  * requests via `DEXSCREENER_RATE_LIMIT_DELAY`.
  */
+
 import { cloudServiceApisBaseUrl } from "@elizaos/cloud-routing";
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
+import { parseClampedInteger } from "@elizaos/core/protocol";
 import { toWalletCloudRoutingSettings } from "../cloud-routing-authority";
 import { dexScreenerErrorMessage } from "./errors";
 import type {
@@ -30,9 +31,16 @@ import type {
 type DexScreenerBoostedWire = DexScreenerBoostedToken & {
   labels?: string[];
 };
-
 type TokensV1Wire = DexScreenerPair | DexScreenerPair[];
 
+/** Omitted or non-finite means the method default. Explicit 0 is an empty page. */
+function explicitListLimit(
+  limit: number | undefined,
+  fallback: number,
+): number {
+  if (typeof limit !== "number" || !Number.isFinite(limit)) return fallback;
+  return Math.max(0, Math.floor(limit));
+}
 export class DexScreenerService extends Service {
   static serviceType = "dexscreener" as const;
   private baseUrl!: string;
@@ -41,10 +49,8 @@ export class DexScreenerService extends Service {
   private lastRequestTime = 0;
   public capabilityDescription =
     "Provides DEX analytics and token information from DexScreener";
-
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new DexScreenerService(runtime);
-
     const customBase = String(
       runtime.getSetting("DEXSCREENER_API_URL") ?? "",
     ).trim();
@@ -54,10 +60,8 @@ export class DexScreenerService extends Service {
       max: 5000,
       fallback: 100,
     });
-
     let apiUrl: string;
     const authHeaders: Record<string, string> = {};
-
     if (customBase.length > 0) {
       apiUrl = customBase.replace(/\/+$/, "");
     } else {
@@ -72,24 +76,19 @@ export class DexScreenerService extends Service {
         apiUrl = "https://api.dexscreener.com";
       }
     }
-
     service.dexConfig = {
       apiUrl,
       rateLimitDelay,
     };
-
     service.baseUrl = apiUrl;
     service.defaultHeaders = {
       Accept: "application/json",
       "User-Agent": "ElizaOS-DexScreener-Plugin/1.0",
       ...authHeaders,
     };
-
     return service;
   }
-
   async stop(): Promise<void> {}
-
   private async get<T>(
     path: string,
     params?: Record<string, string>,
@@ -100,7 +99,7 @@ export class DexScreenerService extends Service {
     }
     const response = await fetch(url, {
       headers: this.defaultHeaders,
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(10000),
     });
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
@@ -113,7 +112,6 @@ export class DexScreenerService extends Service {
     }
     return response.json() as Promise<T>;
   }
-
   private async rateLimit(): Promise<void> {
     const delayMs = this.dexConfig.rateLimitDelay ?? 100;
     const now = Date.now();
@@ -125,17 +123,14 @@ export class DexScreenerService extends Service {
     }
     this.lastRequestTime = Date.now();
   }
-
   async search(
     params: DexScreenerSearchParams,
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
       await this.rateLimit();
-      const data = await this.get<{ pairs?: DexScreenerPair[] }>(
-        `/latest/dex/search`,
-        { q: params.query },
-      );
-
+      const data = await this.get<{
+        pairs?: DexScreenerPair[];
+      }>(`/latest/dex/search`, { q: params.query });
       return {
         success: true,
         data: data.pairs || [],
@@ -148,16 +143,14 @@ export class DexScreenerService extends Service {
       };
     }
   }
-
   async getTokenPairs(
     params: DexScreenerTokenParams,
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
       await this.rateLimit();
-      const data = await this.get<{ pairs?: DexScreenerPair[] }>(
-        `/latest/dex/tokens/${params.tokenAddress}`,
-      );
-
+      const data = await this.get<{
+        pairs?: DexScreenerPair[];
+      }>(`/latest/dex/tokens/${params.tokenAddress}`);
       return {
         success: true,
         data: data.pairs || [],
@@ -170,23 +163,20 @@ export class DexScreenerService extends Service {
       };
     }
   }
-
   async getPair(
     params: DexScreenerPairParams,
   ): Promise<DexScreenerServiceResponse<DexScreenerPair>> {
     try {
       await this.rateLimit();
-      const data = await this.get<{ pair?: DexScreenerPair }>(
-        `/latest/dex/pairs/${params.pairAddress}`,
-      );
-
+      const data = await this.get<{
+        pair?: DexScreenerPair;
+      }>(`/latest/dex/pairs/${params.pairAddress}`);
       if (!data.pair) {
         return {
           success: false,
           error: "Pair not found",
         };
       }
-
       return {
         success: true,
         data: data.pair,
@@ -199,44 +189,40 @@ export class DexScreenerService extends Service {
       };
     }
   }
-
   async getTrending(
     params: DexScreenerTrendingParams = {},
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
+      const limit = explicitListLimit(params.limit, 10);
+      if (limit === 0) {
+        return { success: true, data: [] };
+      }
       await this.rateLimit();
-
       // DexScreener has no direct trending endpoint; use top boosted tokens
       // as a proxy signal.
       const responseData = await this.get<
         DexScreenerBoostedToken[] | DexScreenerBoostedToken
       >(`/token-boosts/top/v1`);
-
       const boostedTokens = Array.isArray(responseData)
         ? responseData
         : [responseData];
-
-      const pairPromises = boostedTokens
-        .slice(0, params.limit || 10)
-        .map(async (token) => {
-          try {
-            const pairData = await this.get<TokensV1Wire>(
-              `/tokens/v1/${token.chainId}/${token.tokenAddress}`,
-            );
-            return Array.isArray(pairData) ? pairData[0] : null;
-          } catch (error) {
-            console.error(
-              `Failed to get pair data for ${token.tokenAddress}:`,
-              error,
-            );
-            return null;
-          }
-        });
-
+      const pairPromises = boostedTokens.slice(0, limit).map(async (token) => {
+        try {
+          const pairData = await this.get<TokensV1Wire>(
+            `/tokens/v1/${token.chainId}/${token.tokenAddress}`,
+          );
+          return Array.isArray(pairData) ? pairData[0] : null;
+        } catch (error) {
+          console.error(
+            `Failed to get pair data for ${token.tokenAddress}:`,
+            error,
+          );
+          return null;
+        }
+      });
       const pairs = (await Promise.all(pairPromises)).filter(
         (pair) => pair !== null,
       );
-
       return {
         success: true,
         data: pairs,
@@ -250,26 +236,24 @@ export class DexScreenerService extends Service {
       };
     }
   }
-
   async getPairsByChain(
     params: DexScreenerChainParams,
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
+      const limit = explicitListLimit(params.limit, 20);
+      if (limit === 0) {
+        return { success: true, data: [] };
+      }
       await this.rateLimit();
-
       // DexScreener has no chain-scoped listing endpoint, so search by chain
       // name and filter the results down to that chain.
-      const data = await this.get<{ pairs?: DexScreenerPair[] }>(
-        `/latest/dex/search`,
-        { q: params.chain },
-      );
-
+      const data = await this.get<{
+        pairs?: DexScreenerPair[];
+      }>(`/latest/dex/search`, { q: params.chain });
       let pairs: DexScreenerPair[] = data.pairs || [];
-
       pairs = pairs.filter(
         (pair) => pair.chainId.toLowerCase() === params.chain.toLowerCase(),
       );
-
       if (params.sortBy) {
         pairs.sort((a, b) => {
           switch (params.sortBy) {
@@ -289,11 +273,7 @@ export class DexScreenerService extends Service {
           }
         });
       }
-
-      const limitedPairs = params.limit
-        ? pairs.slice(0, params.limit)
-        : pairs.slice(0, 20);
-
+      const limitedPairs = pairs.slice(0, limit);
       return {
         success: true,
         data: limitedPairs,
@@ -307,31 +287,30 @@ export class DexScreenerService extends Service {
       };
     }
   }
-
   async getNewPairs(
     params: DexScreenerNewPairsParams = {},
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
+      const limit = explicitListLimit(params.limit, 10);
+      if (limit === 0) {
+        return { success: true, data: [] };
+      }
       await this.rateLimit();
-
       // DexScreener has no direct new-pairs endpoint; use the latest token
       // profiles as a proxy for newly listed tokens.
       const responseData = await this.get<
         DexScreenerProfile[] | DexScreenerProfile
       >(`/token-profiles/latest/v1`);
-
       const profiles = Array.isArray(responseData)
         ? responseData
         : [responseData];
-
       const filteredProfiles = params.chain
         ? profiles.filter(
             (p) => p.chainId.toLowerCase() === params.chain?.toLowerCase(),
           )
         : profiles;
-
       const pairPromises = filteredProfiles
-        .slice(0, params.limit || 10)
+        .slice(0, limit)
         .map(async (profile) => {
           try {
             const pairData = await this.get<TokensV1Wire>(
@@ -355,11 +334,9 @@ export class DexScreenerService extends Service {
             return null;
           }
         });
-
       const pairs = (await Promise.all(pairPromises)).filter(
         (pair) => pair !== null,
       );
-
       return {
         success: true,
         data: pairs,
@@ -372,7 +349,6 @@ export class DexScreenerService extends Service {
       };
     }
   }
-
   async getTokenProfile(
     tokenAddress: string,
   ): Promise<DexScreenerServiceResponse<DexScreenerProfile>> {
@@ -386,18 +362,15 @@ export class DexScreenerService extends Service {
       const profiles = Array.isArray(responseData)
         ? responseData
         : [responseData];
-
       const profile = profiles.find(
         (p) => p.tokenAddress.toLowerCase() === tokenAddress.toLowerCase(),
       );
-
       if (!profile) {
         return {
           success: false,
           error: "Token profile not found",
         };
       }
-
       return {
         success: true,
         data: profile,
@@ -410,33 +383,39 @@ export class DexScreenerService extends Service {
       };
     }
   }
-
   formatPrice(price: string | number): string {
     const numPrice = typeof price === "string" ? parseFloat(price) : price;
-    if (numPrice >= 1) {
-      return numPrice.toFixed(2);
-    } else if (numPrice >= 0.01) {
-      return numPrice.toFixed(4);
-    } else {
-      return numPrice.toFixed(8);
+    if (numPrice >= 1) return numPrice.toFixed(2);
+    if (numPrice >= 0.01) {
+      const text = numPrice.toFixed(4);
+      // 0.99996 renders "1.0000". Use the dollar tier for that display.
+      return text === "1.0000" ? numPrice.toFixed(2) : text;
     }
+    const text = numPrice.toFixed(8);
+    return text === "0.01000000" ? numPrice.toFixed(4) : text;
   }
-
   formatPriceChange(change: number): string {
     const sign = change >= 0 ? "+" : "";
     return `${sign}${change.toFixed(2)}%`;
   }
-
   formatUsdValue(value: number): string {
-    if (value >= 1000000) {
-      return `$${(value / 1000000).toFixed(2)}M`;
-    } else if (value >= 1000) {
-      return `$${(value / 1000).toFixed(2)}K`;
-    } else {
-      return `$${value.toFixed(2)}`;
+    const tiers = [
+      { divisor: 1_000_000_000, suffix: "B" },
+      { divisor: 1_000_000, suffix: "M" },
+      { divisor: 1_000, suffix: "K" },
+      { divisor: 1, suffix: "" },
+    ];
+    let index = tiers.findIndex((tier) => value >= tier.divisor);
+    if (index < 0) index = tiers.length - 1;
+    let scaled = (value / tiers[index].divisor).toFixed(2);
+    // 999_999 / 1000 renders "1000.00". Promote that display to the next
+    // suffix. Leave every other rounded value on the tier it started on.
+    if (scaled === "1000.00" && index > 0) {
+      index -= 1;
+      scaled = (value / tiers[index].divisor).toFixed(2);
     }
+    return `$${scaled}${tiers[index].suffix}`;
   }
-
   async getMultipleTokens(
     chainId: string,
     tokenAddresses: string[],
@@ -448,13 +427,11 @@ export class DexScreenerService extends Service {
           error: "Maximum 30 token addresses allowed",
         };
       }
-
       await this.rateLimit();
       const addresses = tokenAddresses.join(",");
       const data = await this.get<DexScreenerPair[] | DexScreenerPair>(
         `/tokens/v1/${chainId}/${addresses}`,
       );
-
       return {
         success: true,
         data: Array.isArray(data) ? data : data ? [data] : [],
@@ -468,7 +445,6 @@ export class DexScreenerService extends Service {
       };
     }
   }
-
   async getLatestTokenProfiles(): Promise<
     DexScreenerServiceResponse<DexScreenerProfile[]>
   > {
@@ -477,7 +453,6 @@ export class DexScreenerService extends Service {
       const data = await this.get<DexScreenerProfile[] | DexScreenerProfile>(
         `/token-profiles/latest/v1`,
       );
-
       return {
         success: true,
         data: Array.isArray(data) ? data : [data],
@@ -492,7 +467,6 @@ export class DexScreenerService extends Service {
       };
     }
   }
-
   async getLatestBoostedTokens(): Promise<
     DexScreenerServiceResponse<DexScreenerBoostedWire[]>
   > {
@@ -501,7 +475,6 @@ export class DexScreenerService extends Service {
       const data = await this.get<
         DexScreenerBoostedWire[] | DexScreenerBoostedWire
       >(`/token-boosts/latest/v1`);
-
       return {
         success: true,
         data: Array.isArray(data) ? data : [data],
@@ -516,7 +489,6 @@ export class DexScreenerService extends Service {
       };
     }
   }
-
   async getTopBoostedTokens(): Promise<
     DexScreenerServiceResponse<DexScreenerBoostedWire[]>
   > {
@@ -525,7 +497,6 @@ export class DexScreenerService extends Service {
       const data = await this.get<
         DexScreenerBoostedWire[] | DexScreenerBoostedWire
       >(`/token-boosts/top/v1`);
-
       return {
         success: true,
         data: Array.isArray(data) ? data : [data],
@@ -539,7 +510,6 @@ export class DexScreenerService extends Service {
       };
     }
   }
-
   async checkOrderStatus(
     chainId: string,
     tokenAddress: string,
@@ -549,7 +519,6 @@ export class DexScreenerService extends Service {
       const data = await this.get<DexScreenerOrder[] | DexScreenerOrder>(
         `/orders/v1/${chainId}/${tokenAddress}`,
       );
-
       return {
         success: true,
         data: Array.isArray(data) ? data : data ? [data] : [],
@@ -563,7 +532,6 @@ export class DexScreenerService extends Service {
       };
     }
   }
-
   async getTokenPairsByChain(
     chainId: string,
     tokenAddress: string,
@@ -573,7 +541,6 @@ export class DexScreenerService extends Service {
       const data = await this.get<DexScreenerPair[] | DexScreenerPair>(
         `/token-pairs/v1/${chainId}/${tokenAddress}`,
       );
-
       return {
         success: true,
         data: Array.isArray(data) ? data : data ? [data] : [],

@@ -16,7 +16,7 @@
 
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useRef } from "react";
-import { PUSH_TO_TALK_HOLD_MS } from "../gestures";
+import { PUSH_TO_TALK_HOLD_MS } from "../gestures/constants";
 
 type PushToTalkPhase =
   | { kind: "idle" }

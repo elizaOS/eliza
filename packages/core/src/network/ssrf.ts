@@ -97,15 +97,7 @@ function parseIpv4(address: string): number[] | null {
 	return numbers;
 }
 
-/**
- * Parse the legacy/non-canonical IPv4 forms that the OS resolver
- * (`getaddrinfo`/`inet_aton`) accepts: octal (`0177`), hex (`0x7f`), plain
- * decimal (`2130706433`), and 1-3 part short forms (`127.1`). An SSRF guard
- * must classify these the way the resolver would actually connect, otherwise
- * `http://0177.0.0.1/` (octal localhost) slips past a literal-IP check.
- * Returns the four octets of the resulting 32-bit address, or null when the
- * string is not a numeric IPv4 in any of these encodings.
- */
+/** Parses resolver-accepted IPv4 forms, including octal, hex, integer, and short notation. SSRF checks must classify the destination the OS would connect to. */
 function parseIpv4Loose(address: string): number[] | null {
 	const parts = address.split(".");
 	if (parts.length < 1 || parts.length > 4) {
@@ -288,7 +280,7 @@ function embeddedIpv4ForPolicy(hextets: number[]): number[] | null {
 		(h7 >> 8) & 0xff,
 		h7 & 0xff,
 	];
-	// IPv4-compatible ::/96 and IPv4-mapped ::ffff:0:0/96 spellings that
+	// IPv4-compatible::/96 and IPv4-mapped::ffff:0:0/96 spellings that
 	// survived normalizeIpForPolicy — the embedded address is the low 32 bits.
 	// (`::` and `::1` are classified by the caller before this runs.)
 	if (h0 === 0 && h1 === 0 && h2 === 0 && hextets[3] === 0) {
@@ -318,6 +310,16 @@ function embeddedIpv4ForPolicy(hextets: number[]): number[] | null {
 	return null;
 }
 
+/**
+ * NAT64 local-use prefix 64:ff9b:1::/48 (RFC 8215). Site translators carve
+ * /48-/96 network-specific prefixes from it, each embedding the IPv4 at a
+ * different offset, so the literal does not identify the reached IPv4. The
+ * range is not globally routable, so every address in it is internal.
+ */
+function isNat64LocalUsePrefix(hextets: number[]): boolean {
+	return hextets[0] === 0x64 && hextets[1] === 0xff9b && hextets[2] === 0x1;
+}
+
 function isPrivateIpv6(address: string): boolean {
 	if (address === "::" || address === "::1") return true;
 	const firstHextet = /^([0-9a-f]{1,4})(?=:|$)/i.exec(address)?.[1];
@@ -338,6 +340,7 @@ function isPrivateIpv6(address: string): boolean {
 	// also covers leading-"::" spellings the first-hextet scan above can't see.
 	const hextets = parseIpv6Hextets(address);
 	if (hextets) {
+		if (isNat64LocalUsePrefix(hextets)) return true;
 		const embedded = embeddedIpv4ForPolicy(hextets);
 		if (embedded && isPrivateIpv4(embedded)) {
 			return true;

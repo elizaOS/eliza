@@ -1,3 +1,12 @@
+import type { AccessContext, IAgentRuntime } from "@elizaos/core";
+import {
+  getHttpRuntime,
+  type Route,
+  type RouteHandlerResult,
+} from "@elizaos/host/protocol";
+
+import { type Context, Hono } from "hono";
+import { dispatchRoute } from "./dispatch-route.ts";
 /**
  * Hono adapter for plugin routes.
  *
@@ -10,20 +19,9 @@
  * covers any plugin route registered via `runtime.routes`. The hardcoded
  * handlers will be migrated onto `runtime.routes` in later phases.
  */
-
-import type {
-  AccessContext,
-  IAgentRuntime,
-  Route,
-  RouteHandlerResult,
-} from "@elizaos/core";
-import { type Context, Hono } from "hono";
-import { stream as honoStream } from "hono/streaming";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
-
-import { dispatchRoute } from "./dispatch-route.ts";
-
 export interface HonoAdapterOptions {
+  /** Native transport provenance, supplied only by the authenticated host adapter. */
+  inProcess?: (req: Request) => boolean;
   /** Predicate that decides whether the incoming request has a valid token. */
   isAuthorized: (req: Request) => boolean;
   /** Predicate that decides whether the incoming request is trusted loopback/local. */
@@ -35,7 +33,6 @@ export interface HonoAdapterOptions {
    */
   resolveAccessContext?: (req: Request) => AccessContext | undefined;
 }
-
 function honoMethod(type: Route["type"]): string | null {
   switch (type) {
     case "GET":
@@ -52,7 +49,6 @@ function honoMethod(type: Route["type"]): string | null {
       return null;
   }
 }
-
 /**
  * Translate an elizaOS route path (which uses `:param` and `:rest*` tokens)
  * to Hono's path syntax. Hono supports `:param` directly; trailing `*` becomes
@@ -70,11 +66,13 @@ function toHonoPath(path: string): string {
     })
     .join("/");
 }
-
 async function readBodyForDispatch(
   request: Request,
   method: string,
-): Promise<{ body: unknown; rawBody?: string }> {
+): Promise<{
+  body: unknown;
+  rawBody?: string;
+}> {
   if (method === "GET" || method === "HEAD") {
     return { body: undefined };
   }
@@ -93,7 +91,6 @@ async function readBodyForDispatch(
   const text = await request.text();
   return { body: text, rawBody: text };
 }
-
 function headersToRecord(headers: Headers): Record<string, string> {
   const out: Record<string, string> = {};
   headers.forEach((value, key) => {
@@ -101,7 +98,6 @@ function headersToRecord(headers: Headers): Record<string, string> {
   });
   return out;
 }
-
 function searchParamsToQuery(url: URL): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   for (const key of url.searchParams.keys()) {
@@ -110,7 +106,7 @@ function searchParamsToQuery(url: URL): Record<string, string | string[]> {
   }
   return out;
 }
-
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 /**
  * Mount every `runtime.routes` entry onto the given Hono app.
  *
@@ -123,13 +119,11 @@ export function mountRoutesOnHono(
   runtime: IAgentRuntime,
   options: HonoAdapterOptions,
 ): void {
-  const routes = runtime.routes;
+  const routes = getHttpRuntime(runtime).routes;
   for (const route of routes as Route[]) {
     if (!honoMethod(route.type)) continue;
     if (!route.handler && !route.routeHandler) continue;
-
     const honoPath = toHonoPath(route.path);
-
     const honoHandler = async (ctx: Context): Promise<Response> => {
       const request = ctx.req.raw;
       const url = new URL(request.url);
@@ -140,13 +134,14 @@ export function mountRoutesOnHono(
       );
       const result: RouteHandlerResult | null = await dispatchRoute({
         runtime,
+        signal: request.signal,
         method: request.method,
         path: url.pathname,
         headers: headersToRecord(request.headers),
         query: searchParamsToQuery(url),
         body,
         rawBody,
-        inProcess: false,
+        inProcess: options.inProcess?.(request) ?? false,
         isAuthorized: () => options.isAuthorized(request),
         isTrustedLocal: () => options.isTrustedLocal?.(request) ?? false,
         accessContext: options.resolveAccessContext?.(request),
@@ -159,34 +154,40 @@ export function mountRoutesOnHono(
           },
         }),
       );
-
       if (result === null) {
         // Should be unreachable — Hono only invokes this handler on a match.
         void params;
         return new Response("Not Found", { status: 404 });
       }
-
       const headers = new Headers(result.headers ?? {});
       if (result.stream) {
-        const resultStream = result.stream;
-        // Carry the handler's status and headers onto the streamed response —
-        // honoStream builds the Response from the context, so without this an
-        // SSE route loses its `content-type: text/event-stream` (breaking
-        // EventSource clients) and any non-200 status collapses to 200.
-        ctx.status(result.status as ContentfulStatusCode);
-        headers.forEach((value, key) => {
-          ctx.header(key, value);
+        const iterator = result.stream[Symbol.asyncIterator]();
+        const encoder = new TextEncoder();
+        const body = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            try {
+              const next = await iterator.next();
+              if (next.done) controller.close();
+              else
+                controller.enqueue(
+                  typeof next.value === "string"
+                    ? encoder.encode(next.value)
+                    : next.value,
+                );
+            } catch (error) {
+              // error-policy:J2 Preserve producer failure in the response body stream.
+              controller.error(error);
+            }
+          },
+          async cancel() {
+            await iterator.return?.();
+          },
         });
-        return honoStream(ctx, async (stream) => {
-          for await (const chunk of resultStream) {
-            await stream.write(chunk);
-          }
-          await stream.close();
-        });
+        return new Response(body, { status: result.status, headers });
       }
-
       let bodyOut: BodyInit | null = null;
-      if (result.body == null) {
+      // The Fetch Response constructor throws for a body on a null-body status.
+      if (result.body == null || NULL_BODY_STATUSES.has(result.status)) {
         bodyOut = null;
       } else if (typeof result.body === "string") {
         bodyOut = result.body;
@@ -206,7 +207,6 @@ export function mountRoutesOnHono(
       }
       return new Response(bodyOut, { status: result.status, headers });
     };
-
     switch (route.type) {
       case "GET":
         app.get(honoPath, honoHandler);
@@ -226,7 +226,6 @@ export function mountRoutesOnHono(
     }
   }
 }
-
 /** Convenience: build a new Hono app already wired to the runtime. */
 export function buildHonoAppForRuntime(
   runtime: IAgentRuntime,

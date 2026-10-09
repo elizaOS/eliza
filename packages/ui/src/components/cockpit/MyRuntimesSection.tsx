@@ -12,8 +12,8 @@ import {
   Tag,
 } from "lucide-react";
 import { useState } from "react";
-import { cn } from "../../lib/utils";
 import type { AgentProfile } from "../../state/agent-profile-types";
+import { cn } from "../../utils/cn";
 import { SettingsInputRow } from "../settings/settings-agent-rows";
 import {
   SettingsGroup,

@@ -648,9 +648,21 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   async getSpaces(accountId?: string): Promise<GoogleChatSpace[]> {
     const state = this.getState(accountId);
-    const url = `${CHAT_API_BASE}/spaces`;
-    const response = await this.fetchApi<{ spaces?: GoogleChatSpace[] }>(url, {}, state.accountId);
-    state.cachedSpaces = response.spaces || [];
+    // spaces.list returns one page (100 spaces by default) plus nextPageToken;
+    // read every page so target resolution sees the complete membership.
+    const spaces: GoogleChatSpace[] = [];
+    let pageToken: string | undefined;
+    do {
+      const url = new URL(`${CHAT_API_BASE}/spaces`);
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
+      const response = await this.fetchApi<{
+        spaces?: GoogleChatSpace[];
+        nextPageToken?: string;
+      }>(url.toString(), {}, state.accountId);
+      spaces.push(...(response.spaces ?? []));
+      pageToken = response.nextPageToken || undefined;
+    } while (pageToken);
+    state.cachedSpaces = spaces;
     return state.cachedSpaces;
   }
 

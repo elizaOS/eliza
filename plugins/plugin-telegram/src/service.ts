@@ -30,6 +30,7 @@ import {
   type MessageConnectorUserContext,
   Role,
   type Room,
+  type SendHandlerResult,
   Service,
   type TargetInfo,
   type ThreadHandle,
@@ -53,10 +54,6 @@ import {
   resolveDefaultTelegramAccountId,
   resolveTelegramAccount,
 } from "./accounts";
-import {
-  applyTelegramSetMyCommands,
-  registerTelegramCommandHandlers,
-} from "./command-registration";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "./dm-policy";
 import { resolveTelegramRuntimeEntityId } from "./identity";
@@ -73,6 +70,7 @@ import {
   releaseTelegramPollerToken,
   type TelegramPollerHealth,
 } from "./poller-lock";
+import { stopTelegramPolling } from "./poller-stop";
 import { shouldStartTelegramStandaloneBot } from "./standalone/policy";
 import { registerTelegramTaskBoardCommand } from "./task-board";
 import {
@@ -396,6 +394,10 @@ export class TelegramService extends Service {
   private botToken: string | null;
   private defaultAccountId = DEFAULT_ACCOUNT_ID;
   private accountStates: Map<string, TelegramAccountRuntime> = new Map();
+  private stopping = false;
+  private outboundCompletions = new Set<Promise<void>>();
+  private pollerRetryTimers = new Set<ReturnType<typeof setTimeout>>();
+  private pollerCompletions = new Map<Telegraf<Context>, Promise<void>>();
 
   /**
    * Constructor for TelegramService class.
@@ -785,6 +787,43 @@ export class TelegramService extends Service {
     return service;
   }
 
+  /** Drain only a verified default bot; never stop unrelated named accounts. */
+  assertDefaultBotDisconnect(expectedToken?: string): string | null {
+    const accountIds = this.getAccountIds();
+    const state = this.getAccountState(DEFAULT_ACCOUNT_ID);
+    const activeToken = state?.account.botToken ?? this.botToken;
+    if (
+      accountIds.length !== 1 ||
+      accountIds[0] !== DEFAULT_ACCOUNT_ID ||
+      (expectedToken !== undefined &&
+        activeToken !== expectedToken &&
+        !(activeToken === null && this.getBots().length === 0))
+    ) {
+      throw new ElizaError(
+        "Review the active Telegram bot before disconnecting.",
+        {
+          code: "TELEGRAM_DISCONNECT_IDENTITY_MISMATCH",
+        },
+      );
+    }
+    return activeToken;
+  }
+
+  /** Fence and drain only the bot whose identity was reviewed. */
+  async disconnectDefaultBot(expectedToken?: string): Promise<void> {
+    const activeToken = this.assertDefaultBotDisconnect(expectedToken);
+    await this.stop();
+    const tokenToCheck = expectedToken ?? activeToken;
+    const claim = tokenToCheck
+      ? getTelegramPollerClaim(tokenToCheck)
+      : undefined;
+    if (claim?.ownerId === String(this.runtime.agentId)) {
+      throw new ElizaError("Telegram polling has not finished shutting down.", {
+        code: "TELEGRAM_SHUTDOWN_INCOMPLETE",
+      });
+    }
+  }
+
   /**
    * Stops the agent runtime.
    * @param {IAgentRuntime} runtime - The agent runtime to stop
@@ -802,54 +841,55 @@ export class TelegramService extends Service {
    * @returns A Promise that resolves once the bot has stopped.
    */
   async stop(): Promise<void> {
+    this.stopping = true;
+    for (const timer of this.pollerRetryTimers) clearTimeout(timer);
+    this.pollerRetryTimers.clear();
     const states =
       this.accountStates instanceof Map
         ? Array.from(this.accountStates.values())
         : [];
-    if (states.length > 0) {
-      for (const state of states) {
-        const token = state.account.botToken;
+    const targets = states.length
+      ? states.map((state) => ({
+          bot: state.bot,
+          token: state.account.botToken,
+        }))
+      : this.bot
+        ? [{ bot: this.bot, token: this.botToken }]
+        : [];
+    const results = await Promise.allSettled(
+      targets.map(async ({ bot, token }) => {
+        const completion = this.pollerCompletions.get(bot);
+        if (completion) {
+          // A settled failure may still hold its claim for a queued retry.
+          // Shutdown disables that retry and releases only after draining.
+          await stopTelegramPolling(bot, completion);
+          if (token) releaseTelegramPollerToken(token, bot);
+          return;
+        }
         try {
-          state.bot.stop("service-stop");
+          bot.stop("service-stop");
         } catch (error) {
-          // error-policy:J6 Shutdown must still release process-local ownership
-          // when Telegraf reports that the poller was already stopped.
+          // error-policy:J6 A constructed bot without a supervised launch has no polling loop to drain.
           logger.debug(
-            {
-              src: "plugin:telegram",
-              accountId: state.accountId,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Telegram poller stop failed during teardown",
+            { src: "plugin:telegram", error },
+            "Telegram unstarted bot teardown failed",
           );
-        } finally {
-          if (token) {
-            releaseTelegramPollerToken(token, state.bot);
-          }
         }
-      }
-      return;
-    }
-
-    const bot = this.bot;
-    if (bot) {
-      try {
-        bot.stop("service-stop");
-      } catch (error) {
-        // error-policy:J6 Teardown remains best-effort, but the token lock is
-        // always released below and the failure stays observable.
-        logger.debug(
-          {
-            src: "plugin:telegram",
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Telegram poller stop failed during teardown",
-        );
-      } finally {
-        if (this.botToken) {
-          releaseTelegramPollerToken(this.botToken, bot);
-        }
-      }
+        if (token) releaseTelegramPollerToken(token, bot);
+      }),
+    );
+    await Promise.all(this.outboundCompletions);
+    const failures = results
+      .filter((result) => result.status === "rejected")
+      .map((result) => result.reason);
+    if (failures.length) {
+      throw new ElizaError(
+        "Telegram shutdown did not drain every polling loop.",
+        {
+          code: "TELEGRAM_SHUTDOWN_INCOMPLETE",
+          cause: new AggregateError(failures),
+        },
+      );
     }
   }
 
@@ -942,6 +982,11 @@ export class TelegramService extends Service {
     // so the startup retry can still relaunch.
     if (!wiring.poller) {
       await this.launchPollerSupervised(bot, state.account.botToken, accountId);
+      if (this.stopping) {
+        throw new ElizaError("Telegram service is stopping.", {
+          code: "TELEGRAM_SERVICE_STOPPING",
+        });
+      }
       wiring.poller = true;
     }
 
@@ -954,7 +999,7 @@ export class TelegramService extends Service {
   }
 
   /**
-   * Registers the `/start` handler, the universal slash-command handlers, and
+   * Registers the `/start` handler and
    * the task-board command on a freshly created Telegraf instance. Called
    * exactly once per bot (see {@link TelegramAccountRuntime.wiring}).
    */
@@ -977,27 +1022,12 @@ export class TelegramService extends Service {
       );
     });
 
-    // Register universal slash-command handlers BEFORE launch. Telegraf accepts
+    // Register task-board handlers before launch. Telegraf accepts
     // command registration any time before launch(), and a matched command
     // handler that never calls next() terminates the middleware chain — so the
     // catch-all message handler in setupMessageHandlers does not also process
     // command messages (no double-processing).
     const commandMessageManager = activeState.messageManager;
-    const registered = registerTelegramCommandHandlers(
-      bot,
-      this.runtime,
-      commandMessageManager,
-      accountId,
-    );
-    logger.debug(
-      {
-        src: "plugin:telegram",
-        agentId: this.runtime.agentId,
-        accountId,
-        commandCount: registered.length,
-      },
-      "Registered universal slash-command handlers",
-    );
     // #8902: the live, edited-in-place orchestrator task board (`/tasks`).
     registerTelegramTaskBoardCommand(
       bot,
@@ -1008,18 +1038,12 @@ export class TelegramService extends Service {
   }
 
   /**
-   * Runs the retryable post-launch probes: publish the slash-command menu and
-   * retrieve bot identity before process shutdown hooks are installed.
+   * Retrieves bot identity after launch, before installing shutdown hooks.
    */
   private async finishBotStartup(
     bot: Telegraf<Context>,
     accountId: string,
   ): Promise<void> {
-    // Publish the slash-command menu to Telegram so commands appear in the `/`
-    // menu. setMyCommands failure is logged + swallowed (network) and must not
-    // crash boot.
-    await applyTelegramSetMyCommands(bot, this.runtime, accountId);
-
     // Get bot info for identification purposes
     const botInfo = await bot.telegram.getMe();
     logger.debug(
@@ -1071,6 +1095,13 @@ export class TelegramService extends Service {
     botToken: string | null | undefined,
     accountId: string,
   ): Promise<void> {
+    if (this.stopping) {
+      return Promise.reject(
+        new ElizaError("Telegram service is stopping.", {
+          code: "TELEGRAM_SERVICE_STOPPING",
+        }),
+      );
+    }
     const maxPollRelaunches = 5;
     const pollerReadyWarningMs = 30_000;
     const pollerReadyCheckMs = 10;
@@ -1080,6 +1111,7 @@ export class TelegramService extends Service {
     const stableRunMs = 60_000;
 
     const ownsToken = (): boolean => {
+      if (this.stopping) return false;
       if (!botToken) {
         return true;
       }
@@ -1150,6 +1182,14 @@ export class TelegramService extends Service {
           const polling = (bot as unknown as { polling?: { stop?: unknown } })
             .polling;
           if (typeof polling?.stop === "function") {
+            if (this.stopping) {
+              rejectInitialLaunch(
+                new ElizaError("Telegram service is stopping.", {
+                  code: "TELEGRAM_SERVICE_STOPPING",
+                }),
+              );
+              return;
+            }
             pollerReadyOnce = true;
             initialSettled = true;
             clearPollerReadyTimers();
@@ -1203,13 +1243,15 @@ export class TelegramService extends Service {
           },
           "Relaunching Telegram poller after poll-loop failure",
         );
-        setTimeout(() => {
+        const retryTimer = setTimeout(() => {
+          this.pollerRetryTimers.delete(retryTimer);
           if (!ownsToken()) {
             clearActive();
             return;
           }
           runLaunch();
         }, delayMs);
+        this.pollerRetryTimers.add(retryTimer);
       };
 
       const runLaunch = (): void => {
@@ -1228,7 +1270,7 @@ export class TelegramService extends Service {
           }
           return;
         }
-        bot
+        const completion = bot
           .launch(
             {
               dropPendingUpdates: false,
@@ -1238,7 +1280,7 @@ export class TelegramService extends Service {
               connectedAt = Date.now();
               if (!pollerReadyOnce) {
                 waitForStoppablePoller();
-              } else if (botToken) {
+              } else if (botToken && !this.stopping) {
                 markTelegramPollerConnected(botToken, bot);
               }
             },
@@ -1278,6 +1320,7 @@ export class TelegramService extends Service {
               scheduleRelaunch();
             },
           );
+        this.pollerCompletions.set(bot, completion);
       };
 
       runLaunch();
@@ -3276,18 +3319,38 @@ export class TelegramService extends Service {
     return { accountId, bot, messageManager, chatId, threadId };
   }
 
+  private runOutbound<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.stopping) {
+      return Promise.reject(
+        new ElizaError(
+          "Telegram service is stopping. Reconnect before sending.",
+          {
+            code: "TELEGRAM_SERVICE_STOPPING",
+          },
+        ),
+      );
+    }
+    const result = Promise.resolve().then(operation);
+    // Track settlement separately; the caller retains the original delivery error.
+    const settled = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.outboundCompletions.add(settled);
+    void settled.then(() => this.outboundCompletions.delete(settled));
+    return result;
+  }
+
   async handleSendMessage(
     runtime: IAgentRuntime,
     target: TargetInfo,
     content: Content,
-  ): Promise<void> {
-    const { accountId, messageManager, chatId, threadId } =
-      await this.resolveTelegramSendTarget(runtime, target);
+  ): SendHandlerResult {
+    return this.runOutbound(async () => {
+      const { accountId, messageManager, chatId, threadId } =
+        await this.resolveTelegramSendTarget(runtime, target);
 
-    try {
-      // Use existing MessageManager method, pass chatId and content
-      // Assuming sendMessage handles splitting, markdown, etc.
-      await messageManager.sendMessage(
+      return messageManager.sendMessageWithReceipt(
         chatId,
         {
           ...content,
@@ -3301,29 +3364,7 @@ export class TelegramService extends Service {
         undefined,
         threadId,
       );
-      logger.info(
-        {
-          src: "plugin:telegram",
-          agentId: runtime.agentId,
-          accountId,
-          chatId,
-          threadId,
-        },
-        "Message sent",
-      );
-    } catch (error) {
-      logger.error(
-        {
-          src: "plugin:telegram",
-          agentId: runtime.agentId,
-          accountId,
-          chatId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Error sending message",
-      );
-      throw error;
-    }
+    });
   }
 
   /**
@@ -3337,27 +3378,29 @@ export class TelegramService extends Service {
     runtime: IAgentRuntime,
     params: MessageConnectorEditParams,
   ): Promise<Memory | undefined> {
-    if (!params.messageId || !/^\d+$/.test(params.messageId)) {
-      throw new Error(
-        `Telegram edit requires a numeric messageId (got "${params.messageId}").`,
+    return this.runOutbound(async () => {
+      if (!params.messageId || !/^\d+$/.test(params.messageId)) {
+        throw new Error(
+          `Telegram edit requires a numeric messageId (got "${params.messageId}").`,
+        );
+      }
+      const text = params.content?.text;
+      if (!text?.trim()) {
+        throw new Error("Telegram edit requires non-empty content.text.");
+      }
+      const { messageManager, chatId, threadId } =
+        await this.resolveTelegramSendTarget(runtime, params.target);
+      await messageManager.editMessage(
+        chatId,
+        Number.parseInt(params.messageId, 10),
+        text,
+        threadId,
       );
-    }
-    const text = params.content?.text;
-    if (!text?.trim()) {
-      throw new Error("Telegram edit requires non-empty content.text.");
-    }
-    const { messageManager, chatId, threadId } =
-      await this.resolveTelegramSendTarget(runtime, params.target);
-    await messageManager.editMessage(
-      chatId,
-      Number.parseInt(params.messageId, 10),
-      text,
-      threadId,
-    );
-    // Telegram's editMessageText returns the edited Message; the orchestrator
-    // only needs the call to succeed for compact-edit mode, so no Memory is
-    // synthesized here (the original send already produced one).
-    return undefined;
+      // Telegram's editMessageText returns the edited Message; the orchestrator
+      // only needs the call to succeed for compact-edit mode, so no Memory is
+      // synthesized here (the original send already produced one).
+      return undefined;
+    });
   }
 
   /**
@@ -3368,19 +3411,21 @@ export class TelegramService extends Service {
     runtime: IAgentRuntime,
     params: MessageConnectorReactionParams & { remove?: boolean },
   ): Promise<void> {
-    if (!params.messageId || !/^\d+$/.test(params.messageId)) {
-      throw new Error(
-        `Telegram reaction requires a numeric messageId (got "${params.messageId}").`,
+    return this.runOutbound(async () => {
+      if (!params.messageId || !/^\d+$/.test(params.messageId)) {
+        throw new Error(
+          `Telegram reaction requires a numeric messageId (got "${params.messageId}").`,
+        );
+      }
+      const { messageManager, chatId } = await this.resolveTelegramSendTarget(
+        runtime,
+        params.target,
       );
-    }
-    const { messageManager, chatId } = await this.resolveTelegramSendTarget(
-      runtime,
-      params.target,
-    );
-    await messageManager.addReaction(
-      chatId,
-      Number.parseInt(params.messageId, 10),
-      params.remove ? undefined : params.emoji,
-    );
+      await messageManager.addReaction(
+        chatId,
+        Number.parseInt(params.messageId, 10),
+        params.remove ? undefined : params.emoji,
+      );
+    });
   }
 }

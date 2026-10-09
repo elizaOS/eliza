@@ -5,15 +5,13 @@
  */
 
 import {
-  resolveKnowledgeGraphService,
-  resolveOwnerEntityId,
-} from "@elizaos/agent";
-import {
   ElizaError,
   type IAgentRuntime,
   type Memory,
+  resolveOwnerEntityId,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import {
   normalizeScheduledEventPayload,
   type OwnerFactsView,

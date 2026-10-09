@@ -4,7 +4,7 @@
 // /api/secrets/inventory endpoints as the Vault tab, scoped to the wallet
 // category. The keyless stub returns a fixed wallet inventory (EVM/SOLANA) and
 // does not persist PUT/DELETE, so an add→reload→read-back→delete round-trip never
-// converges there. This spec exploits the real app-core runtime + on-disk vault
+// converges there. This spec exploits the real app runtime + on-disk vault
 // (ELIZA_UI_SMOKE_LIVE_STACK=1) and is classified LIVE_ONLY. It NEVER stubs the
 // route under test — the inventory PUT/GET/DELETE hit the real backend.
 //

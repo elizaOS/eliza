@@ -19,7 +19,7 @@
  * HealthKit). There's no separate `sleep` permission.
  */
 
-import type { PermissionState, Prober } from "../contracts.js";
+import type { PermissionState, Prober } from "@elizaos/core";
 import {
   buildState,
   hasEmbeddedProvisioningEntitlement,

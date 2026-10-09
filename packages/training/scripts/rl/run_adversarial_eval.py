@@ -19,7 +19,6 @@ import argparse
 import asyncio
 import json
 import logging
-import sys
 import time
 from pathlib import Path
 
@@ -28,16 +27,15 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
-sys.path.insert(0, str(PYTHON_ROOT))
 
-from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-from lib.generation_integrity import (  # noqa: E402
+from eliza_training.training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from eliza_training.lib.generation_integrity import (  # noqa: E402
     model_context_tokens,
     remaining_model_context_tokens,
     require_complete_generated_tokens,
 )
 
-from src.training.adversarial_game import (
+from eliza_training.rl.adversarial_game import (
     evaluate_adversarial,
 )
 

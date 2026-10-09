@@ -1,4 +1,22 @@
 /// <reference types="bun-types" />
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import * as appleCalendarBridgePolicyImport from "@elizaos/capacitor-calendar/macos-bridge-policy";
+import type {
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  FeatureResult,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarEventAttendee,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarSummary,
+  LifeOpsCalendarWriteOnlyCreateReceipt,
+  LifeOpsConnectorSide,
+} from "@elizaos/contracts";
+import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
+import type { IPermissionsRegistry } from "@elizaos/core/protocol";
+import { resolveNativeLibraryCandidate } from "@elizaos/host";
+import type { NativeLibraryCandidate } from "@elizaos/host/protocol";
 
 /**
  * Native Apple Calendar bridge. Loads the platform native library (via the
@@ -7,27 +25,6 @@
  * Apple as a provider alongside Google. Access is gated by the permissions
  * registry; on a host without the native library the operations fail closed.
  */
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import * as appleCalendarBridgePolicyImport from "@elizaos/capacitor-calendar/macos-bridge-policy";
-import type { IAgentRuntime } from "@elizaos/core";
-import { ElizaError, logger } from "@elizaos/core";
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  CreateLifeOpsCalendarEventRequest,
-  FeatureResult,
-  IPermissionsRegistry,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarEventAttendee,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarSummary,
-  LifeOpsCalendarWriteOnlyCreateReceipt,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared";
-import {
-  type NativeLibraryCandidate,
-  resolveNativeLibraryCandidate,
-} from "@elizaos/shared/platform/native-library-policy";
 
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 

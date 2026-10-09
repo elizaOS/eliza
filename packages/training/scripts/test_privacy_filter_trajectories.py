@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import privacy_filter_trajectories as p
+import eliza_training.privacy_filter_trajectories as p
 
 
 def _read_jsonl(path: Path) -> list[object]:

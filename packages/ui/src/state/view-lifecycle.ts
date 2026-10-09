@@ -20,10 +20,10 @@
  * (`KeepAliveViewHost`) renders exactly `getRenderSet()` and reacts to changes
  * via `subscribe`. Slots are passive (provide context + hidden/inert).
  */
+import { type EvictReason, emitModuleCacheTelemetry } from "../cache-telemetry";
 
-import { logger } from "@elizaos/logger";
-import { emitModuleCacheTelemetry } from "../cache-telemetry";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
+import { logger } from "../logger.ts";
 import {
   getKeepAliveMaxViews,
   getKeepAliveTtlMs,
@@ -31,7 +31,6 @@ import {
 } from "./bounded-view-lru";
 import {
   DEFAULT_VIEW_LIFECYCLE_POLICY,
-  type EvictReason,
   type ViewLifecycleListener,
   type ViewLifecyclePhase,
   type ViewLifecyclePolicy,

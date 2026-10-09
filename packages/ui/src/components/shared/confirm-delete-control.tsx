@@ -8,8 +8,8 @@
  */
 
 import { type ReactNode, useId, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { useAppSelector } from "../../state";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";
 
 type ConfirmDeleteControlProps = {

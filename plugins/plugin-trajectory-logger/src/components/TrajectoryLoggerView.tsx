@@ -8,16 +8,18 @@
  * browser DOM surface ships today, while the retained modality contract stays
  * available for future adapters.
  */
-
-import type { OverlayAppContext } from "@elizaos/shared";
-import { Button, Input } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
+import {
+  Button,
+  dispatchNavigateViewEvent,
+  Input,
+  type OverlayAppContext,
+  useAgentElement,
+} from "@elizaos/ui";
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchTrajectoryDetail, type TrajectoryDetail } from "../api-client";
-import type { PhaseName } from "../phases";
-import { summarizePhases } from "../phases";
+import { type PhaseName, summarizePhases } from "../phases";
+
 import { usePollingTrajectories } from "../usePollingTrajectories";
 import {
   type Slot,

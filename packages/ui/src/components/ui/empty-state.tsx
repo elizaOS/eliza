@@ -3,7 +3,7 @@
  * description, and a primary action slot.
  */
 import * as React from "react";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Card } from "./card";
 
 export interface EmptyStateProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -62,7 +62,7 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
           {title}
         </h3>
         {description && (
-          <p className="max-w-sm text-sm text-muted">{description}</p>
+          <p className="max-w-sm text-sm text-muted-strong">{description}</p>
         )}
       </div>
       {action}

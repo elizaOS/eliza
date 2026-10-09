@@ -1,26 +1,9 @@
 /** Immutable character transforms for secrets, plugins, and model-provider detection. */
 
-import {
-	MODEL_PROVIDER_SECRETS as _MODEL_PROVIDER_SECRETS,
-	CHANNEL_SECRETS,
-} from "./constants/secrets";
-import type { Character } from "./types";
+import { MODEL_PROVIDER_SECRETS } from "./security/secrets";
+import type { Character } from "./types/agent.js";
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// RE-EXPORTS FROM CONSTANTS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Mapping of model provider names to their corresponding API key environment variables.
- * @see {@link ./constants/secrets} for the comprehensive list
- */
-export const MODEL_PROVIDER_SECRETS = _MODEL_PROVIDER_SECRETS;
-
-export { CHANNEL_SECRETS };
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // SECRET MANAGEMENT
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Get a secret value from character.settings.secrets.
@@ -154,9 +137,7 @@ export function mergeCharacterSecrets(
 	};
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // PLUGIN MANAGEMENT
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Add a plugin to character.plugins. This is an immutable operation.
@@ -214,9 +195,7 @@ export function hasCharacterPlugin(
 	return character.plugins?.includes(pluginName) ?? false;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // MODEL PROVIDER DETECTION
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Detect which AI model provider is configured based on available API keys.

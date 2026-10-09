@@ -1,14 +1,9 @@
 /**
  * Cloud site/API URL normalizer. The implementation moved to
- * `@elizaos/shared/elizacloud/base-url` so host-layer packages can normalize
+ * `@elizaos/plugin-elizacloud/cloud-config/base-url` so host-layer packages can normalize
  * URLs without reverse-importing this plugin.
  */
-import {
-  defaultCloudSiteUrl,
-  normalizeCloudSiteUrl,
-  resolveCloudRedirectScope,
-  resolveCloudApiBaseUrl,
-} from "@elizaos/shared";
+import { defaultCloudSiteUrl, normalizeCloudSiteUrl, resolveCloudRedirectScope, resolveCloudApiBaseUrl } from "../cloud-config/base-url.js";
 
 export {
   normalizeCloudSiteUrl,

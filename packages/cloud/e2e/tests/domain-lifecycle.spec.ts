@@ -1,8 +1,7 @@
 /**
  * Domain acquisition lifecycle — the customer domain tooling, end to end.
  *
- * The existing monetized-app-loop spec asserts the check→buy debit math; this
- * fills the gaps the audit flagged as untested: search, status, per-app + org
+ * Covers the customer domain tooling the audit flagged as untested: search, status, per-app + org
  * domain listing, DNS record CRUD, and detach. Runs against the booted stack
  * with the Cloudflare registrar dev stub (ELIZA_CF_REGISTRAR_DEV_STUB=1), so
  * no real Cloudflare call is made but the route flow + DB writes are real.

@@ -15,7 +15,7 @@
  */
 
 import { fetchWithCsrf } from "../api/csrf-client";
-import { resolveApiUrl } from "../utils";
+import { resolveApiUrl } from "../utils/asset-url";
 
 export async function isLocalInferenceTtsReady(options?: {
   signal?: AbortSignal;

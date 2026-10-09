@@ -78,7 +78,15 @@ describe.skipIf(!LIVE)("Oura connector — live API parser validation", () => {
       expect(typeof s.value).toBe("number");
       expect(Number.isFinite(s.value)).toBe(true);
       expect(isoString(s.startAt)).toBe(true);
-      expect(s.localDate).toBe(s.startAt.slice(0, 10));
+      if (s.metric === "sleep_hours" || s.metric === "sleep_score") {
+        const episode = payload.sleepEpisodes.find(
+          (ep) => s.sourceExternalId === `${ep.sourceExternalId}:${s.metric}`,
+        );
+        expect(episode).toBeTruthy();
+        expect(s.localDate).toBe(episode?.localDate);
+      } else {
+        expect(s.localDate).toBe(s.startAt.slice(0, 10));
+      }
     }
   }, 30_000);
 });

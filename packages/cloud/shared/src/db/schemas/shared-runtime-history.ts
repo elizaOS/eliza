@@ -1,13 +1,21 @@
 // Defines the shared runtime history Drizzle table shape used by cloud repositories and services.
-import type { KeylessWebSearchProvider } from "@elizaos/core";
+
 import { jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import type {
+  CurrentNwsObservation,
+  CurrentWeatherSourceDiagnostic,
+  CurrentWeatherUnavailableReason,
+} from "../../lib/services/shared-runtime/shared-current-weather";
 
 /** Bounded public-read authority retained so a follow-up honors success or unavailability. */
 export type SharedRuntimePublicGrounding =
   | {
       kind: "web_search";
       query: string;
-      provider: KeylessWebSearchProvider;
+      /** Persisted receipts retain legacy providers independently of current transport policy. */
+      provider: "parallel" | "exa" | "nws";
+      /** Actual station observation time/geometry, separate from retrieval time. */
+      weatherObservation?: CurrentNwsObservation;
       text: string;
       observedAt: number;
       /** Traceable public sources extracted from the successful tool receipt. */
@@ -18,6 +26,9 @@ export type SharedRuntimePublicGrounding =
     }
   | {
       kind: "web_search_unavailable";
+      /** Closed, content-free current-weather diagnostic; absent on legacy rows. */
+      unavailableReason?: CurrentWeatherUnavailableReason;
+      sourceDiagnostics?: CurrentWeatherSourceDiagnostic[];
       query: string;
       observedAt: number;
     };

@@ -8,6 +8,7 @@ import type { HandlerCallback } from "./components";
 import type { Entity, Room, World } from "./environment";
 import type { MembershipMutationReceipt, MembershipScope } from "./membership";
 import type { Memory } from "./memory";
+import type { TurnOutcome } from "./message-service";
 import type { ControlMessage } from "./messaging";
 import type {
 	LocalInferencePriority,
@@ -83,19 +84,23 @@ export enum EventType {
 	MODEL_USED = "MODEL_USED",
 	MODEL_REGISTERED = "MODEL_REGISTERED",
 
+	// Service instance is available through getService; startup observers finish
+	// before callers waiting on getServiceLoadPromise receive the instance.
+	SERVICE_STARTED = "SERVICE_STARTED",
+
 	// Embedding events
 	EMBEDDING_GENERATION_REQUESTED = "EMBEDDING_GENERATION_REQUESTED",
 	EMBEDDING_GENERATION_COMPLETED = "EMBEDDING_GENERATION_COMPLETED",
 	EMBEDDING_GENERATION_FAILED = "EMBEDDING_GENERATION_FAILED",
 
-	// PII scrub job events (#14808). Trigger event for the async scrub rails -
+	// PII scrub job events. Trigger event for the async scrub rails -
 	// `PiiScrubService` listens for PII_SCRUB_REQUESTED and drains a priority
 	// BatchQueue on the core task scheduler (mirrors EMBEDDING_GENERATION_*).
 	PII_SCRUB_REQUESTED = "PII_SCRUB_REQUESTED",
 	PII_SCRUB_COMPLETED = "PII_SCRUB_COMPLETED",
 	PII_SCRUB_FAILED = "PII_SCRUB_FAILED",
 
-	// Error reporting (#12263) — the general-purpose failure event emitted by
+	// Error reporting — the general-purpose failure event emitted by
 	// `runtime.reportError` for failures outside the action path (providers,
 	// services, background jobs, event handlers). Surfaced to the agent via the
 	// RECENT_ERRORS provider and used to drive the owner-escalation threshold.
@@ -108,11 +113,10 @@ export enum EventType {
 	FORM_FIELD_CONFIRMED = "FORM_FIELD_CONFIRMED",
 	FORM_FIELD_CANCELLED = "FORM_FIELD_CANCELLED",
 
-	// UI interaction events (#8792) — the agent observes shortcuts, slash
-	// commands, and view switches (agent- or user-initiated) so a proactive
+	// UI interaction events — the agent observes shortcuts
+	// and view switches (agent- or user-initiated) so a proactive
 	// decider can comment on them. Connect-once contract every surface emits.
 	VIEW_SWITCHED = "VIEW_SWITCHED",
-	SLASH_COMMAND_INVOKED = "SLASH_COMMAND_INVOKED",
 	SHORTCUT_FIRED = "SHORTCUT_FIRED",
 	USER_TYPING_STARTED = "USER_TYPING_STARTED",
 	USER_TYPING_PAUSED = "USER_TYPING_PAUSED",
@@ -248,22 +252,10 @@ export interface InvokePayload extends EventPayload {
 /**
  * Run event payload type
  */
-export type RunEventStatus =
-	| "started"
-	| "completed"
-	| "timeout"
-	| "error"
-	| "self"
-	| "off"
-	| "muted"
-	| "personality_gate"
-	| "bot_group_address_gate"
-	| "bot_noise_triage"
-	| "bot_loop_gate"
-	| "replaced"
-	| "noMessageId";
+export type RunEventStatus = "started" | "timeout" | TurnOutcome["status"];
 
 export interface RunEventPayload extends EventPayload {
+	outcome?: TurnOutcome;
 	runId: UUID;
 	messageId: UUID;
 	roomId: UUID;
@@ -324,7 +316,7 @@ export interface ModelEventPayload extends EventPayload {
 		cacheCreationInputTokens?: number;
 		reasoningTokens?: number;
 		cachedInputTokens?: number;
-		/** @deprecated Use `cachedInputTokens` or `cacheReadInputTokens`. */
+		/** Cached input token count. */
 		cached?: number;
 		estimated?: boolean;
 	};
@@ -363,7 +355,7 @@ export interface EmbeddingGenerationPayload extends EventPayload {
 
 /**
  * Payload for {@link EventType.PII_SCRUB_REQUESTED}: one enqueue of content onto
- * the async scrub rails (#14808). The service hashes `content` into the
+ * the async scrub rails. The service hashes `content` into the
  * content-addressed done-marker (`pii:<sha256(content)>:v<rulesetVersion>`) and
  * skips the item entirely when that marker is already present (idempotent
  * re-scrub no-op). `candidateSpans` are the model-judgment residue the caller
@@ -540,9 +532,7 @@ export interface FormFieldEventPayload extends EventPayload {
 	reason?: string;
 }
 
-// ============================================================================
-// UI Interaction Event Payloads (#8792)
-// ============================================================================
+// UI Interaction Event Payloads
 
 /** Who triggered a UI interaction. */
 export type InteractionInitiator = "agent" | "user";
@@ -562,7 +552,7 @@ export interface ViewSwitchedPayload extends EventPayload {
 	/** Room the switch happened in, for room-scoped proactive gating. */
 	roomId?: UUID;
 	/**
-	 * The target view's declared `anticipatoryIntent` (#13587), resolved from the
+	 * The target view's declared `anticipatoryIntent`, resolved from the
 	 * view registry at emit time. Present only for intent-bearing views; drives
 	 * the proactive judge toward a single scoped greeting. Absent → label-only
 	 * fallback (judge may stay silent).
@@ -570,23 +560,6 @@ export interface ViewSwitchedPayload extends EventPayload {
 	anticipatoryIntent?: string;
 	/** The target view's one-line description, for judge grounding. */
 	viewPurpose?: string;
-}
-
-/**
- * Payload for {@link EventType.SLASH_COMMAND_INVOKED} — a slash command ran
- * (e.g. `/settings`, `/wallet`). Carries the resolved target so a decider knows
- * whether intent was already expressed (and should usually stay quiet).
- */
-export interface SlashCommandInvokedPayload extends EventPayload {
-	/** Canonical command name (without the leading slash). */
-	command: string;
-	args?: string[];
-	/** Resolved target kind: navigation, an agent action, or a client behavior. */
-	targetKind?: "navigate" | "agent" | "client";
-	/** Target view id when the command navigates to a view. */
-	viewId?: string;
-	initiatedBy: InteractionInitiator;
-	roomId?: UUID;
 }
 
 /**
@@ -628,9 +601,7 @@ export interface ComposerActivityPayload extends EventPayload {
 	roomId?: UUID;
 }
 
-// ============================================================================
 // Hook System Event Payloads
-// ============================================================================
 
 /**
  * Base payload for all hook events.
@@ -829,6 +800,7 @@ export interface EventPayloadMap {
 	[EventType.EVALUATOR_COMPLETED]: EvaluatorEventPayload;
 	[EventType.MODEL_USED]: ModelEventPayload;
 	[EventType.MODEL_REGISTERED]: ModelRegisteredEventPayload;
+	[EventType.SERVICE_STARTED]: EventPayload & { serviceType: string };
 	[EventType.EMBEDDING_GENERATION_REQUESTED]: EmbeddingGenerationPayload;
 	[EventType.EMBEDDING_GENERATION_COMPLETED]: EmbeddingGenerationPayload;
 	[EventType.EMBEDDING_GENERATION_FAILED]: EmbeddingGenerationPayload;
@@ -839,9 +811,8 @@ export interface EventPayloadMap {
 	[EventType.CONTROL_MESSAGE]: ControlMessagePayload;
 	[EventType.FORM_FIELD_CONFIRMED]: FormFieldEventPayload;
 	[EventType.FORM_FIELD_CANCELLED]: FormFieldEventPayload;
-	// UI interaction event payloads (#8792)
+	// UI interaction event payloads
 	[EventType.VIEW_SWITCHED]: ViewSwitchedPayload;
-	[EventType.SLASH_COMMAND_INVOKED]: SlashCommandInvokedPayload;
 	[EventType.SHORTCUT_FIRED]: ShortcutFiredPayload;
 	[EventType.USER_TYPING_STARTED]: ComposerActivityPayload;
 	[EventType.USER_TYPING_PAUSED]: ComposerActivityPayload;

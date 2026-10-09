@@ -1,7 +1,10 @@
 // Handles v1 cloud API v1 solana token accounts address route traffic with route-local auth expectations.
-import { Hono } from "hono";
 
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Solana Token Accounts API - Get token accounts by owner
@@ -13,13 +16,16 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * Rate Limiting: Per API key
  */
 
-import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
-import { getCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+import {
+  getCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
   solanaRpcConfig,
   solanaRpcHandler,
-} from "@/lib/services/proxy/services/solana-rpc";
-import { isValidSolanaAddress } from "@/lib/services/proxy/services/solana-validation";
+} from "@elizaos/cloud-shared/lib/services/proxy/solana-rpc";
+import { isValidSolanaAddress } from "@elizaos/cloud-shared/lib/services/proxy/solana-validation";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 
 async function __hono_OPTIONS() {
   return handleCorsOptions("GET, OPTIONS");

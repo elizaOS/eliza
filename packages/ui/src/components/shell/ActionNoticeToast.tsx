@@ -2,7 +2,7 @@
 
 import { X } from "lucide-react";
 import { createPortal } from "react-dom";
-import type { ActionNotice } from "../../state/types";
+import type { ActionNotice } from "../../state/action-notice";
 import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";

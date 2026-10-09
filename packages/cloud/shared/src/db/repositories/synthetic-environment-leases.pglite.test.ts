@@ -7,10 +7,10 @@ process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV = "test";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { agentTable } from "@elizaos/plugin-sql";
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../client";
-import { agentTable } from "../schemas/eliza";
 import { syntheticEnvironmentLeases } from "../schemas/synthetic-environment-leases";
 import { agentsRepository } from "./agents/agents";
 import { CloudSyntheticEnvironmentLeaseStore } from "./synthetic-environment-leases";

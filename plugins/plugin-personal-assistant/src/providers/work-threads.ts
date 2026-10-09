@@ -6,7 +6,6 @@
  * current-room threads sorted ahead of the rest.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -14,6 +13,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/core";
 import {
   createWorkThreadStore,
   type WorkThread,
@@ -81,7 +81,7 @@ export const workThreadsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return EMPTY;
     }
     const roomId = typeof message.roomId === "string" ? message.roomId : null;

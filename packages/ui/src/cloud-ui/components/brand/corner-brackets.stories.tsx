@@ -2,7 +2,7 @@
  * Storybook stories for the CornerBrackets HUD framing decoration.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import { CornerBrackets } from "./corner-brackets";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
 
 const Frame = ({
   children,

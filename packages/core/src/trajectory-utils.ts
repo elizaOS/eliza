@@ -20,15 +20,11 @@
  * `ELIZA_TRAJECTORY_STRICT`; embeddings, tokenizers, and speech/media models are
  * exempt from the generative-call guards.
  */
+
+import { AsyncLocalStorage } from "node:async_hooks";
 import { getAmbientSingleton } from "./ambient-context.js";
-import { isTruthyEnvValue } from "./env-utils.js";
 import { ElizaError } from "./errors";
-import {
-	CONTEXT_OBJECT_TRAJECTORY_VERSION,
-	type ContextObjectTrajectoryExport,
-	type JsonValue,
-	type Trajectory,
-} from "./features/trajectories/types";
+import type { ContextEvent, ContextObject } from "./runtime/context-object";
 import { stringifyForDiagnostics } from "./runtime/json-output";
 import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
 import {
@@ -36,17 +32,23 @@ import {
 	projectToolDiagnosticValue,
 } from "./security/tool-diagnostics";
 import { trackPostDeliveryTask } from "./services/post-delivery-task-tracker";
-import { sanitizeTrajectoryJsonObject } from "./services/trajectory-json";
-import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types";
+import { sanitizeTrajectoryJsonObject } from "./services/trajectory-json.ts";
+import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types.ts";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
 } from "./trajectory-context";
 import type { ActionResult } from "./types/components";
-import type { ContextEvent, ContextObject } from "./types/context-object";
 import { isTextGenerationModelType } from "./types/model";
 import type { IAgentRuntime } from "./types/runtime";
+import {
+	CONTEXT_OBJECT_TRAJECTORY_VERSION,
+	type ContextObjectTrajectoryExport,
+	type JsonValue,
+	type Trajectory,
+} from "./types/trajectory-export.ts";
 import { createHash } from "./utils/crypto-compat";
+import { isTruthyEnvValue } from "./utils/env.js";
 
 export type TrajectoryFinalStatus =
 	| "completed"
@@ -67,6 +69,10 @@ export const TRAJECTORY_LLM_PURPOSES = [
 export type TrajectoryLlmPurpose = (typeof TRAJECTORY_LLM_PURPOSES)[number];
 
 export type TrajectoryLlmCallDetails = {
+	runId?: string;
+	roomId?: string;
+	messageId?: string;
+	executionTraceId?: string;
 	model: string;
 	modelVersion?: string;
 	modelType?: string;
@@ -464,11 +470,8 @@ export type TrajectoryAnnotateParams = {
 	appendChildSteps?: string[];
 	usedSkills?: string[];
 	/**
-	 * Per-skill invocation records to append to the step. Closes M13
-	 * (W1-T5). Each record carries the (skillSlug, args, result,
-	 * durationMs, parentStepId) shape produced by `captureSkillInvocationIO`.
-	 * Implementations must append (not replace) so multiple skill invocations
-	 * inside the same step accumulate.
+	 * Per-skill invocation records with arguments, result, duration, success, and invocation
+	 * identity.
 	 */
 	appendSkillInvocations?: TrajectorySkillInvocationRecord[];
 };
@@ -515,6 +518,8 @@ type TrajectoryLoggerLike = {
 };
 
 type StandaloneTrajectoryOptions = {
+	/** Defer capture writes until an actual model invocation in this task. */
+	deferUntilModelCall?: boolean;
 	source: string;
 	metadata?: Record<string, unknown>;
 	successStatus?: TrajectoryFinalStatus;
@@ -545,31 +550,7 @@ type TrajectoryContextWithLlmGuard = {
 	[RECORD_LLM_CALL_DEPTH_KEY]?: number;
 };
 
-function isNodeEnvironment(): boolean {
-	return (
-		typeof process !== "undefined" &&
-		typeof process.versions !== "undefined" &&
-		typeof process.versions.node !== "undefined"
-	);
-}
-
-function supportsAsyncLocalStorage(): boolean {
-	return isNodeEnvironment() && typeof process.getBuiltinModule === "function";
-}
-
 function createLlmInputSubstringAttestationContextManager(): LlmInputSubstringAttestationContextManager {
-	if (!supportsAsyncLocalStorage()) {
-		throw new ElizaError(
-			"LLM input attestation requires AsyncLocalStorage isolation",
-			{
-				code: "LLM_INPUT_SUBSTRING_ATTESTATION_UNSUPPORTED_RUNTIME",
-				severity: "fatal",
-			},
-		);
-	}
-	const { AsyncLocalStorage } = process.getBuiltinModule(
-		"node:async_hooks",
-	) as typeof import("node:async_hooks");
 	const storage = new AsyncLocalStorage<
 		LlmInputSubstringAttestationStore | undefined
 	>();
@@ -675,9 +656,6 @@ function modelInputSurfaces(details: RecordLlmCallDetails): string[] {
  * with usage telemetry.
  */
 export function attestLlmInputSubstring(details: RecordLlmCallDetails): void {
-	// Attestation is an opt-in Node/Bun server capability. Ordinary browser/edge
-	// model calls do not initialize a request-scope manager.
-	if (!supportsAsyncLocalStorage()) return;
 	const store = getLlmInputSubstringAttestationContextManager().active();
 	if (!store) return;
 
@@ -733,15 +711,6 @@ export async function runWithLlmInputSubstringAttestation<T>(
 	expectedText: string,
 	fn: () => Promise<T> | T,
 ): Promise<{ result: T; attestation: LlmInputSubstringAttestation }> {
-	if (!supportsAsyncLocalStorage()) {
-		throw new ElizaError(
-			"LLM input attestation requires AsyncLocalStorage isolation",
-			{
-				code: "LLM_INPUT_SUBSTRING_ATTESTATION_UNSUPPORTED_RUNTIME",
-				severity: "fatal",
-			},
-		);
-	}
 	if (!expectedText) {
 		throw new ElizaError(
 			"LLM input attestation requires a non-empty expected instruction",
@@ -801,13 +770,6 @@ function isTrajectoryLoggerCandidate(
 }
 
 function readProcessEnv(name: string): string | undefined {
-	if (
-		typeof process === "undefined" ||
-		!process ||
-		typeof process.env !== "object"
-	) {
-		return undefined;
-	}
 	return process.env[name];
 }
 
@@ -956,7 +918,7 @@ export type ModelCallRecordingState = { recorded: boolean };
  * Open a request-local recording scope around a single `useModel()` call.
  *
  * Returns the live mutable store so the caller can read `.recorded` at the
- * actual decision point — which may be AFTER streaming completes (#17532).
+ * actual decision point — which may be AFTER streaming completes.
  *
  * For deferred-streaming providers (e.g. plugin-xai grok.ts), the handler
  * returns a TextStreamResult immediately, but `recordLlmCall` only resolves
@@ -980,7 +942,7 @@ export async function runWithModelCallRecordingScope<T>(
  * consume a deferred stream whose provider finalizer calls
  * `markProviderRecordedCall()`. Async generators do not retain
  * AsyncLocalStorage context from their creation, so we must re-establish the
- * scope around stream consumption (#17532).
+ * scope around stream consumption.
  */
 export function runInModelCallRecordingScope<T>(
 	recordingState: ModelCallRecordingState,
@@ -1032,70 +994,10 @@ function getModelCallRecordingStorage(): ModelCallRecordingStorage {
 }
 
 function createModelCallRecordingStorage(): ModelCallRecordingStorage {
-	if (supportsAsyncLocalStorage()) {
-		const { AsyncLocalStorage } = process.getBuiltinModule(
-			"node:async_hooks",
-		) as typeof import("node:async_hooks");
-		const storage = new AsyncLocalStorage<ModelCallRecordingState>();
-		return {
-			getStore: () => storage.getStore(),
-			run: (store, fn) => storage.run(store, fn),
-		};
-	}
-	// Synchronous fallback for browser/edge. The store is a mutable object
-	// passed by reference, so `runWithModelCallRecordingScope` can read the
-	// `recorded` flag after `fn` settles. The run wrapper awaits async `fn`
-	// before restoring the previous slot, so marks made during async work
-	// (e.g. recordLlmCall) are captured.
-	//
-	// LIMITATION: This fallback does NOT support concurrent async useModel
-	// calls — without AsyncLocalStorage, overlapping scopes corrupt the
-	// single mutable slot. The corruption direction is asymmetric and
-	// dangerous: call A opens, call B opens (saving A as prev), A's provider
-	// finalizer marks — and mutates B's store. B then observes
-	// `recorded === true` and suppresses its generic fallback record, while
-	// A observes `false` and records. Net effect: one call double-counted
-	// and another silently dropped. Because the PR's goal is preventing
-	// duplicate accounting, converting duplicates into ABSENT records (which
-	// read as healthy zero-cost calls) is the wrong failure direction.
-	//
-	// Node always uses the AsyncLocalStorage path above; this only affects
-	// browser/edge runtimes, where concurrent model calls are rare.
-	// AsyncLocalStorage is a Node built-in, NOT available in browsers.
-	// The nearest browser equivalent is the TC39 AsyncContext proposal,
-	// which is not yet shipped. If browser/edge concurrent calls become
-	// common, either adopt AsyncContext when available or thread per-call
-	// recording state explicitly through provider recording APIs.
-	let syncStore: ModelCallRecordingState | undefined;
+	const storage = new AsyncLocalStorage<ModelCallRecordingState>();
 	return {
-		getStore: () => syncStore,
-		run: (store, fn) => {
-			const prev = syncStore;
-			syncStore = store;
-			const restore = () => {
-				syncStore = prev;
-			};
-			try {
-				const result = fn();
-				if (result instanceof Promise) {
-					return result.then(
-						(v) => {
-							restore();
-							return v;
-						},
-						(e) => {
-							restore();
-							throw e;
-						},
-					);
-				}
-				restore();
-				return result;
-			} catch (e) {
-				restore();
-				throw e;
-			}
-		},
+		getStore: () => storage.getStore(),
+		run: (store, fn) => storage.run(store, fn),
 	};
 }
 
@@ -1136,6 +1038,19 @@ export function resolveTrajectoryLogger(
 	return bestScore > 0 ? best : null;
 }
 
+/** Activate an inherited task capture before invoking a provider, never at the synchronous sink. */
+export async function ensureTaskTrajectory(): Promise<void> {
+	const context = getTrajectoryContext();
+	if (
+		!context ||
+		context.trajectoryStepId?.trim() ||
+		!context.activateTaskCapture
+	)
+		return;
+	const owner = await context.activateTaskCapture();
+	if (owner) Object.assign(context, owner);
+}
+
 export async function withStandaloneTrajectory<T>(
 	runtime: IAgentRuntime | null | undefined,
 	options: StandaloneTrajectoryOptions,
@@ -1149,104 +1064,126 @@ export async function withStandaloneTrajectory<T>(
 		return callback();
 	}
 
-	let trajectoryLogger: TrajectoryLoggerLike | null;
-	try {
-		trajectoryLogger = resolveTrajectoryLogger(runtime);
-	} catch (error) {
-		// error-policy:J7 capture setup is diagnostic; a host without the full
-		// service-registry surface still runs the business callback uncaptured.
-		runtime.reportError?.("StandaloneTrajectory.resolve", error, {
-			source: options.source,
-			diagnosticOnly: true,
-		});
-		return callback();
-	}
-	if (
-		!trajectoryLogger ||
-		typeof trajectoryLogger.startTrajectory !== "function" ||
-		typeof trajectoryLogger.endTrajectory !== "function" ||
-		(typeof trajectoryLogger.isEnabled === "function" &&
-			!trajectoryLogger.isEnabled())
-	) {
-		return callback();
-	}
-
-	let trajectoryId: string;
-	try {
-		trajectoryId = String(
-			await trajectoryLogger.startTrajectory(runtime.agentId, {
-				source: options.source,
-				metadata: options.metadata,
-			}),
-		).trim();
-	} catch (error) {
-		// error-policy:J7 standalone capture setup is diagnostic; without a
-		// durable trajectory owner the business callback runs uncaptured.
-		runtime.reportError("StandaloneTrajectory.start", error, {
-			source: options.source,
-			diagnosticOnly: true,
-		});
-		return callback();
-	}
-	if (!trajectoryId) {
-		return callback();
-	}
-
-	let stepId = trajectoryId;
-	if (typeof trajectoryLogger.startStep === "function") {
+	const context = { ...getTrajectoryContext() };
+	const capture: { logger: TrajectoryLoggerLike | null } = { logger: null };
+	let trajectoryId: string | undefined;
+	let activation:
+		| Promise<{ trajectoryId: string; trajectoryStepId: string } | undefined>
+		| undefined;
+	let closed = false;
+	const initialize = async () => {
+		let trajectoryLogger: TrajectoryLoggerLike | null;
 		try {
-			stepId =
-				String(
-					trajectoryLogger.startStep(trajectoryId, {
-						timestamp: Date.now(),
-					}),
-				).trim() || trajectoryId;
+			trajectoryLogger = resolveTrajectoryLogger(runtime);
 		} catch (error) {
-			// error-policy:J7 the parent already exists, so retain its correlation
-			// as the fallback step and close it after the callback finishes.
-			runtime.reportError("StandaloneTrajectory.startStep", error, {
-				trajectoryId,
+			// error-policy:J7 capture setup is diagnostic; a host without the full
+			// service-registry surface still runs the business callback uncaptured.
+			runtime.reportError?.("StandaloneTrajectory.resolve", error, {
+				source: options.source,
 				diagnosticOnly: true,
 			});
+			return;
 		}
-	}
+		if (
+			!trajectoryLogger ||
+			typeof trajectoryLogger.startTrajectory !== "function" ||
+			typeof trajectoryLogger.endTrajectory !== "function" ||
+			(typeof trajectoryLogger.isEnabled === "function" &&
+				!trajectoryLogger.isEnabled())
+		) {
+			return;
+		}
 
-	let completed = false;
-	try {
-		const result = await runWithTrajectoryContext(
-			{ trajectoryId, trajectoryStepId: stepId },
-			() => callback(),
-		);
-		completed = true;
-		return result;
-	} finally {
-		if (typeof trajectoryLogger.flushWriteQueue === "function") {
+		try {
+			trajectoryId = String(
+				await trajectoryLogger.startTrajectory(runtime.agentId, {
+					source: options.source,
+					metadata: options.metadata,
+				}),
+			).trim();
+		} catch (error) {
+			// error-policy:J7 standalone capture setup is diagnostic; without a
+			// durable trajectory owner the business callback runs uncaptured.
+			runtime.reportError("StandaloneTrajectory.start", error, {
+				source: options.source,
+				diagnosticOnly: true,
+			});
+			return;
+		}
+		if (!trajectoryId) {
+			return;
+		}
+
+		let stepId = trajectoryId;
+		if (typeof trajectoryLogger.startStep === "function") {
 			try {
-				await trajectoryLogger.flushWriteQueue(trajectoryId);
+				stepId =
+					String(
+						trajectoryLogger.startStep(trajectoryId, {
+							timestamp: Date.now(),
+						}),
+					).trim() || trajectoryId;
 			} catch (error) {
-				// error-policy:J7 standalone trajectory persistence is diagnostic;
-				// a successful wrapped operation remains authoritative.
-				runtime.reportError("StandaloneTrajectory.flush", error, {
+				// error-policy:J7 the parent already exists, so retain its correlation
+				// as the fallback step and close it after the callback finishes.
+				runtime.reportError("StandaloneTrajectory.startStep", error, {
 					trajectoryId,
 					diagnosticOnly: true,
 				});
 			}
 		}
-		try {
-			await trajectoryLogger.endTrajectory(
-				trajectoryId,
-				completed
-					? (options.successStatus ?? "completed")
-					: (options.errorStatus ?? "error"),
-			);
-		} catch (error) {
-			// error-policy:J7 terminal telemetry failure cannot replace the
-			// callback's result or error at this wrapper boundary.
-			runtime.reportError("StandaloneTrajectory.end", error, {
-				trajectoryId,
-				diagnosticOnly: true,
-			});
-			trajectoryLogger.releaseTrajectoryOwnership?.(trajectoryId);
+		capture.logger = trajectoryLogger;
+		const owner = { trajectoryId, trajectoryStepId: stepId };
+		Object.assign(context, owner);
+		return owner;
+	};
+	context.activateTaskCapture = () => {
+		if (closed) return Promise.resolve(undefined);
+		activation ??= initialize();
+		return activation;
+	};
+	if (!options.deferUntilModelCall) await context.activateTaskCapture();
+
+	let completed = false;
+	try {
+		const result = await runWithTrajectoryContext(context, () => callback());
+		completed = true;
+		return result;
+	} finally {
+		closed = true;
+		// Await initialization already admitted by a concurrent model call, but
+		// never create an owner merely to finalize a no-model worker.
+		await activation;
+		const trajectoryLogger = capture.logger;
+		if (trajectoryId && trajectoryLogger) {
+			if (typeof trajectoryLogger.flushWriteQueue === "function") {
+				try {
+					await trajectoryLogger.flushWriteQueue(trajectoryId);
+				} catch (error) {
+					// error-policy:J7 standalone trajectory persistence is diagnostic;
+					// a successful wrapped operation remains authoritative.
+					runtime.reportError("StandaloneTrajectory.flush", error, {
+						trajectoryId,
+						diagnosticOnly: true,
+					});
+				}
+			}
+			try {
+				await trajectoryLogger.endTrajectory?.(
+					trajectoryId,
+					completed
+						? (options.successStatus ?? "completed")
+						: (options.errorStatus ?? "error"),
+				);
+			} catch (error) {
+				// error-policy:J7 terminal telemetry failure cannot replace the
+				// callback's result or error at this wrapper boundary.
+				runtime.reportError("StandaloneTrajectory.end", error, {
+					trajectoryId,
+					diagnosticOnly: true,
+				});
+				trajectoryLogger.releaseTrajectoryOwnership?.(trajectoryId);
+			}
 		}
 	}
 }
@@ -1302,17 +1239,22 @@ export function logActiveTrajectoryLlmCall(
 		return false;
 	}
 
+	const context = getTrajectoryContext();
 	trajectoryLogger.logLlmCall({
 		stepId,
 		...details,
-		purpose: getTrajectoryContext()?.purpose ?? details.purpose,
+		runId: details.runId ?? context?.runId,
+		roomId: details.roomId ?? context?.roomId,
+		messageId: details.messageId ?? context?.messageId,
+		executionTraceId: details.executionTraceId ?? context?.traceId,
+		purpose: context?.purpose ?? details.purpose,
 	});
 
 	// Mark the current model-call scope as provider-recorded. This is the
 	// single chokepoint for ALL provider-level trajectory logging — whether
 	// called via `recordLlmCall` or directly (e.g. plugin-openai live
 	// streaming). Centralizing here ensures every successful provider record
-	// suppresses the generic `useModel` fallback (#17532).
+	// suppresses the generic `useModel` fallback.
 	markProviderRecordedCall();
 
 	return true;
@@ -1343,6 +1285,7 @@ export async function recordLlmCall<T>(
 	details: RecordLlmCallDetails,
 	fn: () => Promise<T> | T,
 ): Promise<T> {
+	await ensureTaskTrajectory();
 	assertActiveTrajectoryForLlmCall({
 		actionType: details.actionType,
 		model: details.model,
@@ -1356,7 +1299,36 @@ export async function recordLlmCall<T>(
 		typeof performance !== "undefined" && typeof performance.now === "function"
 			? performance.now()
 			: Date.now();
-	const result = await runInsideRecordedLlmCall(fn);
+	let result: T;
+	try {
+		result = await runInsideRecordedLlmCall(fn);
+	} catch (error) {
+		// Preserve the provider-prepared request even when no result/usage arrives.
+		// Logging must not replace the original transport or cancellation error.
+		try {
+			const message = error instanceof Error ? error.message : String(error);
+			logActiveTrajectoryLlmCall(runtime, {
+				...details,
+				response:
+					details.response ||
+					`[model call failed] ${composeToolDiagnosticRedactor(runtime ?? undefined)(message)}`,
+				finishReason: "error",
+				latencyMs: Math.max(
+					0,
+					Math.round(
+						(typeof performance !== "undefined" &&
+						typeof performance.now === "function"
+							? performance.now()
+							: Date.now()) - startedAt,
+					),
+				),
+			});
+		} catch (recordingError) {
+			// error-policy:J7 Failed-call diagnostics cannot change provider failure semantics.
+			runtime?.reportError?.("TrajectoryFailedProviderCall", recordingError);
+		}
+		throw error;
+	}
 	const elapsed =
 		(typeof performance !== "undefined" && typeof performance.now === "function"
 			? performance.now()
@@ -1376,7 +1348,7 @@ export async function recordLlmCall<T>(
 	// entirely from its recordLlmCall detail, and plugin-openai's buffered-stream
 	// path records before the buffered usage resolves. Because the generic
 	// useModel fallback is suppressed once this provider record lands
-	// (#17532), failing to backfill here would silently lose token/cost
+	//, failing to backfill here would silently lose token/cost
 	// attribution for those providers. Normalize result.usage into any missing
 	// token field, never overwriting an explicitly provider-supplied value.
 	const tokenFields = normalizeTokenFieldsFromResult(result, details);
@@ -1396,7 +1368,7 @@ export async function recordLlmCall<T>(
  * preserving any value the caller already supplied in `details`. AI SDK
  * `usage` carries `promptTokens`/`completionTokens` plus the cache variants;
  * older shapes use `input`/`output` aliases. Returns only the fields that were
- * missing, so the caller controls what wins (#17532 token backfill).
+ * missing, so the caller controls what wins.
  */
 function normalizeTokenFieldsFromResult(
 	result: unknown,
@@ -1779,7 +1751,7 @@ export async function spawnWithTrajectoryLink<T>(
  * Bench-eval harnesses, optimizer self-judge calls, etc. register themselves
  * once at module load:
  *
- *   registerTrajectorySource("plugin-action-bench", {excludeFromTraining: true});
+ * registerTrajectorySource("plugin-action-bench", {excludeFromTraining: true});
  *
  * Then any pipeline that reads trajectories before training (the privacy
  * filter / nightly export / on-demand orchestrator) checks

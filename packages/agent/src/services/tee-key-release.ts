@@ -1,13 +1,15 @@
 /**
  * TEE key-release clients: turn a passing attestation into released key
  * material. `LocalTeeKeyReleaseClient` is a hardware-free HMAC KDF for dev and
- * unit tests; `HttpTeeKeyReleaseClient` is the production path that talks to an
- * RA-TLS KMS, binding each request to a fresh ephemeral X25519 key and
+ * unit tests; `HttpTeeKeyReleaseClient` talks to an RA-TLS KMS, binding each
+ * request to a fresh ephemeral X25519 key and
  * `report_data = SHA256(nonce || epk_pub)` so a passively captured quote or
- * wrapped key cannot be replayed. Also defines the
- * `x25519-hkdf-sha256-aes-256-gcm` wrap format plus the `wrapTeeReleaseKey`
- * and unwrap helpers a real KMS adapter reuses. Consumed by the
- * confidential-inference unseal path (`tee-confidential-inference.ts`).
+ * wrapped key cannot be replayed. Every client appraises its OWN freshly
+ * collected evidence locally before contacting the key source; the KMS's
+ * decision is recorded only as the KMS's answer, never as proof of our trust.
+ * Also defines the `x25519-hkdf-sha256-aes-256-gcm` wrap format plus the
+ * `wrapTeeReleaseKey` and unwrap helpers a real KMS adapter reuses. Consumed by
+ * the confidential-inference unseal path (`tee-confidential-inference.ts`).
  */
 import {
   createCipheriv,
@@ -38,7 +40,13 @@ export type TeeKeyReleaseRequest = {
 export type TeeKeyReleaseResult = {
   keyId: string;
   keyMaterialHex: string;
+  /**
+   * This process's appraisal of the evidence it collected for this request,
+   * evaluated locally against the request policy and bound nonce.
+   */
   decision: TeeEvidencePolicyDecision;
+  /** The remote key source's own decision, when it returns one. */
+  keySourceDecision?: TeeEvidencePolicyDecision;
 };
 
 export type TeeKeyReleaseClient = {
@@ -76,6 +84,7 @@ export type HttpTeeKeyReleaseClientConfig = {
   evidenceProvider: TeeReportDataBoundEvidenceProvider;
   fetch?: typeof fetch;
   token?: string;
+  /** Receives the KMS's decision (its answer, not our trust decision). */
   onDecision?: (decision: TeeEvidencePolicyDecision) => void;
   env?: Record<string, string | undefined>;
   /**
@@ -157,6 +166,16 @@ export class HttpTeeKeyReleaseClient implements TeeKeyReleaseClient {
     this.request = config.fetch ?? fetch;
   }
 
+  /** Evidence provider this client binds each release request to. */
+  get attestationProvider(): TeeReportDataBoundEvidenceProvider {
+    return this.config.evidenceProvider;
+  }
+
+  /** True when HTTPS and TLS verification are enforced for the KMS. */
+  get secureTransport(): boolean {
+    return this.config.requireSecureTransport === true;
+  }
+
   async releaseKey(
     request: TeeKeyReleaseRequest,
   ): Promise<TeeKeyReleaseResult> {
@@ -175,6 +194,9 @@ export class HttpTeeKeyReleaseClient implements TeeKeyReleaseClient {
       binding,
     );
     assertEvidenceReportDataMatches(evidence, binding.reportDataHex);
+    // Our own trust decision: appraise the evidence we just collected before
+    // any key source is contacted. A KMS cannot vouch for our attestation.
+    const decision = appraiseOwnEvidence(evidence, policy);
 
     const response = await this.request(
       new URL("/v1/tee/key-release", this.baseUrl),
@@ -199,14 +221,14 @@ export class HttpTeeKeyReleaseClient implements TeeKeyReleaseClient {
       },
     );
     const payload = await readJsonResponse(response);
-    const decision = payload.decision;
-    if (decision) {
-      this.config.onDecision?.(decision);
+    const kmsDecision = payload.decision;
+    if (kmsDecision) {
+      this.config.onDecision?.(kmsDecision);
     }
-    if (!response.ok || !decision?.trusted) {
+    if (!response.ok || kmsDecision?.trusted !== true) {
       throw new Error(
-        `TEE key release rejected evidence: ${
-          decision?.detail ?? decision?.reason ?? response.status
+        `TEE key release was refused by the KMS: ${
+          kmsDecision?.detail ?? kmsDecision?.reason ?? response.status
         }`,
       );
     }
@@ -240,8 +262,26 @@ export class HttpTeeKeyReleaseClient implements TeeKeyReleaseClient {
       keyId: payload.keyId,
       keyMaterialHex,
       decision,
+      keySourceDecision: kmsDecision,
     };
   }
+}
+
+/**
+ * Evaluate freshly collected, request-bound evidence against the request policy
+ * (including the bound nonce). Throws before any key source is contacted.
+ */
+export function appraiseOwnEvidence(
+  evidence: TeeEvidence,
+  policy: TeeEvidencePolicy,
+): TeeEvidencePolicyDecision {
+  const decision = evaluateTeeEvidencePolicy(evidence, policy);
+  if (!decision.trusted || !decision.evidence) {
+    throw new Error(
+      `TEE key release rejected local evidence: ${decision.detail ?? decision.reason}`,
+    );
+  }
+  return decision;
 }
 
 /**
@@ -418,7 +458,7 @@ async function collectEvidenceBoundToReportData(
   };
 }
 
-function assertEvidenceReportDataMatches(
+export function assertEvidenceReportDataMatches(
   evidence: TeeEvidence,
   reportDataHex: string,
 ): void {

@@ -1,40 +1,4 @@
-/**
- * Streaming carry-over guard for the secret-swap / PII-pseudonymization layer
- * (#15256). When either guard is active, {@link ../runtime | AgentRuntime.useModel}
- * used to buffer the whole model stream and run the substitution pipeline once at
- * the end, emitting the entire reply as a single chunk — so a guarded turn had
- * TTFT equal to full generation time. This scanner restores incremental delivery:
- * each raw model chunk is appended to a small carry-over tail, an emit-safe prefix
- * is chosen, that prefix is run through the exact same pipeline the end-of-stream
- * flush used, and only the still-in-progress tail is held back.
- *
- * The safety contract the cut must uphold: a prefix may be emitted only when no
- * sensitive token and no in-progress detector match straddles the cut. A cut that
- * split a known secret value, a PII value/surrogate, a spaced credit card, a
- * BIP-39 mnemonic, a `KEY=`/JSON-field/`Bearer` assignment, or an open PEM/PGP
- * block would emit a raw fragment the buffered path would have masked. {@link
- * GuardedStreamScanner.findSafeCut} therefore holds back (a) a base window sized to
- * the longest known value/surrogate so a partial known value at the tail is never
- * emitted, and (b) any trailing region that matches an in-progress multi-token
- * secret/PII shape. An Authorization line is held from its field-name anchor to
- * the line boundary because its RFC token/auth-param classification cannot be
- * known from a partial chunk. Held text is released as soon as a following token
- * proves the shape complete, or at {@link GuardedStreamScanner.flush} (end of
- * stream), whose held-tail-drop-on-abort behaviour matches the old buffer exactly.
- *
- * Accepted semantic delta vs whole-buffer substitution: streaming cannot
- * retro-redact. A secret whose ONLY detectable form appears late in the reply
- * (e.g. a bare value that becomes detectable only once a later `API_KEY=` names
- * it) no longer cleans an earlier bare occurrence the way whole-buffer split/join
- * did, and a surrogate emitted before a parallel turn-call first learns it stays
- * unrestored on the visible side. This is inherent to any streaming guard; the
- * realistic paths are unaffected because known secrets (character settings) and
- * ingress-detected PII are always in the session before the stream starts.
- *
- * Pathological whitespace-free streams (multi-KB JWTs/URLs) and multi-KB known
- * secrets degrade to holding until a whitespace boundary or flush — i.e. to the
- * old full-buffer behaviour. Correctness over latency; there is no regression.
- */
+/** Incrementally sanitizes streamed output while retaining any suffix that could contain an incomplete secret or PII match. Known values, surrogate tokens, authorization fields, key assignments, and structured secrets must not straddle an emitted boundary. Flush processes the retained tail; cancellation discards it. Streaming cannot redact text already emitted before a later chunk makes its sensitivity detectable. */
 
 import { BIP39_WORD_SET } from "./bip39-wordlist.js";
 import type { PseudonymSession } from "./pii-pseudonymizer.js";
@@ -64,7 +28,7 @@ const NOTHING: GuardedStreamOutput = { safe: "", visible: "" };
  */
 const OPENER_PATTERNS: readonly RegExp[] = [
 	// ENV-style assignment (NAME=… / NAME: …), value still arriving.
-	/[A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\s*(?:[=:]\s*(?:["']?[^\s"'\\]*)?)?$/,
+	/[A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL|SEED[_-]?PHRASE)\s*(?:[=:]\s*(?:["']?[^\s"'\\]*)?)?$/i,
 	// JSON credential field, still open: name seen, optionally `: `, optionally a
 	// string value. Unlike the other openers the value can contain whitespace, so
 	// the hold must persist past the closing quote — through any trailing
@@ -168,7 +132,12 @@ export class GuardedStreamScanner {
 		let safe = raw;
 		if (this.secretSession) safe = this.secretSession.substituteText(safe);
 		if (this.piiSession) safe = this.piiSession.substituteText(safe);
-		const visible = this.piiSession ? this.piiSession.restoreText(safe) : safe;
+		const restoredPii = this.piiSession
+			? this.piiSession.restoreText(safe)
+			: safe;
+		const visible = this.secretSession
+			? this.secretSession.restoreUserReplyText(restoredPii)
+			: restoredPii;
 		return { safe, visible };
 	}
 

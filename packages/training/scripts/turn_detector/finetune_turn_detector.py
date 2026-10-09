@@ -44,10 +44,8 @@ from pathlib import Path
 from typing import Any, Final, Iterable, Mapping
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
 
-from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from eliza_training.training.tokenization import tokenize_with_explicit_limit  # noqa: E402
 
 DEFAULT_REPO_EN: Final[str] = "livekit/turn-detector"
 DEFAULT_REVISION_EN: Final[str] = "v1.2.2-en"
@@ -1103,19 +1101,7 @@ def train_lora(
             "`uv pip install 'transformers[torch]'`",
         ) from exc
 
-    try:
-        from packages.training.scripts.training.optimizer import (
-            build_apollo_mini_optimizer,
-        )
-    except ImportError:
-        # Allow running from a checkout where the parent package isn't
-        # on sys.path — add the repo root manually.
-        repo_root = Path(__file__).resolve().parents[4]
-        if str(repo_root) not in sys.path:
-            sys.path.insert(0, str(repo_root))
-        from packages.training.scripts.training.optimizer import (  # type: ignore[no-redef]
-            build_apollo_mini_optimizer,
-        )
+    from eliza_training.training.optimizer import build_apollo_mini_optimizer
 
     out_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir = out_dir / "checkpoints"

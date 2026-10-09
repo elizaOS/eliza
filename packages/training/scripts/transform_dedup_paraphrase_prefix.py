@@ -11,18 +11,16 @@ gets prepended a SECOND time (same idx → same stable_choice). Result:
 This pass removes any case where any paraphrase appears twice consecutively
 (separated only by sentence whitespace) at the start of a text: field.
 
-Operates in-place on data/final/train_final.jsonl.
+Requires explicit input and output paths; use --in-place to replace the input.
 """
 from __future__ import annotations
 
+from eliza_training.lib.jsonl_transform import transform_cli
+
 import json
-import os
 import re
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "data" / "final" / "train_final.jsonl"
 
 PARAPHRASES = [
     "I can't do that — none of the available tools match the request.",
@@ -126,27 +124,7 @@ def transform_record(rec: dict, stats: dict) -> dict:
 
 
 def main() -> int:
-    if not SRC.exists():
-        print(f"error: {SRC} missing", file=sys.stderr)
-        return 2
-    tmp = SRC.with_suffix(".jsonl.tmp")
-    stats: dict = {"total": 0, "decode_errors": 0, "records_changed": 0}
-    with SRC.open() as fin, tmp.open("w") as fout:
-        for line in fin:
-            stats["total"] += 1
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                stats["decode_errors"] += 1
-                fout.write(line)
-                continue
-            rec = transform_record(rec, stats)
-            fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            if stats["total"] % 200000 == 0:
-                print(f"[{stats['total']}] changed={stats['records_changed']}", file=sys.stderr)
-    os.replace(tmp, SRC)
-    print(json.dumps(stats, indent=2), file=sys.stderr)
-    return 0
+    return transform_cli(lambda rec, _index, stats: transform_record(rec, stats))
 
 
 if __name__ == "__main__":

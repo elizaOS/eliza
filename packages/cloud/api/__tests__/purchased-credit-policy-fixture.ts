@@ -1,5 +1,5 @@
 /** Supplies fresh purchased-credit policy observations for isolated route billing tests; no database or module mocks are installed here. */
-import type { OrganizationQuotaPolicy } from "@/lib/services/organization-quota-policy";
+import type { OrganizationQuotaPolicy } from "@elizaos/cloud-shared/lib/services/organization-quota-policy";
 
 export function purchasedCreditPolicyFixture(): OrganizationQuotaPolicy {
   return {
@@ -46,6 +46,10 @@ export function purchasedCreditPolicyFixture(): OrganizationQuotaPolicy {
       },
       apps: { status: "unavailable", code: "NOT_EXERCISED_BY_BILLING_FIXTURE" },
       storage: {
+        status: "unavailable",
+        code: "NOT_EXERCISED_BY_BILLING_FIXTURE",
+      },
+      apiKeys: {
         status: "unavailable",
         code: "NOT_EXERCISED_BY_BILLING_FIXTURE",
       },

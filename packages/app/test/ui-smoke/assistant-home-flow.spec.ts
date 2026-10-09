@@ -2,9 +2,11 @@
  * Playwright UI-smoke spec for the Assistant Home Flow app flow using the real
  * renderer fixture.
  */
+
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, type Route, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   expectNoPageDiagnostics,
   installDefaultAppRoutes,
@@ -13,15 +15,12 @@ import {
   seedAppStorage,
   UI_SMOKE_CPU_ONLY_HARDWARE,
 } from "./helpers";
+import { installReadyDesktopStatusBridge } from "./helpers/desktop-status-bridge";
 import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 import { seedStewardSession } from "./helpers/test-auth";
 
-const SCREENSHOT_DIR = path.join(
-  process.cwd(),
-  "aesthetic-audit-output",
-  "assistant-home-flow",
-);
+const SCREENSHOT_DIR = testOutputPath("aesthetic-audit", "assistant-home-flow");
 
 const VIEW_FIXTURES = [
   {
@@ -115,6 +114,12 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
   personalRequests: string[];
 }> {
   await installDefaultAppRoutes(page);
+  await page.route("**/api/interactions/composer", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const { activity } = route.request().postDataJSON();
+    expect(typeof activity).toBe("string");
+    await fulfillJson(route, { ok: true, activity });
+  });
   let conversationCreated = false;
   let messageSequence = 0;
   const streamRequests: string[] = [];
@@ -586,124 +591,6 @@ async function seedAssistantFlowStorage(page: Page): Promise<void> {
   });
 }
 
-async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const secureStore = new Map<string, string>();
-    type Bridge = {
-      request?: Record<string, (params?: unknown) => Promise<unknown>>;
-      onMessage?: (
-        messageName: string,
-        listener: (payload: unknown) => void,
-      ) => void;
-      offMessage?: (
-        messageName: string,
-        listener: (payload: unknown) => void,
-      ) => void;
-    };
-    const win = window as Window & { __ELIZA_ELECTROBUN_RPC__?: Bridge };
-    const existing = win.__ELIZA_ELECTROBUN_RPC__;
-    const now = Date.now();
-    const readyStatus = {
-      state: "running",
-      agentName: "Playwright Smoke",
-      model: "ui-smoke",
-      uptime: 60_000,
-      startedAt: now - 60_000,
-      pendingRestart: false,
-      pendingRestartReasons: [],
-      startup: { phase: "running", attempt: 0 },
-    };
-    const readyLaunch = {
-      phase: "ready",
-      agent: {
-        state: "running",
-        port: null,
-        apiBase: null,
-        startedAt: now - 60_000,
-        error: null,
-      },
-      boot: {
-        runtimePhase: "running",
-        pluginsLoaded: 0,
-        pluginsFailed: 0,
-        database: "ok",
-      },
-      auth: { checked: true, required: false },
-      firstRun: { checked: true, complete: true, cloudProvisioned: true },
-      remotes: { seeded: true, requiredStarted: false, errors: [] },
-      localModel: { backgroundDownloadQueued: false, blocking: false },
-      diagnostics: { logPath: "", statusPath: "" },
-      recovery: {
-        canRetry: false,
-        canOpenLogs: false,
-        canCreateBugReport: false,
-      },
-      updatedAt: new Date(now).toISOString(),
-    };
-    const readyBoot = {
-      state: "running",
-      phase: "running",
-      lastError: null,
-      pluginsLoaded: 0,
-      pluginsFailed: 0,
-      database: "ok",
-      agentName: "Playwright Smoke",
-      port: null,
-      startedAt: now - 60_000,
-    };
-    const withReadyStatus = (bridge?: Bridge): Bridge => ({
-      request: {
-        ...(bridge?.request ?? {}),
-        desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
-        desktopRegisterShortcut: async () => ({ success: true }),
-        desktopSetTrayMenu: async () => undefined,
-        secureStoreGet: async ({ kind }: { kind: string }) =>
-          secureStore.has(kind)
-            ? { ok: true, value: secureStore.get(kind) }
-            : { ok: false, reason: "not_found" },
-        secureStoreSet: async ({
-          kind,
-          value,
-        }: {
-          kind: string;
-          value: string;
-        }) => {
-          secureStore.set(kind, value);
-          return { ok: true };
-        },
-        secureStoreDelete: async ({ kind }: { kind: string }) => ({
-          ok: true,
-          deleted: secureStore.delete(kind),
-        }),
-        getAgentStatus: async () => readyStatus,
-        launchProgress: async () => readyLaunch,
-        bootProgress: async () => readyBoot,
-      },
-      onMessage: bridge?.onMessage ?? (() => {}),
-      offMessage: bridge?.offMessage ?? (() => {}),
-    });
-    let currentBridge = withReadyStatus(existing);
-    Object.defineProperty(win, "__ELIZA_ELECTROBUN_RPC__", {
-      configurable: true,
-      get() {
-        return currentBridge;
-      },
-      set(nextBridge: Bridge | undefined) {
-        currentBridge = withReadyStatus(nextBridge);
-      },
-    });
-    localStorage.setItem(
-      "elizaos:active-server",
-      JSON.stringify({
-        id: "local:playwright-smoke",
-        kind: "local",
-        label: "Playwright Smoke",
-        apiBase: window.location.origin,
-      }),
-    );
-  });
-}
-
 async function installChatSpeechRecognitionShim(page: Page): Promise<void> {
   await page.addInitScript(() => {
     type Listener = (event: unknown) => void;
@@ -878,6 +765,16 @@ test.describe("assistant home app flow", () => {
     // visibly committed, preserving the exact fresh-first-run transition.
     const releasePersonalIdentity =
       await installAssistantPersonalElizaRoute(page);
+    await page.route("**/api/v1/user", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      expect(route.request().headers().authorization).toBe(
+        "Bearer assistant-flow-cloud-token",
+      );
+      await fulfillJson(route, {
+        id: "11111111-1111-5111-8111-111111111111",
+        organization_id: "assistant-flow-org",
+      });
+    });
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
     const firstRunOverlay = page.getByTestId("chat-overlay");

@@ -1,17 +1,20 @@
+import { fixtureAgentStatus } from "../fixtures/agent-status";
 /**
  * Shared Playwright helpers for app UI-smoke fixtures, navigation, logging,
  * and assertions.
  */
+
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, type Locator, type Page, type Route } from "@playwright/test";
+import { createZipArchive } from "../../../agent/src/api/zip-utils";
+import { installPersistentSseFixture } from "./helpers/persistent-sse";
 
 const ONE_PX_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
 );
-
-// One real bundled VRM (gzipped glTF) shipped under packages/app/dist/vrms/.
+// One real bundled VRM (gzipped glTF) shipped under packages/app/web-dist/vrms/.
 // The preview server serves the SPA + the real `vrms/eliza-N.vrm.gz` files, but
 // the runtime boot-config it serves has no `vrmAssets`, so `getVrmUrl()` falls
 // back to `bundled-1.vrm.gz` which 404s — the gz-decode of a tiny 404 page then
@@ -25,7 +28,7 @@ function bundledVrmGz(): Buffer | null {
   if (cachedVrmGz !== undefined) return cachedVrmGz;
   const candidates = [
     resolve(process.cwd(), "dist/vrms/eliza-1.vrm.gz"),
-    resolve(process.cwd(), "packages/app/dist/vrms/eliza-1.vrm.gz"),
+    resolve(process.cwd(), "packages/app/web-dist/vrms/eliza-1.vrm.gz"),
     resolve(process.cwd(), "../app/dist/vrms/eliza-1.vrm.gz"),
   ];
   for (const c of candidates) {
@@ -41,7 +44,6 @@ function bundledVrmGz(): Buffer | null {
   cachedVrmGz = null;
   return cachedVrmGz;
 }
-
 function contentTypeForAsset(pathname: string): string {
   if (pathname.endsWith(".svg")) return "image/svg+xml";
   if (pathname.endsWith(".png")) return "image/png";
@@ -51,7 +53,6 @@ function contentTypeForAsset(pathname: string): string {
   if (pathname.endsWith(".ico")) return "image/x-icon";
   return "application/octet-stream";
 }
-
 async function fulfillPublicAsset(route: Route): Promise<boolean> {
   const url = new URL(route.request().url());
   const relativePath = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
@@ -70,39 +71,39 @@ async function fulfillPublicAsset(route: Route): Promise<boolean> {
   });
   return true;
 }
-
-const ROOT_TIMEOUT_MS = 20_000;
-const NAV_TIMEOUT_MS = 12_000;
+const ROOT_TIMEOUT_MS = 20000;
+const NAV_TIMEOUT_MS = 12000;
 // Ready checks only confirm route-level render markers after navigation.
 // Full bootstrap waits use the surrounding test timeout and Playwright defaults.
-const READY_CHECK_TIMEOUT_MS = 15_000;
-const STARTUP_SETTLED_TIMEOUT_MS = 45_000;
+const READY_CHECK_TIMEOUT_MS = 15000;
+const STARTUP_SETTLED_TIMEOUT_MS = 45000;
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const STORAGE_SEEDED_KEY = "eliza:ui-smoke-storage-seeded";
 const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";
 const RENDER_TELEMETRY_ERRORS_KEY = "__ELIZA_RENDER_TELEMETRY_ERRORS__";
 const RENDER_TELEMETRY_INSTALLED_KEY =
   "__ELIZA_RENDER_TELEMETRY_WATCHER_INSTALLED__";
-
 const renderTelemetryGuardedPages = new WeakSet<Page>();
 const browserDiagnosticIssuesByPage = new WeakMap<Page, string[]>();
-
 type ReadyCheck =
-  | { selector: string; text?: never }
-  | { selector?: never; text: string };
-
+  | {
+      selector: string;
+      text?: never;
+    }
+  | {
+      selector?: never;
+      text: string;
+    };
 type EvaluatedReadyCheck = {
   check: ReadyCheck;
   passed: boolean;
 };
-
 type RenderTelemetryIssue = {
   name?: string;
   renderCount?: number;
   windowMs?: number;
   severity?: string;
 };
-
 type SmokeNote = {
   id: string;
   title: string;
@@ -111,11 +112,9 @@ type SmokeNote = {
   createdAt: string;
   updatedAt: string;
 };
-
 function isSmokeRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-
 function smokeString(
   record: Record<string, unknown>,
   key: string,
@@ -123,17 +122,14 @@ function smokeString(
 ): string {
   return typeof record[key] === "string" ? record[key] : fallback;
 }
-
 function issueMessage(error: Error): string {
   return error.stack || error.message || String(error);
 }
-
 function shouldIgnoreRequestFailure(url: string, failureText: string): boolean {
   if (failureText.includes("net::ERR_ABORTED")) return true;
   if (url.startsWith("data:") || url.startsWith("blob:")) return true;
   return false;
 }
-
 // Best-effort static probes whose non-2xx answer is the DESIGNED zero-state,
 // not a diagnostic error:
 //   - Avatar / background EXISTENCE probes: `hasCustomVrm` / `hasCustomBackground`
@@ -149,25 +145,27 @@ function isOptionalAssetProbeUrl(url: string): boolean {
   if (/\/build-info\.json(\?|$)/.test(url)) return true;
   return /\/api\/avatar\/(vrm|background)(\?|$)/.test(url);
 }
-
 function shouldIgnoreHttpError(url: string, status: number): boolean {
   if (status < 400) return true;
   if (url.startsWith("data:") || url.startsWith("blob:")) return true;
   if (isOptionalAssetProbeUrl(url)) return true;
   return false;
 }
-
 export function installPageDiagnosticsGuard(page: Page): void {
   if (browserDiagnosticIssuesByPage.has(page)) return;
-
   const issues: string[] = [];
   browserDiagnosticIssuesByPage.set(page, issues);
-
   page.on("pageerror", (error) => {
     issues.push(`pageerror: ${issueMessage(error)}`);
   });
-
   page.on("console", (message) => {
+    if (
+      message.type() === "warning" &&
+      message.text().includes("Failed to load @elizaos/")
+    ) {
+      issues.push(`module-load: ${message.text()}`);
+      return;
+    }
     if (message.type() !== "error") return;
     // The browser logs an automatic "Failed to load resource" console error for
     // every non-2xx response; its text carries no URL — the resource URL is the
@@ -177,14 +175,12 @@ export function installPageDiagnosticsGuard(page: Page): void {
     if (isOptionalAssetProbeUrl(message.location().url ?? "")) return;
     issues.push(`console.error: ${message.text()}`);
   });
-
   page.on("requestfailed", (request) => {
     const failureText = request.failure()?.errorText ?? "unknown";
     const url = request.url();
     if (shouldIgnoreRequestFailure(url, failureText)) return;
     issues.push(`requestfailed: ${request.method()} ${url} ${failureText}`);
   });
-
   page.on("response", (response) => {
     const status = response.status();
     const url = response.url();
@@ -192,7 +188,6 @@ export function installPageDiagnosticsGuard(page: Page): void {
     issues.push(`http.${status}: ${response.request().method()} ${url}`);
   });
 }
-
 export async function expectNoPageDiagnostics(
   page: Page,
   label: string,
@@ -200,14 +195,9 @@ export async function expectNoPageDiagnostics(
   const issues = browserDiagnosticIssuesByPage.get(page) ?? [];
   expect(
     issues,
-    `[playwright-ui-smoke] ${label}: expected no browser console.error/pageerror/requestfailed diagnostics; actual=${JSON.stringify(
-      issues,
-      null,
-      2,
-    )}`,
+    `[playwright-ui-smoke] ${label}: expected no browser console.error/pageerror/requestfailed diagnostics; actual=${JSON.stringify(issues, null, 2)}`,
   ).toEqual([]);
 }
-
 /**
  * Fault-injection variant of {@link expectNoPageDiagnostics}: a spec that
  * deliberately makes the backend fail (e.g. a 500 on POST /api/first-run to
@@ -225,14 +215,9 @@ export async function expectOnlyAllowedPageDiagnostics(
   );
   expect(
     unexpected,
-    `[playwright-ui-smoke] ${label}: diagnostics beyond the injected fault; all=${JSON.stringify(
-      issues,
-      null,
-      2,
-    )}`,
+    `[playwright-ui-smoke] ${label}: diagnostics beyond the injected fault; all=${JSON.stringify(issues, null, 2)}`,
   ).toEqual([]);
 }
-
 const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Basics", "identity"],
   ["Models & Providers", "ai-model"],
@@ -259,7 +244,6 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Desktop app", "desktop-integration"],
   ["Shortcuts", "shortcuts"],
 ]);
-
 const DEFAULT_APP_STORAGE: Record<string, string> = {
   "eliza:first-run-complete": "1",
   "eliza:setup:step": "activate",
@@ -270,13 +254,11 @@ const DEFAULT_APP_STORAGE: Record<string, string> = {
     label: "This device",
   }),
 };
-
 const SMOKE_AGENT = {
   id: "ui-smoke-agent",
   name: "Playwright Smoke",
   status: "running",
 } as const;
-
 export const UI_SMOKE_CPU_ONLY_HARDWARE = {
   totalRamGb: 8,
   freeRamGb: 4,
@@ -288,12 +270,22 @@ export const UI_SMOKE_CPU_ONLY_HARDWARE = {
   recommendedBucket: "small",
   source: "os-fallback",
 } as const;
-
 export async function seedAppStorage(
   page: Page,
   overrides: Record<string, string> = {},
 ): Promise<void> {
   const storage = { ...DEFAULT_APP_STORAGE, ...overrides };
+  if (!("elizaos:agent-profiles" in storage)) {
+    const profile = {
+      createdAt: Date.now(),
+      ...JSON.parse(storage["elizaos:active-server"]),
+    };
+    storage["elizaos:agent-profiles"] = JSON.stringify({
+      version: 1,
+      activeProfileId: profile.id,
+      profiles: [profile],
+    });
+  }
   await page.addInitScript(
     ({ entries, seededKey }) => {
       try {
@@ -311,9 +303,7 @@ export async function seedAppStorage(
     { entries: storage, seededKey: STORAGE_SEEDED_KEY },
   );
 }
-
 const firstRunSeededPages = new WeakSet<Page>();
-
 /**
  * Seed the shell-reserved `eliza:first-run-complete` flag for the NEXT full page
  * load. That key sits in the shell's reserved `eliza:` namespace, which the
@@ -343,7 +333,6 @@ export async function seedFirstRunCompleteBeforeLoad(
     }
   });
 }
-
 export async function hideChatOverlay(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const install = () => {
@@ -356,20 +345,16 @@ export async function hideChatOverlay(page: Page): Promise<void> {
         '[data-testid="chat-overlay"] { display: none !important; }';
       (document.head ?? document.documentElement).appendChild(style);
     };
-
     if (document.head || document.documentElement) {
       install();
       return;
     }
-
     document.addEventListener("DOMContentLoaded", install, { once: true });
   });
 }
-
 export async function installRenderTelemetryGuard(page: Page): Promise<void> {
   if (renderTelemetryGuardedPages.has(page)) return;
   renderTelemetryGuardedPages.add(page);
-
   await page.addInitScript(
     ({ eventName, errorsKey, installedKey }) => {
       const win = window as Window &
@@ -395,7 +380,6 @@ export async function installRenderTelemetryGuard(page: Page): Promise<void> {
     },
   );
 }
-
 export async function expectNoRenderTelemetryErrors(
   page: Page,
   label: string,
@@ -415,15 +399,12 @@ export async function expectNoRenderTelemetryErrors(
     `[playwright-ui-smoke] ${label}: render telemetry errors detected${summary ? ` (${summary})` : ""}`,
   ).toHaveLength(0);
 }
-
 async function expectRootReady(page: Page): Promise<void> {
   await expect(page.locator("#root")).toBeVisible({ timeout: ROOT_TIMEOUT_MS });
 }
-
 async function expectNoFirstRunRedirect(page: Page): Promise<void> {
   await expect(page).not.toHaveURL(/first-run/, { timeout: NAV_TIMEOUT_MS });
 }
-
 async function expectStartupSettled(page: Page): Promise<void> {
   // DOMContentLoaded includes the static preboot shell. Its brand copy is not
   // route readiness; wait until the renderer has taken ownership of #root.
@@ -437,7 +418,6 @@ async function expectStartupSettled(page: Page): Promise<void> {
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });
 }
-
 function isRootTargetPath(targetPath: string): boolean {
   try {
     const url = new URL(targetPath, "http://ui-smoke.local");
@@ -446,7 +426,6 @@ function isRootTargetPath(targetPath: string): boolean {
     return targetPath === "/" || targetPath.startsWith("/?");
   }
 }
-
 function isFirstRunTargetPath(targetPath: string): boolean {
   try {
     const url = new URL(targetPath, "http://ui-smoke.local");
@@ -460,11 +439,9 @@ function isFirstRunTargetPath(targetPath: string): boolean {
     );
   }
 }
-
 interface OpenAppPathOptions {
   allowOnboardingToast?: boolean;
 }
-
 async function expectMainShellReadyForRoute(
   page: Page,
   targetPath: string,
@@ -485,7 +462,6 @@ async function expectMainShellReadyForRoute(
     });
   }
 }
-
 async function replayNavigationAfterStartup(page: Page): Promise<void> {
   await page.evaluate(() => {
     const isAppWindowRoute = new URLSearchParams(window.location.search).get(
@@ -498,7 +474,6 @@ async function replayNavigationAfterStartup(page: Page): Promise<void> {
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
 }
-
 export async function openAppPath(
   page: Page,
   targetPath: string,
@@ -515,41 +490,37 @@ export async function openAppPath(
   await expectMainShellReadyForRoute(page, targetPath, options);
   await expectNoRenderTelemetryErrors(page, targetPath);
 }
-
 export async function readLocalStorage(
   page: Page,
   key: string,
 ): Promise<string | null> {
   return page.evaluate((storageKey) => localStorage.getItem(storageKey), key);
 }
-
 export async function openSettingsSection(
   page: Page,
   sectionName: string | RegExp,
 ): Promise<void> {
   const settingsShell = page.getByTestId("settings-shell");
-  if (!(await locatorVisible(settingsShell, 2_000))) {
+  if (!(await locatorVisible(settingsShell, 2000))) {
     await replayNavigationAfterStartup(page);
   }
-  if (!(await locatorVisible(settingsShell, 2_000))) {
+  if (!(await locatorVisible(settingsShell, 2000))) {
     await openAppPath(page, "/settings");
   }
   await expect(settingsShell).toBeVisible({ timeout: READY_CHECK_TIMEOUT_MS });
-
   const hubSectionButton = settingsShell
     .getByRole("button", { name: sectionName })
     .filter({ visible: true })
     .first();
-  if (await locatorVisible(hubSectionButton, 1_000)) {
+  if (await locatorVisible(hubSectionButton, 1000)) {
     await hubSectionButton.click();
     return;
   }
-
   const sectionBackButton = settingsShell
     .getByRole("button", { name: /^Back to Settings$/ })
     .filter({ visible: true })
     .first();
-  if (await locatorVisible(sectionBackButton, 1_000)) {
+  if (await locatorVisible(sectionBackButton, 1000)) {
     await sectionBackButton.click();
     const nextHubSectionButton = settingsShell
       .getByRole("button", { name: sectionName })
@@ -560,18 +531,16 @@ export async function openSettingsSection(
       return;
     }
   }
-
   const settingsNav = page.getByRole("navigation", {
     name: /^Settings(?: sections)?$/,
   });
   const sectionButton = settingsNav
     .getByRole("button", { name: sectionName })
     .filter({ visible: true });
-  if (await locatorVisible(sectionButton, 1_000)) {
+  if (await locatorVisible(sectionButton, 1000)) {
     await sectionButton.click();
     return;
   }
-
   const sectionId = settingsSectionIdFromLabel(sectionName);
   if (sectionId) {
     await page.evaluate((id) => {
@@ -580,8 +549,6 @@ export async function openSettingsSection(
       window.history.replaceState(null, "", nextUrl);
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     }, sectionId);
-    // Compact sections no longer repeat an h1. Bind readiness to the routed
-    // section body and the canonical selected-section marker instead.
     await expect(settingsShell.locator(`[id="${sectionId}"]`)).toBeVisible({
       timeout: READY_CHECK_TIMEOUT_MS,
     });
@@ -590,7 +557,6 @@ export async function openSettingsSection(
     ).toHaveAttribute("aria-current", "page");
     return;
   }
-
   const sectionHeading = settingsShell.getByText(sectionName).filter({
     visible: true,
   });
@@ -601,7 +567,6 @@ export async function openSettingsSection(
     timeout: READY_CHECK_TIMEOUT_MS,
   });
 }
-
 function settingsSectionIdFromLabel(
   sectionName: string | RegExp,
 ): string | null {
@@ -613,7 +578,6 @@ function settingsSectionIdFromLabel(
   }
   return null;
 }
-
 async function locatorVisible(
   locator: Locator,
   timeoutMs: number = READY_CHECK_TIMEOUT_MS,
@@ -625,14 +589,12 @@ async function locatorVisible(
     return false;
   }
 }
-
 function formatReadyCheck(check: ReadyCheck): string {
   if ("selector" in check) {
     return `selector=${check.selector}`;
   }
   return `text=${JSON.stringify(check.text)}`;
 }
-
 function readyChecksPassed(
   results: EvaluatedReadyCheck[],
   mode: "any" | "all",
@@ -642,7 +604,6 @@ function readyChecksPassed(
   }
   return results.some((result) => result.passed);
 }
-
 async function evaluateReadyChecks(
   page: Page,
   checks: readonly ReadyCheck[],
@@ -653,7 +614,6 @@ async function evaluateReadyChecks(
   results: EvaluatedReadyCheck[];
 }> {
   const results: EvaluatedReadyCheck[] = [];
-
   for (const check of checks) {
     if ("selector" in check) {
       const result = {
@@ -681,13 +641,11 @@ async function evaluateReadyChecks(
       };
     }
   }
-
   return {
     passed: readyChecksPassed(results, mode),
     results,
   };
 }
-
 export async function assertReadyChecks(
   page: Page,
   label: string,
@@ -706,13 +664,11 @@ export async function assertReadyChecks(
         `${result.passed ? "pass" : "fail"}:${formatReadyCheck(result.check)}`,
     )
     .join(", ");
-
   expect(
     evaluation.passed,
     `[playwright-ui-smoke] ${label}: ready checks failed (${summary})`,
   ).toBe(true);
 }
-
 function emptyWalletMarketSource(providerId: "coingecko" | "polymarket") {
   return {
     providerId,
@@ -726,7 +682,6 @@ function emptyWalletMarketSource(providerId: "coingecko" | "polymarket") {
     error: null,
   };
 }
-
 function smokeWalletMarketOverview() {
   const availableSource = (providerId: "coingecko" | "polymarket") => ({
     ...emptyWalletMarketSource(providerId),
@@ -765,7 +720,6 @@ function smokeWalletMarketOverview() {
     predictions: [],
   };
 }
-
 function emptyWalletTradingProfile(url: URL) {
   return {
     window: url.searchParams.get("window") ?? "30d",
@@ -790,7 +744,6 @@ function emptyWalletTradingProfile(url: URL) {
     recentSwaps: [],
   };
 }
-
 function smokeWalletBalances() {
   return {
     evm: {
@@ -825,7 +778,6 @@ function smokeWalletBalances() {
     },
   };
 }
-
 function smokeWalletConfig() {
   return {
     configured: true,
@@ -862,7 +814,6 @@ function smokeWalletConfig() {
     warnings: [],
   };
 }
-
 function smokeWalletNfts() {
   return {
     evm: [
@@ -901,7 +852,6 @@ function smokeWalletNfts() {
     },
   };
 }
-
 const EMPTY_LIFEOPS_OVERVIEW_SUMMARY = {
   activeOccurrenceCount: 0,
   overdueOccurrenceCount: 0,
@@ -909,7 +859,6 @@ const EMPTY_LIFEOPS_OVERVIEW_SUMMARY = {
   activeReminderCount: 0,
   activeGoalCount: 0,
 };
-
 // Valid populated DTOs for the three /api/lifeops/sleep/* endpoints so the
 // decomposed HealthView lands on its `health-populated` branch (latest night,
 // regularity, baseline) instead of the empty/connect-a-source branch. Shapes
@@ -939,7 +888,6 @@ function populatedSleepHistory(windowDays: number) {
     includeNaps: true,
   };
 }
-
 function populatedSleepRegularity(windowDays: number) {
   return {
     sri: 78.4,
@@ -951,7 +899,6 @@ function populatedSleepRegularity(windowDays: number) {
     windowDays,
   };
 }
-
 function populatedSleepBaseline(windowDays: number) {
   return {
     medianBedtimeLocalHour: 23.5,
@@ -963,80 +910,14 @@ function populatedSleepBaseline(windowDays: number) {
     windowDays,
   };
 }
-
 function sleepWindowDaysFromUrl(rawUrl: string): number {
   const parsed = Number(new URL(rawUrl).searchParams.get("windowDays"));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
 }
-
-// Valid populated DTOs for the /api/lifeops/money/* endpoints the decomposed
-// FinancesView fetches, so `finances:gui` renders its `finances-populated`
-// branch (a connected source + balance + transactions + recurring) instead of
-// the connect-a-source empty state.
-function populatedMoneyDashboard() {
-  return {
-    spending: {
-      windowDays: 30,
-      fromDate: "2026-05-18",
-      toDate: "2026-06-17",
-      totalSpendUsd: 1234.5,
-      totalIncomeUsd: 4000,
-      netUsd: 2765.5,
-      transactionCount: 12,
-    },
-    generatedAt: "2026-06-17T12:00:00.000Z",
-  };
-}
-function populatedMoneySources() {
-  return {
-    sources: [
-      {
-        id: "src-1",
-        kind: "plaid",
-        label: "Checking",
-        institution: "Acme Bank",
-        status: "active",
-      },
-    ],
-  };
-}
-function populatedMoneyTransactions() {
-  return {
-    transactions: [
-      {
-        id: "tx-1",
-        postedAt: "2026-06-16T09:00:00.000Z",
-        amountUsd: 42.5,
-        direction: "debit",
-        merchantDisplay: "Coffee Bar",
-        merchantNormalized: "coffee-bar",
-        merchantRaw: "COFFEE BAR #12",
-        description: "Latte",
-        category: "dining",
-        currency: "USD",
-      },
-    ],
-  };
-}
-function populatedMoneyRecurring() {
-  return {
-    charges: [
-      {
-        merchantNormalized: "netflix",
-        merchantDisplay: "Netflix",
-        cadence: "monthly",
-        averageAmountUsd: 15.99,
-        nextExpectedAt: "2026-07-01T00:00:00.000Z",
-        category: "entertainment",
-      },
-    ],
-  };
-}
-
 // Valid populated LifeOpsInbox for the /api/lifeops/inbox endpoint the decomposed
 // InboxView fetches, so `inbox:gui` renders its `inbox-populated` branch (channel
 // groups + triage rows) instead of the connect-a-channel / inbox-zero empty
-// state. Shape mirrors LifeOpsInbox / LifeOpsInboxMessage from @elizaos/shared:
+// state. Shape mirrors LifeOpsInbox / LifeOpsInboxMessage from @elizaos/core:
 // a flat `messages` list, per-channel `channelCounts`, and `fetchedAt`. When the
 // request carries a `channels` filter, the messages are narrowed to match so the
 // view's server-side channel-filter interaction renders consistently.
@@ -1104,13 +985,12 @@ function populatedInbox(url: URL) {
     ],
   };
 }
-
 // Valid populated goals payload for the /api/lifeops/goals endpoint the
 // decomposed GoalsView fetches, so `goals:gui` renders its `goals-populated`
 // branch (status groups + goal rows) instead of the set-a-goal empty state.
 // Shape mirrors the PA route response { goals: LifeOpsGoalRecord[] } where each
 // record is { goal: LifeOpsGoalDefinition; links: LifeOpsGoalLink[] } from
-// @elizaos/shared.
+// @elizaos/core.
 function populatedGoals() {
   return {
     goals: [
@@ -1168,7 +1048,6 @@ function populatedGoals() {
     ],
   };
 }
-
 // Valid populated payloads for the /api/lifeops/entities + /api/lifeops/relationships
 // endpoints the RelationshipsView fetches, so `relationships:gui` renders its
 // `relationships-populated` branch (entity cards + their outbound edges) instead
@@ -1265,7 +1144,6 @@ function populatedRelationships() {
     ],
   };
 }
-
 // Valid populated payload for the /api/lifeops/todos endpoint the decomposed
 // TodosView fetches, so `todos:gui` renders its `todos-populated` branch (the
 // Today / Upcoming / Someday lanes) instead of the add-a-todo empty state.
@@ -1298,12 +1176,11 @@ function populatedTodos() {
     ],
   };
 }
-
 // Valid populated DTOs for the /api/documents* endpoints the decomposed
 // KnowledgeDocumentsView fetches, so `documents:gui` renders its `documents-populated`
 // branch (a document row + stats line) instead of the empty/upload-prompt
 // state. Shapes mirror the PresentedDocument + stats responses from
-// plugin-documents/src/routes.ts.
+// plugin-knowledge/src/routes.ts.
 function populatedDocumentsList() {
   return {
     ok: true,
@@ -1352,7 +1229,6 @@ function populatedDocumentsSearch(url: URL) {
     count: query ? 1 : 0,
   };
 }
-
 // Valid empty-state SelfControlStatus (engine available, no active block) so the
 // decomposed FocusView lands on its `focus-empty` branch ("No active focus
 // session.") instead of the unavailable/disconnected branch.
@@ -1379,7 +1255,6 @@ function emptySelfControlStatus() {
     elevationPromptMethod: "pkexec",
   };
 }
-
 function emptyLifeOpsOverview() {
   const section = {
     occurrences: [],
@@ -1397,7 +1272,6 @@ function emptyLifeOpsOverview() {
     schedule: null,
   };
 }
-
 function emptyLifeOpsSocialSummary(url: URL) {
   return {
     since: url.searchParams.get("since") ?? SMOKE_GENERATED_AT,
@@ -1419,7 +1293,6 @@ function emptyLifeOpsSocialSummary(url: URL) {
     fetchedAt: SMOKE_GENERATED_AT,
   };
 }
-
 function emptyStewardStatus() {
   return {
     configured: true,
@@ -1438,7 +1311,6 @@ function emptyStewardStatus() {
     vaultHealth: "ok",
   };
 }
-
 function smokeStewardTxRecord(
   id: string,
   status:
@@ -1493,7 +1365,6 @@ function smokeStewardTxRecord(
       status === "confirmed" ? "2026-01-01T00:02:00.000Z" : undefined,
   };
 }
-
 function smokeStewardPendingApprovals() {
   return [
     {
@@ -1514,7 +1385,6 @@ function smokeStewardPendingApprovals() {
     },
   ];
 }
-
 function smokeStewardHistoryRecords() {
   return [
     smokeStewardTxRecord("tx-smoke-confirmed", "confirmed", {
@@ -1529,7 +1399,6 @@ function smokeStewardHistoryRecords() {
     }),
   ];
 }
-
 const smokeVectorRows = [
   {
     id: "memory-smoke-1",
@@ -1542,7 +1411,6 @@ const smokeVectorRows = [
     dim_384: "[0.1,0.2,0.3]",
   },
 ];
-
 function smokeDatabaseQuery(sql: string) {
   const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
   if (normalized.includes("information_schema.columns")) {
@@ -1576,7 +1444,6 @@ function smokeDatabaseQuery(sql: string) {
   }
   return { rows: [], rowCount: 0 };
 }
-
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
   // The UI-smoke server serves a production renderer from a same-origin
@@ -1586,17 +1453,20 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   // app resolves branding while its entry module is evaluating.
   await page.addInitScript(() => {
     const host = window as typeof window & {
-      __ELIZA_APP_API_BASE__?: string;
+      __ELIZAOS_APP_BOOT_CONFIG__?: Record<string, unknown>;
     };
-    host.__ELIZA_APP_API_BASE__ = window.location.origin;
+    host.__ELIZAOS_APP_BOOT_CONFIG__ = {
+      ...host.__ELIZAOS_APP_BOOT_CONFIG__,
+      apiBase: window.location.origin,
+    };
   });
-
   let notesRevision = 4;
+  // Schema 2 keeps the authored title/body separator in the body remainder.
   let smokeNotes: SmokeNote[] = [
     {
       id: "note-launch",
       title: "Launch checklist",
-      body: "Cloud agent, phone, and deck are ready.",
+      body: "\nCloud agent, phone, and deck are ready.",
       color: "yellow",
       createdAt: SMOKE_GENERATED_AT,
       updatedAt: SMOKE_GENERATED_AT,
@@ -1604,7 +1474,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     {
       id: "note-follow-up",
       title: "Follow up",
-      body: "Share the demo recording with the team.",
+      body: "\nShare the demo recording with the team.",
       color: "green",
       createdAt: SMOKE_GENERATED_AT,
       updatedAt: SMOKE_GENERATED_AT,
@@ -1614,7 +1484,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     revision: notesRevision,
     notes: smokeNotes,
   });
-
   // Answer with a stamp that carries NO commit/label/builtAt, so the BuildBadge
   // (#14174) — whose toLabel() needs one of those to produce a label — renders
   // nothing. A 200 keeps the browser from logging a build-info.json 404 (which
@@ -1637,12 +1506,10 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route(/\/(?:brand|app-heroes)\//, async (route) => {
     if (await fulfillPublicAsset(route)) return;
     await route.fallback();
   });
-
   // VRM assets (vrms/<slug>.vrm.gz + vrms/previews|backgrounds/<slug>.png) —
   // the preview server doesn't carry the runtime boot-config's vrmAssets, so
   // resolveAppAssetUrl(`vrms/...`) 404s. Serve a real bundled VRM (so the
@@ -1674,7 +1541,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     }
     await route.fallback();
   });
-
   await page.route(
     "https://raw.githubusercontent.com/trustwallet/**",
     async (route) => {
@@ -1689,7 +1555,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       await route.fallback();
     },
   );
-
   await page.route(/^https:\/\/ipapi\.co\/json\/?(?:\?.*)?$/, async (route) => {
     await route.fulfill({
       status: 200,
@@ -1702,7 +1567,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("https://api.open-meteo.com/**", async (route) => {
     await route.fulfill({
       status: 200,
@@ -1716,7 +1580,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   // Weather IP-fallback coordinates (useWeather → GET /api/location/approximate,
   // #15183): fires on every home load when geolocation permission is absent —
   // always, in this harness. The zero-key smoke stack returns 501, which the
@@ -1738,7 +1601,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/health", async (route) => {
     await route.fulfill({
       status: 200,
@@ -1746,7 +1608,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ ok: true }),
     });
   });
-
   await page.route("**/api/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1755,16 +1616,14 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        state: "running",
-        agentName: "Playwright Smoke",
-        model: "ui-smoke",
-        startedAt: Date.parse(SMOKE_GENERATED_AT),
-        uptime: 60_000,
-      }),
+      body: JSON.stringify(
+        fixtureAgentStatus({
+          startedAt: Date.parse(SMOKE_GENERATED_AT),
+          uptime: 60000,
+        }),
+      ),
     });
   });
-
   await page.route("**/api/local-inference/device/stream**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1776,7 +1635,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: "",
     });
   });
-
   // BrowserWorkspaceView reads the persisted Agent Browser session list on
   // mount. A fresh smoke fixture has no sessions; model that designed-empty
   // state explicitly so the all-views audit reviews the browser view rather
@@ -1792,7 +1650,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ sessions: [] }),
     });
   });
-
   await page.route("**/api/notes/state", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1807,7 +1664,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route(/\/api\/views\/notes\/interact$/, async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
@@ -1824,9 +1680,8 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     }
     const params = isSmokeRecord(payload.params) ? payload.params : {};
     const now = new Date(
-      Date.parse(SMOKE_GENERATED_AT) + (notesRevision + 1) * 1_000,
+      Date.parse(SMOKE_GENERATED_AT) + (notesRevision + 1) * 1000,
     ).toISOString();
-
     if (payload.capability === "create-note") {
       smokeNotes = [
         {
@@ -1867,7 +1722,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       });
       return;
     }
-
     notesRevision += 1;
     await route.fulfill({
       status: 200,
@@ -1883,7 +1737,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   // The Transcripts view (client.listTranscripts) hits this on mount; the
   // keyless loopback stack answers 501 for unimplemented endpoints, which surface
   // as console errors in the stricter app-window smoke. Serve an empty list so
@@ -1899,7 +1752,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ transcripts: [] }),
     });
   });
-
   await page.route("**/api/runtime/mode", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1916,7 +1768,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   // The home composer probes the effective model route before deciding whether
   // local text-model readiness applies (useHomeModelStatus). The keyless smoke
   // stack answers 501, which the diagnostics guard treats as a failure. A fresh
@@ -1935,7 +1786,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   // Slash-command catalog (chat composer) + custom-actions list — both are
   // shell-level GETs on the chat/home surface. The booted zero-key smoke stack
   // returns 501 (Not Implemented) for them, which the diagnostics guard treats
@@ -1958,7 +1808,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/custom-actions", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1970,7 +1819,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ actions: [] }),
     });
   });
-
   // Notifications poller — another shell-level GET on every surface. The zero-key
   // smoke stack returns 501 for it; a fresh agent simply has no notifications, so
   // an empty list matches real zero-state and keeps the diagnostics guard clean.
@@ -2008,7 +1856,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ notifications: [], unreadCount: 0 }),
     });
   });
-
   // Activity-feed widget poller — a shell-level GET on the home/chat surface that
   // sits behind every view. The zero-key smoke stack returns 501; a fresh agent
   // has no activity, so the canonical empty feed keeps the diagnostics guard clean.
@@ -2023,7 +1870,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ items: [], total: 0 }),
     });
   });
-
   // Relationship merge-candidates poller — another shell-level GET. The zero-key
   // smoke stack returns 501; a fresh agent has no candidate merges, so the empty
   // `{ data: [] }` shape matches real zero-state and keeps diagnostics clean.
@@ -2038,7 +1884,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ data: [] }),
     });
   });
-
   // LifeOps scheduled-tasks poller — a shell/home-surface GET behind the lifeops
   // widget that sits under many views. The zero-key smoke stack returns 501; a
   // fresh agent has no scheduled tasks, so the canonical empty list matches real
@@ -2054,7 +1899,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ scheduledTasks: [], tasks: [] }),
     });
   });
-
   // Files view poller — `GET /api/files` lists stored files (files-routes.ts);
   // the zero-key smoke stack returns 501. A fresh agent has no stored files, so
   // the canonical empty list matches real zero-state and keeps diagnostics clean.
@@ -2069,7 +1913,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ files: [] }),
     });
   });
-
   // Avatar / background EXISTENCE probes — `hasCustomVrm` / `hasCustomBackground`
   // do a HEAD (with `allowNonOk`) and treat any non-ok as "no custom asset"
   // (falls back to the default). The zero-key smoke stack answers 501 — a 5xx
@@ -2090,7 +1933,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       });
     });
   }
-
   // Approval/needs-attention poller — shell-level GET on the home surface. The
   // zero-key smoke stack has no approval queue, so return the canonical empty
   // pending-actions shape instead of letting the fallback server emit a 501.
@@ -2113,7 +1955,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/first-run/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2125,7 +1966,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ complete: true, cloudProvisioned: true }),
     });
   });
-
   await page.route("**/api/config", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2146,7 +1986,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/backups**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -2188,7 +2027,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     }
     await route.fallback();
   });
-
   await page.route("**/api/asr/local-inference/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2200,7 +2038,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ ready: false }),
     });
   });
-
   await page.route("**/api/database/tables", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2217,21 +2054,21 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/database/query", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
       return;
     }
     const rawBody = route.request().postData() ?? "{}";
-    const body = JSON.parse(rawBody) as { sql?: string };
+    const body = JSON.parse(rawBody) as {
+      sql?: string;
+    };
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(smokeDatabaseQuery(body.sql ?? "")),
     });
   });
-
   await page.route("**/api/wallet/config", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2243,7 +2080,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(smokeWalletConfig()),
     });
   });
-
   await page.route("**/api/wallet/addresses", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2258,7 +2094,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/wallet/balances", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2270,7 +2105,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(smokeWalletBalances()),
     });
   });
-
   await page.route("**/api/wallet/nfts", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2282,7 +2116,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(smokeWalletNfts()),
     });
   });
-
   const orchestratorUsage = {
     inputTokens: 0,
     outputTokens: 0,
@@ -2307,7 +2140,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ providers: [] }),
     });
   });
-
   await page.route("**/api/orchestrator/accounts**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2329,7 +2161,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(body),
     });
   });
-
   await page.route("**/api/orchestrator/rooms", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2341,7 +2172,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ rooms: [] }),
     });
   });
-
   await page.route("**/api/orchestrator/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2373,7 +2203,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/orchestrator/tasks**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -2422,12 +2251,11 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     }
     await route.fallback();
   });
-
   // Orchestrator task-progress rail (orchestrator-task-widget) — polls a compact
   // snapshot (`GET /api/orchestrator/widgets`) and subscribes to its SSE stream
   // (`/widgets/stream`) wherever it mounts. The Node-only agent-orchestrator
-  // plugin is absent from the keyless smoke stack, so these routes answer 501
-  // exactly like /orchestrator/status and /tasks above; a fresh agent has no
+  // plugin is absent from the keyless smoke stack. A persistent HTTP fixture
+  // owns the SSE connection just as the JSON fixtures own status/tasks; a fresh agent has no
   // orchestrator tasks, so the canonical empty snapshot matches real zero-state
   // and keeps the diagnostics guard clean.
   const emptyOrchestratorWidgetSnapshot = {
@@ -2442,17 +2270,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       return;
     }
     const pathname = new URL(route.request().url()).pathname;
-    if (pathname === "/api/orchestrator/widgets/stream") {
-      await route.fulfill({
-        status: 200,
-        contentType: "text/event-stream",
-        headers: { "cache-control": "no-cache, no-transform" },
-        body: `event: snapshot\ndata: ${JSON.stringify(
-          emptyOrchestratorWidgetSnapshot,
-        )}\n\n`,
-      });
-      return;
-    }
     if (pathname === "/api/orchestrator/widgets") {
       await route.fulfill({
         status: 200,
@@ -2463,7 +2280,12 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     }
     await route.fallback();
   });
-
+  await installPersistentSseFixture(
+    page,
+    "**/api/orchestrator/widgets/stream?*",
+    "snapshot",
+    emptyOrchestratorWidgetSnapshot,
+  );
   await page.route("**/api/auth/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2483,7 +2305,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/auth/me", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2505,13 +2326,13 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         },
         access: {
           mode: "local",
+          role: "OWNER",
           passwordConfigured: false,
           ownerConfigured: true,
         },
       }),
     });
   });
-
   await page.route("**/api/auth/sessions", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2523,7 +2344,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ sessions: [] }),
     });
   });
-
   await page.route("**/api/agents", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2535,7 +2355,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ agents: [SMOKE_AGENT] }),
     });
   });
-
   await page.route("**/api/connectors/google/accounts", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2552,7 +2371,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/lifeops/app-state", async (route) => {
     const method = route.request().method();
     if (method !== "GET" && method !== "PUT") {
@@ -2571,7 +2389,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route(
     "**/api/lifeops/connectors/google/status**",
     async (route) => {
@@ -2591,7 +2408,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       });
     },
   );
-
   await page.route("**/api/lifeops/connectors/x/status**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2624,7 +2440,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/lifeops/capabilities", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2648,7 +2463,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/lifeops/overview", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2660,7 +2474,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(emptyLifeOpsOverview()),
     });
   });
-
   await page.route("**/api/lifeops/definitions", async (route) => {
     const method = route.request().method();
     if (method !== "GET" && method !== "POST") {
@@ -2673,7 +2486,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ definitions: [] }),
     });
   });
-
   let calendarSourceSummaries = [
     {
       provider: "google",
@@ -2727,7 +2539,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       includeInFeed: true,
     },
   ];
-
   await page.route("**/api/lifeops/calendar/calendars**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -2742,7 +2553,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       });
       return;
     }
-
     const includeMatch = url.pathname.match(
       /^\/api\/lifeops\/calendar\/calendars\/([^/]+)\/include$/,
     );
@@ -2793,10 +2603,8 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       });
       return;
     }
-
     await route.fallback();
   });
-
   await page.route("**/api/lifeops/calendar/sources**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -2813,7 +2621,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ sources: [] }),
     });
   });
-
   await page.route("**/api/lifeops/calendar/feed**", async (route) => {
     const request = route.request();
     if (request.method() !== "GET") {
@@ -2898,7 +2705,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/lifeops/inbox**", async (route) => {
     const request = route.request();
     if (request.method() !== "GET") {
@@ -2911,7 +2717,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(populatedInbox(new URL(request.url()))),
     });
   });
-
   await page.route("**/api/lifeops/screen-time/summary**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2923,7 +2728,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ items: [], totalSeconds: 0 }),
     });
   });
-
   await page.route("**/api/lifeops/screen-time/breakdown**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2944,7 +2748,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/lifeops/screen-time/history**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2956,7 +2759,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ items: [], totalSeconds: 0 }),
     });
   });
-
   await page.route("**/api/lifeops/social/summary**", async (route) => {
     const request = route.request();
     if (request.method() !== "GET") {
@@ -2969,7 +2771,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(emptyLifeOpsSocialSummary(new URL(request.url()))),
     });
   });
-
   await page.route("**/api/lifeops/sleep/history**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2983,7 +2784,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       ),
     });
   });
-
   await page.route("**/api/lifeops/sleep/regularity**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2997,7 +2797,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       ),
     });
   });
-
   await page.route("**/api/lifeops/sleep/baseline**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3011,52 +2810,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       ),
     });
   });
-
-  await page.route("**/api/lifeops/money/dashboard**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(populatedMoneyDashboard()),
-    });
-  });
-  await page.route("**/api/lifeops/money/sources**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(populatedMoneySources()),
-    });
-  });
-  await page.route("**/api/lifeops/money/transactions**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(populatedMoneyTransactions()),
-    });
-  });
-  await page.route("**/api/lifeops/money/recurring**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(populatedMoneyRecurring()),
-    });
-  });
-
   // GoalsView fetches GET /api/lifeops/goals (no query); the bare pattern keeps
   // the POST create + /goals/:id sub-resource routes falling through to the API.
   await page.route("**/api/lifeops/goals", async (route) => {
@@ -3070,7 +2823,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(populatedGoals()),
     });
   });
-
   // RelationshipsView fetches GET /api/lifeops/entities + GET /api/lifeops/relationships
   // (both bare, no query). The bare patterns keep the POST upsert + the
   // /entities/merge, /entities/resolve, /relationships/observe sub-resource
@@ -3097,10 +2849,108 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(populatedRelationships()),
     });
   });
-
-  // FamilyOperationsView loads four independent owner-only sections. The smoke
+  // FamilyOperationsView loads independent owner-only sections. The smoke
   // server does not install the personal-assistant services, so preserve the
   // real response envelopes while exercising the view's healthy empty state.
+  await page.route(
+    "**/api/lifeops/family-workflows/intake?*",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({ json: { reviews: [], sources: [] } });
+    },
+  );
+  await page.route(
+    "**/api/lifeops/family-workflows/email-options",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        json: { options: { accounts: [], recipients: [] } },
+      });
+    },
+  );
+  await page.route("**/api/lifeops/family-workflows/export", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/zip",
+      headers: {
+        "Content-Disposition":
+          'attachment; filename="family-workspace-smoke.zip"',
+        "Cache-Control": "no-store",
+      },
+      body: createZipArchive([
+        {
+          name: "fixture.json",
+          data: JSON.stringify({
+            fixture: "family-workspace-download",
+            scope:
+              "Synthetic browser download; real export contents are covered by the owner integration suite.",
+          }),
+        },
+      ]),
+    });
+  });
+  // The reviewed workspace deletion section (deletion-adapter.ts) reads the
+  // job status on load and the preview/begin/resume routes on interaction;
+  // the smoke server answers 501 for all four (#31299). Serve the real
+  // envelopes from deletion-contracts.ts: no job in flight, an empty preview,
+  // and a begin/resume reply that satisfies familyDeletionJobSchema.
+  const deletionPrefix = "**/api/lifeops/family-workflows/deletion";
+  const deletionSha = "0".repeat(64);
+  const deletionJob = {
+    id: "00000000-0000-4000-8000-00000000d31e",
+    agentId: "ui-smoke-agent",
+    reviewedSha256: deletionSha,
+    startedAt: "2026-06-25T09:00:00.000Z",
+    state: "backup_pending",
+    backupRetention: "7-days",
+    backupGeneration: "00000000-0000-4000-8000-00000000b4c0",
+    backupOperationId: "ui-smoke-backup-operation",
+    files: [],
+    databaseRowsRemoved: 0,
+    retained: [],
+  };
+  await page.route(deletionPrefix, async (route) => {
+    const method = route.request().method();
+    if (method === "GET") {
+      await route.fulfill({ json: { job: null } });
+      return;
+    }
+    if (method === "POST") {
+      await route.fulfill({ status: 202, json: { job: deletionJob } });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route(`${deletionPrefix}/preview`, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        agentId: "ui-smoke-agent",
+        sha256: deletionSha,
+        unavailable: [],
+        records: [],
+      },
+    });
+  });
+  await page.route(`${deletionPrefix}/resume`, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ status: 202, json: { job: deletionJob } });
+  });
   await page.route("**/api/lifeops/agreements", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3112,17 +2962,20 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ agreements: [] }),
     });
   });
-  await page.route("**/api/lifeops/calendar/links", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ links: [] }),
-    });
-  });
+  await page.route(
+    /\/api\/lifeops\/calendar\/links(?:\?.*)?$/,
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ links: [] }),
+      });
+    },
+  );
   await page.route(
     "**/api/lifeops/family-workflows/school/status",
     async (route) => {
@@ -3158,7 +3011,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       });
     },
   );
-
   // TodosView fetches GET /api/lifeops/todos; the **-suffixed pattern tolerates
   // any future query string while leaving non-GET methods on the real API.
   await page.route("**/api/lifeops/todos**", async (route) => {
@@ -3172,7 +3024,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(populatedTodos()),
     });
   });
-
   // The todos list above is a GET mock, but the chat today-todos card and
   // TodosView write completions/skips through the canonical occurrence routes.
   // The smoke server has no lifeops service (real requests 501), so fulfill the
@@ -3211,7 +3062,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/documents/stats**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3248,7 +3098,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(populatedDocumentsList()),
     });
   });
-
   await page.route("**/api/lifeops/activity-signals**", async (route) => {
     const method = route.request().method();
     if (method !== "GET" && method !== "POST" && method !== "PUT") {
@@ -3263,7 +3112,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       ),
     });
   });
-
   await page.route("**/api/lifeops/schedule/merged-state**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3275,7 +3123,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ occurrences: [], goals: [], reminders: [] }),
     });
   });
-
   await page.route("**/api/lifeops/smart-features/settings", async (route) => {
     const method = route.request().method();
     if (method !== "GET" && method !== "PUT") {
@@ -3292,7 +3139,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/browser-bridge/settings", async (route) => {
     const method = route.request().method();
     if (method !== "GET" && method !== "PUT") {
@@ -3315,7 +3161,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/browser-bridge/companions", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3327,7 +3172,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ companions: [] }),
     });
   });
-
   await page.route("**/api/browser-bridge/packages", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3339,7 +3183,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ packages: [] }),
     });
   });
-
   await page.route("**/api/website-blocker", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3351,7 +3194,19 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(emptySelfControlStatus()),
     });
   });
-
+  // This deterministic browser fixture disables host process spawning. Model
+  // the production PTY gate explicitly so cockpit retries exercise its error
+  // UI instead of the stub server's unhandled-route 501.
+  await page.route("**/api/pty/sessions", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await route.fulfill({
+      status: 403,
+      json: {
+        error:
+          "Interactive PTY sessions are disabled (PTY_INTERACTIVE_ENABLED=false or store build).",
+      },
+    });
+  });
   // Coding-project registry read by the tasks/cockpit surfaces; the keyless
   // stub 501s it, which trips the issue guards on any route that mounts them.
   await page.route("**/api/projects", async (route) => {
@@ -3368,7 +3223,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ projects: [], activeProjectId: null }),
     });
   });
-
   await page.route("**/api/automations", async (route) => {
     // Only the bare list endpoint — the /nodes sub-route has its own stub above.
     if (
@@ -3395,7 +3249,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/cloud/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3412,7 +3265,46 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
+  await page.route("**/api/context-inspector?**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify({
+        schemaVersion: "elizaos.context-inspector/v1",
+        entries: [
+          {
+            reference: "ctx_0123456789abcdef0123",
+            kind: "document",
+            range: { unit: "byte", start: 4096, end: 8192, total: 65536 },
+            completeness: "partial-recoverable",
+            omissionReason: "token-budget",
+            retentionState: "policy-managed",
+          },
+        ],
+        tokenBudgets: [
+          {
+            usedTokens: 4096,
+            limitTokens: 131072,
+            reservedTokens: 8192,
+            state: "within-budget",
+          },
+        ],
+        page: {
+          offset: 0,
+          limit: 20,
+          hasPrevious: false,
+          hasMore: false,
+          nextOffset: null,
+        },
+        state: "available",
+      }),
+    });
+  });
   await page.route("**/api/trajectories**", async (route) => {
     const request = route.request();
     if (request.method() !== "GET") {
@@ -3482,10 +3374,8 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   let stewardPendingApprovals = smokeStewardPendingApprovals();
   const stewardHistoryRecords = smokeStewardHistoryRecords();
-
   await page.route("**/api/wallet/steward-status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3497,7 +3387,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(emptyStewardStatus()),
     });
   });
-
   await page.route("**/api/wallet/steward-pending-approvals", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3509,7 +3398,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(stewardPendingApprovals),
     });
   });
-
   await page.route("**/api/wallet/steward-tx-records**", async (route) => {
     const request = route.request();
     if (request.method() !== "GET") {
@@ -3532,14 +3420,15 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/wallet/steward-approve-tx", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
       return;
     }
     const rawBody = route.request().postData() ?? "{}";
-    const body = JSON.parse(rawBody) as { txId?: string };
+    const body = JSON.parse(rawBody) as {
+      txId?: string;
+    };
     stewardPendingApprovals = stewardPendingApprovals.filter(
       (approval) => approval.transaction.id !== body.txId,
     );
@@ -3553,14 +3442,15 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/wallet/steward-deny-tx", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
       return;
     }
     const rawBody = route.request().postData() ?? "{}";
-    const body = JSON.parse(rawBody) as { txId?: string };
+    const body = JSON.parse(rawBody) as {
+      txId?: string;
+    };
     stewardPendingApprovals = stewardPendingApprovals.filter(
       (approval) => approval.transaction.id !== body.txId,
     );
@@ -3570,7 +3460,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ ok: true }),
     });
   });
-
   await page.route("**/api/wallet/market-overview", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3582,7 +3471,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(smokeWalletMarketOverview()),
     });
   });
-
   await page.route("**/api/wallet/trading/profile**", async (route) => {
     const request = route.request();
     if (request.method() !== "GET") {
@@ -3595,7 +3483,23 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(emptyWalletTradingProfile(new URL(request.url()))),
     });
   });
-
+  // The keyless fixture has no realtime voice provider. Keep availability
+  // explicitly false while allowing chat onboarding to probe its capability.
+  await page.route("**/api/v1/voice/session/health**", async (route) => {
+    const request = route.request();
+    if (
+      request.method() !== "GET" ||
+      new URL(request.url()).pathname !== "/api/v1/voice/session/health"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ready: false }),
+    });
+  });
   // Settings, Voice, and Vault mount these local-runtime panels eagerly. The
   // smoke server has no native inference or secrets backends, so expose their
   // real healthy-empty envelopes instead of leaking its generic 501 response
@@ -3623,7 +3527,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       });
     },
   );
-
   await page.route("**/api/local-inference/voice-models", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3635,7 +3538,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ installations: [] }),
     });
   });
-
   await page.route("**/api/accounts/consumer-keys", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3647,7 +3549,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({ keys: [] }),
     });
   });
-
   await page.route("**/api/secrets/manager/protection", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3677,7 +3578,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
-
   await page.route("**/api/secrets/logins", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3690,13 +3590,11 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 }
-
 type CloudWalletImportMockApi = {
   lastWalletConfigPut: () => Record<string, unknown> | null;
   refreshCloudRequestCount: () => number;
   walletConfigGetCount: () => number;
 };
-
 /** Overrides the default smoke routes for the cloud wallet import flow. */
 export async function installCloudWalletImportApiOverrides(
   page: Page,
@@ -3704,7 +3602,6 @@ export async function installCloudWalletImportApiOverrides(
   let lastWalletPut: Record<string, unknown> | null = null;
   let refreshCloudHits = 0;
   let walletConfigGetHits = 0;
-
   const initialWalletConfig = {
     selectedRpcProviders: {
       evm: "eliza-cloud",
@@ -3726,13 +3623,11 @@ export async function installCloudWalletImportApiOverrides(
     evmAddress: null,
     solanaAddress: null,
   };
-
   let walletConfigState: typeof initialWalletConfig = {
     ...initialWalletConfig,
     legacyCustomChains: [...initialWalletConfig.legacyCustomChains],
     evmChains: [...initialWalletConfig.evmChains],
   };
-
   await page.route("**/api/cloud/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3750,7 +3645,6 @@ export async function installCloudWalletImportApiOverrides(
       }),
     });
   });
-
   await page.route("**/api/cloud/credits", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3767,7 +3661,6 @@ export async function installCloudWalletImportApiOverrides(
       }),
     });
   });
-
   await page.route("**/api/wallet/config", async (route) => {
     const req = route.request();
     if (req.method() === "GET") {
@@ -3801,7 +3694,6 @@ export async function installCloudWalletImportApiOverrides(
     }
     await route.fallback();
   });
-
   await page.route("**/api/wallet/refresh-cloud", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
@@ -3817,7 +3709,6 @@ export async function installCloudWalletImportApiOverrides(
       }),
     });
   });
-
   await page.route("**/api/wallet/addresses", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3829,7 +3720,6 @@ export async function installCloudWalletImportApiOverrides(
       body: JSON.stringify({ evmAddress: null, solanaAddress: null }),
     });
   });
-
   await page.route("**/api/wallet/balances", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3844,7 +3734,6 @@ export async function installCloudWalletImportApiOverrides(
       }),
     });
   });
-
   await page.route("**/api/wallet/nfts", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3856,7 +3745,6 @@ export async function installCloudWalletImportApiOverrides(
       body: JSON.stringify({ evm: [], solana: null }),
     });
   });
-
   return {
     lastWalletConfigPut: () => lastWalletPut,
     refreshCloudRequestCount: () => refreshCloudHits,

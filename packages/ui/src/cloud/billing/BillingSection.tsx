@@ -14,23 +14,78 @@
  *
  * The Stripe Checkout cancel URL points back here with `?canceled=true` (it
  * targets `/cloud/billing`, the standalone console page that mounts this
- * same body), so the canceled banner renders at the top of the body.
+ * same body), so the canceled banner renders at the top of the body. A
+ * canceled Plus/Pro checkout returns with `?subscription_checkout=canceled`.
  */
 
 import { useCallback } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { ContentState } from "../../components/composites/page-panel/content-state";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { buildSameTabCloudLoginPath } from "../../state/cloud-login-launch";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import { NativeProductBillingEntry } from "./apps/NativeProductBillingEntry";
 import { BillingTab } from "./components/billing-tab";
+import {
+  type SubscribeBlockedReason,
+  SubscriptionPlans,
+} from "./components/subscription-plans";
+import { SubscriptionStatusCard } from "./components/subscription-status-card";
 import { useBillingUser } from "./data/billing-data";
+import { useBillingSnapshotV2 } from "./data/billing-snapshot";
 import { ConditionalWalletProviders } from "./wallet/ConditionalWalletProviders";
 
 function wasCheckoutCanceled(): boolean {
   if (typeof window === "undefined") return false;
   return new URLSearchParams(window.location.search).get("canceled") !== null;
+}
+
+function wasSubscriptionCheckoutCanceled(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    new URLSearchParams(window.location.search).get("subscription_checkout") ===
+    "canceled"
+  );
+}
+
+const LIVE_SUBSCRIPTION_STATES = new Set([
+  "pending",
+  "incomplete",
+  "active",
+  "grace",
+  "past_due",
+  "unpaid",
+]);
+
+/** Account subscription status plus the catalog, with Subscribe withheld where it cannot succeed. */
+function AccountSubscriptions({
+  user,
+}: {
+  user: { id: string; organization_id: string; role?: string | null };
+}) {
+  const snapshot = useBillingSnapshotV2(user.organization_id);
+  const subscription = snapshot.data?.subscription;
+  let blocked: SubscribeBlockedReason = null;
+  if (user.role !== "owner" && user.role !== "admin")
+    blocked = "not_billing_manager";
+  else if (
+    subscription?.status === "available" &&
+    LIVE_SUBSCRIPTION_STATES.has(subscription.value.state)
+  )
+    blocked = "live_subscription";
+  else if (snapshot.isPending) blocked = "loading";
+  return (
+    <>
+      <SubscriptionStatusCard subscription={subscription} />
+      <SubscriptionPlans
+        key={user.organization_id}
+        organizationId={user.organization_id}
+        userId={user.id}
+        subscribeBlockedReason={blocked}
+      />
+    </>
+  );
 }
 
 /** Optional host login integration for the signed-out Billing state. */
@@ -140,7 +195,17 @@ function RetryButton({ busy, label, onRetry }: RetryButtonProps) {
 }
 
 /** The billing surface, rendered by the Settings → Cloud billing section. */
-export function BillingSectionBody({
+export function BillingSectionBody(props: BillingSectionBodyProps = {}) {
+  return (
+    <>
+      <NativeProductBillingEntry />
+      <DeveloperBillingSectionBody {...props} />
+    </>
+  );
+}
+
+/** Account billing can load without a selected native runtime or agent. */
+export function DeveloperBillingSectionBody({
   onSignIn,
   signInBusy = false,
   signInError = null,
@@ -299,6 +364,15 @@ export function BillingSectionBody({
           })}
         </Alert>
       ) : null}
+      {wasSubscriptionCheckoutCanceled() ? (
+        <Alert variant="dashboardError" className="mb-4">
+          {t("cloud.billing.subscriptionCheckoutCanceled", {
+            defaultValue:
+              "Subscription checkout canceled. No subscription was started and no charge was made.",
+          })}
+        </Alert>
+      ) : null}
+      <AccountSubscriptions user={user} />
       <BillingTab user={user} />
     </ConditionalWalletProviders>
   );

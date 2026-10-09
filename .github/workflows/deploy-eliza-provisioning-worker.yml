@@ -7,7 +7,7 @@ run-name: Provisioning worker ${{ inputs.mode == 'diagnose' && 'diagnostic ' || 
 # and restarts the eliza-provisioning-worker daemon.
 #
 # First-time setup:
-#   HCLOUD_TOKEN=... bun run packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.mjs
+#   HCLOUD_TOKEN=... bun run packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.ts
 
 on:
   workflow_dispatch:
@@ -187,7 +187,7 @@ jobs:
         id: diagnostic
         run: |
           set -euo pipefail
-          source_base64=$(base64 -w0 packages/cloud/scripts/admin/staging-worker-diagnostic.mjs)
+          source_base64=$(base64 -w0 packages/cloud/scripts/admin/staging-worker-diagnostic.ts)
           echo "source_base64=$source_base64" >> "$GITHUB_OUTPUT"
       - name: Read source-locked worker state
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
@@ -471,7 +471,7 @@ jobs:
             exit 1
           }
           helper_sha256=$(sha256sum \
-            packages/cloud/scripts/admin/systemd-environment-line.mjs | awk '{print $1}')
+            packages/cloud/scripts/admin/systemd-environment-line.ts | awk '{print $1}')
           backup_unit_sha256=$(sha256sum \
             packages/cloud/scripts/admin/eliza-backup-catalog-worker.service | awk '{print $1}')
           [[ "$helper_sha256" =~ ^[0-9a-f]{64}$ ]] || {
@@ -499,7 +499,7 @@ jobs:
         timeout-minutes: 5
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
 
       - name: Install exact migration dependencies
         if: steps.deploy_config.outputs.configured == 'true'
@@ -549,9 +549,8 @@ jobs:
             echo "::error::Protected DATABASE_URL is required before provisioning-worker deploy"
             exit 1
           }
-          node packages/shared/scripts/generate-keywords.mjs
           if [ "$DEPLOY_BRANCH" = main ]; then
-            node packages/cloud/scripts/production-effect-certification.mjs "$DEPLOY_SHA"
+            node packages/cloud/scripts/production-effect-certification.ts "$DEPLOY_SHA"
           fi
           bun run db:cloud:migrate
 
@@ -575,7 +574,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
-        run: node packages/cloud/scripts/production-effect-certification.mjs "$SOURCE_SHA"
+        run: node packages/cloud/scripts/production-effect-certification.ts "$SOURCE_SHA"
 
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
         if: steps.deploy_config.outputs.configured == 'true'
@@ -931,8 +930,8 @@ jobs:
               echo "::error::The canonical root-owned Node 24 binary is unavailable"
               exit 1
             fi
-            ENV_SERIALIZER_SOURCE=/opt/eliza/packages/cloud/scripts/admin/systemd-environment-line.mjs
-            ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.mjs
+            ENV_SERIALIZER_SOURCE=/opt/eliza/packages/cloud/scripts/admin/systemd-environment-line.ts
+            ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.ts
             install_root_verified_file \
               "$ENV_SERIALIZER_SOURCE" \
               "$ENV_SERIALIZER" \
@@ -942,11 +941,10 @@ jobs:
             # git clean removes these intentionally ignored modules. Generate
             # and assert them before install/build, while the healthy daemons
             # are still running, so generator failure cannot cause downtime.
-            bash packages/cloud/scripts/admin/ensure-generated-keywords.sh
 
             # Install the canary (Rust) Bun on first install.
-            if ! command -v bun >/dev/null 2>&1 || [ "$(bun --version)" != "1.3.14" ]; then
-              curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
+            if ! command -v bun >/dev/null 2>&1 || [ "$(bun --version)" != "1.4.2" ]; then
+              curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.2"
               export BUN_INSTALL="$HOME/.bun"
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi
@@ -973,23 +971,12 @@ jobs:
             # the heap ceiling to match the repo's typecheck lane (8 GB).
             export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=8192"
 
-            # The systemd daemons execute through Node/tsx as well as Bun.
-            # `packages/core/src/prompts.ts` re-exports `@elizaos/prompts`, and
-            # default-condition resolution therefore requires the prompts
-            # package's dist entrypoint. The host deliberately preserves
-            # node_modules between deploys, so an old real directory can also
-            # mask the workspace link that `bun install` would normally create.
-            # Reconcile this one declared workspace dependency explicitly;
-            # `build:core` does not include the prompts package because its full
-            # build has a deliberate reverse action-doc dependency on core.
-            mkdir -p packages/core/node_modules/@elizaos
-            rm -rf packages/core/node_modules/@elizaos/prompts
-            ln -s ../../../prompts packages/core/node_modules/@elizaos/prompts
-            test "$(realpath packages/core/node_modules/@elizaos/prompts)" = \
-              /opt/eliza/packages/prompts
-            bun run --cwd packages/prompts build:package
-            test -f packages/core/node_modules/@elizaos/prompts/dist/index.js
+            # Reconcile workspace links and build Node exports before loading
+            # the same public runtime packages used by the daemons.
             bun run build:core
+            timeout --signal=TERM --kill-after=5s 30s \
+              node --import tsx --input-type=module \
+              -e 'await import("@elizaos/core"); await import("@elizaos/plugin-assistant/text/template-rendering")'
             mkdir -p plugins/plugin-sql/node_modules/@elizaos
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
             ln -s ../../../../packages/core plugins/plugin-sql/node_modules/@elizaos/core
@@ -1117,6 +1104,14 @@ jobs:
             append_environment_setting \
               "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" \
               PROVISIONING_JOB_LANES agent
+            # The orphan-container reconcilers issue `docker rm -f` and are
+            # disabled by repository policy. The preserved host file can carry a
+            # stale hand-set `ORPHAN_RECONCILER_ENABLED=1`, which SIGKILLed
+            # healthy same-name agent generations on staging (#29678). Rewrite
+            # it to exactly one repository-owned value on every deploy.
+            append_environment_setting \
+              "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" \
+              ORPHAN_RECONCILER_ENABLED 0
             # Headscale is the required dedicated-agent ingress. Bridge-host
             # fallback was a legacy escape hatch; if it remains hand-set on the
             # box, docker-sandbox-provider deliberately disables VPN injection
@@ -1292,6 +1287,15 @@ jobs:
                   "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" "$name" "$val"
                 unset val
               done
+              # The deletion-only authority opens the same Cloud DB connection
+              # as the provisioning daemon, so it must inherit the same TLS
+              # verification policy; without it a self-signed managed proxy
+              # fails the first authority query.
+              if [ -n "${DATABASE_SSL_NO_VERIFY:-}" ]; then
+                append_environment_setting \
+                  "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" \
+                  DATABASE_SSL_NO_VERIFY "$DATABASE_SSL_NO_VERIFY"
+              fi
             fi
             if [ "$BACKUP_CATALOG_RUNTIME_GATE" = "1" ]; then
               runtime_backup_names=(
@@ -1319,7 +1323,6 @@ jobs:
                 unset val
               done
               optional_enabled_backup_names=(
-                DATABASE_SSL_NO_VERIFY
                 AGENT_BACKUP_SCHEDULE_BATCH_SIZE
                 AGENT_BACKUP_SCHEDULE_LEASE_MS
                 AGENT_BACKUP_SCHEDULE_RETRY_MS
@@ -1456,6 +1459,11 @@ jobs:
             if ! require_environment_setting_equals \
               "$ENV_FILE" WARM_POOL_ENABLED "$WARM_POOL_ENABLED"; then
               echo "::error::Provisioning host warm-pool state does not match the protected environment"
+              exit 1
+            fi
+            if ! require_environment_setting_equals \
+              "$ENV_FILE" ORPHAN_RECONCILER_ENABLED 0; then
+              echo "::error::Provisioning host orphan reconciler must be disabled before restart"
               exit 1
             fi
             echo "Verified provisioning-host warm-pool state: $WARM_POOL_ENABLED"
@@ -1761,7 +1769,7 @@ jobs:
             fi
 
             ENV_FILE=/opt/eliza/cloud/.env.local
-            ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.mjs
+            ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.ts
             NODE_BIN=/usr/bin/node
             SAFE_CHILD_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
             if [ ! -x "$NODE_BIN" ] || [[ "$("$NODE_BIN" --version)" != v24.* ]]; then
@@ -1799,6 +1807,13 @@ jobs:
                   "$NODE_BIN" "$ENV_SERIALIZER" equals \
                   "$ENV_FILE" VPN_REGISTRATION_TIMEOUT_MS; then
               echo "::error::Provisioning host VPN registration timeout drift. Values were not printed."
+              exit 1
+            fi
+            if ! printf '%s' 0 \
+              | sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+                  "$NODE_BIN" "$ENV_SERIALIZER" equals \
+                  "$ENV_FILE" ORPHAN_RECONCILER_ENABLED; then
+              echo "::error::Provisioning host orphan reconciler drifted from its disabled policy."
               exit 1
             fi
             # The worker logs to journald via systemd's stdout/stderr capture.

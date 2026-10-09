@@ -12,7 +12,7 @@ import type {
   AgentStatus,
   ChatResult,
   LocalAgentTokenResult,
-} from "./definitions";
+} from "./definitions.js";
 
 interface ElizaWindow extends Window {
   /**
@@ -40,6 +40,41 @@ function requestTimeoutMs(timeoutMs: unknown): number {
     throw new Error("Agent.request timeoutMs must be a finite positive number");
   }
   return Math.min(Math.ceil(timeoutMs), MAX_TIMER_TIMEOUT_MS);
+}
+
+/**
+ * A lifecycle/status call to the agent HTTP server returned a non-2xx
+ * response. Carries the server's `{ error }` message (core `writeJsonError`
+ * shape) so callers see why the request failed instead of a malformed status.
+ */
+export class AgentHttpError extends Error {
+  readonly status: number;
+
+  constructor(path: string, status: number, message: string) {
+    super(`Agent ${path} failed (${status}): ${message}`);
+    this.name = "AgentHttpError";
+    this.status = status;
+  }
+}
+
+async function throwIfNotOk(res: Response, path: string): Promise<void> {
+  if (res.ok) return;
+  let message = res.statusText?.trim() || "request failed";
+  try {
+    const body: unknown = await res.json();
+    if (
+      body &&
+      typeof body === "object" &&
+      typeof (body as { error?: unknown }).error === "string" &&
+      (body as { error: string }).error.trim().length > 0
+    ) {
+      message = (body as { error: string }).error;
+    }
+  } catch {
+    // error-policy:J3 untrusted transport body — a non-JSON error body carries
+    // no message; the HTTP status text is reported instead.
+  }
+  throw new AgentHttpError(path, res.status, message);
 }
 
 function readConfiguredApiBase(): string | undefined {
@@ -274,6 +309,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
       signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: this.authHeaders(),
     });
+    await throwIfNotOk(res, "/api/agent/start");
     const data = await res.json();
     return data.status ?? data;
   }
@@ -287,6 +323,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
       signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: this.authHeaders(),
     });
+    await throwIfNotOk(res, "/api/agent/stop");
     return res.json();
   }
 
@@ -304,6 +341,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
       signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: this.authHeaders(),
     });
+    await throwIfNotOk(res, "/api/status");
     return res.json();
   }
 

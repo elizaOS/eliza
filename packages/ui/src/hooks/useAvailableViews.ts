@@ -6,16 +6,11 @@
  * registry is unavailable; transport and payload failures remain visible errors.
  */
 
-import {
-  type AppShellBackgroundPolicy,
-  ElizaError,
-  type SurfaceManifest,
-  type ViewHeaderPolicy,
-  type ViewKind,
-} from "@elizaos/core";
+import type { SurfaceManifest, ViewKind } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
 import { fetchWithCsrf } from "../api/csrf-client";
 import {
   type AppShellPageRegistration,
@@ -25,23 +20,24 @@ import {
   subscribeAppShellPages,
 } from "../app-shell-registry";
 import { isManagedCloudRuntime } from "../cloud/managed-cloud-runtime";
-import {
-  type BuiltinTab,
-  isAospShellEnabled,
-  TAB_PATHS,
-  titleForTab,
-} from "../navigation";
+import { onViewEvent, VIEW_EVENTS } from "../events/view-events";
+import { isAospShellEnabled, TAB_PATHS, titleForTab } from "../navigation";
+import type { BuiltinTab } from "../navigation/builtin-route-descriptors";
 import { getFrontendPlatform } from "../platform/platform-guards";
 import { useAppSelector } from "../state/app-store";
-import type { StartupPhaseValue } from "../state/startup-coordinator";
-import { isShellPaintable } from "../state/startup-coordinator";
-import { onViewEvent } from "../views/view-event-bus";
-import { VIEW_EVENTS } from "../views/view-event-types";
+import {
+  isShellPaintable,
+  type StartupPhaseValue,
+} from "../state/startup-coordinator";
 import { invalidate, startPolling } from "./resource-cache";
 import { useActiveAgentAuthority } from "./useActiveAgentAuthority";
 import { useCachedResource } from "./useCachedResource";
 
 export interface ViewRegistryEntry {
+  /** Runtime-owned installation that published this catalog entry. */
+  installationId?: string;
+  /** Runtime metadata only; execution requires a separately registered native page. */
+  metadataOnly?: boolean;
   /** Stable unique identifier for the view, e.g. "wallet.inventory". */
   id: string;
   /** Human-readable label shown in the view manager. */
@@ -76,26 +72,9 @@ export interface ViewRegistryEntry {
   hasHeroImage?: boolean;
   /** Whether the view is currently loadable. */
   available: boolean;
-  /**
-   * Declared surface contract for this view (#13452), forwarded from the owning
-   * `ViewDeclaration.surface` by `GET /api/views`. The shell derives the screen
-   * background from it (`surface.background` gated by the `wallpaper` grant), and
-   * DynamicViewLoader derives the plugin view's capability grants from it. The
-   * standalone `backgroundPolicy` / `headerPolicy` below are the legacy fallback.
-   */
+  /** Declared surface policies and capability grants. */
   surface?: SurfaceManifest;
-  /**
-   * Screen background policy for this view. Defaults to `"opaque"`. Superseded
-   * by `surface.background` when a manifest is declared.
-   */
-  backgroundPolicy?: AppShellBackgroundPolicy;
-  /**
-   * Top-bar framing policy (#13586). Defaults to `"normal"`; the shell enforces
-   * the shared `ViewHeader` on every `normal` view. `fullscreen`/`modal`/
-   * `immersive` opt a view out of the uniform top bar. Superseded by
-   * `surface.header` when a manifest is declared.
-   */
-  headerPolicy?: ViewHeaderPolicy;
+
   /** The plugin that provides this view. */
   pluginName: string;
   /** Freeform tags used for search and filtering. */
@@ -104,16 +83,8 @@ export interface ViewRegistryEntry {
   order?: number;
   /** Optional named group shared with app-shell page registrations. */
   group?: string;
-  /**
-   * When true, the view only appears when Developer Mode is enabled.
-   * Equivalent to `viewKind: "developer"`.
-   */
-  developerOnly?: boolean;
-  /**
-   * Four-tier visibility category. Supersedes `developerOnly` when set:
-   * `system`/`release` always show; `developer`/`preview` follow Settings
-   * toggles. See `ViewKind` in `@elizaos/core`.
-   */
+
+  /** Four-tier visibility category; absent values default to release. */
   viewKind?: ViewKind;
   /** When false, the view is hidden from the manager grid (internal views). */
   visibleInManager?: boolean;
@@ -226,9 +197,10 @@ function isViewRegistryEntry(value: unknown): value is ViewRegistryEntry {
     isOptionalString(value.frameUrl) &&
     isOptionalString(value.componentExport) &&
     isOptionalString(value.heroImageUrl) &&
+    isOptionalString(value.installationId) &&
+    isOptionalBoolean(value.metadataOnly) &&
     isOptionalString(value.group) &&
     isOptionalBoolean(value.hasHeroImage) &&
-    isOptionalBoolean(value.developerOnly) &&
     isOptionalBoolean(value.visibleInManager) &&
     isOptionalBoolean(value.pinnable) &&
     isOptionalBoolean(value.builtin) &&
@@ -247,14 +219,6 @@ function isViewRegistryEntry(value: unknown): value is ViewRegistryEntry {
             typeof capability.id === "string" &&
             typeof capability.description === "string",
         ))) &&
-    (value.backgroundPolicy === undefined ||
-      value.backgroundPolicy === "opaque" ||
-      value.backgroundPolicy === "shared") &&
-    (value.headerPolicy === undefined ||
-      value.headerPolicy === "normal" ||
-      value.headerPolicy === "fullscreen" ||
-      value.headerPolicy === "modal" ||
-      value.headerPolicy === "immersive") &&
     (value.viewKind === undefined ||
       value.viewKind === "system" ||
       value.viewKind === "release" ||
@@ -269,12 +233,21 @@ export function enforceDynamicViewPolicy(
   dynamicLoadingAllowed: boolean,
 ): ViewRegistryEntry[] {
   if (dynamicLoadingAllowed) return views;
-  // Restricted native clients cannot execute agent-served JavaScript or
-  // frames. Enforce the platform policy locally as well as on the agent route:
-  // a gateway may omit X-Eliza-Platform and return the unfiltered registry.
-  // Removing those network entries lets the signed app-shell registrations
-  // fill the same ids in mergeWithAppShellViews below.
-  return views.filter((view) => !view.bundleUrl && !view.frameUrl);
+  // Preserve the runtime binding for signed in-process counterparts, while
+  // removing every dynamic executable URL even if a gateway omitted platform headers.
+  return views.map((view) =>
+    view.bundleUrl || view.frameUrl
+      ? {
+          ...view,
+          bundleUrl: undefined,
+          frameUrl: undefined,
+          bundleUrlVersioned: undefined,
+          frameUrlVersioned: undefined,
+          available: false,
+          metadataOnly: true,
+        }
+      : view,
+  );
 }
 
 async function fetchViewList(): Promise<ViewRegistryEntry[]> {
@@ -420,8 +393,8 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   views: "LayoutGrid",
   character: "Bot",
   "character-select": "Users",
+  clock: "AlarmClock",
   automations: "Clock3",
-  triggers: "Clock3",
   inventory: "Wallet",
   documents: "FileText",
   files: "FolderClosed",
@@ -433,7 +406,6 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   experience: "GraduationCap",
   "character-skills": "Sparkles",
   memories: "BrainCircuit",
-  rolodex: "UsersRound",
   runtime: "Terminal",
   database: "Database",
   desktop: "Monitor",
@@ -459,8 +431,8 @@ const BUILTIN_TAB_ORDER: Partial<Record<BuiltinTab, number>> =
       "transcripts",
       "memories",
       "relationships",
+      "clock",
       "automations",
-      "triggers",
       "plugins",
       "skills",
       "trajectories",
@@ -509,13 +481,11 @@ function appShellPageToViewEntry(
     path: page.path,
     available: true,
     pluginName: page.pluginId,
-    developerOnly: page.developerOnly,
+
     viewKind: page.viewKind,
     order: page.order,
     group: page.group,
     surface: page.surface,
-    backgroundPolicy: page.backgroundPolicy,
-    headerPolicy: page.headerPolicy,
     visibleInManager: true,
     builtin: false,
   };
@@ -581,6 +551,7 @@ export function mergeViewRegistryEntries(
           capabilities: existing.capabilities ?? entry.capabilities,
           tags: existing.tags ?? entry.tags,
           pluginName: existing.pluginName,
+          installationId: existing.installationId,
           bundleUrl: undefined,
           frameUrl: undefined,
           componentExport: undefined,
@@ -601,7 +572,20 @@ function mergeWithAppShellViews(
   // connected runtime and the app declare the same view. Web and desktop keep
   // the runtime bundle so plugin reloads remain live during development.
   if (platform === "ios" || platform === "android") {
-    return mergeViewRegistryEntries(appShellViews, [networkViews]);
+    const runtimeByKey = new Map(
+      networkViews.map((entry) => [
+        `${entry.viewType ?? "gui"}:${entry.id}`,
+        entry,
+      ]),
+    );
+    return mergeViewRegistryEntries(appShellViews, [networkViews]).map(
+      (entry) => ({
+        ...entry,
+        installationId: runtimeByKey.get(
+          `${entry.viewType ?? "gui"}:${entry.id}`,
+        )?.installationId,
+      }),
+    );
   }
   return mergeViewRegistryEntries(networkViews, [appShellViews]);
 }
@@ -721,7 +705,7 @@ export function useAvailableViews(
   return {
     views,
     loading: networkEnabled && resource.status === "loading",
-    error: resource.status === "error" ? resource.error : null,
+    error: resource.revalidationError,
     refresh: networkEnabled ? refetch : () => {},
   };
 }

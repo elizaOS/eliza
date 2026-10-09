@@ -1,4 +1,4 @@
-// Drives repo automation validate capability router github live artifacts with explicit CLI and CI behavior.
+/** Validates downloaded GitHub live reports after checking run provenance. */
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -64,7 +64,7 @@ export function validateGithubLiveArtifacts(
 
     runCommand("bun", [
       "run",
-      "test:remote-capabilities:validate-live-reports",
+      "packages/agent/scripts/validate-capability-router-live-reports.ts",
       "--kind",
       "cloud",
       "--expect-count",
@@ -79,7 +79,7 @@ export function validateGithubLiveArtifacts(
     ]);
     runCommand("bun", [
       "run",
-      "test:remote-capabilities:validate-live-reports",
+      "packages/agent/scripts/validate-capability-router-live-reports.ts",
       "--kind",
       "provider",
       "--expect-count",

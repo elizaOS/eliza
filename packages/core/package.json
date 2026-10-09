@@ -20,374 +20,91 @@
 		"node": ">=24.0.0"
 	},
 	"type": "module",
-	"main": "./dist/node/index.node.js",
-	"module": "./dist/node/index.node.js",
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
 	"types": "./dist/index.d.ts",
-	"browser": "./dist/browser/index.browser.js",
 	"sideEffects": true,
 	"exports": {
-		"./package.json": "./package.json",
 		".": {
+			"eliza-source": "./src/index.ts",
 			"types": "./dist/index.d.ts",
-			"workerd": {
-				"types": "./dist/edge/index.d.ts",
-				"import": "./dist/edge/index.edge.js",
-				"default": "./dist/edge/index.edge.js"
-			},
-			"browser": {
-				"types": "./dist/index.browser.d.ts",
-				"import": "./dist/browser/index.browser.js",
-				"default": "./dist/browser/index.browser.js"
-			},
-			"eliza-source": {
-				"types": "./src/index.ts",
-				"import": "./src/index.ts",
-				"default": "./src/index.ts"
-			},
-			"node": {
-				"types": "./dist/index.node.d.ts",
-				"import": "./dist/node/index.node.js",
-				"default": "./dist/node/index.node.js"
-			},
-			"bun": {
-				"types": "./dist/index.node.d.ts",
-				"import": "./dist/node/index.node.js",
-				"default": "./dist/node/index.node.js"
-			},
-			"default": "./dist/node/index.node.js"
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
 		},
-		"./node": {
-			"types": "./dist/index.node.d.ts",
-			"eliza-source": {
-				"types": "./src/index.node.ts",
-				"import": "./src/index.node.ts",
-				"default": "./src/index.node.ts"
-			},
-			"import": "./dist/node/index.node.js",
-			"default": "./dist/node/index.node.js"
+		"./catalog/channel-plugin-map.json": {
+			"eliza-source": "./src/catalog/channel-plugin-map.json",
+			"default": "./dist/catalog/channel-plugin-map.json"
 		},
-		"./browser": {
-			"types": "./dist/index.browser.d.ts",
-			"import": "./dist/browser/index.browser.js",
-			"default": "./dist/browser/index.browser.js"
+		"./catalog/curated-app-definitions.json": {
+			"eliza-source": "./src/catalog/curated-app-definitions.json",
+			"default": "./dist/catalog/curated-app-definitions.json"
 		},
-		"./edge": {
-			"types": "./dist/edge/index.d.ts",
-			"import": "./dist/edge/index.edge.js",
-			"default": "./dist/edge/index.edge.js"
+		"./catalog/generated.json": {
+			"eliza-source": "./src/catalog/generated.json",
+			"default": "./dist/catalog/generated.json"
 		},
-		"./roles": {
-			"types": "./dist/roles.d.ts",
-			"import": "./dist/roles.js",
-			"default": "./dist/roles.js"
+		"./catalog/provider-plugin-map.json": {
+			"eliza-source": "./src/catalog/provider-plugin-map.json",
+			"default": "./dist/catalog/provider-plugin-map.json"
 		},
-		"./client-public": {
-			"types": "./dist/client-public.d.ts",
-			"browser": {
-				"types": "./dist/client-public.d.ts",
-				"import": "./dist/browser/client-public.js",
-				"default": "./dist/browser/client-public.js"
-			},
-			"eliza-source": {
-				"types": "./src/client-public.ts",
-				"import": "./src/client-public.ts",
-				"default": "./src/client-public.ts"
-			},
-			"node": {
-				"types": "./dist/client-public.d.ts",
-				"import": "./dist/node/client-public.js",
-				"default": "./dist/node/client-public.js"
-			},
-			"bun": {
-				"types": "./dist/client-public.d.ts",
-				"import": "./dist/node/client-public.js",
-				"default": "./dist/node/client-public.js"
-			},
-			"default": "./dist/node/client-public.js"
+		"./catalog/short-id-plugin-map.json": {
+			"eliza-source": "./src/catalog/short-id-plugin-map.json",
+			"default": "./dist/catalog/short-id-plugin-map.json"
 		},
-		"./contracts/first-run-options": {
-			"types": "./dist/contracts/first-run-options.d.ts",
-			"workerd": {
-				"types": "./dist/contracts/first-run-options.d.ts",
-				"import": "./dist/edge/contracts/first-run-options.js",
-				"default": "./dist/edge/contracts/first-run-options.js"
-			},
-			"browser": {
-				"types": "./dist/contracts/first-run-options.d.ts",
-				"import": "./dist/browser/contracts/first-run-options.js",
-				"default": "./dist/browser/contracts/first-run-options.js"
-			},
-			"eliza-source": {
-				"types": "./src/contracts/first-run-options.ts",
-				"import": "./src/contracts/first-run-options.ts",
-				"default": "./src/contracts/first-run-options.ts"
-			},
-			"node": {
-				"types": "./dist/contracts/first-run-options.d.ts",
-				"import": "./dist/node/contracts/first-run-options.js",
-				"default": "./dist/node/contracts/first-run-options.js"
-			},
-			"bun": {
-				"types": "./dist/contracts/first-run-options.d.ts",
-				"import": "./dist/node/contracts/first-run-options.js",
-				"default": "./dist/node/contracts/first-run-options.js"
-			},
-			"default": "./dist/node/contracts/first-run-options.js"
+		"./restart-exit-code.json": {
+			"eliza-source": "./src/restart-exit-code.json",
+			"default": "./dist/restart-exit-code.json"
 		},
-		"./contracts/cloud-topology": {
-			"types": "./dist/contracts/cloud-topology.d.ts",
-			"workerd": {
-				"types": "./dist/contracts/cloud-topology.d.ts",
-				"import": "./dist/edge/contracts/cloud-topology.js",
-				"default": "./dist/edge/contracts/cloud-topology.js"
-			},
-			"browser": {
-				"types": "./dist/contracts/cloud-topology.d.ts",
-				"import": "./dist/browser/contracts/cloud-topology.js",
-				"default": "./dist/browser/contracts/cloud-topology.js"
-			},
-			"eliza-source": {
-				"types": "./src/contracts/cloud-topology.ts",
-				"import": "./src/contracts/cloud-topology.ts",
-				"default": "./src/contracts/cloud-topology.ts"
-			},
-			"node": {
-				"types": "./dist/contracts/cloud-topology.d.ts",
-				"import": "./dist/node/contracts/cloud-topology.js",
-				"default": "./dist/node/contracts/cloud-topology.js"
-			},
-			"bun": {
-				"types": "./dist/contracts/cloud-topology.d.ts",
-				"import": "./dist/node/contracts/cloud-topology.js",
-				"default": "./dist/node/contracts/cloud-topology.js"
-			},
-			"default": "./dist/node/contracts/cloud-topology.js"
-		},
-		"./contracts/service-routing": {
-			"types": "./dist/contracts/service-routing.d.ts",
-			"workerd": {
-				"types": "./dist/contracts/service-routing.d.ts",
-				"import": "./dist/edge/contracts/service-routing.js",
-				"default": "./dist/edge/contracts/service-routing.js"
-			},
-			"browser": {
-				"types": "./dist/contracts/service-routing.d.ts",
-				"import": "./dist/browser/contracts/service-routing.js",
-				"default": "./dist/browser/contracts/service-routing.js"
-			},
-			"eliza-source": {
-				"types": "./src/contracts/service-routing.ts",
-				"import": "./src/contracts/service-routing.ts",
-				"default": "./src/contracts/service-routing.ts"
-			},
-			"node": {
-				"types": "./dist/contracts/service-routing.d.ts",
-				"import": "./dist/node/contracts/service-routing.js",
-				"default": "./dist/node/contracts/service-routing.js"
-			},
-			"bun": {
-				"types": "./dist/contracts/service-routing.d.ts",
-				"import": "./dist/node/contracts/service-routing.js",
-				"default": "./dist/node/contracts/service-routing.js"
-			},
-			"default": "./dist/node/contracts/service-routing.js"
-		},
-		"./contracts/wallet": {
-			"types": "./dist/contracts/wallet.d.ts",
-			"workerd": {
-				"types": "./dist/contracts/wallet.d.ts",
-				"import": "./dist/edge/contracts/wallet.js",
-				"default": "./dist/edge/contracts/wallet.js"
-			},
-			"browser": {
-				"types": "./dist/contracts/wallet.d.ts",
-				"import": "./dist/browser/contracts/wallet.js",
-				"default": "./dist/browser/contracts/wallet.js"
-			},
-			"eliza-source": {
-				"types": "./src/contracts/wallet.ts",
-				"import": "./src/contracts/wallet.ts",
-				"default": "./src/contracts/wallet.ts"
-			},
-			"node": {
-				"types": "./dist/contracts/wallet.d.ts",
-				"import": "./dist/node/contracts/wallet.js",
-				"default": "./dist/node/contracts/wallet.js"
-			},
-			"bun": {
-				"types": "./dist/contracts/wallet.d.ts",
-				"import": "./dist/node/contracts/wallet.js",
-				"default": "./dist/node/contracts/wallet.js"
-			},
-			"default": "./dist/node/contracts/wallet.js"
-		},
-		"./runtime-env": {
-			"types": "./dist/runtime-env.d.ts",
-			"workerd": {
-				"types": "./dist/runtime-env.d.ts",
-				"import": "./dist/edge/runtime-env.js",
-				"default": "./dist/edge/runtime-env.js"
-			},
-			"browser": {
-				"types": "./dist/runtime-env.d.ts",
-				"import": "./dist/browser/runtime-env.js",
-				"default": "./dist/browser/runtime-env.js"
-			},
-			"eliza-source": {
-				"types": "./src/runtime-env.ts",
-				"import": "./src/runtime-env.ts",
-				"default": "./src/runtime-env.ts"
-			},
-			"node": {
-				"types": "./dist/runtime-env.d.ts",
-				"import": "./dist/node/runtime-env.js",
-				"default": "./dist/node/runtime-env.js"
-			},
-			"bun": {
-				"types": "./dist/runtime-env.d.ts",
-				"import": "./dist/node/runtime-env.js",
-				"default": "./dist/node/runtime-env.js"
-			},
-			"default": "./dist/node/runtime-env.js"
-		},
-		"./testing": {
-			"types": "./dist/testing/index.d.ts",
-			"eliza-source": {
-				"types": "./src/testing/index.ts",
-				"import": "./src/testing/index.ts",
-				"default": "./src/testing/index.ts"
-			},
-			"import": "./dist/testing/index.js",
-			"default": "./dist/testing/index.js"
-		},
-		"./atomic-json": {
-			"types": "./dist/utils/atomic-json.d.ts",
-			"eliza-source": {
-				"types": "./src/utils/atomic-json.ts",
-				"import": "./src/utils/atomic-json.ts",
-				"default": "./src/utils/atomic-json.ts"
-			},
-			"import": "./dist/node/utils/atomic-json.js",
-			"default": "./dist/node/utils/atomic-json.js"
-		},
-		"./errors": {
-			"types": "./dist/errors.d.ts",
-			"eliza-source": {
-				"types": "./src/errors.ts",
-				"import": "./src/errors.ts",
-				"default": "./src/errors.ts"
-			},
-			"import": "./dist/node/errors.js",
-			"default": "./dist/node/errors.js"
-		},
-		"./security/kms": {
-			"types": "./dist/security/kms/index.d.ts",
-			"eliza-source": {
-				"types": "./src/security/kms/index.ts",
-				"import": "./src/security/kms/index.ts",
-				"default": "./src/security/kms/index.ts"
-			},
-			"import": "./dist/node/security/kms/index.js",
-			"default": "./dist/node/security/kms/index.js"
-		},
-		"./security/mcp-server-config": {
-			"types": "./dist/security/mcp-server-config.d.ts",
-			"eliza-source": {
-				"types": "./src/security/mcp-server-config.ts",
-				"import": "./src/security/mcp-server-config.ts",
-				"default": "./src/security/mcp-server-config.ts"
-			},
-			"import": "./dist/node/security/mcp-server-config.js",
-			"default": "./dist/node/security/mcp-server-config.js"
-		},
-		"./security/*": {
-			"types": "./dist/security/*.d.ts",
-			"eliza-source": {
-				"types": "./src/security/*.ts",
-				"import": "./src/security/*.ts",
-				"default": "./src/security/*.ts"
-			},
-			"import": "./dist/security/*.js",
-			"default": "./dist/security/*.js"
-		},
-		"./services/*": {
-			"types": "./dist/services/*.d.ts",
-			"import": "./dist/services/*.js",
-			"default": "./dist/services/*.js"
-		},
-		"./*.css": "./dist/*.css",
-		"./*": {
-			"types": "./dist/*.d.ts",
-			"import": "./dist/*.js",
-			"default": "./dist/*.js"
+		"./protocol": {
+			"eliza-source": "./src/protocol.ts",
+			"types": "./dist/protocol.d.ts",
+			"import": "./dist/protocol.js",
+			"default": "./dist/protocol.js"
 		}
 	},
 	"files": [
-		"registry-entry.json",
 		"dist"
 	],
 	"scripts": {
-		"prebuild": "bun run --cwd ../logger build && bun run --cwd ../cloud/routing build && node ../shared/scripts/generate-keywords.mjs",
 		"prepublishOnly": "bun run build",
 		"build": "bun run build.ts",
-		"build:node": "bun run build.ts --node-only",
 		"build:watch": "bun run build.ts --watch",
 		"dev": "bun run build:watch",
-		"clean": "node ../scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json *.tsbuildinfo && node scripts/clean-src-artifacts.mjs",
-		"perf:providers": "bun run scripts/provider-latency-report.ts",
+		"clean": "node ../scripts/rm-path-recursive.ts dist .turbo .turbo-tsconfig.json *.tsbuildinfo && node scripts/clean-src-artifacts.ts",
 		"perf:settings": "bun run scripts/perf-settings.ts",
-		"test": "node ../scripts/run-vitest.mjs run",
-		"test:coverage": "mkdir -p coverage/.tmp && node ../scripts/run-vitest.mjs run --coverage",
+		"test": "node ../scripts/run-vitest.ts run",
+		"test:coverage": "mkdir -p coverage/.tmp && node ../scripts/run-vitest.ts run --coverage",
 		"test:e2e": "npx playwright test",
-		"test:e2e:smoke": "node scripts/run-e2e-smoke.mjs",
-		"test:watch": "node ../scripts/run-vitest.mjs",
-		"lint": "bunx @biomejs/biome check --write ./src",
-		"lint:check": "bunx @biomejs/biome check ./src",
-		"typecheck": "node ../shared/scripts/generate-keywords.mjs && tsc --noEmit -p ./tsconfig.json",
+		"test:watch": "node ../scripts/run-vitest.ts",
+		"lint": "bunx @biomejs/biome check --write src test scripts build.ts vitest.config.ts",
+		"lint:check": "bunx @biomejs/biome check src test scripts build.ts vitest.config.ts",
+		"typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.tooling.json",
 		"format": "bunx @biomejs/biome format --write ./src",
-		"format:check": "bunx @biomejs/biome format ./src"
+		"format:check": "bunx @biomejs/biome format ./src",
+		"generate:first-party": "bun run src/catalog/generate.ts",
+		"generate:first-party:check": "bun run src/catalog/generate.ts --check"
 	},
 	"author": "elizaOS",
 	"license": "MIT",
 	"devDependencies": {
-		"@playwright/test": "^1.62.1",
-		"@types/bun": "^1.3.5",
-		"@types/markdown-it": "^14.1.2",
+		"@playwright/test": "^1.63.0",
+		"@types/bun": "1.4.2",
 		"@types/node": "^25.0.3",
-		"@types/react-test-renderer": "^19.0.0",
-		"@vitest/coverage-v8": "^4.1.10",
-		"react-test-renderer": "^19.0.0",
+		"@vitest/coverage-v8": "^5.0.3",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^4.1.10"
+		"tsx": "^4.21.0",
+		"vitest": "^5.0.3",
+		"dotenv": "^17.2.3",
+		"@types/markdown-it": "^14.1.2"
 	},
 	"dependencies": {
-		"@ai-sdk/anthropic": "^3.0.13",
-		"@ai-sdk/google": "^3.0.8",
-		"@ai-sdk/openai": "^3.0.9",
-		"@ai-sdk/provider": "3.0.14",
-		"@bufbuild/protobuf": "^2.12.0",
-		"@elizaos/cloud-routing": "workspace:*",
-		"@elizaos/logger": "workspace:*",
-		"@elizaos/prompts": "workspace:*",
-		"@elizaos/registry": "workspace:*",
-		"@noble/ciphers": "2.2.0",
-		"@noble/hashes": "2.2.0",
-		"@openrouter/ai-sdk-provider": "^2.0.0",
-		"@opentelemetry/api": "1.9.1",
-		"ai": "^6.0.30",
-		"dedent": "^1.7.1",
-		"dotenv": "^17.2.3",
-		"drizzle-orm": "0.45.2",
-		"file-type": "^22.0.0",
-		"handlebars": "^4.7.8",
+		"zod": "^4.6.5",
+		"adze": "^2.2.5",
 		"json5": "^2.2.3",
-		"mammoth": "^1.9.0",
+		"file-type": "^22.0.0",
 		"markdown-it": "^14.1.0",
-		"unpdf": "^1.4.0",
-		"uuid": "^14.0.0",
-		"yaml": "^2.7.0",
-		"zod": "^4.4.3"
+		"yaml": "^2.8.2"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -396,18 +113,10 @@
 	"elizaos": {
 		"scripts": {
 			"coreBuild": true,
-			"buildOnInstall": {
-				"sentinel": "dist/edge/index.edge.js",
-				"order": 3
-			},
+			"buildOnInstall": {},
 			"testLanes": [
 				"server"
-			],
-			"buildModel": {
-				"doubleCheck": {
-					"reason": "declaration post-processing requires a checked tsc6 emit before rewriting relative specifiers"
-				}
-			}
+			]
 		}
 	}
 }

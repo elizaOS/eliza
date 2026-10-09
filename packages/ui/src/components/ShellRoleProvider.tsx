@@ -1,15 +1,7 @@
-/**
- * ShellRoleProvider (#9948) — wires the canonical `RoleProvider` into the app
- * shell once, deriving the current role from the existing auth status. Drop it
- * around the shell content so any descendant can use `useRole()` / `<RoleGate>`.
- *
- * It observes the app-level auth check (`observeOnly` → no extra poll) and maps
- * it to a canonical role. This is the interim derivation until `/api/auth/me`
- * returns the server-resolved boundary role (the same tier `resolveBoundaryRole`
- * computes in app-core); when that lands, only `deriveShellRole` changes.
- */
+/** Applies the authenticated server role to the shell; missing or invalid roles are GUEST. */
 
-import { ROLE_RANK, type RoleGateRole } from "@elizaos/core";
+import type { RoleGateRole } from "@elizaos/core";
+import { ROLE_RANK } from "@elizaos/core/protocol";
 import type { ReactNode } from "react";
 import { useAuthStatus } from "../hooks/useAuthStatus.ts";
 import { RoleProvider } from "../hooks/useRole.tsx";
@@ -27,21 +19,13 @@ type AuthStatusLike = {
  */
 const CANONICAL_ROLES = new Set<string>(Object.keys(ROLE_RANK));
 
-/**
- * Pure mapping from auth status → canonical role. Prefers the server-authoritative
- * `access.role` from `/api/auth/me` (#9948); falls back to the mode-based
- * interim for older backends that don't surface a role (local/loopback access is
- * the deployed-app owner, an authenticated remote/session caller is USER).
- * Anything unauthenticated is GUEST (fail low — never leak gated UI).
- */
 export function deriveShellRole(state: AuthStatusLike): RoleGateRole {
   if (state.phase !== "authenticated") return "GUEST";
   const serverRole = state.access?.role;
   if (typeof serverRole === "string" && CANONICAL_ROLES.has(serverRole)) {
     return serverRole as RoleGateRole;
   }
-  if (state.access?.mode === "local") return "OWNER";
-  return "USER";
+  return "GUEST";
 }
 
 export function ShellRoleProvider({

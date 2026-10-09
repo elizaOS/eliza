@@ -5,8 +5,10 @@
 
 import { Database } from 'bun:sqlite';
 import { afterAll, describe, expect, test } from 'bun:test';
-import { readdir, rm, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readdir, readFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { isPidAlive, parseRuntimeOwnerPid } from '@smthrs/engine/runtime-owner';
 import {
   controlSmithersRun,
   resolveSmithersWorkflowDir,
@@ -313,7 +315,9 @@ export default smithers(() => { throw new Error("Select a project before running
     }
 
     const retainedFiles = await readdir(workflowDir);
-    expect(retainedFiles).toContain(`${workflow.versionId}.tsx`);
+    const sourceName = `${workflow.versionId}.${createHash('sha256').update(workflow.source).digest('hex')}.tsx`;
+    expect(retainedFiles).toContain(sourceName);
+    expect(await readFile(join(workflowDir, sourceName), 'utf8')).toBe(workflow.source);
     expect(retainedFiles.filter((name) => name.startsWith('.run-'))).toEqual([]);
   }, 45_000);
 
@@ -366,3 +370,68 @@ export default smithers(() => { throw new Error("Select a project before running
     expect(result.events.filter((event) => event.type === 'NodeRetrying')).toHaveLength(1);
   }, 45_000);
 });
+
+test('preserves the complete native finish receipt when abort releases pending event delivery', async () => {
+  const id = 'native-finish-before-host-abort';
+  const runId = `finish-abort-${Date.now()}`;
+  const definition = { ...workflow, id };
+  const dir = resolveSmithersWorkflowDir(tenantId, id);
+  const controller = new AbortController();
+  let nativeFinished!: () => void;
+  const committed = new Promise<void>((resolve) => {
+    nativeFinished = resolve;
+  });
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let ownerPid: number | null = null;
+  let nativeStatus: unknown;
+  const outcome = runSmithersWorkflow({
+    tenantId,
+    workflow: definition,
+    runId,
+    mode: 'manual',
+    input: {},
+    signal: controller.signal,
+    generate: async () => '{"message":"Exact durable output 🟠"}',
+    onEvent: async (event) => {
+      if (event.type === 'RunStarted' || event.type === 'RunFinished') {
+        const db = new Database(join(dir, 'runs.sqlite'), { readonly: true });
+        try {
+          const row = db
+            .query('SELECT status, runtime_owner_id FROM _smithers_runs WHERE run_id=?')
+            .get(runId) as { status: string; runtime_owner_id: string | null };
+          if (event.type === 'RunStarted') ownerPid = parseRuntimeOwnerPid(row.runtime_owner_id);
+          else {
+            nativeStatus = row.status;
+            nativeFinished();
+            await held;
+          }
+        } finally {
+          db.close();
+        }
+      }
+    },
+  });
+  try {
+    await committed;
+    expect(nativeStatus).toBe('finished');
+    expect(ownerPid).not.toBeNull();
+    for (let n = 0; n < 500 && isPidAlive(ownerPid!); n++) await Bun.sleep(10);
+    expect(isPidAlive(ownerPid!)).toBe(false);
+    controller.abort();
+    const result = await outcome;
+    expect(result.status).toBe('finished');
+    expect(result.output).toEqual([
+      expect.objectContaining({ message: 'Exact durable output 🟠' }),
+    ]);
+    expect(result.error).toBeUndefined();
+    expect(result.events.some((event) => event.type === 'RunFinished')).toBe(true);
+  } finally {
+    release();
+    controller.abort();
+    await outcome.catch(() => {});
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 60_000);

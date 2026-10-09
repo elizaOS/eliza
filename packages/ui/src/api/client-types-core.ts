@@ -1,9 +1,15 @@
-/**
- * Core-domain client DTOs: Database*, Agent*, ApiError, Runtime*, WebSocket*,
- * ConnectionState*, Sandbox*. One slice of the ElizaClient type surface,
- * re-exported through client-types.ts.
- */
+/** Agent, runtime, connection, and API error client DTOs. */
 
+import type {
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  ReleaseChannel,
+  ConversationAutomationType as SharedConversationAutomationType,
+  ConversationMetadata as SharedConversationMetadata,
+  ConversationScope as SharedConversationScope,
+  TradePermissionMode as SharedTradePermissionMode,
+} from "@elizaos/contracts";
 import type {
   TrajectoryExportFormat,
   TriggerLastStatus,
@@ -12,31 +18,22 @@ import type {
   TriggerWakeMode,
 } from "@elizaos/core";
 import type {
-  CustomActionDef,
-  CustomActionHandler,
-  DatabaseProviderType,
-  ReleaseChannel,
   AgentAutomationMode as SharedAgentAutomationMode,
   ColumnInfo as SharedColumnInfo,
   ConnectionTestResult as SharedConnectionTestResult,
-  ConversationAutomationType as SharedConversationAutomationType,
-  ConversationMetadata as SharedConversationMetadata,
-  ConversationScope as SharedConversationScope,
   CreateTriggerRequest as SharedCreateTriggerRequest,
   DatabaseStatus as SharedDatabaseStatus,
   QueryResult as SharedQueryResult,
   RuntimeOrderItem as SharedRuntimeOrderItem,
   RuntimeServiceOrderItem as SharedRuntimeServiceOrderItem,
   StreamEventEnvelope as SharedStreamEventEnvelope,
-  StreamEventType as SharedStreamEventType,
+  AgentStreamEventType as SharedStreamEventType,
   TableInfo as SharedTableInfo,
-  TradePermissionMode as SharedTradePermissionMode,
   TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
   TriggerSummary as SharedTriggerSummary,
   TriggerTaskMetadata as SharedTriggerTaskMetadata,
   UpdateTriggerRequest as SharedUpdateTriggerRequest,
-} from "@elizaos/shared";
-import type { BrowserBridgeCompanionReleaseManifest } from "./browser-contracts";
+} from "@elizaos/core/protocol";
 
 export type {
   CustomActionDef,
@@ -49,10 +46,8 @@ export type {
   TriggerType,
   TriggerWakeMode,
 };
-
 // Use server-types / types only — do not re-export from api/server or
 // api/trajectory-routes (those modules pull the full API into Vite).
-
 export type ConversationScope = SharedConversationScope;
 export type ConversationAutomationType = SharedConversationAutomationType;
 export type ConversationMetadata = SharedConversationMetadata;
@@ -71,9 +66,7 @@ export type ColumnInfo = SharedColumnInfo;
 export type QueryResult = SharedQueryResult;
 export type RuntimeOrderItem = SharedRuntimeOrderItem;
 export type RuntimeServiceOrderItem = SharedRuntimeServiceOrderItem;
-
 export type TradePermissionMode = SharedTradePermissionMode;
-
 export type WhatsAppPairingStatus =
   | "idle"
   | "initializing"
@@ -82,11 +75,12 @@ export type WhatsAppPairingStatus =
   | "disconnected"
   | "timeout"
   | "error";
-
 export interface DatabaseConfigResponse {
   config: {
     provider?: DatabaseProviderType;
-    pglite?: { dataDir?: string };
+    pglite?: {
+      dataDir?: string;
+    };
     postgres?: {
       connectionString?: string;
       host?: string;
@@ -100,7 +94,6 @@ export interface DatabaseConfigResponse {
   activeProvider: DatabaseProviderType;
   needsRestart: boolean;
 }
-
 export interface TableRowsResponse {
   table: string;
   rows: Record<string, unknown>[];
@@ -109,7 +102,6 @@ export interface TableRowsResponse {
   offset: number;
   limit: number;
 }
-
 export type AgentState =
   | "not_started"
   | "starting"
@@ -117,7 +109,6 @@ export type AgentState =
   | "stopped"
   | "restarting"
   | "error";
-
 export interface AgentStartupDiagnostics {
   phase: string;
   attempt: number;
@@ -130,7 +121,24 @@ export interface AgentStartupDiagnostics {
   /** 0–100 when parseable from embedding detail */
   embeddingProgressPct?: number;
 }
-
+export type AgentModelReadiness =
+  | { status: "available"; checkedAt: number }
+  | { status: "unknown"; reason: string; checkedAt: number | null }
+  | {
+      status: "model_not_available";
+      code: "MODEL_NOT_AVAILABLE";
+      missing: Array<{
+        modelType: "TEXT_SMALL" | "TEXT_LARGE";
+        configKey: string | null;
+        modelId: string;
+      }>;
+      message: string;
+      checkedAt: number;
+    };
+export type LocalModelReadiness = {
+  provider: "eliza-local-inference";
+  status: "available" | "model_not_loaded";
+};
 export interface AgentStatus {
   state: AgentState;
   agentName: string;
@@ -143,6 +151,14 @@ export interface AgentStatus {
    * with older agents/transports that don't report it.
    */
   canRespond?: boolean;
+  /**
+   * Cloud catalog readiness of the configured TEXT_SMALL/TEXT_LARGE model ids
+   * (#30228). `model_not_available` is an invalid model setting, distinct from
+   * a provider outage (`unknown`) or no provider at all (absent).
+   */
+  modelReadiness?: AgentModelReadiness;
+  /** Runtime-owned local text-model load state, present only for a sole local provider. */
+  localModelReadiness?: LocalModelReadiness;
   uptime: number | undefined;
   startedAt: number | undefined;
   port?: number;
@@ -159,7 +175,6 @@ export interface AgentStatus {
    */
   resumeProgress?: AgentResumeProgress;
 }
-
 /**
  * The cloud dedicated-agent-proxy's `202` resume body, mapped onto
  * {@link AgentStatus.resumeProgress}. A truthy `jobId` (or any freshly-observed
@@ -185,7 +200,6 @@ export interface AgentResumeProgress {
    */
   observedAt?: number;
 }
-
 export interface AgentBootProgress {
   state: "not_started" | "starting" | "running" | "stopped" | "error";
   phase: string | null;
@@ -198,7 +212,6 @@ export interface AgentBootProgress {
   startedAt: number | null;
   updatedAt: string;
 }
-
 export type LaunchPhase =
   | "static-shell"
   | "agent-process-starting"
@@ -213,7 +226,6 @@ export type LaunchPhase =
   | "model-background-queue"
   | "ready"
   | "error";
-
 export interface LaunchSnapshot {
   phase: LaunchPhase;
   agent: {
@@ -260,7 +272,6 @@ export interface LaunchSnapshot {
   };
   updatedAt: string;
 }
-
 export type ProviderModelCategory =
   | "chat"
   | "embedding"
@@ -268,13 +279,11 @@ export type ProviderModelCategory =
   | "tts"
   | "stt"
   | "other";
-
 export interface ProviderModelRecord {
   id: string;
   name: string;
   category: ProviderModelCategory;
 }
-
 /**
  * One selectable model in the validated provider→model→efforts catalog that
  * every `GET /api/models` response carries (`catalog` field). Mirrors
@@ -292,46 +301,29 @@ export interface ModelCatalogEntry {
   /** false = listed by the provider but not callable via the API tier. */
   apiSupported?: boolean;
 }
-
 /** Provider→entries map inside the `catalog` field of `GET /api/models`. */
 export type ModelCatalogProviders = Record<string, ModelCatalogEntry[]>;
-
-/**
- * The model-catalog response shape consumed by configuration UI and slash
- * completions. Current runtimes return the curated catalog under `catalog`;
- * some cloud agents served during rolling deploys answered `catalogOnly` with
- * the catalog at the top level, so readers must normalize at their boundary.
- */
-export interface ModelCatalogResponse {
-  providers?: unknown;
-  catalog?: { providers?: unknown };
-}
 
 export interface ModelCatalog {
   providers: ModelCatalogProviders;
 }
-
 export type ModelsConfigTarget = "small" | "large" | "coding";
-
 /**
  * Coding backend wire values accepted by `POST /api/models/config`. The
  * in-house backend is spelled `eliza-code` on the wire (the server persists it
  * as `ELIZA_DEFAULT_AGENT_TYPE=elizaos`).
  */
 export type ModelsConfigCodingBackend = "codex" | "claude" | "eliza-code";
-
 /** Which config seam won for a key reported by `GET /api/models/config`. */
 export type ModelsConfigSource =
   | "config.env"
   | "config.env.vars"
   | "process.env"
   | "default";
-
 export interface ModelsConfigEffectiveValue {
   value: string;
   source: ModelsConfigSource;
 }
-
 export interface ModelsConfigResponse {
   targets: {
     small: Record<string, ModelsConfigEffectiveValue | null>;
@@ -348,7 +340,6 @@ export interface ModelsConfigResponse {
     endpoint: string;
   };
 }
-
 export interface ModelsConfigWriteRequest {
   target: ModelsConfigTarget;
   /** Chat targets: cerebras | elizacloud | claude-chat. */
@@ -360,7 +351,6 @@ export interface ModelsConfigWriteRequest {
   /** Persist this backend as ELIZA_DEFAULT_AGENT_TYPE alongside the write. */
   defaultBackend?: ModelsConfigCodingBackend;
 }
-
 /**
  * Normalized `POST /api/models/config` outcome. The route answers three
  * designed shapes — 2xx applied/deduped, 400 `MODEL_CONFIG_INVALID`, 409
@@ -387,13 +377,15 @@ export type ModelsConfigWriteResult =
       /** Values the route would have accepted, when the failure names them. */
       supported?: string[];
     }
-  | { kind: "busy"; error: string; activeOperationId: string };
-
+  | {
+      kind: "busy";
+      error: string;
+      activeOperationId: string;
+    };
 export interface AgentAutomationModeResponse {
   mode: AgentAutomationMode;
   options: AgentAutomationMode[];
 }
-
 export interface TradePermissionModeResponse {
   mode: TradePermissionMode;
   tradePermissionMode: TradePermissionMode;
@@ -402,7 +394,6 @@ export interface TradePermissionModeResponse {
   canUserLocalExecute?: boolean;
   canAgentAutoTrade?: boolean;
 }
-
 export interface ApplyProductionWalletDefaultsResponse {
   ok: boolean;
   profile: "pure-privy-safe";
@@ -411,7 +402,6 @@ export interface ApplyProductionWalletDefaultsResponse {
   bscExecutionEnabled: false;
   clearedSecrets: string[];
 }
-
 export interface AgentSelfStatusSnapshot {
   generatedAt: string;
   state: AgentState;
@@ -456,23 +446,19 @@ export interface AgentSelfStatusSnapshot {
     canConfigureConnectors: boolean;
   };
 }
-
 // WebSocket connection state tracking
 export type WebSocketConnectionState =
   | "connected"
   | "disconnected"
   | "reconnecting"
   | "failed";
-
 export interface ConnectionStateInfo {
   state: WebSocketConnectionState;
   reconnectAttempt: number;
   maxReconnectAttempts: number;
   disconnectedAt: number | null;
 }
-
 export type ApiErrorKind = "timeout" | "network" | "http" | "parse";
-
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;
   readonly status?: number;
@@ -489,7 +475,6 @@ export class ApiError extends Error {
    * transports symmetric for classifiers that read either.
    */
   readonly data?: unknown;
-
   constructor(options: {
     kind: ApiErrorKind;
     path: string;
@@ -527,18 +512,15 @@ export class ApiError extends Error {
     }
   }
 }
-
 export function isApiError(value: unknown): value is ApiError {
   return value instanceof ApiError;
 }
-
 export function isRateLimitedError(value: unknown): value is ApiError {
   return (
     value instanceof ApiError &&
     (value.status === 429 || value.code === "rate_limit_exceeded")
   );
 }
-
 /**
  * Definitive "this agent row is gone" shape used for destructive binding
  * cleanup and join stale-binding recovery. Requires the structured
@@ -557,7 +539,11 @@ export function isCloudAgentGoneError(error: unknown): boolean {
       code?: unknown;
     };
     if (code === "agent_not_running") {
-      current = (current as Error & { cause?: unknown }).cause;
+      current = (
+        current as Error & {
+          cause?: unknown;
+        }
+      ).cause;
       continue;
     }
     if (
@@ -566,11 +552,14 @@ export function isCloudAgentGoneError(error: unknown): boolean {
     ) {
       return true;
     }
-    current = (current as Error & { cause?: unknown }).cause;
+    current = (
+      current as Error & {
+        cause?: unknown;
+      }
+    ).cause;
   }
   return false;
 }
-
 export interface RuntimeDebugSnapshot {
   runtimeAvailable: boolean;
   generatedAt: number;
@@ -608,7 +597,6 @@ export interface RuntimeDebugSnapshot {
     services: unknown;
   };
 }
-
 export interface SandboxPlatformStatus {
   platform: string;
   arch?: string;
@@ -619,27 +607,23 @@ export interface SandboxPlatformStatus {
   wsl2?: boolean;
   recommended?: string;
 }
-
 export interface SandboxStartResponse {
   success: boolean;
   message: string;
   waitMs?: number;
   error?: string;
 }
-
 export interface SandboxBrowserEndpoints {
   cdpEndpoint?: string | null;
   wsEndpoint?: string | null;
   noVncEndpoint?: string | null;
 }
-
 export interface SandboxScreenshotRegion {
   x: number;
   y: number;
   width: number;
   height: number;
 }
-
 export interface SandboxScreenshotPayload {
   format: string;
   encoding: string;
@@ -647,35 +631,19 @@ export interface SandboxScreenshotPayload {
   height: number | null;
   data: string;
 }
-
 export interface SandboxWindowInfo {
   id: string;
   title: string;
   app: string;
 }
-
 export interface AgentEventsResponse {
   events: StreamEventEnvelope[];
   latestEventId: string | null;
   totalBuffered: number;
   replayed: boolean;
 }
-
-export interface ExtensionStatus {
-  relayReachable: boolean;
-  relayPort: number;
-  extensionPath: string | null;
-  chromeBuildPath?: string | null;
-  chromePackagePath?: string | null;
-  safariWebExtensionPath?: string | null;
-  safariAppPath?: string | null;
-  safariPackagePath?: string | null;
-  releaseManifest?: BrowserBridgeCompanionReleaseManifest | null;
-}
-
 // WebSocket
 export type WsEventHandler = (data: Record<string, unknown>) => void;
-
 export interface LogEntry {
   timestamp: number;
   level: string;
@@ -683,20 +651,17 @@ export interface LogEntry {
   source: string;
   tags: string[];
 }
-
 export interface LogsResponse {
   entries: LogEntry[];
   sources: string[];
   tags: string[];
 }
-
 export interface LogsFilter {
   source?: string;
   level?: string;
   tag?: string;
   since?: number;
 }
-
 export type SecurityAuditSeverity = "info" | "warn" | "error" | "critical";
 export type SecurityAuditEventType =
   | "sandbox_mode_transition"
@@ -711,7 +676,6 @@ export type SecurityAuditEventType =
   | "security_kill_switch"
   | "sandbox_lifecycle"
   | "fetch_proxy_error";
-
 export interface SecurityAuditEntry {
   timestamp: string;
   type: SecurityAuditEventType;
@@ -720,20 +684,17 @@ export interface SecurityAuditEntry {
   severity: SecurityAuditSeverity;
   traceId?: string;
 }
-
 export interface SecurityAuditFilter {
   type?: SecurityAuditEventType;
   severity?: SecurityAuditSeverity;
   since?: number | string | Date;
   limit?: number;
 }
-
 export interface SecurityAuditResponse {
   entries: SecurityAuditEntry[];
   totalBuffered: number;
   replayed: true;
 }
-
 export type SecurityAuditStreamEvent =
   | {
       type: "snapshot";
@@ -744,7 +705,6 @@ export type SecurityAuditStreamEvent =
       type: "entry";
       entry: SecurityAuditEntry;
     };
-
 // ---------------------------------------------------------------------------
 // LifeOps ScheduledTask — transport view (GET /api/lifeops/scheduled-tasks)
 // ---------------------------------------------------------------------------
@@ -755,7 +715,6 @@ export type SecurityAuditStreamEvent =
 // the dashboard surfaces. It is intentionally a subset — additive widening is
 // safe, but it must never diverge in meaning from the runner's contract.
 // Mirrors the wire shape returned by the route's `runner.list()` JSON.
-
 export type ScheduledTaskKindView =
   | "reminder"
   | "checkin"
@@ -765,7 +724,6 @@ export type ScheduledTaskKindView =
   | "watcher"
   | "output"
   | "custom";
-
 export type ScheduledTaskStatusView =
   | "scheduled"
   | "fired"
@@ -775,13 +733,11 @@ export type ScheduledTaskStatusView =
   | "expired"
   | "failed"
   | "dismissed";
-
 export type ScheduledTaskSourceView =
   | "default_pack"
   | "user_chat"
   | "first_run"
   | "plugin";
-
 /**
  * Discriminated trigger view. Matches `ScheduledTaskTrigger` in the spine;
  * the adapter only reads `kind` plus the cron `expression`/anchor, so the
@@ -789,15 +745,42 @@ export type ScheduledTaskSourceView =
  * than fully re-typed (they are not rendered).
  */
 export type ScheduledTaskTriggerView =
-  | { kind: "once"; atIso: string }
-  | { kind: "cron"; expression: string; tz: string }
-  | { kind: "interval"; everyMinutes: number; from?: string; until?: string }
-  | { kind: "relative_to_anchor"; anchorKey: string; offsetMinutes: number }
-  | { kind: "during_window"; windowKey: string }
-  | { kind: "event"; eventKind: string }
-  | { kind: "manual" }
-  | { kind: "after_task"; taskId: string; outcome: string };
-
+  | {
+      kind: "once";
+      atIso: string;
+    }
+  | {
+      kind: "cron";
+      expression: string;
+      tz: string;
+    }
+  | {
+      kind: "interval";
+      everyMinutes: number;
+      from?: string;
+      until?: string;
+    }
+  | {
+      kind: "relative_to_anchor";
+      anchorKey: string;
+      offsetMinutes: number;
+    }
+  | {
+      kind: "during_window";
+      windowKey: string;
+    }
+  | {
+      kind: "event";
+      eventKind: string;
+    }
+  | {
+      kind: "manual";
+    }
+  | {
+      kind: "after_task";
+      taskId: string;
+      outcome: string;
+    };
 export interface ScheduledTaskStateView {
   status: ScheduledTaskStatusView;
   firedAt?: string;
@@ -807,7 +790,6 @@ export interface ScheduledTaskStateView {
   lastFollowupAt?: string;
   lastDecisionLog?: string;
 }
-
 export interface ScheduledTaskView {
   taskId: string;
   kind: ScheduledTaskKindView;
@@ -821,7 +803,6 @@ export interface ScheduledTaskView {
   ownerVisible: boolean;
   metadata?: Record<string, unknown>;
 }
-
 /** Optional filter accepted by `GET /api/lifeops/scheduled-tasks`. */
 export interface ScheduledTaskListFilter {
   kind?: ScheduledTaskKindView;
@@ -831,7 +812,6 @@ export interface ScheduledTaskListFilter {
   /** Restrict to owner-visible rows (passed as `ownerVisibleOnly=1`). */
   ownerVisibleOnly?: boolean;
 }
-
 export interface ScheduledTaskListResponse {
   tasks: ScheduledTaskView[];
 }

@@ -4,7 +4,7 @@
 import type { LucideIcon } from "lucide-react";
 import * as React from "react";
 import { Card } from "../../../components/ui/card";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 export interface KeyMetric {
   label: string;
@@ -82,7 +82,7 @@ export function KeyMetricsGrid({ metrics, columns = 4 }: KeyMetricsGridProps) {
               </div>
             ) : null}
             <div className="space-y-2 p-6 pb-4">
-              <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <h4 className="text-xs font-medium uppercase tracking-wide text-muted-strong">
                 {metric.label}
               </h4>
             </div>
@@ -102,7 +102,7 @@ export function KeyMetricsGrid({ metrics, columns = 4 }: KeyMetricsGridProps) {
                 </span>
               ) : null}
               {metric.helper ? (
-                <p className="text-sm text-muted-foreground">{metric.helper}</p>
+                <p className="text-sm text-muted-strong">{metric.helper}</p>
               ) : null}
             </div>
           </KeyMetricCard>

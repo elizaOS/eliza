@@ -12,12 +12,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { type CharacterSettings, logger } from "@elizaos/core";
-import type { AgentConfig } from "@elizaos/shared";
+import { resolveElizaPackageRootSync } from "@elizaos/host";
 import {
+  type AgentConfig,
+  type ElizaConfig,
   normalizeFirstRunProviderId,
-  resolveElizaPackageRootSync,
-} from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
+} from "@elizaos/host/protocol";
+
+import { assertNoRetiredCharacterToolRestrictions } from "../config/retired-tool-policy.ts";
 
 /** Injectable local-file seam used by deterministic character-loader tests. */
 export interface CharacterOverrideFileAccess {
@@ -243,6 +245,8 @@ export function applySandboxCharacterFromEnv(
     name.toLowerCase().replace(/\s+/g, "-");
 
   const knowledge = mergeKnowledgeSources(parsed);
+
+  assertNoRetiredCharacterToolRestrictions(parsed.settings);
 
   const entry: AgentConfig = {
     id,

@@ -91,13 +91,16 @@ test.describe("billing snapshot — backend failure recovery", () => {
 
     // Warm the app shell once so startup and lazy private-route registration
     // settle before either test installs its Billing-specific observation.
-    const runtimeReady = authenticatedPage.waitForResponse(
-      (response) =>
-        new URL(response.url()).pathname === "/api/status" &&
-        response.status() === 200,
-    );
-    await authenticatedPage.goto(stack.urls.frontend, { timeout: 60_000 });
-    await runtimeReady;
+    // The response includes cold app boot, so use the navigation budget.
+    await Promise.all([
+      authenticatedPage.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === "/api/status" &&
+          response.status() === 200,
+        { timeout: 60_000 },
+      ),
+      authenticatedPage.goto(stack.urls.frontend, { timeout: 60_000 }),
+    ]);
     await expect(
       authenticatedPage.getByTestId("home-launcher-surface"),
     ).toBeVisible();
@@ -162,10 +165,12 @@ test.describe("billing snapshot — backend failure recovery", () => {
         }),
       ).toBeVisible();
       await expect(
-        authenticatedPage.getByRole("button", {
-          name: "Retry",
-          exact: true,
-        }),
+        authenticatedPage
+          .getByRole("region", { name: "Active compute", exact: true })
+          .getByRole("button", {
+            name: "Retry",
+            exact: true,
+          }),
       ).toBeVisible();
       expect(snapshotStatuses.length).toBeGreaterThanOrEqual(1);
       expect(snapshotStatuses.every((status) => status === 200)).toBe(true);
@@ -271,7 +276,9 @@ test.describe("billing snapshot — backend failure recovery", () => {
       }),
     ).toBeHidden();
     await expect(
-      authenticatedPage.getByRole("button", { name: "Retry", exact: true }),
+      authenticatedPage
+        .getByRole("region", { name: "Active compute", exact: true })
+        .getByRole("button", { name: "Retry", exact: true }),
     ).toBeVisible();
     expect(snapshotStatuses.length).toBeGreaterThanOrEqual(1);
     expect(snapshotStatuses.every((status) => status === 503)).toBe(true);
@@ -284,6 +291,7 @@ test.describe("billing snapshot — backend failure recovery", () => {
         response.status() === 200,
     );
     await authenticatedPage
+      .getByRole("region", { name: "Active compute", exact: true })
       .getByRole("button", { name: "Retry", exact: true })
       .click();
     await recoveredResponse;
@@ -486,10 +494,12 @@ test.describe("billing snapshot — backend failure recovery", () => {
           /Could not refresh\. Showing the snapshot completed at /,
         ),
       ).toBeVisible();
-      const retry = authenticatedPage.getByRole("button", {
-        name: "Retry",
-        exact: true,
-      });
+      const retry = authenticatedPage
+        .getByRole("region", { name: "Active compute", exact: true })
+        .getByRole("button", {
+          name: "Retry",
+          exact: true,
+        });
       await expect(retry).toBeVisible();
       expect(snapshotStatuses).toContain(200);
       expect(snapshotStatuses.filter((status) => status === 503)).toHaveLength(

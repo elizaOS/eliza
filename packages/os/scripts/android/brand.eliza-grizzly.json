@@ -1,0 +1,25 @@
+{
+  "brand": "eliza",
+  "appName": "Eliza",
+  "distroName": "elizaOS",
+  "packageName": "ai.elizaos.app",
+  "classPrefix": "Eliza",
+  "productName": "eliza_grizzly_phone",
+  "architecture": "arm64",
+  "lunchTarget": "eliza_grizzly_phone-cp2a-userdebug",
+  "aospDeviceTreePaths": ["vendor/google_devices/grizzly/grizzly.mk"],
+  "aospLockPath": "android/pixel11pro.lock.json",
+  "envPrefix": "ELIZA",
+  "propertyPrefix": "elizaos",
+  "vendorDir": "android/vendor/eliza",
+  "initRcName": "init.eliza.rc",
+  "commonMakefile": "eliza_common.mk",
+  "cuttlefishMakefile": "eliza_grizzly_phone.mk",
+  "buildAndroidSystemCmd": [
+    "bun",
+    "run",
+    "--cwd",
+    "packages/app",
+    "build:android:system"
+  ]
+}

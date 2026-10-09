@@ -5,10 +5,7 @@
   "bypass_actors": [],
   "conditions": {
     "ref_name": {
-      "include": [
-        "refs/heads/staging",
-        "refs/heads/main"
-      ],
+      "include": ["refs/heads/staging", "refs/heads/main"],
       "exclude": []
     }
   },
@@ -22,9 +19,7 @@
     {
       "type": "pull_request",
       "parameters": {
-        "allowed_merge_methods": [
-          "merge"
-        ],
+        "allowed_merge_methods": ["merge"],
         "dismiss_stale_reviews_on_push": true,
         "require_code_owner_review": false,
         "require_last_push_approval": true,

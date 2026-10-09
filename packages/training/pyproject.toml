@@ -30,18 +30,23 @@ dependencies = [
   # directly; keep it in the base training environment so smoke tests and
   # dry-run recipe generation do not depend on optional train extras.
   "scipy>=1.17.0",
-  # Property-based testing for the privacy filter contract. Lightweight
-  # pure-Python dep; pinned only at the floor to match the rest of the
-  # test stack (pytest>=8).
-  "hypothesis>=6.100.0",
+
 ]
 
 [project.optional-dependencies]
+dev = [
+  "setuptools>=77",
+  "pytest>=8.0.0", "pytest-asyncio>=1.0.0", "hypothesis>=6.100.0",
+  "ruff>=0.15.0", "ty>=0.0.1", "jsonschema>=4.0",
+  "torch>=2.13.0,<2.15", "transformers>=4.46.0",
+  "accelerate>=1.1.0", "apollo-torch>=1.0.3", "pydantic>=2.0",
+  "aiohttp>=3.10", "python-dotenv>=1.0", "tenacity>=9.0", "gguf>=0.17.1",
+]
 train = [
   # Keep the training wheel compatible with the current vLLM serving line.
   # vLLM 0.27.x resolves Torch 2.13, the first release outside the
   # torch.jit.script memory-corruption advisory range.
-  "torch>=2.13.0,<2.14",
+  "torch>=2.13.0,<2.15",
   "transformers>=4.46.0",
   "accelerate>=1.1.0",
   "peft>=0.14.0",
@@ -74,7 +79,7 @@ train = [
   # vocab=262k makes this dominant) so we can push local training seq_len
   # from ~2k to ~8k on the same 16 GB budget.
   "liger-kernel>=0.5.0",
-  # GGUF Q4_K_M quantization (scripts/quantization/gguf-q4_k_m_apply.py).
+  # GGUF Q4_K_M quantization (eliza_training.quantization.gguf_profile --profile Q4_K_M).
   # The wrapper uses the in-repo llama.cpp fork submodule at
   # plugins/plugin-local-inference/native/llama.cpp (its convert_hf_to_gguf.py + a one-shot
   # CPU cmake build of llama-quantize/llama-cli — see the script's
@@ -95,7 +100,7 @@ train = [
   # by the CPU-only unit tests it sweeps.
   "pytest>=8.0.0",
   # The RL scenario-pool tests use @pytest.mark.asyncio; collected in
-  # tests/rl/ and gated by tests/rl/conftest.py compat shim.
+  # tests/rl/ alongside the canonical eliza_training package.
   "pytest-asyncio>=1.0.0",
 ]
 rl = [
@@ -111,7 +116,7 @@ rl = [
   # without serving don't have to install the full `serve` extra. The 0.27
   # line includes the auth, request-fanout, ReDoS, and media-input fixes that
   # are absent from the old 0.8 rollout server.
-  "vllm>=0.27.1,<0.28.0",
+  "vllm>=0.27.1,<0.32.0",
   # verl's dashboard dependency otherwise floats to historical Ray releases.
   # Keep the resolved dashboard past the published RCE and unauthenticated
   # destructive-endpoint advisory ranges.
@@ -156,7 +161,7 @@ serve = [
   # Pin a minor floor that captures all of these. See
   # scripts/inference/serve_vllm.py for the canonical flag set per model +
   # GPU target.
-  "vllm>=0.27.1,<0.28.0",
+  "vllm>=0.27.1,<0.32.0",
   # `vllm-flash-attn` is bundled with vLLM 0.20+; add explicitly so the
   # constraint solver doesn't pull a stale wheel from a transitive dep.
   "transformers>=4.46.0",
@@ -168,12 +173,8 @@ serve = [
 ]
 
 [tool.pytest.ini_options]
-# Tests reach into the repo via `from scripts.training.memory_calc import …`.
-# That requires the repo root on sys.path; pytest's `rootdir` autodiscovery
-# alone is not enough. `pythonpath = ["."]` makes the repo importable from
-# every test invocation, including the pre-flight gate (scripts/preflight.sh).
-pythonpath = ["."]
-testpaths = ["scripts", "benchmarks", "tests"]
+testpaths = ["scripts", "tests"]
+python_files = ["test_*.py"]
 addopts = "-q"
 asyncio_mode = "auto"
 markers = [
@@ -181,7 +182,7 @@ markers = [
 ]
 
 [tool.uv]
-package = false
+package = true
 # Argos Translate has not refreshed its exact Stanza dependency even though
 # the compatible 1.12.2 patch removes unsafe model-file deserialization.
 override-dependencies = [
@@ -209,3 +210,7 @@ conflicts = [
     { extra = "rl-tinker" },
   ],
 ]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"

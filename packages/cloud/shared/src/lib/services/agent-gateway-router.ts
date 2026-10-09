@@ -16,6 +16,7 @@ import {
 import { runOnboardingChat } from "./eliza-app/onboarding-chat";
 import type { BridgeRequest, BridgeResponse } from "./eliza-sandbox";
 import { elizaSandboxService } from "./eliza-sandbox";
+import { resolvePersonalDedicatedTrafficAccess } from "./personal-dedicated-fallback";
 import {
   isPhoneSchemaMigrationRequired,
   isPostgresUndefinedTableError,
@@ -29,7 +30,9 @@ export type AgentGatewayRouteReason =
   | "sender_not_guild_owner"
   | "owner_agent_not_running"
   | "ambiguous_target"
-  | "bridge_failed";
+  | "bridge_failed"
+  /** The owner's personal Dedicated access is withdrawn (#25146); nothing reached it. */
+  | "dedicated_access_withdrawn";
 
 export interface AgentGatewaySender {
   id: string;
@@ -616,6 +619,29 @@ export class AgentGatewayRouterService {
       return {
         handled: false,
         reason: "bridge_failed",
+        roomId: extractRoomId(rpc),
+      };
+    }
+
+    // Shared-gateway traffic has no Shared fallback of its own: while the
+    // owner's personal Dedicated access is withdrawn it is refused before it
+    // can reach Dedicated memory (#25146).
+    const access = await resolvePersonalDedicatedTrafficAccess({
+      dedicatedAgentId: target.sandbox.id,
+      organizationId: target.sandbox.organization_id,
+    });
+    if (access.access === "withdrawn") {
+      logger.info("[agent-gateway] Personal Dedicated access withdrawn; inbound refused", {
+        agentId: target.sandbox.id,
+        organizationId: target.sandbox.organization_id,
+        method: rpc.method,
+        code: access.code,
+      });
+      return {
+        handled: false,
+        reason: "dedicated_access_withdrawn",
+        agentId: target.sandbox.id,
+        organizationId: target.sandbox.organization_id,
         roomId: extractRoomId(rpc),
       };
     }

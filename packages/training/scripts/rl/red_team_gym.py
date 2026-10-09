@@ -30,7 +30,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from lib.generation_integrity import anthropic_max_output_tokens, require_complete_generation
+from eliza_training.lib.generation_integrity import anthropic_max_output_tokens, require_complete_generation
 
 from .adversarial_game import (
     ATTACK_TEMPLATES,

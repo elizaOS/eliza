@@ -3,15 +3,14 @@
  * tools, and resources into agent context each turn. Reads McpService provider
  * data without dropping any discovered server, tool, or resource.
  */
+
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
-import { formatMcpProviderForPrompt } from "@elizaos/shared/mcp";
+import { formatMcpProviderForPrompt } from "./protocol-utils/provider-projection.js";
 import type { McpService } from "./service";
 import { MCP_SERVICE_NAME } from "./types";
-
 export const provider: Provider = {
   name: "MCP",
   description: "Information about connected MCP servers, tools, and resources",
-
   dynamic: true,
   contexts: ["connectors", "settings"],
   contextGate: { anyOf: ["connectors", "settings"] },
@@ -26,7 +25,6 @@ export const provider: Provider = {
         text: "No MCP servers are available.",
       };
     }
-
     try {
       const providerData = mcpService.getProviderData();
       const mcp = providerData.values.mcp;

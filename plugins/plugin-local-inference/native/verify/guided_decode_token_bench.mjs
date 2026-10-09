@@ -9,7 +9,7 @@
  * scaffold and the closed enum set, and the *prefill plan* lets the server
  * splice the deterministically-implied byte runs as token ids *without a
  * forward pass* (see
- * `packages/app-core/src/services/local-inference/structured-output.ts`
+ * `packages/app/src/services/local-inference/structured-output.ts`
  * `ElizaPrefillPlan` / `reports/porting/2026-05-11/guided-structured-decoding.md`).
  *
  * Two modes:
@@ -63,7 +63,7 @@ function parseArgs(argv) {
 // ---------------------------------------------------------------------------
 // Representative eliza-harness skeletons (the structured outputs the agent loop
 // actually emits). Built the same way `buildResponseGrammar` /
-// `buildPlannerActionGrammar` do, inlined here so the bench has no app-core
+// `buildPlannerActionGrammar` do, inlined here so the bench has no app
 // import (it runs from `packages/inference/`).
 // ---------------------------------------------------------------------------
 

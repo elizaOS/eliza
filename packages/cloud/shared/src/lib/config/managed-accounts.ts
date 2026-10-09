@@ -10,7 +10,7 @@
  *
  * Verification reports configured/partial/missing/deferred status only —
  * never credential values — so its output is safe for CI logs and issues.
- * The operator CLI lives at scripts/managed-accounts-doctor.mjs
+ * The operator CLI lives at scripts/managed-accounts-doctor.ts
  * (`bun run verify:managed-accounts`).
  */
 

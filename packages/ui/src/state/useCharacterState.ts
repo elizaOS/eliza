@@ -7,12 +7,17 @@
  * than coupling this hook to useLifecycleState directly.
  */
 
-import { logger } from "@elizaos/logger";
+import { replaceNameTokens } from "@elizaos/core/protocol";
 import { useCallback, useState } from "react";
-import type { AgentStatus } from "../api";
-import { type CharacterData, client } from "../api";
-import { prepareDraftForSave } from "../character/character-draft-helpers";
-import { replaceNameTokens } from "../utils/name-tokens";
+import { client } from "../api/client";
+import type { CharacterData } from "../api/client-types-config";
+import type { AgentStatus } from "../api/client-types-core";
+import { logger } from "../logger.ts";
+import {
+  parseArrayInput,
+  parseMessageExamplesInput,
+  prepareDraftForSave,
+} from "./character-draft-helpers";
 import {
   loadAvatarIndex,
   loadPersistedActivePackId,
@@ -175,10 +180,7 @@ export function useCharacterState({
 
   const handleCharacterArrayInput = useCallback(
     (field: "adjectives" | "postExamples", value: string) => {
-      const items = value
-        .split("\n")
-        .map((s: string) => s.trim())
-        .filter((s: string) => s.length > 0);
+      const items = parseArrayInput(value);
       setCharacterDraft((prev: CharacterData) => ({ ...prev, [field]: items }));
     },
     [],
@@ -186,10 +188,7 @@ export function useCharacterState({
 
   const handleCharacterStyleInput = useCallback(
     (subfield: "all" | "chat" | "post", value: string) => {
-      const items = value
-        .split("\n")
-        .map((s: string) => s.trim())
-        .filter((s: string) => s.length > 0);
+      const items = parseArrayInput(value);
       setCharacterDraft((prev: CharacterData) => ({
         ...prev,
         style: { ...(prev.style ?? {}), [subfield]: items },
@@ -199,31 +198,9 @@ export function useCharacterState({
   );
 
   const handleCharacterMessageExamplesInput = useCallback((value: string) => {
-    if (!value.trim()) {
-      setCharacterDraft((prev: CharacterData) => ({
-        ...prev,
-        messageExamples: [],
-      }));
-      return;
-    }
-    const blocks = value.split(/\n\s*\n/).filter((b) => b.trim().length > 0);
-    const parsed = blocks.map((block) => {
-      const lines = block.split("\n").filter((l) => l.trim().length > 0);
-      const examples = lines.map((line) => {
-        const colonIdx = line.indexOf(":");
-        if (colonIdx > 0) {
-          return {
-            name: line.slice(0, colonIdx).trim(),
-            content: { text: line.slice(colonIdx + 1).trim() },
-          };
-        }
-        return { name: "User", content: { text: line.trim() } };
-      });
-      return { examples };
-    });
     setCharacterDraft((prev: CharacterData) => ({
       ...prev,
-      messageExamples: parsed,
+      messageExamples: parseMessageExamplesInput(value),
     }));
   }, []);
 

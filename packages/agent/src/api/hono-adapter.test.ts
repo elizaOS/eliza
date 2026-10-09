@@ -1,355 +1,474 @@
-/**
- * Unit coverage for the Hono plugin-route adapter using real Hono requests and
- * the canonical route dispatcher. The suite verifies route mounting, request
- * context translation, authorization, failure handling, and response encoding.
- */
+import { randomUUID } from "node:crypto";
+import { createServer, type Server } from "node:http";
+import type { AccessContext, UUID } from "@elizaos/core";
+import {
+  getHttpRuntime,
+  type Route,
+  registerHttpPluginRoutes,
+} from "@elizaos/host/protocol";
+import {
+  autonomyCapabilities,
+  createAssistantBehavior,
+} from "@elizaos/plugin-assistant";
+import { dispatchBufferedRequest } from "@elizaos/plugin-native-inference/android/dispatch";
+import { createTestRuntime } from "@elizaos/testing/runtime";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
+import { dispatchApiRoute, registerInProcessApi } from "./in-process-api.ts";
 
-import type {
-  AccessContext,
-  IAgentRuntime,
-  Route,
-  RouteHandlerContext,
-} from "@elizaos/core";
-import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
-import { buildHonoAppForRuntime, mountRoutesOnHono } from "./hono-adapter.ts";
+let fixture: Awaited<ReturnType<typeof createTestRuntime>>;
+let server: Server;
+let base: string;
+const failures: unknown[] = [];
+const tokens = [randomUUID(), randomUUID()];
+const contexts = tokens.map<AccessContext>(() => ({
+  requesterEntityId: randomUUID() as UUID,
+  worldId: randomUUID() as UUID,
+  authorizedRoomIds: [randomUUID() as UUID],
+  role: "USER",
+  isOwner: false,
+  source: "http-fixture",
+}));
+let arrivals = 0;
+let release: () => void;
+const overlap = new Promise<void>((resolve) => {
+  release = resolve;
+});
 
-function runtimeWith(routes: Route[]): IAgentRuntime {
-  return { routes } as unknown as IAgentRuntime;
-}
-
-function privateRoute(
-  type: Exclude<Route["type"], "STATIC">,
-  path: string,
-  routeHandler: (ctx: RouteHandlerContext) => Promise<{
-    status: number;
-    headers?: Record<string, string>;
-    body?: unknown;
-    stream?: AsyncIterable<string | Uint8Array>;
-  }>,
-): Route {
-  return { type, path, routeHandler };
-}
-
-describe("hono-adapter", () => {
-  it.each(["GET", "POST", "PUT", "PATCH", "DELETE"] as const)(
-    "mounts a %s route and dispatches its real request method",
-    async (method) => {
-      const path = `/api/method/${method.toLowerCase()}`;
-      const app = buildHonoAppForRuntime(
-        runtimeWith([
-          privateRoute(method, path, async (ctx) => ({
-            status: 200,
-            body: { method: ctx.method, path: ctx.path },
-          })),
-        ]),
-        { isAuthorized: () => true },
-      );
-
-      const response = await app.request(path, { method });
-
-      expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ method, path });
+beforeAll(async () => {
+  fixture = await createTestRuntime();
+  getHttpRuntime(fixture.runtime).routes.push({
+    type: "GET",
+    path: "/api/context-check/:mode",
+    routeHandler: async (ctx) => {
+      if (ctx.params.mode === "parallel") {
+        if (++arrivals === 2) release();
+        await overlap;
+      }
+      const body = {
+        accessContext: structuredClone(ctx.accessContext),
+        inProcess: ctx.inProcess,
+        trustedLocal: ctx.isTrustedLocal,
+      };
+      if (ctx.accessContext) {
+        ctx.accessContext.source = "handler-mutation";
+        (ctx.accessContext.authorizedRoomIds as UUID[]).splice(0);
+      }
+      return { status: Number(ctx.params.mode) || 200, body };
     },
-  );
-
-  it("does not mount static routes or entries without a handler", async () => {
-    const app = buildHonoAppForRuntime(
-      runtimeWith([
-        { type: "STATIC", path: "/assets", filePath: "./assets" },
-        { type: "GET", path: "/api/handlerless" },
-      ]),
-      { isAuthorized: () => true },
-    );
-
-    expect((await app.request("/assets")).status).toBe(404);
-    expect((await app.request("/api/handlerless")).status).toBe(404);
   });
-
-  it("preserves route order when method and path tie", async () => {
-    const app = buildHonoAppForRuntime(
-      runtimeWith([
-        privateRoute("GET", "/api/tie", async () => ({
-          status: 200,
-          body: { owner: "first" },
-        })),
-        privateRoute("GET", "/api/tie", async () => ({
-          status: 200,
-          body: { owner: "second" },
-        })),
-      ]),
-      { isAuthorized: () => true },
+  server = createServer((req, res) => {
+    const index = tokens.findIndex(
+      (token) => req.headers.authorization === `Bearer ${token}`,
     );
-
-    expect(await (await app.request("/api/tie")).json()).toEqual({
-      owner: "first",
-    });
-  });
-
-  it("translates wildcard paths and supplies decoded route params", async () => {
-    const app = buildHonoAppForRuntime(
-      runtimeWith([
-        privateRoute("GET", "/api/files/:rest*", async (ctx) => ({
-          status: 200,
-          body: ctx.params,
-        })),
-      ]),
-      { isAuthorized: () => true },
-    );
-
-    const response = await app.request("/api/files/one/two%20words");
-
-    expect(await response.json()).toEqual({ rest: "one/two words" });
-    expect((await app.request("/api/files")).status).toBe(404);
-  });
-
-  it("marshals JSON, raw body, repeated query values, and headers", async () => {
-    const app = buildHonoAppForRuntime(
-      runtimeWith([
-        privateRoute("POST", "/api/inspect/:id", async (ctx) => ({
-          status: 200,
-          body: {
-            body: ctx.body,
-            rawBody: ctx.rawBody,
-            params: ctx.params,
-            query: ctx.query,
-            headers: ctx.headers,
-            inProcess: ctx.inProcess,
-          },
-        })),
-      ]),
-      { isAuthorized: () => true },
-    );
-    const rawBody = '{"ready":true}';
-
-    const response = await app.request(
-      "/api/inspect/item%2042?tag=one&tag=two&empty=",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "X-Fixture": "present",
-        },
-        body: rawBody,
-      },
-    );
-    const result = (await response.json()) as {
-      body: unknown;
-      rawBody: string;
-      params: Record<string, string>;
-      query: Record<string, string | string[]>;
-      headers: Record<string, string>;
-      inProcess: boolean;
-    };
-
-    expect(result.body).toEqual({ ready: true });
-    expect(result.rawBody).toBe(rawBody);
-    expect(result.params).toEqual({ id: "item 42" });
-    expect(result.query).toEqual({ tag: ["one", "two"], empty: "" });
-    expect(result.headers["x-fixture"]).toBe("present");
-    expect(result.inProcess).toBe(false);
-  });
-
-  it.each([
-    {
-      name: "empty JSON",
-      headers: { "content-type": "application/json" },
-      body: "",
-      expected: { body: null, rawBody: "" },
-    },
-    {
-      name: "malformed JSON",
-      headers: { "content-type": "application/json" },
-      body: "{broken",
-      expected: { body: "{broken", rawBody: "{broken" },
-    },
-    {
-      name: "plain text",
-      headers: { "content-type": "text/plain" },
-      body: "hello",
-      expected: { body: "hello", rawBody: "hello" },
-    },
-  ])(
-    "preserves $name request semantics",
-    async ({ headers, body, expected }) => {
-      const app = buildHonoAppForRuntime(
-        runtimeWith([
-          privateRoute("POST", "/api/body", async (ctx) => ({
-            status: 200,
-            body: {
-              body: ctx.body ?? null,
-              rawBody: ctx.rawBody,
-            },
-          })),
-        ]),
-        { isAuthorized: () => true },
-      );
-
-      const response = await app.request("/api/body", {
-        method: "POST",
-        headers,
-        body,
+    void tryHandleHonoRuntimeRoute({
+      req,
+      res,
+      runtime: fixture.runtime,
+      isAuthorized: () => index !== -1,
+      isTrustedLocal: () => false,
+      accessContext: () => contexts[index],
+    })
+      .then((handled) => {
+        if (!handled) {
+          res.statusCode = 404;
+          res.end();
+        }
+      })
+      .catch((error: unknown) => {
+        failures.push(error);
+        res.destroy();
       });
-
-      expect(await response.json()).toEqual(expected);
-    },
-  );
-
-  it("enforces private-route authorization before invoking the handler", async () => {
-    let invoked = false;
-    const app = buildHonoAppForRuntime(
-      runtimeWith([
-        privateRoute("GET", "/api/private", async () => {
-          invoked = true;
-          return { status: 200, body: { ok: true } };
-        }),
-      ]),
-      { isAuthorized: () => false },
-    );
-
-    const response = await app.request("/api/private");
-
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: "Unauthorized" });
-    expect(invoked).toBe(false);
   });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("No HTTP address");
+  base = `http://127.0.0.1:${address.port}/api/context-check/`;
+}, 120_000);
 
-  it("resolves trusted-local and requester access context at the boundary", async () => {
-    const accessContext = {
-      entityId: "viewer-1",
-    } as unknown as AccessContext;
-    const app = buildHonoAppForRuntime(
-      runtimeWith([
-        privateRoute("GET", "/api/context", async (ctx) => ({
-          status: 200,
-          body: {
-            trusted: ctx.isTrustedLocal,
-            accessContext: ctx.accessContext,
-          },
-        })),
-      ]),
-      {
-        isAuthorized: () => true,
-        isTrustedLocal: () => true,
-        resolveAccessContext: () => accessContext,
-      },
-    );
-
-    expect(await (await app.request("/api/context")).json()).toEqual({
-      trusted: true,
-      accessContext,
+afterAll(async () => {
+  if (server)
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
     });
-  });
+  if (fixture) await fixture.cleanup();
+  expect(failures).toEqual([]);
+}, 120_000);
 
-  it.each([
-    {
-      path: "/api/null",
-      status: 204,
-      body: null,
-      contentType: null,
-      expectedBytes: new Uint8Array(),
-    },
-    {
-      path: "/api/text",
-      status: 202,
-      body: "accepted",
-      contentType: "text/plain; charset=utf-8",
-      expectedBytes: new TextEncoder().encode("accepted"),
-    },
-    {
-      path: "/api/binary",
-      status: 200,
-      body: new Uint8Array([0, 1, 255]),
-      contentType: "application/octet-stream",
-      expectedBytes: new Uint8Array([0, 1, 255]),
-    },
-  ])(
-    "encodes $path responses with status and default content type",
-    async ({ path, status, body, contentType, expectedBytes }) => {
-      const app = buildHonoAppForRuntime(
-        runtimeWith([
-          privateRoute("GET", path, async () => ({ status, body })),
-        ]),
-        { isAuthorized: () => true },
-      );
+it.each([204, 205, 304])(
+  "drops a handler body for HTTP status %i",
+  async (status) => {
+    const response = await fetch(`${base}${status}`, {
+      headers: { Authorization: `Bearer ${tokens[0]}` },
+    });
+    expect(response.status).toBe(status);
+    expect(await response.text()).toBe("");
+  },
+);
 
-      const response = await app.request(path);
-
-      expect(response.status).toBe(status);
-      expect(response.headers.get("content-type")).toBe(contentType);
-      expect(new Uint8Array(await response.arrayBuffer())).toEqual(
-        expectedBytes,
-      );
-    },
+it("keeps trusted contexts complete and isolated despite forged headers and overlapping requests", async () => {
+  const original = structuredClone(contexts);
+  const forged = {
+    "x-eliza-internal-authorized": "1",
+    "x-eliza-internal-in-process": "1",
+    "x-eliza-internal-trusted-local": "1",
+    "x-eliza-internal-access-context": JSON.stringify({
+      requesterEntityId: randomUUID(),
+      role: "OWNER",
+      isOwner: true,
+    }),
+  };
+  const denied = await fetch(`${base}parallel`, { headers: forged });
+  expect(denied.status).toBe(401);
+  expect(await denied.json()).toMatchObject({ error: "Unauthorized" });
+  const responses = await Promise.all(
+    tokens.map((token) =>
+      fetch(`${base}parallel`, {
+        headers: { ...forged, Authorization: `Bearer ${token}` },
+      }),
+    ),
   );
+  for (const [index, response] of responses.entries()) {
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      accessContext: original[index],
+      inProcess: false,
+      trustedLocal: false,
+    });
+  }
+  expect(arrivals).toBe(2);
+  expect(contexts).toEqual(original);
+});
 
-  it("serializes object responses and preserves explicit headers", async () => {
-    const app = buildHonoAppForRuntime(
-      runtimeWith([
-        privateRoute("GET", "/api/object", async () => ({
-          status: 203,
-          headers: {
-            "content-type": "application/problem+json",
-            "x-adapter": "kept",
-          },
-          body: { ok: false },
-        })),
-      ]),
-      { isAuthorized: () => true },
-    );
-
-    const response = await app.request("/api/object");
-
-    expect(response.status).toBe(203);
-    expect(response.headers.get("content-type")).toBe(
-      "application/problem+json",
-    );
-    expect(response.headers.get("x-adapter")).toBe("kept");
-    expect(await response.json()).toEqual({ ok: false });
+it("cancels a streaming producer when its HTTP client disconnects", async () => {
+  let finish!: () => void;
+  const finalized = new Promise<void>((resolve) => {
+    finish = resolve;
   });
+  let routeSignal: AbortSignal | undefined;
+  getHttpRuntime(fixture.runtime).routes.push({
+    type: "GET",
+    path: "/api/cancellation-http",
+    routeHandler: async ({ signal }) => {
+      routeSignal = signal;
+      return {
+        status: 200,
+        stream: (async function* () {
+          try {
+            yield "first";
+            await new Promise<void>((resolve) => {
+              if (signal.aborted) resolve();
+              else
+                signal.addEventListener("abort", () => resolve(), {
+                  once: true,
+                });
+            });
+          } finally {
+            finish();
+          }
+        })(),
+      };
+    },
+  });
+  const controller = new AbortController();
+  try {
+    const response = await fetch(new URL("/api/cancellation-http", base), {
+      signal: controller.signal,
+      headers: { Authorization: `Bearer ${tokens[0]}` },
+    });
+    if (!response.body) throw new Error("Missing response stream");
+    const reader = response.body.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe("first");
+    controller.abort();
+    await finalized;
+    expect(routeSignal?.aborted).toBe(true);
+  } finally {
+    controller.abort();
+  }
+});
 
-  it("streams text and bytes through the mounted Hono response", async () => {
-    async function* chunks(): AsyncGenerator<string | Uint8Array> {
-      yield "one";
-      yield new TextEncoder().encode("-two");
+it("propagates native cancellation through the registered HTTP kernel", async () => {
+  const controller = new AbortController();
+  const reason = new Error("Native caller cancelled");
+  let finalized = false;
+  let routeSignal: AbortSignal | undefined;
+  getHttpRuntime(fixture.runtime).routes.push({
+    type: "GET",
+    path: "/api/cancellation-native",
+    routeHandler: async ({ signal }) => {
+      routeSignal = signal;
+      return {
+        status: 200,
+        stream: (async function* () {
+          try {
+            yield "first";
+            await new Promise<void>((resolve) => {
+              if (signal.aborted) resolve();
+              else
+                signal.addEventListener("abort", () => resolve(), {
+                  once: true,
+                });
+            });
+          } finally {
+            finalized = true;
+          }
+        })(),
+      };
+    },
+  });
+  const unregister = registerInProcessApi(fixture.runtime, {
+    handle: async (req, res) => {
+      await tryHandleHonoRuntimeRoute({
+        req,
+        res,
+        runtime: fixture.runtime,
+        isAuthorized: () => true,
+      });
+    },
+  });
+  try {
+    await expect(
+      dispatchApiRoute({
+        runtime: fixture.runtime,
+        method: "GET",
+        path: "/api/cancellation-native",
+        headers: {},
+        inProcess: true,
+        isAuthorized: () => true,
+        signal: controller.signal,
+        onChunk: () => controller.abort(reason),
+      }),
+    ).rejects.toBe(reason);
+    expect(routeSignal?.aborted).toBe(true);
+    expect(finalized).toBe(true);
+  } finally {
+    unregister();
+  }
+});
+
+it("rejects a partial producer failure over HTTP and native dispatch", async () => {
+  let fail!: () => void;
+  let finalized = 0;
+  getHttpRuntime(fixture.runtime).routes.push({
+    type: "GET",
+    path: "/api/failed-stream",
+    routeHandler: async () => ({
+      status: 200,
+      stream: (async function* () {
+        try {
+          const proceed = new Promise<void>((resolve) => {
+            fail = resolve;
+          });
+          yield "partial";
+          await proceed;
+          throw new Error("Producer failed");
+        } finally {
+          finalized++;
+        }
+      })(),
+    }),
+  });
+  const response = await fetch(new URL("/api/failed-stream", base), {
+    headers: { Authorization: `Bearer ${tokens[0]}` },
+  });
+  if (!response.body) throw new Error("Missing response stream");
+  const reader = response.body.getReader();
+  expect(new TextDecoder().decode((await reader.read()).value)).toBe("partial");
+  fail();
+  await expect(reader.read()).rejects.toThrow();
+  const unregister = registerInProcessApi(fixture.runtime, {
+    handle: async (req, res) => {
+      await tryHandleHonoRuntimeRoute({
+        req,
+        res,
+        runtime: fixture.runtime,
+        isAuthorized: () => true,
+      });
+    },
+  });
+  try {
+    await expect(
+      dispatchApiRoute({
+        runtime: fixture.runtime,
+        method: "GET",
+        path: "/api/failed-stream",
+        headers: {},
+        inProcess: true,
+        isAuthorized: () => true,
+        onChunk: () => fail(),
+      }),
+    ).rejects.toMatchObject({ code: "PLUGIN_ROUTE_STREAM_FAILED" });
+    expect(finalized).toBe(2);
+    expect(
+      fixture.runtime
+        .getRecentReportedErrors()
+        .filter((error) => error.scope === "http.pluginStream"),
+    ).toHaveLength(2);
+  } finally {
+    unregister();
+  }
+});
+
+it("cancels Android buffered dispatch and refuses a pre-aborted request", async () => {
+  let started!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let invocations = 0;
+  let finalized = false;
+  getHttpRuntime(fixture.runtime).routes.push({
+    type: "GET",
+    path: "/api/android-cancellation",
+    routeHandler: async ({ signal }) => {
+      invocations++;
+      started();
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) resolve();
+        else signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      finalized = true;
+      return { status: 200, body: "must not be returned" };
+    },
+  });
+  const unregister = registerInProcessApi(fixture.runtime, {
+    handle: async (req, res) => {
+      await tryHandleHonoRuntimeRoute({
+        req,
+        res,
+        runtime: fixture.runtime,
+        isAuthorized: () => true,
+      });
+    },
+  });
+  const controller = new AbortController();
+  const reason = new Error("Android caller cancelled");
+  const call = () =>
+    dispatchBufferedRequest(
+      fixture.runtime,
+      dispatchApiRoute,
+      { path: "/api/android-cancellation" },
+      {
+        fullApiKernel: true,
+        configFileExists: () => false,
+        loadElizaConfig: () => ({}),
+        saveElizaConfig: () => {
+          throw new Error("Unexpected config save");
+        },
+        hasPersistedFirstRunState: () => false,
+      },
+      controller.signal,
+    );
+  try {
+    const pending = call();
+    await entered;
+    controller.abort(reason);
+    await expect(pending).rejects.toBe(reason);
+    await expect(call()).rejects.toBe(reason);
+    expect(invocations).toBe(1);
+    expect(finalized).toBe(true);
+  } finally {
+    controller.abort(reason);
+    unregister();
+  }
+});
+
+it("serves the consolidated assistant routes through authenticated HTTP", async () => {
+  getHttpRuntime(fixture.runtime).routes.push(
+    ...(createAssistantBehavior().routes ?? []),
+    ...autonomyCapabilities.routes,
+  );
+  const headers = {
+    Authorization: `Bearer ${tokens[0]}`,
+    "content-type": "application/json",
+  };
+  const roomId = randomUUID();
+  const statusUrl = new URL(`/api/turns/${roomId}`, base);
+  const denied = await fetch(statusUrl);
+  expect(denied.status).toBe(401);
+  const pending = fixture.runtime.turnControllers.runWith(
+    roomId,
+    (signal) =>
+      new Promise<unknown>((resolve) => {
+        signal.addEventListener("abort", () => resolve(signal.reason), {
+          once: true,
+        });
+      }),
+  );
+  try {
+    const active = await fetch(statusUrl, { headers });
+    expect(await active.json()).toEqual({
+      roomId,
+      active: true,
+      hasSignal: true,
+    });
+    const abort = await fetch(`${statusUrl}/abort`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ reason: "http-stop" }),
+    });
+    expect(await abort.json()).toEqual({
+      roomId,
+      aborted: true,
+      reason: "http-stop",
+    });
+    expect(await pending).toMatchObject({ reason: "http-stop" });
+    const idle = await fetch(statusUrl, { headers });
+    expect(await idle.json()).toEqual({
+      roomId,
+      active: false,
+      hasSignal: false,
+    });
+    for (const path of [
+      "/api/channel-topics/search?q=billing",
+      "/autonomy/status",
+    ]) {
+      const response = await fetch(new URL(path, base), { headers });
+      expect(response.status).toBe(503);
+      await response.arrayBuffer();
     }
-    const app = new Hono();
-    mountRoutesOnHono(
-      app,
-      runtimeWith([
-        privateRoute("GET", "/api/stream", async () => ({
-          status: 206,
-          headers: { "content-type": "text/event-stream" },
-          stream: chunks(),
-        })),
-      ]),
-      { isAuthorized: () => true },
-    );
+  } finally {
+    fixture.runtime.turnControllers.abortTurn(roomId, "test-cleanup");
+    await pending;
+  }
+});
 
-    const response = await app.request("/api/stream");
-
-    expect(response.status).toBe(206);
-    expect(response.headers.get("content-type")).toBe("text/event-stream");
-    expect(await response.text()).toBe("one-two");
+it("updates HTTP paths, methods and authorization when route contributions change", async () => {
+  const path = "/api/reload-fixture";
+  const headers = { Authorization: `Bearer ${tokens[0]}` };
+  const install = (routes: Route[]) =>
+    registerHttpPluginRoutes(fixture.runtime, {
+      name: "reload-fixture",
+      description: "HTTP route lifecycle",
+      routes,
+    });
+  const route = (version: number): Route => ({
+    type: "GET",
+    path,
+    rawPath: true,
+    routeHandler: async () => ({ status: 200, body: { version } }),
   });
-
-  it.each([
-    { thrown: new Error("route exploded"), expected: "route exploded" },
-    { thrown: "not-an-error", expected: "Internal server error" },
-  ])("translates a rejected handler into a JSON 500", async (fixture) => {
-    const app = buildHonoAppForRuntime(
-      runtimeWith([
-        privateRoute("GET", "/api/failure", async () => {
-          throw fixture.thrown;
-        }),
-      ]),
-      { isAuthorized: () => true },
+  const request = (target = path, method = "GET") =>
+    fetch(new URL(target, base), { method, headers });
+  try {
+    install([route(1)]);
+    expect(await (await request()).json()).toEqual({ version: 1 });
+    install([route(2)]);
+    expect(await (await request()).json()).toEqual({ version: 2 });
+    const moved = `${path}/moved`;
+    install([{ ...route(3), path: moved, type: "POST" }]);
+    expect((await request()).status).toBe(404);
+    expect((await request(moved)).status).toBe(404);
+    expect((await fetch(new URL(moved, base), { method: "POST" })).status).toBe(
+      401,
     );
-
-    const response = await app.request("/api/failure");
-
-    expect(response.status).toBe(500);
-    expect(response.headers.get("content-type")).toContain("application/json");
-    expect(await response.json()).toEqual({ error: fixture.expected });
-  });
+    expect(await (await request(moved, "POST")).json()).toEqual({ version: 3 });
+    install([]);
+    expect((await request(moved, "POST")).status).toBe(404);
+  } finally {
+    install([]);
+  }
 });

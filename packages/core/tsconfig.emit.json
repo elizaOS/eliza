@@ -1,0 +1,21 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"customConditions": [],
+		"noEmit": false,
+		"rootDir": "./src",
+		"outDir": "./dist",
+		"declaration": true,
+		"declarationMap": false,
+		"rewriteRelativeImportExtensions": true,
+		"paths": {}
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": [
+		"src/catalog/generate.ts",
+		"src/**/*.bench.ts",
+		"src/**/*.test.ts",
+		"src/**/*.fixture.ts",
+		"src/**/fixtures/**"
+	]
+}

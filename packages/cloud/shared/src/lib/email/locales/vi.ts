@@ -48,6 +48,9 @@ export const emailMessages: EmailMessages = {
   containerShutdownWarning: {
     subject: '🚨 KHẨN: container "{{containerName}}" sẽ bị tắt trong 48 giờ',
   },
+  agentRetentionDeletionNotice: {
+    subject: 'Tác tử "{{agentName}}" của bạn sẽ bị xóa sau {{daysRemaining}} ngày',
+  },
   footer: {
     copyright: "© {{year}} Eliza Cloud. Bảo lưu mọi quyền.",
   },

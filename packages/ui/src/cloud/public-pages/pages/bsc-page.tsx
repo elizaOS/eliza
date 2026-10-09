@@ -11,28 +11,28 @@
  * instead of an inline crypto-checkout card.
  */
 
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { Gift } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { BRAND_PATHS, LOGO_FILES } from "../../../brand/index.js";
+import { Button } from "../../../components/ui/button";
 import {
-  Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-  Input,
-} from "../../../components/primitives";
+} from "../../../components/ui/card";
+import { Input } from "../../../components/ui/input";
+import { useDocumentTitle } from "../../lib/use-document-title";
 import { useSessionAuth } from "../../lib/use-session-auth";
 import { useCloudT } from "../../shell/CloudI18nProvider";
-import { usePageTitle } from "../lib/use-page-title";
 
 export default function BscPromoPage() {
   const t = useCloudT();
   const { ready, authenticated } = useSessionAuth();
   const [amount, setAmount] = useState("10");
 
-  usePageTitle(
+  useDocumentTitle(
     t("cloud.bsc.metaTitle", { defaultValue: "BSC Cloud Credit Promotion" }),
   );
 

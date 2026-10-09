@@ -5,24 +5,36 @@
  * status; the widget is the ONLY model-loading status surface (the chat overlay
  * shows no floating pill) and self-hides when no local slot needs a download.
  */
+
+import type { LocalInferenceSlotReadiness } from "@elizaos/contracts";
+import { getElizaApiToken } from "@elizaos/host/protocol";
 import { Download, Loader2, TriangleAlert } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../../../api";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
+import { client } from "../../../api/client";
 import { isDesktopExternalApiBaseUrl } from "../../../api/desktop-external-api-base";
+import {
+  readPersistedMobileRuntimeMode,
+  subscribeToMobileRuntimeMode,
+} from "../../../first-run/mobile-runtime-mode";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useRuntimeMode } from "../../../hooks/useRuntimeMode";
-import { cn } from "../../../lib/utils";
-import {
-  deriveHomeModelStatus,
-  type HomeModelStatus,
-} from "../../../services/local-inference/home-model-status";
-import type { LocalInferenceSlotReadiness } from "../../../services/local-inference/types";
-import { resolveApiUrl } from "../../../utils/asset-url";
-import { getElizaApiToken } from "../../../utils/eliza-globals";
+import { resolveApiUrl } from "../../../utils/asset-url.js";
+import { cn } from "../../../utils/cn";
 import { openEventSource } from "../../../utils/event-source";
 import { withTimeout } from "../../../utils/with-timeout";
 import type { WidgetProps } from "../../../widgets/types";
+import {
+  deriveHomeModelStatus,
+  type HomeModelStatus,
+} from "../../local-inference/home-model-status";
+import { observeModelRoute } from "../../local-inference/model-route-recovery";
 import { Button } from "../../ui/button";
 import { useWidgetNavigation } from "./home-widget-card";
 
@@ -30,7 +42,7 @@ const DEFAULT_SPAN = "col-span-4 row-span-2";
 // Bound the hub fetch so a hung native bridge settles the tile (to not-required
 // → null) instead of spinning forever — the same stuck-loading bug other home
 // widgets guard against. The native IPC base can hang indefinitely early in boot.
-const HUB_TIMEOUT_MS = 6_000;
+const HUB_TIMEOUT_MS = 6000;
 // Debounce a hub refetch after each download-stream delta, matching the
 // useHomeModelStatus cadence (the stream carries deltas, not recomputed
 // readiness, so we refetch the authoritative `textReadiness`).
@@ -41,7 +53,6 @@ const STREAM_REFETCH_DEBOUNCE_MS = 400;
 // Opened on tap for any non-error state.
 const LOCAL_INFERENCE_VIEW_PATH = "/settings#ai-model";
 const LOCAL_INFERENCE_VIEW_ID = "settings";
-
 /**
  * A single assigned local text slot's download row. Derived from
  * `hub.textReadiness.slots`, skipping unassigned slots. Carries the failed
@@ -53,7 +64,6 @@ interface LocalModelRow {
   displayName: string | null;
   state: LocalInferenceSlotReadiness["state"];
 }
-
 interface LocalModelDownloads {
   /** Collapsed single-line status (max percent/eta across both text slots). */
   status: HomeModelStatus;
@@ -62,7 +72,6 @@ interface LocalModelDownloads {
   /** True until the first hub fetch settles — distinguishes loading from ready. */
   loading: boolean;
 }
-
 const NOT_REQUIRED_STATUS: HomeModelStatus = {
   kind: "not-required",
   blocksSend: false,
@@ -71,19 +80,16 @@ const NOT_REQUIRED_STATUS: HomeModelStatus = {
   modelName: null,
   errors: [],
 };
-
 const INITIAL: LocalModelDownloads = {
   status: NOT_REQUIRED_STATUS,
   rows: [],
   loading: true,
 };
-
 const SETTLED_NOT_REQUIRED: LocalModelDownloads = {
   status: NOT_REQUIRED_STATUS,
   rows: [],
   loading: false,
 };
-
 const ROUTING_STATUS_ERROR: LocalModelDownloads = {
   status: {
     kind: "error",
@@ -96,20 +102,17 @@ const ROUTING_STATUS_ERROR: LocalModelDownloads = {
   rows: [],
   loading: false,
 };
-
 function appendTokenParam(url: string): string {
   const token = getElizaApiToken()?.trim();
   if (!token) return url;
   return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
 }
-
 function supportsLocalInferenceStatus(): boolean {
   const baseUrl = client.getBaseUrl();
   return (
     supportsFullAppShellRoutes(baseUrl) && !isDesktopExternalApiBaseUrl(baseUrl)
   );
 }
-
 function rowsFromReadiness(
   slots: Record<
     LocalInferenceSlotReadiness["slot"],
@@ -125,7 +128,6 @@ function rowsFromReadiness(
       state: slot.state,
     }));
 }
-
 /**
  * Live reader for the local-inference download surface. ONE hub fetch (bounded
  * by `withTimeout`) seeds both the collapsed `deriveHomeModelStatus` status and
@@ -141,12 +143,16 @@ function rowsFromReadiness(
 export function useLocalModelDownloads(): LocalModelDownloads {
   const [state, setState] = useState<LocalModelDownloads>(INITIAL);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mobileRuntimeMode = useSyncExternalStore(
+    subscribeToMobileRuntimeMode,
+    readPersistedMobileRuntimeMode,
+    () => null,
+  );
   // Auth gate (#11084): the home surface mounts this widget before the auth
   // probe resolves, so the hub fetch + download SSE stream must stay dormant
   // until the session is authenticated (mirrors useHomeModelStatus).
   const authenticated = useIsAuthenticated();
   const runtimeMode = useRuntimeMode();
-
   useEffect(() => {
     if (!authenticated || runtimeMode.state.phase === "loading") {
       setState(INITIAL);
@@ -155,56 +161,44 @@ export function useLocalModelDownloads(): LocalModelDownloads {
     if (
       runtimeMode.isCloudMode ||
       runtimeMode.isRemoteMode ||
+      mobileRuntimeMode === "remote-mac" ||
       !supportsLocalInferenceStatus()
     ) {
       setState(SETTLED_NOT_REQUIRED);
       return;
     }
-
-    let cancelled = false;
-
-    const refresh = async () => {
-      let modelConfig: Awaited<ReturnType<typeof client.getModelsConfig>>;
-      try {
-        modelConfig = await client.getModelsConfig();
-      } catch {
-        // error-policy:J4 A failed routing probe is distinct from both a local
-        // download and a healthy external route; expose that unavailable state.
-        if (!cancelled) setState(ROUTING_STATUS_ERROR);
-        return;
-      }
-      if (cancelled) return;
-      // Runtime placement and inference placement are independent. A local
-      // runtime backed by Cerebras (or another external chat route) must not
-      // advertise the dormant on-device text slot during every page refresh.
-      if (modelConfig.activeChat) {
-        setState(SETTLED_NOT_REQUIRED);
-        return;
-      }
-
-      try {
-        const hub = await withTimeout(
-          client.getLocalInferenceHub(),
-          HUB_TIMEOUT_MS,
-        );
-        if (cancelled) return;
-        setState({
-          status: deriveHomeModelStatus(hub.textReadiness),
-          rows: rowsFromReadiness(hub.textReadiness.slots),
-          loading: false,
-        });
-      } catch {
-        // error-policy:J4 settle (keep last-good status, drop the loading
-        // flag) so the tile
-        // resolves to not-required/null instead of spinning. A hung native
-        // bridge or a transient error must never leave a permanent "Loading…".
-        if (cancelled) return;
-        setState((prev) => (prev.loading ? { ...prev, loading: false } : prev));
-      }
-    };
-
-    void refresh();
-
+    const recovery = observeModelRoute(
+      async (signal) => {
+        const modelConfig = await client.getModelsConfig({ signal });
+        if (signal.aborted) return null;
+        if (modelConfig.activeChat) {
+          setState(SETTLED_NOT_REQUIRED);
+          return null;
+        }
+        try {
+          const hub = await withTimeout(
+            client.getLocalInferenceHub(),
+            HUB_TIMEOUT_MS,
+          );
+          if (signal.aborted) return null;
+          setState({
+            status: deriveHomeModelStatus(hub.textReadiness),
+            rows: rowsFromReadiness(hub.textReadiness.slots),
+            loading: false,
+          });
+        } catch {
+          // error-policy:J4 Keep the last readiness state when the local hub
+          // is unavailable; stream events and reconnect can request it again.
+          if (!signal.aborted) {
+            setState((prev) =>
+              prev.loading ? { ...prev, loading: false } : prev,
+            );
+          }
+        }
+        return null;
+      },
+      () => setState(ROUTING_STATUS_ERROR),
+    );
     const url = appendTokenParam(
       resolveApiUrl("/api/local-inference/downloads/stream"),
     );
@@ -219,32 +213,29 @@ export function useLocalModelDownloads(): LocalModelDownloads {
       es.onmessage = () => {
         if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = setTimeout(
-          () => void refresh(),
+          recovery.refresh,
           STREAM_REFETCH_DEBOUNCE_MS,
         );
       };
     }
-
     return () => {
-      cancelled = true;
+      recovery.close();
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       es?.close();
     };
   }, [
     authenticated,
+    mobileRuntimeMode,
     runtimeMode.isCloudMode,
     runtimeMode.isRemoteMode,
     runtimeMode.state.phase,
   ]);
-
   return state;
 }
-
 function roundedPercent(percent: number | null): number | null {
   if (percent == null || !Number.isFinite(percent)) return null;
   return Math.max(0, Math.min(100, Math.round(percent)));
 }
-
 /** Compact ETA, e.g. "~3m left", "~45s left". Null when the ETA is unknown. */
 function formatEta(etaMs: number | null): string | null {
   if (etaMs == null || !Number.isFinite(etaMs) || etaMs <= 0) return null;
@@ -255,7 +246,6 @@ function formatEta(etaMs: number | null): string | null {
   const hours = Math.round(minutes / 60);
   return `~${hours}h left`;
 }
-
 /**
  * MODEL DOWNLOAD home widget (id `local-inference.model-download`). A
  * full-width, double-height row with a real progress track that surfaces the
@@ -282,16 +272,13 @@ export function ModelDownloadWidget({
   // Optimistic flip after a retry tap, cleared once the stream refetch reports a
   // non-error state. Lets the card show "downloading" immediately on retry.
   const [retrying, setRetrying] = useState(false);
-
   const failedRow = rows.find(
     (row) => row.state === "failed" || row.state === "cancelled",
   );
   const failedModelId = failedRow?.modelId ?? null;
-
   useEffect(() => {
     if (status.kind !== "error") setRetrying(false);
   }, [status.kind]);
-
   const retry = useCallback(async () => {
     if (!failedModelId) {
       nav.openView(LOCAL_INFERENCE_VIEW_PATH, LOCAL_INFERENCE_VIEW_ID);
@@ -307,20 +294,15 @@ export function ModelDownloadWidget({
       setRetrying(false);
     }
   }, [failedModelId, nav]);
-
   const openSettings = useCallback(() => {
     nav.openView(LOCAL_INFERENCE_VIEW_PATH, LOCAL_INFERENCE_VIEW_ID);
   }, [nav]);
-
   // Hold the first render until the initial hub fetch settles — never show a
   // value until we know whether a local model is even required.
   if (loading) return null;
-
   // Self-hide: no local model required, or everything is ready. Nothing to show.
   if (status.kind === "not-required" || status.kind === "ready") return null;
-
   const modelName = status.modelName ?? "Local model";
-
   if (status.kind === "error" && !retrying) {
     const detail = status.errors.find((message) => message.trim().length > 0);
     const routingUnavailable = failedModelId === null;
@@ -347,7 +329,6 @@ export function ModelDownloadWidget({
       </div>
     );
   }
-
   if (status.kind === "downloading" || retrying) {
     const percent = roundedPercent(status.percent);
     const eta = formatEta(status.etaMs);
@@ -366,7 +347,6 @@ export function ModelDownloadWidget({
       </div>
     );
   }
-
   if (status.kind === "loading") {
     return (
       <div className={spanClassName}>
@@ -381,7 +361,6 @@ export function ModelDownloadWidget({
       </div>
     );
   }
-
   // `missing` — assigned but not yet downloading (queued / awaiting enqueue).
   return (
     <div className={spanClassName}>
@@ -395,7 +374,6 @@ export function ModelDownloadWidget({
     </div>
   );
 }
-
 /**
  * Full-row model-status card: icon + one-line status + a real progress track.
  * Mirrors HomeWidgetCard's chromeless whole-card-button idiom, with the track
@@ -492,13 +470,11 @@ function ModelProgressCard({
     </Button>
   );
 }
-
 /** Keep the error detail meta tight so it never wraps the naked tile. */
 function truncateDetail(detail: string): string {
   const trimmed = detail.trim();
   return trimmed.length > 40 ? `${trimmed.slice(0, 39)}…` : trimmed;
 }
-
 /**
  * Home-widget registration metadata for `local-inference.model-download`
  * (consumed by the widget registry). A full-width double-height row surfacing

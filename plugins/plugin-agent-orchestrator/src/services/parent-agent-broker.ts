@@ -21,7 +21,7 @@ import { requireConfirmation, toWellFormedUnicode } from "@elizaos/core";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { bindProjectCloudApp } from "./project-binding.js";
 import {
@@ -241,30 +241,6 @@ const CLOUD_COMMANDS: CloudCommandDefinition[] = [
     path: "/api/v1/apps/{id}/monetization",
     pathParams: ["id"],
     risk: "mutating",
-  },
-  {
-    command: "apps.charges.list",
-    description: "List arbitrary app charge requests.",
-    method: "GET",
-    path: "/api/v1/apps/{id}/charges",
-    pathParams: ["id"],
-    risk: "read",
-  },
-  {
-    command: "apps.charges.create",
-    description: "Create an arbitrary app charge request.",
-    method: "POST",
-    path: "/api/v1/apps/{id}/charges",
-    pathParams: ["id"],
-    risk: "paid",
-  },
-  {
-    command: "apps.charges.checkout",
-    description: "Create a checkout session for an app charge request.",
-    method: "POST",
-    path: "/api/v1/apps/{id}/charges/{chargeId}/checkout",
-    pathParams: ["id", "chargeId"],
-    risk: "paid",
   },
   {
     command: "x402.requests.list",
@@ -704,7 +680,10 @@ export interface ParentAgentBrokerResult {
   data?: Record<string, unknown>;
   /** Authoritative parent runtime failure, independent of delivered prose. */
   terminalFailure?: NonNullable<
-    ParentMessageProcessingResult["terminalFailure"]
+    Extract<
+      ParentMessageProcessingResult["outcome"],
+      { status: "failed" }
+    >["error"]
   >;
 }
 
@@ -1472,7 +1451,10 @@ async function askParentAgent(request: {
 }): Promise<{
   text: string;
   terminalFailure?: NonNullable<
-    ParentMessageProcessingResult["terminalFailure"]
+    Extract<
+      ParentMessageProcessingResult["outcome"],
+      { status: "failed" }
+    >["error"]
   >;
 }> {
   const messageService = request.runtime.messageService;
@@ -1525,11 +1507,16 @@ async function askParentAgent(request: {
       ? result.responseContent.text.trim()
       : "";
   const capturedText = captured.join("\n").trim();
-  if (result.terminalFailure) {
-    return {
-      text: result.terminalFailure.message,
-      terminalFailure: result.terminalFailure,
-    };
+  if (result.outcome.status !== "completed") {
+    const terminalFailure =
+      result.outcome.status === "failed"
+        ? result.outcome.error
+        : {
+            kind: `turn_${result.outcome.status}`,
+            transient: false,
+            message: result.outcome.reason,
+          };
+    return { text: terminalFailure.message, terminalFailure };
   }
   if (resultText) return { text: resultText };
   if (capturedText) return { text: capturedText };

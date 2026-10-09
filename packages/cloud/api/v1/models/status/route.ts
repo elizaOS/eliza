@@ -4,20 +4,20 @@
  * provider config flags. Public — auth probe is best-effort.
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import { isGroqNativeModel } from "@/lib/models";
-import { hasGroqProviderConfigured } from "@/lib/providers";
+import { getCurrentUser } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { isGroqNativeModel } from "@elizaos/cloud-shared/lib/models";
+import { hasGroqProviderConfigured } from "@elizaos/cloud-shared/lib/providers";
 import {
   getAiProviderConfigurationError,
   hasAnyAiProviderConfigured,
   hasGatewayProviderConfigured,
-} from "@/lib/providers/language-model";
-import { getCachedMergedModelCatalog } from "@/lib/services/model-catalog";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import { getCachedMergedModelCatalog } from "@elizaos/cloud-shared/lib/services/model-catalog";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 interface ModelAvailability {
   modelId: string;

@@ -1,11 +1,12 @@
 /**
  * Eliza Cloud image generation and description handlers. Requests preserve
  * caller output-budget intent and reject malformed operator limits before any
- * provider dispatch.
+ * provider dispatch. Descriptions preserve the entire response and require a
+ * complete finish reason before downstream extraction can use it.
  */
 
 import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
-import { ElizaError, logger, ModelType } from "@elizaos/core";
+import { ElizaError, logger, ModelType, sleepWithAbort } from "@elizaos/core";
 import { resolveCloudBillingUrl } from "../cloud/base-url";
 import {
   getBaseURL,
@@ -22,6 +23,9 @@ export async function handleImageGeneration(
   runtime: IAgentRuntime,
   params: ImageGenerationParams
 ): Promise<{ url: string }[]> {
+  // An omitted count is one image. An explicit count of 0 asks for none —
+  // `count || 1` treated 0 as missing and billed a generation.
+  if (params.count === 0) return [];
   const numImages = params.count || 1;
   const size = params.size || "1024x1024";
   const prompt = params.prompt;
@@ -102,6 +106,8 @@ export async function handleImageDescription(
   runtime: IAgentRuntime,
   params: ImageDescriptionParams | string
 ): Promise<{ title: string; description: string }> {
+  const signal = typeof params === "string" ? undefined : params.signal;
+  signal?.throwIfAborted();
   // Honour `DISABLE_IMAGE_DESCRIPTION` (set by the runtime when
   // `features.vision === false`). The runtime exposes it via getSetting; some
   // hosts only set it in process.env. Check both before burning a quota slot.
@@ -184,10 +190,13 @@ export async function handleImageDescription(
     let attemptedRetry = false;
     let warmingRetries = 0;
     for (let attempt = 0; attempt < 4; attempt++) {
+      signal?.throwIfAborted();
       const attemptResponse = await client.routes.postApiV1ChatCompletionsRaw({
         json: requestBody,
+        signal,
         timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_IMAGE_TIMEOUT_MS", 120_000),
       });
+      signal?.throwIfAborted();
       if (!attemptResponse) {
         continue;
       }
@@ -231,7 +240,7 @@ export async function handleImageDescription(
           logger.warn(
             `[ELIZAOS_CLOUD] Image analysis cold-cache warming (503), retry ${warmingRetries}/2 after ${warmingWait}s...`
           );
-          await new Promise((r) => setTimeout(r, warmingWait * 1000));
+          await sleepWithAbort(warmingWait * 1000, signal);
           continue;
         }
       }
@@ -264,7 +273,7 @@ export async function handleImageDescription(
         logger.warn(
           `[ELIZAOS_CLOUD] Image analysis rate-limited (429), retrying once after ${retryAfter}s...`
         );
-        await new Promise((r) => setTimeout(r, retryAfter * 1000));
+        await sleepWithAbort(retryAfter * 1000, signal);
         attemptedRetry = true;
         continue;
       }
@@ -299,7 +308,7 @@ export async function handleImageDescription(
     type OpenAIResponseType = {
       choices?: Array<{
         message?: { content?: string };
-        finish_reason?: string;
+        finish_reason?: string | null;
       }>;
       usage?: {
         prompt_tokens: number;
@@ -309,6 +318,7 @@ export async function handleImageDescription(
     };
 
     const typedResult = (await finalResponse.json()) as OpenAIResponseType;
+    signal?.throwIfAborted();
     const content = typedResult.choices?.[0]?.message?.content;
 
     if (typedResult.usage) {
@@ -324,19 +334,28 @@ export async function handleImageDescription(
       );
     }
 
+    const finishReason = typedResult.choices?.[0]?.finish_reason;
+    if (finishReason !== "stop") {
+      throw new ElizaError(
+        "Eliza Cloud did not complete the image description; retry with a model capable of returning the complete page",
+        {
+          code: "MODEL_INCOMPLETE_OUTPUT",
+          context: { provider: "elizacloud", finishReason },
+        }
+      );
+    }
+
     if (!content) {
       throw new Error(
         "ElizaOS Cloud image description returned an empty completion"
       );
     }
 
+    signal?.throwIfAborted();
     return parseImageDescriptionResponse(content);
   } catch (error) {
-    // Fail closed: never fabricate a `{ description: "Error: ..." }` object.
-    // The caller (describeImageCached) catches this and returns null, so the
-    // agent honestly reports the image as undescribed instead of caching the
-    // error string under the image hash and leaking it into LLM context —
-    // the same contract plugin-openai / plugin-google-genai already uphold.
+    signal?.throwIfAborted();
+    // error-policy:J2 Preserve typed provider failures for the caller's boundary.
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(`Error analyzing image (failing closed): ${message}`);
     throw error instanceof Error ? error : new Error(message);

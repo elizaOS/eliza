@@ -1,4 +1,27 @@
 // Handles v1 cloud API v1 apps id promote assets route traffic with route-local auth expectations.
+
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import {
+  AD_COPY_GENERATION_COST,
+  estimateAssetGenerationCost,
+  PROMO_IMAGE_COST,
+} from "@elizaos/cloud-shared/lib/promotion-pricing";
+import {
+  AD_SIZES,
+  type AdSize,
+  appPromotionAssetsService,
+} from "@elizaos/cloud-shared/lib/services/app-promotion-assets";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { retainGenerativeTask } from "@elizaos/cloud-shared/lib/services/generative-operation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -6,25 +29,6 @@ import {
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import {
-  AD_COPY_GENERATION_COST,
-  estimateAssetGenerationCost,
-  PROMO_IMAGE_COST,
-} from "@/lib/promotion-pricing";
-import {
-  AD_SIZES,
-  type AdSize,
-  appPromotionAssetsService,
-} from "@/lib/services/app-promotion-assets";
-import { appsService } from "@/lib/services/apps";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { retainGenerativeTask } from "@/lib/services/generative-operation";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const GenerateAssetsSchema = z.object({
   sizes: z

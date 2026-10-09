@@ -1,0 +1,19 @@
+version = 1
+revision = 3
+requires-python = ">=3.11"
+
+[[package]]
+name = "eliza-adapter"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "elizaos-benchmark-support" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "elizaos-benchmark-support", editable = "../../" }]
+
+[[package]]
+name = "elizaos-benchmark-support"
+version = "0.1.0"
+source = { editable = "../../" }

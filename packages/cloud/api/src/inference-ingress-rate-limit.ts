@@ -4,10 +4,13 @@
  * bounded per-isolate fallback so a platform stall cannot delay inference.
  */
 
+import { getRequestIp } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppEnv,
+  RuntimeRateLimitBinding,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { MiddlewareHandler } from "hono";
-import { getRequestIp } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv, RuntimeRateLimitBinding } from "@/types/cloud-worker-env";
 
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS = 600;

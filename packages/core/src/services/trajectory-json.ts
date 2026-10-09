@@ -4,8 +4,8 @@
  * JavaScript values and cycles are normalized.
  */
 
-import type { JsonValue } from "../types/primitives";
-import { toWellFormedUnicode } from "../utils/well-formed";
+import type { JsonValue } from "../types/primitives.ts";
+import { toWellFormedUnicode } from "../utils/unicode.ts";
 
 const utf8Encoder = new TextEncoder();
 
@@ -41,7 +41,11 @@ function normalizedScalar(
 ): JsonValue {
 	const normalized =
 		typeof value === "string" ? normalizeTrajectoryString(value) : value;
-	reserveBytes(state, jsonByteLength(normalized));
+	// The default budget is unlimited; avoid encoding strings only to subtract
+	// their size from Infinity. Preserve accounting for caller-supplied budgets.
+	if (state.remainingBytes !== Number.POSITIVE_INFINITY) {
+		reserveBytes(state, jsonByteLength(normalized));
+	}
 	return normalized;
 }
 
@@ -50,7 +54,26 @@ function reserveContainer(state: SanitizationState): JsonValue | undefined {
 	return undefined;
 }
 
+/**
+ * Record one own entry. Plain assignment would run the inherited `__proto__`
+ * setter for an own `__proto__` key (e.g. from `JSON.parse`), dropping the
+ * entry and re-parenting the sanitized object.
+ */
+function defineOwnEntry(
+	target: Record<string, JsonValue>,
+	key: string,
+	value: JsonValue,
+): void {
+	Object.defineProperty(target, key, {
+		configurable: true,
+		enumerable: true,
+		value,
+		writable: true,
+	});
+}
+
 function reserveObjectKey(state: SanitizationState, key: string): boolean {
+	if (state.remainingBytes === Number.POSITIVE_INFINITY) return true;
 	return reserveBytes(
 		state,
 		utf8Encoder.encode(JSON.stringify(key)).byteLength + 2,
@@ -127,7 +150,7 @@ function sanitizeTrajectoryJsonValueInternal(
 				state,
 				depth + 1,
 			);
-			if (sanitized !== undefined) output[key] = sanitized;
+			if (sanitized !== undefined) defineOwnEntry(output, key, sanitized);
 		}
 		state.seen.delete(value);
 		return output;
@@ -188,7 +211,7 @@ function sanitizeTrajectoryJsonValueInternal(
 				state,
 				depth + 1,
 			);
-			if (sanitized !== undefined) output[key] = sanitized;
+			if (sanitized !== undefined) defineOwnEntry(output, key, sanitized);
 		}
 		state.seen.delete(value);
 		return output;

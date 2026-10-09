@@ -1,19 +1,78 @@
+import { assertOrganizationSubscription } from "./organization-subscription-source";
+import { SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION } from "./subscription-funding-policy";
+
 /** Projects a coherent organization-only subscription read without provider identifiers, guessed charges or app-subscriber policy. */
 
-import { ElizaError } from "@elizaos/core";
-import type { PrimaryOrganizationSubscription } from "../../db/repositories/account-billing-snapshot-subscription";
-import type { SubscriptionAllowanceEligibility } from "../../db/repositories/subscription-allowance-eligibility";
 import type {
   Observed,
   OrganizationSubscriptionSnapshot,
+  SubscriptionCancellationBlockerCode,
+  SubscriptionCancellationControlSnapshot,
   SubscriptionCancellationNoticeSnapshot,
-} from "../../types/account-billing-snapshot";
-import { SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION } from "./subscription-funding-policy";
+} from "@elizaos/cloud-sdk/account-billing-snapshot";
+import { ElizaError } from "@elizaos/core";
+import type { PrimaryOrganizationSubscription } from "../../db/repositories/account-billing-snapshot-subscription";
+import type { SubscriptionAllowanceEligibility } from "../../db/repositories/subscription-allowance-eligibility";
+
+/** The reader's session authority; absent means the caller proved no interactive manager session. */
+export interface SubscriptionCancellationReaderAuthority {
+  authMethod: "session" | "api_key" | "wallet_signature" | "anonymous" | null;
+  role: string | null;
+  userActive: boolean;
+  userAnonymous: boolean;
+  organizationActive: boolean;
+}
+
+const NO_READER_AUTHORITY: SubscriptionCancellationReaderAuthority = {
+  authMethod: null,
+  role: null,
+  userActive: false,
+  userAnonymous: false,
+  organizationActive: false,
+};
+
+/**
+ * Mirrors the cancellation command's admission (subscription-cancellation repository): the server
+ * re-checks everything at submission, so this descriptor only avoids offering a doomed action.
+ */
+function buildCancellationControl(
+  subscription: Extract<PrimaryOrganizationSubscription, { state: "current" }>["subscription"],
+  observedAt: string,
+  authority: SubscriptionCancellationReaderAuthority,
+  configuredCancellation: boolean,
+): SubscriptionCancellationControlSnapshot {
+  const blockers: SubscriptionCancellationBlockerCode[] = [];
+  if (authority.authMethod !== "session") blockers.push("interactive_session_required");
+  if (!authority.userActive || authority.userAnonymous || !authority.organizationActive)
+    blockers.push("billing_account_ineligible");
+  if (authority.role !== "owner" && authority.role !== "admin")
+    blockers.push("owner_or_admin_role_required");
+  if (
+    subscription.status !== "active" ||
+    subscription.current_period_end.getTime() <= Date.parse(observedAt) ||
+    subscription.ended_at !== null ||
+    (subscription.pending_plan_key !== null && !configuredCancellation) ||
+    subscription.dunning_started_at !== null ||
+    subscription.grace_expires_at !== null
+  )
+    blockers.push("subscription_state_unsupported");
+  const undo = subscription.cancel_at_period_end;
+  return {
+    action: undo ? "undo" : "cancel",
+    method: "POST",
+    endpoint: undo ? "/api/v1/subscriptions/cancel/undo" : "/api/v1/subscriptions/cancel",
+    subscriptionId: subscription.id,
+    expectedSubscriptionRevision: subscription.lifecycle_revision,
+    eligible: blockers.length === 0,
+    blockers,
+  };
+}
 
 export function buildOrganizationSubscriptionSnapshot(
   primary: PrimaryOrganizationSubscription,
   observedAt: string,
   funding: SubscriptionAllowanceEligibility,
+  authority: SubscriptionCancellationReaderAuthority = NO_READER_AUTHORITY,
 ): Observed<OrganizationSubscriptionSnapshot> {
   const provenance = { source: "primary-organization-subscription", observedAt };
   if (primary.state === "none")
@@ -21,6 +80,7 @@ export function buildOrganizationSubscriptionSnapshot(
   if (primary.state === "unavailable")
     return { ...provenance, status: "unavailable", error: { code: primary.code, retryable: true } };
   const { subscription, entitlement, periods } = primary;
+  assertOrganizationSubscription(subscription);
   const period = periods.length === 1 ? periods[0] : undefined;
   const allowance: OrganizationSubscriptionSnapshot["allowance"] = period
     ? {
@@ -65,6 +125,7 @@ export function buildOrganizationSubscriptionSnapshot(
     ...provenance,
     status: "available",
     value: {
+      subscriptionId: subscription.id,
       planKey: subscription.plan_key,
       catalogVersion: subscription.catalog_version,
       lifecycleRevision: String(subscription.lifecycle_revision),
@@ -77,6 +138,12 @@ export function buildOrganizationSubscriptionSnapshot(
       graceExpiresAt: subscription.grace_expires_at?.toISOString() ?? null,
       dunningStartedAt: subscription.dunning_started_at?.toISOString() ?? null,
       cancellationNotice: buildCancellationNotice(primary, observedAt),
+      cancellationControl: buildCancellationControl(
+        subscription,
+        observedAt,
+        authority,
+        primary.configuredCancellation,
+      ),
       fundingPolicy: {
         status: "available",
         source: "subscription-funding-operation-taxonomy",

@@ -5,6 +5,8 @@
  * reinterpret mutable `process.env` state.
  */
 
+import { isExactTrueEnvFlag } from "@elizaos/core";
+
 export const BOOT_PHASES = [
   "load-config",
   "resolve-settings",
@@ -107,8 +109,12 @@ export function captureAgentEnvironment(
 
 export function resolveBootPolicy(environment: AgentEnvironment): BootPolicy {
   return Object.freeze({
-    allowDestructiveMigrations: environment.isEnabled(
-      "ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS",
+    // Destructive-migration authorization uses the exact documented `true`
+    // value (isExactTrueEnvFlag), not the general boolean vocabulary: the
+    // restore guards and the boot warning must see the same operator
+    // decision as the migration runners that arm the capability.
+    allowDestructiveMigrations: isExactTrueEnvFlag(
+      environment.values["ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS"],
     ),
     apiExposePort: environment.isEnabled("ELIZA_API_EXPOSE_PORT"),
     blockDeferredPluginImports: environment.isEnabled(
@@ -149,57 +155,5 @@ export function createBootContext(
       completedPhases.push(phase);
       options.observePhase?.(phase);
     },
-  };
-}
-
-export interface BootPhase<Context extends BootContext = BootContext> {
-  readonly name: BootPhaseName;
-  run(context: Context): void | Promise<void>;
-  dispose?(context: Context): void | Promise<void>;
-}
-
-export async function runBootPhases<Context extends BootContext>(
-  context: Context,
-  phases: readonly BootPhase<Context>[],
-): Promise<() => Promise<void>> {
-  const completed: BootPhase<Context>[] = [];
-  try {
-    for (const phase of phases) {
-      context.enterPhase(phase.name);
-      await phase.run(context);
-      completed.push(phase);
-    }
-  } catch (error) {
-    const disposeErrors: unknown[] = [];
-    for (const phase of completed.reverse()) {
-      if (!phase.dispose) continue;
-      try {
-        await phase.dispose(context);
-      } catch (disposeError) {
-        disposeErrors.push(disposeError);
-      }
-    }
-    if (disposeErrors.length > 0) {
-      throw new AggregateError(
-        [error, ...disposeErrors],
-        "Boot failed and one or more completed phases could not be disposed",
-      );
-    }
-    throw error;
-  }
-
-  return async () => {
-    const disposeErrors: unknown[] = [];
-    for (const phase of completed.reverse()) {
-      if (!phase.dispose) continue;
-      try {
-        await phase.dispose(context);
-      } catch (error) {
-        disposeErrors.push(error);
-      }
-    }
-    if (disposeErrors.length > 0) {
-      throw new AggregateError(disposeErrors, "Boot phase disposal failed");
-    }
   };
 }

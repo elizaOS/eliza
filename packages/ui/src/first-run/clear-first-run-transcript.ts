@@ -26,7 +26,7 @@
  * optimistic (`temp-*`) turn.
  */
 
-import type { ConversationMessage } from "../api";
+import type { ConversationMessage } from "../api/client-types-chat";
 
 const FIRST_RUN_TURN_ID_PREFIX = "first-run:";
 const FIRST_RUN_TURN_SOURCE = "first_run";

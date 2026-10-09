@@ -1,12 +1,13 @@
 {
   "name": "@elizaos/capacitor-network-policy",
   "version": "2.0.3-beta.7",
-  "description": "Android + iOS native shims surfacing the `metered` / `isExpensive` hints used by the voice-model auto-updater (R5-versioning §4).",
+  "description": "Android + iOS native shims surfacing the `metered` / `isExpensive` hints used by the voice-model auto-updater (R5-versioning \u00a74).",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/esm/index.d.ts",
       "bun": "./src/index.ts",
       "development": "./src/index.ts",
@@ -16,18 +17,16 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "android/src/main/",
+    "android/src/main",
     "android/build.gradle",
-    "ios/Sources/",
+    "ios/Sources",
     "ios/Package.swift",
     "ElizaosCapacitorNetworkPolicy.podspec",
-    "dist/",
     "dist"
   ],
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-network-policy -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
-    "test": "vitest run",
+    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-network-policy -- bun run build:unlocked",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -47,10 +46,10 @@
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "rollup": "^4.62.4",
+    "rollup": "^4.64.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.3"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"
@@ -62,7 +61,7 @@
     ],
     "runtime": "both",
     "platformDetails": {
-      "browser": "Web fallback returns metered=null / isExpensive=false so callers downgrade to ask.",
+      "browser": "Web fallback returns unknown cost hints unless Data Saver supplies a restrictive true hint.",
       "node": "Server-side consumers read the bridge through the runtime probe; no Capacitor required."
     }
   }

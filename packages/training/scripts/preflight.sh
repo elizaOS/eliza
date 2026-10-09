@@ -185,8 +185,7 @@ ROOT = Path(sys.argv[1])
 SAMPLE_LINES = int(sys.argv[2])
 DETAIL_OUT = Path(sys.argv[3])
 
-sys.path.insert(0, str(ROOT))
-from scripts.lib.eliza_record import ElizaRecord  # noqa: E402
+from eliza_training.lib.eliza_record import ElizaRecord  # noqa: E402
 
 FILES = ["train.jsonl", "val.jsonl", "test.jsonl"]
 results: dict[str, dict] = {}
@@ -307,17 +306,16 @@ MAX_UTIL_PCT = float(sys.argv[3])
 DETAIL_OUT = Path(sys.argv[4])
 
 ROOT = Path(__file__).resolve().parents[2] if "/" in __file__ else Path.cwd()
-sys.path.insert(0, str(Path.cwd()))
 
-from scripts.lib import vast as vast_lib  # noqa: E402
-from scripts.training.memory_calc import (  # noqa: E402
+from eliza_training.lib import vast as vast_lib  # noqa: E402
+from eliza_training.training.memory_calc import (  # noqa: E402
     HARDWARE,
     SHAPES,
     TrainConfig,
     TrainOpt,
     estimate_train,
 )
-from scripts.training.model_registry import get as registry_get  # noqa: E402
+from eliza_training.training.model_registry import get as registry_get  # noqa: E402
 
 # 1. Resolve target → (HARDWARE per-GPU key, world_size)
 TARGET_TO_HW: dict[str, tuple[str, int]] = {
@@ -620,8 +618,7 @@ ROOT = Path(sys.argv[1])
 THRESHOLD = int(sys.argv[2])
 DETAIL_OUT = Path(sys.argv[3])
 
-sys.path.insert(0, str(ROOT))
-from scripts.lib.eliza_record import (  # noqa: E402
+from eliza_training.lib.eliza_record import (  # noqa: E402
     DEFAULT_THOUGHT_LEAKS, is_default_thought_leak,
 )
 

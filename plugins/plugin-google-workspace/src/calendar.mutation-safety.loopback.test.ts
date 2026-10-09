@@ -11,7 +11,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { AddressInfo } from "node:net";
-import { Auth } from "googleapis";
+import { Auth, type calendar_v3 } from "googleapis";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GoogleCalendarClient, type GoogleCalendarMutationError } from "./calendar.js";
 import { GoogleApiClientFactory } from "./client-factory.js";
@@ -21,8 +21,8 @@ interface ProviderEvent {
   id: string;
   etag: string;
   summary: string;
-  start: { dateTime: string; timeZone: string };
-  end: { dateTime: string; timeZone: string };
+  start: calendar_v3.Schema$EventDateTime;
+  end: calendar_v3.Schema$EventDateTime;
   attendees: Array<{
     email: string;
     self?: boolean;
@@ -59,6 +59,7 @@ let server: Server;
 let baseUrl: string;
 let originalBase: string | undefined;
 let disconnectAfterCreate = false;
+let denyReadback = false;
 let events = new Map<string, ProviderEvent>();
 let requests: RecordedRequest[] = [];
 let client: GoogleCalendarClient;
@@ -81,9 +82,18 @@ function writeJson(response: ServerResponse, status: number, body: unknown): voi
   response.end(JSON.stringify(body));
 }
 
-function eventPath(pathname: string): { eventId: string | null } | null {
-  const match = pathname.match(/^\/calendar\/v3\/calendars\/[^/]+\/events(?:\/([^/]+))?$/);
-  return match ? { eventId: match[1] ? decodeURIComponent(match[1]) : null } : null;
+function eventKey(eventId: string, calendarId = "primary"): string {
+  return JSON.stringify([calendarId, eventId]);
+}
+
+function eventPath(pathname: string): { calendarId: string; eventId: string | null } | null {
+  const match = pathname.match(/^\/calendar\/v3\/calendars\/([^/]+)\/events(?:\/([^/]+))?$/);
+  return match
+    ? {
+        calendarId: decodeURIComponent(match[1]),
+        eventId: match[2] ? decodeURIComponent(match[2]) : null,
+      }
+    : null;
 }
 
 function nextEtag(event: ProviderEvent): string {
@@ -111,7 +121,7 @@ beforeAll(async () => {
       });
       if (request.method === "POST" && matched.eventId === null) {
         const id = String(body.id);
-        if (events.has(id)) {
+        if (events.has(eventKey(id, matched.calendarId))) {
           writeJson(response, 409, { error: { code: 409 } });
           return;
         }
@@ -126,7 +136,7 @@ beforeAll(async () => {
           extendedProperties: body.extendedProperties as ProviderEvent["extendedProperties"],
           updated: "2026-07-26T12:00:00.000Z",
         };
-        events.set(id, created);
+        events.set(eventKey(id, matched.calendarId), created);
         if (disconnectAfterCreate) {
           disconnectAfterCreate = false;
           response.socket?.destroy();
@@ -136,12 +146,16 @@ beforeAll(async () => {
         return;
       }
       const eventId = matched.eventId;
-      const event = eventId ? events.get(eventId) : undefined;
+      const event = eventId ? events.get(eventKey(eventId, matched.calendarId)) : undefined;
       if (!event) {
         writeJson(response, 404, { error: { code: 404 } });
         return;
       }
       if (request.method === "GET") {
+        if (denyReadback) {
+          writeJson(response, 403, { error: { code: 403, message: "Readback denied" } });
+          return;
+        }
         writeJson(response, 200, event);
         return;
       }
@@ -151,8 +165,18 @@ beforeAll(async () => {
         return;
       }
       if (request.method === "PATCH") {
+        const start = { ...event.start, ...(body.start as ProviderEvent["start"] | undefined) };
+        const end = { ...event.end, ...(body.end as ProviderEvent["end"] | undefined) };
+        if ((start.date && start.dateTime) || (end.date && end.dateTime)) {
+          writeJson(response, 400, {
+            error: { code: 400, message: "Cannot combine date and dateTime" },
+          });
+          return;
+        }
         const updated: ProviderEvent = {
           ...event,
+          start,
+          end,
           ...(typeof body.summary === "string" ? { summary: body.summary } : {}),
           ...(Array.isArray(body.recurrence) ? { recurrence: body.recurrence as string[] } : {}),
           ...(Array.isArray(body.attendees)
@@ -161,12 +185,12 @@ beforeAll(async () => {
           etag: nextEtag(event),
           updated: "2026-07-26T12:01:00.000Z",
         };
-        events.set(event.id, updated);
+        events.set(eventKey(event.id, matched.calendarId), updated);
         writeJson(response, 200, updated);
         return;
       }
       if (request.method === "DELETE") {
-        events.delete(event.id);
+        events.delete(eventKey(event.id, matched.calendarId));
         response.writeHead(204);
         response.end();
         return;
@@ -203,13 +227,13 @@ afterAll(async () => {
 
 beforeEach(() => {
   disconnectAfterCreate = false;
+  denyReadback = false;
   events = new Map();
   requests = [];
 });
 
 describe("Google Calendar provider mutation safety", () => {
-  it("recovers an accepted create and suppresses replay with one provider event", async () => {
-    disconnectAfterCreate = true;
+  it("recovers an accepted create without changing another calendar with the same event ID", async () => {
     const request = {
       accountId: "owner-account",
       calendarId: "primary",
@@ -223,16 +247,37 @@ describe("Google Calendar provider mutation safety", () => {
       idempotencyKey: "approved-operation-sha256",
     };
 
+    const otherCalendar = "unrelated-calendar";
+    const other = await client.createEvent({
+      ...request,
+      calendarId: otherCalendar,
+      title: "Unrelated appointment",
+    });
+    const before = structuredClone(events.get(eventKey(other.id, otherCalendar)));
+    expect(before).toBeDefined();
+    requests = [];
+    disconnectAfterCreate = true;
     const recovered = await client.createEvent(request);
     const replayed = await client.createEvent(request);
+    expect(other.id).toBe(recovered.id);
+    expect(events.get(eventKey(other.id, otherCalendar))).toEqual(before);
+    expect(events.get(eventKey(recovered.id))?.summary).toBe("School pickup");
+    const readback = await client.getEvent({
+      accountId: request.accountId,
+      calendarId: otherCalendar,
+      eventId: other.id,
+    });
+    expect(readback.title).toBe("Unrelated appointment");
+    expect(readback.id).toBe(other.id);
 
     expect(recovered.id).toBe(replayed.id);
     expect(recovered.id).toMatch(/^e1[0-9a-f]{64}$/);
     expect(recovered.metadata?.etag).toBe('"v1"');
     expect(recovered.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=FR"]);
-    expect(events.size).toBe(1);
+    expect(events.size).toBe(2);
     const creates = requests.filter((entry) => entry.method === "POST");
     expect(creates).toHaveLength(2);
+    expect(creates.every((entry) => eventPath(entry.path)?.calendarId === "primary")).toBe(true);
     expect(creates[0]?.query.get("sendUpdates")).toBe("all");
     expect(creates[0]?.body).toMatchObject({
       id: recovered.id,
@@ -243,6 +288,106 @@ describe("Google Calendar provider mutation safety", () => {
         },
       },
     });
+  });
+
+  it("does not invent success or retry a create when accepted-write readback is denied", async () => {
+    const request = {
+      accountId: "owner-account",
+      calendarId: "recovery-calendar",
+      title: "Accepted but unobserved",
+      start: "2026-08-01T16:30:00.000Z",
+      end: "2026-08-01T17:00:00.000Z",
+      timeZone: "UTC",
+      idempotencyKey: "accepted-with-denied-readback",
+    };
+    disconnectAfterCreate = true;
+    denyReadback = true;
+    await expect(client.createEvent(request)).rejects.toThrow();
+    expect(events.size).toBe(1);
+    expect(requests.filter((entry) => entry.method === "POST")).toHaveLength(1);
+    const before = structuredClone([...events]);
+    requests = [];
+    denyReadback = false;
+    const recovered = await client.findEventByIdempotencyKey(request);
+    expect(recovered?.title).toBe(request.title);
+    expect(recovered?.start).toBe(request.start);
+    expect(recovered?.end).toBe(request.end);
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.every((entry) => entry.method === "GET")).toBe(true);
+    expect([...events]).toEqual(before);
+  });
+
+  it("inspects an original create receipt without writing and rejects a foreign marker", async () => {
+    const params = {
+      accountId: "owner-account",
+      calendarId: "disposable-recovery-calendar",
+      idempotencyKey: "recovery-original-create",
+    };
+    expect(await client.findEventByIdempotencyKey(params)).toBeNull();
+    expect(requests.every((request) => request.method === "GET")).toBe(true);
+    const created = await client.createEvent({
+      ...params,
+      title: "Synthetic recovery event",
+      start: "2026-08-01T16:00:00.000Z",
+      end: "2026-08-01T17:00:00.000Z",
+      timeZone: "UTC",
+      sendUpdates: "none",
+    });
+    requests = [];
+    const found = await client.findEventByIdempotencyKey(params);
+    expect(found?.id).toBe(created.id);
+    expect(requests.every((request) => request.method === "GET")).toBe(true);
+    const stored = events.get(eventKey(created.id, params.calendarId));
+    if (!stored) throw new Error("Expected the provider's persisted create");
+    stored.extendedProperties = { private: { elizaosIdempotencyKeySha256: "foreign" } };
+    await expect(client.findEventByIdempotencyKey(params)).rejects.toMatchObject({
+      code: "GOOGLE_CALENDAR_IDEMPOTENCY_CONFLICT",
+    });
+    expect(requests.every((request) => request.method === "GET")).toBe(true);
+  });
+
+  it("converts timed events to all-day and back over real HTTP without changing identity", async () => {
+    const created = await client.createEvent({
+      accountId: "owner-account",
+      title: "School recess",
+      start: "2026-11-01T00:00:00.000Z",
+      end: "2026-11-03T00:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "school-conversion",
+    });
+    const createdEtag = created.metadata?.etag;
+    if (typeof createdEtag !== "string") throw new Error("Missing created event ETag");
+    const allDay = await client.updateEvent({
+      accountId: "owner-account",
+      eventId: created.id,
+      start: "2026-11-01",
+      end: "2026-11-03",
+      timeZone: "America/New_York",
+      expectedEtag: createdEtag,
+      sendUpdates: "none",
+    });
+    expect(allDay.isAllDay).toBe(true);
+    expect(allDay.end).toBe("2026-11-03T00:00:00.000Z");
+    const allDayEtag = allDay.metadata?.etag;
+    if (typeof allDayEtag !== "string") throw new Error("Missing all-day event ETag");
+    const timed = await client.updateEvent({
+      accountId: "owner-account",
+      eventId: created.id,
+      start: "2026-11-01T14:00:00.000Z",
+      end: "2026-11-01T15:00:00.000Z",
+      timeZone: "America/New_York",
+      expectedEtag: allDayEtag,
+      sendUpdates: "none",
+    });
+    expect(timed.id).toBe(created.id);
+    expect(timed.isAllDay).toBe(false);
+    expect(timed.start).toBe("2026-11-01T14:00:00.000Z");
+    expect(events.size).toBe(1);
+    expect(
+      requests
+        .filter((request) => request.method === "PATCH")
+        .every((request) => request.query.get("sendUpdates") === "none")
+    ).toBe(true);
   });
 
   it("enforces If-Match and explicit notification policy for update, RSVP, and delete", async () => {
@@ -260,7 +405,7 @@ describe("Google Calendar provider mutation safety", () => {
       ],
       idempotencyKey: "family-dinner",
     });
-    const providerEvent = events.get(created.id);
+    const providerEvent = events.get(eventKey(created.id));
     if (!providerEvent) throw new Error("created provider event missing");
     providerEvent.attendees = [
       {
@@ -286,7 +431,7 @@ describe("Google Calendar provider mutation safety", () => {
       outcome: "precondition_failed",
       code: "GOOGLE_CALENDAR_PRECONDITION_FAILED",
     });
-    expect(events.get(created.id)?.summary).toBe("Family dinner");
+    expect(events.get(eventKey(created.id))?.summary).toBe("Family dinner");
 
     const updated = await client.updateEvent({
       accountId: "owner-account",
@@ -331,7 +476,7 @@ describe("Google Calendar provider mutation safety", () => {
     ).rejects.toMatchObject<Partial<GoogleCalendarMutationError>>({
       outcome: "precondition_failed",
     });
-    expect(events.has(created.id)).toBe(true);
+    expect(events.has(eventKey(created.id))).toBe(true);
 
     await client.deleteEvent({
       accountId: "owner-account",
@@ -339,7 +484,7 @@ describe("Google Calendar provider mutation safety", () => {
       expectedEtag: '"v3"',
       sendUpdates: "all",
     });
-    expect(events.has(created.id)).toBe(false);
+    expect(events.has(eventKey(created.id))).toBe(false);
     const deleteRequest = requests.at(-1);
     expect(deleteRequest?.method).toBe("DELETE");
     expect(deleteRequest?.headers["if-match"]).toBe('"v3"');

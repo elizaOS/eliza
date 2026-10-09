@@ -3,11 +3,10 @@
  * Stable public pricing summary for API Explorer and SDK clients.
  */
 
-import { Hono } from "hono";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   IMAGE_GENERATION_COST,
   STT_COST_PER_MINUTE,
@@ -16,8 +15,9 @@ import {
   VIDEO_GENERATION_FALLBACK_COST,
   VOICE_CLONE_INSTANT_COST,
   VOICE_CLONE_PROFESSIONAL_COST,
-} from "@/lib/pricing-constants";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/pricing-constants";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

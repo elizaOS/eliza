@@ -1,0 +1,20 @@
+id: meta_size_001
+level: 0
+name: Data Size Check
+description: 'Level 0 foundational test: Data Size Check'
+category: metadata
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 1.0
+tasks:
+- id: task_meta_size_001
+  type: query
+  parameters:
+    action: check_data_size
+    target: account
+  timeout_ms: 10000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

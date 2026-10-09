@@ -9,7 +9,7 @@
  * agent). `.strict()` throughout, so unknown keys surface as validation errors.
  */
 
-import { parseDurationMs } from "@elizaos/shared";
+import { parseDurationMs } from "@elizaos/core";
 import * as zod from "zod";
 import {
   BlockStreamingChunkSchema,
@@ -177,50 +177,35 @@ const ToolPolicyBaseSchema = z
   })
   .strict();
 
-type ToolPolicyConflictValue = {
-  allow?: string[];
-  alsoAllow?: string[];
-};
+import { unsupportedToolPolicyKeys } from "./retired-tool-policy.ts";
 
-const validateToolPolicyConflict = (
+// The runtime tool-policy service was retired. Never accept a restriction
+// that gives an operator the impression it will filter executable actions.
+// Empty historical policies and the unrestricted `full` profile remain valid.
+const validateStoredToolPolicy = (
   scope: string,
-  value: ToolPolicyConflictValue,
+  value: unknown,
   ctx: zod.RefinementCtx,
 ) => {
-  if (
-    value.allow &&
-    value.allow.length > 0 &&
-    value.alsoAllow &&
-    value.alsoAllow.length > 0
-  ) {
+  for (const key of unsupportedToolPolicyKeys(value)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: `${scope} cannot set both allow and alsoAllow in the same scope (merge alsoAllow into allow, or remove allow and use profile + alsoAllow)`,
+      path: [key],
+      message: `${scope}.${key} is not enforced by the runtime. Remove this retired tool-policy setting and configure supported action authority instead.`,
     });
   }
 };
 
 const makeToolPolicySchema = (scope: string) =>
   ToolPolicyBaseSchema.superRefine((value, ctx) => {
-    validateToolPolicyConflict(scope, value, ctx);
+    validateStoredToolPolicy(scope, value, ctx);
   });
 
 export const ToolsWebSearchSchema = z
   .object({
-    enabled: z.boolean().optional(),
-    provider: z.union([z.literal("brave"), z.literal("perplexity")]).optional(),
-    apiKey: z.string().optional(),
     maxResults: z.number().int().positive().optional(),
     timeoutSeconds: z.number().int().positive().optional(),
     cacheTtlMinutes: z.number().nonnegative().optional(),
-    perplexity: z
-      .object({
-        apiKey: z.string().optional(),
-        baseUrl: z.string().optional(),
-        model: z.string().optional(),
-      })
-      .strict()
-      .optional(),
   })
   .strict()
   .optional();
@@ -366,7 +351,7 @@ export const AgentToolsSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
-    validateToolPolicyConflict("agent tools", value, ctx);
+    validateStoredToolPolicy("agent tools", value, ctx);
   })
   .optional();
 
@@ -622,7 +607,7 @@ export const ToolsSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
-    validateToolPolicyConflict("tools", value, ctx);
+    validateStoredToolPolicy("tools", value, ctx);
   })
   .optional();
 

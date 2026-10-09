@@ -1,23 +1,11 @@
-/**
- * Route-level e2e for the GitHub device sign-in setup step (#15796).
- *
- * Boots the plugin's declared device-flow routes (`POST
- * /api/github/device/start|poll`) plus the token status route through the real
- * production dispatcher (`tryHandleRuntimePluginRoute`) over a loopback
- * `http.createServer` — exercising the real auth gate, the dispatcher's JSON
- * body pre-parse, and handler dispatch. Only GitHub's two OAuth endpoints and
- * `/user` are stubbed (the thing under test is our flow logic, not GitHub's
- * server); everything else — flow state, credential persistence, per-agent
- * runtime settings — is real.
- */
-
 import { mkdtempSync, rmSync } from "node:fs";
 import type http from "node:http";
 import http_ from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IAgentRuntime, Route } from "@elizaos/core";
+import { AgentRuntime, type IAgentRuntime, stringToUuid } from "@elizaos/core";
+import { registerHttpPluginRoutes } from "@elizaos/host/protocol";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 // Pin the credential store to an isolated temp dir BEFORE importing any module
@@ -27,110 +15,28 @@ const stateDir = mkdtempSync(path.join(tmpdir(), "gh-device-e2e-"));
 const priorStateDir = process.env.ELIZA_STATE_DIR;
 process.env.ELIZA_STATE_DIR = stateDir;
 
-const { tryHandleRuntimePluginRoute } = await import(
-  "../../../packages/agent/src/api/runtime-plugin-routes.ts"
+const { tryHandleHonoRuntimeRoute } = await import(
+  "../../../packages/agent/src/api/hono-mount.ts"
 );
-const { handleGitHubRoutes } = await import("./routes/github-routes.ts");
+const { githubPlugin } = await import("./index.ts");
 const { clearDeviceFlowsForTest } = await import("./device-flow.ts");
 const { clearCredentials, loadMetadata } = await import(
   "./github-credentials.ts"
 );
 
-/**
- * Mirror the plugin's route wiring from src/index.ts exactly — including the
- * runtime-derived context (agent scoping, per-agent oauth client id
- * resolution, and live-runtime token apply/clear). Importing the full plugin
- * object instead would drag in the entire (unrelated) action graph; the route
- * declaration + adapter is what we exercise.
- */
-function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
-  return async (
-    req: unknown,
-    res: unknown,
-    runtime: unknown,
-  ): Promise<void> => {
-    const httpReq = req as http.IncomingMessage;
-    const httpRes = res as http.ServerResponse;
-    const url = new URL(httpReq.url ?? "/api/github/token", "http://localhost");
-    const agentRuntime = runtime as IAgentRuntime;
-    await handleGitHubRoutes({
-      req: httpReq,
-      res: httpRes,
-      method,
-      pathname: url.pathname,
-      agentKey: String(agentRuntime.agentId),
-      getOauthClientId: () => {
-        const clientId = agentRuntime.getSetting("GITHUB_OAUTH_CLIENT_ID");
-        return typeof clientId === "string" ? clientId : undefined;
-      },
-      applyRuntimeToken: (token) =>
-        agentRuntime.setSetting("GITHUB_TOKEN", token, true),
-      clearRuntimeToken: () => {
-        const secrets = agentRuntime.character.secrets;
-        if (secrets && "GITHUB_TOKEN" in secrets) delete secrets.GITHUB_TOKEN;
-      },
-    });
-  };
-}
-
-const githubRoutes: Route[] = [
-  {
-    type: "GET",
-    path: "/api/github/token",
-    rawPath: true,
-    handler: createGitHubRouteHandler("GET"),
-  },
-  {
-    type: "POST",
-    path: "/api/github/token",
-    rawPath: true,
-    handler: createGitHubRouteHandler("POST"),
-  },
-  {
-    type: "DELETE",
-    path: "/api/github/token",
-    rawPath: true,
-    handler: createGitHubRouteHandler("DELETE"),
-  },
-  {
-    type: "POST",
-    path: "/api/github/device/start",
-    rawPath: true,
-    handler: createGitHubRouteHandler("POST"),
-  },
-  {
-    type: "POST",
-    path: "/api/github/device/poll",
-    rawPath: true,
-    handler: createGitHubRouteHandler("POST"),
-  },
-];
-
-/** Per-test runtime stub: a real settings map per agent, nothing shared. */
 function makeRuntime(options: {
   agentId: string;
   oauthClientId?: string;
-}): IAgentRuntime & { secrets: Record<string, string> } {
-  const secrets: Record<string, string> = {};
-  return {
-    agentId: options.agentId,
-    routes: githubRoutes,
-    character: { name: "test", secrets },
-    secrets,
-    getSetting: (key: string) => {
-      if (key === "GITHUB_OAUTH_CLIENT_ID")
-        return options.oauthClientId ?? null;
-      return secrets[key] ?? null;
-    },
-    setSetting: (
-      key: string,
-      value: string | boolean | null,
-      _secret?: boolean,
-    ) => {
-      if (value !== null && value !== undefined) secrets[key] = String(value);
-    },
-    getService: () => null,
-  } as unknown as IAgentRuntime & { secrets: Record<string, string> };
+}): AgentRuntime {
+  const runtime = new AgentRuntime({
+    agentId: stringToUuid(options.agentId),
+    character: { name: "GitHub device fixture" },
+    logLevel: "fatal",
+  });
+  if (options.oauthClientId)
+    runtime.setSetting("GITHUB_OAUTH_CLIENT_ID", options.oauthClientId);
+  registerHttpPluginRoutes(runtime, githubPlugin);
+  return runtime;
 }
 
 const servers: http.Server[] = [];
@@ -141,13 +47,9 @@ async function startServer(
   isAuthorized: () => boolean = () => true,
 ): Promise<string> {
   const server = http_.createServer(async (req, res) => {
-    const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    const handled = await tryHandleRuntimePluginRoute({
+    const handled = await tryHandleHonoRuntimeRoute({
       req,
       res,
-      method: req.method ?? "GET",
-      pathname: url.pathname,
-      url,
       runtime,
       isAuthorized,
     });
@@ -381,7 +283,7 @@ describe("github device sign-in routes (real dispatch)", () => {
     // …but it really landed on disk through the real save path…
     expect(await loadMetadata()).toMatchObject({ username: "octocat" });
     // …and in THIS runtime's per-agent settings (not process.env).
-    expect(runtime.secrets.GITHUB_TOKEN).toBe("gho_device_grant");
+    expect(runtime.getSetting("GITHUB_TOKEN")).toBe("gho_device_grant");
     expect(process.env.GITHUB_TOKEN ?? "").not.toBe("gho_device_grant");
 
     // Status route now reports connected.
@@ -412,7 +314,7 @@ describe("github device sign-in routes (real dispatch)", () => {
     expect(denied.status).toBe(200);
     expect(denied.json).toEqual({ status: "denied" });
     expect(await loadMetadata()).toBeNull();
-    expect(runtime.secrets.GITHUB_TOKEN).toBeUndefined();
+    expect(runtime.getSetting("GITHUB_TOKEN")).toBeNull();
   });
 
   it("an expired grant resolves to a terminal expired outcome", async () => {
@@ -466,7 +368,7 @@ describe("github device sign-in routes (real dispatch)", () => {
       flowId: started.json.flowId,
     });
     expect(hijack.status).toBe(404);
-    expect(runtimeB.secrets.GITHUB_TOKEN).toBeUndefined();
+    expect(runtimeB.getSetting("GITHUB_TOKEN")).toBeNull();
   });
 
   it("a GitHub-side registration failure at start surfaces as owner-setup 409", async () => {
@@ -514,7 +416,7 @@ describe("github device sign-in routes (real dispatch)", () => {
     });
     expect(res.status).toBe(400);
     expect(await loadMetadata()).toBeNull();
-    expect(runtime.secrets.GITHUB_TOKEN).toBeUndefined();
+    expect(runtime.getSetting("GITHUB_TOKEN")).toBeNull();
   });
 
   it("PAT paste (application/json, the dashboard card's shape) validates, persists, and applies per-agent", async () => {
@@ -531,7 +433,7 @@ describe("github device sign-in routes (real dispatch)", () => {
     });
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({ connected: true, username: "octocat" });
-    expect(runtime.secrets.GITHUB_TOKEN).toBe("ghp_pasted");
+    expect(runtime.getSetting("GITHUB_TOKEN")).toBe("ghp_pasted");
 
     // DELETE disconnects the live runtime too, not just the disk record.
     const del = await realFetch(`${base}/api/github/token`, {
@@ -539,6 +441,6 @@ describe("github device sign-in routes (real dispatch)", () => {
     });
     expect(del.status).toBe(200);
     expect(await loadMetadata()).toBeNull();
-    expect(runtime.secrets.GITHUB_TOKEN).toBeUndefined();
+    expect(runtime.getSetting("GITHUB_TOKEN")).toBeNull();
   });
 });

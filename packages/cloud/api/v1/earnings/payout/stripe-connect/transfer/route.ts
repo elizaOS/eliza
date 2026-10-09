@@ -1,18 +1,21 @@
-// Handles v1 cloud API v1 earnings payout stripe connect transfer route traffic with route-local auth expectations.
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
 import { stripeConnectAccountsRepository } from "@elizaos/cloud-shared/db/repositories/stripe-connect-accounts";
-import { transferToConnectAccount } from "@elizaos/cloud-shared/lib/services/stripe-connect-payout";
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
-import { requireStripe } from "@/lib/stripe";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { debitAffiliatePayout } from "@elizaos/cloud-shared/lib/services/affiliate-payouts";
+import { redeemableEarningsService } from "@elizaos/cloud-shared/lib/services/redeemable-earnings";
+import { transferToConnectAccount } from "@elizaos/cloud-shared/lib/services/stripe-connect-payout";
+import { requireStripe } from "@elizaos/cloud-shared/lib/stripe";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { toConnectClient } from "../_stripe-connect-client";
 
 const MAX_TRANSFER_USD = 1_000_000;
@@ -26,19 +29,18 @@ const TransferSchema = z.object({
 /**
  * POST /api/v1/earnings/payout/stripe-connect/transfer (#8922)
  *
- * Settle a creator's redeemable earnings to their connected account as fiat.
- * ADMIN-GATED (`requireAdmin`) — this is the approved-payout step, the same
- * admin-approval posture as token redemptions: a user can never self-trigger a
- * fiat transfer; an operator executes it. The money flow is a compensating
- * saga so a Stripe failure never leaves the balance debited:
- *   1. validate the connected account is active + balance ≥ amount
- *   2. debit the ledger (atomic; never goes negative)
- *   3. transfer to the connected account (Stripe idempotency key → no double-pay)
- *   4. on transfer failure, re-credit the debited amount
+ * Pays an affiliate's earnings to their connected account as fiat.
+ * ADMIN-GATED (`requireAdmin`): an operator executes the approved payout.
  *
- * (Follow-up: a dedicated `payout` ledger entry type — this currently records
- * the debit via reduceEarnings; the balance math is correct, the entry label is
- * the only thing to refine. Tracked on #8922.)
+ * Creator monetization is retired (#22961 / #23022). Only affiliate earnings
+ * credited after the retirement instant are payable; frozen creator balances
+ * (and affiliate earnings frozen with them) are refused with 409
+ * `affiliate_payout_exceeds_payable` and settled manually. The money flow is a
+ * compensating saga so a Stripe failure never leaves the balance debited:
+ *   1. validate the connected account is active and payout-ready
+ *   2. debit the payable affiliate balance (atomic, fails closed, idempotent)
+ *   3. transfer to the connected account (Stripe idempotency key, no double-pay)
+ *   4. on a definitive transfer rejection, re-credit the debited amount
  */
 async function handleTransfer(c: AppContext) {
   await requireAdmin(c);
@@ -78,41 +80,17 @@ async function handleTransfer(c: AppContext) {
     );
   }
 
-  const balance = await redeemableEarningsService.getBalance(user_id);
-  if (!balance || balance.availableBalance < amount) {
-    return Response.json(
-      { success: false, error: "Insufficient redeemable balance" },
-      { status: 400 },
-    );
-  }
-
-  // Debit first so a crash can never transfer more than was reserved.
-  // requireSufficientBalance makes the debit fail CLOSED (no floor-and-pass)
-  // under the row lock on the primary, so a stale getBalance pre-check, a
-  // concurrent double-submit (distinct idempotency keys), or read-replica lag
-  // can never let us transfer more fiat than the creator actually earned. On
-  // success exactly `amount` is debited, so the compensation below (which
-  // re-credits `amount`) is also exact.
-  // dedupeBySourceId makes the debit IDEMPOTENT on idempotency_key: a legitimate
-  // same-key retry (the point of the param) reuses the prior adjustment instead
-  // of debiting again, while Stripe replays the single transfer — so the creator
-  // is never debited 2× and paid 1×.
-  const debit = await redeemableEarningsService.reduceEarnings({
+  // Debit first so a crash can never transfer more than was reserved. The
+  // debit checks the payable affiliate balance under the per-user ledger lock
+  // and fails closed; it is idempotent on idempotency_key so a same-key retry
+  // reuses the prior debit while Stripe replays the single transfer.
+  const debit = await debitAffiliatePayout({
     userId: user_id,
-    amount,
-    source: "creator_revenue_share",
-    sourceId: idempotency_key,
-    description: "Stripe Connect fiat payout",
+    amountUsd: amount,
+    idempotencyKey: idempotency_key,
+    description: "Stripe Connect affiliate payout",
     metadata: { payout_method: "stripe_connect" },
-    requireSufficientBalance: true,
-    dedupeBySourceId: true,
   });
-  if (!debit.success) {
-    return Response.json(
-      { success: false, error: debit.error ?? "Failed to reserve balance" },
-      { status: 409 },
-    );
-  }
 
   // A DEDUPLICATED debit means an adjustment row for this idempotency_key already
   // exists. That is legitimate for the ambiguous-retry case (Call 1 debited, the
@@ -128,7 +106,7 @@ async function handleTransfer(c: AppContext) {
     const alreadyRefunded =
       await redeemableEarningsService.hasEarningBySourceId({
         userId: user_id,
-        source: "creator_revenue_share",
+        source: "affiliate",
         sourceId: `${idempotency_key}:refund`,
       });
     if (alreadyRefunded) {
@@ -191,14 +169,16 @@ async function handleTransfer(c: AppContext) {
       await redeemableEarningsService.addEarnings({
         userId: user_id,
         amount,
-        source: "creator_revenue_share",
+        source: "affiliate",
         sourceId: `${idempotency_key}:refund`,
-        description: "Stripe Connect payout rejected — balance restored",
+        description:
+          "Stripe Connect affiliate payout rejected — balance restored",
         metadata: {
           payout_method: "stripe_connect",
           refund_of: idempotency_key,
         },
         dedupeBySourceId: true,
+        reversesRedemption: true,
       });
       logger.error("[StripeConnect] transfer rejected; balance restored", {
         userId: user_id,

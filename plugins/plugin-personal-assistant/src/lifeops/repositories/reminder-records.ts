@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import type {
   LifeOpsReminderAttempt,
   LifeOpsReminderPlan,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   REMINDER_REVIEW_AT_METADATA_KEY,
   REMINDER_REVIEW_STATUS_METADATA_KEY,

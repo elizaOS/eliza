@@ -8,7 +8,7 @@ import type {
   LifeOpsWorkflowRecord,
   LifeOpsWorkflowRun,
   UpdateLifeOpsWorkflowRequest,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import { matchesCalendarEventEndedFilters } from "./domains/workflows-service.js";
 
 export { matchesCalendarEventEndedFilters };

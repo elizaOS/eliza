@@ -14,15 +14,15 @@ from dataclasses import dataclass, field
 
 import torch
 
-from quantization.fused_turboquant_vendored.core.hadamard import (
+from eliza_training.quantization.fused_turboquant_vendored.core.hadamard import (
     DenseQRRotation,
     RHTRotation,
 )
-from quantization.fused_turboquant_vendored.core.quantizer import TurboQuantMSE
-from quantization.fused_turboquant_vendored.kernels.triton_rht import is_triton_available
+from eliza_training.quantization.fused_turboquant_vendored.core.quantizer import TurboQuantMSE
+from eliza_training.quantization.fused_turboquant_vendored.kernels.triton_rht import is_triton_available
 
 if is_triton_available():
-    from quantization.fused_turboquant_vendored.kernels.triton_rht import triton_rht
+    from eliza_training.quantization.fused_turboquant_vendored.kernels.triton_rht import triton_rht
 
 
 @dataclass

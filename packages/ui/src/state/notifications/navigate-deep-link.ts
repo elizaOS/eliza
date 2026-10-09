@@ -21,12 +21,45 @@
  * and the OS/web notification click handler so the two cannot diverge.
  */
 
+import { validateUuid } from "@elizaos/core/protocol";
 import {
-  dispatchChatOpen,
   dispatchChatPrefill,
   dispatchNavigateViewEvent,
+  dispatchNavigateViewRequest,
   dispatchOpenNotificationCenter,
 } from "../../events";
+
+export interface NotificationChatTarget {
+  conversationId: string;
+  messageId: string;
+}
+export interface NotificationChatRequest {
+  kind: "notification-chat";
+  target?: NotificationChatTarget;
+  notificationId?: string;
+}
+
+/** Undefined is legacy/unanchored; null is a malformed claimed anchor. */
+export function readNotificationChatTarget(
+  data: unknown,
+): NotificationChatTarget | null | undefined {
+  const fields =
+    data && typeof data === "object" && !Array.isArray(data)
+      ? (data as Record<string, unknown>)
+      : null;
+  if (
+    !fields ||
+    (!Object.hasOwn(fields, "conversationId") &&
+      !Object.hasOwn(fields, "messageId"))
+  )
+    return undefined;
+  if (!validateUuid(fields.conversationId) || !validateUuid(fields.messageId))
+    return null;
+  return {
+    conversationId: fields.conversationId as string,
+    messageId: fields.messageId as string,
+  };
+}
 
 /** Whether a deep link is a safe navigation target (see module doc). */
 export function isSafeDeepLink(deepLink: string): boolean {
@@ -37,7 +70,10 @@ export function isSafeDeepLink(deepLink: string): boolean {
 }
 
 /** Best-effort, scheme-checked navigation for a notification deep link. */
-export function navigateDeepLink(deepLink: string): void {
+export function navigateDeepLink(
+  deepLink: string,
+  data?: unknown,
+): undefined | Promise<boolean> {
   if (typeof window === "undefined") return;
   if (/^https?:\/\//i.test(deepLink)) {
     window.open(deepLink, "_blank", "noopener,noreferrer");
@@ -53,13 +89,34 @@ export function navigateDeepLink(deepLink: string): void {
     // This is how a notification "opens into the chat" with a ready action,
     // e.g. the onboarding calendar row prefilling a connect-my-calendar ask.
     if (viewId === "chat") {
-      const query = deepLink.includes("?")
-        ? deepLink.slice(deepLink.indexOf("?") + 1)
+      const withoutFragment = deepLink.split("#")[0] ?? deepLink;
+      const query = withoutFragment.includes("?")
+        ? withoutFragment.slice(withoutFragment.indexOf("?") + 1)
         : "";
       const prefill = new URLSearchParams(query).get("prefill")?.trim();
-      if (prefill) dispatchChatPrefill({ text: prefill });
-      else dispatchChatOpen();
-      return;
+      const target = readNotificationChatTarget(data);
+      if (target === null) return Promise.resolve(false);
+      const notificationId =
+        data && typeof data === "object" && "notificationId" in data
+          ? data.notificationId
+          : undefined;
+      if (notificationId !== undefined && !validateUuid(notificationId))
+        return Promise.resolve(false);
+      if (prefill && !target) {
+        dispatchChatPrefill({ text: prefill });
+        return;
+      }
+      return dispatchNavigateViewRequest({
+        viewId: "chat",
+        viewPath: "/chat",
+        payload: {
+          kind: "notification-chat",
+          ...(target ? { target } : {}),
+          ...(notificationId
+            ? { notificationId: notificationId as string }
+            : {}),
+        } satisfies NotificationChatRequest,
+      });
     }
     if (viewId === "notifications") {
       dispatchOpenNotificationCenter();

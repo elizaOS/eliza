@@ -15,33 +15,29 @@
  * adapter point their per-invoice callback here.
  */
 
-import { Hono } from "hono";
 import {
+  getRequestIp,
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { OxaPayApiError } from "@/lib/services/oxapay";
-import { createOxaPayPaymentAdapter } from "@/lib/services/payment-adapters/oxapay";
-import { paymentCallbackBus } from "@/lib/services/payment-callback-bus";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { OxaPayApiError } from "@elizaos/cloud-shared/lib/services/oxapay";
+import { createOxaPayPaymentAdapter } from "@elizaos/cloud-shared/lib/services/payment-adapters/oxapay";
+import { paymentCallbackBus } from "@elizaos/cloud-shared/lib/services/payment-callback-bus";
 import {
   type DurablePaymentProviderEvent,
   dispatchPaymentCallbacks,
   processPaymentProviderEvent,
   sha256Hex,
-} from "@/lib/services/payment-request-settlement";
-import { IgnoredWebhookEvent } from "@/lib/services/payment-webhook-errors";
-import { logger, redact } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/payment-request-settlement";
+import { IgnoredWebhookEvent } from "@elizaos/cloud-shared/lib/services/payment-webhook-errors";
+import { logger, redact } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const oxaPayAdapter = createOxaPayPaymentAdapter();
-
-function getClientIp(c: AppContext): string {
-  return (
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    c.req.header("x-real-ip") ||
-    "unknown"
-  );
-}
 
 function getWebhookAllowedIps(env: AppContext["env"]): string[] {
   const raw = env.OXAPAY_WEBHOOK_IPS;
@@ -72,7 +68,7 @@ export function createOxaPayWebhookApp(
   const app = new Hono<AppEnv>();
 
   app.post("/", moneyRateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
-    const ip = getClientIp(c);
+    const ip = getRequestIp(c) ?? "unknown";
     const allowedIps = getWebhookAllowedIps(c.env);
     if (allowedIps.length > 0 && !allowedIps.includes(ip)) {
       logger.warn("[OxaPayWebhook API] Request from non-allowlisted IP", {

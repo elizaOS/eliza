@@ -20,6 +20,10 @@
   --brand-blue: rgba(0, 0, 0, 0.6);
   /* Retained for wallpaper/content assets; routine product chrome is neutral. */
   --brand-orange: #ff6a1f;
+  --accent-action: var(--brand-orange);
+  --accent-action-foreground: #000000;
+  --accent-action-hover: #c2410c;
+  --accent-action-hover-foreground: #ffffff;
   /* True black canvas. A warm-tinted near-black (#140c07) was tried here and
      read as brown on OLED at device brightness (owner-reverted 2026-07-07).
      Warmth belongs in accents/gradients, never the base surface token. */
@@ -679,13 +683,11 @@ body.pwa-standalone * {
    carry. Scoped to display-mode so an in-browser tab keeps its scrollbar. */
 @media (display-mode: standalone), (display-mode: fullscreen),
   (display-mode: minimal-ui) {
-  /* biome-ignore lint/style/noDescendingSpecificity: universal scrollbar reset is intentional (matches styles.css). */
   *::-webkit-scrollbar {
     width: 0;
     height: 0;
     display: none;
   }
-  /* biome-ignore lint/style/noDescendingSpecificity: universal scrollbar reset is intentional (matches styles.css). */
   * {
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -699,13 +701,11 @@ body.pwa-standalone * {
    pointer so touch scrolling stays edge-to-edge and invisible, matching the
    native shell. Fine-pointer (mouse) desktop keeps the styled scrollbar. */
 @media (pointer: coarse) {
-  /* biome-ignore lint/style/noDescendingSpecificity: universal scrollbar reset is intentional (matches styles.css). */
   *::-webkit-scrollbar {
     width: 0;
     height: 0;
     display: none;
   }
-  /* biome-ignore lint/style/noDescendingSpecificity: universal scrollbar reset is intentional (matches styles.css). */
   * {
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -823,7 +823,7 @@ body.pwa-standalone * {
   --text: var(--brand-black);
   --text-strong: var(--brand-black);
   --txt: var(--text);
-  --muted: rgba(0, 0, 0, 0.66);
+  --muted: rgba(0, 0, 0, 0.76);
   --muted-strong: rgba(0, 0, 0, 0.82);
   --foreground: var(--text);
   --background: var(--bg);
@@ -850,6 +850,17 @@ body.pwa-standalone * {
   --link-hover-color: var(--brand-orange);
 
   color-scheme: light;
+
+  /* Status colors must retain contrast on the orange app surface. */
+  --ok: #07240b;
+  --ok-foreground: var(--ok);
+  --danger: #360505;
+  --destructive: var(--danger);
+  --warn: #2c1900;
+  --status-success: var(--ok);
+  --status-danger: var(--danger);
+  --status-warning: var(--warn);
+  --status-info: var(--muted-strong);
 }
 
 /* Cloud video hero: dark scrim over the video; black text per brand rule. */

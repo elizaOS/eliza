@@ -13,8 +13,8 @@
 import type {
   AccountDeletionAcceptedDto,
   AccountDeletionStatusDto,
-} from "@elizaos/cloud-shared/types/account-lifecycle";
-import { ElizaError } from "@elizaos/core";
+} from "@elizaos/cloud-sdk/browser-contracts";
+import { ElizaError } from "@elizaos/core/protocol";
 import { shellLocalStorage } from "../../../surface-realm-channel";
 import { api, apiFetch } from "../../lib/api-client";
 import { signOutFromSsoBridgedHost } from "../../sso-bridge/sso-bridge";
@@ -478,11 +478,24 @@ export async function downloadAccountDeletionExport(): Promise<AccountDeletionEx
     headers: { "X-Account-Deletion-Recovery": recoveryCredential },
     json: { confirmation: "EXPORT MY DATA" },
   });
+  return readVerifiedExportDownload(response, "deletion export");
+}
+
+/**
+ * Reads a portable account export response and verifies its bytes against
+ * the server's `X-Account-Deletion-Export-SHA256` receipt. Shared by the
+ * recovery-window export and the live-account data export, which return the
+ * same response shape.
+ */
+export async function readVerifiedExportDownload(
+  response: Response,
+  label: string,
+): Promise<AccountDeletionExportDownload> {
   const contentDigest =
     response.headers.get("X-Account-Deletion-Export-SHA256") ?? "";
   if (!/^[a-f0-9]{64}$/.test(contentDigest)) {
     throw new AccountDeletionClientError(
-      "The deletion export response has no valid content digest.",
+      `The ${label} response has no valid content digest.`,
       {
         code: "ACCOUNT_DELETION_EXPORT_DIGEST_INVALID",
         severity: "fatal",
@@ -494,7 +507,7 @@ export async function downloadAccountDeletionExport(): Promise<AccountDeletionEx
   const blob = await response.blob();
   if (!globalThis.crypto?.subtle) {
     throw new AccountDeletionClientError(
-      "This browser cannot verify the deletion export digest.",
+      `This browser cannot verify the ${label} digest.`,
       {
         code: "ACCOUNT_DELETION_EXPORT_CRYPTO_UNAVAILABLE",
         severity: "fatal",
@@ -512,7 +525,7 @@ export async function downloadAccountDeletionExport(): Promise<AccountDeletionEx
   ).join("");
   if (actualDigest !== contentDigest) {
     throw new AccountDeletionClientError(
-      "The deletion export bytes do not match the server receipt.",
+      `The ${label} bytes do not match the server receipt.`,
       {
         code: "ACCOUNT_DELETION_EXPORT_DIGEST_MISMATCH",
         severity: "fatal",

@@ -33,7 +33,6 @@ import importlib
 import json
 import logging
 import math
-import sys
 from pathlib import Path
 from typing import Callable
 
@@ -43,15 +42,11 @@ from transformers.cache_utils import Cache
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 _HERE = Path(__file__).resolve().parent
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
-if str(_HERE.parent) not in sys.path:
-    sys.path.insert(0, str(_HERE.parent))
 
-from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-from lib.generation_integrity import model_context_tokens  # noqa: E402
+from eliza_training.training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from eliza_training.lib.generation_integrity import model_context_tokens  # noqa: E402
 
-from _common import (  # noqa: E402
+from eliza_training.quantization._common import (  # noqa: E402
     full_attention_layer_indices,
     get_text_config,
     head_dim_of,
@@ -227,11 +222,8 @@ def kv_bytes_per_token_analytic(
 
 
 def _qjl_kernel_module() -> object:
-    """Add the vendored qjl/ directory to sys.path and import the dispatch wrapper."""
-    qjl_dir = str(_HERE / "qjl")
-    if qjl_dir not in sys.path:
-        sys.path.insert(0, qjl_dir)
-    return importlib.import_module("qjl_kernel")
+    """Load the vendored dispatch wrapper from its installed namespace."""
+    return importlib.import_module("eliza_training.quantization.qjl.qjl_kernel")
 
 
 def _build_jl_projections(
@@ -248,7 +240,7 @@ def _build_jl_projections(
     """Per-layer ``(head_dim, proj_dim)`` row-major JL projection matrices.
 
     Layout matches the canonical kernel reference at
-    ``eliza/packages/native/plugins/qjl-cpu/include/qjl/qjl.h`` (Π row-major,
+    ``eliza/plugins/plugin-local-inference/native/qjl-cpu/include/qjl/qjl.h`` (Π row-major,
     indexed as ``prj[i*proj_dim + j]``) and the verify harness reference at
     ``eliza/plugins/plugin-local-inference/native/verify/qjl_polar_ref.c``. A row of the matrix
     is ``proj_dim`` floats; with the canonical (head_dim=128, proj_dim=256)

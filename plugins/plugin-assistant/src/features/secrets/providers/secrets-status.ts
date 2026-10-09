@@ -1,0 +1,262 @@
+/**
+ * Secrets Status Provider
+ *
+ * Provides context about the agent's secret configuration status
+ * to help the LLM understand what capabilities are available.
+ */
+
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
+import {
+  PLUGIN_ACTIVATOR_SERVICE_TYPE,
+  type PluginActivatorService,
+} from "../services/plugin-activator.ts";
+import {
+  SECRETS_SERVICE_TYPE,
+  type SecretsService,
+} from "../services/secrets.ts";
+
+/**
+ * Secrets Status Provider
+ *
+ * Adds information about configured secrets to the agent's context,
+ * without exposing actual secret values.
+ */
+export const secretsStatusProvider: Provider = {
+  name: "SECRETS_STATUS",
+  description: "Provides information about configured secrets and their status",
+
+  dynamic: true,
+  contexts: ["secrets", "settings"],
+  contextGate: { anyOf: ["secrets", "settings"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  // Secret presence/values are operator context — admin+ (preserves the tier
+  // the former name-keyed override map enforced; #12094 item 3).
+  roleGate: { minRole: "ADMIN" },
+
+  get: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ): Promise<ProviderResult> => {
+    const secretsService =
+      runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
+    if (!secretsService) {
+      return { text: "" };
+    }
+
+    try {
+      // Get global secrets status
+      const globalSecrets = await secretsService.list({
+        level: "global",
+        agentId: runtime.agentId,
+        requesterId: runtime.agentId,
+      });
+
+      const secretKeys = Object.keys(globalSecrets);
+
+      if (secretKeys.length === 0) {
+        return {
+          text: `[Secrets Status]
+No secrets are currently configured. The agent may need API keys or other credentials to access certain services.`,
+        };
+      }
+
+      // Categorize secrets by status
+      const valid: string[] = [];
+      const missing: string[] = [];
+      const invalid: string[] = [];
+
+      for (const [key, config] of Object.entries(globalSecrets)) {
+        switch (config.status) {
+          case "valid":
+            valid.push(key);
+            break;
+          case "missing":
+            missing.push(key);
+            break;
+          case "invalid":
+          case "expired":
+          case "revoked":
+            invalid.push(key);
+            break;
+          default:
+            valid.push(key);
+        }
+      }
+
+      // Build status message
+      const lines: string[] = ["[Secrets Status]"];
+
+      if (valid.length > 0) {
+        lines.push(`Configured secrets: ${valid.join(", ")}`);
+      }
+
+      if (invalid.length > 0) {
+        lines.push(`Invalid/expired secrets: ${invalid.join(", ")}`);
+      }
+
+      if (missing.length > 0) {
+        lines.push(`Missing required secrets: ${missing.join(", ")}`);
+      }
+
+      // Check plugin activator for pending plugins
+      const activatorService = runtime.getService<PluginActivatorService>(
+        PLUGIN_ACTIVATOR_SERVICE_TYPE,
+      );
+      if (activatorService) {
+        const pendingPlugins = activatorService.getPendingPlugins();
+        if (pendingPlugins.length > 0) {
+          lines.push(
+            `Plugins waiting for secrets: ${pendingPlugins.join(", ")}`,
+          );
+
+          const requiredSecrets = activatorService.getRequiredSecrets();
+          if (requiredSecrets.size > 0) {
+            lines.push(
+              `Secrets needed for pending plugins: ${Array.from(requiredSecrets).join(", ")}`,
+            );
+          }
+        }
+      }
+
+      return {
+        text: lines.join("\n"),
+        data: {
+          configuredCount: valid.length,
+          invalidCount: invalid.length,
+          missingCount: missing.length,
+          configuredKeys: valid,
+          invalidKeys: invalid,
+          missingKeys: missing,
+        },
+        values: {
+          configuredSecrets: valid.length,
+          invalidSecrets: invalid.length,
+          missingSecrets: missing.length,
+        },
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      runtime.reportError("SecretsStatusProvider.get", error);
+      // error-policy:J4 A storage failure is distinct from having zero configured secrets.
+      return {
+        text: "[Secrets Status]\nSecret configuration status is unavailable.",
+        data: { available: false, error: errorMsg },
+        values: { secretsStatus: "unavailable" },
+      };
+    }
+  },
+};
+
+/**
+ * Secrets Info Provider
+ *
+ * Provides detailed information about specific secrets when relevant
+ * to the current conversation context.
+ */
+export const secretsInfoProvider: Provider = {
+  name: "SECRETS_INFO",
+  description:
+    "Provides detailed secret information based on conversation context",
+
+  dynamic: true,
+  contexts: ["secrets", "settings"],
+  contextGate: { anyOf: ["secrets", "settings"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  // Secret presence/values are operator context — admin+ (preserves the tier
+  // the former name-keyed override map enforced; #12094 item 3).
+  roleGate: { minRole: "ADMIN" },
+
+  get: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ): Promise<ProviderResult> => {
+    const secretsService =
+      runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
+    if (!secretsService) {
+      return { text: "" };
+    }
+
+    try {
+      const globalSecrets = await secretsService.list({
+        level: "global",
+        agentId: runtime.agentId,
+        requesterId: runtime.agentId,
+      });
+
+      const secretCount = Object.keys(globalSecrets).length;
+      if (secretCount === 0) {
+        return {
+          text: `[Secrets Info]
+No secrets configured. User can set secrets by saying things like "Set my OPENAI_API_KEY to sk-..."`,
+        };
+      }
+
+      // Build detailed info
+      const lines: string[] = ["[Secrets Info]"];
+      lines.push(`Total configured secrets: ${secretCount}`);
+
+      // Group by type
+      const byType: Record<string, string[]> = {};
+      for (const [key, config] of Object.entries(globalSecrets)) {
+        const type = config.type;
+        if (!byType[type]) {
+          byType[type] = [];
+        }
+        byType[type].push(key);
+      }
+
+      for (const [type, keys] of Object.entries(byType)) {
+        lines.push(`${type}: ${keys.join(", ")}`);
+      }
+
+      // Check for common missing secrets that might be relevant
+      const commonSecrets = [
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "DISCORD_BOT_TOKEN",
+        "TELEGRAM_BOT_TOKEN",
+        "TWITTER_API_KEY",
+      ];
+
+      const missingCommon = commonSecrets.filter((key) => !globalSecrets[key]);
+      if (
+        missingCommon.length > 0 &&
+        missingCommon.length < commonSecrets.length
+      ) {
+        lines.push(`Common secrets not set: ${missingCommon.join(", ")}`);
+      }
+
+      return {
+        text: lines.join("\n"),
+        data: {
+          secretCount,
+          secretTypes: Object.fromEntries(
+            Object.entries(byType).map(([type, keys]) => [type, keys]),
+          ),
+        },
+        values: {
+          secretCount,
+        },
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      runtime.reportError("SecretsInfoProvider.get", error);
+      // error-policy:J4 A storage failure is distinct from an empty secrets inventory.
+      return {
+        text: "[Secrets Info]\nSecret configuration details are unavailable.",
+        data: { available: false, error: errorMsg },
+        values: { secretsStatus: "unavailable" },
+      };
+    }
+  },
+};

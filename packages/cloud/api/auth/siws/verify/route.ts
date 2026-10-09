@@ -5,18 +5,18 @@
  * address, and issues an API key. Solana counterpart to siwe/verify.
  */
 
-import { Hono } from "hono";
-import { buildRedisClient } from "@/lib/cache/redis-factory";
+import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService } from "@/lib/services/api-keys";
-import { findOrCreateSolanaUserByWalletAddress } from "@/lib/services/wallet-signup";
-import { getAppHost } from "@/lib/utils/app-url";
-import { logger } from "@/lib/utils/logger";
-import { validateAndConsumeSIWS } from "@/lib/utils/siws-helpers";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
+import { findOrCreateSolanaUserByWalletAddress } from "@elizaos/cloud-shared/lib/services/wallet-signup";
+import { getAppHost } from "@elizaos/cloud-shared/lib/utils/app-url";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { validateAndConsumeSIWS } from "@elizaos/cloud-shared/lib/utils/siws-helpers";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 interface VerifyBody {
   message: string;

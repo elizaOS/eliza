@@ -4,18 +4,46 @@
  * Handles model listing, provider caching, and inventory (chain/RPC)
  * option resolution.
  */
-
 import fs from "node:fs";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
 import {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "@elizaos/shared";
-import { isMobilePlatform } from "@elizaos/shared/runtime-env";
-import { resolveModelsCacheDir } from "../config/paths.ts";
+  isMobilePlatform,
+} from "@elizaos/host/protocol";
 
-export const DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS = 10_000;
+import { resolveModelsCacheDir } from "../config/paths.ts";
+export const DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS = 10000;
+
+export class ModelCatalogFetchError extends ElizaError {
+  override readonly name = "ModelCatalogFetchError";
+  readonly providerId: string;
+  readonly upstreamStatus?: number;
+
+  constructor(
+    providerId: string,
+    options: { cause?: unknown; upstreamStatus?: number } = {},
+  ) {
+    const statusDetail =
+      options.upstreamStatus === undefined
+        ? ""
+        : ` (upstream returned ${options.upstreamStatus})`;
+    super(`Failed to fetch models from ${providerId}${statusDetail}`, {
+      code: "MODEL_CATALOG_FETCH_FAILED",
+      cause: options.cause,
+      context: {
+        providerId,
+        ...(options.upstreamStatus === undefined
+          ? {}
+          : { upstreamStatus: options.upstreamStatus }),
+      },
+      severity: "ephemeral",
+    });
+    this.providerId = providerId;
+    this.upstreamStatus = options.upstreamStatus;
+  }
+}
 
 type ModelOption = {
   id: string;
@@ -25,7 +53,6 @@ type ModelOption = {
   recommended?: boolean;
   free?: boolean;
 };
-
 export function getModelOptions(): {
   nano: ModelOption[];
   small: ModelOption[];
@@ -175,7 +202,6 @@ export function getModelOptions(): {
       description: "Approved Groq GPT-OSS default for small and large slots.",
     },
   ];
-
   return {
     nano: allModels,
     small: allModels,
@@ -184,11 +210,9 @@ export function getModelOptions(): {
     mega: allModels,
   };
 }
-
 // ---------------------------------------------------------------------------
 // Dynamic model catalog — per-provider cache, fetch, and serve model lists
 // ---------------------------------------------------------------------------
-
 export type ModelCategory =
   | "chat"
   | "embedding"
@@ -196,20 +220,17 @@ export type ModelCategory =
   | "tts"
   | "stt"
   | "other";
-
 export interface CachedModel {
   id: string;
   name: string;
   category: ModelCategory;
 }
-
 export interface ProviderCache {
   version: 1;
   providerId: string;
   fetchedAt: string;
   models: CachedModel[];
 }
-
 export function classifyModel(modelId: string): ModelCategory {
   const id = modelId.toLowerCase();
   if (id.includes("embed") || id.includes("text-embedding")) return "embedding";
@@ -238,7 +259,6 @@ export function classifyModel(modelId: string): ModelCategory {
     return "other";
   return "chat";
 }
-
 /** Map param key → expected model category */
 export function paramKeyToCategory(paramKey: string): ModelCategory {
   const k = paramKey.toUpperCase();
@@ -248,12 +268,14 @@ export function paramKeyToCategory(paramKey: string): ModelCategory {
   if (k.includes("STT") || k.includes("TRANSCRIPTION")) return "stt";
   return "chat";
 }
-
 const MODELS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-
 const PROVIDER_ENV_KEYS: Record<
   string,
-  { envKey: string; altEnvKeys?: string[]; baseUrl?: string }
+  {
+    envKey: string;
+    altEnvKeys?: string[];
+    baseUrl?: string;
+  }
 > = {
   anthropic: { envKey: "ANTHROPIC_API_KEY" },
   openai: { envKey: "OPENAI_API_KEY" },
@@ -287,9 +309,7 @@ const PROVIDER_ENV_KEYS: Record<
   },
   ollama: { envKey: "OLLAMA_BASE_URL" },
 };
-
 // ── Per-provider cache read/write ────────────────────────────────────────
-
 /**
  * Canonical provider-id grammar. Cache paths are built by joining
  * `${providerId}.json` under the models cache dir, so anything outside this
@@ -298,7 +318,6 @@ const PROVIDER_ENV_KEYS: Record<
  * into an arbitrary unlink/read (W1-024).
  */
 export const MODEL_PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
-
 export function providerCachePath(providerId: string): string {
   if (!MODEL_PROVIDER_ID_PATTERN.test(providerId)) {
     throw new ElizaError(`Invalid model provider id: ${providerId}`, {
@@ -318,7 +337,6 @@ export function providerCachePath(providerId: string): string {
   }
   return result;
 }
-
 export function readProviderCache(providerId: string): ProviderCache | null {
   try {
     const raw = fs.readFileSync(providerCachePath(providerId), "utf-8");
@@ -331,7 +349,6 @@ export function readProviderCache(providerId: string): ProviderCache | null {
     return null;
   }
 }
-
 export function writeProviderCache(cache: ProviderCache): void {
   try {
     const dir = resolveModelsCacheDir();
@@ -346,9 +363,7 @@ export function writeProviderCache(cache: ProviderCache): void {
     );
   }
 }
-
 // ── Provider fetchers ────────────────────────────────────────────────────
-
 /** Fetch models from unknown provider's /v1/models endpoint (standard REST). */
 export async function fetchModelsREST(
   providerId: string,
@@ -363,26 +378,67 @@ export async function fetchModelsREST(
       headers,
       signal: AbortSignal.timeout(DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS),
     });
-    if (!res.ok) return [];
-    const data = (await res.json()) as {
-      data?: Array<{ id: string; name?: string; type?: string }>;
-    };
-    return (data.data ?? [])
-      .map((m) => ({
-        id: m.id,
-        name: m.name ?? m.id,
-        category: m.type ? restTypeToCategory(m.type) : classifyModel(m.id),
-      }))
+    if (!res.ok) {
+      throw new ModelCatalogFetchError(providerId, {
+        upstreamStatus: res.status,
+      });
+    }
+    const data: unknown = await res.json();
+    if (
+      !data ||
+      typeof data !== "object" ||
+      !("data" in data) ||
+      !Array.isArray(data.data)
+    ) {
+      throw new ModelCatalogFetchError(providerId);
+    }
+    return data.data
+      .map((model: unknown) => {
+        if (
+          !model ||
+          typeof model !== "object" ||
+          !("id" in model) ||
+          typeof model.id !== "string" ||
+          !model.id.trim() ||
+          ("name" in model &&
+            model.name != null &&
+            typeof model.name !== "string") ||
+          ("type" in model &&
+            model.type != null &&
+            typeof model.type !== "string")
+        ) {
+          throw new ModelCatalogFetchError(providerId);
+        }
+        return {
+          id: model.id,
+          name:
+            "name" in model && typeof model.name === "string"
+              ? model.name
+              : model.id,
+          category:
+            "type" in model && typeof model.type === "string" && model.type
+              ? restTypeToCategory(model.type)
+              : classifyModel(model.id),
+        };
+      })
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch (e: unknown) {
-    // error-policy:J4 an unavailable catalog is an explicit empty provider list.
+    const failure =
+      e instanceof ModelCatalogFetchError
+        ? e
+        : new ModelCatalogFetchError(providerId, { cause: e });
     logger.warn(
-      `[model-catalog] Failed to fetch models for ${providerId}: ${e instanceof Error ? e.message : e}`,
+      {
+        src: "model-catalog",
+        providerId,
+        upstreamStatus: failure.upstreamStatus,
+        error: e instanceof Error ? e.message : String(e),
+      },
+      "Model catalog fetch failed",
     );
-    return [];
+    throw failure;
   }
 }
-
 export function restTypeToCategory(type: string): ModelCategory {
   const t = type.toLowerCase();
   if (t.includes("embed")) return "embedding";
@@ -393,7 +449,6 @@ export function restTypeToCategory(type: string): ModelCategory {
   if (t === "language" || t === "chat" || t.includes("text")) return "chat";
   return classifyModel(type);
 }
-
 export async function fetchAnthropicModels(
   apiKey: string,
 ): Promise<CachedModel[]> {
@@ -408,7 +463,11 @@ export async function fetchAnthropicModels(
     });
     if (!res.ok) return [];
     const data = (await res.json()) as {
-      data?: Array<{ id: string; display_name?: string; type?: string }>;
+      data?: Array<{
+        id: string;
+        display_name?: string;
+        type?: string;
+      }>;
     };
     return (data.data ?? [])
       .map((m) => ({
@@ -425,7 +484,6 @@ export async function fetchAnthropicModels(
     return [];
   }
 }
-
 export async function fetchGoogleModels(
   apiKey: string,
 ): Promise<CachedModel[]> {
@@ -438,7 +496,10 @@ export async function fetchGoogleModels(
     });
     if (!res.ok) return [];
     const data = (await res.json()) as {
-      models?: Array<{ name: string; displayName?: string }>;
+      models?: Array<{
+        name: string;
+        displayName?: string;
+      }>;
     };
     return (data.models ?? []).map((m) => {
       const id = m.name.replace("models/", "");
@@ -456,7 +517,6 @@ export async function fetchGoogleModels(
     return [];
   }
 }
-
 export async function fetchOllamaModels(
   baseUrl: string,
 ): Promise<CachedModel[]> {
@@ -472,10 +532,14 @@ export async function fetchOllamaModels(
     // there blocked the whole boot/`server.listen` for ~15s (#11903). A short
     // AbortSignal keeps a missing Ollama a fast, cheap "no models".
     const res = await fetch(`${urlStr}/api/tags`, {
-      signal: AbortSignal.timeout(2_000),
+      signal: AbortSignal.timeout(2000),
     });
     if (!res.ok) return [];
-    const data = (await res.json()) as { models?: Array<{ name: string }> };
+    const data = (await res.json()) as {
+      models?: Array<{
+        name: string;
+      }>;
+    };
     return (data.models ?? []).map((m) => ({
       id: m.name,
       name: m.name,
@@ -491,20 +555,20 @@ export async function fetchOllamaModels(
     return [];
   }
 }
-
 /** Fetch ALL OpenRouter models: chat (/api/v1/models) + embeddings (/api/v1/embeddings/models). */
 export async function fetchOpenRouterModels(
   apiKey: string,
 ): Promise<CachedModel[]> {
   const headers: Record<string, string> = {};
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-
   interface ORModel {
     id: string;
     name?: string;
-    architecture?: { modality?: string; output_modalities?: string[] };
+    architecture?: {
+      modality?: string;
+      output_modalities?: string[];
+    };
   }
-
   // Fetch chat/text models and embedding models in parallel
   const [chatRes, embedRes] = await Promise.all([
     fetch("https://openrouter.ai/api/v1/models?output_modalities=all", {
@@ -528,13 +592,13 @@ export async function fetchOpenRouterModels(
       return null;
     }),
   ]);
-
   const models: CachedModel[] = [];
-
   // Parse chat/text/image models
   if (chatRes?.ok) {
     try {
-      const data = (await chatRes.json()) as { data?: ORModel[] };
+      const data = (await chatRes.json()) as {
+        data?: ORModel[];
+      };
       for (const m of data.data ?? []) {
         const outputs = (m.architecture?.output_modalities ?? []).map((value) =>
           value.toLowerCase(),
@@ -554,11 +618,12 @@ export async function fetchOpenRouterModels(
       );
     }
   }
-
   // Parse embedding models
   if (embedRes?.ok) {
     try {
-      const data = (await embedRes.json()) as { data?: ORModel[] };
+      const data = (await embedRes.json()) as {
+        data?: ORModel[];
+      };
       for (const m of data.data ?? []) {
         models.push({ id: m.id, name: m.name ?? m.id, category: "embedding" });
       }
@@ -569,14 +634,12 @@ export async function fetchOpenRouterModels(
       );
     }
   }
-
   const deduped = Array.from(
     new Map(models.map((model) => [model.id, model])).values(),
   );
   deduped.sort((a, b) => a.id.localeCompare(b.id));
   return deduped;
 }
-
 /** Fetch NEAR AI Cloud models from its catalog endpoint. */
 export async function fetchNearAIModels(
   apiKey: string,
@@ -602,7 +665,6 @@ export async function fetchNearAIModels(
         };
       };
     };
-
     const url = `${baseUrl.replace(/\/+$/, "")}/models`;
     const headers: Record<string, string> = {};
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
@@ -649,7 +711,6 @@ export async function fetchNearAIModels(
     return [];
   }
 }
-
 export async function fetchProviderModels(
   providerId: string,
   apiKey: string,
@@ -709,7 +770,6 @@ export async function fetchProviderModels(
       return [];
   }
 }
-
 /** Fetch + cache a single provider. Returns cached models or empty array. */
 export async function getOrFetchProvider(
   providerId: string,
@@ -719,10 +779,8 @@ export async function getOrFetchProvider(
     const cached = readProviderCache(providerId);
     if (cached) return cached.models;
   }
-
   const cfg = PROVIDER_ENV_KEYS[providerId];
   if (!cfg) return [];
-
   let keyValue = process.env[cfg.envKey]?.trim();
   if (!keyValue && cfg.altEnvKeys) {
     for (const alt of cfg.altEnvKeys) {
@@ -730,24 +788,23 @@ export async function getOrFetchProvider(
       if (keyValue) break;
     }
   }
-
   let baseUrl = cfg.baseUrl;
+  if (providerId === "openai") {
+    baseUrl = process.env.OPENAI_BASE_URL?.trim() || undefined;
+  }
   if (providerId === "nearai") {
     baseUrl =
       process.env.NEARAI_BASE_URL?.trim() || "https://cloud-api.near.ai/v1";
   }
-
   // Ollama is a desktop localhost server (default :11434). No phone runs it, and
   // on Android the connect to a dead localhost port blocks ~15s on the OS TCP
   // timeout — AbortSignal.timeout does not interrupt bun's connect there — which,
   // because provider caches warm on the API-server startup path, stalled the
   // entire boot/`server.listen` for ~15s (#11903). Skip the probe on mobile.
   if (providerId === "ollama" && isMobilePlatform()) return [];
-
   // Skip remote providers that need an API key when none is configured
   const keylessProviders = new Set(["ollama", "openrouter"]);
   if (!keyValue && !keylessProviders.has(providerId)) return [];
-
   const models = await fetchProviderModels(providerId, keyValue ?? "", baseUrl);
   if (models.length > 0) {
     writeProviderCache({
@@ -759,136 +816,25 @@ export async function getOrFetchProvider(
   }
   return models;
 }
-
 /** Fetch all configured providers (parallel). Returns map of providerId → models. */
 export async function getOrFetchAllProviders(
   force = false,
 ): Promise<Record<string, CachedModel[]>> {
   const result: Record<string, CachedModel[]> = {};
   const fetches: Array<Promise<void>> = [];
-
   for (const providerId of Object.keys(PROVIDER_ENV_KEYS)) {
     fetches.push(
-      getOrFetchProvider(providerId, force).then((models) => {
-        if (models.length > 0) result[providerId] = models;
-      }),
+      getOrFetchProvider(providerId, force)
+        .then((models) => {
+          if (models.length > 0) result[providerId] = models;
+        })
+        .catch(() => {
+          // error-policy:J4 all-provider discovery is best-effort. Individual
+          // provider refreshes retain the typed failure for the HTTP boundary.
+        }),
     );
   }
-
   await Promise.all(fetches);
   return result;
 }
-
-export function getInventoryProviderOptions(): Array<{
-  id: string;
-  name: string;
-  description: string;
-  rpcProviders: Array<{
-    id: string;
-    name: string;
-    description: string;
-    envKey: string | null;
-    requiresKey: boolean;
-  }>;
-}> {
-  return [
-    {
-      id: "evm",
-      name: "EVM",
-      description: "Ethereum, Base, Arbitrum, Optimism, Polygon.",
-      rpcProviders: [
-        {
-          id: "eliza-cloud",
-          name: "Eliza Cloud",
-          description: "Managed RPC. No setup needed.",
-          envKey: null,
-          requiresKey: false,
-        },
-        {
-          id: "infura",
-          name: "Infura",
-          description: "Reliable EVM infrastructure.",
-          envKey: "INFURA_API_KEY",
-          requiresKey: true,
-        },
-        {
-          id: "alchemy",
-          name: "Alchemy",
-          description: "Full-featured EVM data platform.",
-          envKey: "ALCHEMY_API_KEY",
-          requiresKey: true,
-        },
-        {
-          id: "ankr",
-          name: "Ankr",
-          description: "Decentralized RPC provider.",
-          envKey: "ANKR_API_KEY",
-          requiresKey: true,
-        },
-      ],
-    },
-    {
-      id: "bsc",
-      name: "BSC",
-      description: "BNB Smart Chain tokens, NFTs, and trades.",
-      rpcProviders: [
-        {
-          id: "eliza-cloud",
-          name: "Eliza Cloud",
-          description: "Managed RPC. No setup needed.",
-          envKey: null,
-          requiresKey: false,
-        },
-        {
-          id: "alchemy",
-          name: "Alchemy",
-          description: "Managed BSC RPC via Alchemy.",
-          envKey: "ALCHEMY_API_KEY",
-          requiresKey: true,
-        },
-        {
-          id: "ankr",
-          name: "Ankr",
-          description: "Decentralized BSC RPC provider.",
-          envKey: "ANKR_API_KEY",
-          requiresKey: true,
-        },
-        {
-          id: "nodereal",
-          name: "NodeReal",
-          description: "Dedicated BSC RPC endpoint.",
-          envKey: "NODEREAL_BSC_RPC_URL",
-          requiresKey: true,
-        },
-        {
-          id: "quicknode",
-          name: "QuickNode",
-          description: "Managed BSC RPC endpoint.",
-          envKey: "QUICKNODE_BSC_RPC_URL",
-          requiresKey: true,
-        },
-      ],
-    },
-    {
-      id: "solana",
-      name: "Solana",
-      description: "Solana mainnet tokens and NFTs.",
-      rpcProviders: [
-        {
-          id: "eliza-cloud",
-          name: "Eliza Cloud",
-          description: "Managed RPC. No setup needed.",
-          envKey: null,
-          requiresKey: false,
-        },
-        {
-          id: "helius-birdeye",
-          name: "Helius + Birdeye",
-          description: "Solana balances and NFT metadata.",
-          envKey: "HELIUS_API_KEY",
-          requiresKey: true,
-        },
-      ],
-    },
-  ];
-}
+export { getInventoryProviderOptions } from "./wallet-rpc.ts";

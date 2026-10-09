@@ -12,7 +12,6 @@
 
 import { Buffer } from "node:buffer";
 import { createDecipheriv, createHash, createHmac, type DecipherGCM } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_CHUNK_ENVELOPE_V1,
   AGENT_BACKUP_MANIFEST_V2_LIMITS,
@@ -27,7 +26,8 @@ import {
   canonicalizeAgentBackupChunkAad,
   computeAgentBackupRestoreV3ExactReadReceiptSha256,
   parseAgentBackupRestoreV3ExactReadReceiptProof,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import type {
   ExactObjectRead,
   ExactObjectReadReceipt,

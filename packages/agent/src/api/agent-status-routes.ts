@@ -3,15 +3,15 @@
  */
 
 import type http from "node:http";
-import type { AgentRuntime, ReadJsonBodyOptions } from "@elizaos/core";
-import type { TradePermissionMode } from "@elizaos/shared";
 import {
   PostRegistryRegisterRequestSchema,
   PostRegistrySyncRequestSchema,
   PostRegistryUpdateUriRequestSchema,
-} from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
-import type { LocalTradeExecutionOptions } from "./trade-safety.ts";
+  type TradePermissionMode,
+} from "@elizaos/contracts";
+import type { AgentRuntime } from "@elizaos/core";
+import type { ElizaConfig, ReadJsonBodyOptions } from "@elizaos/host/protocol";
+import type { LocalTradeExecutionOptions } from "@elizaos/plugin-wallet/transactions";
 import type { WalletCapabilityStatus } from "./wallet-capability.ts";
 
 // ---------------------------------------------------------------------------
@@ -388,12 +388,15 @@ export async function handleAgentStatusRoutes(
 
   if (method === "GET" && pathname === "/api/registry/config") {
     const registryConfig = state.config.registry;
-    let chainId = 1;
+    let chainId: number | null = null;
     if (registryService) {
       try {
         chainId = await registryService.getChainId();
       } catch {
-        // Keep default if chain RPC is unavailable.
+        // Chain RPC unavailable: leave chainId explicitly unavailable.
+        // error-policy:J3 untrusted-input sanitizing - RPC failure yields
+        // an explicit unavailable result, never a fabricated default.
+        chainId = null;
       }
     }
 
@@ -410,7 +413,8 @@ export async function handleAgentStatusRoutes(
       chainId,
       registryAddress: registryConfig?.registryAddress ?? null,
       collectionAddress: registryConfig?.collectionAddress ?? null,
-      explorerUrl: explorerByChainId[chainId] ?? "",
+      explorerUrl:
+        chainId !== null ? (explorerByChainId[chainId] ?? null) : null,
     });
     return true;
   }

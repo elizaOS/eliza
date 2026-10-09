@@ -6,22 +6,28 @@
  * downloading executable view JavaScript from the connected agent.
  */
 
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+import { registerAppShellPage } from "@elizaos/ui";
 
-registerAppShellPage({
-  id: "calendar",
-  pluginId: "@elizaos/plugin-calendar",
-  label: "Calendar",
-  icon: "CalendarDays",
-  path: "/calendar",
-  order: 910,
-  viewKind: "release",
-  surface: {
-    header: "fullscreen",
-    capabilities: ["agent-surface"],
-  },
-  loader: () =>
-    import("./components/calendar/CalendarPage.tsx").then((module) => ({
-      default: module.CalendarPage,
-    })),
-});
+let registered = false;
+
+export function registerCalendarApp(): void {
+  if (registered) return;
+  registerAppShellPage({
+    id: "calendar",
+    pluginId: "@elizaos/plugin-calendar",
+    label: "Calendar",
+    icon: "CalendarDays",
+    path: "/calendar",
+    order: 910,
+    viewKind: "release",
+    surface: {
+      header: "fullscreen",
+      capabilities: ["agent-surface"],
+    },
+    loader: () =>
+      import("./components/calendar/CalendarPage.tsx").then((module) => ({
+        default: module.CalendarPage,
+      })),
+  });
+  registered = true;
+}

@@ -3,25 +3,22 @@
  * lookup (`getMessageService`), Discord text normalisation
  * (`normalizeDiscordMessageText`, bounded in `discord-structured-text.ts`),
  * and outbound attachment building
- * (`buildOutboundDiscordAttachment`, which fetches remote media through the
- * SSRF guard).
+ * (`buildOutboundDiscordAttachment`, which resolves bytes through the
+ * guarded fetch / media store and never treats a URL as a local path).
  */
 import {
-	ContentType,
 	ElizaError,
-	fetchRemoteMedia,
 	type IAgentRuntime,
 	type IMessageService,
-	isBlockedHostname,
-	isPrivateIpAddress,
 	logger,
 	type Media,
 	MediaFetchError,
 	ModelType,
 	type ReplyToMode,
-	type SsrfPolicy,
+	type ResolveOutboundAttachmentOptions,
+	resolveOutboundAttachmentBytes,
+	summarizeOutboundAttachmentUrl,
 	toWellFormedUnicode,
-	trimTokens,
 	truncateWellFormed,
 } from "@elizaos/core";
 
@@ -182,15 +179,25 @@ export function cleanUrl(url: string): string {
 		}
 	}
 
-	let prev = "";
-	while (prev !== clean) {
-		prev = clean;
-		clean = clean.replace(/[)\]>.,;!*_]+$/, "");
-		clean = clean.replace(
-			/[（）［］【】｛｝《》〈〉「」『』、。，．；：！？~～]+$/,
-			"",
-		);
+	// Track the last retained character once: unmatched closers and punctuation
+	// are trimmed only at the end, without rescanning long closing suffixes.
+	let depth = 0;
+	let end = 0;
+	for (let i = 0; i < clean.length; i++) {
+		const char = clean[i];
+		if (char === "(") depth++;
+		else if (char === ")") {
+			if (depth === 0) continue;
+			depth--;
+		} else if (
+			/[\]>.,;!*_（）［］【】｛｝《》〈〉「」『』、。，．；：！？~～]/.test(
+				char,
+			)
+		)
+			continue;
+		end = i + 1;
 	}
+	clean = clean.slice(0, end);
 
 	return clean;
 }
@@ -225,22 +232,35 @@ export function extractUrls(text: string, runtime?: IAgentRuntime): string[] {
 
 export function getAttachmentFileName(media: Media): string {
 	let extension = "";
-	try {
-		const urlPath = new URL(media.url).pathname;
-		const urlExtension = urlPath.substring(urlPath.lastIndexOf("."));
-		if (urlExtension && urlExtension.length > 1 && urlExtension.length <= 5) {
-			extension = urlExtension;
-		}
-	} catch {
-		const lastDot = media.url.lastIndexOf(".");
-		const queryStart = media.url.indexOf("?", lastDot);
-		if (lastDot > 0 && (queryStart === -1 || queryStart > lastDot + 1)) {
-			const potentialExt = media.url.substring(
-				lastDot,
-				queryStart > -1 ? queryStart : undefined,
-			);
-			if (potentialExt.length > 1 && potentialExt.length <= 5) {
-				extension = potentialExt;
+	// `data:` pathnames carry the payload; never treat that blob as a filename.
+	if (media.url && media.url.slice(0, 5).toLowerCase() !== "data:") {
+		try {
+			const urlPath = new URL(media.url).pathname;
+			// lastIndexOf returns -1 when the path has no dot. substring treats
+			// a negative start as 0, so a short path such as "/img" becomes the
+			// extension and the file is named "photo/img".
+			const dot = urlPath.lastIndexOf(".");
+			if (dot > urlPath.lastIndexOf("/")) {
+				const urlExtension = urlPath.slice(dot);
+				if (urlExtension.length > 1 && urlExtension.length <= 5) {
+					extension = urlExtension;
+				}
+			}
+		} catch {
+			const relativePath = media.url.split(/[?#]/, 1)[0] ?? "";
+			const lastDot = relativePath.lastIndexOf(".");
+			if (
+				lastDot >
+				Math.max(
+					0,
+					relativePath.lastIndexOf("/"),
+					relativePath.lastIndexOf("\\"),
+				)
+			) {
+				const potentialExt = relativePath.slice(lastDot);
+				if (potentialExt.length > 1 && potentialExt.length <= 5) {
+					extension = potentialExt;
+				}
 			}
 		}
 	}
@@ -274,60 +294,23 @@ function positiveIntEnv(name: string, fallback: number): number {
 	return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
-function shouldFetchGeneratedMediaBytes(media: Media): boolean {
-	return (
-		media.source === "media-generation" &&
-		(media.contentType === ContentType.VIDEO ||
-			media.contentType === ContentType.AUDIO)
-	);
-}
-
-function summarizeAttachmentUrl(url: string): { host?: string; path?: string } {
-	try {
-		const parsed = new URL(url);
-		return {
-			host: parsed.host,
-			path: parsed.pathname.split("/").slice(0, 4).join("/"),
-		};
-	} catch {
-		return {};
-	}
-}
-
-function generatedMediaFetchPolicy(url: string): SsrfPolicy | undefined {
-	try {
-		const host = new URL(url).hostname.trim().toLowerCase().replace(/\.$/, "");
-		return host ? { allowedHostnames: [host] } : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-function isPrivateOrInternalUrl(url: string): boolean {
-	try {
-		const host = new URL(url).hostname;
-		return isBlockedHostname(host) || isPrivateIpAddress(host);
-	} catch {
-		return true;
-	}
-}
-
 /** DNS + transport injection for the guarded fetch — the deterministic-test
  *  seam. The guard fail-closes on a lookupFn without a pinnedFetchImpl, so
  *  tests inject the pinned pair instead of stubbing global fetch (which the
  *  node pinned transport bypasses). */
 export type OutboundAttachmentFetchOptions = Pick<
-	Parameters<typeof fetchRemoteMedia>[0],
+	ResolveOutboundAttachmentOptions,
 	"fetchImpl" | "lookupFn" | "pinnedFetchImpl"
 >;
 
 /**
- * Build a Discord attachment. Generated audio/video URLs are fetched through
- * the core SSRF guard.
+ * Build a Discord attachment from resolved bytes. Remote URLs go through the
+ * SSRF-guarded fetch; `data:` URLs are decoded locally. The original URL is
+ * never passed to discord.js as a path or unguarded fetch target.
  */
 export async function buildOutboundDiscordAttachment(
 	media: Media,
-	runtime?: Pick<IAgentRuntime, "logger">,
+	runtime?: Pick<IAgentRuntime, "logger" | "fetch">,
 	fetchOptions?: OutboundAttachmentFetchOptions,
 ): Promise<AttachmentBuilder> {
 	const fileName = getAttachmentFileName(media);
@@ -336,14 +319,8 @@ export async function buildOutboundDiscordAttachment(
 		return new AttachmentBuilder(Buffer.alloc(0), { name: fileName });
 	}
 
-	if (!shouldFetchGeneratedMediaBytes(media)) {
-		return new AttachmentBuilder(url, { name: fileName });
-	}
-
 	try {
-		const fetched = await fetchRemoteMedia({
-			url,
-			filePathHint: fileName,
+		const fetched = await resolveOutboundAttachmentBytes(url, {
 			maxBytes: positiveIntEnv(
 				"DISCORD_ATTACHMENT_FETCH_MAX_BYTES",
 				DEFAULT_OUTBOUND_ATTACHMENT_MAX_BYTES,
@@ -352,7 +329,7 @@ export async function buildOutboundDiscordAttachment(
 				"DISCORD_ATTACHMENT_FETCH_TIMEOUT_MS",
 				DEFAULT_OUTBOUND_ATTACHMENT_TIMEOUT_MS,
 			),
-			ssrfPolicy: generatedMediaFetchPolicy(url),
+			localFetch: runtime?.fetch ?? undefined,
 			...fetchOptions,
 		});
 		return new AttachmentBuilder(fetched.buffer, { name: fileName });
@@ -360,7 +337,7 @@ export async function buildOutboundDiscordAttachment(
 		runtime?.logger.warn(
 			{
 				src: "plugin:discord:attachment",
-				...summarizeAttachmentUrl(url),
+				...summarizeOutboundAttachmentUrl(url),
 				contentType: media.contentType,
 				error:
 					error instanceof MediaFetchError
@@ -369,11 +346,8 @@ export async function buildOutboundDiscordAttachment(
 							? error.name
 							: String(error),
 			},
-			"Generated media fetch failed",
+			"Outbound attachment fetch failed",
 		);
-		if (!isPrivateOrInternalUrl(url)) {
-			return new AttachmentBuilder(url, { name: fileName });
-		}
 		throw error;
 	}
 }
@@ -382,14 +356,7 @@ export async function generateSummary(
 	runtime: IAgentRuntime,
 	text: string,
 ): Promise<{ title: string; description: string }> {
-	text = await trimTokens(text, 100000, runtime);
-
-	if (!text) {
-		return {
-			title: "",
-			description: "",
-		};
-	}
+	if (!text) throw new Error("Summary text is required");
 
 	if (text.length < 1000) {
 		return {

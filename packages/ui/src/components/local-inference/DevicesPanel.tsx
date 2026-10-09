@@ -1,6 +1,6 @@
 /** Renders ranked local-inference bridge devices and their availability. */
 
-import type { DeviceBridgeStatus } from "../../api/client-local-inference";
+import type { DeviceBridgeStatus } from "@elizaos/contracts";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 
@@ -38,14 +38,14 @@ export function DevicesPanel({
           <div
             key={device.deviceId}
             className={`rounded-sm border p-3 flex items-center gap-3 text-sm ${
-              device.isPrimary
+              device.deviceId === status.primaryDeviceId
                 ? "border-primary/50 bg-primary/5"
                 : "border-border bg-card"
             }`}
           >
             <span
               className={`inline-flex size-2 rounded-full ${
-                device.isPrimary
+                device.deviceId === status.primaryDeviceId
                   ? "bg-status-success"
                   : "bg-muted-foreground/60"
               }`}
@@ -54,7 +54,7 @@ export function DevicesPanel({
             <div className="flex-1 min-w-0">
               <div className="font-medium truncate">
                 {device.capabilities.deviceModel}
-                {device.isPrimary && (
+                {device.deviceId === status.primaryDeviceId && (
                   <span className="ml-2 text-2xs uppercase tracking-wide text-primary">
                     {t("devicespanel.primary", { defaultValue: "primary" })}
                   </span>

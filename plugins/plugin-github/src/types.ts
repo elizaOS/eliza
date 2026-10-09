@@ -131,7 +131,11 @@ export interface GitHubOctokitClient {
   search: {
     issuesAndPullRequests: OctokitEndpoint<
       Octokit["search"]["issuesAndPullRequests"],
-      { items: GitHubSearchIssueSummary[] }
+      {
+        items: GitHubSearchIssueSummary[];
+        total_count?: number;
+        incomplete_results?: boolean;
+      }
     >;
   };
 }

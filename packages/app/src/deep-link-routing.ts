@@ -14,6 +14,13 @@
  * unrecognized paths, so an unknown deep link is non-routable rather than
  * silently opening chat.
  */
+
+import { validateUuid } from "@elizaos/core/protocol";
+import {
+  type NotificationChatRequest,
+  readNotificationChatTarget,
+} from "@elizaos/ui";
+
 const ASSISTANT_ENTRY_SOURCE = "assistant-entry";
 const ASSISTANT_LAUNCH_TEXT_KEYS = ["text", "q", "query", "body"] as const;
 
@@ -40,6 +47,7 @@ export interface DeepLinkNavigationIntent {
    * parse nested forms via the structured settings hash route helpers.
    */
   subview?: string;
+  payload?: NotificationChatRequest;
 }
 
 /**
@@ -59,7 +67,26 @@ export interface DeepLinkNavigationIntent {
 export function resolveDeepLinkNavigationIntent(
   path: string,
   searchParams?: URLSearchParams,
-): DeepLinkNavigationIntent | null {
+): DeepLinkNavigationIntent | false | null {
+  if (path === "chat" && searchParams?.has("notificationId")) {
+    const notificationId = searchParams.get("notificationId");
+    if (!validateUuid(notificationId)) return false;
+    const selectors: Record<string, unknown> = {};
+    for (const key of ["conversationId", "messageId"]) {
+      if (searchParams.has(key)) selectors[key] = searchParams.get(key);
+    }
+    const target = readNotificationChatTarget(selectors);
+    if (target === null) return false;
+    return {
+      viewId: "chat",
+      viewPath: "/chat",
+      payload: {
+        kind: "notification-chat",
+        notificationId: notificationId as string,
+        ...(target ? { target } : {}),
+      },
+    };
+  }
   // eliza://connectors → Settings → Connectors index.
   // eliza://settings/connectors/<provider> → Settings → connector detail.
   if (path === "connectors" || path === "settings/connectors") {
@@ -76,6 +103,18 @@ export function resolveDeepLinkNavigationIntent(
   }
 
   switch (path) {
+    case "automations":
+    case "notes":
+    case "calendar":
+    case "reminders":
+      return { viewId: path, viewPath: `/${path}` };
+    case "apps/tasks":
+      // The bare tasks namespace retains its existing assistant-launch
+      // contract. Native notification taps use the registered app route.
+      return { viewId: "tasks", viewPath: "/apps/tasks" };
+    case "clock":
+      // OS intent extras are untrusted; opening the view never approves an alarm.
+      return { viewId: "clock", viewPath: "/clock" };
     case "apps/deploy":
     case "cloud-apps":
       // eliza://apps/deploy (and https://eliza.app/apps/deploy) → the Eliza
@@ -322,4 +361,16 @@ export function buildAssistantLaunchHashRoute(
     default:
       return null;
   }
+}
+
+/** True for HTTPS universal links on a configured host or its subdomains. */
+export function isTrustedAppLink(
+  parsed: URL,
+  appLinkHosts: string[] | undefined,
+): boolean {
+  if (parsed.protocol !== "https:") return false;
+  const host = parsed.host.toLowerCase();
+  return (appLinkHosts ?? []).some(
+    (h) => host === h.toLowerCase() || host.endsWith(`.${h.toLowerCase()}`),
+  );
 }

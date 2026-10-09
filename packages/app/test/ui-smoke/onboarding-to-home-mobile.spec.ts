@@ -2,9 +2,10 @@
  * Playwright UI-smoke spec for the Onboarding To Home Mobile app flow using
  * the real renderer fixture.
  */
+
 import { rm } from "node:fs/promises";
-import path from "node:path";
 import { devices, expect, type Locator, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   expectNoPageDiagnostics,
   installPageDiagnosticsGuard,
@@ -41,9 +42,8 @@ import {
 // handlers.
 test.use({ ...devices["Pixel 7"] });
 
-const SCREENSHOT_DIR = path.join(
-  process.cwd(),
-  "aesthetic-audit-output",
+const SCREENSHOT_DIR = testOutputPath(
+  "aesthetic-audit",
   "onboarding-to-home-mobile",
 );
 const screenshot = makeScreenshotter(SCREENSHOT_DIR);

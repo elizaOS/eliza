@@ -2,7 +2,7 @@
  * Extends the tooltip primitive with richer content and trigger helpers while
  * preserving the shared tooltip provider contract.
  */
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 
 // z-[200] mirrors Z_OVERLAY in ../../lib/floating-layers.ts. Tailwind v4
 // cannot detect classes built from runtime template literals, so the value

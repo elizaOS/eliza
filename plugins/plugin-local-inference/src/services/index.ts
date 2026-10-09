@@ -2,6 +2,7 @@
 export type { LocalInferenceLoader } from "./active-model";
 export {
 	assertVoiceBundleFitsHost,
+	resolveLocalInferenceLoadArgs,
 	VoiceBundleDoesNotFitError,
 } from "./active-model";
 export {
@@ -41,7 +42,6 @@ export {
 } from "./context-fit";
 export {
 	buildDeviceResourceMetricsDevPayload,
-	type DeviceBridgeStatus,
 	type DeviceGenerationMetrics,
 	type DeviceResourceMetricsDevPayload,
 	deviceBridge,
@@ -184,13 +184,7 @@ export {
 	type MtpDoctorReport,
 	runMtpDoctor,
 } from "./mtp-doctor";
-export {
-	buildPlanActionsSkeleton,
-	buildPlannerGuidedDecode,
-	type PlannerAction,
-	type PlannerGuidedDecode,
-	planActionParameterSchema,
-} from "./planner-skeleton";
+export { resolveRamBudget } from "./ram-budget";
 export { buildTextGenerationReadiness } from "./readiness";
 export {
 	assessCatalogModelFit,
@@ -208,6 +202,7 @@ export {
 	selectRecommendedModelForSlot,
 	selectRecommendedModels,
 } from "./recommendation";
+export { listInstalledModels } from "./registry";
 export {
 	type InferenceRuntimeMode,
 	type InferenceRuntimeModeInput,

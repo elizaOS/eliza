@@ -163,9 +163,24 @@ export interface GoogleGmailMessageSummary {
   metadata: Record<string, unknown>;
 }
 
+export interface GoogleGmailAttachment {
+  partId: string;
+  attachmentId: string | null;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface GoogleGmailAttachmentContent extends GoogleGmailAttachment {
+  messageId: string;
+  sha256: string;
+  data: Uint8Array;
+}
+
 export interface GoogleGmailMessageDetail {
   message: GoogleGmailMessageSummary;
   bodyText: string;
+  attachments?: GoogleGmailAttachment[];
 }
 
 export interface GoogleGmailUnrespondedThread {
@@ -854,6 +869,7 @@ export interface IGoogleGmailService extends Service {
       selfEmail?: string | null;
       maxResults?: number;
       includeSpamTrash?: boolean;
+      labelIds?: string[];
     }
   ): Promise<GoogleGmailMessageSummary[]>;
   searchGmailMessagesPage(
@@ -871,6 +887,10 @@ export interface IGoogleGmailService extends Service {
   getGmailMessageDetail(
     params: GoogleAccountRef & { messageId: string; selfEmail?: string | null }
   ): Promise<GoogleGmailMessageDetail | null>;
+  getGmailAttachment(
+    params: GoogleAccountRef & { messageId: string; partId: string; maxBytes: number }
+  ): Promise<GoogleGmailAttachmentContent>;
+  getGmailMessageRevision(params: GoogleAccountRef & { messageId: string }): Promise<string | null>;
   listGmailUnrespondedThreads(
     params: GoogleAccountRef & {
       selfEmail?: string | null;
@@ -892,6 +912,7 @@ export interface IGoogleGmailService extends Service {
       cc?: string[];
       subject: string;
       bodyText: string;
+      threadId: string;
       inReplyTo?: string | null;
       references?: string | null;
     }
@@ -956,6 +977,9 @@ export interface IGoogleCalendarService extends Service {
   getEvent(
     params: GoogleAccountRef & { calendarId?: string; eventId: string; timeZone?: string }
   ): Promise<GoogleCalendarEvent>;
+  findEventByIdempotencyKey(
+    params: GoogleAccountRef & { calendarId: string; idempotencyKey: string; timeZone?: string }
+  ): Promise<GoogleCalendarEvent | null>;
   createEvent(params: GoogleCalendarEventInput): Promise<GoogleCalendarEvent>;
   updateEvent(params: GoogleCalendarEventPatchInput): Promise<GoogleCalendarEvent>;
   deleteEvent(params: GoogleCalendarEventDeleteInput): Promise<void>;

@@ -4,7 +4,7 @@
  * **Problem:** a fully-onboarded agent can't re-run onboarding for QA without
  * `POST /api/agent/reset`, which is *destructive* — it calls
  * `clearCompatPgliteDataDir` and wipes conversations, knowledge, and
- * trajectories (see `packages/app-core/src/api/server.ts` agent-reset hop). So
+ * trajectories (see `packages/app/src/api/server.ts` agent-reset hop). So
  * developers simply never re-test onboarding on their real agent.
  *
  * **This mechanism** re-runs onboarding **without touching any server state**:

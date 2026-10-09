@@ -1,12 +1,9 @@
 /**
- * `handleTextEmbedding`: calls the OpenAI embeddings endpoint and validates the
- * returned vector dimension against `VECTOR_DIMS`. In Cerebras mode without an
- * explicit embedding endpoint it substitutes a deterministic local hash
- * embedding (Cerebras serves no embeddings), keeping recall functional when no
- * real embedding server is reachable.
+ * Calls a configured embeddings endpoint and validates its returned dimension.
+ * Text-only providers must configure a real embedding endpoint explicitly.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
-import { logger, ModelType, toWellFormedUnicode, VECTOR_DIMS } from "@elizaos/core";
+import { ElizaError, logger, ModelType, toWellFormedUnicode, VECTOR_DIMS } from "@elizaos/core";
 
 import type { OpenAIEmbeddingResponse } from "../types";
 import {
@@ -15,7 +12,6 @@ import {
   getEmbeddingDimensions,
   getEmbeddingModel,
   getSetting,
-  isBrowser,
   isCerebrasMode,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
@@ -50,7 +46,7 @@ function extractSignal(params: TextEmbeddingParams | string | null): AbortSignal
 }
 
 function hasExplicitEmbeddingEndpoint(runtime: IAgentRuntime): boolean {
-  const key = isBrowser() ? "OPENAI_BROWSER_EMBEDDING_URL" : "OPENAI_EMBEDDING_URL";
+  const key = "OPENAI_EMBEDDING_URL";
   const value = getSetting(runtime, key);
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -58,52 +54,6 @@ function hasExplicitEmbeddingEndpoint(runtime: IAgentRuntime): boolean {
 function hasExplicitEmbeddingDimensions(runtime: IAgentRuntime): boolean {
   const value = getSetting(runtime, "OPENAI_EMBEDDING_DIMENSIONS");
   return typeof value === "string" && value.trim().length > 0;
-}
-
-function shouldUseLocalEmbeddingFallback(runtime: IAgentRuntime): boolean {
-  return isCerebrasMode(runtime) && !hasExplicitEmbeddingEndpoint(runtime);
-}
-
-function hashFeature(feature: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < feature.length; i += 1) {
-    hash ^= feature.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function createDeterministicEmbedding(text: string, dimension: VectorDimension): number[] {
-  const vector = new Array(dimension).fill(0);
-  const normalized = text.toLowerCase();
-  const tokens = normalized.match(/[a-z0-9]+(?:[_-][a-z0-9]+)*/g) ?? [normalized];
-
-  const addFeature = (feature: string, weight: number): void => {
-    const hash = hashFeature(feature);
-    const idx = hash % dimension;
-    const sign = (hash & 1) === 0 ? 1 : -1;
-    vector[idx] += sign * weight;
-
-    const secondHash = hashFeature(`b:${feature}`);
-    const secondIdx = secondHash % dimension;
-    const secondSign = (secondHash & 1) === 0 ? 1 : -1;
-    vector[secondIdx] += secondSign * weight * 0.5;
-  };
-
-  tokens.forEach((token, index) => {
-    addFeature(token, 1);
-    if (index > 0) {
-      addFeature(`${tokens[index - 1]} ${token}`, 0.35);
-    }
-  });
-  addFeature(normalized.slice(0, 512), 0.15);
-
-  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
-  if (norm === 0) {
-    vector[0] = 1;
-    return vector;
-  }
-  return vector.map((value) => value / norm);
 }
 
 const TEXT_EMBEDDING_TIMEOUT_MS = 30_000;
@@ -133,9 +83,11 @@ export async function handleTextEmbedding(
   // provider parsers (#18025).
   trimmedText = toWellFormedUnicode(trimmedText);
 
-  if (shouldUseLocalEmbeddingFallback(runtime)) {
-    logger.debug("[OpenAI] Using deterministic local embedding fallback for Cerebras mode");
-    return createDeterministicEmbedding(trimmedText, embeddingDimension);
+  if (isCerebrasMode(runtime) && !hasExplicitEmbeddingEndpoint(runtime)) {
+    throw new ElizaError(
+      "Cerebras does not provide embeddings. Configure OPENAI_EMBEDDING_URL or select a real embedding provider.",
+      { code: "EMBEDDING_PROVIDER_UNAVAILABLE" }
+    );
   }
 
   const baseURL = getEmbeddingBaseURL(runtime);

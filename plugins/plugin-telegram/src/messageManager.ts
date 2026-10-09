@@ -12,7 +12,6 @@
  * role-gated for embedded-app launch buttons. Owned by `TelegramService`, which
  * registers this as the connector's send path.
  */
-import fs from "node:fs";
 import {
   buildInteractionUrlResolver,
   ChannelType,
@@ -24,19 +23,24 @@ import {
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
-  lifeOpsPassiveConnectorsEnabled,
   logger,
   type Media,
   type Memory,
   type MessagePayload,
   ModelType,
   type ResolvedAttachmentBytes,
+  type ResolveOutboundAttachmentOptions,
   resolveAttachmentBytes,
+  resolveOutboundAttachmentBytes,
+  type SendHandlerOutcome,
+  type SendHandlerReceipt,
   ServiceType,
+  summarizeOutboundAttachmentUrl,
   toWellFormedUnicode,
   truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
+import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
 import type {
   Chat,
   Document,
@@ -47,12 +51,12 @@ import type {
 } from "@telegraf/types";
 import type { Context, NarrowedContext, Telegraf } from "telegraf";
 import { Markup } from "telegraf";
-import { resolveTelegramSenderAuth } from "./command-registration";
 import {
   resolveTelegramRuntimeEntityId,
   telegramIdentityMetadata,
 } from "./identity";
 import { renderTelegramInteractions } from "./interactions";
+import { resolveTelegramSenderAuth } from "./sender-auth";
 import {
   type TelegramContent,
   TelegramEventTypes,
@@ -301,8 +305,8 @@ function isPdfTextService(service: unknown): service is PdfTextService {
 
 type TelegramMediaSender = (
   chatId: number | string,
-  media: string | { source: fs.ReadStream },
-  extra?: { caption?: string },
+  media: string | { source: Buffer; filename?: string },
+  extra?: { caption?: string; message_thread_id?: number },
 ) => Promise<unknown>;
 
 const getChannelType = (chat: Chat): ChannelType => {
@@ -367,10 +371,66 @@ function buildEmbedLaunchButton(url: string): InlineKeyboardButton {
   return { text: EMBED_LAUNCH_BUTTON_TEXT, web_app: { url } };
 }
 
-/**
- * Class representing a message manager.
- * @class
- */
+/** Carries observed provider acceptance without turning subsequent failure into permission to resend. */
+class TelegramOutboundEvidenceError extends ElizaError {
+  constructor(
+    readonly phase: "transport" | "persistence",
+    readonly acceptedMessages: readonly Message.TextMessage[],
+    readonly persistedMemories: readonly Memory[],
+    cause: unknown,
+    accountId: string,
+    chatId: string,
+  ) {
+    super("Telegram accepted messages before outbound processing failed", {
+      code:
+        phase === "transport"
+          ? "TELEGRAM_PARTIAL_DELIVERY"
+          : "TELEGRAM_OUTBOUND_PERSIST_FAILED",
+      cause,
+      context: {
+        accountId,
+        chatId,
+        providerMessageIds: acceptedMessages.map((message) =>
+          String(message.message_id),
+        ),
+      },
+    });
+  }
+}
+
+function telegramMemoryId(memory: Memory): UUID {
+  if (!memory.id)
+    throw new ElizaError("Persisted Telegram memory has no identifier", {
+      code: "TELEGRAM_MEMORY_ID_MISSING",
+    });
+  return memory.id;
+}
+
+function telegramReceipt(
+  messages: readonly Message.TextMessage[],
+  memories: readonly Memory[],
+): SendHandlerReceipt {
+  const [first, ...rest] = messages;
+  if (!first)
+    throw new ElizaError("Telegram delivery has no accepted provider message", {
+      code: "TELEGRAM_RECEIPT_MISSING",
+    });
+  return {
+    providerMessageIds: [
+      String(first.message_id),
+      ...rest.map((message) => String(message.message_id)),
+    ],
+    acceptedAt: messages.reduce(
+      (latest, message) => Math.max(latest, message.date * 1000),
+      first.date * 1000,
+    ),
+    persistence: {
+      status: "persisted",
+      memoryIds: memories.map(telegramMemoryId),
+    },
+  };
+}
+
 export class MessageManager {
   public bot: Telegraf<Context>;
   protected runtime: IAgentRuntime;
@@ -823,20 +883,19 @@ export class MessageManager {
     // Process images
     if ("photo" in message && message.photo.length > 0) {
       const imageInfo = await this.processImage(message);
-      if (imageInfo) {
-        const photo = message.photo[message.photo.length - 1];
-        attachments.push({
-          id: photo.file_id,
-          // Bare capability reference only — the token-bearing Bot API URL is
-          // resolved transiently at fetch time, never persisted.
-          url: telegramFileRefUrl(photo.file_id),
-          title: "Image Attachment",
-          source: "Image",
-          contentType: "image",
-          description: imageInfo.description,
-          text: imageInfo.description,
-        });
-      }
+      const photo = message.photo[message.photo.length - 1];
+      attachments.push({
+        id: photo.file_id,
+        // Bare capability reference only — the token-bearing Bot API URL is
+        // resolved transiently at fetch time, never persisted.
+        url: telegramFileRefUrl(photo.file_id),
+        title: "Image Attachment",
+        source: "Image",
+        contentType: "image",
+        ...(imageInfo
+          ? { description: imageInfo.description, text: imageInfo.description }
+          : {}),
+      });
     }
 
     // Voice / audio / video / animation / sticker attachments. Setting
@@ -1095,13 +1154,28 @@ export class MessageManager {
             mediaType = MediaType.DOCUMENT;
           }
 
-          await this.sendMedia(
-            ctx,
-            attachment.url,
-            mediaType,
-            attachment.description,
-            messageThreadId,
-          );
+          try {
+            await this.sendMedia(
+              ctx,
+              attachment.url,
+              mediaType,
+              attachment.description,
+              messageThreadId,
+            );
+          } catch (error) {
+            // error-policy:J4 an undeliverable attachment must not drop the
+            // accompanying prose; log a URL summary, never a data-URL payload.
+            logger.warn(
+              {
+                src: "plugin:telegram",
+                agentId: this.runtime.agentId,
+                contentType: attachment.contentType,
+                ...summarizeOutboundAttachmentUrl(attachment.url ?? ""),
+                error: error instanceof Error ? error.message : String(error),
+              },
+              "Failed to send Telegram outbound attachment; continuing with text",
+            );
+          }
         }),
       );
       // Fall through to the text path below so an attachment reply never drops
@@ -1202,21 +1276,39 @@ export class MessageManager {
             : {}),
           reply_markup: replyMarkup,
         };
-        const sentMessage = (await this.sendWithRetry(
-          () =>
-            ctx.telegram.sendMessage(chatId, chunk, {
-              ...sendOptions,
-              parse_mode: "MarkdownV2",
-            }),
-          // Fallback: Telegram rejected the MarkdownV2 entities. Send the
-          // ORIGINAL chunk (chunks[i]), not the MarkdownV2-escaped `chunk` —
-          // otherwise the user sees literal backslash escapes ("Sure\!"). Mirror
-          // the editMessage fallback, which sends cleanText(text).
-          () =>
-            ctx.telegram.sendMessage(chatId, cleanText(chunks[i]), sendOptions),
-        )) as Message.TextMessage;
+        try {
+          const sentMessage = (await this.sendWithRetry(
+            () =>
+              ctx.telegram.sendMessage(chatId, chunk, {
+                ...sendOptions,
+                parse_mode: "MarkdownV2",
+              }),
+            // Fallback: Telegram rejected the MarkdownV2 entities. Send the
+            // ORIGINAL chunk (chunks[i]), not the MarkdownV2-escaped `chunk` —
+            // otherwise the user sees literal backslash escapes ("Sure\!"). Mirror
+            // the editMessage fallback, which sends cleanText(text).
+            () =>
+              ctx.telegram.sendMessage(
+                chatId,
+                cleanText(chunks[i]),
+                sendOptions,
+              ),
+          )) as Message.TextMessage;
 
-        sentMessages.push(sentMessage);
+          sentMessages.push(sentMessage);
+        } catch (cause) {
+          // error-policy:J2 retain accepted chunks when a later provider operation fails.
+          if (sentMessages.length)
+            throw new TelegramOutboundEvidenceError(
+              "transport",
+              sentMessages,
+              [],
+              cause,
+              this.accountId,
+              String(chatId),
+            );
+          throw cause;
+        }
       }
 
       return sentMessages;
@@ -1287,13 +1379,10 @@ export class MessageManager {
   /**
    * Sends media to a chat using the Telegram API.
    *
-   * @param {Context} ctx - The context object containing information about the current chat.
-   * @param {string} mediaPath - The path to the media to be sent, either a URL or a local file path.
-   * @param {MediaType} type - The type of media being sent (PHOTO, VIDEO, DOCUMENT, AUDIO, or ANIMATION).
-   * @param {string} [caption] - Optional caption for the media being sent.
-   * @param {number} [messageThreadId] - Forum topic identifier for the media send.
-   *
-   * @returns {Promise<void>} A Promise that resolves when the media is successfully sent.
+   * Stored `telegram-file:` references are re-sent by file id. Every other
+   * attachment is resolved to bytes (data-URL decode, media-store handle, or
+   * SSRF-guarded http(s) fetch) and uploaded as a buffer. Filesystem paths are
+   * never read.
    */
   async sendMedia(
     ctx: Context,
@@ -1301,9 +1390,10 @@ export class MessageManager {
     type: MediaType,
     caption?: string,
     messageThreadId?: number,
+    fetchOptions?: ResolveOutboundAttachmentOptions,
   ): Promise<void> {
+    const urlSummary = summarizeOutboundAttachmentUrl(mediaPath);
     try {
-      const isUrl = /^(http|https):\/\//.test(mediaPath);
       // Look up the raw sender lazily and bind only the one we need. Building
       // the full map up front and `.bind`-ing every entry would crash with
       // "Cannot read properties of undefined" if the Telegram client is missing
@@ -1342,25 +1432,19 @@ export class MessageManager {
         // Bot API re-sends those by id directly, so the round-trip never needs
         // the token-bearing file URL.
         await sendFunction(ctx.chat.id, fileRefId, sendOptions);
-      } else if (isUrl) {
-        // Handle HTTP URLs
-        await sendFunction(ctx.chat.id, mediaPath, sendOptions);
       } else {
-        // Handle local file paths
-        if (!fs.existsSync(mediaPath)) {
-          throw new Error(`File not found at path: ${mediaPath}`);
-        }
-
-        const fileStream = fs.createReadStream(mediaPath);
-
-        try {
-          if (!ctx.chat) {
-            throw new Error("sendMedia (file): ctx.chat is undefined");
-          }
-          await sendFunction(ctx.chat.id, { source: fileStream }, sendOptions);
-        } finally {
-          fileStream.destroy();
-        }
+        const resolved = await resolveOutboundAttachmentBytes(mediaPath, {
+          localFetch: this.runtime.fetch ?? undefined,
+          ...fetchOptions,
+        });
+        await sendFunction(
+          ctx.chat.id,
+          {
+            source: resolved.buffer,
+            filename: resolved.fileName ?? "attachment",
+          },
+          sendOptions,
+        );
       }
 
       if (captionNeedsFollowUp) {
@@ -1381,7 +1465,7 @@ export class MessageManager {
           src: "plugin:telegram",
           agentId: this.runtime.agentId,
           mediaType: type,
-          mediaPath,
+          ...urlSummary,
         },
         "Media sent successfully",
       );
@@ -1391,7 +1475,7 @@ export class MessageManager {
           src: "plugin:telegram",
           agentId: this.runtime.agentId,
           mediaType: type,
-          mediaPath,
+          ...urlSummary,
           error: error instanceof Error ? error.message : String(error),
         },
         "Failed to send media",
@@ -2527,6 +2611,110 @@ export class MessageManager {
     replyToMessageId?: number,
     messageThreadId?: number,
   ): Promise<Message.TextMessage[]> {
+    return (
+      await this.sendMessageWithEvidence(
+        chatId,
+        content,
+        replyToMessageId,
+        messageThreadId,
+      )
+    ).messages;
+  }
+
+  /** Returns complete text delivery evidence; legacy media dispatch remains unconfirmed. */
+  public async sendMessageWithReceipt(
+    chatId: number | string,
+    content: Content,
+    replyToMessageId?: number,
+    messageThreadId?: number,
+  ): Promise<SendHandlerOutcome | undefined> {
+    if (content.attachments?.length) {
+      await this.sendMessage(
+        chatId,
+        content,
+        replyToMessageId,
+        messageThreadId,
+      );
+      return undefined;
+    }
+    try {
+      const result = await this.sendMessageWithEvidence(
+        chatId,
+        content,
+        replyToMessageId,
+        messageThreadId,
+      );
+      if (!result.messages.length)
+        return {
+          kind: "not_delivered",
+          code: "TELEGRAM_EMPTY_MESSAGE",
+          message: "No text or interaction was supplied.",
+        };
+      return {
+        kind: "delivered",
+        receipt: telegramReceipt(result.messages, result.memories),
+        memories: result.memories,
+      };
+    } catch (error) {
+      // error-policy:J1 translate known provider acceptance into a structural outcome, preserving uncertainty otherwise.
+      if (!(error instanceof TelegramOutboundEvidenceError)) throw error;
+      const receipt = telegramReceipt(
+        error.acceptedMessages,
+        error.persistedMemories,
+      );
+      if (error.phase === "transport")
+        return {
+          kind: "partially_delivered",
+          receipt: {
+            ...receipt,
+            persistence: {
+              status: "not_attempted",
+              reason: "A later chunk failed before local persistence began.",
+            },
+          },
+          memories: error.persistedMemories,
+          code: error.code,
+          message: error.message,
+        };
+      const failures = error.acceptedMessages
+        .slice(error.persistedMemories.length)
+        .map((message) => ({
+          providerMessageId: String(message.message_id),
+          stage: "memory" as const,
+          code: error.code,
+          message: error.message,
+        }));
+      if (!failures.length)
+        failures.push({
+          providerMessageId:
+            receipt.providerMessageIds[receipt.providerMessageIds.length - 1],
+          stage: "memory",
+          code: error.code,
+          message: error.message,
+        });
+      return {
+        kind: "delivered",
+        receipt: {
+          ...receipt,
+          persistence: error.persistedMemories.length
+            ? {
+                status: "partial",
+                memoryIds: error.persistedMemories.map(telegramMemoryId),
+                failures,
+              }
+            : { status: "failed", failures },
+        },
+        memories: error.persistedMemories,
+      };
+    }
+  }
+
+  private async sendMessageWithEvidence(
+    chatId: number | string,
+    content: Content,
+    replyToMessageId?: number,
+    messageThreadId?: number,
+  ): Promise<{ messages: Message.TextMessage[]; memories: Memory[] }> {
     let sentMessages: Message.TextMessage[];
     try {
       // Create a context-like object for sending
@@ -2568,9 +2756,10 @@ export class MessageManager {
     }
 
     if (!sentMessages.length) {
-      return [];
+      return { messages: [], memories: [] };
     }
 
+    const memories: Memory[] = [];
     try {
       // Create group ID
       const roomKey = messageThreadId
@@ -2582,7 +2771,6 @@ export class MessageManager {
       );
 
       // Create memories for the sent messages
-      const memories: Memory[] = [];
       const contentMetadata =
         content.metadata &&
         typeof content.metadata === "object" &&
@@ -2678,7 +2866,7 @@ export class MessageManager {
         );
       }
 
-      return sentMessages;
+      return { messages: sentMessages, memories };
     } catch (error) {
       logger.error(
         {
@@ -2693,19 +2881,13 @@ export class MessageManager {
       // send. Returning [] would look like "nothing sent" and invite a retry
       // that duplicates the visible message; rethrow with the provider ids in
       // context so the connector boundary can fail without claiming silence.
-      throw new ElizaError(
-        "Telegram accepted the send but local delivery evidence failed",
-        {
-          code: "TELEGRAM_OUTBOUND_PERSIST_FAILED",
-          cause: error,
-          context: {
-            accountId: this.accountId,
-            chatId: String(chatId),
-            providerMessageIds: sentMessages.map((message) =>
-              message.message_id.toString(),
-            ),
-          },
-        },
+      throw new TelegramOutboundEvidenceError(
+        "persistence",
+        sentMessages,
+        memories,
+        error,
+        this.accountId,
+        String(chatId),
       );
     }
   }

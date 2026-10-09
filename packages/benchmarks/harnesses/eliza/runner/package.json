@@ -1,0 +1,56 @@
+{
+  "name": "@elizaos/benchmark-eliza-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Eliza benchmark HTTP host, native runtime composition, sessions and evidence capture.",
+  "main": "./src/index.ts",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  },
+  "scripts": {
+    "benchmark:server": "node --conditions=eliza-source --conditions=development --import tsx src/cli.ts",
+    "trusted-runtime:server": "node --conditions=eliza-source --conditions=development --import tsx src/trusted-runtime-server.ts",
+    "normalize-capture": "node --import tsx ../../../scripts/lifeops-bench/runner/normalize-eliza-capture.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-agent-orchestrator": "workspace:*",
+    "@elizaos/plugin-calendar": "workspace:*",
+    "@elizaos/plugin-groq": "beta",
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/plugin-personal-assistant": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "dotenv": "^17.2.3",
+    "zod": "^4.6.5",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/plugin-relationships": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/lifeops-bench": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/contracts": "workspace:*",
+    "@elizaos/plugin-benchmarks": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^8.3.0",
+    "@elizaos/ui": "workspace:*",
+    "@types/node": "25.6.2",
+    "tsx": "^4.21.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
+  },
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./capture": "./src/replay-capture.ts"
+  }
+}

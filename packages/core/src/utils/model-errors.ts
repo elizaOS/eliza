@@ -10,6 +10,8 @@
  * instead of dead turns.
  */
 import { ElizaError } from "../errors";
+import type { TokenUsage } from "../types/model";
+import { formatError } from "./errors.js";
 
 const TRANSIENT_MODEL_ERROR_PATTERNS = [
 	"service temporarily unavailable",
@@ -29,15 +31,31 @@ const TRANSIENT_MODEL_ERROR_PATTERNS = [
 	"504",
 ];
 
-export function getErrorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 export function isTransientModelError(error: unknown): boolean {
-	const message = getErrorMessage(error).toLowerCase();
+	if (isModelFundingAuthorityError(error)) return false;
+	const message = formatError(error).toLowerCase();
 	return TRANSIENT_MODEL_ERROR_PATTERNS.some((pattern) =>
 		message.includes(pattern),
 	);
+}
+
+/** A failed funded operation must retain its payer and original intent across wrappers and retries. */
+export function isModelFundingAuthorityError(error: unknown): boolean {
+	const pending: unknown[] = [error];
+	const seen = new Set<object>();
+	while (pending.length) {
+		const value = pending.pop();
+		if (typeof value !== "object" || value === null || seen.has(value))
+			continue;
+		seen.add(value);
+		if ("code" in value && value.code === "MODEL_FUNDING_AUTHORITY_FAILED")
+			return true;
+		if ("cause" in value) pending.push(value.cause);
+		if ("lastError" in value) pending.push(value.lastError);
+		if ("errors" in value && Array.isArray(value.errors))
+			pending.push(...value.errors);
+	}
+	return false;
 }
 
 const OUTPUT_LIMIT_FINISH_REASONS = new Set([
@@ -67,27 +85,104 @@ export function isModelOutputLimitFinishReason(reason: unknown): boolean {
 	return OUTPUT_LIMIT_FINISH_REASONS.has(normalized);
 }
 
+/** Safe accounting evidence for a rejected model output. */
+export interface ModelOutputEvidence {
+	/** The gateway's wire reason need not be the underlying provider's reason. */
+	finishReasonSource?: "cloud-chat-completions";
+	emptyVisibleOutput?: boolean;
+	/** null records an omitted wire cap; undefined means it was not observed. */
+	maxTokens?: number | null;
+	usage?: Partial<TokenUsage>;
+	costUsd?: number;
+}
+
+/** Only terminal metadata and numeric accounting may cross this error boundary. */
+export function modelOutputIncompleteEvidence(error: unknown):
+	| (ModelOutputEvidence & {
+			provider?: string;
+			model?: string;
+			finishReason: string;
+	  })
+	| undefined {
+	for (const node of modelErrorChain(error)) {
+		const value = node as { code?: unknown; context?: Record<string, unknown> };
+		if (value.code !== "MODEL_OUTPUT_INCOMPLETE" || !value.context) continue;
+		const c = value.context;
+		if (
+			typeof c.finishReason !== "string" ||
+			!INCOMPLETE_FINISH_REASONS.has(
+				c.finishReason
+					.trim()
+					.toLowerCase()
+					.replace(/[^a-z0-9]+/g, "_"),
+			)
+		)
+			continue;
+		const usage: Partial<TokenUsage> = {};
+		if (c.usage && typeof c.usage === "object") {
+			for (const key of [
+				"promptTokens",
+				"completionTokens",
+				"totalTokens",
+				"cacheReadInputTokens",
+				"cacheCreationInputTokens",
+				"reasoningTokens",
+			] as const) {
+				const count = (c.usage as Record<string, unknown>)[key];
+				if (typeof count === "number" && Number.isFinite(count) && count >= 0)
+					usage[key] = count;
+			}
+		}
+		return {
+			finishReason: c.finishReason,
+			...(typeof c.emptyVisibleOutput === "boolean"
+				? { emptyVisibleOutput: c.emptyVisibleOutput }
+				: {}),
+			...(c.finishReasonSource === "cloud-chat-completions"
+				? { finishReasonSource: c.finishReasonSource }
+				: {}),
+			...(typeof c.provider === "string" ? { provider: c.provider } : {}),
+			...(typeof c.model === "string" ? { model: c.model } : {}),
+			...(c.maxTokens === null ||
+			(typeof c.maxTokens === "number" &&
+				Number.isFinite(c.maxTokens) &&
+				c.maxTokens > 0)
+				? { maxTokens: c.maxTokens }
+				: {}),
+			...(Object.keys(usage).length ? { usage } : {}),
+			...(typeof c.costUsd === "number" &&
+			Number.isFinite(c.costUsd) &&
+			c.costUsd >= 0
+				? { costUsd: c.costUsd }
+				: {}),
+		};
+	}
+	return undefined;
+}
+
 /** Reject partial model output instead of returning it as successful context. */
-export function assertModelOutputComplete(options: {
-	finishReason: unknown;
-	provider: string;
-	model?: string;
-}): void {
+export function assertModelOutputComplete(
+	options: {
+		finishReason: unknown;
+		provider: string;
+		model?: string;
+	} & ModelOutputEvidence,
+): void {
 	if (typeof options.finishReason !== "string") return;
 	const normalized = options.finishReason
 		.trim()
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "_");
 	if (!INCOMPLETE_FINISH_REASONS.has(normalized)) return;
+	const evidence = modelOutputIncompleteEvidence({
+		code: "MODEL_OUTPUT_INCOMPLETE",
+		context: options,
+	});
 	throw new ElizaError(
 		`[${options.provider}] Model output did not complete successfully (${String(options.finishReason)}).`,
 		{
 			code: "MODEL_OUTPUT_INCOMPLETE",
-			context: {
-				provider: options.provider,
-				...(options.model ? { model: options.model } : {}),
-				finishReason: options.finishReason,
-			},
+			context: { ...evidence },
 		},
 	);
 }
@@ -151,14 +246,7 @@ function readHttpStatus(node: object): number | undefined {
 	return undefined;
 }
 
-/**
- * HTTP status carried by a model/provider error, or undefined when the error
- * carries none. Mirrors the canonical structural signal in
- * `services/message/fallback-reply.ts`: the AI SDK records the upstream status
- * on `APICallError.statusCode` (a `RetryError` wraps it on `.lastError` /
- * `.errors` once retries exhaust); legacy OpenAI-style SDK errors expose
- * `.status`. Read the status, never scan the message text.
- */
+/** Reads provider HTTP status through cause and retry envelopes, accepting statusCode and status. Returns undefined when no status is present. */
 export function modelProviderErrorStatus(error: unknown): number | undefined {
 	for (const node of modelErrorChain(error)) {
 		const status = readHttpStatus(node);
@@ -281,6 +369,37 @@ export function isModelProviderError(error: unknown): boolean {
 	return false;
 }
 
+/** A rejected output/tool schema cannot be repaired by generating an apology. */
+export function isProviderSchemaRejection(error: unknown): boolean {
+	const status = modelProviderErrorStatus(error);
+	if (status !== undefined && status !== 400 && status !== 422) return false;
+	for (const node of modelErrorChain(error)) {
+		const status = readHttpStatus(node);
+		const code = (node as { code?: unknown }).code;
+		const name = (node as { name?: unknown }).name;
+		const providerEvidence =
+			status === 400 ||
+			status === 422 ||
+			code === "MODEL_PROVIDER_FAILED" ||
+			name === "AI_APICallError";
+		if (
+			!providerEvidence ||
+			(status !== undefined && status !== 400 && status !== 422)
+		)
+			continue;
+		const texts = nodeOverflowTexts(node);
+		if (
+			texts.some((text) =>
+				/failed to compile the JSON schema grammar|invalid schema for (?:response_format|function)|unsupported JSON schema/i.test(
+					text,
+				),
+			)
+		)
+			return true;
+	}
+	return false;
+}
+
 /** Classification code for a typed provider context-overflow rejection. */
 export const PROVIDER_CONTEXT_OVERFLOW = "PROVIDER_CONTEXT_OVERFLOW";
 
@@ -290,12 +409,12 @@ export const PROVIDER_CONTEXT_OVERFLOW = "PROVIDER_CONTEXT_OVERFLOW";
 // Deliberately conservative — only clear length-rejection shapes, never
 // generic 400s, schema complaints, or rate limits:
 // - Cerebras/OpenAI-compat: "Please reduce the length of the messages or
-//   completion. Current length is 202427 while limit is 131072" (live
-//   incident, 2026-08 recap turn).
+// completion. Current length is 202427 while limit is 131072" (live
+// incident, 2026-08 recap turn).
 // - OpenAI: "This model's maximum context length is 128000 tokens..." and the
-//   structural `code: "context_length_exceeded"` echoed in the body text.
+// structural `code: "context_length_exceeded"` echoed in the body text.
 // - Anthropic: "prompt is too long: 210021 tokens > 204698 maximum" and
-//   "input length and `max_tokens` exceed context limit".
+// "input length and `max_tokens` exceed context limit".
 const PROVIDER_CONTEXT_OVERFLOW_PATTERNS: readonly RegExp[] = [
 	/reduce the length of the (?:messages|prompt|completion|input)/i,
 	/context_length_exceeded/i,

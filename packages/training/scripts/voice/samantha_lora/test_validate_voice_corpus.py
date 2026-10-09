@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import struct
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import validate_voice_corpus as validator
+import eliza_training.voice.samantha_lora.validate_voice_corpus as validator
 
 
 def _write_wav(

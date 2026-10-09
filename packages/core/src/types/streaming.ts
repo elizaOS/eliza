@@ -19,8 +19,8 @@
  * - 3 (Full): Codes at start AND end, maximum safety.
  */
 
+import type { ContextEvent } from "../runtime/context-object";
 import type { EvaluationResult } from "./components";
-import type { ContextEvent } from "./context-object";
 import type { ToolCall } from "./model";
 
 type MaybePromise<T> = T | Promise<T>;
@@ -81,9 +81,9 @@ export interface StreamingEventHooks {
  *
  * // Custom implementation
  * class MyExtractor implements IStreamExtractor {
- *   private _done = false;
- *   get done() { return this._done; }
- *   push(chunk: string) { return this.myCustomLogic(chunk); }
+ * private _done = false;
+ * get done() { return this._done; }
+ * push(chunk: string) { return this.myCustomLogic(chunk); }
  * }
  * ```
  */
@@ -116,19 +116,19 @@ export interface IStreamExtractor {
  * `StructuredFieldStreamExtractor`).
  *
  * Fired in document order:
- *  - `onFieldStart(field)` once when the `"<field>": "` (or `"<field>":`) opener
- *    is seen — the consumer knows the value bytes are about to start streaming.
- *  - `onChunk(...)` zero-or-more times with the value deltas (already part of
- *    {@link StructuredFieldStreamExtractorConfig.onChunk}).
- *  - `onFieldDone(field, value)` once when the closing `",\n` (or the next
- *    top-level key / end of document) is seen — `value` is the fully decoded
- *    field value.
+ * - `onFieldStart(field)` once when the `"<field>": "` (or `"<field>":`) opener
+ * is seen — the consumer knows the value bytes are about to start streaming.
+ * - `onChunk(...)` zero-or-more times with the value deltas (already part of
+ * {@link StructuredFieldStreamExtractorConfig.onChunk}).
+ * - `onFieldDone(field, value)` once when the closing `",\n` (or the next
+ * top-level key / end of document) is seen — `value` is the fully decoded
+ * field value.
  *
  * Consumers:
- *  - User-visible reply fields may be held until routing and effect validation
- *    complete; field events still let non-visible consumers track boundaries.
- *  - W8 (forced-skeleton emitter): uses field boundaries to drive the next
- *    forced span on a real engine.
+ * - User-visible reply fields may be held until routing and effect validation
+ * complete; field events still let non-visible consumers track boundaries.
+ * - W8 (forced-skeleton emitter): uses field boundaries to drive the next
+ * forced span on a real engine.
  */
 export interface StructuredFieldEventCallbacks {
 	/** A top-level field's value bytes are about to start streaming. */

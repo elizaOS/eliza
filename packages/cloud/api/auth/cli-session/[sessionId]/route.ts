@@ -4,14 +4,14 @@
  * poll for completion.
  */
 
-import { Hono } from "hono";
 import {
   cliAuthSessionsService,
   looksLikeCliAuthSessionId,
-} from "@/lib/services/cli-auth-sessions";
-import { getCorsHeaders } from "@/lib/utils/cors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/cli-auth-sessions";
+import { getCorsHeaders } from "@elizaos/cloud-shared/lib/utils/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

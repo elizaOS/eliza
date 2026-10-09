@@ -1,3 +1,4 @@
+import { parseOptionalBooleanQuery } from "./query-parameters.ts";
 /**
  * Serves `GET /api/models`, the model-catalog endpoint behind the dashboard
  * control-API auth gate. Returns provider model lists from an on-disk cache:
@@ -9,22 +10,14 @@
  * access are injected through the route context so the handler stays
  * transport-agnostic and unit-testable.
  */
-import {
-  parseBooleanValue,
-  type RouteHelpers,
-  type RouteRequestMeta,
-} from "@elizaos/core";
-import { buildModelCatalog, type ModelCatalog } from "./model-catalog.ts";
-import { MODEL_PROVIDER_ID_PATTERN } from "./model-provider-helpers.ts";
 
-function parseOptionalBooleanQuery(
-  raw: string | null,
-): { ok: true; value?: boolean } | { ok: false } {
-  if (raw === null) return { ok: true };
-  const parsed = parseBooleanValue(raw);
-  if (parsed === undefined) return { ok: false };
-  return { ok: true, value: parsed };
-}
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/host/protocol";
+
+import { buildModelCatalog, type ModelCatalog } from "./model-catalog.ts";
+import {
+  MODEL_PROVIDER_ID_PATTERN,
+  ModelCatalogFetchError,
+} from "./model-provider-helpers.ts";
 
 export interface ModelsRouteContext
   extends RouteRequestMeta,
@@ -43,7 +36,6 @@ export interface ModelsRouteContext
   /** Injectable catalog builder for tests; defaults to buildModelCatalog. */
   buildCatalog?: () => ModelCatalog;
 }
-
 export async function handleModelsRoutes(
   ctx: ModelsRouteContext,
 ): Promise<boolean> {
@@ -62,9 +54,7 @@ export async function handleModelsRoutes(
     unlinkFile,
     joinPath,
   } = ctx;
-
   if (method !== "GET" || pathname !== "/api/models") return false;
-
   const catalogOnlyParsed = parseOptionalBooleanQuery(
     url.searchParams.get("catalogOnly"),
   );
@@ -84,8 +74,7 @@ export async function handleModelsRoutes(
   // Built per request: the codex slice re-reads the CLI's models_cache.json
   // at call time so a refreshed server catalog shows up without a restart.
   const catalog = (ctx.buildCatalog ?? buildModelCatalog)();
-
-  // Catalog consumers (the settings model panel, slash-command completions)
+  // Catalog consumers (the settings model panel)
   // only need the validated catalog — local static tables + one file read.
   // The all-providers fan-out below hits every provider's live model-list API
   // and takes tens of seconds on a cold cache, which blows the UI client's
@@ -95,7 +84,6 @@ export async function handleModelsRoutes(
     json(res, { providers: {}, catalog });
     return true;
   }
-
   if (specificProvider) {
     // The provider id becomes a filesystem path segment in providerCachePath,
     // so reject anything outside the canonical id grammar before the cache
@@ -112,11 +100,27 @@ export async function handleModelsRoutes(
         // Ignore cache-bust errors and continue with a fresh fetch.
       }
     }
-    const models = await getOrFetchProvider(specificProvider, force);
+    let models: unknown[];
+    try {
+      models = await getOrFetchProvider(specificProvider, force);
+    } catch (error) {
+      if (!(error instanceof ModelCatalogFetchError)) throw error;
+      // error-policy:J1 translate an upstream provider failure at the HTTP
+      // boundary instead of fabricating a successful empty catalog.
+      json(
+        res,
+        {
+          error: error.message,
+          code: error.code,
+          provider: error.providerId,
+        },
+        502,
+      );
+      return true;
+    }
     json(res, { provider: specificProvider, models, catalog });
     return true;
   }
-
   if (force) {
     try {
       const dir = resolveModelsCacheDir();
@@ -129,7 +133,6 @@ export async function handleModelsRoutes(
       // Ignore cache-bust errors and continue with a fresh fetch.
     }
   }
-
   const all = await getOrFetchAllProviders(force);
   json(res, { providers: all, catalog });
   return true;

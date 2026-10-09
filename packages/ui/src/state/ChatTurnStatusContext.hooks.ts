@@ -15,8 +15,8 @@
  * waking) into the single `turnStatus` the overlay renders.
  */
 
+import type { ChatTurnStatus } from "@elizaos/contracts";
 import { createContext, useContext } from "react";
-import type { ChatTurnStatus } from "../api";
 
 export interface ChatTurnStatusValue {
   /** Latest server-streamed status for the active turn, or null between turns. */

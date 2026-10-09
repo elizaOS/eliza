@@ -1,7 +1,7 @@
 /**
  * Section header: accent dot + label, optional title and description.
  */
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 interface SectionHeaderProps {
   label: string;

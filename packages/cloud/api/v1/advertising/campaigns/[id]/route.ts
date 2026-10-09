@@ -4,34 +4,18 @@
  * DELETE /api/v1/advertising/campaigns/[id] — delete a campaign.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  advertisingService,
+  serializeCampaignTargeting,
+} from "@elizaos/cloud-shared/lib/services/advertising";
+import { UpdateCampaignSchema } from "@elizaos/cloud-shared/lib/services/advertising/schemas";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { advertisingService } from "@/lib/services/advertising";
-import { UpdateCampaignSchema } from "@/lib/services/advertising/schemas";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
-
-type CampaignRecord = NonNullable<
-  Awaited<ReturnType<typeof advertisingService.getCampaign>>
->;
-
-function serializeTargeting(targeting: CampaignRecord["targeting"]) {
-  return {
-    locations: targeting.locations,
-    ageMin: targeting.age_min,
-    ageMax: targeting.age_max,
-    genders: targeting.genders,
-    interests: targeting.interests,
-    behaviors: targeting.behaviors,
-    customAudiences: targeting.custom_audiences,
-    excludedAudiences: targeting.excluded_audiences,
-    placements: targeting.placements,
-    languages: targeting.languages,
-  };
-}
 
 app.get("/", async (c) => {
   try {
@@ -63,7 +47,7 @@ app.get("/", async (c) => {
       startDate: campaign.start_date?.toISOString(),
       endDate: campaign.end_date?.toISOString(),
       dayparting: campaign.metadata.dayparting ?? null,
-      targeting: serializeTargeting(campaign.targeting),
+      targeting: serializeCampaignTargeting(campaign.targeting),
       totalSpend: campaign.total_spend,
       totalImpressions: campaign.total_impressions,
       totalClicks: campaign.total_clicks,
@@ -123,7 +107,7 @@ app.patch("/", async (c) => {
       budgetAmount: campaign.budget_amount,
       spendCapCredits: campaign.spend_cap_credits,
       dayparting: campaign.metadata.dayparting ?? null,
-      targeting: serializeTargeting(campaign.targeting),
+      targeting: serializeCampaignTargeting(campaign.targeting),
       updatedAt: campaign.updated_at.toISOString(),
     });
   } catch (error) {

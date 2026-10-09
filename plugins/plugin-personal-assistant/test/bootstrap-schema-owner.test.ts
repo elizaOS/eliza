@@ -25,7 +25,7 @@ describe("LifeOpsRepository schema owner bootstrap", () => {
     const runPluginMigrations = vi.fn(async () => {});
     const fullElizaSchema = {
       knowledgeGraphEntities: { id: "graph" },
-      pendantSessions: { id: "pendant" },
+      additionalHostRecords: { id: "host-record" },
     };
     const runtime = {
       adapter: {

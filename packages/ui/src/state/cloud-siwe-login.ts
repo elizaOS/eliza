@@ -26,8 +26,9 @@
  * Nonce and verify hops honor `SIWE_FETCH_TIMEOUT_MS` so a hung Cloud auth
  * API cannot stall app SIWE login.
  */
-import { logger } from "@elizaos/logger";
-import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
+
+import { writeStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { logger } from "../logger.ts";
 
 /** Minimal EIP-1193 surface the login needs. */
 export interface InjectedEthereumProvider {
@@ -89,7 +90,7 @@ export async function readWalletChainId(
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   if (!trimmed.startsWith("0x")) return null;
-  const parsed = Number.parseInt(trimmed.slice(2), 16);
+  const parsed = Number(trimmed);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
   return parsed;
 }

@@ -1,29 +1,92 @@
 /**
  * Pure parsers that turn untrusted stream/WS payloads into the typed shapes the
  * chat reducer consumes (agent status, startup diagnostics, conversation
- * messages, custom-action params, slash-command input). No React, no I/O.
+ * messages and custom-action params). No React, no I/O.
  */
+
+import { parseChatFailureKind } from "@elizaos/contracts";
+import type { ConversationMessage } from "../api/client-types-chat";
 import type {
+  AgentModelReadiness,
   AgentStartupDiagnostics,
   AgentStatus,
-  ConversationMessage,
-  CustomActionDef,
+  LocalModelReadiness,
   StreamEventEnvelope,
-} from "../api/client";
+} from "../api/client-types-core";
 import {
   computeStreamingDelta as computeStreamingDeltaInternal,
   mergeStreamingText,
-} from "../utils/streaming-text";
-import {
-  AGENT_STATES,
-  type ApiLikeError,
-  type SlashCommandInput,
-} from "./types";
-
+} from "../utils/streaming-text.js";
+import { AGENT_STATES, type ApiLikeError } from "./types";
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
-
+/**
+ * Validates the server's Cloud model readiness projection. Unrecognized or
+ * malformed shapes are dropped rather than coerced.
+ */
+export function parseAgentModelReadiness(
+  value: unknown,
+): AgentModelReadiness | undefined {
+  if (!isRecord(value)) return undefined;
+  const checkedAt = value.checkedAt;
+  if (value.status === "available" && typeof checkedAt === "number") {
+    return { status: "available", checkedAt };
+  }
+  if (
+    value.status === "unknown" &&
+    typeof value.reason === "string" &&
+    (checkedAt === null || typeof checkedAt === "number")
+  ) {
+    return { status: "unknown", reason: value.reason, checkedAt };
+  }
+  if (
+    value.status === "model_not_available" &&
+    value.code === "MODEL_NOT_AVAILABLE" &&
+    typeof value.message === "string" &&
+    typeof checkedAt === "number" &&
+    Array.isArray(value.missing)
+  ) {
+    const missing: Extract<
+      AgentModelReadiness,
+      { status: "model_not_available" }
+    >["missing"] = [];
+    for (const entry of value.missing) {
+      if (
+        !isRecord(entry) ||
+        (entry.modelType !== "TEXT_SMALL" &&
+          entry.modelType !== "TEXT_LARGE") ||
+        typeof entry.modelId !== "string" ||
+        (entry.configKey !== null && typeof entry.configKey !== "string")
+      ) {
+        return undefined;
+      }
+      missing.push({
+        modelType: entry.modelType,
+        configKey: entry.configKey,
+        modelId: entry.modelId,
+      });
+    }
+    return {
+      status: "model_not_available",
+      code: "MODEL_NOT_AVAILABLE",
+      missing,
+      message: value.message,
+      checkedAt,
+    };
+  }
+  return undefined;
+}
+/** Accept only the host's runtime-owned, sole-local-provider readiness shape. */
+export function parseLocalModelReadiness(
+  value: unknown,
+): LocalModelReadiness | undefined {
+  if (!isRecord(value) || value.provider !== "eliza-local-inference")
+    return undefined;
+  if (value.status !== "available" && value.status !== "model_not_loaded")
+    return undefined;
+  return { provider: "eliza-local-inference", status: value.status };
+}
 export function parseAgentStatusEvent(
   data: Record<string, unknown>,
 ): AgentStatus | null {
@@ -48,17 +111,22 @@ export function parseAgentStatusEvent(
   // composer back to "waking up".
   const canRespond =
     typeof data.canRespond === "boolean" ? data.canRespond : undefined;
+  const modelReadiness = parseAgentModelReadiness(data.modelReadiness);
+  const localModelReadiness = parseLocalModelReadiness(
+    data.localModelReadiness,
+  );
   return {
     state: state as AgentStatus["state"],
     agentName,
     model,
     ...(canRespond !== undefined ? { canRespond } : {}),
+    ...(modelReadiness ? { modelReadiness } : {}),
+    ...(localModelReadiness ? { localModelReadiness } : {}),
     startedAt,
     uptime,
     startup,
   };
 }
-
 /**
  * Parses `agentStatus` from a `desktopTrayMenuClick` payload when the main
  * process finishes menu reset (`itemId === "menu-reset-app-applied"`).
@@ -74,14 +142,16 @@ export function parseAgentStatusFromMainMenuResetPayload(
   ) {
     return null;
   }
-  const as = (payload as { agentStatus?: Record<string, unknown> | null })
-    .agentStatus;
+  const as = (
+    payload as {
+      agentStatus?: Record<string, unknown> | null;
+    }
+  ).agentStatus;
   if (!as || typeof as !== "object" || Array.isArray(as)) {
     return null;
   }
   return parseAgentStatusEvent(as);
 }
-
 export function parseAgentStartupDiagnostics(
   value: unknown,
 ): AgentStartupDiagnostics | undefined {
@@ -115,7 +185,6 @@ export function parseAgentStartupDiagnostics(
   }
   return startup;
 }
-
 export function parseStreamEventEnvelopeEvent(
   data: Record<string, unknown>,
 ): StreamEventEnvelope | null {
@@ -131,7 +200,6 @@ export function parseStreamEventEnvelopeEvent(
   ) {
     return null;
   }
-
   const envelope: StreamEventEnvelope = {
     type,
     version: 1,
@@ -148,7 +216,6 @@ export function parseStreamEventEnvelopeEvent(
   if (typeof data.roomId === "string") envelope.roomId = data.roomId;
   return envelope;
 }
-
 export function parseConversationMessageEvent(
   value: unknown,
 ): ConversationMessage | null {
@@ -177,6 +244,15 @@ export function parseConversationMessageEvent(
     return null;
   }
   const parsed: ConversationMessage = { id, role, text, timestamp };
+  const failureKind = parseChatFailureKind(value.failureKind);
+  if (role === "assistant" && failureKind) parsed.failureKind = failureKind;
+  if (
+    role === "assistant" &&
+    typeof value.planningAcknowledgment === "string" &&
+    value.planningAcknowledgment.trim()
+  ) {
+    parsed.planningAcknowledgment = value.planningAcknowledgment;
+  }
   if (transcriptVisibility === "internal") {
     parsed.transcriptVisibility = transcriptVisibility;
   }
@@ -266,30 +342,26 @@ export function parseConversationMessageEvent(
   }
   return parsed;
 }
-
-export function parseProactiveMessageEvent(
-  data: Record<string, unknown>,
-): { conversationId: string; message: ConversationMessage } | null {
+export function parseProactiveMessageEvent(data: Record<string, unknown>): {
+  conversationId: string;
+  message: ConversationMessage;
+} | null {
   const conversationId = data.conversationId;
   if (typeof conversationId !== "string") return null;
   const message = parseConversationMessageEvent(data.message);
   if (!message) return null;
   return { conversationId, message };
 }
-
 export { mergeStreamingText };
-
 export function computeStreamingDelta(
   existing: string,
   incoming: string,
 ): string {
   return computeStreamingDeltaInternal(existing, incoming);
 }
-
 export function normalizeStreamComparisonText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
-
 export function shouldApplyFinalStreamText(
   streamed: string,
   finalText: string,
@@ -302,124 +374,16 @@ export function shouldApplyFinalStreamText(
     normalizeStreamComparisonText(finalText)
   );
 }
-
-function normalizeSlashCommandName(name: string): string {
-  if (!name.startsWith("/")) name = `/${name}`;
-  return name.trim().toLowerCase();
-}
-
 // Split command arguments into tokens. Each token is an optional `key=` prefix
 // followed by a value that is either a quoted string (quotes stripped, inner
 // spaces preserved) or a bare run of non-space chars. Keeping `key="multi word"`
 // and `key='multi word'` as a single `key=multi word` token lets a named arg
-// carry spaces — the previous regex split it at the quote, binding `key=""`.
-function splitCommandArgs(text: string): string[] {
-  const parts: string[] = [];
-  const regex = /([^\s"'=]+=)?(?:"([^"]*)"|'([^']*)'|([^\s"']+))/g;
-  let match: RegExpExecArray | null = regex.exec(text);
-  while (match !== null) {
-    const prefix = match[1] ?? "";
-    const value = match[2] ?? match[3] ?? match[4] ?? "";
-    parts.push(prefix + value);
-    match = regex.exec(text);
-  }
-  return parts;
-}
-
-export function parseSlashCommandInput(text: string): SlashCommandInput | null {
-  if (!text.startsWith("/")) return null;
-  const body = text.slice(1).trim();
-  if (!body) return null;
-  const firstSpace = body.search(/\s/);
-  if (firstSpace === -1) {
-    return { name: normalizeSlashCommandName(body), argsRaw: "" };
-  }
-  return {
-    name: normalizeSlashCommandName(body.slice(0, firstSpace)),
-    argsRaw: body.slice(firstSpace + 1).trim(),
-  };
-}
-
-export function normalizeCustomActionName(value: string): string {
-  return value
-    .trim()
-    .replace(/[\s-]+/g, "_")
-    .toUpperCase();
-}
-
-export function parseCustomActionParams(
-  action: CustomActionDef,
-  argsRaw: string,
-): {
-  params: Record<string, string>;
-  missingRequired: string[];
-} {
-  const tokens = splitCommandArgs(argsRaw);
-  const named = new Map<string, string>();
-  const positional: string[] = [];
-
-  for (const token of tokens) {
-    const eq = token.indexOf("=");
-    if (eq > 0) {
-      const key = token.slice(0, eq).trim().toLowerCase();
-      const value = token.slice(eq + 1).trim();
-      if (key) {
-        named.set(key, value);
-        continue;
-      }
-    }
-    positional.push(token);
-  }
-
-  const params: Record<string, string> = {};
-  const defs = Array.isArray(action.parameters) ? action.parameters : [];
-  const defsByLower = new Map(
-    defs.map((def) => [def.name.trim().toLowerCase(), def.name]),
-  );
-
-  for (const [key, value] of named) {
-    const canonical = defsByLower.get(key);
-    if (canonical) {
-      params[canonical] = value;
-    } else {
-      params[key] = value;
-    }
-  }
-
-  for (const def of defs) {
-    if (params[def.name] == null && positional.length > 0) {
-      params[def.name] = positional.shift() as string;
-    }
-  }
-
-  if (positional.length > 0) {
-    const sink = defs.find((def) =>
-      ["input", "text", "query", "message", "prompt"].includes(
-        def.name.toLowerCase(),
-      ),
-    );
-    if (sink) {
-      const existing = params[sink.name];
-      params[sink.name] = existing
-        ? `${existing} ${positional.join(" ")}`
-        : positional.join(" ");
-    }
-  }
-
-  const missingRequired = defs
-    .filter((def) => def.required)
-    .map((def) => def.name)
-    .filter((name) => !(params[name] ?? "").trim());
-
-  return { params, missingRequired };
-}
 
 /** Plain-text variant of formatSearchBullet (uses `- ` bullets, no bold). */
 export function formatSearchBullet(label: string, items: string[]): string {
   if (items.length === 0) return `${label}: none`;
   return `${label}:\n${items.map((item) => `- ${item}`).join("\n")}`;
 }
-
 export function asApiLikeError(err: unknown): ApiLikeError | null {
   if (!isRecord(err)) return null;
   const kind = err.kind;
@@ -442,7 +406,6 @@ export function asApiLikeError(err: unknown): ApiLikeError | null {
     data,
   };
 }
-
 /** API-error-aware variant that extracts path/status/message from structured errors. */
 export function formatStartupErrorDetail(err: unknown): string | undefined {
   const apiErr = asApiLikeError(err);

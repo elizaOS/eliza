@@ -3,7 +3,7 @@
  * Build script for @elizaos/plugin-computeruse. Orchestration lives in the
  * shared driver (plugins/plugin-build.ts); this lists only what differs.
  *
- * Four ESM entrypoints are bundled with linked sourcemaps and flat
+ * The installation hook and four ESM entrypoints are bundled with linked sourcemaps and flat
  * `[name].[ext]` naming (index, register, and register-routes at the dist root,
  * plus the mobile OCR provider under dist/mobile). Declarations are emitted
  * declaration-only from tsconfig.build.json, preserving the package's
@@ -20,6 +20,15 @@ await buildPlugin({
   clean: true,
   externalsOptions: { extra: ["node:*"] },
   targets: [
+    {
+      label: "install-hook",
+      entry:
+        "../../packages/scripts/plugins/plugin-computeruse/ensure-platform-deps.ts",
+      outSubdir: "",
+      target: "node",
+      format: "esm",
+      naming,
+    },
     {
       label: "index",
       entry: "./src/index.ts",

@@ -9,11 +9,13 @@ import { getStripeProductMessages } from "../stripe-products/messages";
 import type { UserWithOrganization } from "../types";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
+import { CRYPTO_REFUND_POLICY } from "./crypto-payment-refunds";
 import { redeemableEarningsService } from "./redeemable-earnings";
 import { referralsService } from "./referrals";
 import { findOrCreateUserByWalletAddress } from "./wallet-signup";
 import { x402FacilitatorService } from "./x402-facilitator";
 import { buildX402PaymentRequired } from "./x402-payment-required";
+import { x402TopupPaymentId } from "./x402-topup-identity";
 
 const USDC_ASSETS_BY_NETWORK: Record<string, { caip2: string; asset: string; decimals: number }> = {
   base: {
@@ -267,7 +269,8 @@ async function createPaymentRequirements(
     amount: amountBaseUnits,
     maxAmountRequired: amountBaseUnits,
     resource: req.url,
-    description: productMessages.topupDescription(amount),
+    // Crypto and x402 payments are refundable only as Cloud credits (#22968).
+    description: `${productMessages.topupDescription(amount)}. ${productMessages.cryptoRefundPolicy}`,
     mimeType: "application/json",
     payTo,
     maxTimeoutSeconds: 300,
@@ -276,6 +279,10 @@ async function createPaymentRequirements(
       version: "1",
       amountUsd: amount,
       endpoint: new URL(req.url).pathname,
+      refundPolicy: {
+        destination: CRYPTO_REFUND_POLICY.x402,
+        statement: productMessages.cryptoRefundPolicy,
+      },
       ...(facilitatorCaller && {
         fee: {
           caller: facilitatorCaller,
@@ -437,7 +444,11 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       }
     }
 
-    const idempotencyId = `x402:${settlement.network}:${settlement.transaction}`;
+    const settlementPaymentId = x402TopupPaymentId(
+      settlement,
+      paymentPayload.payload.authorization,
+    );
+    const idempotencyId = `x402:${settlement.network}:${settlementPaymentId}`;
     const creditResult = await creditsService.addCredits({
       organizationId,
       amount,
@@ -462,7 +473,7 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       const { splits } = await referralsService.calculateRevenueSplits(user.id, amount);
       if (splits.length > 0) {
         logger.info(`[x402] Processing revenue splits for $${amount} purchase by user ${user.id}`);
-        const paymentId = settlement.transaction || paymentPayload.payload.authorization.nonce;
+        const paymentId = settlementPaymentId;
         const sourceIdBase = getSourceId(walletAddress, paymentId);
         for (const split of splits) {
           if (split.amount <= 0) continue;

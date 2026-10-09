@@ -36,8 +36,7 @@ TASKS_WITH_THOUGHT = {"reply", "agent_trace", "tool_call", "mcp_tool_call"}
 # Single source of truth lives in scripts/lib/eliza_record.py — every tool
 # that scrubs or scans the corpus for default-thought leaks imports it from
 # there so the lists never drift.
-sys.path.insert(0, str(ROOT))
-from scripts.lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
+from eliza_training.lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
 
 TRIVIAL_THOUGHTS = frozenset(DEFAULT_THOUGHT_LEAKS)
 

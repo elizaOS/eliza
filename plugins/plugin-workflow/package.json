@@ -8,25 +8,23 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "eliza-source": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "eliza-source": "./src/*.ts",
       "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./services/hosted-native-source": {
+      "eliza-source": "./src/services/hosted-native-source.ts",
+      "types": "./src/services/hosted-native-source.ts",
+      "import": "./dist/services/hosted-native-source.js",
+      "default": "./dist/services/hosted-native-source.js"
     }
   },
   "files": [
@@ -42,15 +40,16 @@
         "workflow",
         "automation"
       ]
+    },
+    "scripts": {
+      "mobileWorkflowArtifact": true
     }
   },
   "scripts": {
-    "build": "node ../../packages/scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.json",
+    "build": "node ../../packages/scripts/rm-path-recursive.ts dist && tsc6 --noCheck -p tsconfig.json",
     "dev": "tsc6 --watch",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "test": "node ../../packages/scripts/run-with-flake-retry.mjs 'EEXIST[^\\n]*epoll_ctl|error: Failed to connect' -- node ../../packages/scripts/run-with-deadline.mjs 1500000 -- node scripts/run-isolated-tests.mjs",
-    "test:unit": "bun test --isolate __tests__/unit/",
-    "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
+    "test": "node ../../packages/scripts/run-with-flake-retry.ts 'EEXIST[^\\n]*epoll_ctl|error: Failed to connect' -- node ../../packages/scripts/run-with-deadline.ts 1500000 -- node ../../packages/scripts/plugins/plugin-workflow/run-isolated-tests.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -75,19 +74,14 @@
   },
   "homepage": "https://github.com/elizaos-plugins/plugin-workflow#readme",
   "peerDependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.15",
     "@electric-sql/pglite": "^0.2.17",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@types/bun": "^1.3.8",
-    "@types/node": "^25.1.0",
-    "bun-types": "^1.3.8",
-    "@typescript/native": "npm:typescript@^7.0.2",
-    "typescript": "^6.0.3"
+    "bun-types": "1.4.2",
+    "@typescript/native": "npm:typescript@^7.0.2"
   },
   "publishConfig": {
     "access": "public"
@@ -100,10 +94,18 @@
     "node": ">=24.0.0"
   },
   "dependencies": {
-    "@elizaos/shared": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@smthrs/engine": "0.35.0",
+    "@types/bun": "1.4.2",
+    "@types/json-schema": "7.0.15",
+    "@types/node": "^25.1.0",
+    "@types/react": "19.3.0",
+    "buffer": "6.0.3",
+    "drizzle-orm": "0.45.3",
+    "effect": "4.0.0-beta.105",
     "smthrs": "0.35.0",
-    "zod": "^4.4.3",
-    "drizzle-orm": "0.45.2",
-    "effect": "4.0.0-beta.105"
+    "typescript": "^6.0.3",
+    "zod": "^4.6.5",
+    "@elizaos/contracts": "workspace:*"
   }
 }

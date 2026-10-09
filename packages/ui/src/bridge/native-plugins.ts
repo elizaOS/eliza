@@ -243,6 +243,51 @@ export interface PushActionPerformed {
  * absent on web/desktop bundles (the accessor returns `{}` there).
  */
 export interface PushNotificationsPluginLike extends NativePlugin {
+  /** Native-owned connection on Android systems without Google Play services. */
+  getNativeNotificationDeliveryStatus?: () => Promise<{
+    transport: "native" | "fcm";
+    owner: string | null;
+    activated: boolean;
+    enabled: boolean;
+    connected: boolean;
+    state: string;
+    batteryExempt: boolean;
+    backgroundReliable: boolean;
+    notificationsAllowed: boolean;
+    inbox: unknown;
+  }>;
+  presentNativeNotification?: (request: {
+    expectedOwner: string;
+    expectedBase: string;
+    notification: Record<string, unknown>;
+  }) => Promise<{
+    notificationId: string;
+    state: string;
+    retained: boolean;
+    presented: boolean;
+    duplicate: boolean;
+  }>;
+  /** Present only on builds with the app-owned cold reminder receiver. */
+  getReminderDataCapabilities?: () => Promise<{
+    reminderDataNotifications: boolean;
+    reminderChannelSelection?: boolean;
+    reminderPresentation?: boolean;
+  }>;
+  resolveReminderChannel?: (request: {
+    priority: "urgent" | "high" | "normal" | "low";
+    ownerType: "occurrence" | "calendar_event";
+  }) => Promise<{ channelId: string; blocked: boolean }>;
+  presentReminderNotification?: (request: {
+    notificationId: string;
+    groupKey?: string;
+    title: string;
+    body: string;
+    priority: "urgent" | "high" | "normal" | "low";
+    ownerType: "occurrence" | "calendar_event";
+    deepLink?: string;
+    conversationId?: string;
+    messageId?: string;
+  }) => Promise<{ accepted: boolean }>;
   checkPermissions?: () => Promise<PushNotificationPermissionStatus>;
   requestPermissions?: () => Promise<PushNotificationPermissionStatus>;
   register?: () => Promise<void>;
@@ -953,6 +998,15 @@ export interface ElizaPlayVoicePluginLike extends NativePlugin {
  * for segmented turn PCM + embedding, raw int8 for the labels) — see the JNI
  * host.
  */
+/** Labels are local to each independent model window, including its padding. */
+export interface ElizaDiarizationWindow {
+  startSample: number;
+  samples: number;
+  modelSamples: number;
+  labelOffset: number;
+  labelCount: number;
+}
+
 export interface ElizaVoiceTurn {
   turnId: string;
   samples: number;
@@ -960,6 +1014,8 @@ export interface ElizaVoiceTurn {
   hasEmbedding: boolean;
   embNorm: number;
   diarizFrames: number;
+  /** Absent on older hosts that only analyze the first five seconds. */
+  diarizWindows?: ElizaDiarizationWindow[];
   diarizDistinctClasses: number;
   /** base64 LE-fp32 256-d speaker embedding ("" when none). */
   embedding: string;

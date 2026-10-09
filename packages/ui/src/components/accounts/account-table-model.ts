@@ -8,7 +8,7 @@
  * these functions.
  */
 
-import type { AccountWithCredentialFlag } from "../../api/client-agent";
+import type { AccountWithCredentialFlag } from "../../api/client-agent-accounts";
 import { weeklyResetAt } from "./reset-time";
 
 export type { AccountWithCredentialFlag };

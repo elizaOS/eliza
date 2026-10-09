@@ -6,7 +6,7 @@
  * assertively.
  */
 import type * as React from "react";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Field, FieldDescription, FieldLabel, FieldMessage } from "../ui/field";
 import {
   setupFieldLabelClassName,

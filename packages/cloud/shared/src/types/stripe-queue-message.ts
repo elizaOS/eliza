@@ -3,6 +3,7 @@
  */
 
 import type Stripe from "stripe";
+import type { AppBillingWebhookTrigger } from "./app-billing-webhook";
 
 /**
  * Verified Stripe event handed off from the webhook route to the consumer.
@@ -17,4 +18,5 @@ export type StripeEventMessage = {
   paymentIntentId?: string;
   /** Worker receive timestamp (ms epoch). */
   receivedAt: number;
+  appBilling?: { receiptKey: string; trigger: AppBillingWebhookTrigger };
 };

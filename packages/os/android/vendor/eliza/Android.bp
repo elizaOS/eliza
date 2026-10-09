@@ -1,0 +1,50 @@
+// Android 17 Cuttlefish builds compare the Kati PRODUCT_PACKAGES system file
+// list with a Soong-defined android_system_image. The upstream shared image
+// cannot name downstream product modules, so extend the same image defaults
+// here with the elizaOS privileged app and its permission contracts.
+//
+// Keeping Eliza in this dependency list is also load-bearing for its Soong
+// `overrides` property: ManagedProvisioning and the other replaced role apps
+// are then removed from the Soong image exactly as they are from
+// PRODUCT_PACKAGES in eliza_common.mk.
+android_system_image {
+    name: "eliza_aosp_shared_system_image",
+    defaults: ["system_image_defaults"],
+    dirs: [
+        "system_ext",
+        "product",
+    ],
+    symlinks: [
+        {
+            target: "/product",
+            name: "system/product",
+        },
+        {
+            target: "/system_ext",
+            name: "system/system_ext",
+        },
+        {
+            target: "/data/cache",
+            name: "cache",
+        },
+        {
+            target: "/odm/odm_dlkm/etc",
+            name: "odm_dlkm/etc",
+        },
+        {
+            target: "/vendor/vendor_dlkm/etc",
+            name: "vendor_dlkm/etc",
+        },
+    ],
+    type: "erofs",
+    erofs: {
+        compressor: "lz4hc,9",
+        compress_hints: "erofs_compress_hints.txt",
+    },
+    deps: [
+        "logpersist.start",
+        "Eliza",
+        "default-permissions-ai.elizaos.app.xml",
+        "privapp-permissions-ai.elizaos.app.xml",
+    ],
+}

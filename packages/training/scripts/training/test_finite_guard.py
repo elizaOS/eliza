@@ -16,7 +16,7 @@ import pytest
 import torch
 from torch import nn
 
-from scripts.training.instrumentation import (
+from eliza_training.training.instrumentation import (
     FiniteWeightsCallback,
     InstrumentationConfig,
     assert_finite_checkpoint,
@@ -258,7 +258,7 @@ def test_make_hf_callback_instrumentation_hooks_win_mro() -> None:
     TrainerCallback no-ops — otherwise the memory-budget breach guard and the
     tokens/sec trace silently never fire."""
     pytest.importorskip("transformers")
-    from scripts.training.instrumentation import InstrumentationCallback
+    from eliza_training.training.instrumentation import InstrumentationCallback
 
     cb = make_hf_callback(
         InstrumentationConfig(

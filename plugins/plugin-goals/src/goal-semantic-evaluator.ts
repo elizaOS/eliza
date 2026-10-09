@@ -9,6 +9,12 @@
  * depth- and cycle-checked before they are interpolated into the prompt so a
  * hostile nest cannot RangeError the review job without imposing a size cap.
  */
+
+import type {
+  LifeOpsGoalDefinition,
+  LifeOpsGoalReviewState,
+  LifeOpsGoalSuggestionKind,
+} from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
@@ -16,11 +22,6 @@ import {
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import type {
-  LifeOpsGoalDefinition,
-  LifeOpsGoalReviewState,
-  LifeOpsGoalSuggestionKind,
-} from "@elizaos/shared";
 import {
   buildGoalSemanticReviewMetadata,
   type GoalSemanticReviewMetadata,

@@ -4,11 +4,22 @@ verify/gen_fixture
 verify/vulkan_verify
 verify/metal_verify
 verify/cpu_simd_bench
+verify/cpu_bench
+verify/metal_bench
+verify/vulkan_bench
+verify/cuda_verify
+verify/dispatch_smoke
+verify/vulkan_dispatch_smoke
+verify/metal_upscale_probe
 verify/*.spv
 vulkan/*.spv
 # Per-target smoke binaries (qjl_mt_check.<triple>, cpu_qjl_polar_attn_smoke.<triple>).
 verify/qjl_mt_check.*
 verify/cpu_qjl_polar_attn_smoke.*
+verify/qjl_mt_check
+verify/cpu_qjl_polar_attn_smoke
+!verify/qjl_mt_check.c
+!verify/cpu_qjl_polar_attn_smoke.c
 
 # Generated local reports and hardware/run evidence.
 reports/
@@ -17,4 +28,6 @@ verify/hardware-results/
 verify/reports/
 verify/android-vulkan-smoke/
 verify/asr_bench_real_recorded_*.json
-verify/vision-smoke-*-rpath-*.json
+verify/vision-smoke-*.json
+verify/omnivoice-metal-codec-fallback-*.json
+verify/evidence/platform/

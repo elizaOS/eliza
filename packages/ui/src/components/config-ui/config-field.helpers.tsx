@@ -7,6 +7,9 @@
  * via `fireAction`. Controls share the config-input styling from
  * config-control-primitives.helpers.
  */
+
+import type { DynamicValue } from "@elizaos/contracts";
+import { resolveDynamic } from "@elizaos/host/protocol";
 import { ChevronDown, X } from "lucide-react";
 import React, {
   useCallback,
@@ -22,14 +25,12 @@ import type {
   FieldRenderer,
   FieldRenderProps,
 } from "../../config/config-catalog";
-import { resolveDynamic } from "../../config/config-catalog";
+import { useAppSelector } from "../../state/app-store";
+import { isSafeAttachmentUrl } from "../../utils/attachment-url";
 import {
   CONFIG_SELECT_FLOATING_LAYER_NAME,
   CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,
-} from "../../lib/floating-layers";
-import { useAppSelector } from "../../state";
-import type { DynamicValue } from "../../types";
-import { isSafeAttachmentUrl } from "../../utils/attachment-url";
+} from "../../utils/floating-layers";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -1603,8 +1604,10 @@ function processInline(text: string): React.ReactNode {
       continue;
     }
 
-    // Italic: *text* or _text_
-    const italicMatch = remaining.match(/(\*|_)([^*_]+)\1/);
+    // Italic: *text* or _text_. A delimiter followed by whitespace cannot
+    // open italic, and one preceded by whitespace cannot close it, so
+    // "2 * 3 * 4" stays literal in the config preview.
+    const italicMatch = remaining.match(/(\*|_)(?!\s)([^*_]*[^\s*_])\1/);
     if (italicMatch) {
       const before = remaining.substring(0, italicMatch.index);
       if (before) parts.push(processSimpleInline(before, key++));

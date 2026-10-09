@@ -416,51 +416,71 @@ async function handleGuaranteeClass(
 
 // ── Subaction handlers ───────────────────────────────────
 
-async function handleRequestSignature(
-  scope: RunnerScope,
-  params: DocActionParameters,
-): Promise<ActionResult> {
-  const subaction: Subaction = "request_signature";
-  const requesteeEntityId = params.requesteeEntityId?.trim();
-  if (!requesteeEntityId) return missing("requesteeEntityId", subaction);
-  const documentTitle = params.documentTitle?.trim();
-  if (!documentTitle) return missing("documentTitle", subaction);
-  const deadline = params.deadline?.trim();
-  if (!deadline) return missing("deadline", subaction);
+interface SignatureRequestInput {
+  /** The counterparty who signs; absent when the caller does not know it. */
+  requesteeEntityId?: string;
+  documentTitle: string;
+  deadline: string;
+  signatureUrl?: string;
+  note?: string;
+  /** Action name recorded on the approval row. */
+  requestedBy: string;
+  /** Owner-facing approval reason. */
+  reason: string;
+}
 
+/**
+ * Approval expiry for a signature request. A deadline at the Unix epoch is a
+ * real instant. `Date.parse(...) || now + 24h` turned it into a day-long window.
+ */
+function signatureApprovalExpiresAt(deadline: string, now = Date.now()): Date {
+  const parsed = Date.parse(deadline);
+  if (Number.isFinite(parsed)) return new Date(parsed);
+  return new Date(now + 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Create the signature DocumentRequest, queue its owner approval, and schedule
+ * its deadline watcher. RESOLVE_REQUEST dispatches an approved `sign_document`
+ * row by flipping this DocumentRequest, so every enqueue path must create it.
+ */
+async function createSignatureRequest(
+  scope: RunnerScope,
+  input: SignatureRequestInput,
+): Promise<{ documentRequest: DocumentRequest; approvalRequestId: string }> {
   const now = nowIso();
   const doc: DocumentRequest = {
     id: newDocumentRequestId(),
     kind: "signature",
-    requesteeEntityId,
-    title: documentTitle,
-    deadline,
+    ...(input.requesteeEntityId
+      ? { requesteeEntityId: input.requesteeEntityId }
+      : {}),
+    title: input.documentTitle,
+    deadline: input.deadline,
     status: "draft",
     createdAt: now,
     updatedAt: now,
     createdBy: scope.agentId,
-    ...(params.note ? { note: params.note } : {}),
+    ...(input.note ? { note: input.note } : {}),
   };
 
   // Owner approval gate. The actual signing dispatch waits for
   // RESOLVE_REQUEST approve to flip the approval queue entry to `done`.
   const queue = createApprovalQueue(scope.runtime, { agentId: scope.agentId });
   const approvalRequest = await queue.enqueue({
-    requestedBy: ACTION_NAME,
+    requestedBy: input.requestedBy,
     subjectUserId: scope.subjectUserId,
     action: "sign_document",
     payload: {
       action: "sign_document",
       documentId: doc.id,
       documentName: doc.title,
-      signatureUrl: params.signatureUrl?.trim() ?? "",
-      deadline,
+      signatureUrl: input.signatureUrl?.trim() ?? "",
+      deadline: input.deadline,
     },
     channel: "internal",
-    reason: `Request signature from ${requesteeEntityId} on "${doc.title}" by ${deadline}`,
-    expiresAt: new Date(
-      Date.parse(deadline) || Date.now() + 24 * 60 * 60 * 1000,
-    ),
+    reason: input.reason,
+    expiresAt: signatureApprovalExpiresAt(input.deadline),
   });
 
   // Schedule the deadline watcher up front so a SCHEDULED_TASK exists even
@@ -477,8 +497,42 @@ async function handleRequestSignature(
   });
 
   logger.info(
-    `[OWNER_DOCUMENTS] request_signature id=${saved.id} requestee=${requesteeEntityId} deadline=${deadline} approval=${approvalRequest.id}`,
+    `[OWNER_DOCUMENTS] request_signature id=${saved.id} requestee=${input.requesteeEntityId ?? "unknown"} deadline=${input.deadline} approval=${approvalRequest.id}`,
   );
+  return { documentRequest: saved, approvalRequestId: approvalRequest.id };
+}
+
+/** Signature request entry point for actions outside OWNER_DOCUMENTS. */
+export function enqueueSignatureRequest(
+  runtime: IAgentRuntime,
+  message: Memory,
+  input: SignatureRequestInput,
+): Promise<{ documentRequest: DocumentRequest; approvalRequestId: string }> {
+  return createSignatureRequest(makeScope(runtime, message), input);
+}
+
+async function handleRequestSignature(
+  scope: RunnerScope,
+  params: DocActionParameters,
+): Promise<ActionResult> {
+  const subaction: Subaction = "request_signature";
+  const requesteeEntityId = params.requesteeEntityId?.trim();
+  if (!requesteeEntityId) return missing("requesteeEntityId", subaction);
+  const documentTitle = params.documentTitle?.trim();
+  if (!documentTitle) return missing("documentTitle", subaction);
+  const deadline = params.deadline?.trim();
+  if (!deadline) return missing("deadline", subaction);
+
+  const { documentRequest: saved, approvalRequestId } =
+    await createSignatureRequest(scope, {
+      requesteeEntityId,
+      documentTitle,
+      deadline,
+      signatureUrl: params.signatureUrl,
+      note: params.note,
+      requestedBy: ACTION_NAME,
+      reason: `Request signature from ${requesteeEntityId} on "${documentTitle}" by ${deadline}`,
+    });
 
   return {
     success: true,
@@ -488,7 +542,7 @@ async function handleRequestSignature(
       documentRequest: saved,
       documentRequestId: saved.id,
       status: saved.status,
-      approvalRequestId: approvalRequest.id,
+      approvalRequestId,
       scheduledTaskId: saved.scheduledTaskId ?? null,
     },
   };
