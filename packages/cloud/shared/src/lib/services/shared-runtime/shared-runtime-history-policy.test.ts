@@ -486,47 +486,54 @@ describe("shared runtime long-term transcript context", () => {
     const query = "Reply exactly IM-COLD-1008.";
     expect(sharedSelectedGroundingMetadata(history, query, 1)).toBeUndefined();
     expect(resolveSharedRealtimeRequirement(query, history)).toBeUndefined();
-    expect(sharedRuntimeModelHistoryMessages(history, query, 1).some((m) => m.role === "tool")).toBe(false);
+    expect(
+      sharedRuntimeModelHistoryMessages(history, query, 1).some((m) => m.role === "tool"),
+    ).toBe(false);
     for (const followUp of ["What about that forecast?", "Springfield conditions?"]) {
       expect(sharedSelectedGroundingMetadata(history, followUp, 1)?.status).toBe("available");
     }
   });
 
   test("a shared year alone does not connect unrelated named subjects", () => {
-    const history: SharedRuntimeHistoryMessageLike[] = [{
-      role: "assistant",
-      content: "Weather result.",
-      grounding: {
-        kind: "web_search",
-        query: "Springfield weather 2026",
-        provider: "parallel",
-        text: "Weather evidence.",
-        observedAt: 1,
-        ...TEST_SOURCE_EVIDENCE,
-        truncated: false,
+    const history: SharedRuntimeHistoryMessageLike[] = [
+      {
+        role: "assistant",
+        content: "Weather result.",
+        grounding: {
+          kind: "web_search",
+          query: "Springfield weather 2026",
+          provider: "parallel",
+          text: "Weather evidence.",
+          observedAt: 1,
+          ...TEST_SOURCE_EVIDENCE,
+          truncated: false,
+        },
       },
-    }];
+    ];
     for (const query of ["Japan GDP 2026", "Reply exactly 2026."]) {
       expect(sharedSelectedGroundingMetadata(history, query, 1)).toBeUndefined();
     }
-    expect(sharedSelectedGroundingMetadata(history, "Springfield weather in 2026?", 1)?.query)
-      .toBe("Springfield weather 2026");
+    expect(sharedSelectedGroundingMetadata(history, "Springfield weather in 2026?", 1)?.query).toBe(
+      "Springfield weather 2026",
+    );
   });
 
   test("alphanumeric named subjects and deictic numeric follow-ups remain selectable", () => {
-    const history: SharedRuntimeHistoryMessageLike[] = [{
-      role: "assistant",
-      content: "Research result.",
-      grounding: {
-        kind: "web_search",
-        query: "GPT4 adoption 2026",
-        provider: "parallel",
-        text: "Research evidence.",
-        observedAt: 1,
-        ...TEST_SOURCE_EVIDENCE,
-        truncated: false,
+    const history: SharedRuntimeHistoryMessageLike[] = [
+      {
+        role: "assistant",
+        content: "Research result.",
+        grounding: {
+          kind: "web_search",
+          query: "GPT4 adoption 2026",
+          provider: "parallel",
+          text: "Research evidence.",
+          observedAt: 1,
+          ...TEST_SOURCE_EVIDENCE,
+          truncated: false,
+        },
       },
-    }];
+    ];
     for (const query of ["GPT4 adoption in 2026?", "What about that in 2027?"]) {
       expect(sharedSelectedGroundingMetadata(history, query, 1)?.status).toBe("available");
     }
@@ -1344,7 +1351,6 @@ describe("provider-compatible grounding policy placement", () => {
     expect(insertSharedRuntimeGroundingMessages(noUser, policy)).toBe(noUser);
   });
 });
-
 
 describe("lossless public evidence model projection", () => {
   const one = {
