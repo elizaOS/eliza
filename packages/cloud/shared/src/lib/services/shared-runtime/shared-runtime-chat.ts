@@ -1,3 +1,4 @@
+import { createOwnerBoundSharedGooglePort } from "./shared-google-owner-binding";
 import type { OwnerModelCapture } from "./shared-owner-model-capture";
 /**
  * Cache-only shared-tier chat execution for Cloudflare Workers.
@@ -626,6 +627,9 @@ function sharedElizaRuntimeExecution(
     ...(personalShared ? { authenticatedPersonalSharedUser: true as const } : {}),
     ...(personalShared && runtimeChannel.type === ChannelType.DM && agent.owner_name
       ? { participantName: agent.owner_name }
+      : {}),
+    ...(personalShared && runtimeChannel.type === ChannelType.DM
+      ? { google: () => createOwnerBoundSharedGooglePort(agent, runtimeChannel) }
       : {}),
     todos: {
       scope: sharedTodoStorageScope({

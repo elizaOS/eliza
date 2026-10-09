@@ -19,6 +19,7 @@ const app = new Hono<AppEnv>();
 
 const requestSchema = z.object({
   side: z.enum(["owner", "agent"]).optional(),
+  purpose: z.literal("personal_google_context_v1").optional(),
   redirectUrl: z.string().trim().min(1).optional(),
   capabilities: z
     .array(
@@ -74,6 +75,9 @@ app.post("/", async (c) => {
       side: parsed.data.side ?? "owner",
       redirectUrl: parsed.data.redirectUrl,
       capabilities: parsed.data.capabilities,
+      ...(parsed.data.purpose
+        ? { personalContextPurpose: parsed.data.purpose }
+        : {}),
     });
     return c.json(result);
   } catch (error) {

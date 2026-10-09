@@ -1,3 +1,12 @@
+import {
+  bindPersonalGoogleContextConsent,
+  readPersonalGoogleContextOwner,
+} from "../../../db/repositories/personal-google-context-consent";
+import {
+  type GooglePersonalContextConsent,
+  isGooglePersonalContextConsent,
+} from "../shared-runtime/shared-google-consent";
+import { usersService } from "../users";
 /**
  * Generic OAuth 2.0 Flow Handler
  *
@@ -42,6 +51,7 @@ function fetchOAuth2(input: string | URL, init?: RequestInit): Promise<Response>
  * OAuth state stored in cache during authorization flow.
  */
 interface OAuth2State {
+  personalGoogleContext?: GooglePersonalContextConsent;
   organizationId: string;
   userId: string;
   providerId: string;
@@ -194,6 +204,7 @@ export async function initiateOAuth2(
     redirectUrl?: string;
     scopes?: string[];
     connectionRole?: OAuthConnectionRole;
+    personalGoogleContext?: GooglePersonalContextConsent;
   },
 ): Promise<InitiateOAuth2Result> {
   const clientId = getClientId(provider);
@@ -232,6 +243,9 @@ export async function initiateOAuth2(
     connectionRole: normalizeOAuthConnectionRole(params.connectionRole),
     createdAt: Date.now(),
     codeVerifier,
+    ...(provider.id === "google" && isGooglePersonalContextConsent(params.personalGoogleContext)
+      ? { personalGoogleContext: params.personalGoogleContext }
+      : {}),
   };
 
   await cache.set(`oauth2:${provider.id}:${state}`, stateData, STATE_TTL_SECONDS);
@@ -318,9 +332,44 @@ export async function handleOAuth2Callback(
 
   const { organizationId, userId, redirectUrl, scopes, codeVerifier } = stateData;
   const connectionRole = normalizeOAuthConnectionRole(stateData.connectionRole);
+  if (
+    stateData.personalGoogleContext !== undefined &&
+    (provider.id !== "google" ||
+      connectionRole !== "OWNER" ||
+      !isGooglePersonalContextConsent(stateData.personalGoogleContext))
+  ) {
+    throw new Error("GOOGLE_PERSONAL_CONTEXT_CALLBACK_SCOPE_INVALID");
+  }
 
+  if (
+    stateData.personalGoogleContext &&
+    !(await readPersonalGoogleContextOwner({ organizationId, userId }))
+  ) {
+    throw new Error("GOOGLE_PERSONAL_CONTEXT_OWNER_CHANGED");
+  }
   // Exchange code for tokens
   const tokens = await exchangeCodeForTokens(provider, code, codeVerifier);
+  let connectionScopes = scopes;
+  if (stateData.personalGoogleContext) {
+    // Requested scopes are intent, never proof of what Google actually granted.
+    const granted =
+      typeof tokens.scope === "string"
+        ? [...new Set(tokens.scope.split(/\s+/u).filter(Boolean))]
+        : [];
+    if (
+      !granted.includes("https://www.googleapis.com/auth/gmail.readonly") ||
+      !granted.includes("https://www.googleapis.com/auth/calendar.readonly")
+    ) {
+      throw new Error("GOOGLE_PERSONAL_CONTEXT_GRANTED_SCOPES_REQUIRED");
+    }
+    connectionScopes = granted;
+  }
+  if (
+    stateData.personalGoogleContext &&
+    !(await readPersonalGoogleContextOwner({ organizationId, userId }))
+  ) {
+    throw new Error("GOOGLE_PERSONAL_CONTEXT_OWNER_CHANGED");
+  }
 
   // For providers with a user/bot token split (Slack), the OWNER flow
   // must resolve the *authorizing user's* identity via the user token
@@ -349,8 +398,18 @@ export async function handleOAuth2Callback(
     connectionRole,
     tokens,
     userInfo,
-    scopes,
+    connectionScopes,
   );
+
+  if (stateData.personalGoogleContext) {
+    const updatedOwner = await bindPersonalGoogleContextConsent({
+      organizationId,
+      userId,
+      grantId: connectionId,
+      consent: stateData.personalGoogleContext,
+    });
+    await usersService.invalidateCache(updatedOwner);
+  }
 
   logger.info(`[OAuth2] Callback completed for ${provider.id}`, {
     organizationId,

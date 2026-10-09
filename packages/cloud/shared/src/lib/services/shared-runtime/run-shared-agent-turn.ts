@@ -1,3 +1,4 @@
+import { isSharedGoogleContextRequest } from "./shared-google-context-plugin";
 import { type OwnerModelCapture, observeOwnerCapture } from "./shared-owner-model-capture";
 /**
  * Shared runtime — runs a single agent turn container-free.
@@ -195,6 +196,8 @@ export interface RunSharedAgentTurnInput {
     authenticatedPersonalSharedUser?: true;
     /** Verified owner profile preference; server execution only, never RPC params. */
     participantName?: string;
+    /** Server-bound owner Google factory; never accepted from JSON RPC params. */
+    google?: () => Promise<import("./shared-google-context-plugin").SharedGoogleContextPort>;
     todos?: {
       scope: { agentId: UUID; entityId: UUID };
       store: TodoStore;
@@ -352,7 +355,7 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  * from `@elizaos/core`'s prompt builder; the Shared runtime receives the
  * already-projected edge character, so this is the renderer on this side.
  */
-type RequiredSharedAction = "REMINDERS" | "TODO" | "GENERATE_MEDIA";
+type RequiredSharedAction = "REMINDERS" | "TODO" | "GENERATE_MEDIA" | "GOOGLE_CONTEXT";
 
 function buildSharedRuntimeSystem(
   character: SharedAgentCharacter,
@@ -389,7 +392,9 @@ function buildSharedRuntimeSystem(
         ? "reminder"
         : requiredAction === "TODO"
           ? "todo"
-          : "image or video generation";
+          : requiredAction === "GOOGLE_CONTEXT"
+            ? "private Google context"
+            : "image or video generation";
     const ungroundedClaim =
       requiredAction === "GENERATE_MEDIA"
         ? "A plain-text claim that generation was attempted, unavailable, or failed is not an execution result."
@@ -442,6 +447,9 @@ function requiredActionForTurn(
   const capabilityAction = requiredActionForResolution(resolution);
   if (capabilityAction) return capabilityAction;
   const intentText = input.capabilityText ?? input.message;
+  if (actionsEnabled && input.execution?.google && isSharedGoogleContextRequest(intentText)) {
+    return "GOOGLE_CONTEXT";
+  }
   if (
     actionsEnabled &&
     input.execution?.authenticatedPersonalSharedUser === true &&
@@ -1062,7 +1070,7 @@ function isContextualReminderFollowup(input: RunSharedAgentTurnInput): boolean {
 
 function capabilityResolution(
   input: RunSharedAgentTurnInput,
-  capabilities: { reminders: boolean; todos: boolean },
+  capabilities: { reminders: boolean; todos: boolean; googleContext?: boolean },
   explicit: SharedCapabilityResolution | null,
 ): SharedCapabilityResolution | null {
   if (!isContextualReminderFollowup(input)) return explicit;
@@ -1114,7 +1122,9 @@ export async function runSharedAgentTurn(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
-  const publicSearchText = input.capabilityText?.trim();
+  const publicSearchText = isSharedGoogleContextRequest(input.capabilityText ?? input.message)
+    ? undefined
+    : input.capabilityText?.trim();
 
   const actionsEnabled = input.messageRole !== "system";
   const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
@@ -1122,6 +1132,7 @@ export async function runSharedAgentTurn(
   const capabilities = {
     reminders: remindersEnabled,
     todos: todosEnabled,
+    googleContext: actionsEnabled && Boolean(input.execution?.google),
   };
   const reminderIntentText = input.capabilityText ?? input.message;
   const explicitResolution = resolveSharedCapabilityIntent(reminderIntentText, capabilities);
@@ -1263,6 +1274,7 @@ export async function runSharedAgentTurn(
               webSearch: Boolean(publicSearchIntent),
               reminders: remindersEnabled,
               todos: todosEnabled,
+              googleContext: actionsEnabled && Boolean(input.execution?.google),
               media:
                 actionsEnabled &&
                 execution.authenticatedPersonalSharedUser === true &&
@@ -1408,7 +1420,9 @@ export async function runSharedAgentTurnStream(
   input: RunSharedAgentTurnStreamInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
-  const publicSearchText = input.capabilityText?.trim();
+  const publicSearchText = isSharedGoogleContextRequest(input.capabilityText ?? input.message)
+    ? undefined
+    : input.capabilityText?.trim();
 
   const actionsEnabled = input.messageRole !== "system";
   const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
@@ -1416,6 +1430,7 @@ export async function runSharedAgentTurnStream(
   const capabilities = {
     reminders: remindersEnabled,
     todos: todosEnabled,
+    googleContext: actionsEnabled && Boolean(input.execution?.google),
   };
   const reminderIntentText = input.capabilityText ?? input.message;
   const explicitResolution = resolveSharedCapabilityIntent(reminderIntentText, capabilities);
@@ -1524,6 +1539,7 @@ export async function runSharedAgentTurnStream(
             webSearch: false,
             reminders: remindersEnabled,
             todos: todosEnabled,
+            googleContext: actionsEnabled && Boolean(input.execution?.google),
             media:
               actionsEnabled &&
               execution.authenticatedPersonalSharedUser === true &&
