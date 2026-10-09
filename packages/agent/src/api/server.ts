@@ -2615,6 +2615,12 @@ async function handleRequestForViewClient(
       pathname,
       runtime: admittedRuntime,
       authorization,
+      assertRuntimeCurrent: () => {
+        if (!admittedRuntime || state.runtime !== admittedRuntime)
+          throw new ElizaError("Original read runtime retired", {
+            code: "DEVICE_READ_COMPLETION_RUNTIME_RETIRED",
+          });
+      },
       revalidateAuthorization: async () => {
         const denied: AgentHttpRequestAuthorization = {
           ok: false,
