@@ -144,7 +144,13 @@ export function embeddingBackoffMs(attempt: number, retryAfterSec?: number): num
       ? retryAfterSec * 1000
       : 0;
   const base = Math.min(EMBED_BACKOFF_CAP_MS, Math.max(exp, serverHint));
-  return Math.round(base * (1 + Math.random() * 0.25));
+  // Clamp after jitter, like the warming retry helper in text.ts: applying
+  // the cap only to the base lets the jitter push a capped wait to 1.25x
+  // the cap, breaking the "never longer than the cap" contract above.
+  return Math.min(
+    EMBED_BACKOFF_CAP_MS,
+    Math.round(base * (1 + Math.random() * 0.25)),
+  );
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
