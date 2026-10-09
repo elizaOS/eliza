@@ -10,6 +10,7 @@ import {
   type Memory,
   ModelType,
   runWithActionRoutingContext,
+  TaskService,
   type UUID,
 } from "@elizaos/core";
 import * as assistant from "@elizaos/plugin-assistant";
@@ -68,6 +69,9 @@ describe("grounded reply outcomes — real PGlite", () => {
   beforeAll(async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     runtime = runtimeResult.runtime;
+    // This suite exercises committed actions and their completion inputs.
+    // Background delivery of earlier fixtures must not race the model spy.
+    await TaskService.stop(runtime);
     service = new LifeOpsService(runtime, { ownerEntityId: runtime.agentId });
   }, 180_000);
 
