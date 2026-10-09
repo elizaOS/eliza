@@ -1959,7 +1959,9 @@ export default function StewardLoginSection({
           <div className="size-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
           <p className="text-sm text-muted">
             {phoneOnly
-              ? "Opening your assistant…"
+              ? t("cloud.login.openingAssistant", {
+                  defaultValue: "Opening your assistant…",
+                })
               : t("cloud.login.redirecting", {
                   defaultValue: "Redirecting to Eliza...",
                 })}
@@ -2042,7 +2044,7 @@ export default function StewardLoginSection({
             <Phone className="size-4" aria-hidden="true" />
           )}{" "}
           {phoneOnly
-            ? "Sign in"
+            ? t("cloud.login.signIn", { defaultValue: "Sign in" })
             : t("cloud.login.smsCode.verify", {
                 defaultValue: "Verify phone",
               })}
@@ -2069,7 +2071,9 @@ export default function StewardLoginSection({
             onClick={cancelSmsLogin}
           >
             {phoneOnly
-              ? "Change phone number"
+              ? t("cloud.login.changePhoneNumber", {
+                  defaultValue: "Change phone number",
+                })
               : t("cloud.login.backToLogin", { defaultValue: "Back to login" })}
           </Button>
         </div>
@@ -2473,7 +2477,9 @@ export default function StewardLoginSection({
           aria-busy="true"
           className="py-6 text-center text-sm text-muted"
         >
-          Loading phone sign-in…
+          {t("cloud.login.loadingPhoneSignIn", {
+            defaultValue: "Loading phone sign-in…",
+          })}
         </p>
       );
     return (
@@ -2507,14 +2513,18 @@ export default function StewardLoginSection({
       return (
         <div className="space-y-4" role="alert">
           <p className="text-sm text-muted">
-            Phone sign-in couldn't load. Please try again.
+            {t("cloud.login.phoneSignInLoadError", {
+              defaultValue: "Phone sign-in couldn't load. Please try again.",
+            })}
           </p>
           <Button
             type="button"
             className="hosted-signin-focus-emphasis w-full"
             onClick={retryProviderDiscovery}
           >
-            Try again
+            {t("cloud.login.accountSwitch.retry", {
+              defaultValue: "Try again",
+            })}
           </Button>
         </div>
       );
@@ -2681,14 +2691,19 @@ export default function StewardLoginSection({
         {!providers.sms ? (
           <div className="space-y-4" role="alert">
             <p className="text-sm text-muted">
-              Phone sign-in is unavailable right now. Please try again.
+              {t("cloud.login.phoneSignInUnavailable", {
+                defaultValue:
+                  "Phone sign-in is unavailable right now. Please try again.",
+              })}
             </p>
             <Button
               type="button"
               className="hosted-signin-focus-emphasis w-full"
               onClick={retryProviderDiscovery}
             >
-              Try again
+              {t("cloud.login.accountSwitch.retry", {
+                defaultValue: "Try again",
+              })}
             </Button>
           </div>
         ) : (
