@@ -152,3 +152,62 @@ it("preserves the admitted tail and rejects incompatible encoder responses", asy
     vi.unstubAllEnvs();
   }
 });
+
+it("honors host-disabled local embeddings at registration and for retained handlers", async () => {
+  vi.stubEnv("ELIZA_DEVICE_BRIDGE_ENABLED", "1");
+  vi.stubEnv("ELIZA_LOCAL_LLAMA", undefined);
+  vi.stubEnv("ELIZA_BIONIC_HOST_DELEGATED", "1");
+  vi.stubEnv(
+    "ELIZA_BIONIC_INFERENCE_SOCK",
+    "forbidden-embedding-policy-fixture",
+  );
+  vi.stubEnv("ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD", "1");
+  const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
+    "./mobile-device-bridge-bootstrap"
+  );
+  const disabled = new AgentRuntime({ logLevel: "fatal" }),
+    enabled = new AgentRuntime({ logLevel: "fatal" });
+  try {
+    vi.stubEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS", "true");
+    await ensureMobileDeviceBridgeInferenceHandlers(disabled);
+    expect(disabled.getModel(ModelType.TEXT_EMBEDDING)).toBeUndefined();
+    expect(disabled.getModel(ModelType.TEXT_SMALL)).toBeTypeOf("function");
+    vi.stubEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS", undefined);
+    await ensureMobileDeviceBridgeInferenceHandlers(enabled);
+    const handler = enabled.getModel(ModelType.TEXT_EMBEDDING);
+    expect(handler).toBeTypeOf("function");
+    if (!handler) throw Error("Missing registered native handler");
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const dimension = vi
+      .spyOn(enabled, "ensureEmbeddingDimension")
+      .mockImplementation(() => pending);
+    const admitted = handler(enabled, { text: "Synthetic admission race" });
+    vi.stubEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS", "true");
+    release();
+    await expect(admitted).rejects.toMatchObject({
+      code: "LOCAL_EMBEDDING_DISABLED",
+    });
+    dimension.mockRestore();
+    for (const flag of ["true", "1", "yes"]) {
+      vi.stubEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS", flag);
+      // No model path or working UDS exists: the policy must win before either is accessed.
+      await expect(
+        handler(enabled, { text: "Synthetic policy check" }),
+      ).rejects.toMatchObject({ code: "LOCAL_EMBEDDING_DISABLED" });
+      await expect(
+        Reflect.apply(handler, undefined, [enabled, null]),
+      ).rejects.toMatchObject({
+        code: "LOCAL_EMBEDDING_DISABLED",
+      });
+    }
+  } finally {
+    await disabled.stop();
+    await enabled.stop();
+    await disabled.close();
+    await enabled.close();
+    vi.unstubAllEnvs();
+  }
+});
