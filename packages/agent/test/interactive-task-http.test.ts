@@ -599,7 +599,7 @@ it("does not deliver a choice when an authenticated pause finishes during refres
   }
 });
 
-it.each(["reply", "lost-reply", "timeout"])(
+it.each(["reply", "lost-reply", "pause-timeout"])(
   "Pause covers a pending start, including a lost creation reply (%s)",
   async (replyMode) => {
     const f = setup();
@@ -619,6 +619,8 @@ it.each(["reply", "lost-reply", "timeout"])(
     });
     const created = deferred<void>();
     const authorizing = deferred<void>();
+    const pauseReply = deferred<void>();
+    let pauseRequests = 0;
     const http = await listenTaskHttp(
       createInteractiveTaskHandler({
         runtime,
@@ -638,6 +640,12 @@ it.each(["reply", "lost-reply", "timeout"])(
         const response = await http.call(path, body);
         if (!response.ok) throw new Error(`Task HTTP ${response.status}`);
         const reply = await response.json();
+        if (
+          path === "/tasks/current/pause" &&
+          ++pauseRequests === 1 &&
+          replyMode === "pause-timeout"
+        )
+          await pauseReply.promise;
         if (path === "/tasks" && replyMode === "lost-reply")
           throw new Error("Creation reply lost");
         return reply;
@@ -672,19 +680,18 @@ it.each(["reply", "lost-reply", "timeout"])(
       while (!paths.includes("/tasks/current/pause"))
         await new Promise((resolve) => setTimeout(resolve, 5));
       expect(paused).toBe(false);
-      if (replyMode === "timeout") {
-        expect(await pausing).toBe(false);
-        expect(states.at(-1)).toMatchObject({
-          pending: false,
-          error: "pause failed",
-        });
-        const beforeRefresh = paths.length;
-        await client.refresh();
-        expect(paths).toHaveLength(beforeRefresh);
-      }
+      expect(await pausing).toBe(replyMode !== "pause-timeout");
+      expect(states.at(-1)).toMatchObject({
+        pending: false,
+        error: replyMode === "pause-timeout" ? "pause failed" : "",
+      });
+      // No creation reply is needed for the public Pause promise to settle.
+      const beforeRefresh = paths.length;
+      await client.refresh();
+      expect(paths).toHaveLength(beforeRefresh);
       created.resolve();
+      pauseReply.resolve();
       expect(await starting).toBe(false);
-      if (replyMode !== "timeout") expect(await pausing).toBe(true);
       // A timeout reports failure promptly but does not abandon the pending pause.
       await vi.waitFor(() =>
         expect(runtime.get("task-1").status).toBe("paused"),
@@ -699,6 +706,7 @@ it.each(["reply", "lost-reply", "timeout"])(
       );
     } finally {
       created.resolve();
+      pauseReply.resolve();
       await http.close();
       f.close();
     }

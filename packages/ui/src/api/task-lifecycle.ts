@@ -174,40 +174,44 @@ export class TaskLifecycle {
         return task;
       });
     const starting = this.starting;
-    let task: TaskView | null = null;
     try {
-      task = await pause();
-    } catch (error) {
-      // A pending creation must still be paused after an uncertain first reply.
-      if (!starting) throw error;
-    }
-    if (ticket !== this.generation) return false;
-    this.publish({ task, pending: !!starting, error: "" });
-    if (starting) {
-      try {
-        await starting;
-      } catch {
-        /* Pause the current task below either way. */
+      const task = await pause();
+      if (ticket !== this.generation) return false;
+      this.publish({ task, pending: false, error: "" });
+      return true;
+    } finally {
+      if (starting) {
+        // Report the current pause immediately. Retain the owner's pause intent
+        // separately until a pending creation settles, even if its reply is lost.
+        void (async () => {
+          try {
+            await starting;
+          } catch {
+            // A missing reply cannot prove that creation had no effect.
+          }
+          if (ticket !== this.generation) return;
+          const task = await pause();
+          if (ticket === this.generation)
+            this.publish({ task, pending: false, error: "" });
+        })().catch(() => {
+          if (ticket === this.generation)
+            this.publish({
+              ...this.state,
+              pending: false,
+              error: this.messages.pause,
+            });
+        });
       }
-      if (ticket !== this.generation) return false;
-      // A missing start reply cannot prove that creation had no effect.
-      // Reconcile with the host even when that request rejected.
-      const latest = await pause();
-      if (ticket !== this.generation) return false;
-      this.publish({ task: latest ?? task, pending: false, error: "" });
     }
-    return true;
   }
+
   async control(command: TaskLifecycleCommand): Promise<boolean> {
     if (this.state.pending && command === "resume") return false;
     this.lastCommand = command;
     const ticket = ++this.generation;
     this.publish({ ...this.state, pending: true, error: "" });
     if (command === "pause" || command === "close")
-      return withTimeout(
-        this.pauseCurrent(command, ticket),
-        TASK_PAUSE_TIMEOUT_MS,
-      ).catch(() => {
+      return this.pauseCurrent(command, ticket).catch(() => {
         if (ticket === this.generation)
           this.publish({
             ...this.state,
