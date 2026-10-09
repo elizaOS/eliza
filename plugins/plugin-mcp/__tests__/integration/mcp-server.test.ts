@@ -190,9 +190,12 @@ describe("MCP tool schema dialects through model argument selection", () => {
     { tool: "implicit", pair: ["task", 0], valid: true },
     { tool: "explicit", pair: ["task", 0], valid: true },
     { tool: "legacy", pair: ["task", 0], valid: true },
+    { tool: "legacyUndeclared", pair: ["task", 0], valid: true },
     { tool: "implicit", pair: [0, "task"], valid: false },
     { tool: "explicit", pair: ["task", 0, 1], valid: false },
     { tool: "legacy", pair: [0, "task"], valid: false },
+    { tool: "legacyUndeclared", pair: [0, "task"], valid: false },
+    { tool: "declaredMismatch", pair: ["task", 0], valid: false },
     { tool: "unsupported", pair: ["task", 0], valid: false },
   ];
 
@@ -248,6 +251,8 @@ describe("MCP tool schema dialects through model argument selection", () => {
           "implicit",
           "explicit",
           "legacy",
+          "legacyUndeclared",
+          "declaredMismatch",
           "unsupported",
         ]);
         const roomId = randomUUID(),
@@ -307,6 +312,9 @@ describe("MCP tool schema dialects through model argument selection", () => {
             : [ModelType.TEXT_LARGE, ModelType.TEXT_LARGE, ModelType.TEXT_LARGE]
         );
         model.assertFixturesConsumed();
+        if (tool === "unsupported") {
+          expect(modelCalls[1]?.prompt).toContain("Unsupported MCP JSON Schema dialect");
+        }
         console.info(
           "MCP schema dialect receipt:",
           JSON.stringify({
