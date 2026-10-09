@@ -134,6 +134,10 @@ import {
   resolveCalendarWindow,
   resolveNextCalendarEventWindow,
 } from "../internal/calendar-normalize.js";
+import {
+  assertCalendarRecordsAllowed,
+  calendarRecordPolicyFailure,
+} from "../internal/calendar-record-policy.js";
 import { DEFAULT_CALENDAR_REMINDER_STEPS } from "../internal/constants.js";
 import {
   createElizaCalendarEvent,
@@ -3569,7 +3573,11 @@ export class CalendarService extends Service {
       .filter((grant) => grant.capabilities.includes("google.calendar.read"));
     const summaries: LifeOpsCalendarSummary[] = [];
     const failures: LifeOpsCalendarSourceHealth[] = [];
-    if (shouldIncludeElizaCalendar({ side, grantId: request?.grantId })) {
+    if (isElizaCalendarGrant(request?.grantId)) assertCalendarRecordsAllowed();
+    if (
+      shouldIncludeElizaCalendar({ side, grantId: request?.grantId }) &&
+      !calendarRecordPolicyFailure()
+    ) {
       summaries.push(elizaCalendarSummary());
     }
     if (grants.length > 0) {
@@ -5185,6 +5193,7 @@ export class CalendarService extends Service {
     timeMin: string;
     timeMax: string;
   }): Promise<LifeOpsCalendarFeed> {
+    assertCalendarRecordsAllowed();
     const events = await this.repo.listCalendarEvents(
       this.agentId(),
       ELIZA_CALENDAR_PROVIDER,
@@ -5694,6 +5703,7 @@ export class CalendarService extends Service {
     const recurrence = normalizeRecurrence(request.recurrence);
     const range = resolveCalendarEventRange(request, now);
     if (!request.grantId || isElizaCalendarGrant(request.grantId)) {
+      assertCalendarRecordsAllowed();
       if (calendarId !== ELIZA_CALENDAR_ID) {
         fail(
           404,
@@ -6091,6 +6101,7 @@ export class CalendarService extends Service {
     const range = resolveCalendarEventRange(request, now);
     const { startAt, endAt, timeZone, isAllDay } = range;
     if (!request.grantId || isElizaCalendarGrant(request.grantId)) {
+      assertCalendarRecordsAllowed();
       if (calendarId !== ELIZA_CALENDAR_ID) {
         fail(
           404,
@@ -6383,6 +6394,7 @@ export class CalendarService extends Service {
     eventId: string;
     calendarId?: string | null;
   }): Promise<LifeOpsCalendarEvent> {
+    assertCalendarRecordsAllowed();
     const eventId = requireNonEmptyString(args.eventId, "eventId");
     const event = isElizaCalendarEventId(eventId, this.agentId())
       ? await this.repo.getCalendarEventById(this.agentId(), eventId)
@@ -7510,6 +7522,7 @@ export class CalendarService extends Service {
     // the mutation to an external provider grant. A miss falls through to the
     // existing provider resolution unchanged.
     if (!request.grantId) {
+      assertCalendarRecordsAllowed();
       const builtIn = await this.repo.getCalendarEventByExternalId({
         agentId: this.agentId(),
         provider: ELIZA_CALENDAR_PROVIDER,

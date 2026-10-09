@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { LifeOpsConnectorGrant } from "@elizaos/contracts";
 import {
   type ActionResult,
   actionGateFailure,
@@ -41,6 +42,10 @@ import {
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { calendarAction as standaloneCalendarAction } from "../../plugin-calendar/src/actions/calendar.ts";
 import { calendarSourcesAction } from "../../plugin-calendar/src/actions/calendar-sources.ts";
+import { __testing as appleCalendarTesting } from "../../plugin-calendar/src/apple-calendar.ts";
+import { calendarPlugin } from "../../plugin-calendar/src/plugin.ts";
+import { CalendarService } from "../../plugin-calendar/src/service/CalendarService.ts";
+import { createDefaultCalendarHostGate } from "../../plugin-calendar/src/service/gate.ts";
 import { notesPlugin } from "../../plugin-notes/src/plugin.ts";
 import {
   NOTES_SERVICE_TYPE,
@@ -4128,6 +4133,254 @@ test("executor decodes typed phone operation JSON before validation and preserve
     );
     expect(mixed).toMatchObject({ valid: true, args: { operation: encoded } });
   } finally {
+    await fixture.cleanup();
+  }
+}, 120000);
+
+test("registered Calendar preserves native ownership and explicit connected sources", async () => {
+  // Real runtime, device enrollment, executor and Calendar persistence. Only
+  // the external Google/EventKit ports use synthetic provider observations.
+  appleCalendarTesting.setNativeCalendarBridgeForTest(null);
+  const fixture = await createRealTestRuntime({
+    characterName: "NativeCalendarSourceAuthority",
+    plugins: [calendarPlugin],
+  });
+  const runtime = fixture.runtime;
+  const calendar = runtime.getService<CalendarService>(
+    CalendarService.serviceType,
+  );
+  if (!calendar) throw Error("Calendar service was not registered");
+  const credential = {
+    subjectUserId: runtime.agentId,
+    installationId: randomUUID(),
+    deviceKey: "b".repeat(64),
+    capabilities: ["calendar.local-event.v1"],
+  };
+  const now = new Date().toISOString();
+  const grant: LifeOpsConnectorGrant = {
+    id: "connector-account:native-fixture",
+    agentId: runtime.agentId,
+    provider: "google",
+    connectorAccountId: "native-fixture",
+    side: "owner",
+    identity: { email: "fixture@example.test" },
+    identityEmail: "fixture@example.test",
+    grantedScopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+    capabilities: ["google.calendar.read"],
+    tokenRef: null,
+    mode: "local",
+    executionTarget: "local",
+    sourceOfTruth: "connector_account",
+    preferredByAgent: true,
+    cloudConnectionId: null,
+    metadata: {},
+    lastRefreshAt: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const googleReads: string[] = [];
+  const google = {
+    listCalendars: async () => [
+      {
+        calendarId: "primary",
+        summary: "Connected fixture",
+        primary: true,
+        accessRole: "reader",
+        selected: true,
+        timeZone: "UTC",
+      },
+    ],
+    listEventPage: async (input: { accountId: string }) => {
+      googleReads.push(input.accountId);
+      return { events: [], nextPageToken: null, nextSyncToken: null };
+    },
+  };
+  const originalGet = runtime.getService.bind(runtime);
+  const lookup = vi
+    .spyOn(runtime, "getService")
+    .mockImplementation(((name: string) =>
+      name === "google"
+        ? google
+        : originalGet(name)) as typeof runtime.getService);
+  calendar.setGate({
+    ...createDefaultCalendarHostGate(runtime),
+    getGoogleConnectorAccounts: async () => [
+      {
+        provider: "google",
+        side: "owner",
+        mode: "local",
+        defaultMode: "local",
+        availableModes: ["local"],
+        executionTarget: "local",
+        sourceOfTruth: "connector_account",
+        configured: true,
+        connected: true,
+        reason: "connected",
+        preferredByAgent: true,
+        cloudConnectionId: null,
+        identity: grant.identity,
+        grantedCapabilities: grant.capabilities,
+        grantedScopes: grant.grantedScopes,
+        expiresAt: null,
+        hasRefreshToken: true,
+        grant,
+      },
+    ],
+    requireGoogleCalendarGrant: async (_url, _mode, _side, requestedGrant) => {
+      if (requestedGrant !== grant.id)
+        throw Error("No fixture grant for this source");
+      return grant;
+    },
+  });
+  let appleReads = 0;
+  appleCalendarTesting.setNativeCalendarBridgeForTest({
+    platform: "ios",
+    checkPermissions: async () => ({ calendar: "granted", canRequest: false }),
+    listCalendars: async () => ({
+      ok: true,
+      calendars: [
+        {
+          calendarId: "apple-primary",
+          summary: "Connected Apple fixture",
+          primary: true,
+          accessRole: "owner",
+          timeZone: "UTC",
+        },
+      ],
+    }),
+    listEvents: async () => {
+      appleReads++;
+      return { ok: true, events: [] };
+    },
+    createEvent: async () => {
+      throw Error("No provider write was authorized");
+    },
+    updateEvent: async () => {
+      throw Error("No provider write was authorized");
+    },
+    deleteEvent: async () => {
+      throw Error("No provider write was authorized");
+    },
+  });
+  const url = new URL("http://internal.local/api/calendar");
+  const range = {
+    timeMin: "2026-10-08T00:00:00.000Z",
+    timeMax: "2026-10-09T00:00:00.000Z",
+    timeZone: "UTC",
+  };
+  const message = {
+    id: randomUUID(),
+    agentId: runtime.agentId,
+    entityId: runtime.agentId,
+    roomId: randomUUID(),
+    content: { text: "Read my calendar" },
+  } as Memory;
+  const execute = (params: Record<string, unknown>) =>
+    executePlannedToolCall(
+      runtime,
+      { message, userRoles: ["OWNER"], activeContexts: ["calendar"] },
+      { name: "CALENDAR", params },
+    );
+  try {
+    await new DeviceActionService(runtime).register(
+      credential,
+      "Native Calendar owner",
+    );
+    expect(
+      runtime.actions.find((action) => action.name === "CALENDAR")?.handler,
+    ).toBe(standaloneCalendarAction.handler);
+    const stored = await calendar.createCalendarEvent(url, {
+      title: "Backend fixture",
+      startAt: "2026-10-08T12:00:00.000Z",
+      endAt: "2026-10-08T13:00:00.000Z",
+      timeZone: "UTC",
+      idempotencyKey: "native-calendar-backend-fixture",
+    });
+    await withDeviceActionTurn(runtime, credential, async () => {
+      for (const subaction of ["feed", "next_event", "create_event"])
+        for (const source of [
+          {},
+          { grantId: "eliza-calendar", calendarId: "primary" },
+        ])
+          expect(
+            await execute({ subaction, details: { ...range, ...source } }),
+          ).toMatchObject({ success: false });
+      await expect(
+        calendar.getCalendarFeed(url, { ...range, grantId: "eliza-calendar" }),
+      ).rejects.toMatchObject({
+        code: "CALENDAR_NATIVE_RECORD_OWNERSHIP_REQUIRED",
+      });
+      await expect(
+        calendar.createCalendarEvent(url, {
+          title: "Must not create",
+          startAt: range.timeMin,
+          endAt: range.timeMax,
+          timeZone: "UTC",
+        }),
+      ).rejects.toMatchObject({
+        code: "CALENDAR_NATIVE_RECORD_OWNERSHIP_REQUIRED",
+      });
+      await expect(
+        calendar.getConditionalCalendarMutationTarget(url, {
+          grantId: grant.id,
+          eventId: stored.id,
+        }),
+      ).rejects.toMatchObject({
+        code: "CALENDAR_NATIVE_RECORD_OWNERSHIP_REQUIRED",
+      });
+      for (const [grantId, calendarId] of [
+        [grant.id, "primary"],
+        ["apple-calendar", "apple-primary"],
+      ]) {
+        const result = await execute({
+          subaction: "feed",
+          details: { ...range, grantId, calendarId },
+        });
+        expect(result).toMatchObject({ success: true });
+        expect(JSON.stringify(result)).not.toContain("Backend fixture");
+      }
+      const appleReadsBeforeGoogleNext = appleReads;
+      expect(
+        await execute({
+          subaction: "next_event",
+          details: {
+            grantId: grant.id,
+            calendarId: "primary",
+            timeZone: "UTC",
+          },
+        }),
+      ).toMatchObject({ success: true });
+      expect(appleReads).toBe(appleReadsBeforeGoogleNext);
+      const googleReadsBeforeAppleNext = googleReads.length;
+      expect(
+        await execute({
+          subaction: "next_event",
+          details: {
+            grantId: "apple-calendar",
+            calendarId: "apple-primary",
+            timeZone: "UTC",
+          },
+        }),
+      ).toMatchObject({ success: true });
+      expect(googleReads).toHaveLength(googleReadsBeforeAppleNext);
+      const sources = await calendar.listCalendars(url);
+      expect(sources.some((source) => source.provider === "eliza")).toBe(false);
+      expect(sources.map((source) => source.grantId)).toEqual(
+        expect.arrayContaining([grant.id, "apple-calendar"]),
+      );
+    });
+    expect(googleReads).toContain("native-fixture");
+    expect(appleReads).toBeGreaterThan(0);
+    const retained = await calendar.getCalendarFeed(url, {
+      ...range,
+      grantId: "eliza-calendar",
+    });
+    expect(retained.events.map((event) => event.title)).toEqual([
+      "Backend fixture",
+    ]);
+  } finally {
+    lookup.mockRestore();
+    appleCalendarTesting.setNativeCalendarBridgeForTest(undefined as never);
     await fixture.cleanup();
   }
 }, 120000);
