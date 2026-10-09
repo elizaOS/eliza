@@ -1071,7 +1071,7 @@ async function admitWithFundingPolicy(
     // A zero-cost outcome can settle against the admission observation. The
     // gate ignores older revisions and cannot raise an equal-revision ceiling.
     // Paid outcomes replace this with the balance returned by the debit itself.
-    let settledBalance: InferenceAdmissionBalanceObservation | undefined = {
+    let settledBalance: InferenceAdmissionBalanceObservation = {
       balanceUsd: balanceHint.balanceUsd,
       balanceRevision: balanceHint.balanceRevision,
     };
@@ -1091,16 +1091,10 @@ async function admitWithFundingPolicy(
         preserveBalanceHintDuringFencedHandoff: true,
         inferenceBalanceFence,
       });
-      // An absent organization has no authoritative balance observation. Keep
-      // the existing read-and-fail behavior instead of treating its sentinel
-      // zero balance/revision as evidence that the lease can be settled.
-      settledBalance =
-        outcome.status === "uncollected" && outcome.reason === "org_not_found"
-          ? undefined
-          : {
-              balanceUsd: outcome.newBalanceUsd,
-              balanceRevision: outcome.balanceRevision,
-            };
+      settledBalance = {
+        balanceUsd: outcome.newBalanceUsd,
+        balanceRevision: outcome.balanceRevision,
+      };
       return {
         reservedAmount: outcome.collectedAmountUsd,
         actualCost: actualCostUsd,
