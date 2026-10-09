@@ -39,6 +39,7 @@ import {
   describeUserReference,
   ElizaError,
   normalizeEffectReceipt,
+  resolveActionGateFailure,
   resolveOptimizedPromptForRuntime,
   unwrapUserMessageText,
   userReferenceLogView,
@@ -3065,6 +3066,7 @@ async function loadCreateEventCalendarContext(
   hasCalendarRead: boolean,
   fallbackTimeZone: string = resolveDefaultTimeZone(),
   configuredTimeZone: string | null = null,
+  grantId?: string,
 ): Promise<CreateEventCalendarContext | null> {
   if (!hasCalendarRead) {
     return null;
@@ -3073,8 +3075,9 @@ async function loadCreateEventCalendarContext(
   const requestTimeZone = resolveCalendarTimeZone(details, fallbackTimeZone);
   const feed = await service.getCalendarFeed(INTERNAL_URL, {
     includeHiddenCalendars: true,
-    // A planner-proposed destination must not hide other authorized sources
-    // before extraction resolves the account from the user request.
+    ...(grantId ? { grantId } : {}),
+    // Ordinary turns review all authorized sources before destination extraction.
+    // Native turns retain their explicit connected-source boundary instead.
     timeZone: requestTimeZone,
     forceSync: true,
     ...buildLocalDayRange(requestTimeZone, 0, 14),
@@ -3092,7 +3095,10 @@ async function loadCreateEventCalendarContext(
       configuredTimeZone,
     ),
     feed,
-    calendars: await service.listCalendars(INTERNAL_URL),
+    calendars: await service.listCalendars(
+      INTERNAL_URL,
+      grantId ? { grantId } : undefined,
+    ),
   };
 }
 
@@ -5191,6 +5197,50 @@ const calendarAction: CalendarHandlerAction = {
       params.title,
       params.query,
     ]);
+    // The real action remains available for connected providers. Ask the
+    // existing host policy whether backend records are forbidden on this turn.
+    const nativeCalendarFailure = await resolveActionGateFailure(
+      runtime,
+      { name: "CALENDAR", tags: ["resource:calendar-records"] },
+      { message, evaluateContexts: false },
+    );
+    const nativeGrantId = nativeCalendarFailure
+      ? connectorGrantIdDetail(details)
+      : undefined;
+    if (
+      nativeCalendarFailure &&
+      (!nativeGrantId || nativeGrantId === ELIZA_CALENDAR_GRANT_ID)
+    ) {
+      return {
+        success: false,
+        transcriptVisibility: "internal",
+        modelReplyRequired: true,
+        turnComplete: false,
+        text: nativeCalendarFailure,
+        effectReceipts: [
+          calendarFailedReceipt({
+            message,
+            operation: "calendar.request.evaluate",
+            code: "CALENDAR_NATIVE_RESOURCE_REQUIRED",
+            retryable: false,
+            acceptance: "rejected",
+          }),
+        ],
+        data: {
+          actionName: "CALENDAR",
+          error: "CALENDAR_NATIVE_RESOURCE_REQUIRED",
+          retryable: false,
+        },
+      };
+    }
+    const requireNativeCalendarSource = (grantId: string | undefined) => {
+      if (nativeCalendarFailure && nativeGrantId && grantId !== nativeGrantId)
+        throw new CalendarServiceError(
+          403,
+          nativeCalendarFailure,
+          "CALENDAR_NATIVE_RESOURCE_REQUIRED",
+        );
+    };
     const calendarZone = await resolveOwnerCalendarTimeZone(
       runtime,
       new Date(),
@@ -5511,6 +5561,7 @@ const calendarAction: CalendarHandlerAction = {
         const context = await service.getNextCalendarEventContext(
           INTERNAL_URL,
           {
+            ...(nativeGrantId ? { grantId: nativeGrantId } : {}),
             calendarId: calendarIdDetail(details),
             timeZone: planningTimeZone,
           },
@@ -5540,6 +5591,7 @@ const calendarAction: CalendarHandlerAction = {
           calendarZone.source === "runtime-default"
             ? null
             : calendarZone.timeZone,
+          nativeGrantId,
         );
         if (!calendarContext) {
           throw new CalendarServiceError(
@@ -5584,6 +5636,7 @@ const calendarAction: CalendarHandlerAction = {
             data: { requiresInput: true, missing: ["creation details"] },
           });
         }
+        requireNativeCalendarSource(destination.key.grantId);
         const createEventBuild = buildCreateEventRequest({
           details: {
             ...details,
@@ -6079,6 +6132,7 @@ const calendarAction: CalendarHandlerAction = {
           );
           resolvedCalendarId = targetEvent.calendarId;
         }
+        requireNativeCalendarSource(targetEvent.grantId ?? undefined);
         const extractedForUpdate = targetEvent
           ? await inferUpdateEventDetails(
               runtime,
@@ -6570,6 +6624,7 @@ const calendarAction: CalendarHandlerAction = {
             }),
           });
         }
+        requireNativeCalendarSource(targetEvent.grantId ?? undefined);
         if (
           isRecurringCalendarEvent(targetEvent) &&
           !recurrenceScopeForDelete
