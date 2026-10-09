@@ -59,12 +59,15 @@ import { notesPlugin } from "../../../plugins/plugin-notes/src/plugin.ts";
 import { briefAction } from "../../../plugins/plugin-personal-assistant/src/actions/brief.ts";
 import { createTrackedWorkRecapDirectRoutingRule } from "../../../plugins/plugin-personal-assistant/src/lifeops/briefing/direct-routing.ts";
 import { viewsAction } from "../src/actions/views.ts";
+import { summarizeRuntimeActionResults } from "../src/api/chat-routes.ts";
+import { enrichChatUiViewMetadata } from "../src/api/chat-view-metadata.ts";
 import { registerInProcessApi } from "../src/api/in-process-api.ts";
 import { normalizeWsClientId } from "../src/api/server-helpers-auth.ts";
 import { closeViewInteractionHost } from "../src/api/view-interaction-host.ts";
 import {
   closeRuntimeViewRegistry,
   getView,
+  listViews,
   registerBuiltinViews,
   registerPluginViews,
 } from "../src/api/views-registry.ts";
@@ -102,6 +105,7 @@ async function fixture(
   suppliedRuntime?: IAgentRuntime,
   handleTurn?: () => Promise<unknown>,
   inProcess = false,
+  missingNotesBundle = false,
 ) {
   const frames: Array<{ client: string; frame: object }> = [];
   let requests = 0;
@@ -133,7 +137,14 @@ async function fixture(
       name: "test-nav-views",
       description: "Fixture view owner",
       views: [
-        { id: "notes", label: "Notes", path: "/notes", bundleUrl: "/notes.js" },
+        {
+          id: "notes",
+          label: "Notes",
+          path: "/notes",
+          ...(missingNotesBundle
+            ? { bundlePath: "missing-native-counterpart-bundle.js" }
+            : { bundleUrl: "/notes.js" }),
+        },
         {
           id: "calendar",
           label: "Calendar",
@@ -1330,17 +1341,39 @@ describe("model-selected host navigation", () => {
     { reply: "Chat is open.", wrongDestination: false },
     { reply: "Messages is open.", wrongDestination: true },
     { reply: "Calendar is open.", wrongDestination: true },
+    {
+      reply: "Notes is open.",
+      wrongDestination: false,
+      missingNativeBundle: true,
+    },
   ])(
     "runs the canonical pipeline and gates the held reply ($reply)",
-    async ({ reply, wrongDestination }) => {
-      const f = await fixture();
+    async ({ reply, wrongDestination, missingNativeBundle = false }) => {
+      const f = await fixture(
+        1,
+        undefined,
+        undefined,
+        missingNativeBundle,
+        missingNativeBundle,
+      );
+      if (missingNativeBundle)
+        vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
+      const destination = missingNativeBundle ? "notes" : "chat";
       const input = clientMessage();
-      input.content.text = "Open Home";
+      input.content.text = missingNativeBundle ? "Open Notes" : "Open Home";
       input.content.metadata = {
         viewClientId: "origin-client",
         uiView: "notes",
         uiViewCapabilities: ["PRIVATE_CONTROL_SENTINEL"],
+        ...(missingNativeBundle ? { viewDelivery: "completed-action" } : {}),
       };
+      if (missingNativeBundle) {
+        // Exercise the actual HTTP metadata producer before the canonical pipeline.
+        input.content.metadata = enrichChatUiViewMetadata(
+          input.content.metadata,
+          listViews(f.runtime, { viewType: "gui" }),
+        ) as Memory["content"]["metadata"];
+      }
       const fields = new ResponseHandlerFieldRegistry();
       for (const field of [
         ...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
@@ -1409,7 +1442,7 @@ describe("model-selected host navigation", () => {
                 emotion: "none",
                 visualContinuation: {
                   disposition: "direct",
-                  viewId: "chat",
+                  viewId: destination,
                   reason: "Only requested navigation",
                 },
               },
@@ -1474,10 +1507,51 @@ describe("model-selected host navigation", () => {
         expect(useModel).toHaveBeenCalledTimes(1);
         expect(result).toMatchObject({
           kind: "planned_reply",
-          result: { responseContent: { text: reply } },
+          result: {
+            responseContent: {
+              text: missingNativeBundle ? "Opening Notes." : reply,
+            },
+          },
         });
+        if (missingNativeBundle) {
+          if (result.kind !== "planned_reply")
+            throw Error("Missing native navigation reply");
+          expect(getView(f.runtime, "notes")?.available).toBe(false);
+          expect(result.result.actionResults).toEqual([
+            expect.objectContaining({
+              values: expect.objectContaining({
+                navigationPrepared: true,
+                completedActionDelivered: false,
+              }),
+            }),
+          ]);
+          expect(
+            findViewActionHandoff(
+              summarizeRuntimeActionResults(
+                f.runtime as AgentRuntime,
+                input.id,
+                result.result.actionResults,
+              ),
+            ),
+          ).toMatchObject({
+            viewId: "notes",
+            navigationPrepared: true,
+            navigationBinding: {
+              clientId: "origin-client",
+              viewId: "notes",
+              installationId: getView(f.runtime, "notes")?.installationId,
+            },
+          });
+          expect(
+            getCurrentViewState(f.runtime, {
+              hostKey: f.hostKey,
+              clientId: "origin-client",
+            }),
+          ).toBeNull();
+          expect(f.kernelRequests()).toBe(1);
+        }
       }
-      expect(f.frames).toHaveLength(1);
+      expect(f.frames).toHaveLength(missingNativeBundle ? 0 : 1);
     },
   );
   it.each([
@@ -2229,6 +2303,19 @@ describe("inferred visual scope invalidation", () => {
 });
 
 describe("native completed-action navigation", () => {
+  it("keeps an absent hosted bundle unavailable to ordinary originating-client navigation", async () => {
+    const f = await fixture(1, undefined, undefined, false, true);
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      viewDelivery: "originating-client",
+    };
+    const selected = await selectNavigation(f, input);
+    expect(getView(f.runtime, "notes")?.available).toBe(false);
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    expect(f.requests()).toBe(0);
+    expect(f.frames).toHaveLength(0);
+  });
   it("retires an unclaimed prepared navigation with its owning host", async () => {
     const f = await fixture(0, undefined, undefined, true);
     vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
@@ -2261,7 +2348,7 @@ describe("native completed-action navigation", () => {
   });
 
   it("prepares through the registered kernel and commits only an exact owner/renderer claim and switch result", async () => {
-    const f = await fixture(0, undefined, undefined, true);
+    const f = await fixture(0, undefined, undefined, true, true);
     vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
     const input = clientMessage();
     input.content.metadata = {
@@ -2270,6 +2357,7 @@ describe("native completed-action navigation", () => {
       uiView: "chat",
     };
     await selectNavigation(f, input);
+    expect(getView(f.runtime, "notes")?.available).toBe(false);
     const events = vi.spyOn(f.runtime, "emitEvent");
     const result = await show(f.runtime, "notes", input);
     expect(result).toMatchObject({
