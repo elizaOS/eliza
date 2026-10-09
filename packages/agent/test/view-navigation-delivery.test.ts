@@ -2269,6 +2269,7 @@ describe("native completed-action navigation", () => {
       uiView: "chat",
     };
     await selectNavigation(f, input);
+    const events = vi.spyOn(f.runtime, "emitEvent");
     const result = await show(f.runtime, "notes", input);
     expect(result).toMatchObject({
       success: true,
@@ -2359,6 +2360,7 @@ describe("native completed-action navigation", () => {
     await vi.waitFor(() =>
       expect(getCurrentViewState(f.runtime, scope)?.viewId).toBe("notes"),
     );
+    expect(events).not.toHaveBeenCalled();
     expect(
       await (await post("/api/views/interact-result", settled)).json(),
     ).toMatchObject({ accepted: false });

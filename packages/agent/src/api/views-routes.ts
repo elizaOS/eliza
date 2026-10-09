@@ -756,7 +756,10 @@ export async function handleViewsRoutes(
     // process-global current-view/provider context would leak one client's
     // deep link to other clients and leave ghost state when its socket is stale.
     // The targeted frame or completed action is the only commit edge for it.
-    const commitCurrentViewState = (committedViewPath: string | null) => {
+    const commitCurrentViewState = (
+      committedViewPath: string | null,
+      announceSwitch = true,
+    ) => {
       if (isCloseNavigation) {
         clearCurrentViewState(viewRuntime, scope);
         return;
@@ -805,7 +808,7 @@ export async function handleViewsRoutes(
       // Emit the first-class VIEW_SWITCHED interaction event (#8792) so a
       // proactive decider can comment. Only on a real change (no spam on
       // re-navigates), and fire-and-forget so it never blocks the response.
-      if (viewChanged && ctx.runtime) {
+      if (viewChanged && ctx.runtime && announceSwitch) {
         void ctx.runtime
           .emitEvent(EventType.VIEW_SWITCHED, {
             runtime: ctx.runtime,
@@ -887,7 +890,8 @@ export async function handleViewsRoutes(
         .then((result) => {
           if (!result.success) return;
           assertRuntimeViewEntry(viewRuntime, entry);
-          commitCurrentViewState(entry.path ?? null);
+          // Explicit native navigation is not an invitation to a proactive greeting.
+          commitCurrentViewState(entry.path ?? null, false);
         })
         .catch((error) => {
           viewRuntime.reportError("VIEWS.preparedNavigation", error, {

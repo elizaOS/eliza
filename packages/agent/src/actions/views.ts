@@ -208,6 +208,25 @@ export const viewsAction: Action = {
           "cancelled",
           "Navigation was cancelled before confirmation.",
         );
+      const navigationBinding = {
+        requestId: handoffId,
+        clientId,
+        viewId: view.id,
+        viewType: "gui",
+        installationId: view.installationId,
+      };
+      const returnedBinding = body.navigationBinding;
+      if (
+        completedAction &&
+        (!isObjectRecord(returnedBinding) ||
+          Object.entries(navigationBinding).some(
+            ([key, value]) => returnedBinding[key] !== value,
+          ))
+      )
+        return fail(
+          "not-delivered",
+          "Navigation preparation did not retain its exact renderer binding.",
+        );
       const receipt = {
         effect: "view_navigation",
         status: completedAction ? "prepared" : "delivered",
@@ -226,8 +245,7 @@ export const viewsAction: Action = {
         transcriptVisibility: "internal",
         ...(completedAction
           ? {
-              userFacingText:
-                "Navigation prepared; waiting for this screen to apply it.",
+              userFacingText: `Opening ${view.label}.`,
               verifiedUserFacing: true,
             }
           : { modelReplyRequired: true }),
@@ -242,7 +260,7 @@ export const viewsAction: Action = {
           ...(completedAction
             ? {
                 navigationPrepared: true,
-                navigationBinding: body.navigationBinding,
+                navigationBinding,
               }
             : {}),
         },

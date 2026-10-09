@@ -127,5 +127,6 @@ export function createCompletedActionNavigationState(readPath: () => string) {
 		dispatchCompletedActionNavigation,
 		markCompletedActionNavigationHandled,
 		resetCompletedActionNavigationForTests,
+		dispose: resetCompletedActionNavigationForTests,
 	};
 }
