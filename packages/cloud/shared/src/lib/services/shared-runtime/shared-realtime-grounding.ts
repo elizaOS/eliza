@@ -894,6 +894,37 @@ export function validateSharedRealtimeReply(
   return count > 0 && reply.slice(cursor).trim().length === 0;
 }
 
+/** Normalize explicit magnitude spellings only for general public citations. */
+function normalizeGeneralNumericFormats(text: string): string | undefined {
+  let invalid = false;
+  const normalized = text.replace(
+    /(?<![\p{L}\p{N}_.+-])([+-]?\d[\d,.]*)(?:[ \t]+(thousand|million|billion)\b|([kmb])(?![\p{L}\p{N}_/]))/giu,
+    (original, rawNumber: string, word: string | undefined, suffix: string | undefined) => {
+      // Lowercase m can mean metres; MB and m/s are not magnitude spellings.
+      if (suffix && !["k", "K", "M", "B"].includes(suffix)) return original;
+      if (!/^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/u.test(rawNumber)) {
+        invalid = true;
+        return original;
+      }
+      const magnitude = word?.toLowerCase();
+      const exponent =
+        magnitude === "thousand" || suffix === "k" || suffix === "K"
+          ? 3
+          : magnitude === "million" || suffix === "M"
+            ? 6
+            : 9;
+      // Decimal exponent parsing avoids multiplication roundoff (e.g.1.005k).
+      const expanded = Number(`${rawNumber.replaceAll(",", "")}e${exponent}`);
+      if (!Number.isFinite(expanded) || Math.abs(expanded) > Number.MAX_SAFE_INTEGER) {
+        invalid = true;
+        return original;
+      }
+      return String(expanded);
+    },
+  );
+  return invalid ? undefined : normalized;
+}
+
 /**
  * General RAG checks citation provenance and numeric presence, not semantic
  * entailment. In particular, it cannot prove same-page attribution/scope.
@@ -920,8 +951,12 @@ function generalPublicClaimSupported(
   }
   // URLs are provenance, not numeric claims. Source text is bounded by the
   // current-turn receipt; never search another result to support this citation.
-  const factualText = normalized.replace(HTTP_URL, " ");
-  const evidence = evidenceClauses(source.text).join("\n");
+  const factualText = normalizeGeneralNumericFormats(normalized.replace(HTTP_URL, " "));
+  const evidence = normalizeGeneralNumericFormats(evidenceClauses(source.text).join("\n"));
+  if (factualText === undefined || evidence === undefined) {
+    diagnostic.failedPredicateMask |= 2;
+    return false;
+  }
   const numbers = numericValues(evidence);
   if (numericValues(factualText).some((value) => !numericSupported(value, numbers))) {
     diagnostic.failedPredicateMask |= 2;

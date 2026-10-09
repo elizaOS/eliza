@@ -25,7 +25,7 @@ const PROMPT = "What is the current weather in Springfield, Missouri?";
 const GENERAL_TOPIC = "Gmail API documentation rate limits";
 const GENERAL_PROMPT = `Search the web for ${GENERAL_TOPIC}.`;
 const GENERAL_SOURCE = "https://developers.google.com/gmail/api/reference/quotas";
-const GENERAL_CLAIM = "Gmail API documentation describes API rate limits.";
+const GENERAL_CLAIM = "The per-project quota is 1,200,000 units per minute; the per-user quota is 6,000 units per minute.";
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_KEY = process.env.CEREBRAS_API_KEY;
 const ORIGINAL_FALLBACK_KEY = process.env.OPENROUTER_API_KEY;
@@ -540,7 +540,7 @@ test("general Gmail documentation uses canonical query and source footer after r
   const prior = await exercise();
   expect(prior.result?.internalGrounding?.kind).toBe("web_search");
   if (!prior.result) throw new Error("Actual weather history was not produced");
-  const paraphrase = "Gmail API calls are rate-limited.";
+  const paraphrase = "Each project can use 1.2 million quota units per minute, and each user can use 6k quota units per minute.";
   const actual = await exercise({ general: true, history: prior.result.history }, `${paraphrase} [[SOURCE_URL:${GENERAL_SOURCE}]]`);
   expect(actual.failed).toBe(false);
   expect(actual.publicHttpCalls).toBe(1);
