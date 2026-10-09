@@ -336,9 +336,14 @@ export function resolveRouteForWorkdir(
       continue;
     }
     const relative = path.relative(canonicalRouteRoot, target);
+    // Containment is about the ".." segment, not the ".." prefix: a child
+    // directory named "..data" is inside the tree, not an escape. (The
+    // coding-tools path helper makes the same distinction.)
     const contained =
       relative === "" ||
-      (!relative.startsWith("..") && !path.isAbsolute(relative));
+      (relative !== ".." &&
+        !relative.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(relative));
     if (contained) candidates.push({ route, canonicalRouteRoot });
   }
   // A route table may intentionally contain a broad checkout plus narrower
