@@ -22,10 +22,15 @@ import {
   it,
   vi,
 } from "vitest";
+import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import {
-  type CalendarActionDeps,
-  createCalendarActionRunner,
-} from "../src/actions/calendar-handler.js";
+  DeviceActionService,
+  withDeviceActionTurn,
+} from "../../plugin-assistant/src/services/device-actions/service.ts";
+import { createCalendarActionRunner } from "../src/actions/calendar-handler.js";
+import type { CalendarActionDeps } from "../src/actions/deps.js";
+import { __testing as appleTesting } from "../src/apple-calendar.ts";
+import { calendarPlugin } from "../src/plugin.ts";
 import {
   type CalendarHostGate,
   CalendarService,
@@ -41,6 +46,232 @@ const WINDOW = {
   timeMin: "2026-07-28T00:00:00.000Z",
   timeMax: "2026-07-29T00:00:00.000Z",
 };
+
+it("registered CALENDAR cannot substitute backend records for an enrolled phone", async () => {
+  const fixture = await createRealTestRuntime({
+    characterName: "NativeCalendarSourceGate",
+    plugins: [calendarPlugin],
+  });
+  const runtime = fixture.runtime;
+  const credentials = {
+    subjectUserId: runtime.agentId,
+    installationId: "native-calendar-fixture",
+    deviceKey: "a".repeat(64),
+    capabilities: ["calendar.local-event.v1"],
+  };
+  try {
+    await new DeviceActionService(runtime).register(
+      credentials,
+      "Native Calendar fixture",
+    );
+    const action = runtime.actions.find((action) => action.name === "CALENDAR");
+    if (!action)
+      throw Error("The production CALENDAR action was not registered");
+    expect(action.tags).not.toContain("resource:calendar-records");
+    const calendar = runtime.getService<CalendarService>(
+      CalendarService.serviceType,
+    );
+    if (!calendar) throw Error("The production Calendar service did not start");
+    const feed = vi.spyOn(calendar, "getCalendarFeed");
+    const input = {
+      id: MESSAGE_ID,
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      roomId: ROOM_ID,
+      content: { text: "Read my phone Calendar", source: "client_chat" },
+    } as Memory;
+    const execute = (
+      details: Record<string, unknown> = {},
+      subaction = "feed",
+    ) =>
+      executePlannedToolCall(
+        runtime,
+        {
+          message: input,
+          activeContexts: ["calendar"],
+          userRoles: ["OWNER"],
+          callback: async () => [],
+        },
+        {
+          name: "CALENDAR",
+          params: {
+            subaction,
+            details: { ...WINDOW, timeZone: "UTC", ...details },
+          },
+        },
+        { actions: [action] },
+      );
+    const rejected = await withDeviceActionTurn(runtime, credentials, () =>
+      execute(),
+    );
+    expect(rejected.success).toBe(false);
+    expect(feed).not.toHaveBeenCalled();
+    expect(rejected.effectReceipts?.[0]).toMatchObject({ outcome: "failed" });
+    expect(rejected.data).toMatchObject({
+      error: "CALENDAR_NATIVE_RESOURCE_REQUIRED",
+    });
+    const explicitBackend = await withDeviceActionTurn(
+      runtime,
+      credentials,
+      () => execute({ grantId: "eliza-calendar" }),
+    );
+    expect(explicitBackend.success).toBe(false);
+    expect(feed).not.toHaveBeenCalled();
+    for (const subaction of [
+      "create_event",
+      "next_event",
+      "update_event",
+      "delete_event",
+    ])
+      expect(
+        (
+          await withDeviceActionTurn(runtime, credentials, () =>
+            execute({}, subaction),
+          )
+        ).success,
+      ).toBe(false);
+    expect(feed).not.toHaveBeenCalled();
+    await expect(
+      withDeviceActionTurn(
+        runtime,
+        { ...credentials, deviceKey: "b".repeat(64) },
+        () => execute(),
+      ),
+    ).rejects.toThrow("Device unavailable");
+    // Client metadata alone is not native authority; ordinary owner use stays available.
+    input.content.metadata = {
+      clientDevice: { context: { view: "calendar" } },
+    };
+    const normal = await execute();
+    expect(normal.success).toBe(true);
+    expect(feed).toHaveBeenCalledOnce();
+    const googleGrant = {
+      id: "connector-account:fixture-google",
+      agentId: runtime.agentId,
+      provider: "google",
+      connectorAccountId: "fixture-google",
+      side: "owner",
+      identity: { email: "fixture@example.test" },
+      identityEmail: "fixture@example.test",
+      capabilities: ["google.calendar.read"],
+      grantedScopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+      mode: "local",
+      executionTarget: "local",
+      sourceOfTruth: "connector_account",
+      metadata: {},
+    };
+    calendar.setGate({
+      ...gate(),
+      getGoogleConnectorAccounts: async () => [{ grant: googleGrant }] as never,
+      requireGoogleCalendarGrant: async (_url, _mode, _side, grantId) => {
+        if (grantId !== googleGrant.id) throw Error("Unknown fixture grant");
+        return googleGrant as never;
+      },
+    });
+    const services = runtime.getService.bind(runtime);
+    const googlePages = vi.fn(async () => ({
+      events: [],
+      nextPageToken: null,
+      nextSyncToken: null,
+    }));
+    vi.spyOn(runtime, "getService").mockImplementation((name: string) =>
+      name === "google"
+        ? ({
+            listCalendars: async () => [
+              {
+                calendarId: "primary",
+                summary: "Connected Google fixture",
+                primary: true,
+                accessRole: "owner",
+                timeZone: "UTC",
+                selected: true,
+              },
+            ],
+            listEventPage: googlePages,
+          } as never)
+        : services(name),
+    );
+    appleTesting.setNativeCalendarBridgeForTest({
+      platform: "fixture",
+      checkPermissions: async () => ({
+        calendar: "granted",
+        canRequest: false,
+        fullAccessSupported: true,
+      }),
+      listCalendars: async () => ({
+        ok: true,
+        calendars: [
+          {
+            calendarId: "fixture-apple",
+            summary: "Connected Apple fixture",
+            accessRole: "owner",
+            timeZone: "UTC",
+          },
+        ],
+      }),
+      listEvents: async () => ({ ok: true, events: [] }),
+      createEvent: async () => {
+        throw Error("No fixture write expected");
+      },
+      updateEvent: async () => {
+        throw Error("No fixture write expected");
+      },
+      deleteEvent: async () => {
+        throw Error("No fixture write expected");
+      },
+    });
+    for (const [grantId, calendarId] of [
+      [googleGrant.id, "primary"],
+      ["apple-calendar", "fixture-apple"],
+    ]) {
+      const result = await withDeviceActionTurn(runtime, credentials, () =>
+        execute({ grantId, calendarId, includeHiddenCalendars: true }),
+      );
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        sources?: Array<{ key: { grantId: string } }>;
+      };
+      expect(data.sources?.length).toBeGreaterThan(0);
+      expect(
+        data.sources?.every((source) => source.key.grantId === grantId),
+      ).toBe(true);
+      expect(JSON.stringify(result)).not.toContain(
+        '"grantId":"eliza-calendar"',
+      );
+      const next = await withDeviceActionTurn(runtime, credentials, () =>
+        execute({ grantId, calendarId }, "next_event"),
+      );
+      expect(next.success).toBe(true);
+      expect(feed.mock.lastCall?.[1]).toMatchObject({ grantId });
+      expect(JSON.stringify(next)).not.toContain('"grantId":"eliza-calendar"');
+      const list = vi.spyOn(calendar, "listCalendars");
+      const extraction = vi.spyOn(runtime, "useModel").mockResolvedValue(
+        JSON.stringify({
+          requiresInput: true,
+          clarification: "Fixture needs an event time",
+        }),
+      );
+      await withDeviceActionTurn(runtime, credentials, () =>
+        execute({ grantId }, "create_event"),
+      );
+      expect(list).toHaveBeenLastCalledWith(expect.any(URL), { grantId });
+      expect(feed.mock.lastCall?.[1]).toMatchObject({ grantId });
+      expect(extraction).toHaveBeenCalledOnce();
+      extraction.mockRestore();
+      list.mockRestore();
+    }
+    expect(googlePages).toHaveBeenCalled();
+    const unknown = await withDeviceActionTurn(runtime, credentials, () =>
+      execute({ grantId: "connector-account:unavailable" }),
+    );
+    // The established feed contract records unavailable separately from empty.
+    expect(unknown.data).toMatchObject({ state: "unavailable" });
+    expect(JSON.stringify(unknown)).not.toContain('"grantId":"eliza-calendar"');
+  } finally {
+    appleTesting.setNativeCalendarBridgeForTest(null);
+    await fixture.cleanup();
+  }
+}, 60000);
 
 const CREATE_EVENTS_TABLE = `CREATE TABLE app_calendar.life_calendar_events (
   id TEXT PRIMARY KEY,
