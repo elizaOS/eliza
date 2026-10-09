@@ -45,7 +45,7 @@ function stripThinkingAndMarkup(input: string): string {
 	text = text.replace(/```[\s\S]*?```/g, " ");
 	text = text.replace(/`([^`]+)`/g, "$1");
 	text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
-	text = text.replace(/<[^>\n]+>/g, " ");
+	text = text.replace(/<(?:\/?[A-Za-z]|!)[^<>\n]*>/g, " ");
 	text = stripUrls(text);
 	return text;
 }
