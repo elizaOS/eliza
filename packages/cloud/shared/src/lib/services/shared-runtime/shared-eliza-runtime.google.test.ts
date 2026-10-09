@@ -66,8 +66,9 @@ async function exercise(
   const publicTopic = 'Gmail API documentation for C# client SDK "rate  limits"';
   const weatherQuery = "current public weather in Phoenix, AZ";
   const publicUrl = "https://developers.google.com/gmail/api/reference/quotas";
+  const todoContent = "Stretch fixture shoulders";
   const reply = compoundMissing
-    ? "Your todo list is empty. I could not verify current weather."
+    ? `Your checklist includes ${todoContent}. I could not verify current weather.`
     : weatherRead
       ? "I could not verify current weather from the available source."
       : publicRead
@@ -232,7 +233,23 @@ async function exercise(
         expect(filter.agentId).toBe(todoScope.agentId);
         expect(filter.entityId).toBe(todoScope.entityId);
         todoReads += 1;
-        return [];
+        return [
+          {
+            id: stringToUuid("compound-fixture-todo"),
+            ...todoScope,
+            roomId: null,
+            worldId: null,
+            content: todoContent,
+            activeForm: "Stretching fixture shoulders",
+            status: "pending",
+            parentTodoId: null,
+            parentTrajectoryStepId: null,
+            metadata: {},
+            createdAt: new Date("2026-10-08T00:00:00Z"),
+            updatedAt: new Date("2026-10-08T00:00:00Z"),
+            completedAt: null,
+          },
+        ];
       },
       applyMutation: unrequestedTodoWrite,
       readCutoverState: unrequestedTodoWrite,
@@ -343,10 +360,15 @@ async function exercise(
       expect(turn.actionResults).toContainEqual(
         expect.objectContaining({
           success: true,
-          data: expect.objectContaining({ actionName: "TODO", op: "list" }),
+          data: expect.objectContaining({
+            actionName: "TODO",
+            op: "list",
+            todos: expect.arrayContaining([expect.objectContaining({ content: todoContent })]),
+          }),
         }),
       );
-      expect(turn.reply).toContain("todo");
+      expect(turn.reply).toContain(todoContent);
+      expect(turn.reply).toContain("could not verify current weather");
     }
     if (publicRead) {
       expect(webRegistered).toBe(kind === "general" || kind === "weather");
@@ -356,7 +378,7 @@ async function exercise(
       expect(reads).toBe(0);
       expect(binds).toBe(0);
       expect(
-        turn.actionResults?.some((result) => result.data?.actionName === "GOOGLE_CONTEXT"),
+        (turn.actionResults ?? []).some((result) => result.data?.actionName === "GOOGLE_CONTEXT"),
       ).toBe(false);
       if (!weatherRead) {
         expect(turn.reply).toContain("Source:");
