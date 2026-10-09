@@ -165,7 +165,10 @@ function env(): AppEnv["Bindings"] {
 function request(path: string) {
   return app.fetch(
     new Request(`https://fixture.example.test${path}`, {
-      headers: { "X-API-Key": SECRET },
+      headers:
+        authMethod === "api_key"
+          ? { "X-API-Key": SECRET }
+          : { Cookie: "steward-token=synthetic" },
     }),
     env(),
     { waitUntil() {}, passThroughOnException() {} },
