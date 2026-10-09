@@ -4,7 +4,9 @@ The Node runtime kernel: plugin registration, authorization, state composition,
 model dispatch, memory, cancellation and effect settlement.
 
 Use `@elizaos/core` for the Node runtime and `@elizaos/core/protocol` for
-browser-safe contracts and pure helpers. Internal modules import their defining
+browser-safe contracts and pure helpers. Renderer speech consumers use
+`@elizaos/core/speech` for speech text helpers and structured errors without
+loading the complete protocol catalog. Internal modules import their defining
 files directly. Implementation leaves are private; JSON catalog assets retain
 explicit data exports. Hosts compose database adapters, model providers and
 `@elizaos/plugin-assistant` explicitly.

@@ -4,6 +4,11 @@ Shared React UI library for elizaOS apps: primitives, composites, layouts, the t
 instrumentation, GenUI, voice, and host capability interfaces.
 
 Public JavaScript APIs use the package root; UI internals import owner files directly.
+Batch voice hosts use `@elizaos/ui/voice/batch-conversation` to load the coordinator
+without the React UI root. This public entry owns no credentials, media or provider
+lifecycle. Hosts must await its stop promise before reporting media retirement;
+an idle state alone does not confirm cleanup. Run `test:batch-voice-package` for
+packed external types, runtime and browser-bundle verification.
 The app owns renderer composition and native transport selection. Consumers render
 domain DTOs imported from `@elizaos/contracts`; business logic belongs to domain services. Use `bun run --cwd packages/ui storybook` for
 component development. Changes reaching the app require its visual audit.
