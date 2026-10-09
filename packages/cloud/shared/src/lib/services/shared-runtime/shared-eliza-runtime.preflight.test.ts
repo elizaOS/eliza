@@ -4,7 +4,7 @@
  * selection for a qualified single read. Post-tool model work remains canonical.
  */
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import { AgentRuntime, ChannelType } from "@elizaos/core/edge";
+import { AgentRuntime, ChannelType, type UUID } from "@elizaos/core/edge";
 import type { RunSharedAgentTurnResult } from "./run-shared-agent-turn";
 import { SharedRuntimeTurnError } from "./shared-runtime-errors";
 
@@ -12,6 +12,7 @@ const SOURCE_URL = "https://weather.example/current";
 const CLAIM = "Springfield, Missouri is 75 Fahrenheit and sunny.";
 const MARKED = `${CLAIM} [[SOURCE_URL:${SOURCE_URL}]]`;
 const QUERY = "current public weather in Springfield, Missouri";
+const USER_MESSAGE_ID = "35fa7289-3e70-4c0b-a64a-52fb8cc9a10d";
 const PROMPT = "What is the current weather in Springfield, Missouri?";
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_KEY = process.env.CEREBRAS_API_KEY;
@@ -33,7 +34,7 @@ afterEach(() => {
   else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
 });
 
-type Mode = { compound?: boolean; deny?: boolean; ordinary?: boolean; unavailable?: boolean };
+type Mode = { compound?: boolean; deny?: boolean; ordinary?: boolean; unavailable?: boolean; expectGroundingFailure?: boolean };
 function modelResponse(content: string | null, calls: Array<{ name: string; args: object }> = []) {
   return Response.json({
     id: "offline-preflight",
@@ -63,7 +64,9 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
   let freeSelectionsBeforeAction = 0;
   let validations = 0;
   let otherActions = 0;
-  let canonicalReceiptSeen = false;
+  let coreActionResults: Array<{ actionName: unknown; query: unknown; success: boolean }> = [];
+  let legacyCacheCountAtStop: number | null = null;
+  const modelChronology: Array<{ ordinal: number; phase: string; beforeAction: boolean }> = [];
   let registeredShortcut = false;
   const actions: Array<{ query: unknown; success: boolean }> = [];
   const restorers: Array<{ mockRestore(): void }> = [];
@@ -71,6 +74,18 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
   const initialization = spyOn(AgentRuntime.prototype, "initialize").mockImplementation(
     async function (this: AgentRuntime, options) {
       const result = await initialize.call(this, options);
+      const service = this.messageService;
+      if (!service) throw new Error("Actual Core message service unavailable after initialization");
+      const handleMessage = service.handleMessage;
+      restorers.push(spyOn(service, "handleMessage").mockImplementation(async (...args) => {
+        const processed = await handleMessage.apply(service, args);
+        coreActionResults = (processed.actionResults ?? []).map((actionResult) => ({
+          actionName: actionResult.data?.actionName,
+          query: actionResult.data?.query,
+          success: actionResult.success,
+        }));
+        return processed;
+      }));
       registeredShortcut ||= this.responseHandlerEvaluators.some(
         (evaluator) => evaluator.name === "shared.verified_public_preflight",
       );
@@ -111,6 +126,13 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
       return result;
     },
   );
+  const stop = AgentRuntime.prototype.stop;
+  const stopping = spyOn(AgentRuntime.prototype, "stop").mockImplementation(
+    async function (this: AgentRuntime, ...args) {
+      legacyCacheCountAtStop = this.getActionResults(USER_MESSAGE_ID as UUID).length;
+      return await stop.apply(this, args);
+    },
+  );
   globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
     const target = url instanceof Request ? url.url : String(url);
     const body = init?.body === undefined && url instanceof Request
@@ -139,7 +161,20 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
     };
     modelCalls += 1;
     const names = request.tools?.map((tool) => tool.function?.name) ?? [];
-    if (names.includes("HANDLE_RESPONSE")) {
+    const system = (request.messages ?? [])
+      .filter((message) => message.role === "system" && typeof message.content === "string")
+      .map((message) => message.content as string)
+      .join("\n");
+    const signals = [
+      ...(names.includes("HANDLE_RESPONSE") ? ["stage1"] : []),
+      ...(names.includes("FACTS_AND_RELATIONSHIPS_VALIDATE") ? ["facts"] : []),
+      ...(/(?:^|\n)planner_stage:\n/.test(system) ? ["planner"] : []),
+      ...(/(?:^|\n)evaluator_stage:\n/.test(system) ? ["evaluator"] : []),
+    ];
+    const phase = signals.length === 1 ? (signals[0] ?? "ambiguous") : signals.length === 0 ? "other" : "ambiguous";
+    modelChronology.push({ ordinal: modelCalls, phase, beforeAction: actions.length === 0 && otherActions === 0 });
+    if (phase === "ambiguous") throw new Error("Ambiguous offline model-stage signals");
+    if (phase === "stage1") {
       return modelResponse(null, [{
         name: "HANDLE_RESPONSE",
         args: {
@@ -155,28 +190,46 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
         },
       }]);
     }
-    const context = JSON.stringify(request.messages);
-    canonicalReceiptSeen ||= context.includes("response-handler:WEB_SEARCH") && context.includes(QUERY);
-    if (names.includes("WEB_SEARCH") && actions.length === 0 && !mode.deny) {
-      freeSelectionsBeforeAction += 1;
-      return modelResponse(null, [
-        { name: "WEB_SEARCH", args: { query: QUERY, eliza_turn_scope: "final" } },
-        ...(mode.compound ? [{ name: "OTHER_ACTION", args: { eliza_turn_scope: "final" } }] : []),
-      ]);
+    if (phase === "facts") {
+      return modelResponse(null, [{
+        name: "FACTS_AND_RELATIONSHIPS_VALIDATE",
+        args: { facts: [], relationships: [], thought: "No additional facts." },
+      }]);
     }
-    if (context.includes("evaluator_stage:") || names.length > 0) {
+    if (phase === "evaluator") {
+      if (mode.compound && otherActions === 0) {
+        return modelResponse(JSON.stringify({
+          success: false, decision: "CONTINUE", thought: "The other requested operation is still pending.",
+        }));
+      }
       return modelResponse(JSON.stringify({
         success: !mode.deny,
         decision: "FINISH",
-        thought: "Use the settled operation result.",
+        thought: "All requested operations are settled.",
         messageToUser: mode.deny ? "The requested operation was denied." : reply,
       }));
+    }
+    if (phase === "planner") {
+      if (names.includes("WEB_SEARCH") && actions.length === 0 && !mode.deny) {
+        freeSelectionsBeforeAction += 1;
+        return modelResponse(null, [{
+          name: "WEB_SEARCH", args: { query: QUERY, eliza_turn_scope: mode.compound ? "more_work_pending" : "final" },
+        }]);
+      }
+      if (mode.compound && actions.length > 0 && otherActions === 0) {
+        if (!names.includes("OTHER_ACTION")) throw new Error("Compound action disappeared from the authorized planner surface");
+        return modelResponse(null, [{ name: "OTHER_ACTION", args: { eliza_turn_scope: "final" } }]);
+      }
+      const text = mode.deny ? "The requested operation was denied." : reply;
+      return names.includes("REPLY")
+        ? modelResponse(null, [{ name: "REPLY", args: { text, eliza_turn_scope: "final" } }])
+        : modelResponse(JSON.stringify({ thought: "Return the settled answer.", toolCalls: [], completed: true, messageToUser: text }));
     }
     return modelResponse(mode.deny ? "The requested operation was denied." : reply);
   }) as typeof fetch;
   let result: RunSharedAgentTurnResult | undefined;
   let failed = false;
-  let failureCategory: "canonical_action_denied" | "canonical_search_unavailable" | undefined;
+  let failureCategory: "canonical_action_denied" | "canonical_search_unavailable" | "reply_grounding_failed" | undefined;
   try {
     const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
     result = await runSharedAgentTurn({
@@ -185,7 +238,7 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
       message: mode.ordinary ? "Hello there" : mode.compound ? `${PROMPT} Also perform the other operation.` : PROMPT,
       ...(mode.ordinary ? {} : { capabilityText: mode.compound ? `${PROMPT} Also perform the other operation.` : PROMPT }),
       messageIds: {
-        user: "35fa7289-3e70-4c0b-a64a-52fb8cc9a10d",
+        user: USER_MESSAGE_ID,
         assistant: "3639b50e-f237-4b9a-99fa-75d890c1f97d",
       },
       execution: {
@@ -198,13 +251,22 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
   } catch (error) {
     if (!(error instanceof SharedRuntimeTurnError)) throw error;
     const kinds: unknown[] = [];
+    const codes: unknown[] = [];
     let current: unknown = error;
     for (let depth = 0; depth < 8 && current && typeof current === "object"; depth += 1) {
-      const record = current as { kind?: unknown; context?: { failureKind?: unknown }; cause?: unknown };
+      const record = current as { code?: unknown; kind?: unknown; context?: { failureKind?: unknown }; cause?: unknown };
       kinds.push(record.kind, record.context?.failureKind);
+      codes.push(record.code);
       current = record.cause;
     }
-    if (mode.deny && validations > 0 && actions.length === 0 && kinds.includes("missing_capability")) {
+    if (
+      mode.expectGroundingFailure &&
+      codes.includes("REPLY_GROUNDING_FAILED") &&
+      actions.length === 1 &&
+      actions[0]?.success
+    ) {
+      failureCategory = "reply_grounding_failed";
+    } else if (mode.deny && validations > 0 && actions.length === 0 && kinds.includes("missing_capability")) {
       failureCategory = "canonical_action_denied";
     } else if (
       mode.unavailable &&
@@ -219,9 +281,13 @@ async function exercise(mode: Mode = {}, reply = MARKED) {
     failed = true;
   } finally {
     initialization.mockRestore();
+    stopping.mockRestore();
     for (const spy of restorers) spy.mockRestore();
   }
-  return { result, failed, failureCategory, searches, modelCalls, freeSelectionsBeforeAction, validations, otherActions, actions, canonicalReceiptSeen, registeredShortcut };
+  console.info("[offline-preflight-chronology]", {
+    modelChronology, legacyCacheCountAtStop, coreResultCount: coreActionResults.length,
+  });
+  return { result, failed, failureCategory, searches, modelCalls, freeSelectionsBeforeAction, validations, otherActions, actions, coreActionResults, legacyCacheCountAtStop, registeredShortcut };
 }
 
 test("genuine preflight enters canonical execution without free-query selection", async () => {
@@ -230,15 +296,18 @@ test("genuine preflight enters canonical execution without free-query selection"
   expect(actual.searches).toBe(1);
   expect(actual.freeSelectionsBeforeAction).toBe(0);
   expect(actual.actions).toEqual([{ query: QUERY, success: true }]);
-  expect(actual.canonicalReceiptSeen).toBe(true);
+  expect(actual.coreActionResults).toEqual([{ actionName: "WEB_SEARCH", query: QUERY, success: true }]);
+  expect(actual.legacyCacheCountAtStop).not.toBeNull();
   expect(actual.result?.reply).toStartWith(CLAIM);
   expect(actual.result?.actionResults?.filter((result) => result.data?.actionName === "WEB_SEARCH")).toHaveLength(1);
 });
 
 test("canonical denial and unsupported source claims retain their gates", async () => {
-  const unsupported = await exercise({}, `Springfield, Missouri is 75 EUR. [[SOURCE_URL:${SOURCE_URL}]]`);
+  const unsupported = await exercise({ expectGroundingFailure: true }, `Springfield, Missouri is 75 EUR. [[SOURCE_URL:${SOURCE_URL}]]`);
   expect(unsupported.actions).toEqual([{ query: QUERY, success: true }]);
-  expect(unsupported.result?.reply).toContain("couldn’t safely bind");
+  expect(unsupported.failed).toBe(true);
+  expect(unsupported.failureCategory).toBe("reply_grounding_failed");
+  expect(unsupported.result).toBeUndefined();
   const denied = await exercise({ deny: true });
   expect(denied.validations).toBeGreaterThan(0);
   expect(denied.actions).toHaveLength(0);
