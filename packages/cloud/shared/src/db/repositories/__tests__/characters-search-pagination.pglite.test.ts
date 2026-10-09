@@ -262,6 +262,18 @@ test("character username generation stays valid at the collision limit", async (
     await expect(charactersService.generateUniqueUsername(base)).rejects.toThrow(
       "Unable to generate unique username after maximum attempts",
     );
+    const shortBase = "popular-agent";
+    await seed(
+      Array.from({ length: 1500 }, (_, index) =>
+        character(USER_ID, "popular", index, {
+          username: index === 0 ? shortBase : `${shortBase}-${index + 1}`,
+        }),
+      ),
+      insertedIds,
+    );
+    const nextShort = await charactersService.generateUniqueUsername(shortBase);
+    expect(nextShort).toBe("popular-agent-1501");
+    expect(validateUsername(nextShort).valid).toBe(true);
   } finally {
     if (insertedIds.size > 0) {
       await dbWrite.delete(userCharacters).where(inArray(userCharacters.id, [...insertedIds]));
