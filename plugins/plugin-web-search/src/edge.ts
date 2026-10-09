@@ -52,34 +52,29 @@ const SOURCE_URL_KEYS = new Set(["url", "source_url", "sourceUrl"]);
 const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
 const SOURCE_TEXT_ARRAY_KEYS = new Set(["excerpts"]);
 
-// Trailing prose punctuation (",", ".", ";") is not part of a URL found in
-// text. A trailing ")" is prose punctuation only when it is unbalanced: a
-// URL can itself end in a closing paren (Wikipedia-style paths), and those
-// parens belong to the URL.
+// Keep balanced URL parentheses and remove only excess closing prose marks.
 function stripTrailingProsePunctuation(value: string): string {
-    let candidate = value;
-    for (;;) {
-        const trimmed = candidate.replace(/[,.;]+$/u, "");
-        if (trimmed !== candidate) {
-            candidate = trimmed;
-            continue;
-        }
-        if (candidate.endsWith(")")) {
-            const opens = candidate.split("(").length - 1;
-            const closes = candidate.split(")").length - 1;
-            if (closes > opens) {
-                candidate = candidate.slice(0, -1);
-                continue;
-            }
-        }
-        return candidate;
+    let excessClosing = 0;
+    for (const char of value) {
+        if (char === ")") excessClosing += 1;
+        else if (char === "(") excessClosing -= 1;
     }
+    let end = value.length;
+    while (end > 0) {
+        const char = value[end - 1];
+        if (char === "," || char === "." || char === ";") end -= 1;
+        else if (char === ")" && excessClosing > 0) {
+            end -= 1;
+            excessClosing -= 1;
+        } else break;
+    }
+    return value.slice(0, end);
 }
 
 function publicHttpUrl(value: unknown): string | undefined {
     if (typeof value !== "string") return undefined;
     try {
-        const parsed = new URL(stripTrailingProsePunctuation(value));
+        const parsed = new URL(value);
         if (
             (parsed.protocol === "https:" || parsed.protocol === "http:") &&
             !parsed.username &&
@@ -98,7 +93,7 @@ function publicHttpUrl(value: unknown): string | undefined {
 function containsUnsafeHttpUrl(value: string): boolean {
     HTTP_URL.lastIndex = 0;
     for (const match of value.matchAll(HTTP_URL)) {
-        if (!publicHttpUrl(match[0])) return true;
+        if (!publicHttpUrl(stripTrailingProsePunctuation(match[0]))) return true;
     }
     return false;
 }
@@ -175,7 +170,9 @@ export function webSearchSourceEvidence(text: string): {
         // claim source-bound evidence for current factual assertions.
     }
     for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/gu)) {
-        const parsed = publicHttpUrl(match[0]);
+        const exact = publicHttpUrl(match[0]);
+        if (exact && sourceUrls.has(exact)) continue;
+        const parsed = publicHttpUrl(stripTrailingProsePunctuation(match[0]));
         if (parsed) sourceUrls.add(parsed);
     }
     return {
