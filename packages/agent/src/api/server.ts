@@ -2601,13 +2601,35 @@ async function handleRequestForViewClient(
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
 
   if (pathname.startsWith("/api/client-devices")) {
+    const admittedRuntime = state.runtime ?? null;
+    const authorization = await resolveHostSessionAuthorization();
+    if ((state.runtime ?? null) !== admittedRuntime) {
+      error(res, "Agent changed during device admission", 503);
+      return;
+    }
     await handleDeviceActionRoutes({
       req,
       res,
       method,
       pathname,
-      runtime: state.runtime ?? null,
-      authorization: await resolveHostSessionAuthorization(),
+      runtime: admittedRuntime,
+      authorization,
+      revalidateAuthorization: async () => {
+        const denied: AgentHttpRequestAuthorization = {
+          ok: false,
+          role: "NONE",
+        };
+        if (!admittedRuntime || state.runtime !== admittedRuntime)
+          return denied;
+        const resolve = getAgentHostBridge().resolveHttpRequestAuthorization;
+        if (!resolve) return denied;
+        const fresh = await resolve(req, admittedRuntime, {
+          allowCookieAuth: allowHostCookieAuth,
+          allowTrustedLocalBypass: false,
+          allowBearerAuth: true,
+        });
+        return state.runtime === admittedRuntime ? fresh : denied;
+      },
       json,
       error,
       readJsonBody,
