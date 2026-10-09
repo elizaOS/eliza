@@ -44,6 +44,9 @@ let upstreamThrows = false;
 let upstreamBody: object = { capture: "synthetic-private-capture" };
 function env(value: string | undefined = JSON.stringify(policy)): AppEnv["Bindings"] {
   return {
+    // Retrieval must use only the admitted DO, never a direct database or bucket.
+    get DATABASE_URL(): string { throw new Error("OFFLINE_DATABASE_FORBIDDEN"); },
+    get BLOB(): AppEnv["Bindings"]["BLOB"] { throw new Error("OFFLINE_BUCKET_FORBIDDEN"); },
     SHARED_OWNER_MODEL_CAPTURE_POLICY: value,
     SHARED_RUNTIME_CONVERSATIONS: {
       getByName: (name: string) => ({
@@ -113,7 +116,7 @@ describe("exact-reader private capture Hono retrieval", () => {
   test("payload retrieval uses canonical addressing and forwards only the reader locator", async () => {
     const result = await request({ roomKey: "  owned-room  ", sessionId: SESSION, captureId: CAPTURE });
     expect(result.status).toBe(200); privateHeaders(result);
-    expect(await result.json()).toEqual(upstreamBody);
+    expect(await result.text()).toBe(JSON.stringify(upstreamBody));
     expect(calls).toHaveLength(1);
     expect(calls[0]!.name).toBe(AGENT + ":" + ROOM);
     expect(calls[0]!.url).toBe("https://shared-runtime.internal/owner-capture/read");
@@ -133,7 +136,7 @@ describe("exact-reader private capture Hono retrieval", () => {
     const result = await request({ roomKey: ROOM, sessionId: SESSION });
     expect(result.status).toBe(200); privateHeaders(result);
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ sessionId: SESSION, readerUserId: READER });
-    expect(await result.json()).toEqual(upstreamBody);
+    expect(await result.text()).toBe(JSON.stringify(upstreamBody));
   });
 
   test("closed request grammar rejects caller identity, malformed ids and unsafe rooms", async () => {
@@ -181,6 +184,6 @@ describe("exact-reader private capture Hono retrieval", () => {
     upstreamStatus = 403; upstreamBody = { code: "owner_capture_read_forbidden" };
     const result = await request({ roomKey: ROOM, sessionId: SESSION, captureId: CAPTURE });
     expect(result.status).toBe(403); privateHeaders(result);
-    expect(await result.json()).toEqual(upstreamBody);
+    expect(await result.text()).toBe(JSON.stringify(upstreamBody));
   });
 });
