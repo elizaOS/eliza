@@ -150,7 +150,16 @@ describe("bounded foreground shell capture", () => {
       );
       const { stdout } = await promisify(execFile)(
         process.execPath,
-        ["--expose-gc", "--import", "tsx", child, String(bytes)],
+        // Fix the child heap budget so V8 cannot defer collection based on
+        // host RAM. The existing RSS and live-heap limits remain unchanged.
+        [
+          "--expose-gc",
+          "--max-old-space-size=128",
+          "--import",
+          "tsx",
+          child,
+          String(bytes),
+        ],
         {
           cwd: path.dirname(child),
           maxBuffer: 1024 * 1024,
@@ -173,7 +182,9 @@ describe("bounded foreground shell capture", () => {
         report.peakRss - report.baselineRss - report.modelCharacters * 2,
     );
     for (const [index, delta] of deltas.entries()) {
-      expect(delta).toBeLessThan(160 * 1024 * 1024);
+      expect(delta, JSON.stringify(reports[index])).toBeLessThan(
+        160 * 1024 * 1024,
+      );
       expect(
         (reports[index]?.peakHeap ?? Number.POSITIVE_INFINITY) -
           (reports[index]?.baselineHeap ?? 0),

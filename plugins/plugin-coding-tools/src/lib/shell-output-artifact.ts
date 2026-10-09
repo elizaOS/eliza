@@ -53,39 +53,6 @@ export interface ShellStreamMetrics {
   lines: number;
 }
 
-export function updateShellStreamMetrics(
-  metrics: ShellStreamMetrics,
-  chunk: string,
-  priorEndedWithNewline: boolean,
-): boolean {
-  if (chunk.length === 0) return priorEndedWithNewline;
-  metrics.characters += chunk.length;
-  metrics.bytes += Buffer.byteLength(chunk, "utf8");
-  let newlines = 0;
-  for (
-    let index = chunk.indexOf("\n");
-    index !== -1;
-    index = chunk.indexOf("\n", index + 1)
-  ) {
-    newlines += 1;
-  }
-  if (metrics.characters === chunk.length) {
-    metrics.lines = newlines + (chunk.endsWith("\n") ? 0 : 1);
-  } else {
-    metrics.lines += newlines;
-    if (priorEndedWithNewline && !chunk.endsWith("\n")) {
-      metrics.lines += 1;
-    }
-    if (!priorEndedWithNewline && chunk.endsWith("\n")) {
-      // The first newline in this chunk terminates the partial line the
-      // previous chunk already counted. Counting it again would make the
-      // line total depend on where the pipe split the output.
-      metrics.lines -= 1;
-    }
-  }
-  return chunk.endsWith("\n");
-}
-
 export interface ShellOutputArtifact {
   handle: string;
   createdAt: string;
@@ -409,11 +376,19 @@ class ShellOutputStreamWriter {
       mode: 0o600,
     });
     const startCharacter = this.metrics.characters;
-    this.endedWithNewline = updateShellStreamMetrics(
-      this.metrics,
-      text,
-      this.endedWithNewline,
-    );
+    const newlines = text.match(/\n/g)?.length ?? 0;
+    this.metrics.characters += text.length;
+    this.metrics.bytes += bytes.byteLength;
+    if (startCharacter === 0) {
+      this.metrics.lines = newlines + (text.endsWith("\n") ? 0 : 1);
+    } else {
+      this.metrics.lines += newlines;
+      if (this.endedWithNewline && !text.endsWith("\n"))
+        this.metrics.lines += 1;
+      if (!this.endedWithNewline && text.endsWith("\n"))
+        this.metrics.lines -= 1;
+    }
+    this.endedWithNewline = text.endsWith("\n");
     this.hasher.update(bytes);
     this.descriptors.push({
       file,
