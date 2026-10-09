@@ -1740,131 +1740,138 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(toolNames).toEqual(["HANDLE_RESPONSE"]);
   }, 120_000);
 
-  test("canonical general search uses real Core and portable SQLite while private scope never dispatches publicly", async () => {
-    expect(liveModelUrl).toBeUndefined();
-    expect(liveModelId).toBeUndefined();
-    expect(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH).not.toBe("1");
-    const modelBefore = modelRequests.length;
-    const outboundBefore = outboundRequests.length;
-    boundedSearchBodies.length = 0;
-    boundedGeneralSearch = true;
-    try {
-      const publicResponse = await miniflare.dispatchFetch(
-        "https://runtime.test/bounded-general-search",
-      );
-      const publicBody = await publicResponse.text();
-      expect(publicResponse.status, publicBody).toBe(200);
-      const result = z
-        .object({
-          reply: z.string(),
-          degraded: z.boolean(),
-          actionResults: z.array(
-            z
-              .object({
-                success: z.boolean(),
-                data: z
-                  .object({
-                    actionName: z.string(),
-                    query: z.string(),
-                    groundingStatus: z.string(),
-                    deliveredReply: z.string(),
-                  })
-                  .passthrough(),
-              })
-              .passthrough(),
-          ),
-        })
-        .parse(JSON.parse(publicBody));
-      expect(result.reply).toContain("C# installation uses the .NET SDK.");
-      expect(result.reply).toContain(
-        `Source: learn.microsoft.com — ${boundedSourceUrl} (parallel, checked `,
-      );
-      expect(result.reply).not.toContain("[[SOURCE_URL:");
-      expect(result.reply).not.toContain("could not verify");
-      expect(result.degraded).toBe(false);
-      expect(result.actionResults).toHaveLength(1);
-      expect(result.actionResults[0]).toMatchObject({
-        success: true,
-        data: {
-          actionName: "WEB_SEARCH",
-          query: boundedGeneralTopic,
-          groundingStatus: "verified",
-          deliveredReply: result.reply,
-        },
-      });
-      expect(boundedSearchBodies).toHaveLength(1);
-      expect(boundedSearchBodies[0]).toMatchObject({
-        params: {
-          arguments: {
-            objective: boundedGeneralTopic,
-            search_queries: [boundedGeneralTopic],
-          },
-        },
-      });
-      const publicModels = modelRequests.slice(modelBefore);
-      expect(publicModels.length).toBeGreaterThanOrEqual(2);
-      expect(publicModels.length).toBeLessThanOrEqual(4);
-      // The reply is model-authored only after the production action returned
-      // the source; the initial canned reply is intentionally ungrounded.
-      expect(
-        JSON.stringify(publicModels[publicModels.length - 1].messages),
-      ).toContain(boundedSourceText);
-      expect(JSON.stringify(publicModels[0].messages)).not.toContain(
-        boundedSourceText,
-      );
-      const pendingSystem = modelSystemContent(publicModels);
-      expect(pendingSystem).toContain(
-        "WEB_SEARCH is available for this turn; do not claim a search has run until its action result confirms success.",
-      );
-      expect(pendingSystem).toContain(
-        "[[SOURCE_URL:https://exact-supporting-url]]",
-      );
-      expect(pendingSystem).not.toContain(
-        "A complete live public read already ran for this turn.",
-      );
-      expect(
-        modelSystemContent([publicModels[publicModels.length - 1]]),
-      ).toContain("[[SOURCE_URL:https://exact-supporting-url]]");
-
-      const privateModelBefore = modelRequests.length;
-      const privateResponse = await miniflare.dispatchFetch(
-        "https://runtime.test/bounded-private-search",
-      );
-      const privateBody = await privateResponse.text();
-      expect(privateResponse.status, privateBody).toBe(200);
-      expect(boundedSearchBodies).toHaveLength(1);
-      const privateModels = modelRequests.slice(privateModelBefore);
-      expect(modelSystemContent(privateModels)).not.toContain(
-        "Public-search grounding policy:",
-      );
-      expect(privateModels.length).toBeGreaterThan(0);
-      expect(privateModels.length).toBeLessThanOrEqual(2);
-      for (const request of privateModels) {
-        const tools = z
-          .array(
-            z
-              .object({
-                function: z.object({ name: z.string() }).passthrough(),
-              })
-              .passthrough(),
-          )
-          .parse(request.tools);
-        expect(tools.map((tool) => tool.function.name)).not.toContain(
-          "WEB_SEARCH",
+  test.skipIf(
+    Boolean(liveModelUrl || liveModelId) ||
+      process.env.SHARED_ELIZA_LIVE_WEB_SEARCH === "1",
+  )(
+    "canonical general search uses real Core and portable SQLite while private scope never dispatches publicly",
+    async () => {
+      expect(liveModelUrl).toBeUndefined();
+      expect(liveModelId).toBeUndefined();
+      expect(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH).not.toBe("1");
+      const modelBefore = modelRequests.length;
+      const outboundBefore = outboundRequests.length;
+      boundedSearchBodies.length = 0;
+      boundedGeneralSearch = true;
+      try {
+        const publicResponse = await miniflare.dispatchFetch(
+          "https://runtime.test/bounded-general-search",
         );
+        const publicBody = await publicResponse.text();
+        expect(publicResponse.status, publicBody).toBe(200);
+        const result = z
+          .object({
+            reply: z.string(),
+            degraded: z.boolean(),
+            actionResults: z.array(
+              z
+                .object({
+                  success: z.boolean(),
+                  data: z
+                    .object({
+                      actionName: z.string(),
+                      query: z.string(),
+                      groundingStatus: z.string(),
+                      deliveredReply: z.string(),
+                    })
+                    .passthrough(),
+                })
+                .passthrough(),
+            ),
+          })
+          .parse(JSON.parse(publicBody));
+        expect(result.reply).toContain("C# installation uses the .NET SDK.");
+        expect(result.reply).toContain(
+          `Source: learn.microsoft.com — ${boundedSourceUrl} (parallel, checked `,
+        );
+        expect(result.reply).not.toContain("[[SOURCE_URL:");
+        expect(result.reply).not.toContain("could not verify");
+        expect(result.degraded).toBe(false);
+        expect(result.actionResults).toHaveLength(1);
+        expect(result.actionResults[0]).toMatchObject({
+          success: true,
+          data: {
+            actionName: "WEB_SEARCH",
+            query: boundedGeneralTopic,
+            groundingStatus: "verified",
+            deliveredReply: result.reply,
+          },
+        });
+        expect(boundedSearchBodies).toHaveLength(1);
+        expect(boundedSearchBodies[0]).toMatchObject({
+          params: {
+            arguments: {
+              objective: boundedGeneralTopic,
+              search_queries: [boundedGeneralTopic],
+            },
+          },
+        });
+        const publicModels = modelRequests.slice(modelBefore);
+        expect(publicModels.length).toBeGreaterThanOrEqual(2);
+        expect(publicModels.length).toBeLessThanOrEqual(4);
+        // The reply is model-authored only after the production action returned
+        // the source; the initial canned reply is intentionally ungrounded.
+        expect(
+          JSON.stringify(publicModels[publicModels.length - 1].messages),
+        ).toContain(boundedSourceText);
+        expect(JSON.stringify(publicModels[0].messages)).not.toContain(
+          boundedSourceText,
+        );
+        const pendingSystem = modelSystemContent(publicModels);
+        expect(pendingSystem).toContain(
+          "WEB_SEARCH is available for this turn; do not claim a search has run until its action result confirms success.",
+        );
+        expect(pendingSystem).toContain(
+          "[[SOURCE_URL:https://exact-supporting-url]]",
+        );
+        expect(pendingSystem).not.toContain(
+          "A complete live public read already ran for this turn.",
+        );
+        expect(
+          modelSystemContent([publicModels[publicModels.length - 1]]),
+        ).toContain("[[SOURCE_URL:https://exact-supporting-url]]");
+
+        const privateModelBefore = modelRequests.length;
+        const privateResponse = await miniflare.dispatchFetch(
+          "https://runtime.test/bounded-private-search",
+        );
+        const privateBody = await privateResponse.text();
+        expect(privateResponse.status, privateBody).toBe(200);
+        expect(boundedSearchBodies).toHaveLength(1);
+        const privateModels = modelRequests.slice(privateModelBefore);
+        expect(modelSystemContent(privateModels)).not.toContain(
+          "Public-search grounding policy:",
+        );
+        expect(privateModels.length).toBeGreaterThan(0);
+        expect(privateModels.length).toBeLessThanOrEqual(2);
+        for (const request of privateModels) {
+          const tools = z
+            .array(
+              z
+                .object({
+                  function: z.object({ name: z.string() }).passthrough(),
+                })
+                .passthrough(),
+            )
+            .parse(request.tools);
+          expect(tools.map((tool) => tool.function.name)).not.toContain(
+            "WEB_SEARCH",
+          );
+        }
+        expect(JSON.parse(privateBody).reply).toContain(
+          "cannot search private inbox",
+        );
+        expect(
+          outboundRequests
+            .slice(outboundBefore)
+            .filter((url) => url === "https://search.parallel.ai/mcp"),
+        ).toHaveLength(1);
+      } finally {
+        boundedGeneralSearch = false;
       }
-      expect(JSON.parse(privateBody).reply).toContain(
-        "cannot search private inbox",
-      );
-      expect(
-        outboundRequests
-          .slice(outboundBefore)
-          .filter((url) => url === "https://search.parallel.ai/mcp"),
-      ).toHaveLength(1);
-    } finally {
-      boundedGeneralSearch = false;
-    }
-  }, 120_000);
+    },
+    120_000,
+  );
 
   test.skipIf(process.env.SHARED_ELIZA_LIVE_WEB_SEARCH !== "1")(
     "plans and runs the genuine edge search plugin inside Workerd",
