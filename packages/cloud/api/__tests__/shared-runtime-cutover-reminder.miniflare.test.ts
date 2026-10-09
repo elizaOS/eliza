@@ -830,6 +830,12 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       expect(release.status, await release.text()).toBe(409);
       const stillHeld = await turn();
       expect(stillHeld.status, await stillHeld.text()).toBe(423);
+      // Reusing the token cannot renew a seal whose authority conflicts.
+      fallbackResolution = "conflict";
+      const conflictingRenewal = await post(room, "/cutover-seal", sealPayload);
+      expect(conflictingRenewal.status, await conflictingRenewal.text()).toBe(
+        423,
+      );
       // Only a superseding database revision can invalidate this attempt.
       fallbackResolution = "released";
       const resumed = await turn();

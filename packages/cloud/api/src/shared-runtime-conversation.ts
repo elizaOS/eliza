@@ -2096,7 +2096,10 @@ export class SharedRuntimeConversation {
         );
       }
       const existing = await this.activeCutoverSeal();
-      if (existing && existing.token !== payload.token) {
+      if (
+        existing &&
+        (existing.token !== payload.token || existing.recoveryBlocked)
+      ) {
         return Response.json(
           {
             success: false,
