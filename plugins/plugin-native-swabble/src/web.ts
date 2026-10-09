@@ -291,7 +291,16 @@ class WakeWordGate {
       // delimited trigger reaches this point, so "elizabeth" never yields a
       // command.
       const commandStart = map[found.index + found[0].length];
-      const command = transcript.slice(commandStart).trim();
+      // Both native bridges strip the separator the recognizer puts after
+      // the wake word — Android skips whitespace and punctuation after the
+      // trigger and cleans the command the same way, iOS trims whitespace
+      // and punctuation — so "Eliza, open the calendar" yields the command
+      // "open the calendar", not ", open the calendar". A whitespace-only
+      // trim left that punctuation in the command handed to the agent.
+      const command = transcript
+        .slice(commandStart)
+        .replace(/^[\s\p{P}]+/u, "")
+        .trim();
 
       if (command.length < this.minCommandLength) continue;
 
