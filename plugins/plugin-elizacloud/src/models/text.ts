@@ -746,7 +746,58 @@ function toolCallIds(toolCalls: unknown): string[] {
 function sanitizeNativeMessages(
   messages: Array<Record<string, unknown>>
 ): Array<Record<string, unknown>> {
-  const result = messages.map((message) => ({ ...message }));
+  // Core history uses canonical content parts; the gateway accepts OpenAI
+  // linkage fields. Normalize before orphan checks, without changing callers.
+  const result = messages.flatMap<Record<string, unknown>>((message) => {
+    if (!Array.isArray(message.content)) return [{ ...message }];
+    if (message.role === "assistant") {
+      const calls = message.content.filter((part) => isRecord(part) && part.type === "tool-call");
+      if (calls.length === 0) return [{ ...message }];
+      const content = message.content.filter((part) => !isRecord(part) || part.type !== "tool-call");
+      return [
+        {
+          ...message,
+          content: content.length ? content : null,
+          tool_calls: [
+            ...(Array.isArray(message.tool_calls) ? message.tool_calls : []),
+            ...calls.map((part) => {
+              const id = firstString(part.toolCallId),
+                name = firstString(part.toolName);
+              if (!id || !name)
+                throw invalidNativeToolCall("canonical history call is missing its id or name");
+              return {
+                id,
+                type: "function",
+                function: {
+                  name,
+                  arguments: JSON.stringify(part.input === undefined ? {} : part.input),
+                },
+              };
+            }),
+          ],
+        },
+      ];
+    }
+    if (message.role === "tool") {
+      return message.content.map((part) => {
+        if (!isRecord(part) || part.type !== "tool-result") return { ...message, content: [part] };
+        const id = firstString(part.toolCallId);
+        if (!id) throw invalidNativeToolCall("canonical history result is missing its call id");
+        const output = asRecord(part.output);
+        // Match the OpenAI SDK's canonical result semantics, including JSON
+        // scalar/null values and denied execution. Unknown output stays data.
+        const content = ["json", "error-json", "content"].includes(String(output.type))
+          ? JSON.stringify(output.value)
+          : output.type === "execution-denied"
+            ? (output.reason ?? "Tool execution denied.")
+            : stringifyMessageContent(
+                ["text", "error-text"].includes(String(output.type)) ? output.value : part.output
+              );
+        return { ...message, tool_call_id: id, content };
+      });
+    }
+    return [{ ...message }];
+  });
   let openAssistant: Record<string, unknown> | null = null;
   let matchedToolMessages: Array<Record<string, unknown>> = [];
   let pending = new Set<string>();
