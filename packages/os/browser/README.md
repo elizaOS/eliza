@@ -233,8 +233,11 @@ fill that makes a code field submit itself, and a button that calls
 opens its link. A fetch or beacon to the page's own site after a task fill (also
 one sent seconds later), and a same-document `history.pushState`, cannot be
 stopped but are reported (`request`, `navigation`); third-party requests and
-requests that the person's own typing starts are not. The watch lasts 30 seconds
-or until the next task fill or click. It also checks date fills (`YYYY-MM-DD`, real days only), the
+requests that start within 1.5 seconds of her own key press or pointer press are
+not. A site request that starts later than that (a long debounce after she stops
+typing) is reported, which pauses the task rather than missing a commit. The
+watch lasts 30 seconds or until the next task fill or click. Same-site
+`fetch`, `XMLHttpRequest` and beacon requests each have a fixture. It also checks date fills (`YYYY-MM-DD`, real days only), the
 `expectedSelector` target check and the value-free `hasInput` field flag.
 
 Show-only guides scroll an off-screen target into view and report `placement`.

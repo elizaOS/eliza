@@ -279,13 +279,15 @@ try {
     return route.fulfill({
       contentType: "text/html",
       body: `<input id="otp3" aria-label="Code" autocomplete="one-time-code" maxlength="6">
-<input id="later" aria-label="Later" maxlength="6"><input id="route" aria-label="Route"><input id="note" aria-label="Note"><input id="search" aria-label="Search">
+<input id="later" aria-label="Later" maxlength="6"><input id="xhr" aria-label="Xhr"><input id="ping" aria-label="Ping"><input id="route" aria-label="Route"><input id="note" aria-label="Note"><input id="search" aria-label="Search">
 <script>
 document.getElementById('otp3').addEventListener('input',e=>{if(e.target.value.length===6)fetch('/api/verify',{method:'POST',body:'{}'})});
 document.getElementById('later').addEventListener('input',e=>{if(e.target.value.length===6)setTimeout(()=>fetch('/api/later',{method:'POST'}),3500)});
 document.getElementById('route').addEventListener('input',()=>history.pushState({}, '', '/next'));
 document.getElementById('note').addEventListener('input',()=>navigator.sendBeacon('https://analytics.example/collect','x'));
 document.getElementById('search').addEventListener('input',()=>fetch('/api/suggest?q=1'));
+document.getElementById('xhr').addEventListener('input',()=>{const x=new XMLHttpRequest();x.open('POST','/api/xhr');x.send('x')});
+document.getElementById('ping').addEventListener('input',()=>navigator.sendBeacon('/api/collect','x'));
 </script>`,
     });
   });
@@ -368,6 +370,15 @@ document.getElementById('search').addEventListener('input',()=>fetch('/api/sugge
   await fetchAct("23", "Route", "#route", "x");
   await page.waitForTimeout(300);
   assert.equal(await fetchRead("23"), "navigation");
+  // Same-site XMLHttpRequest and beacon requests are reported like fetch().
+  await fetchAct("25", "Xhr", "#xhr", "x");
+  await page.waitForTimeout(500);
+  assert.ok(posted.includes("/api/xhr"));
+  assert.equal(await fetchRead("25"), "request");
+  await fetchAct("26", "Ping", "#ping", "x");
+  await page.waitForTimeout(500);
+  assert.ok(posted.includes("/api/collect"));
+  assert.equal(await fetchRead("26"), "request");
   // A short brand under a country domain: banking.ab.de posting to
   // api.ab.de is the same site.
   await page.route("https://api.ab.de/**", (route) => {

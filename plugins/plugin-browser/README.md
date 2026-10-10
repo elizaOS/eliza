@@ -133,7 +133,8 @@ it drops non-web tabs, so a window showing only a new-tab or settings page
 counts), an extension that does not report `windowCount`, or a non-HTTPS page.
 Which window has focus is not read, so with one window the active tab is taken
 as the page she sees. Incognito windows are counted only when the extension is
-allowed in incognito; otherwise she may be looking at one that is not counted. The result is conversation context only. It binds no task and permits no action.
+allowed in incognito; otherwise she may be looking at one that is not counted.
+The result is conversation context only. It binds no task and permits no action.
 
 Android hosts set `ELIZA_BROWSER_ANDROID_APPLICATION` to their application ID
 when starting the native target. It connects and reconnects only to that app's
