@@ -13,9 +13,11 @@ import android.os.Build;
 import android.provider.MediaStore;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.io.*;
+import java.lang.reflect.Proxy;
 import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.json.JSONObject;
 import org.junit.Test;
 
@@ -44,6 +46,34 @@ public final class MediaConsumerTest {
       return rows.getCount();
     }
   }
+  // Keep real SharedPreferences and MediaStore writes, but fail the acknowledgement of terminal
+  // capture receipts. This exposes the framework's cache-before-disk-commit behavior.
+  private static Context failSavedReceipt(Context context, AtomicBoolean fail) {
+    return new ContextWrapper(context) {
+      @Override
+      public SharedPreferences getSharedPreferences(String name, int mode) {
+        SharedPreferences delegate = context.getSharedPreferences(name, mode);
+        return (SharedPreferences) Proxy.newProxyInstance(SharedPreferences.class.getClassLoader(),
+            new Class<?>[] {SharedPreferences.class}, (proxy, method, args) -> {
+              if (!method.getName().equals("edit"))
+                return method.invoke(delegate, args);
+              SharedPreferences.Editor editor = delegate.edit();
+              AtomicBoolean terminal = new AtomicBoolean();
+              return Proxy.newProxyInstance(SharedPreferences.Editor.class.getClassLoader(),
+                  new Class<?>[] {SharedPreferences.Editor.class},
+                  (editProxy, editMethod, editArgs) -> {
+                    if (editMethod.getName().equals("putString"))
+                      terminal.set(String.valueOf(editArgs[1]).contains("\"status\":\"saved\""));
+                    Object result = editMethod.invoke(editor, editArgs);
+                    if (editMethod.getName().equals("commit") && terminal.get() && fail.get())
+                      return false;
+                    return result instanceof SharedPreferences.Editor ? editProxy : result;
+                  });
+            });
+      }
+    };
+  }
+
   @Test
   public void keepRecoverAndEditRealOwnedMedia() throws Exception {
     Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -86,6 +116,19 @@ public final class MediaConsumerTest {
       assertTrue(kept.edit().remove(operation).commit());
       assertEquals(saved.id, new OwnedCaptures(context, config).keep(operation, base64).id);
       assertEquals(initial + 1, count(resolver, context.getPackageName()));
+
+      AtomicBoolean rejectReceipt = new AtomicBoolean(true);
+      OwnedCaptures failing = new OwnedCaptures(failSavedReceipt(context, rejectReceipt), config);
+      String uncertain = UUID.randomUUID().toString();
+      assertFalse(failing.keep(uncertain, base64).saved);
+      assertFalse(failing.keep(uncertain, base64).saved);
+      assertEquals(initial + 2, count(resolver, context.getPackageName()));
+      rejectReceipt.set(false);
+      OwnedCaptures.Result recovered = failing.keep(uncertain, base64);
+      assertTrue(recovered.message, recovered.saved);
+      assertArrayEquals(jpeg, read(resolver, item(recovered.id)));
+      assertEquals(initial + 2, count(resolver, context.getPackageName()));
+      assertEquals(1, resolver.delete(item(recovered.id), null, null));
 
       String reservedOnly = UUID.randomUUID().toString();
       assertTrue(kept.edit()

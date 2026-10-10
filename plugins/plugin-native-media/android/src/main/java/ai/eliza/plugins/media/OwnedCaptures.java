@@ -42,13 +42,23 @@ public final class OwnedCaptures {
   }
 
   private void persist(String operation, JSONObject receipt) throws IOException {
-    if (!kept.edit().putString(operation, receipt.toString()).commit())
+    String previous = kept.getString(operation, null);
+    if (!kept.edit().putString(operation, receipt.toString()).commit()) {
+      // SharedPreferences updates its process cache before disk I/O, even when commit fails.
+      // Restore the prior state so a later retry cannot trust an uncommitted terminal receipt.
+      SharedPreferences.Editor restore = kept.edit();
+      if (previous == null)
+        restore.remove(operation);
+      else
+        restore.putString(operation, previous);
+      restore.commit();
       throw new IOException("Capture receipt could not be persisted");
+    }
   }
 
   private Result saved(String operation, JSONObject receipt, String id) throws Exception {
-    receipt.put("status", "saved").put("id", id);
-    persist(operation, receipt);
+    JSONObject finished = new JSONObject(receipt.toString()).put("status", "saved").put("id", id);
+    persist(operation, finished);
     return new Result(true, id, null);
   }
 
@@ -81,8 +91,8 @@ public final class OwnedCaptures {
         if (resolver.delete(uri, "is_pending=1 AND owner_package_name=?", new String[] {owner})
             != 1)
           throw new IOException("Capture cleanup was not confirmed");
-        receipt.put("status", "failed");
-        persist(operation, receipt);
+        JSONObject failed = new JSONObject(receipt.toString()).put("status", "failed");
+        persist(operation, failed);
         return new Result(
             false, null, "The unfinished capture was removed. Capture it again to retry.");
       }
