@@ -129,7 +129,12 @@ export function getHealthPollTimeoutMs(
 ): number {
 	const raw = env.ELIZA_AGENT_HEALTH_TIMEOUT_MS?.trim();
 	if (raw) {
-		const parsed = Number.parseInt(raw, 10);
+		// Number.parseInt stops at the first non-digit, so "60000junk" parsed
+		// to a finite 60000 and was accepted as a deliberate timeout instead
+		// of falling back to the platform default. Require the whole trimmed
+		// value to be decimal, mirroring resolveGenerationTimeoutMs in the
+		// discord plugin.
+		const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
 		if (Number.isFinite(parsed) && parsed > 0) {
 			return parsed;
 		}
