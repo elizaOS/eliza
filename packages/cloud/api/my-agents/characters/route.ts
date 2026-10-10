@@ -108,6 +108,7 @@ app.get("/", async (c) => {
         characters: paginatedCharacters.map((char) => ({
           id: char.id,
           name: char.name,
+          username: char.username ?? null,
           bio: char.bio,
           avatarUrl: char.avatar_url,
           avatar_url: char.avatar_url,
