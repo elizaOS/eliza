@@ -86,6 +86,7 @@ import {
 import {
   type OwnerQuietHours,
   resolveOwnerFactStore,
+  resolveOwnerTimeZone,
 } from "../lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
@@ -1413,7 +1414,8 @@ async function handleBulkReschedulePreview(args: {
   timeZone: string | null;
 }): Promise<ActionResult> {
   const text = messageText(args.message);
-  const timeZone = args.timeZone ?? resolveDefaultTimeZone();
+  const timeZone =
+    args.timeZone ?? (await resolveOwnerTimeZone(args.runtime, new Date()));
   const cohortLabel = extractBulkRescheduleCohortLabel(text);
   const { timeMin, timeMax, scopeLabel } = buildBulkRescheduleLookupWindow(
     timeZone,
