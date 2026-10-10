@@ -211,7 +211,12 @@ export const containersEnv = {
       env.CONTAINERS_EMBEDDING_SIDECAR_HOST_PORT,
       env.ELIZA_EMBEDDING_SIDECAR_HOST_PORT,
     );
-    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    // parseInt stops at the first non-digit ("1e3" -> 1), so a typo silently
+    // bound the sidecar to the wrong port instead of falling back to 8290.
+    // Require the whole trimmed value to be decimal, mirroring
+    // resolveGenerationTimeoutMs in the discord plugin.
+    const text = (raw ?? "").trim();
+    const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
     return Number.isFinite(parsed) && parsed >= 1 && parsed <= 65535 ? parsed : 8290;
   },
 
