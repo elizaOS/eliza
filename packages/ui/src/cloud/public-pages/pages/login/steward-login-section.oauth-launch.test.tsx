@@ -72,7 +72,10 @@ vi.mock("@elizaos/shared/steward-session-client", async () => {
   };
 });
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/login", async () => ({
+  ...(await vi.importActual<typeof import("@elizaos/login")>(
+    "@elizaos/login",
+  )),
   LoginAuth: class {
     getSession() {
       return null;
@@ -146,11 +149,17 @@ vi.mock("./passkey-capability", () => ({
     Promise.resolve({ usable: false, reason: "native-without-bridge" }),
 }));
 
-vi.mock("../../../shell/steward-url", () => ({
+vi.mock("../../../shell/steward-url", async () => ({
+  ...(await vi.importActual<typeof import("../../../shell/steward-url")>(
+    "../../../shell/steward-url",
+  )),
   resolveBrowserStewardApiUrl: () => "https://api.example.test",
 }));
 
-vi.mock("../../../shell/steward-config", () => ({
+vi.mock("../../../shell/steward-config", async () => ({
+  ...(await vi.importActual<typeof import("../../../shell/steward-config")>(
+    "../../../shell/steward-config",
+  )),
   configuredStewardTenantId: () => "elizacloud",
   DEFAULT_STEWARD_TENANT_ID: "elizacloud",
 }));
@@ -160,7 +169,10 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     opts?.defaultValue ?? _key,
 }));
 
-vi.mock("../../lib/steward-session", () => ({
+vi.mock("../../lib/steward-session", async () => ({
+  ...(await vi.importActual<typeof import("../../lib/steward-session")>(
+    "../../lib/steward-session",
+  )),
   hasStewardOAuthCallbackInUrl: () => false,
   consumeStewardCodeFromQuery: () => null,
   stripLegacyTokenHashFromAddressBar: () => false,
