@@ -135,7 +135,15 @@ function parseArgs(argv) {
         args.instruct = argv[++i];
         break;
       case "--max-seconds":
-        args.maxSeconds = Number.parseFloat(argv[++i]);
+        // Number.parseFloat stops at the first non-digit ("15junk" -> 15), so a
+        // typo silently passed the positive guard instead of failing.
+        // Require the whole trimmed value to be decimal; malformed -> NaN fails
+        // the guard as before, mirroring resolveGenerationTimeoutMs in the
+        // discord plugin.
+        const maxSecondsRaw = (argv[++i] ?? String(DEFAULT_MAX_SECONDS)).trim();
+        args.maxSeconds = /^\+?\d+(?:\.\d+)?$/.test(maxSecondsRaw)
+          ? Number(maxSecondsRaw)
+          : Number.NaN;
         break;
       case "--skip-encode":
         args.skipEncode = true;
