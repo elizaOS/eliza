@@ -225,6 +225,23 @@ describe("wallet router action", () => {
     expect(pending?.text).toBe(
       `Governance vote proposal 12 for at governor ${governor} on base? Reply yes to submit or no to cancel.`,
     );
+
+    const target = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+    const proposal = await run(runtime, {
+      subaction: "gov",
+      chain: "base",
+      op: "propose",
+      governor,
+      targets: [target],
+      values: ["0"],
+      calldatas: ["0xa9059cbb"],
+      description: "Fund grants",
+      mode: "execute",
+    });
+    expect(proposal?.data?.requiresConfirmation).toBe(true);
+    expect(proposal?.text).toBe(
+      `Governance propose targets ${target} values 0 calldatas 0xa9059cbb "Fund grants" at governor ${governor} on base? Reply yes to submit or no to cancel.`,
+    );
   });
 
   it("routes EVM transfer through the selected chain handler", async () => {
