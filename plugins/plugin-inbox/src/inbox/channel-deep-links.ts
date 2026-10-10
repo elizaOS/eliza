@@ -160,7 +160,17 @@ function buildSlackLink(
   // Slack rooms persist the workspace id as room metadata `serverId`
   // (see plugin-slack `ensureRoomExists`); world metadata only nests it under
   // `extra.teamId`. Resolve from any of the three, or the link is never built.
-  const teamId = str(world.teamId) || str(room.teamId) || str(room.serverId);
+  const worldExtra =
+    world.extra &&
+    typeof world.extra === "object" &&
+    !Array.isArray(world.extra)
+      ? (world.extra as Record<string, unknown>)
+      : {};
+  const teamId =
+    str(world.teamId) ||
+    str(worldExtra.teamId) ||
+    str(room.teamId) ||
+    str(room.serverId);
   const channelId = str(room.channelId);
   if (!teamId || !channelId) return null;
 
