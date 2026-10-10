@@ -6337,7 +6337,7 @@
   "localinference.modelActivated": "Model activated",
   "localinference.modelUninstalled": "Model uninstalled",
   "localinference.verifyOk": "Model verified",
-  "localinference.verifyUnknown": "Baseline hash recorded — future verifies will compare against it",
+  "localinference.verifyUnknown": "Model file is present and is a valid GGUF. No install-time hash is recorded to compare against.",
   "localinference.verifyMissing": "Model file is missing from disk",
   "localinference.verifyTruncated": "Model file is corrupt (not a valid GGUF)",
   "localinference.verifyMismatch": "Model hash doesn't match the installed copy — re-download recommended",
