@@ -13,9 +13,10 @@ import type {
 import {
   expandRecurrenceOccurrences,
   firstRecurrenceRule,
+  MAX_EXPANDED_RECURRENCE_OCCURRENCES,
 } from "../internal/recurrence.js";
 import type { IcsCalendarSourceRecord } from "../service/CalendarRepository.js";
-import { icsExceptionDateInstants } from "./parser.js";
+import { readIcsExceptionDates } from "./parser.js";
 import type { IcsParsedEvent } from "./types.js";
 
 export function publicIcsCalendarSource(
@@ -173,24 +174,32 @@ export function expandIcsCalendarEvents(args: {
       continue;
     }
     const durationMs = endMs - startMs;
-    const excluded = icsExceptionDateInstants(recurrence, event.timezone);
+    const excluded = readIcsExceptionDates(recurrence, event.timezone);
+    if (!excluded.complete) complete = false;
     const starts = expandRecurrenceOccurrences({
       rule,
       startAt: new Date(startMs),
       timeZone: event.isAllDay ? "UTC" : (event.timezone ?? "UTC"),
+      rangeStart: new Date(minMs - durationMs + 1),
       rangeEnd: new Date(maxMs),
     });
-    if (starts.length >= 1000) complete = false;
+    if (starts.length >= MAX_EXPANDED_RECURRENCE_OCCURRENCES) {
+      complete = false;
+    }
     for (const start of starts) {
       const occurrenceMs = start.getTime();
       if (!overlaps(occurrenceMs, occurrenceMs + durationMs)) continue;
-      if (excluded.has(occurrenceMs)) continue;
+      if (excluded.instants.has(occurrenceMs)) continue;
       if (overridden.has(`${event.metadata.icsUid}\0${occurrenceMs}`)) continue;
+      const occurrenceStart = start.toISOString();
       if (occurrenceMs === startMs) {
-        expanded.push(event);
+        expanded.push({
+          ...event,
+          recurringEventId: event.id,
+          metadata: { ...event.metadata, originalStartTime: occurrenceStart },
+        });
         continue;
       }
-      const occurrenceStart = start.toISOString();
       expanded.push({
         ...event,
         id: `${event.id}:${occurrenceStart}`,

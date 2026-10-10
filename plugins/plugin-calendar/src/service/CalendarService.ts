@@ -5104,17 +5104,13 @@ export class CalendarService extends Service {
     if (!hasSnapshot && !fresh) {
       return null;
     }
-    // Recurring series are stored once at DTSTART, which can precede timeMin;
-    // read every event that starts before timeMax and expand the series.
     const expansion = expandIcsCalendarEvents({
-      events: await this.repo.listCalendarEvents(
-        this.agentId(),
-        "ics",
-        undefined,
-        args.timeMax,
-        "owner",
-        args.source.id,
-      ),
+      events: await this.repo.listIcsCalendarEventsForExpansion({
+        agentId: this.agentId(),
+        sourceId: args.source.id,
+        timeMin: args.timeMin,
+        timeMax: args.timeMax,
+      }),
       timeMin: args.timeMin,
       timeMax: args.timeMax,
     });
@@ -5592,7 +5588,9 @@ export class CalendarService extends Service {
       ...discoveryFailures,
       ...sources.flatMap((source) => source.feed.sources),
     ];
-    const allFresh = health.every((source) => source.status === "fresh");
+    const allFresh =
+      health.every((source) => source.status === "fresh") &&
+      sources.every((source) => source.feed.state === "complete");
     const hasUsableSource = health.some(
       (source) => source.status === "fresh" || source.status === "stale",
     );
