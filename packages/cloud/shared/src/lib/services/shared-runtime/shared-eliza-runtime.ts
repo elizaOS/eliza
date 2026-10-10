@@ -1104,6 +1104,9 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         authority: { memberId: input.execution.network.memberId },
         routing: input.execution.network.routing ?? NETWORK_DEFAULT_ROUTING,
         actionsEnabled,
+        ...(input.execution.network.voiceApp
+          ? { voice: { app: input.execution.network.voiceApp } }
+          : {}),
       })
     : undefined;
   const userEntityId =

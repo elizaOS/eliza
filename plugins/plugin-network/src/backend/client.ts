@@ -1,6 +1,9 @@
 /** Signed HTTP client for the Network service's /internal/* endpoints (the Eliza side's NetworkBackend). */
 import { boundedFetch } from "@elizaos/cloud-services-common/transport";
 import {
+  RELAY_PATH,
+  type RelaySendRequest,
+  type RelaySendResponse,
   SET_STATE_PATH,
   type SetStateRequest,
   type SetStateResponse,
@@ -130,6 +133,15 @@ export class NetworkServiceClient {
     return this.#post<UpdatesResponse>(
       UPDATES_PATH,
       `${req.messageId}:updates`,
+      req,
+    );
+  }
+
+  /** Ask the service to relay the member's message to a match. Idempotent by messageId. */
+  relay(req: RelaySendRequest): Promise<RelaySendResponse> {
+    return this.#post<RelaySendResponse>(
+      RELAY_PATH,
+      `${req.messageId}:relay`,
       req,
     );
   }

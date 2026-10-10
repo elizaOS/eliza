@@ -31,7 +31,7 @@ import {
   stableStringify,
   type UUID,
 } from "@elizaos/core";
-import type { NetworkRouting, NetworkStore } from "@elizaos/plugin-network";
+import type { NetworkAppId, NetworkRouting, NetworkStore } from "@elizaos/plugin-network";
 import { isNetworkStateIntent } from "@elizaos/plugin-network";
 import {
   isSharedGroupReminderDelivery,
@@ -222,6 +222,8 @@ export interface RunSharedAgentTurnInput {
       store: NetworkStore;
       /** Routing design; defaults to NETWORK_DEFAULT_ROUTING. */
       routing?: NetworkRouting;
+      /** Character flag (NETWORK_AGENT_VOICE): speak as this app's Network agent. */
+      voiceApp?: NetworkAppId;
     };
   };
 }
