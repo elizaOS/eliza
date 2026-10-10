@@ -62,6 +62,25 @@ it("retains every accepted chunk receipt in send order", async () => {
     messageIds: ["provider-part-1", "provider-part-2"],
   });
   expect(send).toHaveBeenCalledTimes(2);
+
+  // A repeatable send keeps one key per chunk; a one-off send does not.
+  const keys = () =>
+    send.mock.calls.map(
+      (call) =>
+        ((call as unknown as [string, RequestInit])[1].headers as Record<string, string>)[
+          "Idempotency-Key"
+        ]
+    );
+  const oneOffKeys = keys();
+  expect(new Set(oneOffKeys).size).toBe(2);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    send.mockClear();
+    await service.sendMessage("+15557654321", "x".repeat(4001), {
+      idempotencyKey: "imessage-reply-inbound-1-0",
+    });
+    expect(keys()).toEqual(["imessage-reply-inbound-1-0-0", "imessage-reply-inbound-1-0-1"]);
+  }
+  expect(oneOffKeys).not.toContain("imessage-reply-inbound-1-0-0");
 });
 
 it("preserves accepted chunk evidence when a later chunk fails", async () => {
