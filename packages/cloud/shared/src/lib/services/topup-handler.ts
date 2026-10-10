@@ -358,6 +358,20 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
     if (body?.walletAddress && !isAddress(body.walletAddress)) {
       return Response.json({ error: "Valid EVM walletAddress is required" }, { status: 400 });
     }
+    const walletSignatureHeaders = [
+      req.headers.get("X-Wallet-Address"),
+      req.headers.get("X-Timestamp"),
+      req.headers.get("X-Wallet-Signature"),
+    ];
+    const hasAnyWalletSignatureHeader = walletSignatureHeaders.some((value) =>
+      Boolean(value?.trim()),
+    );
+    const hasCompleteWalletSignature = walletSignatureHeaders.every((value) =>
+      Boolean(value?.trim()),
+    );
+    if (body?.walletAddress?.trim() && hasAnyWalletSignatureHeader && !hasCompleteWalletSignature) {
+      return Response.json({ error: "Wallet signature headers are incomplete" }, { status: 400 });
+    }
 
     const paymentRequirementBundle = await createPaymentRequirements(req, amount, env);
     if ("error" in paymentRequirementBundle) {

@@ -106,6 +106,34 @@ test("a signature header without the wallet address and timestamp is rejected be
   });
 });
 
+test("a partial signature cannot fall back to a body wallet address", async () => {
+  const settle = stubSettlement();
+
+  const response = await topup(
+    new Request("https://cloud.test/api/v1/topup/10", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-PAYMENT": paymentHeader,
+        "X-Wallet-Signature": "0x1234",
+      },
+      body: JSON.stringify({
+        walletAddress: account.address,
+      }),
+    }),
+  );
+
+  expect({
+    status: response.status,
+    body: await response.json(),
+    settleCalls: settle.mock.calls.length,
+  }).toEqual({
+    status: 400,
+    body: { error: "Wallet signature headers are incomplete" },
+    settleCalls: 0,
+  });
+});
+
 test("a valid wallet signature is verified once and the settled payment is credited", async () => {
   const settle = stubSettlement();
   const organizationId = "30000000-0000-4000-8000-000000000001";
