@@ -147,17 +147,18 @@ function findTerminatorEnd(text: string, start: number): number {
     // between two letters (contractions like `it's`, possessives like
     // `Eliza's`) — otherwise a stray apostrophe would swallow the rest of
     // the input and we'd never find a terminator.
-    if (ch === "'" && quoteStack.length === 0) {
+    //
+    // The same applies to any symmetric quote mark that directly follows a
+    // word character: a word-final possessive (`dogs'`), a plural era
+    // (`90s'`), or an inch mark (`5"`) is never an opening quote, because an
+    // opening quote follows whitespace, punctuation, or the start of the
+    // text. Treating one as an opener swallowed the sentence terminator in
+    // the same way, so the whole first sentence was lost.
+    if ((ch === "'" || ch === '"') && quoteStack.length === 0) {
       const prev = i > 0 ? text[i - 1] : "";
-      const next = i + 1 < text.length ? text[i + 1] : "";
-      if (!(isAlpha(prev) && isAlpha(next))) {
+      if (!isAlpha(prev) && !isDigit(prev)) {
         quoteStack.push(ch);
       }
-      i++;
-      continue;
-    }
-    if (ch === '"' && quoteStack.length === 0) {
-      quoteStack.push(ch);
       i++;
       continue;
     }
