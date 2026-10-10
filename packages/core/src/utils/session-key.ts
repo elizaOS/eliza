@@ -79,8 +79,10 @@ export function parseAgentSessionKey(
 	const isAcp = parts[2] === "acp";
 	const isSubagent = parts[2] === "subagent";
 
-	// Check for thread suffix
-	const threadIndex = parts.indexOf("thread");
+	// Check for thread suffix. Use lastIndexOf: the thread marker is a
+	// suffix, so an earlier "thread" segment (e.g. inside the rest) must
+	// not shadow it.
+	const threadIndex = parts.lastIndexOf("thread");
 	let threadId: string | undefined;
 	let parentKey: string | undefined;
 
