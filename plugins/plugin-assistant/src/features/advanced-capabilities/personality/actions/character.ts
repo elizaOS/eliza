@@ -881,7 +881,13 @@ function normalizeBoolean(value: unknown): boolean | undefined {
 function normalizeNumber(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value !== "string") return undefined;
-  const parsed = Number.parseFloat(value.trim());
+  // Number.parseFloat stops at the first invalid character ("12px" -> 12).
+  // Number() rejects the whole string instead, so a malformed value is
+  // rejected rather than partially parsed. Same defect class as #34663,
+  // #34694, and #34695.
+  const text = value.trim();
+  if (!text) return undefined;
+  const parsed = Number(text);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
