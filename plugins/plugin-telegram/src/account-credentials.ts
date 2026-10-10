@@ -14,6 +14,29 @@ function isVaultReference(value: unknown): boolean {
 const BUNDLED_TELEGRAM_APP_ID = 2040;
 const BUNDLED_TELEGRAM_APP_HASH = "b18441a1ff607e10a989891a5462e627";
 
+/**
+ * Parse a Telegram app id as a canonical decimal integer only. `Number()`
+ * silently accepts non-canonical forms (`"0x7F8"` → 2040, `"2e3"` → 2000,
+ * `"+2040"` → 2040) that my.telegram.org never issues; malformed values must
+ * be rejected so the credential tiers fall through to the next source
+ * instead of silently using a fabricated app id.
+ * Returns `Number.NaN` for anything that is not a canonical digit string
+ * or a number.
+ */
+function parseAppId(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    // Canonical digit strings only: no hex, no exponents, no explicit-plus
+    // forms, no leading-dot forms, no trailing junk, no blanks.
+    if (/^\d+$/.test(trimmed)) {
+      const n = Number(trimmed);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return Number.NaN;
+}
+
 function resolveRuntimeCredentialPair(
   runtime: IAgentRuntime,
   appIdKey: string,
@@ -21,10 +44,7 @@ function resolveRuntimeCredentialPair(
 ): { apiId: number; apiHash: string } | null {
   const appId = runtime.getSetting(appIdKey);
   const appHash = runtime.getSetting(appHashKey);
-  const parsedAppId =
-    typeof appId === "string" || typeof appId === "number"
-      ? Number(appId)
-      : Number.NaN;
+  const parsedAppId = parseAppId(appId);
   if (
     !Number.isInteger(parsedAppId) ||
     parsedAppId <= 0 ||
@@ -51,10 +71,7 @@ export function resolveTelegramAppCredentials(
   connConfig: Record<string, unknown>,
   requireVaultProjection = false,
 ): { apiId: number; apiHash: string } {
-  const parsedAccountId =
-    typeof connConfig.appId === "string" || typeof connConfig.appId === "number"
-      ? Number(connConfig.appId)
-      : Number.NaN;
+  const parsedAccountId = parseAppId(connConfig.appId);
   if (
     Number.isInteger(parsedAccountId) &&
     parsedAccountId > 0 &&
