@@ -8,6 +8,7 @@ import { validateNativeNotesReadReplyHint } from "@elizaos/contracts/native-note
 import {
   AgentRuntime,
   ChannelType,
+  ElizaError,
   type IAgentRuntime,
   runWithStreamingContext,
   type UUID,
@@ -35,6 +36,15 @@ import {
   resolvePairedSessionToken,
 } from "./conversation-routes.ts";
 import { workflowDeviceOwner } from "./workflow-device-owner.ts";
+
+function isDeviceRequestRejection(cause: unknown): boolean {
+  return (
+    cause instanceof DeviceActionError ||
+    cause instanceof ApprovalIdempotencyConflictError ||
+    cause instanceof ApprovalStateTransitionError ||
+    cause instanceof ApprovalNotFoundError
+  );
+}
 
 export function requiresDeviceIdentity(
   req: Pick<http.IncomingMessage, "headers">,
@@ -391,11 +401,26 @@ export async function handleDeviceActionRoutes(
         json(res, { reply });
         return true;
       } catch (cause) {
-        tracker.abort(
-          cause instanceof Error
-            ? cause
-            : new Error("Original read completion retired"),
-        );
+        // A store failure answers 503 so the client retries; a prepared reply
+        // stays retryable and its fixed message id keeps the write single.
+        // A retirement (rejection, runtime replaced, abort) still cancels it,
+        // also when the memory writer wraps it.
+        const failure =
+          cause instanceof ElizaError &&
+          cause.code === "CONVERSATION_MEMORY_WRITE_FAILED"
+            ? cause.cause
+            : cause;
+        const storeFailure = isDeviceRequestRejection(failure)
+          ? failure instanceof DeviceActionError &&
+            failure.code === "DEVICE_STORE_UNAVAILABLE"
+          : !(failure instanceof ElizaError) &&
+            !(failure instanceof Error && failure.name === "AbortError");
+        if (!storeFailure)
+          tracker.abort(
+            cause instanceof Error
+              ? cause
+              : new Error("Original read completion retired"),
+          );
         throw cause;
       } finally {
         if (tracker.signal.aborted) {
@@ -466,12 +491,7 @@ export async function handleDeviceActionRoutes(
     }
     error(res, "Device route not found", 404);
   } catch (cause) {
-    if (
-      cause instanceof DeviceActionError ||
-      cause instanceof ApprovalIdempotencyConflictError ||
-      cause instanceof ApprovalStateTransitionError ||
-      cause instanceof ApprovalNotFoundError
-    ) {
+    if (isDeviceRequestRejection(cause)) {
       error(
         res,
         "Device request rejected or state changed",
