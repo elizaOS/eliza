@@ -3421,7 +3421,11 @@ async function generateTextAtEndpoint(
     ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
     ...(sanitizedOutput ? { output: sanitizedOutput } : {}),
     ...(sanitizedProviderOptions ? { providerOptions: sanitizedProviderOptions } : {}),
-  };
+  }; // Output cap and usage go with MODEL_OUTPUT_INCOMPLETE so a truncated call
+  // keeps its billed tokens in core's failure evidence.
+  const outputCap =
+    params.omitMaxTokens || typeof params.maxTokens !== "number" ? null : params.maxTokens;
+
   const preparedRequestGuard = createOpenAIPreparedRequestGuard({
     modelName,
     generateParams,
@@ -3518,11 +3522,6 @@ async function generateTextAtEndpoint(
         if (result.usage) applyUsageToDetails(details, result.usage);
         return { ...result, text, toolCalls };
       });
-      assertModelOutputComplete({
-        finishReason: buffered.finishReason,
-        provider: usageProvider,
-        model: modelName,
-      });
       if (buffered.usage) {
         emitModelUsageEvent(
           runtime,
@@ -3534,6 +3533,13 @@ async function generateTextAtEndpoint(
           usageProvider
         );
       }
+      assertModelOutputComplete({
+        finishReason: buffered.finishReason,
+        provider: usageProvider,
+        model: modelName,
+        maxTokens: outputCap,
+        usage: convertUsage(buffered.usage),
+      });
       const canonicalBufferedText = shouldBufferArgumentEnvelope
         ? buffered.toolCalls?.length === 1
           ? JSON.stringify(buffered.toolCalls[0].arguments)
@@ -3763,15 +3769,23 @@ async function generateTextAtEndpoint(
       )
     );
     const usagePromise = handledMappedPromise(rawUsagePromise, convertUsage);
-    const finishReasonPromise = handledMappedPromise(rawFinishReasonPromise, (r) => {
-      const finishReason = r as string | undefined;
-      assertModelOutputComplete({
-        finishReason,
-        provider: usageProvider,
-        model: modelName,
-      });
-      return finishReason;
-    });
+    const finishReasonPromise = handledMappedPromise(
+      Promise.all([
+        rawFinishReasonPromise,
+        Promise.resolve(rawUsagePromise).then(convertUsage, () => undefined),
+      ]),
+      ([r, usage]) => {
+        const finishReason = r as string | undefined;
+        assertModelOutputComplete({
+          finishReason,
+          provider: usageProvider,
+          model: modelName,
+          maxTokens: outputCap,
+          usage,
+        });
+        return finishReason;
+      }
+    );
     const textPromise = handledMappedPromise(
       Promise.all([rawTextPromise, finishReasonPromise]),
       ([text]) => text
@@ -3809,6 +3823,8 @@ async function generateTextAtEndpoint(
             finishReason: finishReasonResult.value,
             provider: usageProvider,
             model: modelName,
+            maxTokens: outputCap,
+            usage: usageResult.status === "fulfilled" ? convertUsage(usageResult.value) : undefined,
           });
         } catch (error) {
           companionStreamError ??= error;
@@ -3988,12 +4004,6 @@ async function generateTextAtEndpoint(
     };
   });
 
-  assertModelOutputComplete({
-    finishReason: result.finishReason,
-    provider: usageProvider,
-    model: modelName,
-  });
-
   if (result.usage) {
     emitModelUsageEvent(
       runtime,
@@ -4005,6 +4015,14 @@ async function generateTextAtEndpoint(
       usageProvider
     );
   }
+
+  assertModelOutputComplete({
+    finishReason: result.finishReason,
+    provider: usageProvider,
+    model: modelName,
+    maxTokens: outputCap,
+    usage: convertUsage(result.usage),
+  });
 
   if (shouldReturnNativeResult) {
     return buildNativeTextResult(
