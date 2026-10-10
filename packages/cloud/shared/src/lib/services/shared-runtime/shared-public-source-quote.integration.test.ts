@@ -1,7 +1,10 @@
 /** Real Core dispatch with deterministic HTTP boundaries; no model or public-provider traffic. */
 import { expect, test } from "bun:test";
 import { ChannelType } from "@elizaos/core";
-import { runSharedElizaRuntimeTurn } from "./shared-eliza-runtime";
+import {
+  runSharedElizaRuntimeTurn,
+  runSharedElizaRuntimeTurnStream,
+} from "./shared-eliza-runtime";
 import {
   finalizeSharedRealtimeReply,
   resolveSharedRealtimeRequirement,
@@ -190,6 +193,55 @@ for (const status of ["supported", "unsupported"] as const) {
         expect(answer).not.toContain("parallel");
       } else {
         expect(answer).toContain("couldn’t verify");
+      }
+      if (status === "supported") {
+        calls = 0;
+        quoteCalls = 0;
+        const streamParts: Array<{ type: string, text?: string }> = [];
+        for await (const part of runSharedElizaRuntimeTurnStream({
+          character: {
+            name: "Eliza",
+            system: "You are Eliza.",
+            model: "qwen-3.8-27b",
+          },
+          message,
+          capabilityText: message,
+          history: [],
+          agentKey: "offline-public-quote-stream",
+          model: "qwen-3.8-27b",
+          realtimeGrounding: grounding,
+          preflightActionResults: [
+            {
+              success: true,
+              data: {
+                actionName: "WEB_SEARCH",
+                query: requirement.query,
+                provider: "parallel",
+                observedAt: grounding.observedAt,
+                sources: [source],
+                sourceUrls: [source.url],
+                text: grounding.text,
+                truncated: false,
+              },
+            },
+          ],
+          execution: {
+            channel: { type: ChannelType.DM, source: "blooio" },
+            authenticatedPersonalSharedUser: true,
+            roomKey: "offline-public-quote-stream",
+            agentKey: "offline-public-quote-stream",
+          },
+        })) {
+          streamParts.push(part);
+        }
+        const streamedText = streamParts
+          .filter((part) => part.type === "text-delta")
+          .map((part) => part.text ?? "")
+          .join("");
+        const finish = streamParts.find((part) => part.type === "finish");
+        expect(streamedText).toBe((finish as { text?: string } | undefined)?.text);
+        expect(streamedText).toContain(source.text);
+        expect(streamedText).not.toContain("[[SOURCE_URL:");
       }
     } finally {
       // error-policy:J6 restore every process-owned dependency boundary after any outcome.

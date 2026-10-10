@@ -1442,6 +1442,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
 
     const delivered: string[] = [];
     let lastDeliveredContent: Content | undefined;
+    const bufferPublicStream = Boolean(
+      onStreamChunk && publicSearchIntent && !privateCapabilityIntent,
+    );
+    const streamChunkHandler = bufferPublicStream
+      ? (_chunk: string) => {}
+      : onStreamChunk;
     const messageService = runtime.messageService;
     if (!messageService) {
       throw new Error("Eliza Shared runtime initialized without a message service");
@@ -1486,7 +1492,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       input.abortSignal || onStreamChunk
         ? {
             ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
-            ...(onStreamChunk ? { onStreamChunk } : {}),
+            ...(streamChunkHandler ? { onStreamChunk: streamChunkHandler } : {}),
             onInferenceTimingSummary: (summary) => {
               inferenceTelemetry.summary = summary;
             },
@@ -1764,6 +1770,9 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         groundingKind: quoteRequest.grounding.kind,
         groundingSourceCount: quoteRequest.grounding.sources.length,
       });
+    }
+    if (bufferPublicStream && onStreamChunk) {
+      await onStreamChunk(reply);
     }
     return {
       reply,
