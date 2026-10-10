@@ -281,6 +281,24 @@ async function resolveHealthPlanWithLlm(args: {
   };
 }
 
+/**
+ * Heart rate is a rate, so readings are averaged; every other metric is a
+ * count or amount and is summed.
+ */
+function aggregateMetricPoints(
+  metric: string,
+  points: readonly { value: number }[],
+): { label: "average" | "total"; value: number } {
+  const total = points.reduce((acc, point) => acc + point.value, 0);
+  if (metric === "heart_rate") {
+    return {
+      label: "average",
+      value: points.length > 0 ? total / points.length : 0,
+    };
+  }
+  return { label: "total", value: total };
+}
+
 function formatSummary(summary: {
   date: string;
   steps: number;
@@ -667,9 +685,9 @@ export function createHealthActionRunner(
             (sample) => sample.metric === metric,
           );
           const firstPoint = points[0];
-          const total = points.reduce((acc, point) => acc + point.value, 0);
+          const aggregate = aggregateMetricPoints(metric, points);
           const fallback = firstPoint
-            ? `${metric}: total ${total.toFixed(2)} ${firstPoint.unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`
+            ? `${metric}: ${aggregate.label} ${aggregate.value.toFixed(2)} ${firstPoint.unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`
             : `No ${metric} data recorded by connected health providers.`;
           return respond({
             success: true,
@@ -677,7 +695,7 @@ export function createHealthActionRunner(
             fallback,
             context: {
               metric,
-              total,
+              [aggregate.label]: aggregate.value,
               unit: firstPoint?.unit,
               sampleCount: points.length,
             },
@@ -767,7 +785,7 @@ export function createHealthActionRunner(
         { metric, startAt, endAt },
         { timeZone },
       );
-      const total = points.reduce((acc, p) => acc + p.value, 0);
+      const aggregate = aggregateMetricPoints(metric, points);
       const firstPoint = points[0];
       if (!firstPoint) {
         const fallback = `No ${metric} data recorded in the last ${days} day${days === 1 ? "" : "s"}.`;
@@ -783,7 +801,7 @@ export function createHealthActionRunner(
       const fallback =
         points.length === 0
           ? `No ${metric} data recorded in the last ${days} day${days === 1 ? "" : "s"}.`
-          : `${metric} — last ${days} day${days === 1 ? "" : "s"}: total ${total.toFixed(
+          : `${metric} — last ${days} day${days === 1 ? "" : "s"}: ${aggregate.label} ${aggregate.value.toFixed(
               2,
             )} ${firstPoint.unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`;
       return respond({
@@ -793,7 +811,7 @@ export function createHealthActionRunner(
         context: {
           metric,
           days,
-          total,
+          [aggregate.label]: aggregate.value,
           unit: firstPoint.unit,
           sampleCount: points.length,
         },
