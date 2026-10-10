@@ -39,8 +39,6 @@ public class PasswordSaveActivity extends Activity {
   private void save() {
     if (finished || captured == null) return;
     for (int i = 0; i < sheet.list.getChildCount(); i++) sheet.list.getChildAt(i).setEnabled(false);
-    ticket = access.ticket();
-    if (ticket != 0) { write(); return; }
     prompting = true;
     PasswordUnlock.prompt(this, new PasswordUnlock.Result() {
       @Override public void unlocked(long granted) { ticket = granted; prompting = false; if (!finished) write(); }
