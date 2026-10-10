@@ -10,6 +10,7 @@ import type {
   LifeOpsCalendarSummary,
   LifeOpsIcsCalendarSource,
 } from "@elizaos/contracts";
+import { CalendarServiceError } from "../internal/errors.js";
 import {
   expandRecurrenceOccurrences,
   firstRecurrenceRule,
@@ -138,7 +139,13 @@ export function expandIcsCalendarEvents(args: {
   events: readonly LifeOpsCalendarEvent[];
   timeMin: string;
   timeMax: string;
-}): { events: LifeOpsCalendarEvent[]; complete: boolean } {
+}): {
+  events: LifeOpsCalendarEvent[];
+  complete: boolean;
+  diagnostics: Array<
+    "CALENDAR_ICS_EXDATE_INVALID" | "CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE"
+  >;
+} {
   const minMs = Date.parse(args.timeMin);
   const maxMs = Date.parse(args.timeMax);
   const overlaps = (startMs: number, endMs: number) =>
@@ -151,6 +158,9 @@ export function expandIcsCalendarEvents(args: {
     }
   }
   let complete = true;
+  const diagnostics = new Set<
+    "CALENDAR_ICS_EXDATE_INVALID" | "CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE"
+  >();
   const expanded: LifeOpsCalendarEvent[] = [];
   for (const event of args.events) {
     const startMs = Date.parse(event.startAt);
@@ -175,14 +185,31 @@ export function expandIcsCalendarEvents(args: {
     }
     const durationMs = endMs - startMs;
     const excluded = readIcsExceptionDates(recurrence, event.timezone);
-    if (!excluded.complete) complete = false;
-    const starts = expandRecurrenceOccurrences({
-      rule,
-      startAt: new Date(startMs),
-      timeZone: event.isAllDay ? "UTC" : (event.timezone ?? "UTC"),
-      rangeStart: new Date(minMs - durationMs + 1),
-      rangeEnd: new Date(maxMs),
-    });
+    if (excluded.invalidValueCount > 0) {
+      complete = false;
+      diagnostics.add("CALENDAR_ICS_EXDATE_INVALID");
+    }
+    let starts: Date[];
+    try {
+      starts = expandRecurrenceOccurrences({
+        rule,
+        startAt: new Date(startMs),
+        timeZone: event.isAllDay ? "UTC" : (event.timezone ?? "UTC"),
+        rangeStart: new Date(minMs - durationMs + 1),
+        rangeEnd: new Date(maxMs),
+      });
+    } catch (error) {
+      if (
+        error instanceof CalendarServiceError &&
+        error.code === "CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE"
+      ) {
+        complete = false;
+        diagnostics.add("CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE");
+        if (overlaps(startMs, endMs)) expanded.push(event);
+        continue;
+      }
+      throw error;
+    }
     if (starts.length >= MAX_EXPANDED_RECURRENCE_OCCURRENCES) {
       complete = false;
     }
@@ -211,5 +238,5 @@ export function expandIcsCalendarEvents(args: {
     }
   }
   expanded.sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
-  return { events: expanded, complete };
+  return { events: expanded, complete, diagnostics: [...diagnostics] };
 }

@@ -842,6 +842,83 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
       "2026-10-20T10:00:00.000Z",
       "2026-10-27T10:00:00.000Z",
     ]);
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "calendar:ics-expansion",
+      expect.objectContaining({ code: "CALENDAR_ICS_EXDATE_INVALID" }),
+      { sourceId: source.id },
+    );
+  });
+
+  it("stops a monthly rule whose candidate months never contain its day", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:empty-monthly-rule",
+          "DTSTAMP:20260228T000000Z",
+          "DTSTART:20260228T100000Z",
+          "DTEND:20260228T110000Z",
+          "RRULE:FREQ=MONTHLY;INTERVAL=12;BYMONTHDAY=31",
+          "SUMMARY:Impossible February date",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2027-02-01T00:00:00.000Z",
+        timeMax: "2028-03-01T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    expect(feed.events).toEqual([]);
+    expect(runtime.reportError).not.toHaveBeenCalled();
+  });
+
+  it("reports an interval that exceeds supported date arithmetic without failing the feed", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:oversized-daily-interval",
+          "DTSTAMP:20260101T000000Z",
+          "DTSTART:20260101T100000Z",
+          "DTEND:20260101T110000Z",
+          "RRULE:FREQ=DAILY;INTERVAL=9007199254740991",
+          "SUMMARY:Oversized interval",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-10-12T00:00:00.000Z",
+        timeMax: "2026-10-19T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("partial");
+    expect(feed.events).toEqual([]);
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "calendar:ics-expansion",
+      expect.objectContaining({
+        code: "CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE",
+      }),
+      { sourceId: source.id },
+    );
   });
 
   it("does not load unrelated historical rows for a short expansion window", async () => {
