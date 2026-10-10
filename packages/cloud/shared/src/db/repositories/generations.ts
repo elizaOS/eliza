@@ -1,6 +1,6 @@
 // Persists generations records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
-import { and, asc, count, desc, eq, isNotNull, ne, sql, sum } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { VIDEO_PENDING_SETTLEMENT_MARKER } from "../../lib/providers/video/types";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
@@ -424,13 +424,15 @@ export class GenerationsRepository {
       conditions.push(sql`${generations.created_at} <= ${endDate}`);
     }
 
+    const chargedCredits = sql`coalesce(${generations.metadata}->>'settlement_state', '') not in ('refunded', 'refunded_expired')`;
+
     const [totalResult] = await dbRead
       .select({
         total: count(),
         completed: sql<number>`count(*) filter (where ${generations.status} = 'completed')::int`,
         failed: sql<number>`count(*) filter (where ${generations.status} = 'failed')::int`,
         pending: sql<number>`count(*) filter (where ${generations.status} = 'pending')::int`,
-        totalCredits: sum(generations.credits),
+        totalCredits: sql<number>`sum(${generations.credits}) filter (where ${chargedCredits})`,
       })
       .from(generations)
       .where(and(...conditions));
@@ -439,7 +441,7 @@ export class GenerationsRepository {
       .select({
         type: generations.type,
         count: sql<number>`count(*)::int`,
-        totalCredits: sql<number>`sum(${generations.credits})::numeric`,
+        totalCredits: sql<number>`sum(${generations.credits}) filter (where ${chargedCredits})`,
       })
       .from(generations)
       .where(and(...conditions))
