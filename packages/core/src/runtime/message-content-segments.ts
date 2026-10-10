@@ -138,7 +138,7 @@ function safeUtf8End(source: Uint8Array, start: number): number {
 	return end;
 }
 
-function sourceSegmentId(args: {
+export function messageContentSegmentId(args: {
 	messageId: UUID;
 	kind: MessageContentSourceKind;
 	revision: string;
@@ -204,7 +204,7 @@ function buildSource(args: {
 			timestamp: args.message.createdAt ?? Date.now(),
 		};
 		segments.push({
-			id: sourceSegmentId({
+			id: messageContentSegmentId({
 				messageId: args.message.id,
 				kind: args.kind,
 				revision,
@@ -420,7 +420,7 @@ export function collectMessageContentSegmentIds(
 	);
 	return descriptors.flatMap((descriptor) =>
 		Array.from({ length: descriptor.segmentCount }, (_, ordinal) =>
-			sourceSegmentId({
+			messageContentSegmentId({
 				messageId,
 				kind: descriptor.kind,
 				revision: descriptor.revision,

@@ -43,7 +43,10 @@ import {
   isCanonicalJsonArray,
   type Log,
   logger,
+  MESSAGE_CONTENT_SEGMENT_TABLE,
   type Memory,
+  type MessageContentSegmentMetadata,
+  messageContentSegmentId,
   type Relationship,
   type Room,
   readCanonicalArrayLength,
@@ -1278,6 +1281,9 @@ async function restoreAgentDataInScope(
             ),
           }
         : {}),
+      ...(tableName === MESSAGE_CONTENT_SEGMENT_TABLE
+        ? withMessageSegmentOwner(mem, remap)
+        : {}),
       // Embeddings are excluded — they will be regenerated
       embedding: undefined,
     };
@@ -1388,6 +1394,24 @@ function withFragmentDocumentId<T extends NonNullable<Memory["metadata"]>>(
   documentId: UUID,
 ): T & { documentId: UUID } {
   return { ...metadata, documentId };
+}
+
+function withMessageSegmentOwner(
+  segment: Memory,
+  remap: (oldId: string) => string,
+): Pick<Memory, "id" | "metadata"> {
+  const metadata = segment.metadata as unknown as MessageContentSegmentMetadata;
+  const messageId = remap(metadata.messageId) as UUID;
+  return {
+    id: messageContentSegmentId({
+      messageId,
+      kind: metadata.sourceKind,
+      revision: metadata.sourceRevision,
+      ordinal: metadata.ordinal,
+      attachmentHash: metadata.attachmentIdHash,
+    }),
+    metadata: { ...metadata, messageId } as unknown as Memory["metadata"],
+  };
 }
 
 /**
