@@ -257,12 +257,6 @@ const VALID_APPROVAL_MODES: ComputerUseApprovalMode[] = [
   "off",
 ];
 
-const EMPTY_APPROVAL_SNAPSHOT: ComputerUseApprovalSnapshot = {
-  mode: "full_control",
-  pendingCount: 0,
-  pendingApprovals: [],
-};
-
 function isApprovalMode(value: string): value is ComputerUseApprovalMode {
   return VALID_APPROVAL_MODES.includes(value as ComputerUseApprovalMode);
 }
@@ -865,17 +859,7 @@ export async function handleComputerUseCompatRoutes(
 
     const service = getComputerUseService(state);
     if (!service) {
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-      });
-      writeSseEvent(res, {
-        type: "snapshot",
-        snapshot: EMPTY_APPROVAL_SNAPSHOT,
-      });
-      res.end();
+      sendJsonErrorResponse(res, 404, "Computer use service not available");
       return true;
     }
 
@@ -922,7 +906,7 @@ export async function handleComputerUseCompatRoutes(
 
     const service = getComputerUseService(state);
     if (!service) {
-      sendJsonResponse(res, 200, EMPTY_APPROVAL_SNAPSHOT);
+      sendJsonErrorResponse(res, 404, "Computer use service not available");
       return true;
     }
 

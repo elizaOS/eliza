@@ -193,21 +193,29 @@ describe("plugin-computeruse routes (real dispatch)", () => {
   });
 
   it("serves the public approvals/stream route even when auth is denied", async () => {
-    // Auth denied, but the stream route declares `public: true`. With no
-    // service the handler writes a single snapshot frame and closes the stream
-    // (a live service would keep the SSE connection open via heartbeat), so the
+    // Auth denied, but the stream route declares `public: true`, so the
+    // handler runs. With no service it answers 404 before any SSE headers (a
+    // live service would keep the SSE connection open via heartbeat), so the
     // response body resolves deterministically here.
     const base = await startServer(
       makeRuntime({ withService: false }),
       () => false,
     );
     const res = await fetch(`${base}/api/computer-use/approvals/stream`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("text/event-stream");
-    const text = await res.text();
-    expect(text).toContain('"type":"snapshot"');
-    // EMPTY_APPROVAL_SNAPSHOT is served when no service is registered.
-    expect(text).toContain('"mode":"full_control"');
+    expect(res.status).toBe(404);
+    expect(res.headers.get("content-type")).not.toContain("text/event-stream");
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "Computer use service not available",
+    );
+  });
+
+  it("returns 404 on GET /approvals when the service is unavailable", async () => {
+    const base = await startServer(makeRuntime({ withService: false }));
+    const res = await fetch(`${base}/api/computer-use/approvals`);
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "Computer use service not available",
+    );
   });
 
   it("changes the approval mode on POST /approval-mode with valid input", async () => {
