@@ -1,6 +1,8 @@
 // Pure helpers for Gmail API message payloads (users.messages.get format=full). No network,
 // no HTML rendering: links are returned as inert data for clients to review before opening.
 
+import { MAX_GMAIL_MIME_NODES } from "@elizaos/plugin-google-workspace/gmail-mime-parts";
+
 export interface GmailPayloadPart {
   mimeType?: string;
   filename?: string;
@@ -13,8 +15,6 @@ export interface GmailMessageLink {
   href: string;
   text: string;
 }
-
-const MAX_PARTS = 200;
 
 // Windows-1252 bytes 0x80-0x9f (ISO-8859-1 maps them to C1 controls). Undefined bytes stay as-is.
 const WINDOWS_1252_HIGH = [
@@ -125,7 +125,8 @@ export function extractGmailBodyText(
 function walk(payload: GmailPayloadPart, visit: (part: GmailPayloadPart) => void): void {
   let visited = 0;
   const step = (part: GmailPayloadPart) => {
-    if (++visited > MAX_PARTS) throw new Error("Gmail message exceeds the MIME part limit");
+    if (++visited > MAX_GMAIL_MIME_NODES)
+      throw new Error("Gmail message exceeds the MIME part limit");
     if (!part || typeof part !== "object") return;
     visit(part);
     if (Array.isArray(part.parts)) for (const child of part.parts) step(child);
