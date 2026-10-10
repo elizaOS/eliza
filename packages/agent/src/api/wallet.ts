@@ -1214,7 +1214,13 @@ export async function fetchSolanaNativeBalanceViaRpc(
             tokenAmount?.amount?.trim() ||
             "0";
           const decimals = tokenAmount?.decimals ?? 0;
-          if (!mint || Number.parseFloat(balance) <= 0) return null;
+          // parseFloat fails open on non-numeric balances: NaN <= 0 is
+          // false, so a corrupt balance ("abc", "NaN", "Infinity") was kept
+          // as a phantom token instead of being dropped. Require a finite,
+          // positive balance, mirroring the valueUsd gate in this file.
+          const balanceNum = Number.parseFloat(balance);
+          if (!mint || !Number.isFinite(balanceNum) || balanceNum <= 0)
+            return null;
           return {
             mint,
             balance,
