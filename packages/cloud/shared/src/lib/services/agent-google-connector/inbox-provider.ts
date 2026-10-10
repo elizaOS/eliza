@@ -136,17 +136,22 @@ function headerAddresses(value: string | null): string[] {
 }
 function findPart(payload: GmailPayloadPart, mimeType: string): GmailPayloadPart | null {
   let visited = 0;
-  const visit = (part: GmailPayloadPart): GmailPayloadPart | null => {
+  let found: GmailPayloadPart | null = null;
+  const visit = (part: GmailPayloadPart): void => {
     if (++visited > 200) throw new InboxContractError(413, "Too many MIME parts");
-    if (!part) return null;
-    if (part.mimeType?.toLowerCase() === mimeType && !part.filename) return part;
-    for (const child of Array.isArray(part.parts) ? part.parts : []) {
-      const found = visit(child);
-      if (found) return found;
+    if (!part) return;
+    if (part.mimeType?.toLowerCase() === mimeType && !part.filename) {
+      if (found)
+        throw new InboxContractError(
+          400,
+          "Draft has multiple body sections; use the provider editor",
+        );
+      found = part;
     }
-    return null;
+    for (const child of Array.isArray(part.parts) ? part.parts : []) visit(child);
   };
-  return visit(payload);
+  visit(payload);
+  return found;
 }
 const attachmentLimit = 5 * 1024 * 1024;
 /** Outgoing attachments per message and their combined decoded size (local plus forwarded). */

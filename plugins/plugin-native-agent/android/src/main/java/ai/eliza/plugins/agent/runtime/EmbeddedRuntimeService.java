@@ -62,6 +62,19 @@ public abstract class EmbeddedRuntimeService extends Service {
     EmbeddedRuntimeService service=current.get(type);
     if(service!=null)synchronized(service){if(current.get(type)==service)service.supervisor.invalidate();}
   }
+  /** Off by default. A host returns true only in a test build (for example from a
+   * test-only build flag) to admit {@link #injectChildExitFor}. Production builds keep false. */
+  protected boolean allowsChildExitInjection(){return false;}
+  /** Test-build fault hook: ends the named supervised child ("agent" or "gateway") of the
+   * current running launch as a crash would, so instrumentation can observe the real
+   * exit detection, restart policy and health reporting. Refused unless the live service
+   * allows injection; returns false when it is not running or no live child has that name. */
+  protected static boolean injectChildExitFor(Class<? extends EmbeddedRuntimeService> type,String name) {
+    EmbeddedRuntimeService service=current.get(type);
+    if(service==null)return false;
+    if(!service.allowsChildExitInjection())throw new IllegalStateException("Runtime fault injection is disabled in this build");
+    return service.supervisor.injectChildExit(name);
+  }
   protected static LocalRuntimeHealth healthFor(Class<? extends EmbeddedRuntimeService> type,String processInstance,int timeoutMillis) {
     return new LocalRuntimeHealth(processInstance,()->{
       EmbeddedRuntimeService service=current.get(type);if(service==null)return null;

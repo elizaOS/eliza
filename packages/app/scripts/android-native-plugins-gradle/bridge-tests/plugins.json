@@ -54,6 +54,9 @@
     "name": "ElizaNetworkPolicy",
     "class": "ai.eliza.plugins.networkpolicy.NetworkPolicyPlugin"
   },
+  "plugin-native-notifications": {
+    "kind": "host-configured-library"
+  },
   "plugin-native-phone": {
     "name": "ElizaPhone",
     "class": "ai.eliza.plugins.phone.PhonePlugin"

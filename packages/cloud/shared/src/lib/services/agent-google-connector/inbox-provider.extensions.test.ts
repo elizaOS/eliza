@@ -195,6 +195,13 @@ test("drafts list and exact draft content from one provider snapshot", async () 
   expect((await inbox.draftContent(owner, "d5")).content.attachmentCount).toBe(1);
   for (const mutate of [
     (payload: any) => {
+      payload.mimeType = "multipart/mixed";
+      payload.parts.push({
+        mimeType: "text/plain",
+        body: { data: b64("A second required section") },
+      });
+    },
+    (payload: any) => {
       payload.headers[3].value = "=?utf-8?B?SGVsbG8=?=";
     },
     (payload: any) => {

@@ -1,0 +1,9 @@
+apply plugin: 'com.android.library'
+android {
+ namespace 'ai.eliza.plugins.notifications'
+ compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
+ // Signing-certificate pinning (GET_SIGNING_CERTIFICATES) and listener rebind require API 28+.
+ defaultConfig { minSdk 28; targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36 }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+repositories { google(); mavenCentral() }
