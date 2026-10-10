@@ -1,10 +1,7 @@
 /** Real Core dispatch with deterministic HTTP boundaries; no model or public-provider traffic. */
 import { expect, test } from "bun:test";
 import { ChannelType } from "@elizaos/core";
-import {
-  runSharedElizaRuntimeTurn,
-  runSharedElizaRuntimeTurnStream,
-} from "./shared-eliza-runtime";
+import { runSharedElizaRuntimeTurn, runSharedElizaRuntimeTurnStream } from "./shared-eliza-runtime";
 import {
   finalizeSharedRealtimeReply,
   resolveSharedRealtimeRequirement,
@@ -197,7 +194,7 @@ for (const status of ["supported", "unsupported"] as const) {
       if (status === "supported") {
         calls = 0;
         quoteCalls = 0;
-        const streamParts: Array<{ type: string, text?: string }> = [];
+        const streamParts: Array<{ type: string; text?: string }> = [];
         for await (const part of runSharedElizaRuntimeTurnStream({
           character: {
             name: "Eliza",
@@ -241,7 +238,6 @@ for (const status of ["supported", "unsupported"] as const) {
         const finish = streamParts.find((part) => part.type === "finish");
         expect(streamedText).toBe((finish as { text?: string } | undefined)?.text);
         expect(streamedText).toContain(source.text);
-
       }
     } finally {
       // error-policy:J6 restore every process-owned dependency boundary after any outcome.
