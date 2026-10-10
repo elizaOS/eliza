@@ -8,6 +8,8 @@ type Fix = {
     longitude: number;
     accuracy: number;
     timestamp: number;
+    heading?: number | null;
+    speed?: number | null;
   };
   cached: boolean;
 };
@@ -170,6 +172,8 @@ export class NativeMapsLocation {
               "invalid-response",
               "A fresh location fix is not available.",
             );
+          const heading = coords.heading,
+            speed = coords.speed;
           onFix({
             coordinate: position,
             accuracyMeters: coords.accuracy,
@@ -179,6 +183,21 @@ export class NativeMapsLocation {
               permission.accuracy === "approximate"
                 ? permission.accuracy
                 : "unknown",
+            // A reported bearing is only meaningful while the device is moving.
+            ...(typeof heading === "number" &&
+            Number.isFinite(heading) &&
+            heading >= 0 &&
+            heading <= 360 &&
+            typeof speed === "number" &&
+            Number.isFinite(speed) &&
+            speed > 0.5
+              ? { headingDegrees: heading % 360 }
+              : {}),
+            ...(typeof speed === "number" &&
+            Number.isFinite(speed) &&
+            speed >= 0
+              ? { speedMetersPerSecond: speed }
+              : {}),
           });
           if (oneShot) void this.stop().catch(onError);
         } catch (error) {

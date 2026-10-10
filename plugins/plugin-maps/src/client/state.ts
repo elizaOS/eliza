@@ -4,6 +4,7 @@ import {
   configuredProvider,
   coordinate,
   failure,
+  isManeuver,
   MapsFailure,
   type MapsProvider,
   type Place,
@@ -29,6 +30,10 @@ export type MapsState = Readonly<{
   search: ResultState<readonly Place[]>;
   selection: ResultState<Place | null>;
   origin: Coordinate | null;
+  /** Name of a chosen origin (place or saved place); null for coordinates and fixes. */
+  originLabel: string | null;
+  /** Place search for the route origin, independent of the destination search. */
+  originSearch: ResultState<readonly Place[]>;
   position: ResultState<Position | null>;
   mode: TravelMode;
   route: ResultState<Route | null>;
@@ -42,6 +47,7 @@ export class MapsController {
   private detailRequest?: AbortController;
   private detailPending?: Promise<void>;
   private routeRequest?: AbortController;
+  private originRequest?: AbortController;
   private active = true;
   constructor(
     private config: ProviderConfig,
@@ -56,6 +62,8 @@ export class MapsController {
       search: idle([]),
       selection: idle(null),
       origin: null,
+      originLabel: null,
+      originSearch: idle([]),
       position: idle(null),
       mode: "drive",
       route: idle(null),
@@ -75,6 +83,7 @@ export class MapsController {
       ...structuredClone(this.state),
       search: copy(this.state.search),
       selection: copy(this.state.selection),
+      originSearch: copy(this.state.originSearch),
       route: copy(this.state.route),
       position: copy(this.state.position),
       saved: copy(this.state.saved),
@@ -89,6 +98,7 @@ export class MapsController {
     this.searchRequest?.abort();
     this.detailRequest?.abort();
     this.detailRequest = undefined;
+    this.cancelOriginSearch();
     this.invalidateRoute();
     this.config = config;
     this.provider = provider;
@@ -120,6 +130,80 @@ export class MapsController {
   private admitted() {
     return configuredProvider(this.config, this.provider);
   }
+  private async queryPlaces(
+    text: string,
+    signal: AbortSignal,
+  ): Promise<readonly Place[] | undefined> {
+    if (!boundedText(text, 300))
+      throw new MapsFailure(
+        "unsupported",
+        "Use a search of at most 300 characters.",
+      );
+    const provider = this.admitted();
+    if (!this.capabilities().search)
+      throw new MapsFailure(
+        "unsupported",
+        "This provider does not support place search.",
+      );
+    const result = await provider.search(text, signal);
+    if (signal.aborted || !this.active) return undefined;
+    if (!Array.isArray(result) || result.length > 50)
+      throw new MapsFailure(
+        "invalid-response",
+        "The search response is invalid.",
+      );
+    return result.map((item) => place(item, provider.providerId));
+  }
+  /** Search the provider for a route origin. Editing or choosing an origin cancels it. */
+  async searchOrigin(query: string) {
+    this.originRequest?.abort();
+    this.originRequest = undefined;
+    const text = query.trim();
+    if (!text) {
+      this.update({ originSearch: idle([]) });
+      return;
+    }
+    const request = new AbortController();
+    this.originRequest = request;
+    this.update({ originSearch: { phase: "loading", value: [], error: null } });
+    try {
+      const items = await this.queryPlaces(text, request.signal);
+      if (!items || this.originRequest !== request) return;
+      this.originRequest = undefined;
+      this.update({
+        originSearch: {
+          phase: items.length ? "ready" : "empty",
+          value: items,
+          error: null,
+        },
+      });
+    } catch (error) {
+      if (
+        !request.signal.aborted &&
+        this.active &&
+        this.originRequest === request
+      ) {
+        this.originRequest = undefined;
+        this.update({
+          originSearch: { phase: "error", value: [], error: failure(error) },
+        });
+      }
+    }
+  }
+  cancelOriginSearch() {
+    this.originRequest?.abort();
+    this.originRequest = undefined;
+    if (this.state.originSearch.phase !== "idle")
+      this.update({ originSearch: idle([]) });
+  }
+  /** Saved places whose label contains the text, for origin and destination pickers. */
+  savedMatches(query: string): readonly SavedPlace[] {
+    const text = query.trim().toLocaleLowerCase();
+    if (!text) return [];
+    return this.state.saved.value.filter((item) =>
+      item.label.toLocaleLowerCase().includes(text),
+    );
+  }
   async search(query: string) {
     this.searchRequest?.abort();
     this.detailRequest?.abort();
@@ -131,30 +215,8 @@ export class MapsController {
     this.searchRequest = request;
     this.update({ search: { phase: "loading", value: [], error: null } });
     try {
-      if (!boundedText(text, 300))
-        throw new MapsFailure(
-          "unsupported",
-          "Use a search of at most 300 characters.",
-        );
-      const provider = this.admitted();
-      if (!this.capabilities().search)
-        throw new MapsFailure(
-          "unsupported",
-          "This provider does not support place search.",
-        );
-      const result = await provider.search(text, request.signal);
-      if (
-        request.signal.aborted ||
-        !this.active ||
-        this.searchRequest !== request
-      )
-        return;
-      if (!Array.isArray(result) || result.length > 50)
-        throw new MapsFailure(
-          "invalid-response",
-          "The search response is invalid.",
-        );
-      const items = result.map((item) => place(item, provider.providerId));
+      const items = await this.queryPlaces(text, request.signal);
+      if (!items || this.searchRequest !== request) return;
       this.update({
         search: {
           phase: items.length ? "ready" : "empty",
@@ -218,18 +280,37 @@ export class MapsController {
     }
   }
   clearOrigin() {
+    this.cancelOriginSearch();
     this.invalidateRoute();
-    this.update({ origin: null });
+    this.update({ origin: null, originLabel: null });
   }
-  setOrigin(value: Coordinate) {
+  setOrigin(value: Coordinate, label?: string) {
     const origin = coordinate(value);
+    if (label !== undefined && !boundedText(label, 300))
+      throw new MapsFailure("unsupported", "The origin name is invalid.");
+    this.cancelOriginSearch();
     void this.nativeLocation.stop().catch((error) =>
       this.update({
         position: { phase: "error", value: null, error: failure(error) },
       }),
     );
     this.invalidateRoute();
-    this.update({ origin, position: idle(null) });
+    this.update({ origin, originLabel: label ?? null, position: idle(null) });
+  }
+  /** Use a chosen origin candidate and plan from it. */
+  chooseOrigin(candidate: Place | SavedPlace) {
+    if ("label" in candidate)
+      this.setOrigin(candidate.coordinate, candidate.label);
+    else {
+      const chosen = place(candidate, this.admitted().providerId);
+      this.setOrigin(chosen.coordinate, chosen.name);
+    }
+    return this.planRoute();
+  }
+  /** Explicit user request to plan again from a position, for example while off route. */
+  reroute(from: Coordinate, label?: string) {
+    this.setOrigin(from, label);
+    return this.planRoute();
   }
   setMode(mode: TravelMode) {
     if (!["drive", "walk", "bicycle", "transit"].includes(mode))
@@ -333,13 +414,19 @@ export class MapsController {
         if (
           !boundedText(step.instruction, 2000) ||
           !Number.isFinite(step.distanceMeters) ||
-          step.distanceMeters < 0
+          step.distanceMeters < 0 ||
+          (step.maneuver !== undefined && !isManeuver(step.maneuver))
         )
           throw new MapsFailure(
             "invalid-response",
             "A route instruction is invalid.",
           );
-        return { ...step, coordinate: coordinate(step.coordinate) };
+        return {
+          instruction: step.instruction,
+          coordinate: coordinate(step.coordinate),
+          distanceMeters: step.distanceMeters,
+          ...(step.maneuver ? { maneuver: step.maneuver } : {}),
+        };
       });
       this.update({
         route: {
@@ -395,6 +482,7 @@ export class MapsController {
     this.searchRequest?.abort();
     this.detailRequest?.abort();
     this.routeRequest?.abort();
+    this.originRequest?.abort();
     try {
       await this.nativeLocation.stop();
     } finally {
