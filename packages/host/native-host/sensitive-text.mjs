@@ -66,7 +66,7 @@ function sensitive(text) {
     /(?<!\b(?:zip|postal|post|area|country|dialing)\s+)\b(?:pass)?code\b(?:\s+[a-z']+){0,4}?\s*(?:[:=]\s*)?\d(?:[\s-]?\d){3,7}(?!\d)/i.test(
       text,
     ) ||
-    /(?<!\d)\d(?:[\s-]?\d){3,7}\s+(?:is|was)\s+(?:the|my|your|our)\s+(?:[a-z]+\s+){0,2}?(?:pass)?code\b/i.test(
+    /(?<!\d)\d(?:[\s-]?\d){3,7}\s+(?:is|was)\s+(?:the|my|your|our)\s+(?:(?!(?:zip|postal|post|area|country|dialing)\b)[a-z]+\s+){0,2}?(?:pass)?code\b/i.test(
       text,
     )
   )

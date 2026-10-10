@@ -43,6 +43,9 @@ test("ordinary speech with numbers is not withheld", () => {
     "my zip code is 90210",
     "the area code is 415",
     "the postal code is 10115",
+    "94110 is my zip code",
+    "10115 is our postal code",
+    "415 is the area code",
     "the code they sent did not work",
   ])
     assert.equal(containsSensitiveText(text), false, text);
