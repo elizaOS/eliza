@@ -107,11 +107,28 @@ export interface AccountPoolConsumerKeyAdmin {
   ): { key: string; consumer: AccountPoolConsumerKeySummary } | null;
 }
 
+/** Native-derived correlation only; fresh OWNER/device and per-definition consent remain mandatory. */
+export interface AgentNativeOwnerReminderContext {
+  readonly protocol: 1;
+  readonly subjectUserId: string;
+  readonly agentId: string;
+  readonly installationId: string;
+  readonly enrollmentId: string;
+  readonly accountRef: string;
+  readonly environment: string;
+  readonly sessionGeneration: string;
+}
+
 /**
  * Host capabilities the agent runtime consumes at boot / request time. Defaults support hostless boot; unavailable durable
  * writes reject explicitly instead of reporting a successful no-op.
  */
 export interface AgentHostBridge {
+  /** Installed only by a real private native host; absence must remain unavailable. */
+  readNativeOwnerReminderContext?(
+    runtime: AgentRuntime,
+    assertCurrent: () => void,
+  ): Promise<AgentNativeOwnerReminderContext>;
   /**
    * Record which wallet/steward env keys the launch environment set, BEFORE
    * config.env merges into process.env. The deferred wallet-key hydrate

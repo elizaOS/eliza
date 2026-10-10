@@ -44,7 +44,8 @@ final class AgentSecureStore implements AutoCloseable {
         while (!closed) {
             try (LocalSocket socket = server.accept()) {
                 active = socket;
-                if (socket.getPeerCredentials().getUid() != Process.myUid()) continue;
+                int peerUid = socket.getPeerCredentials().getUid();
+                if (peerUid != Process.myUid()) continue;
                 socket.setSoTimeout(15000);
                 InputStream input = socket.getInputStream();
                 while (!closed) {
@@ -59,7 +60,9 @@ final class AgentSecureStore implements AutoCloseable {
                     JSONObject request = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
                     JSONObject response;
                     try {
-                        response = execute(request);
+                        response = execute(request, peerUid);
+                    } catch (NativeSourceHost.OwnerReminderContextUnavailable unavailable) {
+                        response = new JSONObject().put("ok", false).put("reason", "unavailable");
                     } catch (SecurityException error) {
                         response = new JSONObject().put("ok", false).put("reason", "denied");
                     } catch (Exception error) {
@@ -100,7 +103,13 @@ final class AgentSecureStore implements AutoCloseable {
         return (SecretKey) store.getKey(KEY_ALIAS, null);
     }
 
-    private JSONObject execute(JSONObject request) throws Exception {
+    private JSONObject execute(JSONObject request, int peerUid) throws Exception {
+        if (peerUid != Process.myUid()) throw new SecurityException("Unauthorized secure-store peer");
+        if ("nativeOwnerContext".equals(request.optString("operation"))) {
+            String id = request.optString("id");
+            if (request.length() != 2 || id.isEmpty() || id.length() > 128) throw new SecurityException("Invalid native owner request");
+            return new JSONObject().put("ok", true).put("context", NativeSourceHost.readOwnerReminderContext(peerUid, Process.myUid()));
+        }
         String vault = request.getString("vaultId");
         String kind = request.getString("secretKind");
         String operation = request.getString("operation");

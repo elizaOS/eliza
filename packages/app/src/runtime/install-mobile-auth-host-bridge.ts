@@ -10,9 +10,21 @@ import {
 import { subscribeSessionRevocations } from "../api/auth/sessions";
 import { handleAuthPairingCompatRoutes } from "../api/auth-pairing-routes";
 import { handleAuthSessionRoutes } from "../api/auth-session-routes";
+import { readAndroidOwnerReminderContext } from "./android-owner-reminder-context.js";
 export function installMobileAuthHostBridge(): void {
+  const socketName = process.env.ELIZA_ANDROID_SECURE_STORE_SOCKET;
   setAgentHostBridge({
     ...getAgentHostBridge(),
+    ...(socketName
+      ? {
+          readNativeOwnerReminderContext: (runtime, assertCurrent) =>
+            readAndroidOwnerReminderContext(
+              socketName,
+              runtime.agentId,
+              assertCurrent,
+            ),
+        }
+      : {}),
     handleAuthRoutes: async (req, res, runtime) => {
       const state = {
         current: runtime,
