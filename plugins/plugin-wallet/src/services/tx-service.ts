@@ -141,8 +141,15 @@ export class TxService {
   private readonly rpcUrl: string;
 
   constructor(rpcUrl: string, privateKey: string) {
+    // Accept the uppercase 0X prefix too, mirroring resolveEvmPrivateKey:
+    // "0X…" used to fail validation ("Invalid EVM_PRIVATE_KEY") and would
+    // otherwise become "0x0X…", which ethers.Wallet rejects.
+    const normalizedKey = /^0[xX]/.test(privateKey)
+      ? `0x${privateKey.slice(2)}`
+      : `0x${privateKey}`;
+
     // Validate private key before attempting to create wallet
-    if (!isValidPrivateKey(privateKey)) {
+    if (!isValidPrivateKey(normalizedKey)) {
       const preview = formatPrivateKeyPreview(privateKey);
       throw new Error(
         `Invalid EVM_PRIVATE_KEY: expected 64-character hex string, got ${preview}. ` +
@@ -152,10 +159,6 @@ export class TxService {
 
     this.rpcUrl = normalizeJsonRpcUrl(rpcUrl);
     this.provider = new ethers.JsonRpcProvider(this.rpcUrl);
-
-    const normalizedKey = privateKey.startsWith("0x")
-      ? privateKey
-      : `0x${privateKey}`;
 
     // Create wallet with provider
     this.wallet = new ethers.Wallet(normalizedKey, this.provider);
