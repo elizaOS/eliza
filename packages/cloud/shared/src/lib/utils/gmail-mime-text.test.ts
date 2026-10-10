@@ -151,6 +151,16 @@ test("0057: search attachment hint from metadata and full payloads; explicit in:
     }),
   ).toBe(true);
   expect(gmailHasAttachmentsHint(null)).toBe(false);
+  // The read path walks the same payload as the attachment walker, so it shares its part budget.
+  const large = {
+    mimeType: "multipart/related",
+    parts: [
+      part("text/html", '<a href="https://example.org/a">A</a>'),
+      ...Array.from({ length: 300 }, () => ({ mimeType: "image/png", filename: "i.png" })),
+    ],
+  };
+  expect(gmailHasAttachmentsHint(large)).toBe(true);
+  expect(extractGmailHtmlLinks(large)).toEqual([{ href: "https://example.org/a", text: "A" }]);
   expect(gmailSearchIncludesTrash("in:trash")).toBe(true);
   expect(gmailSearchIncludesTrash("from:a@example.org IN:TRASH")).toBe(true);
   expect(gmailSearchIncludesTrash("in:inbox")).toBe(false);
