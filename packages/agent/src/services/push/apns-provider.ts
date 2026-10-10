@@ -12,9 +12,10 @@
  * shape `{ aps: { alert: { title, body }, sound:"default" }, ...customData }`.
  *
  * VERIFIABILITY: the JWT minting (`mintToken`) and request shaping are pure and
- * unit-tested with a throwaway P-256 key. Actual delivery hits Apple's servers
- * and is NOT exercised in tests — it requires a real APNs auth key, a real
- * bundle id, and a real device token.
+ * unit-tested with a throwaway P-256 key. The request deadline is exercised
+ * against a local HTTP/2 server that answers, stalls, or fails. Actual delivery
+ * hits Apple's servers and is NOT exercised in tests — it requires a real APNs
+ * auth key, a real bundle id, and a real device token.
  */
 
 import { createPrivateKey, createSign, type KeyObject } from "node:crypto";
@@ -30,6 +31,12 @@ const PROD_HOST = "https://api.push.apple.com";
 const SANDBOX_HOST = "https://api.sandbox.push.apple.com";
 /** Re-mint the provider token before Apple's 60-minute cap (use 50 min). */
 const TOKEN_TTL_MS = 50 * 60 * 1000;
+/**
+ * Deadline for one APNs HTTP/2 request, in milliseconds. Matches the FCM
+ * transport's `DEFAULT_FCM_FETCH_TIMEOUT_MS`. APNs can hold a stream open with
+ * no response and no error, so a request needs its own deadline.
+ */
+export const DEFAULT_APNS_REQUEST_TIMEOUT_MS = 10_000;
 
 interface ApnsConfig {
   /** PEM/p8 EC private key contents. */
@@ -172,17 +179,40 @@ export class ApnsProvider implements PushProvider {
     );
   }
 
-  /** POST over HTTP/2 and resolve the status + APNs `reason` (if any). */
+  /**
+   * POST over HTTP/2 and resolve the status + APNs `reason` (if any).
+   *
+   * APNs can leave a stream open with no `end` and no `error`. The caller
+   * (`NotificationPushService`) sends to one device token at a time, so one
+   * silent stream stops every later device in that round. `timeoutMs` bounds
+   * the stream and cancels it when the deadline passes. The three exit paths
+   * (`end`, `error`, timeout) race, and only the first one settles the promise.
+   */
   private postHttp2(
     host: string,
     token: string,
     jwt: string,
     body: string,
+    timeoutMs: number = DEFAULT_APNS_REQUEST_TIMEOUT_MS,
   ): Promise<{ status: number; reason?: string }> {
     const config = this.requireConfig();
     return new Promise((resolve, reject) => {
       const client = connect(host);
-      client.on("error", reject);
+      let settled = false;
+      let timer: NodeJS.Timeout | undefined;
+
+      /** Run one exit path only; drop the deadline when the request is done. */
+      const settleOnce = (settle: () => void): void => {
+        if (settled) return;
+        settled = true;
+        if (timer !== undefined) clearTimeout(timer);
+        settle();
+      };
+
+      client.on("error", (error) => {
+        client.close();
+        settleOnce(() => reject(error));
+      });
       const req = client.request({
         [http2Constants.HTTP2_HEADER_METHOD]: "POST",
         [http2Constants.HTTP2_HEADER_PATH]: `/3/device/${token}`,
@@ -202,17 +232,29 @@ export class ApnsProvider implements PushProvider {
         client.close();
         let reason: string | undefined;
         if (chunks.length > 0) {
-          const parsed = parseApnsReason(
-            Buffer.concat(chunks).toString("utf8"),
-          );
-          reason = parsed;
+          reason = parseApnsReason(Buffer.concat(chunks).toString("utf8"));
         }
-        resolve({ status, reason });
+        settleOnce(() => resolve({ status, reason }));
       });
       req.on("error", (error) => {
         client.close();
-        reject(error);
+        settleOnce(() => reject(error));
       });
+
+      timer = setTimeout(() => {
+        // Cancel the stream first so APNs drops the send, then tear the session
+        // down so no half-open connection stays in the pool.
+        req.close(http2Constants.NGHTTP2_CANCEL);
+        client.destroy();
+        settleOnce(() =>
+          reject(
+            new Error(
+              `[ApnsProvider] APNs request timed out after ${timeoutMs} ms`,
+            ),
+          ),
+        );
+      }, timeoutMs);
+
       req.end(body);
     });
   }
