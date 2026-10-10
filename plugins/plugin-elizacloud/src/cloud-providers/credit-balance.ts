@@ -4,8 +4,8 @@ import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@el
 import { logger } from "@elizaos/core";
 import { resolveCloudBillingUrl } from "../cloud/base-url";
 import type { CloudAuthService } from "../services/cloud-auth";
-import type { CreditBalanceResponse } from "../types/cloud";
 import { getBaseURL } from "../utils/config";
+import { createElizaCloudClient } from "../utils/sdk-client";
 import { getCachedAccountSnapshot } from "./cloud-account";
 
 const creditCaches = new WeakMap<IAgentRuntime, { value: number; at: number }>();
@@ -45,10 +45,7 @@ export const creditBalanceProvider: Provider = {
 
     let balance: number;
     try {
-      const { data } = await auth
-        .getClient()
-        .requestData<CreditBalanceResponse>("GET", "/credits/balance");
-      balance = data.balance;
+      ({ balance } = await createElizaCloudClient(runtime).getCreditsBalance());
     } catch (err) {
       logger.warn(
         `[CloudCredits] Failed to fetch balance: ${err instanceof Error ? err.message : err}`

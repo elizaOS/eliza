@@ -7,7 +7,6 @@ export {
   getSsoRedirectUrl,
   type SsoRedirectArgs,
 } from "./cloud-auth";
-export { CloudBackupService } from "./cloud-backup";
 export {
   type CloudBootstrapService,
   CloudBootstrapServiceImpl,

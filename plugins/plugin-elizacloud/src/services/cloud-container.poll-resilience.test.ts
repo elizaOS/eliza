@@ -3,7 +3,9 @@
  * API failure inside one poll must count as an attempt and re-arm the chain on
  * the normal backoff; a permanent authorization/not-found failure must end it;
  * a poll that settles after stop()/deleteContainer() must not reschedule; and
- * every failure must reach the runtime error boundary. Deterministic harness —
+ * every failure must reach the runtime error boundary. A running container gets
+ * no `/containers/:id/health` request, because the cloud does not serve that
+ * route. Deterministic harness —
  * the real service, a real AgentRuntime, and the real Cloud SDK client over a
  * scripted fetch transport, driven by fake timers.
  */
@@ -42,26 +44,22 @@ function deferred<T>() {
 
 let active: CloudContainerService | null = null;
 
-/** Deploys container `ID` through the public API; the last reply repeats. */
+/** Starts the service with container `ID` still deploying; the last reply repeats. */
 async function deploy(replies: PollReply[]) {
   const polls: number[] = [];
   const healthChecks: number[] = [];
   const fetchImpl = (async (input, init) => {
     const method = init?.method ?? "GET";
     const { pathname } = new URL(String(input));
-    if (method === "POST" && pathname.endsWith("/containers")) {
-      return json(200, {
-        success: true,
-        data: { id: ID, status: "deploying" },
-        stackName: "stack-1",
-      });
+    if (method === "GET" && pathname.endsWith("/containers")) {
+      return json(200, { success: true, data: [{ id: ID, status: "deploying" }] });
     }
     if (method === "DELETE" && pathname.endsWith(`/containers/${ID}`)) {
       return json(200, { success: true, message: "deleted" });
     }
     if (method === "GET" && pathname.endsWith(`/containers/${ID}/health`)) {
       healthChecks.push(Date.now());
-      return json(200, { success: true, data: { healthy: true, status: "ok" } });
+      return json(404, { success: false, error: "Not found" });
     }
     if (method === "GET" && pathname.endsWith(`/containers/${ID}`)) {
       const reply = replies[Math.min(polls.length, replies.length - 1)];
@@ -87,19 +85,14 @@ async function deploy(replies: PollReply[]) {
   const client = new CloudApiClient("https://cloud.test/api/v1", undefined, {
     fetchImpl,
   });
-  const service = new CloudContainerService(runtime);
-  (service as unknown as { authService: unknown }).authService = {
+  vi.spyOn(runtime, "getService").mockReturnValue({
     isAuthenticated: () => true,
     getClient: () => client,
-  };
-  active = service;
+  } as never);
 
   const started = Date.now();
-  await service.createContainer({
-    name: "app",
-    project_name: "proj",
-    ecr_image_uri: "registry.test/app:1",
-  });
+  const service = (await CloudContainerService.start(runtime)) as CloudContainerService;
+  active = service;
   const pollOffsets = () => polls.map((at) => at - started);
   const reported = (): ReportedError[] =>
     runtime.getRecentReportedErrors().filter((entry) => entry.scope === POLL_SCOPE);
@@ -144,8 +137,9 @@ describe("CloudContainerService deployment polling", () => {
       },
     ]);
 
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(healthChecks).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(healthChecks).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("retries transport failures on the same backoff a successful poll uses", async () => {

@@ -36,7 +36,6 @@ export interface OpenAIConfig {
 
 // Re-export all cloud types
 export type {
-  AgentSnapshot,
   BridgeConnection,
   BridgeConnectionState,
   BridgeError,
@@ -63,19 +62,10 @@ export type {
   ContainerBillingStatus,
   ContainerDeleteResponse,
   ContainerGetResponse,
-  ContainerHealthResponse,
   ContainerListResponse,
   ContainerStatus,
-  CreateContainerRequest,
-  CreateContainerResponse,
-  CreateSnapshotRequest,
-  CreateSnapshotResponse,
-  CreditBalanceResponse,
   CreditSummaryResponse,
   CreditTransaction,
-  DeviceAuthRequest,
-  DeviceAuthResponse,
-  DevicePlatform,
   GatewayRelayRequest,
   GatewayRelayRequestEnvelope,
   GatewayRelayResponse,
@@ -87,10 +77,6 @@ export type {
   RegisterGatewayRelaySessionResponse,
   RequestCodingAgentContainerRequest,
   RequestCodingAgentContainerResponse,
-  RestoreSnapshotRequest,
-  RestoreSnapshotResponse,
-  SnapshotListResponse,
-  SnapshotType,
   SyncCloudCodingContainerRequest,
   SyncCloudCodingContainerResponse,
 } from "./cloud";
