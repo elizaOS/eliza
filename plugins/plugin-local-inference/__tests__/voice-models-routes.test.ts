@@ -7,8 +7,9 @@
  * - GET `/voice-models/check` invokes the injected updater and serialises
  *   the per-id `VoiceModelStatus`.
  * - POST `/voice-models/:id/pin` writes the on-disk pin file.
- * - POST `/voice-models/:id/update` honours the network policy gate (gets
- *   stubbed via the override hook) and the injected downloader.
+ * - POST `/voice-models/:id/update` runs the injected downloader as an
+ *   explicit request, stages the wake-word head, and refuses ids with no
+ *   standalone install path.
  * - GET / POST `/voice-models/preferences` round-trip + OWNER gate.
  */
 
@@ -191,14 +192,31 @@ describe("resolveInstalledVersions", () => {
 	it("parses the `<id>-<version>-<file>` filename convention", async () => {
 		const dir = path.join(tmpRoot, "models", "voice");
 		await fsp.mkdir(dir, { recursive: true });
-		await fsp.writeFile(path.join(dir, "kokoro-0.1.0-kokoro.onnx"), "x");
-		await fsp.writeFile(path.join(dir, "kokoro-0.2.0-kokoro.onnx"), "x");
-		await fsp.writeFile(path.join(dir, "asr-0.1.0-asr.gguf"), "x");
+		await fsp.writeFile(
+			path.join(dir, "wakeword-0.1.0-hey-eliza.melspec.gguf"),
+			"x",
+		);
+		await fsp.writeFile(
+			path.join(dir, "wakeword-0.2.0-hey-eliza.melspec.gguf"),
+			"x",
+		);
 		// Garbage filenames must be ignored cleanly.
 		await fsp.writeFile(path.join(dir, "README.md"), "x");
+		// A pre-release version must keep its tag and sort below the release.
+		await fsp.writeFile(
+			path.join(dir, "wakeword-0.2.0-rc.1-hey-eliza.embedding.gguf"),
+			"x",
+		);
 		const installed = await resolveInstalledVersions(dir);
-		expect(installed.get("kokoro" as VoiceModelId)).toBe("0.2.0");
-		expect(installed.get("asr" as VoiceModelId)).toBe("0.1.0");
+		expect(installed.get("wakeword" as VoiceModelId)).toBe("0.2.0");
+	});
+	it("does not report a flat download that no loader reads as installed", async () => {
+		const dir = path.join(tmpRoot, "models", "voice");
+		await fsp.mkdir(dir, { recursive: true });
+		await fsp.writeFile(path.join(dir, "kokoro-0.2.0-kokoro.onnx"), "x");
+		await fsp.writeFile(path.join(dir, "asr-0.1.0-asr.gguf"), "x");
+		const installed = await resolveInstalledVersions(dir);
+		expect(installed.size).toBe(0);
 	});
 });
 
@@ -237,6 +255,10 @@ describe("GET /api/local-inference/voice-models", () => {
 		const dir = path.join(tmpRoot, "models", "voice");
 		await fsp.mkdir(dir, { recursive: true });
 		await fsp.writeFile(path.join(dir, "kokoro-0.1.0-kokoro.onnx"), "x");
+		await fsp.writeFile(
+			path.join(dir, "wakeword-0.1.0-hey-eliza.melspec.gguf"),
+			"x",
+		);
 		// Pre-seed a pin record.
 		const prefsDir = path.join(tmpRoot, "local-inference");
 		await fsp.mkdir(prefsDir, { recursive: true });
@@ -263,8 +285,11 @@ describe("GET /api/local-inference/voice-models", () => {
 		};
 		const kokoro = body.installations.find((i) => i.id === "kokoro");
 		expect(kokoro).toBeDefined();
-		expect(kokoro?.installedVersion).toBe("0.1.0");
+		// The flat kokoro file is not read by any loader, so it is not installed.
+		expect(kokoro?.installedVersion).toBeNull();
 		expect(kokoro?.pinned).toBe(true);
+		const wakeword = body.installations.find((i) => i.id === "wakeword");
+		expect(wakeword?.installedVersion).toBe("0.1.0");
 		const asr = body.installations.find((i) => i.id === "asr");
 		expect(asr).toBeDefined();
 		expect(asr?.installedVersion).toBeNull();
@@ -388,10 +413,21 @@ describe("POST /api/local-inference/voice-models/:id/pin", () => {
 });
 
 describe("POST /api/local-inference/voice-models/:id/update", () => {
-	it("invokes the downloader when the network policy allows", async () => {
-		const candidate = makeVersion({ id: "kokoro", version: "0.2.0" });
+	it("downloads and stages the wake-word head on an explicit request", async () => {
+		const candidate = makeVersion({
+			id: "wakeword",
+			version: "0.2.0",
+			ggufAssets: [
+				{
+					filename: "wake/hey-eliza.melspec.gguf",
+					sha256: "a".repeat(64),
+					sizeBytes: 4,
+					quant: "fp16",
+				},
+			],
+		});
 		const status: VoiceModelStatus = {
-			id: "kokoro",
+			id: "wakeword",
 			installedVersion: "0.1.0",
 			latestKnown: candidate,
 			pinned: false,
@@ -399,43 +435,74 @@ describe("POST /api/local-inference/voice-models/:id/update", () => {
 		};
 		setVoiceModelsUpdater(new StubUpdater([status]) as unknown as VoiceModelUpdater);
 
-		// Wi-Fi prefs so `evaluateRuntimePolicy` returns allow=true with the
-		// NODE_DEFAULT_PROBE we get when no Capacitor bridge is loaded. Since
-		// the default node probe returns unknown, we override prefs to make
-		// the decision deterministic via the headless test env.
-		// Force a wifi-unmetered network state by writing prefs and then
-		// using ELIZA_NETWORK_POLICY=force-wifi via probe override is
-		// invasive; instead we supply our own downloader stub that captures
-		// the policy decision and bypasses the network refusal.
-		// The default decision in test is `unknown → ask`, so we explicitly
-		// set ELIZA_HEADLESS=0 and ELIZA_NETWORK_POLICY undefined to allow
-		// the auto-allow path. To make this reliable we instead inject the
-		// download fn and have it succeed regardless — the network gate is
-		// a separate concern unit-tested elsewhere.
-		let downloadCalls = 0;
+		// This process has no desktop/mobile network bridge, so the runtime
+		// policy decision is an ask (`allow: false`). The update route is the
+		// user's explicit request and must not be refused by it.
+		const triggers: string[] = [];
+		const policyAllowed: boolean[] = [];
 		setVoiceModelDownloader(async (args) => {
-			downloadCalls += 1;
-			// Sanity: the call must use our candidate.
-			expect(args.version.id).toBe("kokoro");
+			triggers.push(args.trigger);
+			policyAllowed.push(args.networkPolicy.allow);
+			expect(args.version.id).toBe("wakeword");
 			expect(args.version.version).toBe("0.2.0");
+			await fsp.mkdir(args.bundleVoiceDir, { recursive: true });
+			const finalPath = path.join(
+				args.bundleVoiceDir,
+				"wakeword-0.2.0-hey-eliza.melspec.gguf",
+			);
+			await fsp.writeFile(finalPath, "gguf");
 			return {
-				finalPath: path.join(args.bundleVoiceDir, "kokoro-0.2.0-kokoro.onnx"),
+				finalPath,
 				sha256: candidate.ggufAssets[0]!.sha256,
 				sizeBytes: candidate.ggufAssets[0]!.sizeBytes,
 			};
 		});
 
-		// Pre-write wifi-friendly prefs.
-		await fsp.mkdir(path.join(tmpRoot, "local-inference"), { recursive: true });
-		await fsp.writeFile(
-			path.join(tmpRoot, "local-inference", "voice-update-prefs.json"),
-			JSON.stringify({
-				autoUpdateOnWifi: true,
-				autoUpdateOnCellular: false,
-				autoUpdateOnMetered: false,
-				quietHours: [],
+		const { res, captured } = makeRes();
+		await handleVoiceModelsRoutes(
+			makeReq({
+				method: "POST",
+				url: "/api/local-inference/voice-models/wakeword/update",
+				body: JSON.stringify({}),
+				headers: { "content-type": "application/json" },
 			}),
+			res,
 		);
+		expect(captured.statusCode).toBe(200);
+		expect(triggers).toEqual(["explicit"]);
+		expect(policyAllowed).toEqual([false]);
+		const body = (await readJson(captured)) as {
+			ok: boolean;
+			version: string;
+			stagedPaths: string[];
+		};
+		expect(body.ok).toBe(true);
+		expect(body.version).toBe("0.2.0");
+		const stagedPath = path.join(
+			tmpRoot,
+			"local-inference",
+			"wake",
+			"hey-eliza.melspec.gguf",
+		);
+		expect(body.stagedPaths).toEqual([stagedPath]);
+		expect(await fsp.readFile(stagedPath, "utf8")).toBe("gguf");
+	});
+
+	it("refuses a sub-model with no standalone install path before downloading", async () => {
+		const candidate = makeVersion({ id: "kokoro", version: "0.2.0" });
+		const status: VoiceModelStatus = {
+			id: "kokoro",
+			installedVersion: null,
+			latestKnown: candidate,
+			pinned: false,
+			decision: { allow: true, reason: "update-available" },
+		};
+		setVoiceModelsUpdater(new StubUpdater([status]) as unknown as VoiceModelUpdater);
+		let downloadCalls = 0;
+		setVoiceModelDownloader(async () => {
+			downloadCalls += 1;
+			throw new Error("downloader must not run for kokoro");
+		});
 
 		const { res, captured } = makeRes();
 		await handleVoiceModelsRoutes(
@@ -447,29 +514,15 @@ describe("POST /api/local-inference/voice-models/:id/update", () => {
 			}),
 			res,
 		);
-		// The decision may be 409 (network policy refused because the test
-		// runtime's probe returns unknown → ask) or 200 if our headless
-		// detection kicks in differently. We accept either as long as the
-		// downloader is invoked when policy allows or not invoked when
-		// policy refuses — the gate is fail-closed and that is the
-		// behaviour we want to verify.
-		if (captured.statusCode === 200) {
-			expect(downloadCalls).toBe(1);
-			const body = (await readJson(captured)) as {
-				ok: boolean;
-				version: string;
-			};
-			expect(body.ok).toBe(true);
-			expect(body.version).toBe("0.2.0");
-		} else {
-			expect([409, 502]).toContain(captured.statusCode);
-			expect(downloadCalls).toBe(0);
-		}
+		expect(captured.statusCode).toBe(409);
+		expect(downloadCalls).toBe(0);
+		const body = (await readJson(captured)) as { error?: string };
+		expect(body.error).toMatch(/ships inside the Eliza-1 bundle/);
 	});
 
 	it("returns 404 when no candidate version exists", async () => {
 		const status: VoiceModelStatus = {
-			id: "kokoro",
+			id: "wakeword",
 			installedVersion: null,
 			latestKnown: null,
 			pinned: false,
@@ -480,7 +533,7 @@ describe("POST /api/local-inference/voice-models/:id/update", () => {
 		await handleVoiceModelsRoutes(
 			makeReq({
 				method: "POST",
-				url: "/api/local-inference/voice-models/kokoro/update",
+				url: "/api/local-inference/voice-models/wakeword/update",
 				body: JSON.stringify({}),
 				headers: { "content-type": "application/json" },
 			}),
