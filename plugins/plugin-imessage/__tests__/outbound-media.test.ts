@@ -410,6 +410,29 @@ describe("iMessage service — media → AppleScript attachment build", () => {
         expect.objectContaining({ code: "IMESSAGE_REPLY_DELIVERY_FAILED" }),
         { rowId: 7 }
       );
+
+      // Blooio cannot send media. The text is sent once, the refusal is
+      // reported, and the callback does not throw (a throw would make Blooio
+      // redeliver the webhook and repeat the text).
+      (svc as unknown as { settings: { transport: string } }).settings.transport = "blooio";
+      const sendSingleMessage = vi.fn(async () => ({ success: true, messageId: "blooio-1" }));
+      Object.assign(svc, { sendSingleMessage });
+      vi.mocked(runtime.createMemory).mockClear();
+      replies.push({ text: "here it is", attachments: [{ id: "chart", url: fixturePath }] });
+      await dispatch();
+      expect(sendSingleMessage).toHaveBeenCalledTimes(1);
+      expect(sendSingleMessage).toHaveBeenCalledWith("+14155552671", "here it is");
+      expect(runtime.reportError).toHaveBeenLastCalledWith(
+        "imessage.replyDelivery",
+        expect.objectContaining({ code: "IMESSAGE_REPLY_ATTACHMENT_UNSUPPORTED" }),
+        { rowId: 7 }
+      );
+      expect(runtime.createMemory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.objectContaining({ text: "here it is", attachments: [] }),
+        }),
+        "messages"
+      );
     } finally {
       await rm(fixtureDir, { recursive: true, force: true });
     }
