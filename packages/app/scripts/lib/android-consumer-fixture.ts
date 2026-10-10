@@ -75,15 +75,20 @@ export async function runConsumerFixture({
       return !users().includes(user);
     }, "Consumer user remains installed");
     for (const name of ownedPackages) {
-      if (
+      const remains = () =>
         adb("shell", "pm", "list", "packages", "-u")
           .split(/\r?\n/)
-          .includes(`package:${name}`)
-      ) {
-        const result = adb("uninstall", name);
-        if (!result.includes("Success"))
-          throw new Error(`Cannot remove package ${name}: ${result}`);
-      }
+          .includes(`package:${name}`);
+      await waitUntil(() => {
+        if (!remains()) return true;
+        try {
+          entry.cleanupAttempts.push(adb("uninstall", name));
+        } catch (error) {
+          // User removal may retire this package between the query and uninstall.
+          entry.cleanupAttempts.push(String(error));
+        }
+        return !remains();
+      }, `Consumer package remains installed: ${name}`);
     }
     entry.cleanup = {
       removedUser: user,

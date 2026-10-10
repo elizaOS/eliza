@@ -33,6 +33,7 @@ public final class PasswordConsumerTest {
   try (ParcelFileDescriptor fd = ui.executeShellCommand(command); java.io.InputStream input = new ParcelFileDescriptor.AutoCloseInputStream(fd)) { return new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim(); }
  }
  private AccessibilityNodeInfo find(Predicate<AccessibilityNodeInfo> match) {
+  if (android.os.Build.VERSION.SDK_INT >= 33) ui.clearCache();
   List<AccessibilityNodeInfo> roots = new ArrayList<>();
   for (AccessibilityWindowInfo window : ui.getWindows()) { AccessibilityNodeInfo root = window.getRoot(); if (root != null) roots.add(root); }
   AccessibilityNodeInfo active = ui.getRootInActiveWindow(); if (active != null) roots.add(active);
@@ -105,8 +106,12 @@ public final class PasswordConsumerTest {
    InstrumentationRegistry.getInstrumentation().sendStatus(2, artifact);
   });
  }
- private void launch(Context context, String username, String password) {
-  context.startActivity(new Intent().setClassName("example.passwords.fixture", "example.passwords.fixture.LoginActivity").putExtra("expectedUsername", username).putExtra("expectedPassword", password).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+ private void launch(Context context, String username, String password) throws Exception {
+  String user = shell("am get-current-user");
+  assertTrue(user.matches("[0-9]+"));
+  assertTrue(username.matches("[A-Za-z0-9-]+") && password.matches("[A-Za-z0-9-]+"));
+  String started = shell("am start --user " + user + " -W -S -n example.passwords.fixture/.LoginActivity --es expectedUsername " + username + " --es expectedPassword " + password);
+  assertTrue("Fresh fixture Activity starts", started.contains("Status: ok"));
   focus("Test username");
   await(() -> find(node -> "Fill with a saved password".equals(text(node))) != null, "Framework admitted the form before edits");
  }
