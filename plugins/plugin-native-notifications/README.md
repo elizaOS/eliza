@@ -58,3 +58,30 @@ digits for a one-time code. Android can still redact real sensitive previews.
 The test grants and revokes access for its own listener, posts synthetic notifications, verifies redaction and encrypted history,
 and dismisses one exact row. Uninstall all four APKs afterward. This does not
 certify physical-device behavior or a product's foreground policy.
+
+## Host notification receipts
+
+`NoticeDelivery` is a native-only ledger for the host's own notifications. It does
+not read other apps' notifications. Supply durable `Storage`, a `Poster` backed
+by the host's notification channels, and `Config` with the existing receipt slot
+names, redacted approval text and maximum approval lifetime. Keep these inputs
+stable across upgrades. Storage must commit before returning; all callers in one
+process share a lock. Cross-process writers need external serialization.
+
+A new notice records intent before posting. Repeated calls check the retained
+binding and content digest and never post again, including after dismissal or an
+uncertain result. `receipt` may resolve uncertainty from an exact active notice.
+Permission denial is retained as failure. This is not exactly-once delivery:
+process loss between intent and dispatch can leave a notice permanently unknown.
+Approval IDs have the form `approval-` plus 64 lowercase hex characters. Call `withdrawApproval(id, now)` before dropping a decided approval route, even
+if no notice was published. A withdrawal before publish stores an opaque-ID receipt
+for the configured maximum approval lifetime; it needs no missing binding or content.
+A known receipt retains its original expiry. Both forms prevent delayed publication. Expiry removes approval receipts. Step receipts are bounded at 512
+and approval receipts at 256; reaching capacity refuses new entries.
+
+`NoticeDeliveryTest` in the Android consumer exercises actual NotificationManager
+posting, dismissal, receipt reopening, digest mismatch, approval withdrawal and
+expiry. Grant the host `POST_NOTIFICATIONS` in its disposable test user and run
+that class with `-e disposableMirrorFixture 1`. It uses synthetic data and removes
+its channels, notifications and preference file. Reopening a ledger in this test
+is not process-death or product integration acceptance.
