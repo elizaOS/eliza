@@ -4,6 +4,7 @@ export default defineConfig({
     entry: [
         "src/index.ts",
         "src/edge.ts",
+        "src/market-data.ts",
         "src/keyless-web-search.ts",
         "src/browser-web-search.ts",
     ],

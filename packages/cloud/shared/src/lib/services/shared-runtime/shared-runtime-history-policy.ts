@@ -10,6 +10,7 @@ import type { ModelMessage } from "ai";
 import type {
   SharedRuntimeHistoryMessage,
   SharedRuntimePublicGrounding,
+  SharedRuntimePublicReadSource,
   SharedRuntimeReminderActionProvenance,
 } from "../../../db/schemas/shared-runtime-history";
 import { logger } from "../../utils/logger";
@@ -135,6 +136,7 @@ export function parseSharedPublicWebGrounding(
     candidate.kind !== "web_search" ||
     typeof candidate.query !== "string" ||
     (candidate.provider !== "parallel" &&
+      candidate.provider !== "public-http" &&
       candidate.provider !== "exa" &&
       candidate.provider !== "nws") ||
     typeof candidate.text !== "string" ||
@@ -152,6 +154,15 @@ export function parseSharedPublicWebGrounding(
   if (!query || !text || !sources || sources.length === 0) {
     return undefined;
   }
+  const selectedSourceUrls = candidate.selectedSourceUrls;
+  if (
+    selectedSourceUrls !== undefined &&
+    (!Array.isArray(selectedSourceUrls) ||
+      selectedSourceUrls.some(
+        (url) => typeof url !== "string" || !sources.some((source) => source.url === url),
+      ))
+  )
+    return undefined;
   const weatherObservation =
     candidate.provider === "nws" &&
     isVerifiedCurrentNwsObservation(candidate.weatherObservation, query, Date.now(), false)
@@ -172,10 +183,57 @@ export function parseSharedPublicWebGrounding(
     text,
     observedAt: candidate.observedAt,
     sourceUrls: sources.map((source) => source.url),
+    ...(selectedSourceUrls ? { selectedSourceUrls } : {}),
     sources,
     truncated: false,
     ...(weatherObservation ? { weatherObservation } : {}),
   };
+}
+
+const PUBLIC_READ_ACTIONS = new Set([
+  "READ_PUBLIC_X_POST",
+  "DISCOVER_PUBLIC_X_POSTS",
+  "DISCOVER_MEDIA",
+  "FIND_CREATOR_UPLOAD",
+  "READ_VIDEO_TRANSCRIPT",
+  "STOCK_QUOTE",
+  "COMPANY_FILINGS",
+  "COMPANY_FINANCIALS",
+  "SOLANA_WALLET",
+  "SOLANA_MARKETS",
+]);
+
+/** Public action provenance stays distinct from deterministic web claim binding. */
+export function parseSharedPublicReadSources(
+  value: unknown,
+): SharedRuntimePublicReadSource[] | undefined {
+  if (!Array.isArray(value) || !value.length) return undefined;
+  const sources: SharedRuntimePublicReadSource[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || !PUBLIC_READ_ACTIONS.has(item.actionName))
+      return undefined;
+    const parsed = publicSources([item]);
+    if (!parsed?.length) return undefined;
+    sources.push({ actionName: item.actionName, ...parsed[0] });
+  }
+  return sources;
+}
+
+export function sharedPublicReadSources(
+  results: readonly import("@elizaos/core").ActionResult[],
+): SharedRuntimePublicReadSource[] | undefined {
+  const sources = results.flatMap((result) =>
+    result.success === true &&
+    typeof result.data?.actionName === "string" &&
+    PUBLIC_READ_ACTIONS.has(result.data.actionName) &&
+    Array.isArray(result.data.sources)
+      ? (publicSources(result.data.sources) ?? []).map((source) => ({
+          ...source,
+          actionName: result.data?.actionName,
+        }))
+      : [],
+  );
+  return parseSharedPublicReadSources(sources);
 }
 
 const REMINDER_OPERATIONS = new Set<SharedRuntimeReminderActionProvenance["operation"]>([
@@ -641,10 +699,17 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
 ): T {
   if (!current) {
     if (incoming.role !== "assistant") return incoming;
-    const { reminderAction: _untrustedReminderAction, ...rest } = incoming;
+    const {
+      reminderAction: _untrustedReminderAction,
+      publicReadSources: _untrustedPublicReadSources,
+      ...rest
+    } = incoming;
     const reminderAction = parseSharedReminderActionProvenance(incoming.reminderAction);
     return {
       ...rest,
+      ...(parseSharedPublicReadSources(incoming.publicReadSources)
+        ? { publicReadSources: parseSharedPublicReadSources(incoming.publicReadSources) }
+        : {}),
       ...(reminderAction ? { reminderAction } : {}),
     } as T;
   }
@@ -686,9 +751,16 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
         ? currentReminderAction
         : undefined
       : (currentReminderAction ?? incomingReminderAction);
-  const { reminderAction: _untrustedReminderAction, ...chosenWithoutReminderAction } = chosen;
+  const {
+    reminderAction: _untrustedReminderAction,
+    publicReadSources: _untrustedPublicReadSources,
+    ...chosenWithoutReminderAction
+  } = chosen;
   return {
     ...chosenWithoutReminderAction,
+    ...(parseSharedPublicReadSources(chosen.publicReadSources)
+      ? { publicReadSources: parseSharedPublicReadSources(chosen.publicReadSources) }
+      : {}),
     ...(grounding ? { grounding } : {}),
     ...(reminderAction ? { reminderAction } : {}),
   } as T;

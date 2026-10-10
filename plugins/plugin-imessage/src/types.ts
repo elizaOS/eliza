@@ -123,6 +123,8 @@ export interface IMessageListMessagesOptions {
 export interface IMessageSendOptions {
   /** Connector account ID. iMessage currently supports only the local default account. */
   accountId?: string;
+  /** Native Messages account family. RCS uses Apple's SMS account. */
+  nativeService?: "iMessage" | "SMS" | "RCS";
   /** Media URL or path to attach */
   mediaUrl?: string;
   /** Additional attachments; all are resolved before any send. */

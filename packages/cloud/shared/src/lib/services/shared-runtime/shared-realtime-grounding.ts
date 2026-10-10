@@ -18,7 +18,10 @@ import {
   parseCurrentWeatherSourceDiagnostics,
   parseExplicitUsWeatherQuery,
 } from "./shared-current-weather";
-import { sharedSelectedGroundingMetadata } from "./shared-runtime-history-policy";
+import {
+  parseSharedPublicWebGrounding,
+  sharedSelectedGroundingMetadata,
+} from "./shared-runtime-history-policy";
 
 export type SharedRealtimeDomain = "markets" | "weather" | "news" | "sports" | "mutable_fact";
 
@@ -28,6 +31,18 @@ export interface SharedRealtimeRequirement {
   correction: boolean;
 }
 
+/** Host policy may require freshness, but cannot turn private state into a public query. */
+export function resolveServerRealtimeRequirement(
+  request: SharedRealtimeRequirement | undefined,
+  message: string,
+  history: readonly SharedTurnMessage[],
+): SharedRealtimeRequirement | undefined {
+  if (request && isSharedPublicSearchSafe(message) && isSharedPublicSearchSafe(request.query)) {
+    return request;
+  }
+  return resolveSharedRealtimeRequirement(message, history);
+}
+
 type AvailableGrounding = Extract<SharedRuntimePublicGrounding, { kind: "web_search" }>;
 type SourceEvidence = { url: string; text: string };
 
@@ -35,6 +50,8 @@ const FRESHNESS =
   /\b(?:now|rn|right now|current|currently|today|tonight|latest|live|recent|recently|up[- ]?to[- ]?date|this (?:morning|afternoon|evening|week|month|year))\b/i;
 const CORRECTION =
   /\b(?:wrong|incorrect|not right|made that up|hallucinat(?:e|ed|ion)|check again|try again|prove it|where did (?:that|you) (?:come|get) from)\b|^\s*\?+\s*$/i;
+const PERSONAL_RECALL =
+  /\b(?:did I (?:ask|tell|say|mention)|(?:remember|recall) what I|what (?:have I|did we)|our (?:conversation|discussion))\b/iu;
 const PRIVATE_STATE =
   /\b(?:my|mine|our|ours|todo|todos|reminder|reminders|calendar|schedule|meeting|meetings|order|account|email|inbox|messages|files|notes|contacts|password|passcode|secret|api[- ]?key|credential|codename|internal project|ssn|social security|credit card|bank balance|phone number|home address|location)\b/i;
 const INVISIBLE_OR_CONTROL = /[\p{Cc}\p{Cf}]/u;
@@ -225,7 +242,9 @@ export function isSharedPrivateGoogleContextRequest(message: string): boolean {
   const text = message.normalize("NFKC").trim();
   if (sharedPublicGoogleProductQuery(text)) return false;
   return (
-    /^(?:please\s+)?(?:connect|link)\s+(?:(?:my|the)\s+)?google(?:\s+account)?[.!?]*$/iu.test(text) ||
+    /^(?:please\s+)?(?:connect|link)\s+(?:(?:my|the)\s+)?google(?:\s+account)?[.!?]*$/iu.test(
+      text,
+    ) ||
     /\b(?:connect|link|read|search|find|check|show|list|summari[sz]e)\b[^.!?]{0,80}\b(?:gmail|google calendar)\b/iu.test(
       text,
     ) ||
@@ -240,6 +259,7 @@ export function isSharedPublicSearchSafe(message: string): boolean {
   const normalized = message.normalize("NFKC");
   return (
     isSharedPublicSearchLiteralSafe(normalized) &&
+    !PERSONAL_RECALL.test(normalized) &&
     !isSharedPrivateGoogleContextRequest(normalized) &&
     (!PRIVATE_STATE.test(normalized) || Boolean(sharedPublicGoogleProductQuery(normalized)))
   );
@@ -401,6 +421,51 @@ export function hasSharedRealtimeIntent(
   );
 }
 
+/** Informal public questions still require fresh evidence; private-state guards run first. */
+function informalPublicRequirement(
+  message: string,
+  history: readonly SharedTurnMessage[],
+): SharedRealtimeRequirement | undefined {
+  const text = message.replace(/^(?:yo|hey|hi|hello)[,!.]?\s+/iu, "").replace(/[?!]+$/u, "");
+  const investment = text.match(
+    /^would\s+(.+?)\s+be\s+(?:a\s+)?good\s+(?:stock|investment)(?:\s+to\s+(?:get\s+into|buy|invest\s+in))?$/iu,
+  );
+  if (investment) {
+    const subject = publicSubjectWords(investment[1]);
+    if (subject)
+      return {
+        domain: "markets",
+        query: `${subject} stock listing company financials latest public news`,
+        correction: false,
+      };
+  }
+  const news = text.match(/^what['’]?s\s+going\s+on\s+with\s+(.+)$/iu);
+  if (news) {
+    const subject = publicSubjectWords(news[1]);
+    if (subject)
+      return { domain: "news", query: `latest public ${subject} news`, correction: false };
+  }
+  const followup = text.match(/^what\s+about\s+(.+)$/iu);
+  const previous = history.at(-1);
+  const grounding =
+    previous?.role === "assistant" ? parseSharedPublicWebGrounding(previous.grounding) : undefined;
+  if (
+    followup &&
+    grounding?.kind === "web_search" &&
+    /\b(?:stock|financials|market|shares?)\b/iu.test(grounding.query)
+  ) {
+    const subject = publicSubjectWords(followup[1]);
+    // Inherit the domain only. The new subject comes entirely from this utterance.
+    if (subject)
+      return {
+        domain: "markets",
+        query: `${subject} stock listing company financials latest public news`,
+        correction: false,
+      };
+  }
+  return undefined;
+}
+
 /** Identifies current public data solely from this authenticated raw utterance. */
 export function resolveSharedRealtimeRequirement(
   message: string,
@@ -410,6 +475,8 @@ export function resolveSharedRealtimeRequirement(
   if (!isSharedPublicSearchSafe(normalized)) return undefined;
   // Public Google product queries use the canonical complete-topic general path.
   if (sharedPublicGoogleProductQuery(normalized)) return undefined;
+  const informal = informalPublicRequirement(normalized, history);
+  if (informal) return informal;
   const direct = classifyPublicStandalone(normalized);
   const correction = CORRECTION.test(normalized);
   if (direct) {
@@ -495,7 +562,7 @@ export function requireTraceableRealtimeSearch(
     result.success === true &&
     data.actionName === "WEB_SEARCH" &&
     normalizedRealtimeQuery(data.query) === normalizedRealtimeQuery(query) &&
-    (weather ? nws : data.provider === "parallel") &&
+    (weather ? nws : data.provider === "parallel" || data.provider === "public-http") &&
     typeof receiptObservedAt === "number" &&
     Number.isSafeInteger(receiptObservedAt) &&
     Math.abs(receiptObservedAt - observedAt) <= 5 * 60 * 1000 &&
@@ -683,6 +750,7 @@ function evidenceClauses(value: string): string[] {
   }
   return strings.flatMap((item) =>
     item
+      .replace(/(?<=\p{L})\r?\n[ \t]*(?=[a-z])/gu, " ")
       .split(/(?:[.!?]\s+|[;\n]+|\s+(?:but|whereas|while)\s+)/giu)
       .map((clause) => clause.trim())
       .filter(Boolean),
@@ -733,7 +801,7 @@ export interface SharedRealtimeBindingDiagnostic {
   failedPredicateMask: number;
 }
 
-function claimSupported(
+export function claimSupported(
   claim: string,
   source: SourceEvidence,
   diagnostic?: { failedPredicateMask: number },
@@ -897,14 +965,47 @@ export function finalizeSharedRealtimeReply(
   reply: string,
   grounding: SharedRuntimePublicGrounding | undefined,
   onRefusal?: (diagnostic: SharedRealtimeBindingDiagnostic) => void,
+  presentation: { includeSources?: boolean; selectedSources?: (urls: string[]) => void } = {},
 ): string {
   if (!hasTraceableRealtimeGrounding(grounding)) {
     return "I can’t verify the current value from a complete, traceable live source right now, so I won’t guess. Please try again shortly.";
   }
   const supported = supportedRealtimeReply(reply, grounding, onRefusal);
   if (!supported) {
+    const queryWords = new Set(claimWords(grounding.query.replace(HTTP_URL, " ")));
+    const excerpts = (grounding.sources ?? [])
+      .filter((source) => canonicalPublicUrl(source.url))
+      .flatMap((source) =>
+        evidenceClauses(source.text)
+          .filter(
+            (text) => text.length >= 20 && text.length <= 1000 && claimSupported(text, source),
+          )
+          .map((text) => ({
+            text,
+            url: source.url,
+            relevance: new Set(claimWords(text).filter((word) => queryWords.has(word))).size,
+          })),
+      )
+      .filter((excerpt) => excerpt.relevance > 0)
+      .sort((a, b) => b.relevance - a.relevance);
+    // This bounds the displayed answer only. The complete receipt stays in
+    // history and model context; no generated claim is rescued by this path.
+    const selected = excerpts
+      .filter(
+        (excerpt, index) => excerpts.findIndex((other) => other.text === excerpt.text) === index,
+      )
+      .slice(0, 2);
+    if (selected.length) {
+      presentation.selectedSources?.(selected.map((excerpt) => excerpt.url));
+      if (presentation.includeSources === false)
+        return selected.map((excerpt) => `“${excerpt.text}”`).join("\n\n");
+      return `I couldn’t safely bind the draft to a complete source. Here are relevant source excerpts:\n\n${selected.map((excerpt) => `“${excerpt.text}”\nSource: ${excerpt.url}`).join("\n\n")}`;
+    }
+    if (presentation.includeSources === false)
+      return "I found public results, but couldn’t bind the requested claim to one complete source, so I won’t guess.";
     return `I found live public results, but I couldn’t safely bind the requested claim to one complete source, so I won’t guess.\n\nSource provider: ${grounding.provider} (checked ${new Date(grounding.observedAt).toISOString()})`;
   }
+  presentation.selectedSources?.([...new Set(supported.selectedUrls)]);
   const sources = [...new Set(supported.selectedUrls)].map((url) => {
     const canonical = canonicalPublicUrl(url);
     if (!canonical) throw new TypeError("Validated Shared realtime source became invalid");
@@ -917,7 +1018,9 @@ export function finalizeSharedRealtimeReply(
   const omission = supported.omittedUnsupported
     ? "\n\nI left out part of the draft because it was not supported by the live source."
     : "";
-  return `${supported.reply}${omission}\n\n${sources.join("\n")}`;
+  return presentation.includeSources === false
+    ? `${supported.reply}${omission}`
+    : `${supported.reply}${omission}\n\n${sources.join("\n")}`;
 }
 
 /** System-only policy; actual provider results remain untrusted data messages. */

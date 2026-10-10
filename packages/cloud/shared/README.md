@@ -355,3 +355,16 @@ Network membership, invitations, availability, and consent are owned by the sign
 Network service. Cloud keeps no parallel Network membership tables or invitation
 fallback. Legacy spike schemas and separate histories remain saved on the original
 integration branch; this candidate performs no database migration or history import.
+
+Shared hosts can supply server-owned `execution.plugins`, `webSearchRunner` and
+`freshResearch` for public-read capabilities. Character/transport JSON does not
+install plugins or populate these grants. Freshness overrides still pass the
+existing private-state and literal guards; source receipts stay query-bound.
+Non-streaming hosts may opt into `sourcePresentation: "on-request"` and
+`researchSynthesis`. The runtime retains complete receipts and checked selected
+URLs, so a source request reads this conversation's prior answer rather than
+performing a new search. The author/reviewer pass is probabilistic and still
+uses deterministic source predicates before delivery. Defaults keep inline
+citations and the original inference path.
+
+Public action read receipts are retained separately from checked web claims. In the opt-in `sources?` response, they identify public X, media, finance and Solana sources actually read in the previous reply's turn. They do not certify every assertion in model prose. Empty or malformed receipts cannot borrow sources from an older reply.

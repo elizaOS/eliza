@@ -3,6 +3,7 @@ import {
   GOOGLE_CONTEXT_ACTION,
   isSharedGoogleContextRequest,
 } from "./shared-google-context-plugin";
+import { synthesizeSharedResearch } from "./shared-research-synthesis";
 /**
  * Runs one Shared turn through the genuine Eliza message pipeline in Workerd.
  * Durable Object history remains authoritative; each turn projects that history
@@ -93,8 +94,8 @@ import {
   finalizeSharedRealtimeReply,
   normalizedRealtimeQuery,
   requireTraceableRealtimeSearch,
+  resolveServerRealtimeRequirement,
   resolveSharedPublicSearchIntent,
-  resolveSharedRealtimeRequirement,
   sharedRealtimePromptPolicy,
 } from "./shared-realtime-grounding";
 import {
@@ -305,6 +306,8 @@ function createRuntime(options: {
   adapter: SQLiteDatabaseAdapter;
   character: RunSharedAgentTurnInput["character"];
   modelPlugin: Plugin;
+  briefPublicReplies?: boolean;
+  extensionPlugins?: Plugin[];
   webSearchPlugin?: Plugin;
   transport?: AgentCapabilityTransport;
   mediaPlugin?: Plugin;
@@ -328,7 +331,11 @@ function createRuntime(options: {
     agentId: options.agentId ?? stringToUuid(options.agentKey),
     character: {
       name: options.character.name,
-      system: options.character.system,
+      system:
+        options.character.system +
+        (options.briefPublicReplies
+          ? "\nFor public research replies, use up to four short natural sentences. Keep reporting scope and qualifications. Retain source markers for server validation; the server presents citations on request."
+          : ""),
       bio: options.character.bio ?? [],
       messageExamples: options.character.messageExamples ?? [],
       postExamples: options.character.postExamples ?? [],
@@ -346,6 +353,7 @@ function createRuntime(options: {
     adapter: options.adapter,
     plugins: [
       options.modelPlugin,
+      ...(options.actionsEnabled ? (options.extensionPlugins ?? []) : []),
       {
         ...assistant,
         actions: options.actionsEnabled ? assistant.actions : [],
@@ -1054,7 +1062,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const actionsEnabled = input.messageRole !== "system";
   const realtimeRequirement =
     actionsEnabled && input.capabilityText && !isSharedGoogleContextRequest(input.capabilityText)
-      ? resolveSharedRealtimeRequirement(input.capabilityText, input.history)
+      ? resolveServerRealtimeRequirement(
+          input.execution?.freshResearch,
+          input.capabilityText,
+          input.history,
+        )
       : undefined;
   const privateCapabilityIntent =
     input.capabilityText &&
@@ -1133,7 +1145,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           // Core/SDK capture retains the model's attempted arguments. The
           // provider dispatch and result.data.query use only server-owned bytes;
           // equivalent model casing/spacing is not an outbound data channel.
-          const result = await runWebSearchEdge(publicSearchIntent.topic, options);
+          const result = await (input.execution?.webSearchRunner ?? runWebSearchEdge)(
+            publicSearchIntent.topic,
+            options,
+          );
           const traceable = requireTraceableRealtimeSearch(result, publicSearchIntent.topic);
           return traceable.success === true
             ? { ...traceable, modelReplyRequired: true }
@@ -1199,6 +1214,8 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         }
       : character,
     modelPlugin,
+    extensionPlugins: input.execution?.plugins,
+    briefPublicReplies: input.execution?.sourcePresentation === "on-request",
     ...(webSearchPlugin ? { webSearchPlugin } : {}),
     transport: sharedCapabilityTransportForSource(
       input.execution.channel.source,
@@ -1593,7 +1610,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       });
       throw terminalError;
     }
-    const reply = delivered.at(-1)?.trim() || result?.responseContent?.text?.trim() || "";
+    let reply = delivered.at(-1)?.trim() || result?.responseContent?.text?.trim() || "";
     // A verified action may own the response and deliver it through the
     // callback with `agentVoiced`; core then correctly reports no second model
     // response. The callback receipt is still an actual user-visible delivery.
@@ -1618,12 +1635,21 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     if (!reply) {
       throw new Error("Eliza Shared runtime completed without a user-visible reply");
     }
-    logSharedProviderSpans(input, inferenceTelemetry.summary, true, lastModelCompletion);
     const actionResults = [
       ...(input.preflightActionResults ?? []),
       ...(result.actionResults ?? []),
     ];
     const grounding = input.realtimeGrounding ?? sharedPublicWebGrounding(actionResults);
+    if (input.execution?.researchSynthesis && publicSearchIntent && !onStreamChunk) {
+      reply =
+        (await synthesizeSharedResearch(
+          runtime,
+          input.capabilityText ?? input.message,
+          grounding,
+          input.abortSignal,
+        )) ?? reply;
+    }
+    logSharedProviderSpans(input, inferenceTelemetry.summary, true, lastModelCompletion);
     return {
       reply,
       responded: true,

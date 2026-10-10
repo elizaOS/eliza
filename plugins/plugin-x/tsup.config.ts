@@ -2,7 +2,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/lifeops-message-adapter.ts"],
+  entry: ["src/index.ts", "src/lifeops-message-adapter.ts", "src/public.ts"],
   outDir: "dist",
   tsconfig: "./tsconfig.build.json",
   sourcemap: true,

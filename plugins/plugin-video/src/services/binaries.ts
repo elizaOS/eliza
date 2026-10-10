@@ -294,11 +294,17 @@ export class BinaryResolver {
    * Run yt-dlp with one auto-update + retry attempt on extractor-failure
    * patterns, when the active binary is the managed cache.
    */
-  async runYtDlp(url: string, flags: YtDlpFlags): Promise<unknown> {
+  async runYtDlp(
+    url: string,
+    flags: YtDlpFlags,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    signal?.throwIfAborted();
     const runner = await this.getYtDlpRunner();
     try {
-      return await runner(url, flags);
+      return await runner(url, flags, signal ? { signal } : undefined);
     } catch (err) {
+      signal?.throwIfAborted();
       if (!this.shouldRetryWithUpdate(err)) {
         throw err;
       }
@@ -307,7 +313,8 @@ export class BinaryResolver {
         throw err;
       }
       const refreshed = await this.getYtDlpRunner();
-      return await refreshed(url, flags);
+      signal?.throwIfAborted();
+      return await refreshed(url, flags, signal ? { signal } : undefined);
     }
   }
 

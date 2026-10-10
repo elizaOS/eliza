@@ -19,13 +19,19 @@
             "eliza-source": "./src/browser-web-search.ts",
             "types": "./dist/browser-web-search.d.ts",
             "import": "./dist/browser-web-search.js"
+        },
+        "./market-data": {
+            "eliza-source": "./src/market-data.ts",
+            "types": "./dist/market-data.d.ts",
+            "import": "./dist/market-data.js"
         }
     },
     "files": [
         "dist"
     ],
     "dependencies": {
-        "@elizaos/core": "workspace:*"
+        "@elizaos/core": "workspace:*",
+        "saxes": "6.0.0"
     },
     "devDependencies": {
         "@biomejs/biome": "2.5.15",

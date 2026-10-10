@@ -14,7 +14,7 @@ const DEFAULT_RESPONSE_BYTES = 256 * 1024;
 /** JSON-RPC id of the one `tools/call` request each search dispatches. */
 const MCP_REQUEST_ID = 1;
 
-export type KeylessWebSearchProvider = "parallel";
+export type KeylessWebSearchProvider = "parallel" | "public-http";
 export type KeylessWebSearchFetch = (
     input: RequestInfo | URL,
     init?: RequestInit

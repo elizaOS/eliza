@@ -13,13 +13,15 @@ export type SharedRuntimePublicGrounding =
       kind: "web_search";
       query: string;
       /** Persisted receipts retain legacy providers independently of current transport policy. */
-      provider: "parallel" | "exa" | "nws";
+      provider: "parallel" | "exa" | "nws" | "public-http";
       /** Actual station observation time/geometry, separate from retrieval time. */
       weatherObservation?: CurrentNwsObservation;
       text: string;
       observedAt: number;
       /** Traceable public sources extracted from the successful tool receipt. */
       sourceUrls?: string[];
+      /** URLs actually selected by the checked answer, independent of presentation. */
+      selectedSourceUrls?: string[];
       /** Per-result evidence keeps every factual claim bound to its own URL. */
       sources?: Array<{ url: string; text: string }>;
       truncated: boolean;
@@ -46,6 +48,9 @@ export type SharedRuntimeReminderActionProvenance = {
   deliveryScope: string;
 };
 
+/** Actual public action receipts read during one reply; not a claim approval. */
+export type SharedRuntimePublicReadSource = { actionName: string; url: string; text: string };
+
 /** One persisted turn in a shared-runtime conversation. Mirrors `SharedTurnMessage`. */
 export type SharedRuntimeHistoryMessage = {
   /** Stable message id used to merge DO and Postgres writes without clobbering. */
@@ -60,6 +65,7 @@ export type SharedRuntimeHistoryMessage = {
   grounding?: SharedRuntimePublicGrounding;
   /** Authenticated reminder receipt; never projected as model/user content. */
   reminderAction?: SharedRuntimeReminderActionProvenance;
+  publicReadSources?: SharedRuntimePublicReadSource[];
 };
 
 /**

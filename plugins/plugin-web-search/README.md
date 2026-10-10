@@ -25,3 +25,15 @@ bun plugins/plugin-web-search/scripts/test-browser-search.mjs # real Linux Chrom
 The live browser check needs the built extension and `/usr/bin/chromium`. It uses
 a disposable profile and records evidence in `test-results/browser-search/`. A
 Google consent or human-check page is an explicit failure, not a passing search.
+
+Public edge search can use Bing and Google RSS discovery after a Parallel
+outage. It keeps feed headlines and descriptions as excerpts, with coverage
+and failed-feed names. News dates are feed-reported; web feed crawl dates are
+not publisher dates. It does not replay a dispatched browser search, bypass
+authentication denials, or treat malformed evidence as permission to retry.
+
+Hosts can compose `publicMarketDataPlugin` from the `market-data` entry point
+for read-only Nasdaq quotes and SEC filing/fact reads. SEC requests require
+`SEC_USER_AGENT` with the owner's own contact identity. Results keep source
+time, fiscal periods, units and coverage; they do not establish current listing
+from a historical SEC ticker map or make a trading decision.

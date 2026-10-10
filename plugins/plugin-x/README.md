@@ -8,6 +8,14 @@ token/secret; oauth uses `TWITTER_CLIENT_ID` and `TWITTER_REDIRECT_URI`; broker 
 managed account transport. Autonomous posting/actions are opt-in. DMs default to
 pairing. Tokens remain account-scoped in runtime storage.
 
+For credential-free reads, compose `@elizaos/plugin-x/public` separately.
+`READ_PUBLIC_X_POST` checks the official oEmbed author and corroborates its
+calendar date with the status ID. It does not start authenticated account
+services, read private timelines, or guarantee the latest account post.
+`DISCOVER_PUBLIC_X_POSTS` checks matching public profile titles, reads indexed
+post candidates through official oEmbed, and orders verified posts by date.
+Its source receipt and coverage gaps stay available with the result.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

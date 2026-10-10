@@ -12,6 +12,10 @@ isolation.
 
 Native mode requires macOS Messages, Full Disk Access for history, and Automation permission for sending. Blooio mode uses its configured channel and API credentials and can run on Linux.
 
+Native replies preserve the inbound iMessage, SMS, or RCS service. RCS uses
+Messages' SMS account. New native sends default to iMessage; trusted callers can
+select `nativeService`. A missing carrier account fails without switching service.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

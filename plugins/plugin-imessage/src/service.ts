@@ -218,12 +218,15 @@ function appleScriptStringLiteral(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-function appleScriptTargetBlock(to: string): string {
+function appleScriptTargetBlock(to: string, service: string | null = "iMessage"): string {
   if (to.startsWith("chat_id:")) {
     return `set targetRef to chat id ${appleScriptStringLiteral(to.slice(8))}`;
   }
+  if (service !== "iMessage" && service !== "SMS" && service !== "RCS") {
+    throw new IMessageConfigurationError("Unsupported native Messages service", "nativeService");
+  }
   return `
-    set targetService to 1st account whose service type = iMessage
+    set targetService to 1st account whose service type = ${service === "RCS" ? "SMS" : service}
     set targetRef to participant ${appleScriptStringLiteral(to)} of targetService
   `;
 }
@@ -1227,7 +1230,7 @@ export class IMessageService extends Service implements IIMessageService {
     const localEffectIds: string[] = [];
     try {
       for (const chunk of chunks) {
-        const result = await this.sendSingleMessage(target, chunk);
+        const result = await this.sendSingleMessage(target, chunk, options?.nativeService);
         if (result.messageId) messageIds.push(result.messageId);
         if (!result.success) {
           return { ...result, messageIds, localEffectIds };
@@ -1238,7 +1241,11 @@ export class IMessageService extends Service implements IIMessageService {
 
       // An attachment is one external effect, independent of text chunking.
       for (const media of mediaList) {
-        const mediaResult = await this.sendResolvedAttachment(target, media.path);
+        const mediaResult = await this.sendResolvedAttachment(
+          target,
+          media.path,
+          options?.nativeService
+        );
         if (mediaResult.messageId) messageIds.push(mediaResult.messageId);
         if (!mediaResult.success) {
           return { ...mediaResult, messageIds, localEffectIds };
@@ -1932,7 +1939,11 @@ export class IMessageService extends Service implements IIMessageService {
     // unrelated TCC prompt merely by enabling inbound messages.
   }
 
-  private async sendSingleMessage(to: string, text: string): Promise<IMessageSendResult> {
+  private async sendSingleMessage(
+    to: string,
+    text: string,
+    service?: string | null
+  ): Promise<IMessageSendResult> {
     if (this.settings?.transport === "blooio") {
       return await sendBlooioMessage({
         apiKey: this.settings.blooioApiKey as string,
@@ -1945,11 +1956,21 @@ export class IMessageService extends Service implements IIMessageService {
     // Outbound delivery stays on Apple's local Messages automation surface.
     // No third-party CLI, daemon, network service, or fallback transport is
     // invoked from the native connector.
-    return await this.sendViaAppleScript(to, text);
+    return await this.sendViaAppleScript(to, text, service);
   }
 
-  private async sendViaAppleScript(to: string, text: string): Promise<IMessageSendResult> {
-    const targetBlock = appleScriptTargetBlock(to);
+  private async sendViaAppleScript(
+    to: string,
+    text: string,
+    service?: string | null
+  ): Promise<IMessageSendResult> {
+    let targetBlock: string;
+    try {
+      targetBlock = appleScriptTargetBlock(to, service);
+    } catch (error) {
+      // error-policy:J1 Invalid native transport is a failed send, never a fallback.
+      return { success: false, error: String(error) };
+    }
     if (text && text.length > 0) {
       const textScript = `
         tell application "Messages"
@@ -1967,14 +1988,18 @@ export class IMessageService extends Service implements IIMessageService {
     return { success: true, chatId: to };
   }
 
-  private async sendResolvedAttachment(to: string, mediaPath: string): Promise<IMessageSendResult> {
-    const attachmentScript = `
+  private async sendResolvedAttachment(
+    to: string,
+    mediaPath: string,
+    service?: string | null
+  ): Promise<IMessageSendResult> {
+    try {
+      const attachmentScript = `
       tell application "Messages"
-        ${appleScriptTargetBlock(to)}
+        ${appleScriptTargetBlock(to, service)}
         send (POSIX file ${appleScriptStringLiteral(mediaPath)}) to targetRef
       end tell
     `;
-    try {
       await this.runAppleScript(attachmentScript);
       return { success: true, chatId: to };
     } catch (error) {
@@ -2177,7 +2202,11 @@ export class IMessageService extends Service implements IIMessageService {
         // follows the same IMESSAGE_AUTO_REPLY consent gate as agent replies.
         // Only the DM pairing path produces one; group denials never do.
         if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
-          const sendResult = await this.sendSingleMessage(row.handle, access.pairingReplyMessage);
+          const sendResult = await this.sendSingleMessage(
+            row.handle,
+            access.pairingReplyMessage,
+            row.service
+          );
           if (!sendResult.success) {
             logger.warn(
               `[imessage] Pairing reply send failed for handle=${row.handle}: ${sendResult.error}`
@@ -2525,7 +2554,7 @@ export class IMessageService extends Service implements IIMessageService {
         return [];
       }
 
-      const sendResult = await this.sendSingleMessage(replyTarget, replyText);
+      const sendResult = await this.sendSingleMessage(replyTarget, replyText, row.service);
       if (!sendResult.success) {
         logger.error(`[imessage] Reply send failed for ROWID=${row.rowId}: ${sendResult.error}`);
         return [];

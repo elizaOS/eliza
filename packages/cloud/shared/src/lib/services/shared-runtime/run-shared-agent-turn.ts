@@ -1,5 +1,10 @@
 import { isSharedGoogleContextRequest } from "./shared-google-context-plugin";
 import { type OwnerModelCapture, observeOwnerCapture } from "./shared-owner-model-capture";
+import {
+  parseSharedPublicReadSources,
+  parseSharedPublicWebGrounding,
+  sharedPublicReadSources,
+} from "./shared-runtime-history-policy";
 /**
  * Shared runtime — runs a single agent turn container-free.
  *
@@ -42,6 +47,7 @@ import type { TodoStore } from "@elizaos/plugin-todos";
 import { runWebSearchEdge } from "@elizaos/plugin-web-search";
 import type {
   SharedRuntimePublicGrounding,
+  SharedRuntimePublicReadSource,
   SharedRuntimeReminderActionProvenance,
 } from "../../../db/schemas/shared-runtime-history";
 import { getDefaultModels } from "../../eliza/config";
@@ -71,8 +77,8 @@ import {
   finalizeSharedRealtimeReply,
   hasSharedRealtimeIntent,
   requireTraceableRealtimeSearch,
+  resolveServerRealtimeRequirement,
   resolveSharedPublicSearchIntent,
-  resolveSharedRealtimeRequirement,
   sharedRealtimePromptPolicy,
 } from "./shared-realtime-grounding";
 import type { SharedRuntimeChannel } from "./shared-runtime-channel";
@@ -108,6 +114,7 @@ export interface SharedTurnMessage {
   grounding?: SharedRuntimePublicGrounding;
   /** Server-authenticated reminder receipt used only for the next scoped follow-up. */
   reminderAction?: SharedReminderActionProvenance;
+  publicReadSources?: SharedRuntimePublicReadSource[];
 }
 
 export type SharedReminderOperation = SharedRuntimeReminderActionProvenance["operation"];
@@ -185,6 +192,16 @@ export interface RunSharedAgentTurnInput {
   recallContext?: string;
   /** Server-owned execution authority for the canonical edge AgentRuntime. */
   execution?: {
+    /** Server-composed plugins; never copied from character or transport JSON. */
+    plugins?: import("@elizaos/core").Plugin[];
+    /** Non-streaming reply preference; complete receipts remain in server history. */
+    sourcePresentation?: "inline" | "on-request";
+    /** Opt-in native author/reviewer pass over complete current-turn public receipts. */
+    researchSynthesis?: boolean;
+    /** Server-required fresh public read; existing private/literal guards still apply. */
+    freshResearch?: import("./shared-realtime-grounding").SharedRealtimeRequirement;
+    /** Authorized public read port. The runtime still binds query and receipts. */
+    webSearchRunner?: import("@elizaos/plugin-web-search").WebSearchEdgeRunner;
     agentKey: string;
     /** Trusted canonical conversation identity used for runtime room/world projection. */
     roomKey: string;
@@ -1162,6 +1179,32 @@ export async function runSharedAgentTurn(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
+  if (
+    input.execution?.sourcePresentation === "on-request" &&
+    input.messageRole !== "system" &&
+    /^(?:sources?[?!.\s]*|(?:show|give|send|share)(?: me)?(?: the| your)? sources?(?: for (?:that|this|the last answer))?[?.!]*|where did you get (?:that|this)(?: from)?[?.!]*)$/i.test(
+      message,
+    )
+  ) {
+    const previous = input.history.findLast((entry) => entry.role === "assistant");
+    const grounding = parseSharedPublicWebGrounding(previous?.grounding);
+    const checkedUrls =
+      grounding?.kind === "web_search" ? (grounding.selectedSourceUrls ?? []) : [];
+    const reads = parseSharedPublicReadSources(previous?.publicReadSources) ?? [];
+    const urls = [...new Set([...checkedUrls, ...reads.map((source) => source.url)])];
+    const reply = urls.length
+      ? `${reads.length ? "Public sources read for my previous reply (a read receipt is not a claim approval):\n" : ""}${urls.join("\n")}`
+      : "I don’t have checked external sources recorded for my previous reply in this chat.";
+    return {
+      reply,
+      responded: true,
+      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
+      model: "none",
+      degraded: false,
+      usage: { inputTokens: 0, outputTokens: 0 },
+    };
+  }
+
   const publicSearchText = isSharedGoogleContextRequest(input.capabilityText ?? input.message)
     ? undefined
     : input.capabilityText?.trim();
@@ -1234,7 +1277,11 @@ export async function runSharedAgentTurn(
 
   const realtimeRequirement =
     actionsEnabled && publicSearchText
-      ? resolveSharedRealtimeRequirement(publicSearchText, input.history)
+      ? resolveServerRealtimeRequirement(
+          input.execution?.freshResearch,
+          publicSearchText,
+          input.history,
+        )
       : undefined;
   const publicSearchIntent = realtimeRequirement
     ? { kind: "prefetched" as const, requirement: realtimeRequirement }
@@ -1259,9 +1306,12 @@ export async function runSharedAgentTurn(
               signal: input.abortSignal,
               observationOnly: isCurrentWeatherObservationRequest(publicSearchText ?? message),
             })
-          : await runWebSearchEdge(realtimeRequirement.query, {
-              signal: input.abortSignal,
-            });
+          : await (input.execution?.webSearchRunner ?? runWebSearchEdge)(
+              realtimeRequirement.query,
+              {
+                signal: input.abortSignal,
+              },
+            );
       input.abortSignal?.throwIfAborted();
     } catch (error) {
       input.abortSignal?.throwIfAborted();
@@ -1375,8 +1425,16 @@ export async function runSharedAgentTurn(
       error,
     );
   }
+  const publicReadSources = sharedPublicReadSources(turn.actionResults ?? []);
+  if (publicReadSources && turn.responded) {
+    const history = [...turn.history];
+    const index = history.findLastIndex((entry) => entry.role === "assistant");
+    if (index >= 0) history[index] = { ...history[index], publicReadSources };
+    turn = { ...turn, history };
+  }
   if (publicSearchIntent) {
     realtimeGrounding ??= sharedPublicWebGrounding(turn.actionResults ?? []);
+    let selectedSourceUrls: string[] = [];
     const groundedReply = finalizeSharedRealtimeReply(
       turn.reply,
       realtimeGrounding,
@@ -1388,7 +1446,15 @@ export async function runSharedAgentTurn(
           ...diagnostic,
         });
       },
+      {
+        includeSources: input.execution?.sourcePresentation !== "on-request",
+        selectedSources: (urls) => {
+          selectedSourceUrls = urls;
+        },
+      },
     );
+    if (realtimeGrounding?.kind === "web_search")
+      realtimeGrounding = { ...realtimeGrounding, selectedSourceUrls };
     const history = [...turn.history];
     let replaced = false;
     for (let index = history.length - 1; index >= 0; index -= 1) {

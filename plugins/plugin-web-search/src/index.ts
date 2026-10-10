@@ -43,3 +43,10 @@ export {
     KeylessWebSearchUnavailableError,
     searchKeylessWeb,
 } from "./keyless-web-search";
+export {
+    companyFilingsAction,
+    companyFinancialsAction,
+    publicMarketDataPlugin,
+    stockQuoteAction,
+} from "./market-data";
+export { searchPublicWeb } from "./public-rss-search";

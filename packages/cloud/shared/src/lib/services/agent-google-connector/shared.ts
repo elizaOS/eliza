@@ -140,15 +140,9 @@ export interface ManagedGoogleGmailSubscriptionHeadersResult {
   syncedAt: string;
 }
 
-export class AgentGoogleConnectorError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "AgentGoogleConnectorError";
-  }
-}
+export { AgentGoogleConnectorError } from "./error";
+
+import { AgentGoogleConnectorError } from "./error";
 
 export type GoogleConnectionRow = typeof platformCredentials.$inferSelect;
 

@@ -14,7 +14,8 @@ import type {
     State,
 } from "@elizaos/core";
 import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
-import { isKeylessWebSearchUnavailableError, searchKeylessWeb } from "./keyless-web-search";
+import { isKeylessWebSearchUnavailableError } from "./keyless-web-search";
+import { searchPublicWeb } from "./public-rss-search";
 
 export const WEB_SEARCH_EDGE_COMPATIBILITY = {
     target: "edge",
@@ -213,7 +214,7 @@ export async function runWebSearchEdge(
 ): Promise<ActionResult> {
     return runWebSearchWith(
         query,
-        (value) => searchKeylessWeb(value, { signal: options.signal }),
+        (value) => searchPublicWeb(value, { signal: options.signal }),
         options
     );
 }

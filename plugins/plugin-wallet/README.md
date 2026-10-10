@@ -17,7 +17,11 @@ tracker is per-client and in memory, so restart clears it; it is not a durable
 transaction ledger or a substitute for on-chain spend policies.
 
 `@elizaos/plugin-wallet/read` exposes read-only EVM balances, NFTs and DEX prices
-without registering routes or loading signing services. Hosts supply resolved RPC
+without registering routes or loading signing services.
+The same entry exports `publicSolanaReadPlugin`, with public SOL balance/SPL
+Token account reads and Solana market snapshots through the existing
+DexScreener service. Configure your own `SOLANA_RPC_URL`; these actions do not
+load a signer, submit transactions, or claim complete portfolio coverage. Hosts supply resolved RPC
 endpoints and provider credentials; the root barrel exports the same readers.
 
 ## Development

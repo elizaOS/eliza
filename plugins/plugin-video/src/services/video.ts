@@ -24,6 +24,7 @@ import {
 } from "@elizaos/core";
 import ffmpeg from "fluent-ffmpeg";
 import type { Flags as YtDlpFlags } from "youtube-dl-exec";
+import { registerMediaJobWorker } from "../jobs";
 import { BinaryResolver } from "./binaries";
 import { normalizeCaptionNewlines, parseYtDlpUploadDate } from "./video-parse";
 
@@ -221,8 +222,9 @@ export class VideoService extends IVideoService {
     return service;
   }
 
-  async initialize(_runtime: IAgentRuntime): Promise<void> {
+  async initialize(runtime: IAgentRuntime): Promise<void> {
     await this.configureFfmpeg();
+    registerMediaJobWorker(runtime);
   }
 
   private async configureFfmpeg(): Promise<void> {

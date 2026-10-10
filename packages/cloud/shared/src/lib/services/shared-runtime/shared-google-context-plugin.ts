@@ -1,6 +1,6 @@
 /** First-party private reads; owner scope is bound by the hosting boundary, never tool args. */
 import { type Action, type ActionResult, ElizaError, type Plugin } from "@elizaos/core";
-import { AgentGoogleConnectorError } from "../agent-google-connector";
+import { AgentGoogleConnectorError } from "../agent-google-connector/error";
 import type { createSharedGoogleReadPort } from "./shared-google-read-port";
 
 export { isSharedPrivateGoogleContextRequest as isSharedGoogleContextRequest } from "./shared-realtime-grounding";

@@ -12,6 +12,7 @@ await rm(`${root}dist`, { recursive: true, force: true });
 await build({
   entry: {
     index: `${root}src/index.ts`,
+    documents: `${root}src/features/documents/public.ts`,
     "actions/context-signal": `${root}src/actions/context-signal.ts`,
     "actions/context-signal-lexicon": `${root}src/actions/context-signal-lexicon.ts`,
     "device-clock-review": `${root}src/services/device-actions/clock-review-executor.ts`,

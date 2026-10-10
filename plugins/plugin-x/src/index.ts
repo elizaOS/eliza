@@ -128,3 +128,11 @@ export const XPlugin: Plugin = {
 };
 
 export default XPlugin;
+
+export {
+  discoverPublicXPosts,
+  discoverPublicXPostsAction,
+  publicXPlugin,
+  readPublicXPost,
+  readPublicXPostAction,
+} from "./public.js";

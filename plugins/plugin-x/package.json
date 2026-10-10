@@ -41,7 +41,10 @@
     "twitter-api-v2": "^1.23.2",
     "twitter-text": "3.1.0",
     "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/plugin-elizacloud": "workspace:*"
+    "@elizaos/plugin-elizacloud": "workspace:*",
+    "htmlparser2": "10.0.0",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-web-search": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
