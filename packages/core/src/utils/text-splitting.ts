@@ -21,7 +21,8 @@ const ABBREVIATIONS = new Set([
 	...TIME_ABBREVIATIONS,
 ]);
 
-const SENTENCE_END = new Set([".", "?", "!"]);
+const UNSPACED_SENTENCE_END = new Set(["。", "？", "！"]);
+const SENTENCE_END = new Set([".", "?", "!", ...UNSPACED_SENTENCE_END]);
 const BOUNDARY_FOLLOWERS = new Set([
 	'"',
 	"'",
@@ -30,8 +31,14 @@ const BOUNDARY_FOLLOWERS = new Set([
 	")",
 	"]",
 	"}",
+	"」",
+	"』",
+	"）",
+	"］",
+	"｝",
+	"】",
 ]);
-const TRAILING_CLOSERS = "\"'\u201D\u2019)]}";
+const TRAILING_CLOSERS = "\"'\u201D\u2019)]}」』）］｝】";
 
 function isAsciiWordChar(ch: string): boolean {
 	return (
@@ -75,7 +82,12 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 	// A time can end a reply, but only EOF proves it does not continue.
 	let terminalTimeBoundary: number | undefined;
 	let pendingBoundary:
-		| { boundary: number; normalizedWord: string; sawCloser: boolean }
+		| {
+				boundary: number;
+				normalizedWord: string;
+				sawCloser: boolean;
+				unspaced: boolean;
+		  }
 		| undefined;
 
 	return {
@@ -101,6 +113,7 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 						return completeAt;
 					}
 					if (
+						pendingBoundary.unspaced ||
 						pendingBoundary.sawCloser ||
 						isBoundaryFollower(chunk[closerOffset])
 					) {
@@ -141,10 +154,12 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 						// the sentence at "?").
 						normalizedWord: char === "." ? word.toLowerCase() : "",
 						sawCloser: false,
+						unspaced: UNSPACED_SENTENCE_END.has(char),
 					};
 				} else if (
 					SENTENCE_END.has(char) &&
-					isBoundaryFollower(chunk[offset + 1])
+					(UNSPACED_SENTENCE_END.has(char) ||
+						isBoundaryFollower(chunk[offset + 1]))
 				) {
 					const word = lastWord.endsWith(".")
 						? lastWord.slice(0, -1)
@@ -162,6 +177,7 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 								boundary: scanned + boundary,
 								normalizedWord: char === "." ? word.toLowerCase() : "",
 								sawCloser: boundary > offset + 1,
+								unspaced: UNSPACED_SENTENCE_END.has(char),
 							};
 							break;
 						}
