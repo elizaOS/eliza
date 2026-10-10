@@ -1,16 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { expect, test } from "vitest";
 
 test("actual native callback and secure-store dispatch deny foreign or invented context", () => {
   const root = resolve(import.meta.dirname, "../../../.."),
     temporary = mkdtempSync(join(tmpdir(), "native-owner-host-"));
-  const java =
-      process.env.JAVA_HOME ||
-      "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home",
-    jar = process.env.ELIZA_JSON_JAR;
+  const java = process.env.JAVA_HOME,
+    jar = process.env.ELIZA_JSON_JAR || process.env.ELIZA_ORG_JSON_JAR;
   if (!jar)
     throw Error("Set pinned ELIZA_JSON_JAR for actual native callback test");
   const native = join(
@@ -39,14 +37,16 @@ public static void main(String[] args)throws Exception {NativeOwnerDispatchTest 
 `,
     );
     const android = join(
-      homedir(),
-      "Library/Android/sdk/platforms/android-36/android.jar",
+      process.env.ANDROID_HOME ||
+        process.env.ANDROID_SDK_ROOT ||
+        join(homedir(), "Library/Android/sdk"),
+      "platforms/android-36/android.jar",
     );
-    execFileSync(join(java, "bin/javac"), [
+    execFileSync(java ? join(java, "bin/javac") : "javac", [
       "--release",
       "17",
       "-cp",
-      jar + ":" + android,
+      [jar, android].join(delimiter),
       "-d",
       temporary,
       processSource,
@@ -59,10 +59,10 @@ public static void main(String[] args)throws Exception {NativeOwnerDispatchTest 
     ]);
     for (const name of ["NativeOwnerContextTest", "NativeOwnerDispatchTest"]) {
       const output = execFileSync(
-        join(java, "bin/java"),
+        java ? join(java, "bin/java") : "java",
         [
           "-cp",
-          temporary + ":" + jar + ":" + android,
+          [temporary, jar, android].join(delimiter),
           "ai.elizaos.app." + name,
         ],
         { encoding: "utf8" },
