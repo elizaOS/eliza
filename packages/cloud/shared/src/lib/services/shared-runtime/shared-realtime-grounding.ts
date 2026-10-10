@@ -18,6 +18,7 @@ import {
   parseCurrentWeatherSourceDiagnostics,
   parseExplicitUsWeatherQuery,
 } from "./shared-current-weather";
+import { formatSharedMessageText } from "./shared-message-style";
 import { sharedSelectedGroundingMetadata } from "./shared-runtime-history-policy";
 
 export type SharedRealtimeDomain = "markets" | "weather" | "news" | "sports" | "mutable_fact";
@@ -842,15 +843,385 @@ export function validateSharedRealtimeReply(reply: string, grounding: AvailableG
   return count > 0 && reply.slice(cursor).trim().length === 0;
 }
 
+/** Natural citation spelling changes no source or factual authority. */
+export function normalizeSharedPublicCitations(
+  reply: string,
+  grounding: AvailableGrounding,
+): string {
+  const withoutMarkers = reply.replace(SOURCE_MARKER, "");
+  // error-policy:J3 malformed explicit markers must not become valid natural citations.
+  if (/\[\[SOURCE_URL:/iu.test(withoutMarkers)) return reply;
+  return reply.replace(
+    /\[\[SOURCE_URL:https?:\/\/[^\]\s]+\]\]|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|<(https?:\/\/[^\s<>]+)>|https?:\/\/[^\s<>"'\]]+/giu,
+    (
+      token,
+      label: string | undefined,
+      markdownUrl: string | undefined,
+      angleUrl: string | undefined,
+    ) => {
+      if (token.startsWith("[[SOURCE_URL:")) return token;
+      const raw = markdownUrl ?? angleUrl ?? token;
+      const url = raw.replace(/[),.;]+$/u, "");
+      const source = sourceForUrl(grounding, url);
+      if (!source) return token;
+      // A label that can itself assert facts remains part of the checked claim.
+      const host = new URL(source.url).hostname.replace(/^www\./u, "").split(".")[0];
+      const neutral =
+        label === undefined ||
+        /^(?:source|sources|link|\d+)$/iu.test(label.trim()) ||
+        label.trim().toLowerCase() === host;
+      const citation = `${neutral ? "" : label} [[SOURCE_URL:${source.url}]]`;
+      return citation + (markdownUrl || angleUrl ? "" : raw.slice(url.length));
+    },
+  );
+}
+
+export interface SharedPublicSourceQuoteRequest {
+  message: string;
+  draft: string;
+  source: SourceEvidence;
+  grounding: AvailableGrounding & { sources: SourceEvidence[] };
+  originalRefusal: SharedRealtimeBindingDiagnostic;
+  domain?: SharedRealtimeDomain;
+}
+
+/** One complete explicitly cited current source; never a search or arbitrary source selection. */
+export function prepareSharedPublicSourceQuoteRepair(
+  message: string,
+  draft: string,
+  grounding: SharedRuntimePublicGrounding | undefined,
+  now = Date.now(),
+  domain?: SharedRealtimeDomain,
+  authorizedQuery?: string,
+): SharedPublicSourceQuoteRequest | undefined {
+  if (
+    !hasTraceableRealtimeGrounding(grounding) ||
+    !isSharedPublicSearchSafe(message) ||
+    !Number.isSafeInteger(grounding.observedAt) ||
+    Math.abs(now - grounding.observedAt) > 300000
+  )
+    return undefined;
+  const standalone = resolveSharedRealtimeRequirement(message, []);
+  const general = standalone ? undefined : resolveSharedPublicSearchIntent(message, []);
+  const expectedQuery =
+    authorizedQuery ??
+    standalone?.query ??
+    (general?.kind === "general" ? general.topic : undefined);
+  if (
+    !expectedQuery ||
+    normalizedRealtimeQuery(grounding.query) !== normalizedRealtimeQuery(expectedQuery)
+  )
+    return undefined;
+  let originalRefusal: SharedRealtimeBindingDiagnostic | undefined;
+  const supported = supportedRealtimeReply(draft, grounding, (value) => {
+    originalRefusal = value;
+  });
+  if (supported && !supported.omittedSubstantive) return undefined;
+  const urls = replyUrls(draft);
+  if (!urls?.length || urls.some((url) => !sourceForUrl(grounding, url))) return undefined;
+  const unique = [...new Set(urls)];
+  // Mixed-source/compound repair is not silently reduced to a selected subset.
+  if (unique.length !== 1) return undefined;
+  const selectedUrl = unique[0];
+  if (typeof selectedUrl !== "string") return undefined;
+  const source = sourceForUrl(grounding, selectedUrl);
+  if (!source) return undefined;
+  const requestedAssets = quotedAssetScope(message);
+  const requestedCurrencies = new Set(
+    claimUnits(message).filter((unit) => unit.startsWith("currency:")),
+  );
+  if (
+    requestedAssets.size > 1 ||
+    (domain === "markets" && !requestedAssets.size && requestedCurrencies.size < 2)
+  )
+    return undefined; // No inference is spent on a scope the quote boundary cannot certify.
+  return {
+    message,
+    draft,
+    source,
+    grounding,
+    domain,
+    originalRefusal: originalRefusal ?? {
+      reason: "claim_not_supported",
+      markerCount: 0,
+      knownSourceMarkerCount: 0,
+      failedPredicateMask: 0,
+    },
+  };
+}
+
+function quoteBelongsToSource(quote: string, text: string): boolean {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    // error-policy:J3 plain evidence must still contain the exact quote.
+    return text.includes(quote);
+  }
+  const pending: unknown[] = [value];
+  while (pending.length) {
+    const item = pending.pop();
+    if (typeof item === "string" && !/^https?:\/\//iu.test(item) && item.includes(quote))
+      return true;
+    if (Array.isArray(item)) pending.push(...item);
+    else if (item && typeof item === "object") pending.push(...Object.values(item));
+  }
+  return false;
+}
+
+function quotedAssetScope(text: string): Set<string> {
+  const assets = new Set(claimUnits(text).filter((unit) => unit.startsWith("asset:")));
+  for (const [pattern, asset] of [
+    [/\b(?:Bitcoin SV|BSV)\b/iu, "asset:bsv"],
+    [/\b(?:Bitcoin Cash|BCH)\b/iu, "asset:bch"],
+    [/\b(?:Bitcoin Gold|BTG)\b/iu, "asset:btg"],
+    [/\bBitcoin2\b/iu, "asset:bitcoin2"],
+  ] as const)
+    if (pattern.test(text)) assets.add(asset);
+  const withoutForks = text.replace(
+    /\bBitcoin\s+(?:SV|Cash|Gold|USD(?:\s*\([^)]*\))?|2)\b/giu,
+    " ",
+  );
+  if (/\bbitcoin\b/iu.test(withoutForks)) assets.add("asset:btc");
+  if (/\bethereum\b/iu.test(text)) assets.add("asset:eth");
+  return assets;
+}
+
+/** Canonical market concepts, without substituting a nearby statistic for a price. */
+function financialQuoteMetrics(text: string): Set<string> {
+  const metrics = new Set<string>();
+  for (const [pattern, metric] of [
+    [/\b(?:price|quote|trading at|worth|current value)\b/iu, "price"],
+    [/\bmarket cap(?:italization)?\b/iu, "market_cap"],
+    [/\b(?:volume|amount[^.!?\n]*traded)\b/iu, "volume"],
+    [/\b(?:change(?:d)?|increase(?:d)?|decrease(?:d)?|gained|fallen|up|down)\b/iu, "change"],
+    [/\bexchange rate\b/iu, "exchange_rate"],
+    [/\byield\b/iu, "yield"],
+  ] as const)
+    if (pattern.test(text)) metrics.add(metric);
+  return metrics;
+}
+
+/** Quote scope is checked independently of the model's extraction status. */
+function quoteMatchesRequestedScope(
+  message: string,
+  quote: string,
+  domain?: SharedRealtimeDomain,
+): boolean {
+  const currencies = (value: string) =>
+    new Set(claimUnits(value).filter((unit) => unit.startsWith("currency:")));
+  const requestedCurrencies = currencies(message),
+    actualCurrencies = currencies(quote);
+  const requestedAssets = quotedAssetScope(message),
+    actualAssets = quotedAssetScope(quote);
+  const quoteUnits = new Set(claimUnits(quote));
+  if (claimUnits(message).some((unit) => !quoteUnits.has(unit))) return false;
+  const explicitCurrencies = new Set(
+    (quote.match(/\b(?:USD|EUR|GBP|JPY|CAD|AUD)\b/giu) ?? []).map(
+      (currency) => `currency:${currency.toLowerCase()}`,
+    ),
+  );
+  if ([...requestedCurrencies].some((unit) => !explicitCurrencies.has(unit))) return false;
+  if (
+    [...requestedCurrencies].some((unit) => !actualCurrencies.has(unit)) ||
+    [...requestedAssets].some((unit) => !actualAssets.has(unit))
+  )
+    return false;
+  if (
+    requestedCurrencies.size &&
+    [...actualCurrencies].some((unit) => !requestedCurrencies.has(unit))
+  )
+    return false;
+  if (requestedAssets.size && [...actualAssets].some((unit) => !requestedAssets.has(unit)))
+    return false;
+  if (requestedAssets.size > 1) return false;
+  if (requestedCurrencies.size > 1) {
+    // A quoted FX pair must preserve the requested direction, not just both units.
+    const orderedCurrencies = (value: string) => [
+      ...new Set(claimUnits(value).filter((unit) => unit.startsWith("currency:"))),
+    ];
+    if (orderedCurrencies(message).join(",") !== orderedCurrencies(quote).join(",")) return false;
+  }
+  if (domain === "markets" && !requestedAssets.size && requestedCurrencies.size < 2) return false; // An unrecognized financial asset is not certified by guessing its identity.
+  if (domain === "markets") {
+    const requestedMetrics = financialQuoteMetrics(message),
+      actualMetrics = financialQuoteMetrics(quote);
+    // A unit-asset exchange value in one currency is its price, not a volume,
+    // market-cap, historical high, or percentage change.
+    if (requestedAssets.size === 1 && requestedCurrencies.size === 1) {
+      if (actualMetrics.has("exchange_rate") && !actualMetrics.has("change"))
+        actualMetrics.add("price");
+      if (actualMetrics.has("price")) actualMetrics.add("exchange_rate");
+    }
+    if (
+      !requestedMetrics.size ||
+      [...requestedMetrics].some((metric) => !actualMetrics.has(metric))
+    )
+      return false;
+    if (FRESHNESS.test(message)) {
+      if (
+        !FRESHNESS.test(quote) ||
+        /\b(?:yesterday|ago|last (?:month|year)|historically|used to)\b/iu.test(quote)
+      )
+        return false;
+      for (const extreme of ["highest", "lowest"]) {
+        if (
+          new RegExp(`\\b${extreme}\\b`, "iu").test(quote) &&
+          !new RegExp(`\\b${extreme}\\b`, "iu").test(message)
+        )
+          return false;
+      }
+    }
+    if (
+      requestedCurrencies.size &&
+      !numericUnitTuples(quote).some((tuple) => requestedCurrencies.has(tuple.unit))
+    )
+      return false;
+  }
+  if (domain === "markets" && requestedAssets.size && MARKET_METRIC.test(message)) {
+    if (
+      NEWS.test(message) ||
+      WEATHER_TOPIC.test(message) ||
+      SPORTS.test(message) ||
+      PUBLIC_MUTABLE_FACT.test(message)
+    )
+      return false;
+    const quantities = (value: string) =>
+      [...value.matchAll(/\b(\d+(?:\.\d+)?)\s*(?:BTC|Bitcoin|ETH|Ethereum)\b/giu)].map((match) =>
+        Number(match[1]),
+      );
+    const wanted = quantities(message),
+      actual = quantities(quote);
+    if (wanted.length > 1 || actual.some((amount) => amount !== (wanted[0] ?? 1))) return false;
+    if (!MARKET_METRIC.test(quote) && !/\bcurrent value\b/iu.test(quote)) return false;
+    const requestedWindows = [
+      ...message.matchAll(/\b(\d+)\s*(hours?|days?|weeks?|months?|years?)\b/giu),
+    ];
+    if (
+      requestedWindows.some(
+        (window) => !new RegExp(`\\b${window[1]}\\s*${window[2]}\\b`, "iu").test(quote),
+      )
+    )
+      return false;
+  }
+  return true;
+}
+
+/** Closed validation stages only; no source, quote, request or provider payload is retained. */
+export type SharedPublicSourceQuoteDiagnostic =
+  | { phase: "receipt"; code: "receipt_not_traceable" | "receipt_stale" }
+  | {
+      phase: "tool_output";
+      code:
+        | "tool_output_missing"
+        | "tool_output_not_single"
+        | "tool_name_mismatch"
+        | "tool_arguments_missing";
+    }
+  | {
+      phase: "result_schema";
+      code: "result_schema_invalid" | "model_reported_unsupported";
+    }
+  | { phase: "source_url"; code: "source_url_mismatch" }
+  | { phase: "quote_membership"; code: "quote_not_in_source" }
+  | { phase: "requested_scope"; code: "requested_scope_mismatch" }
+  | {
+      phase: "factual_binding";
+      code: "factual_binding_refused";
+      failedPredicateMask: number | null;
+    };
+
+/** Exact source text plus the unchanged factual validator; no rounded value repair. */
+export function validateSharedPublicSourceQuoteRepair(
+  value: unknown,
+  request: SharedPublicSourceQuoteRequest,
+  now = Date.now(),
+  onRefusal?: (diagnostic: SharedPublicSourceQuoteDiagnostic) => void,
+): string | undefined {
+  const refuse = (diagnostic: SharedPublicSourceQuoteDiagnostic): undefined => {
+    // The runtime observer only assigns request-local metadata; logging remains
+    // at its existing boundary. A rejection never carries source/model content.
+    onRefusal?.(diagnostic);
+    return undefined;
+  };
+  if (!hasTraceableRealtimeGrounding(request.grounding))
+    return refuse({ phase: "receipt", code: "receipt_not_traceable" });
+  if (Math.abs(now - request.grounding.observedAt) > 300000)
+    return refuse({ phase: "receipt", code: "receipt_stale" });
+  if (!value || typeof value !== "object")
+    return refuse({ phase: "result_schema", code: "result_schema_invalid" });
+  const record = value as Record<string, unknown>;
+  if (
+    Object.keys(record).sort().join(",") !== "quote,sourceUrl,status" ||
+    typeof record.sourceUrl !== "string" ||
+    typeof record.quote !== "string" ||
+    (record.status !== "supported" && record.status !== "unsupported")
+  )
+    return refuse({ phase: "result_schema", code: "result_schema_invalid" });
+  if (record.status === "unsupported")
+    return refuse({
+      phase: "result_schema",
+      code: "model_reported_unsupported",
+    });
+  if (!record.quote.trim())
+    return refuse({ phase: "result_schema", code: "result_schema_invalid" });
+  if (canonicalPublicUrl(record.sourceUrl) !== canonicalPublicUrl(request.source.url))
+    return refuse({ phase: "source_url", code: "source_url_mismatch" });
+  if (!quoteBelongsToSource(record.quote, request.source.text))
+    return refuse({ phase: "quote_membership", code: "quote_not_in_source" });
+  if (!quoteMatchesRequestedScope(request.message, record.quote, request.domain))
+    return refuse({
+      phase: "requested_scope",
+      code: "requested_scope_mismatch",
+    });
+  const reply = `${record.quote} [[SOURCE_URL:${request.source.url}]]`;
+  let bindingDiagnostic: SharedRealtimeBindingDiagnostic | undefined;
+  const supported = supportedRealtimeReply(reply, request.grounding, (diagnostic) => {
+    bindingDiagnostic = diagnostic;
+  });
+  if (!supported || supported.omittedSubstantive)
+    return refuse({
+      phase: "factual_binding",
+      code: "factual_binding_refused",
+      failedPredicateMask: bindingDiagnostic?.failedPredicateMask ?? null,
+    });
+  return reply;
+}
+
+/** Display identity only: exact receipt URLs remain authoritative for validation. */
+function sourceDisplayIdentity(canonical: string): string {
+  const url = new URL(canonical);
+  // The English Google documentation display variant adds no page identity.
+  // Other locales, hosts and query parameters can select different evidence.
+  if (
+    url.hostname === "developers.google.com" &&
+    url.searchParams.getAll("hl").length === 1 &&
+    url.searchParams.get("hl") === "en"
+  )
+    url.searchParams.delete("hl");
+  return url.href;
+}
+
 function supportedRealtimeReply(
   reply: string,
   grounding: AvailableGrounding,
-  onRefusal?: (diagnostic: SharedRealtimeBindingDiagnostic) => void,
-): { reply: string; selectedUrls: string[]; omittedUnsupported: boolean } | undefined {
+  onRefusal: ((diagnostic: SharedRealtimeBindingDiagnostic) => void) | undefined,
+):
+  | {
+      reply: string;
+      selectedUrls: string[];
+      selectedDisplayUrls: string[];
+      omittedUnsupported: boolean;
+      omittedSubstantive: boolean;
+    }
+  | undefined {
   if (!hasTraceableRealtimeGrounding(grounding)) return undefined;
+  reply = normalizeSharedPublicCitations(reply, grounding);
   SOURCE_MARKER.lastIndex = 0;
   let cursor = 0;
   let omittedUnsupported = false;
+  let omittedSubstantive = false;
+  let lastSegmentAccepted = false;
   const diagnostic = {
     markerCount: 0,
     knownSourceMarkerCount: 0,
@@ -858,22 +1229,47 @@ function supportedRealtimeReply(
   };
   const segments: string[] = [];
   const selectedUrls: string[] = [];
+  const selectedDisplayUrls: string[] = [];
   for (const marker of reply.matchAll(SOURCE_MARKER)) {
     diagnostic.markerCount = Math.min(1000, diagnostic.markerCount + 1);
     const source = sourceForUrl(grounding, marker[1]);
-    if (source) {
+    if (source)
       diagnostic.knownSourceMarkerCount = Math.min(1000, diagnostic.knownSourceMarkerCount + 1);
-    }
     const claim = reply.slice(cursor, marker.index).trim();
     if (source && claimSupported(claim, source, diagnostic)) {
       segments.push(claim);
       selectedUrls.push(marker[1]);
+      let displayUrl = marker[1];
+      const preferred = new URL(source.url);
+      if (
+        preferred.hostname === "developers.google.cn" &&
+        preferred.searchParams.getAll("hl").length === 1 &&
+        preferred.searchParams.get("hl") === "en"
+      ) {
+        preferred.hostname = "developers.google.com";
+        preferred.searchParams.delete("hl");
+        const canonicalSource = sourceForUrl(grounding, preferred.href);
+        if (canonicalSource && claimSupported(claim, canonicalSource))
+          displayUrl = canonicalSource.url;
+      }
+      selectedDisplayUrls.push(displayUrl);
+      lastSegmentAccepted = true;
     } else {
       omittedUnsupported = true;
+      omittedSubstantive ||= /[\p{L}\p{N}]/u.test(claim);
+      lastSegmentAccepted = false;
     }
     cursor = (marker.index ?? 0) + marker[0].length;
   }
-  if (reply.slice(cursor).trim()) omittedUnsupported = true;
+  const tail = reply.slice(cursor).trim();
+  if (tail && /^[\s.!?,;:…]+$/u.test(tail)) {
+    // Punctuation after a citation is not an uncited factual claim. Attach it
+    // only to the immediately preceding accepted segment, never omitted text.
+    if (lastSegmentAccepted) segments[segments.length - 1] += tail.replace(/\s+/gu, "");
+  } else if (tail) {
+    omittedUnsupported = true;
+    omittedSubstantive ||= /[\p{L}\p{N}]/u.test(tail);
+  }
   if (segments.length === 0 && onRefusal) {
     try {
       onRefusal({
@@ -889,37 +1285,42 @@ function supportedRealtimeReply(
       // Diagnostic delivery must not change the existing refusal outcome.
     }
   }
+  const validatedReply = segments.join("\n");
   return segments.length > 0
-    ? { reply: segments.join("\n"), selectedUrls, omittedUnsupported }
+    ? {
+        reply: validatedReply.replace(/\n[ \t]*([.!?,;:…]+)(?=[ \t]*(?:\n|$))/gu, "$1"),
+        selectedUrls,
+        selectedDisplayUrls,
+        omittedUnsupported,
+        omittedSubstantive,
+      }
     : undefined;
 }
 
-/** Produces Telegram-safe attribution or an honest deterministic recovery. */
+/** Produces conversational attribution after the unchanged source validators. */
 export function finalizeSharedRealtimeReply(
   reply: string,
   grounding: SharedRuntimePublicGrounding | undefined,
   onRefusal?: (diagnostic: SharedRealtimeBindingDiagnostic) => void,
 ): string {
   if (!hasTraceableRealtimeGrounding(grounding)) {
-    return "I can’t verify the current value from a complete, traceable live source right now, so I won’t guess. Please try again shortly.";
+    return "I couldn’t check that right now. Please try again in a moment.";
   }
   const supported = supportedRealtimeReply(reply, grounding, onRefusal);
-  if (!supported) {
-    return `I found live public results, but I couldn’t safely bind the requested claim to one complete source, so I won’t guess.\n\nSource provider: ${grounding.provider} (checked ${new Date(grounding.observedAt).toISOString()})`;
-  }
-  const sources = [...new Set(supported.selectedUrls)].map((url) => {
+  if (!supported)
+    return "I couldn’t verify an answer from the sources I found. Please try rephrasing your question.";
+  const seen = new Set<string>();
+  const sources: string[] = [];
+  for (const url of supported.selectedDisplayUrls) {
     const canonical = canonicalPublicUrl(url);
     if (!canonical) throw new TypeError("Validated Shared realtime source became invalid");
-    const observed =
-      grounding.provider === "nws" && grounding.weatherObservation
-        ? `, observation ${grounding.weatherObservation.timestamp}`
-        : "";
-    return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}${observed}, checked ${new Date(grounding.observedAt).toISOString()})`;
-  });
-  const omission = supported.omittedUnsupported
-    ? "\n\nI left out part of the draft because it was not supported by the live source."
-    : "";
-  return `${supported.reply}${omission}\n\n${sources.join("\n")}`;
+    const identity = sourceDisplayIdentity(canonical);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    sources.push(canonical);
+  }
+  const partial = supported.omittedSubstantive ? "I found part of the answer:\n\n" : "";
+  return `${partial}${formatSharedMessageText(supported.reply)}\n\n${sources.length === 1 ? "Source" : "Sources"}: ${sources.join("\n")}`;
 }
 
 /** System-only policy; actual provider results remain untrusted data messages. */
