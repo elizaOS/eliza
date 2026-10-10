@@ -94,9 +94,16 @@ Queued work is bound to the grant that admitted it; a later unlock cannot revive
 Destroyed Activities cancel their pending prompts, and old owners cannot revoke a newer grant.
 Opening the fill picker preserves the original request deadline. Framework cancellation or a
 replacement request revokes the picker before it can publish a result.
-The vault locks when the host Activity stops and when the unlock window ends. There is no
-export in this version; any future export must require explicit confirmation and a fresh
-authentication.
+The vault locks when the host Activity stops and when the unlock window ends. Hosts can separately register `PasswordTransferPlugin` (`ElizaPasswordTransfer`) for
+CSV export and import. Use `createTransferClient` for count-only results. Export requires
+an explicit plaintext-file warning, a user-picked document and fresh authentication after
+the picker returns. Export reads one native vault snapshot and writes bounded CSV rows.
+Import shows every exact HTTPS origin before one atomic vault update;
+existing origin/username pairs are never overwritten. The native parser rejects malformed
+CSV and limits imports to 2 MB and 1,000 rows. App bindings cannot be imported.
+One transfer owns its picker, grant and I/O; overlapping calls return `busy`. Backgrounding
+review/I/O or destroying its Activity cancels that owner. An interrupted export may leave
+a partial plaintext file and says so. These APIs do not upload or sync the vault.
 
 Passkeys are not implemented.
 
@@ -106,8 +113,11 @@ Passkeys are not implemented.
 - `test/native-host/policy.node.mjs`: JVM tests of `PasswordFormPolicy`, `PasswordMatching`,
   `PasswordGenerator` and `PasswordRequests` with synthetic structures.
 - `test/android-consumer`: a separate offline sign-in app and provider host exercise native
-  save, device-credential unlock, account choice and framework fill. The offer tests also use
+  save, device-credential unlock, account choice and framework fill. A real Capacitor host
+  also tests document-picker export/import, fresh unlock, exact restored values, overlapping
+  calls and cancellation on backgrounding or Activity destruction. The offer tests also use
   real framework objects with synthetic targets. Run with
   `node packages/app/scripts/android-native-plugins.ts --serial <emulator> --plugin plugin-native-passwords`.
   The runner creates and removes a disposable user. These tests do not establish trusted-browser,
-  biometric, physical-device or user acceptance.
+  biometric, physical-device or user acceptance. Layout artifacts render only the fixture
+  views with synthetic data; Android screen-capture protection remains enabled.

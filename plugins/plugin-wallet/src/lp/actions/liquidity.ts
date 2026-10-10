@@ -120,12 +120,14 @@ const formatPools = (pools: PoolInfo[]): string => {
 
   let response = "LP pools:\n";
   pools.forEach((pool, index) => {
+    // Pool yields are fractions (0.125 = 12.5%), as in YieldOptimizationService.
+    const rate = pool.apr ?? pool.apy;
     const tokenA = tokenLabel(pool.tokenA) || "tokenA";
     const tokenB = tokenLabel(pool.tokenB) || "tokenB";
     response +=
       `\n${index + 1}. ${pool.displayName || pool.id} on ${pool.dex}\n` +
       `   Pair: ${tokenA}/${tokenB}\n` +
-      `   APR: ${pool.apr?.toFixed(2) || pool.apy?.toFixed(2) || "N/A"}%\n` +
+      `   APR: ${typeof rate === "number" ? `${(rate * 100).toFixed(2)}%` : "N/A"}\n` +
       `   TVL: ${pool.tvl !== undefined ? `$${pool.tvl.toLocaleString()}` : "N/A"}\n`;
   });
 

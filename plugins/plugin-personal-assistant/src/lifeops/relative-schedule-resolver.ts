@@ -62,6 +62,11 @@ function nextProjectedLocalInstant(args: {
    */
   offsetMinutes: number;
   allowedWeekdays?: number[];
+  /**
+   * Sleep-day (local noon) the concrete anchor already covers. The projection
+   * must not schedule a second occurrence for it or an earlier sleep-day.
+   */
+  coveredSleepDayMs?: number;
 }): number | null {
   const parts = getZonedDateParts(new Date(args.cursorMs), args.timezone);
   const totalMinutes = Math.round(args.localHour * 60);
@@ -99,6 +104,12 @@ function nextProjectedLocalInstant(args: {
       minute: 0,
       second: 0,
     }).getTime();
+    if (
+      args.coveredSleepDayMs !== undefined &&
+      sleepDayMs <= args.coveredSleepDayMs
+    ) {
+      continue;
+    }
     if (weekdayMatches(sleepDayMs, args.timezone, args.allowedWeekdays)) {
       return candidate;
     }
@@ -173,6 +184,7 @@ export function resolveNextRelativeScheduleInstant(args: {
   ) {
     return null;
   }
+  let coveredSleepDayMs: number | undefined;
   if (anchorMs !== null) {
     const targetMs = anchorMs + offsetMinutes * 60000;
     // Weekday restrictions apply to the anchor's local day (the sleep-day the
@@ -183,23 +195,28 @@ export function resolveNextRelativeScheduleInstant(args: {
     // they did. This mirrors the anchor-day rule in `nextProjectedLocalInstant`.
     // A bedtime is canonical in local hours [12, 36), so one before noon
     // belongs to the previous civil day's sleep-day.
-    let anchorDayMs = anchorMs;
-    if (!isAnchorKind(args.schedule)) {
-      const local = getZonedDateParts(new Date(anchorMs), state.timezone);
-      const sleepDay = addDaysToLocalDate(local, local.hour < 12 ? -1 : 0);
-      anchorDayMs = buildUtcDateFromLocalParts(state.timezone, {
-        ...sleepDay,
-        hour: 12,
-        minute: 0,
-        second: 0,
-      }).getTime();
-    }
+    const local = getZonedDateParts(new Date(anchorMs), state.timezone);
+    const sleepDay = addDaysToLocalDate(
+      local,
+      !isAnchorKind(args.schedule) && local.hour < 12 ? -1 : 0,
+    );
+    const anchorDayMs = buildUtcDateFromLocalParts(state.timezone, {
+      ...sleepDay,
+      hour: 12,
+      minute: 0,
+      second: 0,
+    }).getTime();
     if (
       targetMs > cursorMs &&
       weekdayMatches(anchorDayMs, state.timezone, args.schedule.onDays)
     ) {
       return new Date(targetMs).toISOString();
     }
+    // The real anchor owns its sleep-day: once its slot has fired (or is
+    // excluded by onDays), the baseline projection starts at the next one.
+    // Otherwise a wake earlier than the median fires again at the median's
+    // slot the same day.
+    coveredSleepDayMs = anchorDayMs;
   }
   const baseline = state.baseline;
   if (baseline === null) {
@@ -217,6 +234,7 @@ export function resolveNextRelativeScheduleInstant(args: {
     localHour: projectedHour,
     offsetMinutes,
     allowedWeekdays: args.schedule.onDays,
+    coveredSleepDayMs,
   });
   if (projectedAnchorMs === null) {
     return null;

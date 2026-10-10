@@ -126,14 +126,32 @@ export const HIDDEN_TAG_BLOCK_RE = new RegExp(
   `<(${HIDDEN_TAG_NAMES})\\b[^>]*>[\\s\\S]*?(?:<\\/\\1>|$)`,
   "gi",
 );
+const HIDDEN_TAG_NAME_LIST: readonly string[] = [
+  ...REASONING_TAG_NAMES,
+  "tool",
+  "tools",
+  "tool_call",
+  "tool_calls",
+];
 /**
- * Strip trailing partial hidden tags at the end of a streaming text chunk.
- * During streaming, the buffer may end mid-tag (e.g. `"Hello<thi"`,
- * `"Hello</respon"`, or just `"Hello<"`).  These fragments are not
- * user-facing content and must be hidden from both the display and voice
- * pipelines.
+ * Strip a trailing partial hidden tag at the end of a streaming text chunk
+ * (e.g. `"Hello<thi"`, `"Hello</thought"`, `"Hello<think foo"`, or just
+ * `"Hello<"`), so hidden-tag fragments never reach display or voice while
+ * tokens arrive. Only a fragment that can still become a hidden tag is cut:
+ * `if (a<b)`, `` `x<y` `` or `3<5 and x<y` in a finished message are content.
  */
-export const TRAILING_PARTIAL_TAG_RE = /<\/?[a-zA-Z][^>]*$|<\/?$/s;
+export function stripTrailingPartialHiddenTag(text: string): string {
+  const start = text.lastIndexOf("<");
+  if (start < 0 || text.includes(">", start)) return text;
+  const tail = /^<\/?([A-Za-z_]*)([\s\S]*)$/.exec(text.slice(start));
+  if (!tail) return text;
+  const name = tail[1].toLowerCase();
+  const rest = tail[2];
+  const partialName =
+    rest === "" && HIDDEN_TAG_NAME_LIST.some((tag) => tag.startsWith(name));
+  const openedTag = HIDDEN_TAG_NAME_LIST.includes(name) && /^[\s/]/.test(rest);
+  return partialName || openedTag ? text.slice(0, start) : text;
+}
 /**
  * Test-only accounting of how many characters the parse pipeline scans, so the
  * streaming-parse regression test can assert O(delta) work instead of O(N·L).
@@ -153,23 +171,32 @@ export const parserWork = {
  * concatenate it onto a stable prefix — trimming happens once on the joined
  * result, never on the stable prefix.
  */
-export function normalizeDisplayCore(text: string): string {
+export function normalizeDisplayCore(text: string, streaming = true): string {
   parserWork.normalizedChars += text.length;
-  return stripAssistantStageDirections(stripHiddenDisplayContent(text));
+  return stripAssistantStageDirections(
+    stripHiddenDisplayContent(text, streaming),
+  );
 }
 /** Prepare identical visible input for full normalization and streaming stage-direction detection. */
-export function stripHiddenDisplayContent(text: string): string {
+/**
+ * `streaming` is true while the text may still grow: only then can a trailing
+ * `<thi` be the start of a hidden tag. A finished message keeps it as text.
+ */
+export function stripHiddenDisplayContent(
+  text: string,
+  streaming = true,
+): string {
   let normalized = text;
   // Hide hidden reasoning/tool blocks from chat bubbles.
   normalized = normalized.replace(HIDDEN_TAG_BLOCK_RE, " ");
   // During streaming, a chunk may end mid-tag (e.g. "<thi").
-  // Strip any unterminated opening or closing tag at the very end so the
-  // user never sees hidden-tag fragments while tokens arrive.
-  normalized = normalized.replace(TRAILING_PARTIAL_TAG_RE, "");
+  // Strip an unterminated hidden opening or closing tag at the very end so
+  // the user never sees hidden-tag fragments while tokens arrive.
+  if (streaming) normalized = stripTrailingPartialHiddenTag(normalized);
   return normalized;
 }
-export function normalizeDisplayText(text: string): string {
-  return normalizeDisplayCore(text).trim();
+export function normalizeDisplayText(text: string, streaming = true): string {
+  return normalizeDisplayCore(text, streaming).trim();
 }
 export interface FormSubmitDisplay {
   formId: string;
@@ -606,11 +633,17 @@ export function interleaveSegments(
   }
   return segments;
 }
-export function parseSegments(text: string, analysisMode: boolean): Segment[] {
+export function parseSegments(
+  text: string,
+  analysisMode: boolean,
+  streaming = true,
+): Segment[] {
   parserWork.fullParses += 1;
   // If analysis mode is enabled, we parse the raw text to extract XML blocks,
   // otherwise we use the normalized text which strips them.
-  const targetText = analysisMode ? text : normalizeDisplayText(text);
+  const targetText = analysisMode
+    ? text
+    : normalizeDisplayText(text, streaming);
   if (!targetText) return [{ kind: "text", text: "" }];
   // Plain prose (no trigger character anywhere) → one text segment, no scans.
   if (!SEGMENT_TRIGGER_RE.test(targetText)) {

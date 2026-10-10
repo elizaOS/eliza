@@ -29,10 +29,10 @@ import static org.junit.Assert.*;
 /** Real offline app -> framework Save -> credential prompt -> provider picker -> framework fill. */
 public final class PasswordConsumerTest {
  private final UiAutomation ui = InstrumentationRegistry.getInstrumentation().getUiAutomation();
- private String shell(String command) throws Exception {
+ String shell(String command) throws Exception {
   try (ParcelFileDescriptor fd = ui.executeShellCommand(command); java.io.InputStream input = new ParcelFileDescriptor.AutoCloseInputStream(fd)) { return new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim(); }
  }
- private AccessibilityNodeInfo find(Predicate<AccessibilityNodeInfo> match) {
+ AccessibilityNodeInfo find(Predicate<AccessibilityNodeInfo> match) {
   if (android.os.Build.VERSION.SDK_INT >= 33) ui.clearCache();
   List<AccessibilityNodeInfo> roots = new ArrayList<>();
   for (AccessibilityWindowInfo window : ui.getWindows()) { AccessibilityNodeInfo root = window.getRoot(); if (root != null) roots.add(root); }
@@ -42,7 +42,7 @@ public final class PasswordConsumerTest {
   return null;
  }
  private static String text(AccessibilityNodeInfo node) { return node == null || node.getText() == null ? "" : node.getText().toString(); }
- private void await(BooleanSupplier condition, String message) {
+ void await(BooleanSupplier condition, String message) {
   long end = SystemClock.elapsedRealtime() + 15000;
   while (!condition.getAsBoolean() && SystemClock.elapsedRealtime() < end) SystemClock.sleep(100);
   boolean passed = condition.getAsBoolean();
@@ -56,7 +56,7 @@ public final class PasswordConsumerTest {
   }
   assertTrue(message, passed);
  }
- private void press(String label) {
+ void press(String label) {
   await(() -> find(node -> label.equalsIgnoreCase(text(node))) != null, "Missing control: " + label);
   AccessibilityNodeInfo node = find(item -> label.equalsIgnoreCase(text(item)));
   while (node != null && !node.isClickable()) node = node.getParent();
@@ -76,7 +76,7 @@ public final class PasswordConsumerTest {
  private void credentialPrompt() {
   await(() -> find(node -> node.isPassword() && node.isEditable() && !"example.passwords.fixture".contentEquals(node.getPackageName() == null ? "" : node.getPackageName())) != null, "Device credential prompt");
  }
- private void pin(String value) throws Exception {
+ void pin(String value) throws Exception {
   credentialPrompt();
   shell("input text " + value); shell("input keyevent 66");
  }
@@ -97,6 +97,11 @@ public final class PasswordConsumerTest {
    android.app.Activity activity = selected.get();
    assertTrue("Screen capture remains blocked", (activity.getWindow().getAttributes().flags & android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0);
    android.view.View view = activity.getWindow().getDecorView();
+   captureView(view, name);
+  });
+ }
+ /** Render a fixture-owned view only; this does not change screenshot protection. */
+ static void captureView(android.view.View view, String name) {
    assertTrue(view.getWidth() > 0 && view.getHeight() > 0);
    android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(view.getWidth(), view.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
    view.draw(new android.graphics.Canvas(bitmap));
@@ -104,7 +109,23 @@ public final class PasswordConsumerTest {
    assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes)); bitmap.recycle();
    Bundle artifact = new Bundle(); artifact.putString("nativeArtifactName", name); artifact.putString("nativeArtifactBase64", android.util.Base64.encodeToString(bytes.toByteArray(), android.util.Base64.NO_WRAP));
    InstrumentationRegistry.getInstrumentation().sendStatus(2, artifact);
+ }
+ /** Inspect our native transfer dialog on API 29+, where Android exposes owned windows. */
+ void captureDialog(String message, String name) throws Exception {
+  if (android.os.Build.VERSION.SDK_INT < 29) return;
+  java.util.concurrent.atomic.AtomicReference<android.view.View> selected = new java.util.concurrent.atomic.AtomicReference<>();
+  java.util.concurrent.CountDownLatch laidOut = new java.util.concurrent.CountDownLatch(1);
+  InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+   for (android.view.View root : android.view.inspector.WindowInspector.getGlobalWindowViews()) {
+    android.widget.TextView text = root.findViewById(android.R.id.message);
+    if (text != null && String.valueOf(text.getText()).contains(message) && root.isShown()) selected.set(root);
+   }
+   android.view.View view = selected.get(); assertNotNull("Owned transfer dialog is visible", view);
+   assertTrue("Dialog keeps screen capture blocked", (((android.view.WindowManager.LayoutParams)view.getLayoutParams()).flags & android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0);
+   view.postOnAnimation(() -> view.postOnAnimation(laidOut::countDown));
   });
+  assertTrue("Dialog layout settled", laidOut.await(5, java.util.concurrent.TimeUnit.SECONDS));
+  InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> captureView(selected.get(), name));
  }
  private void launch(Context context, String username, String password) throws Exception {
   String user = shell("am get-current-user");
@@ -114,6 +135,15 @@ public final class PasswordConsumerTest {
   assertTrue("Fresh fixture Activity starts", started.contains("Status: ok"));
   focus("Test username");
   await(() -> find(node -> "Fill with a saved password".equals(text(node))) != null, "Framework admitted the form before edits");
+ }
+ static void clearSyntheticVault(Context context) throws Exception {
+  assertEquals("example.passwords.host", context.getPackageName());
+  PasswordVaultAccess access = PasswordVaultAccess.get(context); access.lock(); access.requests.clear();
+  for (String name : new String[]{"vault.enc", "vault.enc.bak", "vault.enc.new"}) {
+   File file = new File(access.config.directory, name); assertTrue(!file.exists() || file.delete());
+  }
+  java.security.KeyStore keys = java.security.KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
+  if (keys.containsAlias(access.config.alias)) keys.deleteEntry(access.config.alias);
  }
  @Test public void saveAndFillRequireUserUnlockAndChoice() throws Exception {
   assertEquals("1", InstrumentationRegistry.getArguments().getString("disposablePasswordFixture"));
@@ -175,7 +205,7 @@ public final class PasswordConsumerTest {
   } finally {
    if (previous.isEmpty() || previous.equals("null")) shell("settings --user " + user + " delete secure autofill_service");
    else shell("settings --user " + user + " put secure autofill_service " + previous);
-   if (ownPin) shell("locksettings clear --user " + user + " --old " + pin);
+   if (ownPin) { clearSyntheticVault(context); shell("locksettings clear --user " + user + " --old " + pin); }
   }
  }
 }

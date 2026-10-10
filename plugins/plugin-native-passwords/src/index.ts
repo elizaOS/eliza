@@ -5,6 +5,7 @@ import type { ElizaPasswordsPlugin } from "./definitions";
 export * from "./bindings";
 export * from "./client";
 export * from "./definitions";
+export * from "./transfer";
 
 const loadWeb = () =>
   import("./web").then((module) => new module.ElizaPasswordsWeb());

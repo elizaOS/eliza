@@ -345,6 +345,21 @@ describe("Network takeover: the service owns the turn", () => {
     ]);
   });
 
+  test("STOP from a sender the service ignores is still recorded and confirmed", async () => {
+    const phone = "+14155550790";
+    respond = () => ({ outcome: "ignored", reason: "unknown_sender" });
+    expect(await inbound("STOP", phone)).toBe("delivered");
+    const entry = await redisNetworkConsentLedger(redis).current(
+      "network",
+      phone,
+    );
+    expect(entry?.state).toBe("opted_out");
+    expect(entry?.source).toBe("keyword:STOP");
+    expect(cloudBodies).toHaveLength(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.to).toBe(phone);
+  });
+
   test("a service outage reopens the webhook: nothing is sent and the agent is not called", async () => {
     respond = () => new Response("down", { status: 503 });
     expect(await inbound("hello?", "+14155550705")).toBeNull();

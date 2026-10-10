@@ -2,6 +2,7 @@ package ai.eliza.plugins.securestore;
 
 import ai.eliza.plugins.securestore.nativeonly.PasswordVaultStore;
 import ai.eliza.plugins.securestore.nativeonly.RuntimeCredentialStore;
+import ai.eliza.plugins.securestore.nativeonly.KeystoreTextFrame;
 import ai.eliza.plugins.securestore.nativeonly.PasswordAutofillPolicy;
 import ai.eliza.plugins.securestore.nativeonly.PasswordAutofillSessions;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -46,6 +47,53 @@ public final class NativeCustodyInstrumentedTest {
     } finally {
       for (File file : root.listFiles()) file.delete(); root.delete();
       keys.deleteEntry(alias); keys.deleteEntry(alias + ".vault");
+    }
+  }
+  @Test public void textFramesKeepDeployedCiphertextAndOneColdKey() throws Exception {
+    String alias = "eliza.text-frame-test." + UUID.randomUUID();
+    KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
+    java.util.concurrent.ExecutorService workers = java.util.concurrent.Executors.newFixedThreadPool(8);
+    try {
+      // Produce the deployed host format independently, before constructing the shared codec.
+      javax.crypto.KeyGenerator generator = javax.crypto.KeyGenerator.getInstance("AES", "AndroidKeyStore");
+      generator.init(new android.security.keystore.KeyGenParameterSpec.Builder(alias,
+        android.security.keystore.KeyProperties.PURPOSE_ENCRYPT | android.security.keystore.KeyProperties.PURPOSE_DECRYPT)
+        .setBlockModes("GCM").setEncryptionPaddings("NoPadding").build());
+      javax.crypto.SecretKey key = generator.generateKey();
+      String value = "[\"https://example.test/synthetic?q=保存\"]";
+      javax.crypto.Cipher oldWriter = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding"); oldWriter.init(javax.crypto.Cipher.ENCRYPT_MODE, key);
+      String oldFrame = android.util.Base64.encodeToString(oldWriter.getIV(), android.util.Base64.NO_WRAP) + ":"
+        + android.util.Base64.encodeToString(oldWriter.doFinal(value.getBytes(StandardCharsets.UTF_8)), android.util.Base64.NO_WRAP);
+      KeystoreTextFrame codec = new KeystoreTextFrame(alias, 800000);
+      assertEquals(value, codec.open(oldFrame));
+      assertNull(keys.getKey(alias, null).getEncoded());
+
+      String next = codec.seal(value);
+      String[] parts = next.split(":", -1);
+      javax.crypto.Cipher oldReader = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+      oldReader.init(javax.crypto.Cipher.DECRYPT_MODE, key, new javax.crypto.spec.GCMParameterSpec(128,
+        android.util.Base64.decode(parts[0], android.util.Base64.NO_WRAP)));
+      assertEquals(value, new String(oldReader.doFinal(android.util.Base64.decode(parts[1], android.util.Base64.NO_WRAP)), StandardCharsets.UTF_8));
+      byte[] tampered = android.util.Base64.decode(parts[1], android.util.Base64.NO_WRAP); tampered[0] ^= 1;
+      try { codec.open(parts[0] + ":" + android.util.Base64.encodeToString(tampered, android.util.Base64.NO_WRAP)); fail("Accepted changed ciphertext"); }
+      catch (javax.crypto.AEADBadTagException expected) {}
+      KeystoreTextFrame small = new KeystoreTextFrame(alias, 41);
+      assertEquals("", small.open(small.seal("")));
+      try { small.seal("abc"); fail("Wrote a frame larger than the read limit"); } catch (IllegalArgumentException expected) {}
+      try { small.open(next); fail("Accepted an oversized frame"); } catch (IllegalArgumentException expected) {}
+
+      java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+      java.util.ArrayList<java.util.concurrent.Future<String>> written = new java.util.ArrayList<>();
+      for (int i = 0; i < 8; i++) {
+        final int id = i;
+        written.add(workers.submit(() -> { start.await(); return new KeystoreTextFrame(alias + ".cold", 1000).seal("synthetic-" + id); }));
+      }
+      start.countDown();
+      for (int i = 0; i < written.size(); i++) assertEquals("synthetic-" + i,
+        new KeystoreTextFrame(alias + ".cold", 1000).open(written.get(i).get(30, java.util.concurrent.TimeUnit.SECONDS)));
+    } finally {
+      workers.shutdownNow(); workers.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS);
+      keys.deleteEntry(alias); keys.deleteEntry(alias + ".cold");
     }
   }
   @Test public void exactOriginAndRevocableOneShotSessions() throws Exception {

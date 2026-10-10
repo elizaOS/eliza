@@ -57,7 +57,36 @@ const NUMBER_WORDS: Readonly<Record<string, number>> = {
   eight: 8,
   nine: 9,
   ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+  twenty: 20,
+  thirty: 30,
+  forty: 40,
+  fifty: 50,
+  sixty: 60,
+  seventy: 70,
+  eighty: 80,
+  ninety: 90,
 };
+
+/** A number word, or a hyphenated tens-and-units word ("forty-five"). */
+function numberWordValue(word: string): number | undefined {
+  if (NUMBER_WORDS[word] !== undefined) return NUMBER_WORDS[word];
+  const compound =
+    /^(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)-(one|two|three|four|five|six|seven|eight|nine)$/.exec(
+      word,
+    );
+  return compound
+    ? (NUMBER_WORDS[compound[1]] ?? 0) + (NUMBER_WORDS[compound[2]] ?? 0)
+    : undefined;
+}
 
 export type ExplicitSharedReminderDelay =
   | { kind: "absent" }
@@ -333,11 +362,10 @@ function parseCandidate(candidate: DelayCandidate): number | undefined {
   for (const term of candidate.terms) {
     const normalizedNumber = term.rawNumber.toLowerCase();
     const amount =
-      NUMBER_WORDS[normalizedNumber] !== undefined
-        ? NUMBER_WORDS[normalizedNumber]
-        : DECIMAL_TOKEN.test(normalizedNumber)
-          ? Number(normalizedNumber)
-          : Number.NaN;
+      numberWordValue(normalizedNumber) ??
+      (DECIMAL_TOKEN.test(normalizedNumber)
+        ? Number(normalizedNumber)
+        : Number.NaN);
     const milliseconds = amount * UNIT_MILLISECONDS[term.unit];
     if (
       !Number.isFinite(amount) ||
