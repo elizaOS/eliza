@@ -7,6 +7,8 @@
  * `lifeops/defaults.ts` for historical import paths).
  */
 
+import { LIFEOPS_TIME_ZONE_ALIASES } from "../lifeops-constants/service-constants.js";
+
 export function resolveDefaultTimeZone(): string {
   const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return resolved && resolved.trim().length > 0 ? resolved : "UTC";
@@ -41,6 +43,10 @@ export function normalizeTimeZone(timeZone?: string | null): string {
   }
   if (candidate && isValidTimeZone(candidate)) {
     return candidate;
+  }
+  const aliasKey = candidate.toLowerCase();
+  if (Object.hasOwn(LIFEOPS_TIME_ZONE_ALIASES, aliasKey)) {
+    return LIFEOPS_TIME_ZONE_ALIASES[aliasKey];
   }
   return resolveDefaultTimeZone();
 }
