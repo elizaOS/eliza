@@ -115,10 +115,15 @@ function resolveMaxCallSeconds(env: VoiceRealtimeEnv): number {
   const raw = (
     env as VoiceRealtimeEnv & { TWILIO_VOICE_MAX_CALL_SECONDS?: string }
   ).TWILIO_VOICE_MAX_CALL_SECONDS;
-  const value = Number(raw);
-  return Number.isFinite(value) && value > 0
-    ? Math.floor(value)
-    : DEFAULT_MAX_CALL_SECONDS;
+  if (raw === undefined || raw === null) return DEFAULT_MAX_CALL_SECONDS;
+  const trimmed = raw.trim();
+  // Canonical decimal digits only, mirroring parseBoundedPositiveInteger in
+  // twilio-bootstrap-gate.ts: Number("0x10") is 16, Number("1e3") is 1000,
+  // and Number("0.9") floors to 0 — all used to silently become the max call
+  // duration instead of falling back to the 30-minute default.
+  if (!/^[1-9]\d*$/.test(trimmed)) return DEFAULT_MAX_CALL_SECONDS;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : DEFAULT_MAX_CALL_SECONDS;
 }
 
 app.get("/", async (c) => {
