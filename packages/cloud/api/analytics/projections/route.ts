@@ -61,7 +61,7 @@ app.get("/", async (c) => {
     if (!organization) {
       throw new Error(`Organization ${user.organization_id} not found`);
     }
-    const historicalData = fillIdleUsageDays(activeDays, startDate, now);
+    const historicalData = fillIdleUsageDays(activeDays, now);
 
     const creditBalance = Number(organization.credit_balance ?? 0);
     const projections = generateProjections(historicalData, periods);

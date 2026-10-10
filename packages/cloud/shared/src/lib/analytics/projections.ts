@@ -119,22 +119,28 @@ export function calculateLinearRegression(values: number[]): LinearRegressionRes
 }
 
 /**
- * Day series with a zero-usage point for every UTC day in [startDate, endDate]
- * that has no row. Usage queries group by day and return only active days,
- * while the projections and runway alerts assume one point per day.
+ * Day series with a zero-usage point for every UTC day from the first observed
+ * day through endDate. Usage queries group by day and return only active days,
+ * while the projections and runway alerts assume one point per day. Rows past
+ * endDate extend the range so input is never silently dropped.
  */
 export function fillIdleUsageDays(
   points: readonly TimeSeriesDataPoint[],
-  startDate: Date,
   endDate: Date,
 ): TimeSeriesDataPoint[] {
+  if (points.length === 0) return [];
   const dayMs = 24 * 60 * 60 * 1000;
-  const byDay = new Map(
-    points.map((point) => [Math.floor(point.timestamp.getTime() / dayMs), point]),
-  );
+  const byDay = new Map<number, TimeSeriesDataPoint>();
+  let firstDay = Number.POSITIVE_INFINITY;
+  let lastDay = Math.floor(endDate.getTime() / dayMs);
+  for (const point of points) {
+    const day = Math.floor(point.timestamp.getTime() / dayMs);
+    byDay.set(day, point);
+    firstDay = Math.min(firstDay, day);
+    lastDay = Math.max(lastDay, day);
+  }
   const filled: TimeSeriesDataPoint[] = [];
-  const lastDay = Math.floor(endDate.getTime() / dayMs);
-  for (let day = Math.floor(startDate.getTime() / dayMs); day <= lastDay; day += 1) {
+  for (let day = firstDay; day <= lastDay; day += 1) {
     filled.push(
       byDay.get(day) ?? {
         timestamp: new Date(day * dayMs),

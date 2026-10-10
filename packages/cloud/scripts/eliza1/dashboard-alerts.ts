@@ -179,7 +179,6 @@ export async function loadDashboardInputs(
           outputTokens: tokenSumToNumber(row.output_tokens, "output_tokens"),
           successRate: Number(row.success_rate),
         })),
-        startDate,
         endDate,
       ),
       creditBalance:
