@@ -1,7 +1,10 @@
 import type http from "node:http";
 import { createTestVault, type TestVault } from "@elizaos/auth/testing";
+import { AgentRuntime, ModelType, type Plugin } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/host/protocol";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { anthropicPlugin } from "@elizaos/plugin-anthropic";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { handleProviderSwitchRoutes } from "../src/api/provider-switch-routes.ts";
 import type {
   RuntimeOperationManager,
@@ -20,6 +23,11 @@ const proxyEnvKeys = [
   "OPENAI_LARGE_MODEL",
   "ANTHROPIC_SMALL_MODEL",
   "ANTHROPIC_LARGE_MODEL",
+  "ELIZA_PROVIDER",
+  "CEREBRAS_API_KEY",
+  "EVOLINK_API_KEY",
+  "ELIZA_MOCK_OPENAI_BASE",
+  "ELIZA_MOCK_ANTHROPIC_BASE",
 ] as const;
 
 beforeEach(async () => {
@@ -28,6 +36,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   await testVault.dispose();
   process.env = { ...savedEnv };
 });
@@ -127,3 +136,66 @@ it("stops routing Anthropic requests through the Eliza Cloud proxy after switchi
     OPENAI_API_KEY: undefined,
   });
 });
+
+async function nextModelRequestHost(
+  plugin: Plugin,
+  runtime: AgentRuntime,
+): Promise<string> {
+  const hosts: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url =
+        input instanceof Request ? input.url : new URL(String(input)).href;
+      hosts.push(new URL(url).host);
+      return new Response(
+        JSON.stringify({
+          error: { message: "invalid api key", type: "authentication_error" },
+        }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    }),
+  );
+  const handler = plugin.models?.[ModelType.TEXT_SMALL];
+  if (!handler) throw new Error(`${plugin.name} has no TEXT_SMALL handler`);
+  await expect(
+    handler(runtime, { prompt: "Reply briefly." }),
+  ).rejects.toThrow();
+  vi.unstubAllGlobals();
+  return hosts[0] ?? "<no request>";
+}
+
+function createRuntime(): AgentRuntime {
+  return new AgentRuntime({ character: { name: "ProviderSwitchRouting" } });
+}
+
+it.each([
+  ["openai", openaiPlugin, "sk-user-openai-key", "api.openai.com"],
+  ["anthropic", anthropicPlugin, "sk-ant-user-key", "api.anthropic.com"],
+] as const)(
+  "sends the next %s model request to the direct provider host after leaving Eliza Cloud",
+  async (provider, plugin, apiKey, directHost) => {
+    const config = {} as ElizaConfig;
+    await switchProvider(config, {
+      provider: "elizacloud",
+      apiKey: "eliza_cloud_key_123",
+    });
+    const runtimeCreatedOnCloud = createRuntime();
+    expect(await nextModelRequestHost(plugin, runtimeCreatedOnCloud)).toBe(
+      "cloud.eliza.app",
+    );
+
+    expect(await switchProvider(config, { provider, apiKey })).toBe(202);
+
+    expect({
+      existingRuntime: await nextModelRequestHost(
+        plugin,
+        runtimeCreatedOnCloud,
+      ),
+      restartedRuntime: await nextModelRequestHost(plugin, createRuntime()),
+    }).toEqual({
+      existingRuntime: directHost,
+      restartedRuntime: directHost,
+    });
+  },
+);
