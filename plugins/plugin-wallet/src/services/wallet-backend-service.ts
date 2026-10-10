@@ -24,6 +24,7 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import { validateWalletBridgeParams } from "../chains/evm/bridge-router.js";
+import { validateWalletGovParams } from "../chains/evm/gov-router.js";
 import { registerDefaultWalletChainHandlers } from "../chains/registry.js";
 import type {
   WalletChainHandler,
@@ -315,6 +316,10 @@ export class WalletBackendService extends Service {
   ): WalletRouterFailure | null {
     if (params.subaction === "bridge") {
       const detail = validateWalletBridgeParams(params);
+      return detail ? { ok: false, error: "INVALID_PARAMS", detail } : null;
+    }
+    if (params.subaction === "gov") {
+      const detail = validateWalletGovParams(params);
       return detail ? { ok: false, error: "INVALID_PARAMS", detail } : null;
     }
     if (!params.amount) {
