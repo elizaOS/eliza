@@ -251,7 +251,14 @@ export async function recordVaultSpend(
   const tokenAmount =
     Number(wei / divisor) + Number(wei % divisor) / Number(divisor);
   const fallbackNativePriceUsd = (() => {
-    const parsed = Number(process.env.STEWARD_NATIVE_PRICE_FALLBACK_USD);
+    // Number() silently accepts non-decimal spellings ("0x10" -> 16), so a
+    // typo was honored as the conservative price floor instead of falling
+    // back to 10000. Require the whole trimmed value to be decimal, mirroring
+    // TWILIO_SMS_COST_PATTERN in packages/cloud/sdk/src/browser-contracts/markup.ts.
+    const priceText = (process.env.STEWARD_NATIVE_PRICE_FALLBACK_USD ?? "").trim();
+    const parsed = /^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(priceText)
+      ? Number(priceText)
+      : Number.NaN;
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 10_000;
   })();
   const conservativeUsd = tokenAmount * fallbackNativePriceUsd;
