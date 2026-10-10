@@ -20,7 +20,7 @@ public final class ReminderEngine {
   // IDs contain no colon, so empty legacy tags and distinct "namespace:" prefixes cannot collide.
   // Action ownership is conservative: sharing a component+action is rejected even with different URI prefixes.
   // Distinct stores cannot silently share taps, preference files, channels, tags or intent routes.
-  String[] claims={context.getPackageName()+"|notification-tags|"+configuration.notificationTagPrefix,data+"|preferences|"+configuration.envelopeName,data+"|preferences|"+configuration.legacyName,data+"|legacy|"+configuration.legacyName,data+"|secure|"+secureId+"|"+configuration.tapSlot,context.getPackageName()+"|channel|"+configuration.channelId,context.getPackageName()+"|receiver-action|"+configuration.receiverClass.getName()+"|"+configuration.remindAction,context.getPackageName()+"|receiver-action|"+configuration.receiverClass.getName()+"|"+configuration.decisionAction,context.getPackageName()+"|activity-action|"+configuration.activityClass.getName()+"|"+configuration.openAction};
+  String[] claims={context.getPackageName()+"|notification-tags|"+configuration.notificationTagPrefix,data+"|preferences|"+configuration.envelopeName,data+"|preferences|"+configuration.bootMarkerName(),data+"|preferences|"+configuration.legacyName,data+"|legacy|"+configuration.legacyName,data+"|secure|"+secureId+"|"+configuration.tapSlot,context.getPackageName()+"|channel|"+configuration.channelId,context.getPackageName()+"|channel|"+configuration.dueChannelId(),context.getPackageName()+"|receiver-action|"+configuration.receiverClass.getName()+"|"+configuration.remindAction,context.getPackageName()+"|receiver-action|"+configuration.receiverClass.getName()+"|"+configuration.decisionAction,context.getPackageName()+"|activity-action|"+configuration.activityClass.getName()+"|"+configuration.openAction};
   for(String claim:claims)if(CLAIMS.containsKey(claim)&&!key.equals(CLAIMS.get(claim)))throw new IllegalStateException("Conflicting reminder resource ownership");
   ReminderEngine engine=new ReminderEngine(context,configuration,secure,fingerprint);ENGINES.put(key,engine);for(String claim:claims)CLAIMS.put(claim,key);return engine;
  }
@@ -39,6 +39,9 @@ public final class ReminderEngine {
  public JSONObject operate(String id,String binding,JSONObject operation)throws JSONException{return store.operate(context,id,binding,operation);}
  public JSONObject operationReceipt(String id,String binding,JSONObject operation)throws JSONException{return store.operationReceipt(context,id,binding,operation);}
  public boolean notificationsAllowed(){return store.allowed(context);}
+ public JSONObject saveTodo(String id,String title,String body)throws JSONException{return store.saveTodo(context,id,title,body);}
+ public JSONObject todoDecision(JSONObject target,String action)throws JSONException{return store.todoDecision(context,target,action);}
+ public String dueChannelId(){return store.dueChannel();}
  public JSONObject pendingTap()throws Exception{return taps().pending();}
  public void captureTap(String token)throws Exception{taps().capture(token);}
  public JSONObject consumeTap(String token)throws Exception{return taps().consume(token);}

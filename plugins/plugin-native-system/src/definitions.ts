@@ -45,7 +45,34 @@ export interface FlashlightStatus {
   enabled: boolean;
 }
 
+/** One launchable app other than the host; `icon` is a PNG data URL when requested. */
+export interface LauncherApp {
+  packageName: string;
+  label: string;
+  icon?: string;
+}
+
+/** Default-handler roles a launcher hands off to without implementing them. */
+export type DefaultAppRole = "dial";
+
+/** A chooser (several handlers, none preferred) is available with no packageName. */
+export interface DefaultAppStatus {
+  role: DefaultAppRole;
+  available: boolean;
+  packageName?: string;
+  label?: string;
+  icon?: string;
+}
+
 export interface SystemPlugin {
+  listLauncherApps(options?: {
+    icons?: boolean;
+  }): Promise<{ apps: LauncherApp[] }>;
+  launchApp(options: { packageName: string }): Promise<void>;
+  resolveDefaultApp(options: {
+    role: DefaultAppRole;
+  }): Promise<DefaultAppStatus>;
+  openDefaultApp(options: { role: DefaultAppRole }): Promise<void>;
   getStatus(): Promise<SystemStatus>;
   requestRole(options: {
     role: AndroidRoleName;

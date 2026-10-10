@@ -251,10 +251,90 @@ export async function readGuardedFailedDeleteJobFacts(
   return facts;
 }
 
+/** Only fixed-origin GETs are allowed; a missing server is not proof of historical billing. */
+export async function readGuardedProviderFacts(
+  client: DeletionBillingReportClient,
+  migration: string,
+  token: string,
+) {
+  const { rows } = await client.query(`
+    WITH guarded AS (${unresolvedAgentSelector(migration)})
+    SELECT a.id::text AS agent_id, n.node_id, n.hostname,
+      n.metadata->>'hcloudServerId' AS server_id
+    FROM guarded a LEFT JOIN docker_nodes n ON n.node_id = a.node_id
+    ORDER BY a.id
+  `);
+  const facts = [];
+  for (const value of rows) {
+    if (!value || typeof value !== "object") {
+      throw new DeletionBillingProvenanceReportError(
+        "invalid_provider_locator",
+      );
+    }
+    const row = value as Record<string, unknown>;
+    if (typeof row.agent_id !== "string") {
+      throw new DeletionBillingProvenanceReportError(
+        "invalid_provider_locator",
+      );
+    }
+    const subjectSha256 = createHash("sha256")
+      .update(row.agent_id)
+      .digest("hex");
+    if (
+      typeof row.server_id !== "string" ||
+      !/^[1-9][0-9]*$/.test(row.server_id)
+    ) {
+      facts.push({ subjectSha256, result: "missing_provider_locator" });
+      continue;
+    }
+    const response = await fetch(
+      `https://api.hetzner.cloud/v1/servers/${row.server_id}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        redirect: "error",
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (response.status === 404) {
+      facts.push({ subjectSha256, result: "not_found_in_configured_project" });
+      continue;
+    }
+    if (!response.ok) {
+      throw new DeletionBillingProvenanceReportError("provider_lookup_failed");
+    }
+    const payload = await response.json();
+    const server = payload?.server;
+    if (
+      !server ||
+      String(server.id) !== row.server_id ||
+      typeof server.name !== "string" ||
+      typeof server.status !== "string"
+    ) {
+      throw new DeletionBillingProvenanceReportError(
+        "invalid_provider_response",
+      );
+    }
+    facts.push({
+      subjectSha256,
+      result: "found",
+      recordedNameMatches: server.name === row.node_id,
+      recordedAddressMatches: server.public_net?.ipv4?.ip === row.hostname,
+      running: server.status === "running",
+      off: server.status === "off",
+    });
+  }
+  return facts;
+}
+
 export async function readDeletionBillingProvenance(
   client: DeletionBillingReportClient,
   migration: string,
-  options?: { fixtureApiKey: string; includeFailedJobs?: boolean },
+  options?: {
+    fixtureApiKey?: string;
+    includeFailedJobs?: boolean;
+    providerToken?: string;
+  },
 ) {
   const queries = deletionBillingGuardQueries(migration);
   await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
@@ -285,12 +365,21 @@ export async function readDeletionBillingProvenance(
       databaseIdentity: identity,
       unresolvedContainerHistoryCount: counts[0],
       unresolvedAgentProvenanceCount: counts[1],
-      ...(options
+      ...(options?.fixtureApiKey
         ? {
             agentAuthorityFacts: await readAgentAuthorityFacts(
               client,
               migration,
               options.fixtureApiKey,
+            ),
+          }
+        : {}),
+      ...(options?.providerToken
+        ? {
+            providerFacts: await readGuardedProviderFacts(
+              client,
+              migration,
+              options.providerToken,
             ),
           }
         : {}),
@@ -340,13 +429,18 @@ if (import.meta.main) {
         "fixture_identity_required",
       );
     }
-    const receipt = await readDeletionBillingProvenance(
-      client,
-      migration,
-      includeAuthority && fixtureApiKey
-        ? { fixtureApiKey, includeFailedJobs }
-        : undefined,
-    );
+    const includeProvider = process.env.ELIZA_DELETION_PROVIDER_REPORT === "1";
+    const providerToken = process.env.HCLOUD_TOKEN;
+    if (includeProvider && !providerToken) {
+      throw new DeletionBillingProvenanceReportError(
+        "provider_credential_required",
+      );
+    }
+    const receipt = await readDeletionBillingProvenance(client, migration, {
+      fixtureApiKey: includeAuthority ? fixtureApiKey : undefined,
+      includeFailedJobs,
+      providerToken: includeProvider ? providerToken : undefined,
+    });
     const json = `${JSON.stringify({ ...receipt, sourceSha: process.env.GITHUB_SHA })}\n`;
     const output = testOutputPath(
       "issue-review-cloud",

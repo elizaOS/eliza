@@ -35,7 +35,7 @@ public abstract class ReminderPlugin extends Plugin {
  @Override public void load(){super.load();engine().restore();openReminder(getActivity().getIntent());}
  @Override protected void handleOnNewIntent(Intent intent){super.handleOnNewIntent(intent);openReminder(intent);}
  @Override protected void handleOnResume(){super.handleOnResume();try { REMINDER_IO.execute(() -> { drainReminderTaps(); reminderChanged(); }); } catch (java.util.concurrent.RejectedExecutionException full) { /* Original intent and OS notice remain available. */ } notifyListeners("appResumed",new JSObject(),true);}
- public static void addReminderCapabilities(JSObject value){value.put("reminderTimingVersion",2);value.put("reminderCreationVersion",1);value.put("reminderTapVersion",1);}
+ public static void addReminderCapabilities(JSObject value){value.put("reminderTimingVersion",2);value.put("reminderCreationVersion",1);value.put("reminderTapVersion",1);value.put("reminderStatusVersion",1);value.put("reminderTodoVersion",1);}
  private static Double number(PluginCall call,String key){Object value=call.getData().opt(key);return value instanceof Number?((Number)value).doubleValue():null;}
  private void openReminder(Intent intent) {
   if (intent == null) return;
@@ -113,12 +113,24 @@ public abstract class ReminderPlugin extends Plugin {
   if (at == null || at <= System.currentTimeMillis()) { reminderResult(call, "past", "Choose a future reminder time"); return; }
   try {
    org.json.JSONObject timing=ReminderStore.explicitTiming(call.getData(),at.longValue(),call.getObject("recurrence"));
-   if(!ReminderStore.noAlert(timing)&&!engine().store.allowed(engine().context)){reminderResult(call,"permission-denied","Enable app notifications and its "+configuration.channelName+" channel in Android settings");return;}
-   org.json.JSONObject saved=engine().store.schedule(engine().context,call.getString("id"),call.getString("title"),call.getString("body",""),at.longValue(),call.getObject("recurrence"),timing);
+   if(!ReminderStore.noAlert(timing)&&!engine().store.allowed(engine().context)){reminderResult(call,"permission-denied","Enable app notifications and its "+configuration.channelName+" (due) channel in Android settings");return;}
+   final org.json.JSONObject saved;
+   try{saved=engine().store.schedule(engine().context,call.getString("id"),call.getString("title"),call.getString("body",""),at.longValue(),call.getObject("recurrence"),timing);}
+   catch(ReminderStore.StorageFull full){reminderResult(call,"storage-full","Reminder storage is full. Complete or cancel an existing reminder before adding another.");return;}
    JSObject value=new JSObject();value.put("status",saved.getString("status"));value.put("id",call.getString("id"));value.put("at",at.longValue());value.put("mode",saved.getString("mode"));
    if(timing!=null)value.put("dueAt",saved.getLong("dueAt")).put("alertMinutes",saved.get("alertMinutes"));
    value.put("message",ReminderStore.noAlert(saved)?"Saved on this device without an alert.":"Saved on this device. Android may delay this reminder to conserve battery.");call.resolve(value);
   } catch (RuntimeException | org.json.JSONException error) { reminderResult(call, "failed", "The reminder could not be saved or scheduled"); }
+ }
+ /** Undated to-do. Stable statuses: saved, storage-full, failed. No alarm or notification. */
+ @PluginMethod public void saveTodo(PluginCall call) {
+  try{org.json.JSONObject saved=engine().store.saveTodo(engine().context,call.getString("id",""),call.getString("title",""),call.getString("body",""));JSObject value=new JSObject();value.put("status","saved");value.put("id",saved.getString("id"));value.put("target",engine().store.selected(engine().context,saved.getString("id")));value.put("mode","none");value.put("message","Saved on this device as a to-do without a date or alert.");call.resolve(value);}
+  catch(ReminderStore.StorageFull full){reminderResult(call,"storage-full","Reminder storage is full. Complete or cancel an existing reminder before adding another.");}
+  catch(RuntimeException|org.json.JSONException error){reminderResult(call,"failed","The to-do could not be saved");}
+ }
+ @PluginMethod public void todoDecision(PluginCall call) {
+  try{call.resolve(JSObject.fromJSONObject(engine().store.todoDecision(engine().context,call.getObject("target"),call.getString("action"))));}
+  catch(RuntimeException|org.json.JSONException error){call.reject("To-do changed or could not be saved. Refresh before retrying.");}
  }
  @PluginMethod public void reminderDecision(PluginCall call) {
   try { call.resolve(JSObject.fromJSONObject(engine().store.decide(engine().context,call.getString("id"),call.getString("occurrenceId"),call.getString("action")))); }

@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -393,4 +393,66 @@ test("classifies a real failed-job query refusal without exporting its private c
   expect(
     (await db.query("SELECT count(*)::integer AS count FROM jobs")).rows,
   ).toEqual([{ count: 1 }]);
+});
+
+test("provider diagnostic uses guarded database locators and preserves failed-deletion authority", async () => {
+  db = new PGlite();
+  await seedAuthorityFixture(db);
+  await db.exec(`CREATE TABLE docker_nodes(node_id text, hostname text, metadata jsonb);
+    INSERT INTO docker_nodes VALUES('private-node', '192.0.2.1', '{"hcloudServerId":123}');`);
+  const before = (await db.query("SELECT * FROM agent_sandboxes")).rows;
+  const request = spyOn(globalThis, "fetch").mockImplementation(
+    async (url, init) => {
+      expect(String(url)).toBe("https://api.hetzner.cloud/v1/servers/123");
+      expect(init?.method).toBe("GET");
+      expect(init?.redirect).toBe("error");
+      return Response.json({
+        server: {
+          id: 123,
+          name: "private-node",
+          status: "running",
+          public_net: { ipv4: { ip: "192.0.2.2" } },
+        },
+      });
+    },
+  );
+  try {
+    const found = await readDeletionBillingProvenance(db, migration, {
+      providerToken: "private-token",
+    });
+    expect(found.providerFacts).toEqual([
+      {
+        subjectSha256: createHash("sha256").update(agent).digest("hex"),
+        result: "found",
+        recordedNameMatches: true,
+        recordedAddressMatches: false,
+        running: true,
+        off: false,
+      },
+    ]);
+    expect(JSON.stringify(found)).not.toMatch(
+      /private-node|private-token|192\.0\.2|hcloudServerId/,
+    );
+    request.mockResolvedValueOnce(new Response(null, { status: 404 }));
+    const absent = await readDeletionBillingProvenance(db, migration, {
+      providerToken: "private-token",
+    });
+    expect(absent.providerFacts?.[0]?.result).toBe(
+      "not_found_in_configured_project",
+    );
+    request.mockResolvedValueOnce(new Response(null, { status: 401 }));
+    await expect(
+      readDeletionBillingProvenance(db, migration, {
+        providerToken: "private-token",
+      }),
+    ).rejects.toThrow("provider_lookup_failed");
+    expect((await db.query("SELECT * FROM agent_sandboxes")).rows).toEqual(
+      before,
+    );
+    expect(
+      (await db.query("SELECT * FROM compute_billing_rate_segments")).rows,
+    ).toEqual([]);
+  } finally {
+    request.mockRestore();
+  }
 });

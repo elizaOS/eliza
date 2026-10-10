@@ -1,4 +1,5 @@
 import { dbWrite } from "../../../db/client";
+import { extractGmailHtmlLinks } from "../../utils/gmail-mime-text";
 import { extractBody } from "../../utils/google-mcp-shared";
 import { normalizeGoogleGmailMessage, normalizeManagedGmailBodyText } from "./gmail";
 import { InboxGoogleProvider } from "./inbox-provider";
@@ -40,6 +41,7 @@ export const managedInboxProvider = new InboxGoogleProvider({
     return {
       message: { ...message },
       bodyText: payload ? normalizeManagedGmailBodyText(extractBody(payload)) : "",
+      links: payload ? extractGmailHtmlLinks(payload) : [],
     };
   },
 });

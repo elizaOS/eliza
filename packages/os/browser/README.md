@@ -48,6 +48,9 @@ proof about arbitrary JavaScript: a reviewed ordinary button or field can run
 site code. Qualify each supported page and its consequences. Protected OTP fills,
 complete sensitive-page policy, and installed Android task binding remain separate
 work. Binding metadata and target rules must never come from model or page text.
+An expired, unrevoked binding can renew at the same task epoch only with a higher
+binding revision and identical owner, origin, targets and display name. Revoked
+bindings and scope changes require a new epoch.
 
 Run `bun run --cwd packages/os test:browser` for protocol tests.
 Installed-browser and signed Android native-host verification are separate required
@@ -165,7 +168,9 @@ A task policy never clicks a control whose name uses the `COMMIT_CONTROL`
 vocabulary in `src/commands.mjs` (pay, confirm, continue, schedule, sign in and
 similar). The person presses those controls. `guide-font.mjs` bundles Figtree 500/700 (`figtree-OFL.txt`). The
 overlay adds it from bytes under a random family name and falls back to the
-system font if a page face claims that name.
+system font if a page face claims that name. Its fixed CSS is an adopted shadow
+stylesheet, so a site's ban on inline style elements does not remove the guide's
+layout. Page styles and content-security policy remain unchanged.
 Run the actual Chromium renderer guidance tests. In Bash or Zsh, run:
 
 ```sh

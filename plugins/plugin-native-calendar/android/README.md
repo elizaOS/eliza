@@ -20,3 +20,19 @@ uses this same reader and no longer truncates at 2,000 instances.
 `reviewNewEvent` only constructs an ACTION_INSERT editor intent; it neither
 dispatches the intent nor writes an event. The host handles launch failures and
 reports dispatch separately from a saved-event outcome.
+
+Hosts can use `write.CalendarEventOptions` for explicitly reviewed all-day,
+time-zone and simple recurrence fields. Recurring provider values use RFC2445
+`DURATION` (whole seconds for timed events, days for all-day events) instead of
+`DTEND`. Invalid dates and unsupported rules fail before insertion.
+`CalendarInsertHandoff` prepares an external editor intent for richer drafts;
+the host reports launch separately from save, and requested alerts still need
+the editor because Android has no standard insert extra for them.
+
+`CalendarOptionCreationStore` retains the `-options` journal and `options/`
+creation URI suffixes. It shares the existing journal implementation, including
+cross-instance locking and failed-write quarantine, while preserving the ordered
+field hash used by installed option receipts. `CalendarDestinations` is shared
+by the original bridge and host extensions; it refuses unavailable provider
+lookups instead of treating them as a missing local calendar. Hosts must check
+permissions, chosen destinations and owner authority before invoking these helpers.

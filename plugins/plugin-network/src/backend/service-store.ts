@@ -10,7 +10,7 @@ import type {
   NetworkStore,
   SetStateExecution,
 } from "../types.js";
-import type { NetworkServiceClient } from "./client.js";
+import { type NetworkServiceClient, NetworkServiceError } from "./client.js";
 import type { NetworkAppId, TurnContext } from "./contract.js";
 
 export interface ServiceTurn {
@@ -24,9 +24,10 @@ export interface ServiceTurn {
 export function createServiceNetworkStore(
   client: NetworkServiceClient,
   turn: ServiceTurn,
+  options: { relayEnabled?: boolean } = {},
 ): NetworkStore {
   const ctx = turn.context;
-  return {
+  const store: NetworkStore = {
     async getMemberContext(): Promise<NetworkMemberContext | null> {
       return {
         memberId: turn.memberId,
@@ -53,17 +54,21 @@ export function createServiceNetworkStore(
       });
     },
     async relay(input) {
-      // The item must be one the service put in this turn's context; anything else goes as null
-      // and the service picks the newest open item itself.
-      const known =
+      // An explicit target must never silently select a different recipient.
+      const unknown =
         input.itemId !== null &&
-        (ctx.activeItems ?? []).some((i) => i.id === input.itemId);
+        !(ctx.activeItems ?? []).some((i) => i.id === input.itemId);
+      if (unknown)
+        throw new NetworkServiceError(
+          0,
+          "Relay target is not an active item in this turn",
+        );
       return client.relay({
         channel: turn.channel,
         messageId: turn.messageId,
         app: turn.app,
         memberId: turn.memberId,
-        itemId: known ? input.itemId : null,
+        itemId: input.itemId,
         text: input.text,
       });
     },
@@ -91,6 +96,9 @@ export function createServiceNetworkStore(
       });
     },
   };
+  // The service's relay endpoint must be deployed before hosts offer this effect.
+  if (!options.relayEnabled) delete store.relay;
+  return store;
 }
 
 const APPS = new Set(["ntwrk", "slop", "peon", "friends"]);

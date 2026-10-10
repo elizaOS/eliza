@@ -5,6 +5,7 @@ import { dbRead } from "../../../db/client";
 import { authorizePersonalGoogleContextRead } from "../../../db/repositories/personal-google-context-consent";
 import { platformCredentials } from "../../../db/schemas/platform-credentials";
 import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
+import type { GmailMessageLink } from "../../utils/gmail-mime-text";
 import { googleFetchWithToken } from "../../utils/google-mcp-shared";
 import { oauthService } from "../oauth";
 import { getPreferredActiveConnection } from "../oauth/oauth-service";
@@ -95,6 +96,8 @@ export interface ManagedGoogleGmailMessage {
   snippet: string;
   receivedAt: string;
   isUnread: boolean;
+  /** Paperclip hint (multipart/mixed container or a named part); not an attachment inventory. */
+  hasAttachments?: boolean;
   isImportant: boolean;
   likelyReplyNeeded: boolean;
   triageScore: number;
@@ -108,6 +111,8 @@ export interface ManagedGoogleGmailReadResult {
   attachments?: GoogleGmailAttachment[];
   message: ManagedGoogleGmailMessage;
   bodyText: string;
+  /** Inert http(s) anchors from the HTML parts; clients review them before opening. */
+  links?: GmailMessageLink[];
 }
 
 export interface ManagedGoogleGmailSearchResult {

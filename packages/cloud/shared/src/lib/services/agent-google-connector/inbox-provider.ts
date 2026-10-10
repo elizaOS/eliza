@@ -1,3 +1,9 @@
+import addressparser from "nodemailer/lib/addressparser";
+import {
+  decodeGmailPart,
+  type GmailMessageLink,
+  type GmailPayloadPart,
+} from "../../utils/gmail-mime-text";
 import type { InboxReviewedEffect } from "./inbox-operation-routes";
 import { DefiniteProviderRejection, InboxContractError, type InboxOwner } from "./inbox-receipts";
 
@@ -13,7 +19,7 @@ export interface InboxGoogleDependencies {
   normalizeMessage?(
     message: Record<string, unknown>,
     selfEmail: string,
-  ): { message: Record<string, unknown>; bodyText: string } | null;
+  ): { message: Record<string, unknown>; bodyText: string; links?: GmailMessageLink[] } | null;
 }
 const endpoint = "https://gmail.googleapis.com/gmail/v1/users/me";
 const fullScope = "https://mail.google.com/",
@@ -107,7 +113,72 @@ function payloadHeader(payload: Record<string, unknown>, name: string): string |
   if (matching.length !== 1) return null;
   return text(object(matching[0]).value, 4096, true);
 }
+/** A single header value; ambiguous duplicates cannot become an editable draft. */
+function draftHeader(payload: Record<string, unknown>, name: string): string | null {
+  const headers = payload.headers;
+  if (!Array.isArray(headers)) return null;
+  const rows = headers
+    .map((value) => object(value))
+    .filter(
+      (value) => typeof value.name === "string" && value.name.toLowerCase() === name.toLowerCase(),
+    );
+  if (rows.length > 1)
+    throw new InboxContractError(400, "Draft has ambiguous headers; use the provider editor");
+  const row = rows[0];
+  return row && typeof row.value === "string"
+    ? text(row.value.replace(/[\r\n]+/g, " "), 4096)
+    : null;
+}
+/** Reuse the installed mail parser; unsupported recipients fail instead of disappearing. */
+function headerAddresses(value: string | null): string[] {
+  if (!value) return [];
+  return addresses(addressparser(value, { flatten: true }).map((entry) => entry.address));
+}
+function findPart(payload: GmailPayloadPart, mimeType: string): GmailPayloadPart | null {
+  let visited = 0;
+  let found: GmailPayloadPart | null = null;
+  const visit = (part: GmailPayloadPart): void => {
+    if (++visited > 200) throw new InboxContractError(413, "Too many MIME parts");
+    if (!part) return;
+    if (part.mimeType?.toLowerCase() === mimeType && !part.filename) {
+      if (found)
+        throw new InboxContractError(
+          400,
+          "Draft has multiple body sections; use the provider editor",
+        );
+      found = part;
+    }
+    for (const child of Array.isArray(part.parts) ? part.parts : []) visit(child);
+  };
+  visit(payload);
+  return found;
+}
 const attachmentLimit = 5 * 1024 * 1024;
+/** Outgoing attachments per message and their combined decoded size (local plus forwarded). */
+const outgoingAttachmentCount = 10,
+  outgoingTotalLimit = 5 * 1024 * 1024;
+/** Declared MIME type when it is a plain type/subtype token; otherwise application/octet-stream. */
+function opaqueMimeType(value: unknown): string {
+  return typeof value === "string" &&
+    /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i.test(value)
+    ? value.toLowerCase()
+    : "application/octet-stream";
+}
+function opaqueName(value: unknown): string {
+  return typeof value === "string" &&
+    value.trim() &&
+    value.length <= 120 &&
+    value !== "." &&
+    value !== ".." &&
+    !/[\\/\x00-\x1f\x7f]/.test(value)
+    ? value
+    : "attachment";
+}
+async function sha256Hex(base64: string): Promise<string> {
+  return Buffer.from(await crypto.subtle.digest("SHA-256", Buffer.from(base64, "base64"))).toString(
+    "hex",
+  );
+}
 const attachmentTypes: Record<string, RegExp> = {
   "text/plain": /\.txt$/i,
   "application/pdf": /\.pdf$/i,
@@ -168,6 +239,16 @@ function checkedAttachment(value: unknown) {
 /** Fixed-path, single-attempt Google transport. Timeout covers headers and bounded body consumption. */
 export class InboxGoogleProvider {
   constructor(private readonly dependencies: InboxGoogleDependencies) {}
+  private async assertCurrentGrant(
+    owner: InboxOwner,
+    expected: InboxGoogleGrant,
+    kind: "read" | "draft",
+  ) {
+    const current = await this.dependencies.grant(owner);
+    requireScope(current, kind);
+    if (current.email !== expected.email)
+      throw new InboxContractError(403, "Google account changed; reopen the inbox");
+  }
   private async request(
     grant: InboxGoogleGrant,
     path: string,
@@ -240,11 +321,22 @@ export class InboxGoogleProvider {
       send: supported("send"),
       providerDrafts: supported("draft"),
       mailboxMutations: supported("modify"),
+      /** Reviewed mark-read/mark-unread operations. Older servers omit this field. */
+      readState: supported("modify"),
       attachments: true,
+      // The managed search route lists Trash for an explicit in:trash query.
+      searchTrash: supported("read"),
+      /** Provider draft listing and exact content reads (GET /drafts, GET /draft?content=1). */
+      draftsList: supported("draft"),
+      /** Forward with the source message's attachments bound to its historyId. */
+      forwardAttachments: supported("read"),
+      /** Exact byte copy of any attachment type under the cap (GET /attachment?opaque=1). */
+      opaqueAttachments: supported("read"),
       attachmentPolicy: {
         mimeTypes: Object.keys(attachmentTypes),
         maximumBytes: attachmentLimit,
-        maximumOutgoing: 1,
+        maximumOutgoing: outgoingAttachmentCount,
+        maximumTotalBytes: outgoingTotalLimit,
       },
       providerExactlyOnce: false,
       atomicDraftReplacement: false,
@@ -330,6 +422,59 @@ export class InboxGoogleProvider {
       messages,
     };
   }
+  /** Bytes of one attachment part, checked against its declared size. */
+  private async partBytes(
+    grant: InboxGoogleGrant,
+    messageId: string,
+    part: Record<string, unknown>,
+  ) {
+    const body = object(part.body);
+    if (typeof body.size !== "number" || body.size < 0 || body.size > attachmentLimit)
+      throw new InboxContractError(413, "Attachments must be at most 5 MiB");
+    const raw = body.attachmentId
+      ? await this.request(
+          grant,
+          `/messages/${messageId}/attachments/${providerId(body.attachmentId)}`,
+        )
+      : body;
+    const encoded = text(raw.data, 7 * 1024 * 1024);
+    if (!/^[A-Za-z0-9_-]*={0,2}$/.test(encoded))
+      throw new InboxContractError(502, "Invalid provider attachment");
+    const bytes = Buffer.from(encoded, "base64url");
+    if (bytes.length !== body.size || (raw !== body && raw.size !== body.size))
+      throw new InboxContractError(502, "Attachment byte count changed");
+    return bytes.toString("base64");
+  }
+  /** Exact bytes of one attachment of any type, for a client-side Save to Files only. */
+  async opaqueAttachment(owner: InboxOwner, messageId: string, partId: string, historyId: string) {
+    const grant = await this.dependencies.grant(owner);
+    requireScope(grant, "read");
+    const id = providerId(messageId),
+      message = await this.request(grant, `/messages/${id}?format=full`);
+    if (message.id !== id || message.historyId !== historyId)
+      throw new InboxContractError(409, "Message changed; reopen its attachments");
+    const matching = attachmentParts(object(message.payload)).filter(
+      (part) => part.partId === partId,
+    );
+    if (matching.length !== 1) throw new InboxContractError(404, "Attachment not found");
+    const part = matching[0],
+      dataBase64 = await this.partBytes(grant, id, part),
+      size = Buffer.from(dataBase64, "base64").length;
+    const sha256 = await sha256Hex(dataBase64);
+    await this.assertCurrentGrant(owner, grant, "read");
+    return {
+      version: 1,
+      opaque: true,
+      messageId: id,
+      partId,
+      historyId,
+      name: opaqueName(part.filename),
+      mimeType: opaqueMimeType(part.mimeType),
+      dataBase64,
+      size,
+      sha256,
+    };
+  }
   async attachment(owner: InboxOwner, messageId: string, partId: string, historyId: string) {
     const grant = await this.dependencies.grant(owner);
     requireScope(grant, "read");
@@ -393,6 +538,99 @@ export class InboxGoogleProvider {
       providerDigest: await inboxDigest(raw),
     };
   }
+  /** One page (25) of provider drafts with display metadata only; no body or attachment bytes. */
+  async drafts(owner: InboxOwner, pageToken?: string) {
+    const grant = await this.dependencies.grant(owner);
+    requireScope(grant, "draft");
+    if (
+      pageToken !== undefined &&
+      (!pageToken || pageToken.length > 4096 || /[\r\n\0]/.test(pageToken))
+    )
+      throw new InboxContractError(400, "Invalid Gmail page token");
+    const params = new URLSearchParams({ maxResults: "25" });
+    if (pageToken) params.set("pageToken", pageToken);
+    const listed = await this.request(grant, `/drafts?${params}`);
+    const rows = listed.drafts === undefined ? [] : listed.drafts;
+    if (!Array.isArray(rows) || rows.length > 25)
+      throw new InboxContractError(502, "Invalid Gmail drafts page");
+    const next = listed.nextPageToken;
+    if (
+      next !== undefined &&
+      (typeof next !== "string" || !next || next.length > 4096 || next === pageToken)
+    )
+      throw new InboxContractError(502, "Invalid Gmail drafts continuation");
+    const drafts = await Promise.all(
+      rows.map(async (row) => {
+        const draftId = providerId(object(row).id);
+        const result = await this.request(grant, `/drafts/${draftId}?format=metadata`),
+          message = object(result.message),
+          payload = message.payload === undefined ? {} : object(message.payload);
+        if (result.id !== draftId)
+          throw new InboxContractError(502, "Provider returned a different draft");
+        const internal = Number(message.internalDate);
+        return {
+          draftId,
+          messageId: providerId(message.id),
+          subject: draftHeader(payload, "Subject") ?? "",
+          to: headerAddresses(draftHeader(payload, "To")),
+          snippet: typeof message.snippet === "string" ? message.snippet.slice(0, 300) : "",
+          updatedAt:
+            Number.isFinite(internal) && internal > 0 ? new Date(internal).toISOString() : null,
+        };
+      }),
+    );
+    await this.assertCurrentGrant(owner, grant, "draft");
+    return { version: 1, drafts, nextPageToken: next ?? null };
+  }
+  /**
+   * Exact editable content of one draft and the digest of its raw MIME, from one provider
+   * snapshot: the raw and full reads must name the same draft message, else 409. Reply drafts
+   * (In-Reply-To/References), drafts with attachments and HTML-only drafts are reported so a
+   * client never rewrites what it cannot reproduce.
+   */
+  async draftContent(owner: InboxOwner, draftId: string) {
+    const current = await this.draft(owner, draftId);
+    const grant = await this.dependencies.grant(owner);
+    requireScope(grant, "draft");
+    const full = await this.request(grant, `/drafts/${current.id}?format=full`),
+      message = object(full.message),
+      payload = message.payload === undefined ? {} : object(message.payload);
+    if (full.id !== current.id || message.id !== current.messageId)
+      throw new InboxContractError(409, "Draft changed while it was read; open it again");
+    const plain = findPart(payload as GmailPayloadPart, "text/plain");
+    if (plain?.body?.attachmentId || (plain?.body?.size && typeof plain.body.data !== "string"))
+      throw new InboxContractError(400, "Draft body requires the provider editor");
+    let bodyText = "";
+    try {
+      bodyText = plain ? decodeGmailPart(plain, true) : "";
+    } catch {
+      throw new InboxContractError(
+        400,
+        "Draft body cannot be decoded losslessly; use the provider editor",
+      );
+    }
+    if (encoder.encode(bodyText).length > 256 * 1024)
+      throw new InboxContractError(413, "Draft body exceeds the explicit display limit");
+    const subject = draftHeader(payload, "Subject") ?? "";
+    if (/=\?[^?]+\?[bq]\?/i.test(subject))
+      throw new InboxContractError(400, "Encoded draft subject requires the provider editor");
+    await this.assertCurrentGrant(owner, grant, "draft");
+    return {
+      id: current.id,
+      messageId: current.messageId,
+      providerDigest: current.providerDigest,
+      content: {
+        to: headerAddresses(draftHeader(payload, "To")),
+        cc: headerAddresses(draftHeader(payload, "Cc")),
+        bcc: headerAddresses(draftHeader(payload, "Bcc")),
+        subject,
+        bodyText,
+        plainText: !!plain || !findPart(payload as GmailPayloadPart, "text/html"),
+        threaded: !!(draftHeader(payload, "In-Reply-To") || draftHeader(payload, "References")),
+        attachmentCount: attachmentParts(payload).length,
+      },
+    };
+  }
   async review(
     owner: InboxOwner,
     proposal: unknown,
@@ -401,7 +639,14 @@ export class InboxGoogleProvider {
     const value = object(proposal),
       kind = value.kind,
       grant = await this.dependencies.grant(owner);
-    if (kind === "archive" || kind === "unarchive" || kind === "trash" || kind === "untrash") {
+    if (
+      kind === "archive" ||
+      kind === "unarchive" ||
+      kind === "trash" ||
+      kind === "untrash" ||
+      kind === "mark-read" ||
+      kind === "mark-unread"
+    ) {
       fields(value, ["kind", "messageId", "expectedHistoryId"]);
       requireScope(grant, "modify");
       const messageId = providerId(value.messageId),
@@ -409,6 +654,13 @@ export class InboxGoogleProvider {
         current = await this.request(grant, `/messages/${messageId}?format=minimal`);
       if (current.id !== messageId || current.historyId !== expectedHistoryId)
         throw new InboxContractError(409, "Selected message changed; review its current labels");
+      const readState = kind === "mark-read" || kind === "mark-unread";
+      const label = readState
+        ? "UNREAD"
+        : kind === "archive" || kind === "unarchive"
+          ? "INBOX"
+          : null;
+      const add = kind === "unarchive" || kind === "mark-unread";
       const review = { kind, messageId, expectedHistoryId, from: grant.email },
         digest = await inboxDigest(JSON.stringify(review));
       return {
@@ -416,15 +668,14 @@ export class InboxGoogleProvider {
         digest,
         review,
         perform: async () => {
-          const result =
-            kind === "archive" || kind === "unarchive"
-              ? await this.request(
-                  grant,
-                  `/messages/${messageId}/modify`,
-                  "POST",
-                  kind === "archive" ? { removeLabelIds: ["INBOX"] } : { addLabelIds: ["INBOX"] },
-                )
-              : await this.request(grant, `/messages/${messageId}/${kind}`, "POST");
+          const result = label
+            ? await this.request(
+                grant,
+                `/messages/${messageId}/modify`,
+                "POST",
+                add ? { addLabelIds: [label] } : { removeLabelIds: [label] },
+              )
+            : await this.request(grant, `/messages/${messageId}/${kind}`, "POST");
           if (
             result.id !== messageId ||
             !Array.isArray(result.labelIds) ||
@@ -433,16 +684,20 @@ export class InboxGoogleProvider {
             throw Error("Provider mutation readback is incomplete");
           const labels = result.labelIds as string[];
           if (
-            (kind === "archive" && labels.includes("INBOX")) ||
-            (kind === "unarchive" && !labels.includes("INBOX")) ||
+            (label !== null && labels.includes(label) !== add) ||
             (kind === "trash" && !labels.includes("TRASH")) ||
             (kind === "untrash" && labels.includes("TRASH"))
           )
-            throw Error("Provider labels did not verify the requested state");
+            throw Error(
+              readState
+                ? "Provider labels did not verify the requested read state"
+                : "Provider labels did not verify the requested state",
+            );
           return {
             messageId,
             labelIds: labels,
             historyId: result.historyId ?? null,
+            ...(readState ? { unread: labels.includes("UNREAD") } : {}),
           };
         },
       };
@@ -492,6 +747,7 @@ export class InboxGoogleProvider {
       "expectedDigest",
       "acceptNonAtomicReplacement",
       "attachments",
+      "forwardAttachments",
     ]);
     requireScope(grant, kind === "send" ? "send" : "draft");
     const mode = value.mode;
@@ -535,17 +791,81 @@ export class InboxGoogleProvider {
     } else if (value.replyMessageId !== undefined)
       throw new InboxContractError(400, "Reply identity is not valid for this compose mode");
     const attachments = value.attachments === undefined ? [] : value.attachments;
-    if (!Array.isArray(attachments) || attachments.length > 1)
-      throw new InboxContractError(400, "At most one attachment is supported");
-    const files = attachments.map(checkedAttachment);
+    if (!Array.isArray(attachments) || attachments.length > outgoingAttachmentCount)
+      throw new InboxContractError(
+        400,
+        `At most ${outgoingAttachmentCount} attachments are supported`,
+      );
+    const local = attachments.map(checkedAttachment);
     const attachmentReview = await Promise.all(
-      files.map(async (file) => ({
+      local.map(async (file) => ({
         name: file.name,
         mimeType: file.mimeType,
         size: file.size,
-        sha256: Buffer.from(
-          await crypto.subtle.digest("SHA-256", Buffer.from(file.dataBase64, "base64")),
-        ).toString("hex"),
+        sha256: await sha256Hex(file.dataBase64),
+      })),
+    );
+    // Forwarded source attachments are read from the selected message at its reviewed historyId.
+    let forwardSource: { messageId: string; historyId: string } | null = null;
+    const forwarded: {
+      partId: string;
+      name: string;
+      mimeType: string;
+      dataBase64: string;
+      size: number;
+    }[] = [];
+    if (value.forwardAttachments !== undefined) {
+      if (mode !== "forward")
+        throw new InboxContractError(400, "Source attachments are valid only for a forward");
+      const source = object(value.forwardAttachments);
+      fields(source, ["messageId", "historyId", "partIds"]);
+      requireScope(grant, "read");
+      const sourceId = providerId(source.messageId),
+        historyId = text(source.historyId, 100, true),
+        partIds = source.partIds;
+      if (
+        !Array.isArray(partIds) ||
+        !partIds.length ||
+        partIds.length > outgoingAttachmentCount ||
+        new Set(partIds).size !== partIds.length ||
+        partIds.some((partId) => typeof partId !== "string" || !/^[0-9.]{1,32}$/.test(partId))
+      )
+        throw new InboxContractError(400, "Explicit source attachment parts required");
+      const message = await this.request(grant, `/messages/${sourceId}?format=full`);
+      if (message.id !== sourceId || message.historyId !== historyId)
+        throw new InboxContractError(409, "Selected message changed; review its attachments again");
+      const parts = attachmentParts(object(message.payload));
+      for (const partId of partIds as string[]) {
+        const matching = parts.filter((part) => part.partId === partId);
+        if (matching.length !== 1) throw new InboxContractError(409, "Source attachment not found");
+        const dataBase64 = await this.partBytes(grant, sourceId, matching[0]);
+        forwarded.push({
+          partId,
+          name: opaqueName(matching[0].filename),
+          mimeType: opaqueMimeType(matching[0].mimeType),
+          dataBase64,
+          size: Buffer.from(dataBase64, "base64").length,
+        });
+      }
+      forwardSource = { messageId: sourceId, historyId };
+    }
+    const files = [...local, ...forwarded];
+    if (files.length > outgoingAttachmentCount)
+      throw new InboxContractError(
+        400,
+        `At most ${outgoingAttachmentCount} attachments are supported`,
+      );
+    if (new Set(files.map((file) => file.name.toLowerCase())).size !== files.length)
+      throw new InboxContractError(400, "Attachment names must be unique");
+    if (files.reduce((sum, file) => sum + file.size, 0) > outgoingTotalLimit)
+      throw new InboxContractError(413, "Attachments exceed 5 MiB in total");
+    const forwardedReview = await Promise.all(
+      forwarded.map(async (file) => ({
+        partId: file.partId,
+        name: file.name,
+        mimeType: file.mimeType,
+        size: file.size,
+        sha256: await sha256Hex(file.dataBase64),
       })),
     );
     const boundary = `eliza-${requestId}`;
@@ -632,6 +952,7 @@ export class InboxGoogleProvider {
         expectedDigest: expectedDigest ?? null,
         mimeDigest,
         attachments: attachmentReview,
+        ...(forwardSource ? { forwardSource, forwardedAttachments: forwardedReview } : {}),
         atomicDraftReplacement: false,
       },
       digest = await inboxDigest(JSON.stringify(review));

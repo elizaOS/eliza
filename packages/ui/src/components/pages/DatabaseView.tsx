@@ -32,6 +32,10 @@ import type {
   TableRowsResponse,
 } from "../../api/client-types-core";
 import { getCached, setCached } from "../../hooks/resource-cache";
+import {
+  getActiveAgentAuthority,
+  useActiveAgentAuthority,
+} from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout";
 import { useTranslation } from "../../state/TranslationContext.hooks";
@@ -56,15 +60,25 @@ import {
 } from "./database-utils";
 import { SqlEditorPanel } from "./SqlEditorPanel";
 
-export function DatabaseView({
-  leftNav,
-  contentHeader,
-  layout = "embedded",
-}: {
+interface DatabaseViewProps {
   leftNav?: ReactNode;
   contentHeader?: ReactNode;
   layout?: "embedded" | "page";
-}) {
+}
+
+export function DatabaseView(props: DatabaseViewProps) {
+  const authority = useActiveAgentAuthority();
+  return (
+    <AuthorityDatabaseView key={authority} {...props} authority={authority} />
+  );
+}
+
+function AuthorityDatabaseView({
+  leftNav,
+  contentHeader,
+  layout = "embedded",
+  authority,
+}: DatabaseViewProps & { authority: string }) {
   const { t } = useTranslation();
   const showExternalSidebar = layout === "page" || Boolean(leftNav);
 
@@ -76,8 +90,10 @@ export function DatabaseView({
   tRef.current = t;
   // Seed status + table list from the shared cache so a revisit paints the
   // last-known database shape instantly and revalidates silently.
-  const cachedStatus = getCached<DatabaseStatus>("db:status");
-  const cachedTables = getCached<TableInfo[]>("db:tables");
+  const statusCacheKey = `db:status:${authority}`;
+  const tablesCacheKey = `db:tables:${authority}`;
+  const cachedStatus = getCached<DatabaseStatus>(statusCacheKey);
+  const cachedTables = getCached<TableInfo[]>(tablesCacheKey);
   const [dbStatus, setDbStatus] = useState<DatabaseStatus | null>(
     cachedStatus?.data ?? null,
   );
@@ -120,13 +136,16 @@ export function DatabaseView({
   tablesRef.current = tables;
 
   const loadStatus = useCallback(async (): Promise<DatabaseStatus | null> => {
+    if (getActiveAgentAuthority() !== authority) return null;
     try {
       const status = await client.getDatabaseStatus();
+      if (getActiveAgentAuthority() !== authority) return null;
       setDbStatus(status);
-      setCached("db:status", status);
+      setCached(statusCacheKey, status);
       setStatusLoadError("");
       return status;
     } catch (err) {
+      if (getActiveAgentAuthority() !== authority) return null;
       setStatusLoadError(err instanceof Error ? err.message : String(err));
       setDbStatus({
         provider: "pglite",
@@ -138,30 +157,36 @@ export function DatabaseView({
       });
       return null;
     }
-  }, []);
+  }, [authority, statusCacheKey]);
 
-  const loadTables = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) setLoading(true);
-    setErrorMessage("");
-    try {
-      const { tables: t } = await client.getDatabaseTables();
-      const next = Array.isArray(t) ? t : [];
-      setTables(next);
-      setCached("db:tables", next);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "error";
-      // Don't show error if database is simply not connected (cloud mode, agent not running)
-      if (!msg.includes("Database not available")) {
-        setErrorMessage(
-          tRef.current("databaseview.FailedToLoadTables", {
-            message: msg,
-            defaultValue: "Failed to load tables: {{message}}",
-          }),
-        );
+  const loadTables = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (getActiveAgentAuthority() !== authority) return;
+      if (!options?.silent) setLoading(true);
+      setErrorMessage("");
+      try {
+        const { tables: t } = await client.getDatabaseTables();
+        if (getActiveAgentAuthority() !== authority) return;
+        const next = Array.isArray(t) ? t : [];
+        setTables(next);
+        setCached(tablesCacheKey, next);
+      } catch (err) {
+        if (getActiveAgentAuthority() !== authority) return;
+        const msg = err instanceof Error ? err.message : "error";
+        // Don't show error if database is simply not connected (cloud mode, agent not running)
+        if (!msg.includes("Database not available")) {
+          setErrorMessage(
+            tRef.current("databaseview.FailedToLoadTables", {
+              message: msg,
+              defaultValue: "Failed to load tables: {{message}}",
+            }),
+          );
+        }
       }
-    }
-    setLoading(false);
-  }, []);
+      setLoading(false);
+    },
+    [authority, tablesCacheKey],
+  );
 
   const loadTableData = useCallback(
     async (
@@ -309,8 +334,8 @@ export function DatabaseView({
 
   useEffect(() => {
     const init = async () => {
-      const seededStatus = getCached<DatabaseStatus>("db:status");
-      const seededTables = getCached<TableInfo[]>("db:tables");
+      const seededStatus = getCached<DatabaseStatus>(statusCacheKey);
+      const seededTables = getCached<TableInfo[]>(tablesCacheKey);
       // Warm revisit: we already know the connection is up and have a table
       // list on screen, so the two revalidations are independent — run them in
       // parallel and silently (no spinner) instead of re-walking the waterfall.
@@ -325,7 +350,7 @@ export function DatabaseView({
       }
     };
     void init();
-  }, [loadStatus, loadTables]);
+  }, [loadStatus, loadTables, statusCacheKey, tablesCacheKey]);
 
   const filteredTables = useMemo(
     () =>

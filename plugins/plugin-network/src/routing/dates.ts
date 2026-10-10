@@ -101,9 +101,16 @@ function nextDayOfMonth(n: number, today: Date): Date | null {
 }
 
 /** Next occurrence (today excluded) of month/day, or of the month's first day. */
-function nextMonthDay(m: number, n: number, today: Date): Date {
-  const thisYear = day(today.getUTCFullYear(), m, n);
-  return thisYear > today ? thisYear : day(today.getUTCFullYear() + 1, m, n);
+function nextMonthDay(m: number, n: number, today: Date): Date | null {
+  for (const year of [today.getUTCFullYear(), today.getUTCFullYear() + 1]) {
+    const candidate = day(year, m, n);
+    // Date.UTC rolls a day that does not exist in the month (Feb 30, Apr 31,
+    // day 0) into a neighbouring month. That rolled date is not the stated
+    // date, so skip it — the same existence check nextDayOfMonth applies.
+    if (candidate.getUTCMonth() !== m || candidate.getUTCDate() !== n) continue;
+    if (candidate > today) return candidate;
+  }
+  return null;
 }
 
 function nextWeekday(w: number, today: Date, nextWeek: boolean): Date {

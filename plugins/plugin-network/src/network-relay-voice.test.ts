@@ -12,7 +12,7 @@ import { networkAgentVoice } from "./providers/agent-voice.js";
 const SECRET = "s".repeat(40);
 const runtime = {} as IAgentRuntime;
 
-function serviceSetup(response: unknown) {
+function serviceSetup(response: unknown, relayEnabled = true) {
   const calls: Array<{ path: string; body: RelaySendRequest; ok: boolean }> =
     [];
   const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
@@ -36,22 +36,26 @@ function serviceSetup(response: unknown) {
     secret: SECRET,
     fetch: fetchImpl,
   });
-  const store = createServiceNetworkStore(client, {
-    channel: "blooio",
-    app: "slop",
-    memberId: "svc-member-1",
-    messageId: "msg_1",
-    context: {
-      firstName: "Ana",
-      city: "NYC",
-      state: "open",
-      stateFrom: null,
-      stateUntil: null,
-      facets: [],
-      activeItems: [{ id: "opp_7", kind: "intro", summary: "Intro to Sam" }],
-      singlePlayer: false,
+  const store = createServiceNetworkStore(
+    client,
+    {
+      channel: "blooio",
+      app: "slop",
+      memberId: "svc-member-1",
+      messageId: "msg_1",
+      context: {
+        firstName: "Ana",
+        city: "NYC",
+        state: "open",
+        stateFrom: null,
+        stateUntil: null,
+        facets: [],
+        activeItems: [{ id: "opp_7", kind: "intro", summary: "Intro to Sam" }],
+        singlePlayer: false,
+      },
     },
-  });
+    { relayEnabled },
+  );
   return { calls, store };
 }
 
@@ -97,27 +101,28 @@ describe("RELAY action", () => {
     assert.equal(result?.text, "Sent to Sam.");
   });
 
-  it("drops an item id the turn did not offer and reports held items as not sent", async () => {
+  it("rejects a target the turn did not offer without sending", async () => {
     const { calls, store } = serviceSetup({
       decision: "hold",
       senderNotice: "I'll check that before passing it on.",
       delivered: false,
       replayed: false,
     });
-    const result = await relayAction(store).handler(
-      runtime,
-      message("tell her my address is 5 Main St"),
-      undefined,
-      {
-        parameters: { itemId: "opp_someone_else" },
-      } as unknown as HandlerOptions,
+    await assert.rejects(
+      relayAction(store).handler(
+        runtime,
+        message("tell her my address is 5 Main St"),
+        undefined,
+        {
+          parameters: { itemId: "opp_someone_else" },
+        } as unknown as HandlerOptions,
+      ),
+      /active item/,
     );
-    assert.equal(calls[0].body.itemId, null);
-    assert.equal(result?.success, false);
-    assert.equal(result?.data?.delivered, false);
+    assert.equal(calls.length, 0);
   });
 
-  it("does not report a passed classifier result as delivered without a receipt", async () => {
+  it("does not claim delivery for a passed but undelivered relay", async () => {
     const { store } = serviceSetup({
       decision: "pass",
       senderNotice: "Sent.",
@@ -129,11 +134,12 @@ describe("RELAY action", () => {
       message("tell Sam I am late"),
     );
     assert.equal(result?.success, false);
-    assert.equal(result?.error, "delivery_unconfirmed");
+    assert.doesNotMatch(result?.text ?? "", /Passed on|Sent to/i);
     assert.equal(result?.data?.delivered, false);
+    assert.equal(result?.error, "delivery_unconfirmed");
   });
 
-  it("rejects malformed or contradictory service receipts", async () => {
+  it("rejects malformed service receipts instead of treating truthy values as delivery", async () => {
     for (const response of [
       null,
       {},
@@ -144,19 +150,27 @@ describe("RELAY action", () => {
         replayed: false,
       },
       {
-        decision: "block",
-        senderNotice: "Blocked",
+        decision: "hold",
+        senderNotice: "Held.",
         delivered: true,
         replayed: false,
       },
     ]) {
       const { store } = serviceSetup(response);
       await assert.rejects(
-        () =>
-          relayAction(store).handler(runtime, message("tell Sam I am late")),
+        relayAction(store).handler(runtime, message("tell Sam I am late")),
         /invalid relay receipt/,
       );
     }
+  });
+
+  it("is not offered before the host enables its deployed relay endpoint", () => {
+    const { store } = serviceSetup({}, false);
+    const plugin = createNetworkEdgePlugin({
+      store,
+      authority: { memberId: "m" },
+    });
+    assert(!plugin.actions?.some((a) => a.name === "RELAY"));
   });
 
   it("is not offered when the store cannot relay", () => {

@@ -30,3 +30,25 @@ intents for retry; it never falls back to storage on the UI thread. Foreground
 and unlocked-state admission happens on the UI thread before queued tap actions.
 Destroyed hosts reject queued actions. Notification delivery and engine operations
 retain their existing store lock and durable receipt semantics.
+
+## Refusals, recovery, due channel and to-dos
+
+`scheduleReminder` resolves stable refusal statuses: `past`, `permission-denied`,
+`storage-full` and `failed`. A full store reports `storage-full`; it is never replaced
+by `failed`. Hosts confirm absence by readback before retiring a pending attempt.
+
+Android removes posted notifications on reboot. `restore` re-posts each `posted` record
+once per boot (`Settings.Global.BOOT_COUNT`) with the same occurrence, exact target and
+unconsumed tap route, and the same Done/Snooze actions. It never advances recurrence.
+
+Due reminders post on a separate high-importance channel, `<channelId>-due`. The
+configured channel is still created for compatibility. On first creation the due channel
+keeps blocked or quiet channels, explicit importance choices on API29+, lock-screen
+visibility, sound and vibration. The derived boot-marker preference file is also
+reserved by the engine ownership check.
+
+`saveTodo` stores an undated to-do: status `todo`, mode `none`, `undated: true`, no `at`
+and no AlarmManager entry or notification. A retried save with the same ID and text is
+idempotent. `todoDecision` takes the exact reviewed target and `done`, `reopen` or
+`cancel`. Reviewed `operateReminder` operations and `reminderDecision` refuse undated
+to-dos.
