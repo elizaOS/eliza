@@ -26,6 +26,8 @@ interface ServiceTrajectoryListItem {
   id: string;
   agentId: string;
   source: string;
+  scenarioId?: string | null;
+  batchId?: string | null;
   roomId?: string | null;
   entityId?: string | null;
   metadata?: Record<string, unknown>;
@@ -207,6 +209,8 @@ function listItemToUi(
     totalCacheCreationInputTokens: item.totalCacheCreationInputTokens,
     agentId: item.agentId,
     source: item.source,
+    scenarioId: item.scenarioId ?? null,
+    batchId: item.batchId ?? null,
     roomId: item.roomId ?? metadataRoomId(metadata),
     entityId: item.entityId ?? metadataEntityId(metadata),
     metadata,
