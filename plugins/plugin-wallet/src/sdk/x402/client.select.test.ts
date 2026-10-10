@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { X402Client } from "./client";
+import { buildSupportedAssets } from "./multi-asset";
 
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const WBTC = "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c";
@@ -45,6 +46,22 @@ describe("X402Client.selectPaymentOption with a spend cap", () => {
     expect(
       client.selectPaymentOption([
         { ...offer(token, "900000"), network: "zora:7777777" },
+      ]),
+    ).toBeNull();
+  });
+
+  it("does not select a USDC offer that payment cannot resolve", () => {
+    // bsc:56 has a USDC_ADDRESSES entry but no TokenRegistry token, so
+    // executePayment would throw "Cannot resolve asset" after the reserve.
+    const bscUsdc = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
+    const client = new X402Client(wallet, {
+      globalPerRequestMax: 1_000_000n,
+      supportedNetworks: ["bsc:56"],
+      supportedAssets: buildSupportedAssets(["bsc:56"]),
+    });
+    expect(
+      client.selectPaymentOption([
+        { ...offer(bscUsdc, "1000000"), network: "bsc:56" },
       ]),
     ).toBeNull();
   });

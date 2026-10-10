@@ -266,13 +266,12 @@ export class X402Client {
         : resolveAssetAddress(req.asset, req.network) != null;
       if (!accepted) return false;
       if (!this.usdcOnly) return true;
-      // A network with no known USDC has no offer a USDC cap can price.
+      // A capped client pays only an offer that executePayment can resolve
+      // to the network's USDC; anything else returns the 402 response.
       const usdc = USDC_ADDRESSES[req.network]?.toLowerCase();
       return (
         usdc !== undefined &&
-        (
-          resolveAssetAddress(req.asset, req.network) ?? req.asset
-        ).toLowerCase() === usdc
+        resolveAssetAddress(req.asset, req.network)?.toLowerCase() === usdc
       );
     });
 
