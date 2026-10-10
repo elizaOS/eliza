@@ -397,7 +397,7 @@ export async function handleFirstRunRoute(
             return {
               ok: false,
               status: 409,
-              error: `Eliza Cloud inference is not available under the ${devCloudAuthority} development Cloud target. Relaunch with --cloud-target=staging and ELIZA_DEV_CLOUD_API_KEY, or choose another provider.`,
+              error: `Eliza Cloud inference with a local agent is not available under the ${devCloudAuthority} development Cloud target: this launch has no Cloud API key, so the local agent does not load the Cloud plugin. Choose another provider, or run \`bun run dev\` for the Eliza Cloud runtime.`,
             };
           }
           if (!resolvedCloudApiKey) {
