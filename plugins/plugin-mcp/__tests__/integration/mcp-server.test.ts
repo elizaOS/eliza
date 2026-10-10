@@ -331,3 +331,193 @@ describe("MCP tool schema dialects through model argument selection", () => {
     }
   );
 });
+
+describe("MCP argument retry recovery", () => {
+  const peer = fileURLToPath(new URL("../fixtures/schema-dialect-server.mjs", import.meta.url));
+  const scenarios = [
+    { name: "direct malformed JSON", direct: true, first: "not JSON", recover: true },
+    {
+      name: "direct wrong type",
+      direct: true,
+      first: '{"toolArguments":{"pair":["task","0"]}}',
+      recover: true,
+    },
+    {
+      name: "inferred wrong type",
+      direct: false,
+      first: '{"toolArguments":{"pair":["task","0"]}}',
+      recover: true,
+    },
+    { name: "inferred malformed JSON", direct: false, first: "not JSON", recover: true },
+    {
+      name: "invalid through exhaustion",
+      direct: true,
+      first: '{"toolArguments":{"pair":[0,"task"]}}',
+      recover: false,
+    },
+    {
+      name: "valid first response",
+      direct: true,
+      first: '{"toolArguments":{"pair":["task",0]}}',
+      recover: true,
+    },
+    {
+      name: "recover on last retry",
+      direct: true,
+      first: "not JSON",
+      second: '{"toolArguments":{"pair":["task","0"]}}',
+      recover: true,
+    },
+  ];
+  it.each(scenarios)("$name", async ({ direct, first, second, recover }) => {
+    const requests: Array<{ type: string; prompt: string; output: string }> = [];
+    let argumentAttempts = 0;
+    const models = createPerfectResultPlugin({
+      fixtures: [
+        {
+          name: "selection-and-recovery",
+          match: { modelType: ModelType.TEXT_LARGE },
+          times: { min: 1, max: 4 },
+          response: (call) => {
+            const prompt = call.params.prompt ?? "";
+            let output: string;
+            // Follow the requested stage's output contract, like a model does.
+            if (prompt.includes("# TASK: Generate Tool Arguments for Tool Execution")) {
+              argumentAttempts += 1;
+              output =
+                argumentAttempts === 1 || !recover
+                  ? first
+                  : argumentAttempts === 2 && second
+                    ? second
+                    : JSON.stringify({ toolArguments: { pair: ["task", 0] } });
+            } else {
+              output = JSON.stringify({
+                serverName: "peer",
+                toolName: "explicit",
+                noToolAvailable: false,
+              });
+            }
+            requests.push({ type: call.modelType, prompt, output });
+            return output;
+          },
+        },
+        {
+          name: "response-synthesis",
+          match: { modelType: ModelType.TEXT_SMALL },
+          times: { min: 0, max: 1 },
+          response: (call) => {
+            const output = "Received task and integer zero.";
+            requests.push({ type: call.modelType, prompt: call.params.prompt ?? "", output });
+            return output;
+          },
+        },
+      ],
+    });
+    const runtime = createSQLiteTestRuntime({
+      character: {
+        name: "mcp-argument-retry",
+        bio: "Recover an invalid tool argument response without selecting another tool",
+        settings: { mcp: { servers: { peer: { type: "stdio", command: "node", args: [peer] } } } },
+      },
+      plugins: [mcpPlugin, models],
+      logLevel: "fatal",
+    });
+    try {
+      runtime.registerProvider(recentMessagesProvider);
+      await runtime.initialize();
+      const service = (await runtime.getServiceLoadPromise("mcp")) as McpService;
+      expect(service.getServers()[0].status).toBe("connected");
+      const roomId = randomUUID(),
+        entityId = randomUUID(),
+        worldId = randomUUID();
+      await runtime.ensureConnection({
+        roomId,
+        entityId,
+        worldId,
+        source: "mcp-retry",
+        type: ChannelType.DM,
+      });
+      const text =
+        'Use explicit on peer with the exact pair ["task",0]; the second item is an integer.';
+      const message: Memory = {
+        id: randomUUID(),
+        roomId,
+        entityId,
+        worldId,
+        agentId: runtime.agentId,
+        content: { text, source: "mcp-retry" },
+      };
+      await runtime.createMemory(message, "messages");
+      const action = runtime.actions.find((entry) => entry.name === "MCP");
+      if (!action?.handler) throw new Error("Registered MCP action missing");
+      const callbacks: Content[] = [];
+      const result = await action.handler(
+        runtime,
+        message,
+        undefined,
+        {
+          parameters: {
+            op: "call_tool",
+            ...(direct ? { serverName: "peer", toolName: "explicit" } : {}),
+          },
+        },
+        async (content) => {
+          callbacks.push(content);
+          return [];
+        }
+      );
+      if (!result || typeof result !== "object") throw new Error("Expected action result");
+      const receipt = (await service.readResource("peer", "fixture:///calls")).contents[0];
+      if (typeof receipt.text !== "string") throw new Error("Expected tool invocation receipt");
+      const invocations = JSON.parse(receipt.text);
+      expect(result.values?.toolExecuted === true).toBe(recover);
+      expect(invocations).toEqual(
+        recover ? [{ name: "explicit", arguments: { pair: ["task", 0] } }] : []
+      );
+      const rows = await runtime.getMemories({ tableName: "messages", roomId, count: 20 });
+      const reply = rows.find((row) => row.content.actions?.includes("CALL_MCP_TOOL"));
+      expect(Boolean(reply)).toBe(recover);
+      const large = requests.filter((request) => request.type === ModelType.TEXT_LARGE);
+      const firstArgumentIndex = direct ? 0 : 1;
+      const retried = first !== '{"toolArguments":{"pair":["task",0]}}';
+      expect(large).toHaveLength(
+        firstArgumentIndex + (recover ? (second ? 3 : retried ? 2 : 1) : 3)
+      );
+      if (retried) {
+        const feedback = large[firstArgumentIndex + 1].prompt;
+        const schema = service.getProviderData().data.mcp.peer.tools.explicit.inputSchema;
+        expect(feedback).toContain(JSON.stringify(schema));
+        expect(feedback).toContain(first);
+        expect(feedback).toContain(text);
+        expect(feedback).toContain('"explicit" tool from the "peer" server');
+        expect(feedback).toContain("toolArguments");
+        expect(feedback).toContain(
+          first === "not JSON" ? "parsed or validated" : "Invalid arguments"
+        );
+        if (second) {
+          const finalFeedback = large[firstArgumentIndex + 2].prompt;
+          expect(finalFeedback).toContain(second);
+          expect(finalFeedback).not.toContain("Your previous response:\nnot JSON");
+          expect(finalFeedback).toContain("Invalid arguments");
+          expect(finalFeedback).toContain(JSON.stringify(schema));
+          expect(finalFeedback).toContain(text);
+        }
+      }
+      if (recover) {
+        expect(reply?.content.text).toBe(callbacks.at(-1)?.text);
+        expect(requests.at(-1)?.type).toBe(ModelType.TEXT_SMALL);
+        expect(requests.at(-1)?.prompt).toContain(JSON.stringify(["task", 0]));
+      } else {
+        expect(result.data?.noToolAvailable).toBe(true);
+        expect(requests.every((request) => request.type === ModelType.TEXT_LARGE)).toBe(true);
+      }
+      models.assertFixturesConsumed();
+      console.info(
+        "MCP retry receipt:",
+        JSON.stringify({ direct, first, recover, invocations, storedReply: Boolean(reply) })
+      );
+    } finally {
+      await runtime.stop();
+    }
+  });
+});
