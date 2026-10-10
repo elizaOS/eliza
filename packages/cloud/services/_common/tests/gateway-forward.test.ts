@@ -160,4 +160,61 @@ describe("gateway forwarding", () => {
     expect(alternateCalls).toBe(0);
     expect(wakes).toBe(0);
   });
+  async function forwardAfterStatus(status: number, retryOnTimeout: boolean) {
+    const sent: string[] = [];
+    const primary = listen(() => {
+      sent.push("primary");
+      return new Response(`primary answered ${status}`, { status });
+    });
+    const fallback = listen(() => {
+      sent.push("fallback");
+      return new Response("fallback result");
+    });
+    const outcome = executeGatewayForwardAttempts({
+      attempts: 3,
+      baseDelayMs: 0,
+      incrementMs: 0,
+      getTargets: async () => [primary, fallback],
+      refreshTargets: async () => undefined,
+      wake: () => undefined,
+      tryTarget: (target) =>
+        postGatewayTarget({
+          target,
+          endpointPath: "/agents/agent-1/message",
+          body: "{}",
+          timeoutMs: 1_000,
+          timeoutIsConnectionError: false,
+          readResponse: (response) => response.text(),
+        }),
+      retryOnTimeout,
+      exhaustedError: new Error("No gateway response"),
+    });
+    return { outcome, sent };
+  }
+
+  test("does not send a message again after a 500 when timeouts are not replayed", async () => {
+    const { outcome, sent } = await forwardAfterStatus(500, false);
+    await expect(outcome).rejects.toThrow("Server returned 500");
+    expect(sent).toEqual(["primary"]);
+  });
+
+  test("still retries a 500 when timeouts are replayed", async () => {
+    const { outcome, sent } = await forwardAfterStatus(500, true);
+    await expect(outcome).resolves.toBe("fallback result");
+    expect(sent).toEqual(["primary", "fallback"]);
+  });
+
+  test("does not send a message again after a final 4xx answer", async () => {
+    const { outcome, sent } = await forwardAfterStatus(400, false);
+    await expect(outcome).rejects.toThrow("Server returned 400");
+    expect(sent).toEqual(["primary"]);
+  });
+
+  for (const status of [404, 503]) {
+    test(`reaches the fallback after a ${status}`, async () => {
+      const { outcome, sent } = await forwardAfterStatus(status, false);
+      await expect(outcome).resolves.toBe("fallback result");
+      expect(sent).toEqual(["primary", "fallback"]);
+    });
+  }
 });

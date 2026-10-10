@@ -11,6 +11,7 @@ import {
 import {
   executeGatewayForwardAttempts,
   type GatewayTargetResult,
+  isTerminalGatewayFailure,
   postGatewayTarget,
 } from "@elizaos/cloud-services-common/transport";
 import { reacquireAuthHeader } from "./auth";
@@ -564,7 +565,9 @@ async function forwardWithRetry(
       policy,
     );
     if (canonical.ok) return canonical.response;
-    if (canonical.timedOut && !policy.retryOnTimeout) {
+    // Same terminal rule as the retry loop: a final answer from the canonical
+    // ingress must not be sent again to the hash target.
+    if (isTerminalGatewayFailure(canonical, policy.retryOnTimeout)) {
       throw canonical.error;
     }
   }

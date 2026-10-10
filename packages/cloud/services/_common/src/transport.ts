@@ -16,6 +16,7 @@ export {
   type GatewayForwardOptions,
   type GatewayPostOptions,
   type GatewayTargetResult,
+  isTerminalGatewayFailure,
   postGatewayTarget,
 } from "./gateway-forward";
 

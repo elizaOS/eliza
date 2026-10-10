@@ -29,6 +29,24 @@ export interface GatewayForwardOptions {
   exhaustedError: Error;
 }
 
+/**
+ * True when a failed attempt must not be sent again. A timeout or a 500 can
+ * come after the server already ran the turn, so hosts that do not replay
+ * timeouts must not replay them. A 4xx answer cannot succeed on replay
+ * (404: agent not on this pod, 408 and 429 are transient).
+ */
+export function isTerminalGatewayFailure(
+  result: Extract<GatewayTargetResult, { ok: false }>,
+  retryOnTimeout: boolean,
+): boolean {
+  if (result.timedOut && !retryOnTimeout) return true;
+  const status = result.status;
+  if (status === undefined) return false;
+  if (status >= 400 && status < 500 && ![404, 408, 429].includes(status))
+    return true;
+  return status === 500 && !retryOnTimeout;
+}
+
 export async function executeGatewayForwardAttempts(
   options: GatewayForwardOptions,
 ): Promise<string> {
@@ -40,15 +58,8 @@ export async function executeGatewayForwardAttempts(
   const rejectTerminalTimeout = (
     result: Extract<GatewayTargetResult, { ok: false }>,
   ): void => {
-    if (result.timedOut && !options.retryOnTimeout) throw result.error;
-    const status = result.status;
-    if (status === undefined) return;
-    // A 4xx answer cannot succeed on replay (404: agent not on this pod, 408
-    // and 429 are transient). A 500 can come after the server already ran the
-    // turn, so hosts that do not replay timeouts must not replay it either.
-    if (status >= 400 && status < 500 && ![404, 408, 429].includes(status))
+    if (isTerminalGatewayFailure(result, options.retryOnTimeout))
       throw result.error;
-    if (status === 500 && !options.retryOnTimeout) throw result.error;
   };
 
   for (let attempt = 0; attempt < options.attempts; attempt++) {
