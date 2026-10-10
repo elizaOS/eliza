@@ -4561,8 +4561,9 @@ user.get("/me/wallet", async (c) => {
     );
   }
 
-  const chainIdParam = c.req.query("chainId");
-  const chainId = chainIdParam ? parseInt(chainIdParam, 10) : undefined;
+  const chainId = parseOptionalChainId(c.req.query("chainId"));
+  if (typeof chainId === "string")
+    return c.json<ApiResponse>({ ok: false, error: chainId }, 400);
 
   try {
     const balance = await vault.getBalance(
