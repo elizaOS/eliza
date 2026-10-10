@@ -163,4 +163,37 @@ describe("Strava connector — recorded real API contract", () => {
       expect(s.localDate).toBe(s.startAt.slice(0, 10));
     }
   });
+
+  it("dates an evening activity by the athlete's local day, not the UTC day", async () => {
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/athlete/activities")) {
+        return jsonResponse([
+          {
+            id: 11500000009,
+            name: "Evening Run",
+            sport_type: "Run",
+            start_date: "2026-10-10T01:30:00Z",
+            start_date_local: "2026-10-09T18:30:00Z",
+            moving_time: 1800,
+            distance: 5000,
+          },
+        ]);
+      }
+      if (url.includes("/athlete")) return jsonResponse(recorded.athlete);
+      throw new Error(`unexpected Strava fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-strava",
+      startDate: "2026-10-09",
+      endDate: "2026-10-10",
+    });
+
+    expect(payload.samples.length).toBeGreaterThan(0);
+    for (const s of payload.samples) {
+      expect(s.localDate).toBe("2026-10-09");
+    }
+  });
 });

@@ -326,6 +326,11 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
     if (!id || !startAt) {
       continue;
     }
+    // start_date is UTC; start_date_local is the athlete's wall clock (Strava
+    // writes it with a literal "Z"), so its date is the owner's day.
+    const localDate = /^\d{4}-\d{2}-\d{2}/.exec(
+      getText(activity, "start_date_local") ?? "",
+    )?.[0];
     const elapsedSeconds = getNumber(activity, "elapsed_time");
     const movingSeconds = getNumber(activity, "moving_time");
     const durationSeconds = Math.trunc(movingSeconds ?? elapsedSeconds ?? 0);
@@ -375,6 +380,7 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           startAt,
           endAt,
           sourceExternalId: `${id}:distance_meters`,
+          localDate,
         }),
         sample({
           token: args.token,
@@ -385,6 +391,7 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           startAt,
           endAt,
           sourceExternalId: `${id}:active_minutes`,
+          localDate,
         }),
         sample({
           token: args.token,
@@ -395,6 +402,7 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           startAt,
           endAt,
           sourceExternalId: `${id}:calories`,
+          localDate,
         }),
         sample({
           token: args.token,
@@ -405,6 +413,7 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           startAt,
           endAt,
           sourceExternalId: `${id}:heart_rate`,
+          localDate,
         }),
       ]),
     );
@@ -721,6 +730,8 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
               rawWeight !== null ? fitbitWeightKg(rawWeight, weightUnit) : null,
             unit: "kg",
             startAt: loggedAt,
+            // The log's own date is the profile-zone day; loggedAt is UTC.
+            localDate: getText(log, "date") ?? date,
             sourceExternalId:
               getText(log, "logId") ?? `${date}:fitbit:weight_kg`,
             // providerUnit is the unit label Fitbit attached to THIS weight log;

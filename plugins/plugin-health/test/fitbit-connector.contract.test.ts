@@ -116,6 +116,40 @@ describe("Fitbit connector — recorded real API contract", () => {
     ).toBe(true);
   });
 
+  it("dates a weight log by its Fitbit date, not the UTC day of loggedAt", async () => {
+    // 00:30 on May 1 in Europe/London (BST) is 23:30 UTC on April 30.
+    const lateWeight = {
+      weight: [
+        {
+          ...(recorded.weight.weight as Array<Record<string, unknown>>)[0],
+          time: "00:30:00",
+        },
+      ],
+    };
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/activities/heart/"))
+        return jsonResponse(recorded.heart);
+      if (url.includes("/activities/date/"))
+        return jsonResponse(recorded.activity);
+      if (url.includes("/sleep/date/")) return jsonResponse(recorded.sleep);
+      if (url.includes("/body/log/weight/")) return jsonResponse(lateWeight);
+      if (url.includes("/profile.json")) return jsonResponse(recorded.profile);
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    const weight = payload.samples.find((s) => s.metric === "weight_kg");
+    expect(weight?.startAt).toBe("2026-04-30T23:30:00.000Z");
+    expect(weight?.localDate).toBe("2026-05-01");
+  });
+
   it("still syncs when the profile has no timezone", async () => {
     const profile = structuredClone(recorded.profile);
     const user = profile.user as Record<string, unknown>;
