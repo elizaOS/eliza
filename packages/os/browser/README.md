@@ -216,7 +216,18 @@ and a matching OTP input. It does not allow password fields or Verify/submit
 activation. Run `node --conditions=eliza-source
 packages/os/browser/scripts/test-protected-fill.mjs` for controlled Chromium
 field-policy and snapshot-redaction checks; native transport and provider
-qualification remain separate.
+qualification remain separate. The same script checks the task effect watch: a
+fill that makes a code field submit itself, and a button that calls
+`form.submit()`, are stopped and reported as `effectViolation`; a link click still
+opens its link. It also checks date fills (`YYYY-MM-DD`, real days only), the
+`expectedSelector` target check and the value-free `hasInput` field flag.
+
+Show-only guides scroll an off-screen target into view and report `placement`.
+Action guides never scroll. A trusted Dismiss sends only the guide ID; the
+extension keeps the step dismissed for that tab, task and epoch, also after a
+reload, until the host restores it. Snapshot references in `keepClear` name
+controls the label must not cover. Manual-activity events from a form with a
+password, code or user-name field carry `credential: true`.
 
 
 Android component generation accepts `--embed-host` only as an explicit build

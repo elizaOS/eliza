@@ -59,6 +59,11 @@ export type NativeTaskGuidance = {
       answers?: NativeTaskGuideAnswer[];
       expiresAt: number;
       restore?: boolean;
+      /**
+       * Snapshot references (same snapshot as `selector`) of controls the
+       * label must not cover, for example the button the person presses next.
+       */
+      keepClear?: string[];
     }
 );
 /** A person's tap on a shown offer. It names the answer, never its value. */
@@ -680,6 +685,16 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         "This browser does not support guide labels, offers or pause.",
         { targetId: this.id },
       );
+    if (
+      guidance.kind === "show" &&
+      guidance.keepClear !== undefined &&
+      !this.advertised.has("task-guide-keep-clear")
+    )
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "This browser cannot keep controls clear of a guide label.",
+        { targetId: this.id },
+      );
     // Any new guide for the tab replaces its offer; late answers are dropped.
     for (const [id, offer] of this.offers)
       if (offer.tabId === guidance.tabId) this.offers.delete(id);
@@ -695,8 +710,24 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       protectedValueKind?: "verification-code";
       /** Host-written preview sentence for a bound task action. */
       actionText?: string;
+      /** The one reviewed binding target (CSS selector) this action is for. */
+      expectedSelector?: string;
     } = {},
   ): Promise<BrowserWorkspaceCommandResult> {
+    if (
+      options.expectedSelector !== undefined &&
+      (!options.taskContext ||
+        !["click", "fill", "scroll"].includes(command.subaction) ||
+        typeof options.expectedSelector !== "string" ||
+        !options.expectedSelector ||
+        options.expectedSelector.length > 256 ||
+        !this.advertised.has("task-expected-target"))
+    )
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "A reviewed target needs a bound task action and a capable browser.",
+        { targetId: this.id },
+      );
     if (
       options.actionText !== undefined &&
       (!options.taskContext ||
@@ -723,10 +754,12 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     const {
       protectedValueKind: _untrusted,
       actionText: _untrustedText,
+      expectedSelector: _untrustedTarget,
       ...safeCommand
     } = command as BrowserWorkspaceCommand & {
       protectedValueKind?: unknown;
       actionText?: unknown;
+      expectedSelector?: unknown;
     };
     command = safeCommand as BrowserWorkspaceCommand;
     if (
@@ -787,6 +820,9 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           ...(options.actionText === undefined
             ? {}
             : { actionText: options.actionText }),
+          ...(options.expectedSelector === undefined
+            ? {}
+            : { expectedSelector: options.expectedSelector }),
         }
       : command;
     const result = await this.request(scopedCommand, options.signal);

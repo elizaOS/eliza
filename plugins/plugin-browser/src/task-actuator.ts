@@ -290,9 +290,19 @@ export class NativeTaskActuator {
       tone?: NativeTaskGuideTone;
       answers?: NativeTaskGuideAnswer[];
       restore?: boolean;
+      /** Observed controls the label must not cover. */
+      keepClearRefs?: string[];
     },
     signal: AbortSignal,
-  ): Promise<{ tabId: string; revision: number; expiresAt: number }> {
+  ): Promise<{
+    tabId: string;
+    revision: number;
+    expiresAt: number;
+    /** Where the target was when shown; "scrolled" means it was brought into view. */
+    placement?: "in-view" | "scrolled" | "off-screen" | "hidden";
+    /** The person dismissed this step earlier; it stays hidden until restored. */
+    dismissed?: boolean;
+  }> {
     const task = this.task(taskId, owner);
     const { snapshot } = this.readObservation(taskId, owner);
     const binding = this.bindings.get(taskId);
@@ -301,7 +311,12 @@ export class NativeTaskActuator {
       task.status !== "active" ||
       !binding ||
       !guide ||
-      !snapshot.elements.some((element) => element.selector === input.targetRef)
+      !snapshot.elements.some(
+        (element) => element.selector === input.targetRef,
+      ) ||
+      input.keepClearRefs?.some(
+        (ref) => !snapshot.elements.some((element) => element.selector === ref),
+      )
     )
       fail("Guidance requires an active observed task target");
     signal.throwIfAborted();
@@ -324,10 +339,13 @@ export class NativeTaskActuator {
           tone: input.tone,
           answers: input.answers,
           restore: input.restore,
+          ...(input.keepClearRefs?.length
+            ? { keepClear: input.keepClearRefs }
+            : {}),
           expiresAt,
         },
         signal,
-      )) as { accepted?: boolean };
+      )) as { accepted?: boolean; placement?: unknown; dismissed?: unknown };
       const current = this.task(taskId, owner);
       if (
         reply?.accepted !== true ||
@@ -338,7 +356,23 @@ export class NativeTaskActuator {
         this.guidanceRevisions.get(taskId) !== revision
       )
         fail("Guidance context changed before acknowledgement");
-      return { tabId: binding.policy.tabId, revision, expiresAt };
+      return {
+        tabId: binding.policy.tabId,
+        revision,
+        expiresAt,
+        ...(["in-view", "scrolled", "off-screen", "hidden"].includes(
+          reply.placement as string,
+        )
+          ? {
+              placement: reply.placement as
+                | "in-view"
+                | "scrolled"
+                | "off-screen"
+                | "hidden",
+            }
+          : {}),
+        ...(reply.dismissed === true ? { dismissed: true } : {}),
+      };
     } catch (error) {
       if (this.guidanceRevisions.get(taskId) === revision)
         await this.quiesce({ owner, taskId });
@@ -507,6 +541,9 @@ export class NativeTaskActuator {
         taskExpiresAt: proposal.expiresAt,
         ...(protectedValueKind ? { protectedValueKind } : {}),
         ...(actionText ? { actionText } : {}),
+        ...(proposal.expectedSelector === undefined
+          ? {}
+          : { expectedSelector: proposal.expectedSelector }),
         signal: context.signal,
       });
     } catch (error) {
@@ -520,6 +557,9 @@ export class NativeTaskActuator {
     if (!current()) return { status: "unknown" };
     const after = await this.snapshot(binding, context.signal);
     if (!current()) return { status: "unknown" };
+    // The page tried to submit or leave because of this action. The browser
+    // stopped it, but the page state is no longer the one that was reviewed.
+    if (after.effectViolation !== undefined) return { status: "unknown" };
     const status = await this.options.verify(proposal, cached.snapshot, after);
     if (!current()) return { status: "unknown" };
     const evidenceRef = await this.options.recordEvidence(
@@ -577,6 +617,19 @@ export class NativeTaskActuator {
       )
     )
       fail("Browser action is not authorized");
+    // A host-chosen reviewed target must be one this binding allows for this
+    // action. The browser then checks that the node is that target only.
+    if (
+      proposal.expectedSelector !== undefined &&
+      !binding.policy.targets.some(
+        (target) =>
+          target.selector === proposal.expectedSelector &&
+          (target.action === proposal.capability.split(".")[1] ||
+            (target.action === "fill-code" &&
+              proposal.capability === "browser.fill")),
+      )
+    )
+      fail("The expected target is not a reviewed target for this action");
     const direction = proposal.capability.split(".")[2] as
       | "up"
       | "down"
