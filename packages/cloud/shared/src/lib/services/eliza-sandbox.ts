@@ -2332,13 +2332,9 @@ export class ElizaSandboxService {
         },
       });
       if (prov.success) return { success: true, backup };
-      // Provision reports these admission refusals as plain strings; any other
-      // provision failure is a fault.
-      const admissionRefused =
-        prov.error === RESTORE_AUTHORITY_CHANGED ||
-        prov.error === RESTORE_BACKUP_CHANGED ||
-        prov.error === RETAINED_RUNTIME_PROVISION_REFUSAL;
-      return admissionRefused
+      // With `expectedAdmission`, provision refuses a lost admission CAS with
+      // this constant; any other provision failure is a fault.
+      return prov.error === RESTORE_AUTHORITY_CHANGED
         ? { success: false, error: prov.error, refusal: "conflict" }
         : { success: false, error: prov.error };
     }
