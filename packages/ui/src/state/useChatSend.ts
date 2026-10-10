@@ -27,6 +27,7 @@ import type {
   MessageAttachmentContentType,
 } from "../api/client-types-chat";
 import type { CodingAgentSession } from "../api/client-types-cloud";
+import { isApiError } from "../api/client-types-core";
 import { describeCreditGateError } from "../api/credit-gate-error";
 import {
   describePersonalRouteRefusal,
@@ -53,6 +54,7 @@ import {
 import { emitViewEvent, VIEW_EVENTS } from "../events/view-events";
 import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
+import { isNative } from "../platform/init";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
 import {
   dispatchViewActionHandoffDirect,
@@ -1127,13 +1129,28 @@ export function useChatSend(deps: UseChatSendDeps) {
           commitLocalCommandTurn(rawText, "Search query cannot be empty.");
           return { handled: true };
         }
+        // The native mobile agent does not serve the documents route. For the
+        // combined search that 404 must not discard the memory results; the
+        // Knowledge line reports it instead. Every other failure still throws,
+        // and `#documents` keeps failing because it has no other result.
+        let knowledgeUnavailable = false;
+        const documentSearch =
+          scope === "memory"
+            ? Promise.resolve(null)
+            : client.searchDocuments(query, { threshold: 0.2, limit: 6 });
         const [memoryResult, documentResult] = await Promise.all([
           scope === "documents"
             ? Promise.resolve(null)
             : client.searchMemory(query, { limit: 6 }),
-          scope === "memory"
-            ? Promise.resolve(null)
-            : client.searchDocuments(query, { threshold: 0.2, limit: 6 }),
+          scope === "all"
+            ? documentSearch.catch((err: unknown) => {
+                if (isApiError(err) && err.status === 404 && isNative) {
+                  knowledgeUnavailable = true;
+                  return null;
+                }
+                throw err;
+              })
+            : documentSearch,
         ]);
         const memoryLines =
           memoryResult?.results.map(
@@ -1159,7 +1176,9 @@ export function useChatSend(deps: UseChatSendDeps) {
               : formatSearchBullet("Memories", memoryLines),
             scope === "memory"
               ? ""
-              : formatSearchBullet("Knowledge", documentLines),
+              : knowledgeUnavailable
+                ? "Knowledge: unavailable on this device"
+                : formatSearchBullet("Knowledge", documentLines),
           ]
             .filter(Boolean)
             .join("\n\n"),
