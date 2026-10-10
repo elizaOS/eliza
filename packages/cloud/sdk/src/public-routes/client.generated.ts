@@ -2510,6 +2510,24 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  getApiV1SubscriptionsDowngradeByCommandId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/downgrade/{commandId}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/subscriptions/downgrade/{commandId}",
+      TResponse
+    >("GET /api/v1/subscriptions/downgrade/{commandId}", options);
+  }
+
+  getApiV1SubscriptionsPlanChangeCommands<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/plan-change/commands"> = {},
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/subscriptions/plan-change/commands",
+      TResponse
+    >("GET /api/v1/subscriptions/plan-change/commands", options);
+  }
+
   getApiV1SubscriptionsPlans<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/subscriptions/plans"> = {},
   ): Promise<TResponse> {
@@ -2517,6 +2535,15 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
       "GET /api/v1/subscriptions/plans",
       options,
     );
+  }
+
+  getApiV1SubscriptionsUpgradeByCommandId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/upgrade/{commandId}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/subscriptions/upgrade/{commandId}",
+      TResponse
+    >("GET /api/v1/subscriptions/upgrade/{commandId}", options);
   }
 
   getApiV1TelegramChats<TResponse = unknown>(
@@ -5173,11 +5200,47 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
+  postApiV1SubscriptionsDowngradeConfirm<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/downgrade/confirm"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/downgrade/confirm", TResponse>(
+      "POST /api/v1/subscriptions/downgrade/confirm",
+      options,
+    );
+  }
+
+  postApiV1SubscriptionsDowngradeReview<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/downgrade/review"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/downgrade/review", TResponse>(
+      "POST /api/v1/subscriptions/downgrade/review",
+      options,
+    );
+  }
+
   postApiV1SubscriptionsPortal<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/subscriptions/portal"> = {},
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/subscriptions/portal", TResponse>(
       "POST /api/v1/subscriptions/portal",
+      options,
+    );
+  }
+
+  postApiV1SubscriptionsUpgradeByCommandIdPayment<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/upgrade/{commandId}/payment">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/subscriptions/upgrade/{commandId}/payment",
+      TResponse
+    >("POST /api/v1/subscriptions/upgrade/{commandId}/payment", options);
+  }
+
+  postApiV1SubscriptionsUpgradeConfirm<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/upgrade/confirm"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/subscriptions/upgrade/confirm", TResponse>(
+      "POST /api/v1/subscriptions/upgrade/confirm",
       options,
     );
   }
@@ -7489,10 +7552,37 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("GET /api/v1/subscriptions/commands", options);
   }
 
+  getApiV1SubscriptionsDowngradeByCommandIdRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/downgrade/{commandId}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/subscriptions/downgrade/{commandId}",
+      options,
+    );
+  }
+
+  getApiV1SubscriptionsPlanChangeCommandsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/plan-change/commands"> = {},
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/subscriptions/plan-change/commands",
+      options,
+    );
+  }
+
   getApiV1SubscriptionsPlansRaw(
     options: PublicRouteCallOptions<"GET /api/v1/subscriptions/plans"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/subscriptions/plans", options);
+  }
+
+  getApiV1SubscriptionsUpgradeByCommandIdRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/upgrade/{commandId}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/subscriptions/upgrade/{commandId}",
+      options,
+    );
   }
 
   getApiV1TelegramChatsRaw(
@@ -9454,10 +9544,40 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     return this.callRaw("POST /api/v1/subscriptions/checkout/confirm", options);
   }
 
+  postApiV1SubscriptionsDowngradeConfirmRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/downgrade/confirm"> = {},
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/subscriptions/downgrade/confirm",
+      options,
+    );
+  }
+
+  postApiV1SubscriptionsDowngradeReviewRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/downgrade/review"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/subscriptions/downgrade/review", options);
+  }
+
   postApiV1SubscriptionsPortalRaw(
     options: PublicRouteCallOptions<"POST /api/v1/subscriptions/portal"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/subscriptions/portal", options);
+  }
+
+  postApiV1SubscriptionsUpgradeByCommandIdPaymentRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/upgrade/{commandId}/payment">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/subscriptions/upgrade/{commandId}/payment",
+      options,
+    );
+  }
+
+  postApiV1SubscriptionsUpgradeConfirmRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/subscriptions/upgrade/confirm"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/subscriptions/upgrade/confirm", options);
   }
 
   postApiV1SubscriptionsUpgradeReviewRaw(

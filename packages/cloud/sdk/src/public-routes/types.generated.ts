@@ -436,7 +436,14 @@ export interface PublicRoutePathParams {
   "GET /api/v1/subscriptions/cancel/undo/review": Record<never, never>;
   "GET /api/v1/subscriptions/checkout/payer": Record<never, never>;
   "GET /api/v1/subscriptions/commands": Record<never, never>;
+  "GET /api/v1/subscriptions/downgrade/{commandId}": {
+    commandId: string | number;
+  };
+  "GET /api/v1/subscriptions/plan-change/commands": Record<never, never>;
   "GET /api/v1/subscriptions/plans": Record<never, never>;
+  "GET /api/v1/subscriptions/upgrade/{commandId}": {
+    commandId: string | number;
+  };
   "GET /api/v1/telegram/chats": Record<never, never>;
   "GET /api/v1/telegram/scan-chats": Record<never, never>;
   "GET /api/v1/telegram/status": Record<never, never>;
@@ -841,7 +848,13 @@ export interface PublicRoutePathParams {
   "POST /api/v1/subscriptions/cancel/undo/confirm": Record<never, never>;
   "POST /api/v1/subscriptions/checkout": Record<never, never>;
   "POST /api/v1/subscriptions/checkout/confirm": Record<never, never>;
+  "POST /api/v1/subscriptions/downgrade/confirm": Record<never, never>;
+  "POST /api/v1/subscriptions/downgrade/review": Record<never, never>;
   "POST /api/v1/subscriptions/portal": Record<never, never>;
+  "POST /api/v1/subscriptions/upgrade/{commandId}/payment": {
+    commandId: string | number;
+  };
+  "POST /api/v1/subscriptions/upgrade/confirm": Record<never, never>;
   "POST /api/v1/subscriptions/upgrade/review": Record<never, never>;
   "POST /api/v1/telegram/connect": Record<never, never>;
   "POST /api/v1/telegram/scan-chats": Record<never, never>;
@@ -1199,7 +1212,10 @@ export interface PublicRouteHeaders {
   "GET /api/v1/subscriptions/cancel/undo/review": never;
   "GET /api/v1/subscriptions/checkout/payer": never;
   "GET /api/v1/subscriptions/commands": never;
+  "GET /api/v1/subscriptions/downgrade/{commandId}": never;
+  "GET /api/v1/subscriptions/plan-change/commands": never;
   "GET /api/v1/subscriptions/plans": never;
+  "GET /api/v1/subscriptions/upgrade/{commandId}": never;
   "GET /api/v1/telegram/chats": never;
   "GET /api/v1/telegram/scan-chats": never;
   "GET /api/v1/telegram/status": never;
@@ -1498,7 +1514,11 @@ export interface PublicRouteHeaders {
   "POST /api/v1/subscriptions/cancel/undo/confirm": never;
   "POST /api/v1/subscriptions/checkout": never;
   "POST /api/v1/subscriptions/checkout/confirm": never;
+  "POST /api/v1/subscriptions/downgrade/confirm": never;
+  "POST /api/v1/subscriptions/downgrade/review": never;
   "POST /api/v1/subscriptions/portal": never;
+  "POST /api/v1/subscriptions/upgrade/{commandId}/payment": never;
+  "POST /api/v1/subscriptions/upgrade/confirm": never;
   "POST /api/v1/subscriptions/upgrade/review": never;
   "POST /api/v1/telegram/connect": never;
   "POST /api/v1/telegram/scan-chats": never;
